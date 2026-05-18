@@ -94,18 +94,17 @@ const STAGE_LABELS: Record<PipelineBucket, string> = {
   other: "Other",
 };
 
-// Stage chip palette — per-stage bg/text per spec. Borders + hover
-// derive from the same tonal family so the chip reads as a single tone.
+// Same green-brand progression as StageBadge so pipeline visuals match across pages.
 const STAGE_TONE: Record<PipelineBucket, string> = {
-  applied: "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300",
-  sourced: "border-slate-200 bg-slate-100 text-slate-600 hover:border-slate-300",
-  kept: "border-slate-200 bg-slate-100 text-slate-600 hover:border-slate-300",
-  submitted: "border-court-brand/30 bg-court-accent-tint text-court-brand-dark hover:border-court-brand/60",
-  interviewing: "border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-300",
-  offer: "border-purple-200 bg-purple-50 text-purple-700 hover:border-purple-300",
-  pending_start: "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300",
-  hired: "border-court-brand/30 bg-court-accent-tint text-court-brand-dark hover:border-court-brand/60",
-  rejected: "border-red-200 bg-red-50 text-red-500 hover:border-red-300",
+  applied: "border-court-border bg-court-surface-subtle text-court-fg-muted hover:border-court-fg-muted/30",
+  sourced: "border-court-border bg-court-surface-subtle text-court-fg-muted hover:border-court-fg-muted/30",
+  kept: "border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300",
+  submitted: "border-brand/30 bg-brand-tint text-brand-dark hover:border-brand/60",
+  interviewing: "border-brand/40 bg-brand/25 text-brand-dark hover:border-brand/70",
+  offer: "border-brand bg-brand/50 text-white hover:bg-brand/60",
+  pending_start: "border-brand-dark bg-brand text-white hover:bg-brand-dark",
+  hired: "border-brand-dark bg-brand-dark text-white hover:brightness-110",
+  rejected: "border-red-200 bg-red-50 text-red-700 hover:border-red-300",
   cancelled: "border-red-300 bg-red-100 text-red-800 hover:border-red-400",
   other: "border-court-border bg-court-surface-subtle text-court-fg-muted hover:border-court-fg-muted/30",
 };
@@ -219,20 +218,17 @@ export function JobPipelineSummary({
   // without taking a full screen of vertical space. Click-to-expand
   // behavior is unchanged.
   const chipBoxClass = compact
-    ? "inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-semibold uppercase tracking-wider transition"
+    ? "flex items-center justify-between gap-2 rounded-md border px-2 py-1 text-left transition"
     : "flex flex-col items-center justify-center rounded-lg border px-3 py-2 text-center transition";
   const chipLabelClass = compact
-    ? "flex items-center gap-1"
+    ? "flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider"
     : "flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider";
   const chipCountClass = compact
-    ? "tabular-nums"
+    ? "font-serif text-base font-bold leading-none tabular-nums"
     : "font-serif text-2xl font-bold leading-none";
   const chipGridClass = compact
     ? "flex flex-wrap gap-1.5"
     : "grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8";
-  const zeroChipClass = compact
-    ? "border-transparent bg-court-brand-tint/40 text-court-fg-dim"
-    : "";
 
   return (
     <div>
@@ -248,10 +244,9 @@ export function JobPipelineSummary({
               onClick={() => setActiveTab(active ? null : it.bucket)}
               className={cn(
                 chipBoxClass,
-                clickable ? STAGE_TONE[it.bucket] : zeroChipClass || STAGE_TONE[it.bucket],
+                STAGE_TONE[it.bucket],
                 active && "ring-2 ring-offset-1 ring-brand/40",
-                !clickable && !compact && "opacity-60 cursor-default hover:border-inherit",
-                !clickable && compact && "cursor-default hover:border-transparent",
+                !clickable && "opacity-60 cursor-default hover:border-inherit",
               )}
             >
               <span className={chipLabelClass}>
@@ -271,14 +266,10 @@ export function JobPipelineSummary({
             }
             className={cn(
               chipBoxClass,
-              liveMatchedCount > 0
-                ? "border-court-brand/30 bg-court-accent-tint text-court-brand-dark hover:border-court-brand/60"
-                : zeroChipClass || "border-court-brand/30 bg-court-accent-tint text-court-brand-dark",
+              "border-emerald-300 bg-emerald-50 text-emerald-800 hover:border-emerald-400",
               matchedActive && "ring-2 ring-offset-1 ring-brand/40",
-              liveMatchedCount === 0 && !compact &&
+              liveMatchedCount === 0 &&
                 "opacity-60 cursor-default hover:border-inherit",
-              liveMatchedCount === 0 && compact &&
-                "cursor-default hover:border-transparent",
             )}
           >
             <span className={chipLabelClass}>

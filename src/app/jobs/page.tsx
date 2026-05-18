@@ -162,7 +162,7 @@ export default async function JobsPage({
   const pageRows = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
-    <div className="-m-4 min-h-[calc(100vh-6rem)] bg-court-surface-subtle p-4 sm:-m-6 sm:p-6">
+    <div>
       <JobsView
         rows={pageRows}
         total={total}

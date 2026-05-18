@@ -191,16 +191,14 @@ export default async function ClientsPage({
     });
 
   return (
-    <div className="-m-4 min-h-[calc(100vh-6rem)] bg-court-surface-subtle p-4 sm:-m-6 sm:p-6">
-      <ClientsView
-        activeCards={activeCards}
-        inactiveCards={inactiveCards}
-        quietCards={quietCards}
-        initialView={initialView}
-        verifiedCount={verifiedCount}
-        error={error}
-      />
-    </div>
+    <ClientsView
+      activeCards={activeCards}
+      inactiveCards={inactiveCards}
+      quietCards={quietCards}
+      initialView={initialView}
+      verifiedCount={verifiedCount}
+      error={error}
+    />
   );
 }
 

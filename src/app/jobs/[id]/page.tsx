@@ -438,6 +438,7 @@ export default async function JobDetailPage({
                 ? jobRow.descriptionGeneratedAt.toISOString()
                 : null
             }
+            initialInternalNotes={jobRow.internalRecruiterNotes ?? null}
             initialSearchKeywords={jobRow.searchKeywords ?? null}
             jobMeta={{
               title: job.title,
@@ -480,7 +481,6 @@ function JobTabs({ slug, tab }: { slug: string; tab: JobTab }) {
     <TabStrip<JobTab>
       ariaLabel="Job sections"
       activeId={tab}
-      variant="underline"
       items={JOB_TABS.map((t) => ({
         id: t.id,
         label: t.label,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, ClipboardList, Loader2, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { WordOfDayCard } from "@/components/word-of-day-card";
 import { ChessPuzzle } from "@/components/chess-puzzle";
@@ -210,10 +210,9 @@ export function NewsFeed() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2
-            className="flex items-center gap-2 font-semibold tracking-[-0.035em] text-court-fg"
+            className="font-semibold tracking-[-0.035em] text-court-fg"
             style={{ fontSize: "18px", lineHeight: 1.15 }}
           >
-            <ClipboardList className="h-4 w-4 text-court-brand-dark" aria-hidden />
             Today&apos;s Briefing
           </h2>
           <p
@@ -266,7 +265,7 @@ export function NewsFeed() {
                     aria-busy={tabLoading}
                     onClick={() => setActive(t.key)}
                     className={
-                      "inline-flex h-8 items-center gap-1 rounded-md px-2.5 text-[13px] font-medium transition-colors " +
+                      "inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[13px] font-medium transition-colors " +
                       (selected
                         ? "bg-court-accent-tint text-court-accent-dark"
                         : "text-court-fg-muted hover:bg-court-surface-subtle")
@@ -286,7 +285,7 @@ export function NewsFeed() {
               disabled={refreshing}
               aria-label="Refresh news"
               title="Refresh news"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-50"
+              className="rounded-md p-1.5 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-50"
             >
               {refreshing ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -348,7 +347,7 @@ export function NewsFeed() {
                         {lead.summary}
                       </p>
                     ) : null}
-                    <div className="mt-2 text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+                    <div className="mt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
                       {lead.source}
                     </div>
                   </a>
@@ -366,7 +365,7 @@ export function NewsFeed() {
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={() => markRead(story)}
-                          className="group block cursor-pointer px-2 py-2"
+                          className="group block cursor-pointer py-2"
                         >
                           <h4
                             className={
@@ -379,7 +378,7 @@ export function NewsFeed() {
                           >
                             {story.headline}
                           </h4>
-                          <div className="mt-1 text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+                          <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
                             {story.source}
                           </div>
                         </a>

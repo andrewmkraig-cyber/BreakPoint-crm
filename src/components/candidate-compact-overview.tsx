@@ -33,7 +33,7 @@ export function CandidateCompactOverview({
   compensation: string | null;
 }) {
   return (
-    <section className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
+    <section className="rounded-xl border border-court-border bg-court-surface px-4 py-3 shadow-sm">
       <h1 className="break-words font-serif text-lg font-bold leading-tight text-court-fg">
         {fullName}
       </h1>
@@ -108,7 +108,7 @@ function Field({
 }) {
   return (
     <div className={wide ? "col-span-2" : undefined}>
-      <dt className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+      <dt className="text-[10px] uppercase tracking-wide text-court-fg-muted">
         {label}
       </dt>
       <dd className="mt-0.5 truncate text-sm text-court-fg">{children}</dd>

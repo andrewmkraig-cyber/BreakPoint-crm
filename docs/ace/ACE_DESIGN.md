@@ -1,23 +1,11 @@
 # Ace Design System
-Last updated: 2026-05-17 · Ace 52.0
+Last updated: 2026-05-16 · Ace 50.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
 This doc is the source of truth for what Ace looks and feels like. Apply continuously when building new components and pages — not just during a final "polish phase." Polishing at the end is a trap; design rules should be enforced during build so we don't ship 50 components that all need to be redone.
 
 Design intent: Linear / Notion polish. Premium, minimal, sharp, intentional. Avoid boxy, muddy dark modes, generic SaaS look.
-
-## Visual redesign pass — in progress (Ace 52.0 → Ace 53.0)
-
-A seventeen-surface visual redesign pass is mid-flight. Prompts 1-10 shipped in Ace 52.0 (dashboard/clubhouse, pipeline, candidates search, candidate profile, jobs grid/detail, JD tab, clients, BD dashboard, BD settings, mail). Prompts 11-17 — phone, appearance, placements, all settings, scoreboard, applicants, finances — are queued at the top of the Ace 53 active sequence on `ACE_ROADMAP.md`.
-
-Operating rules for this pass:
-
-- **Court Mode tokens only — rule 12 strictly enforced.** Every spec hex is mapped to the nearest `court-*` token before write. The hex-to-token mapping is saved as a Code memory so the agent doesn't re-derive it on every prompt. Common mappings: `#5A9642` → `court-accent` / `bg-court-accent` / `border-court-accent`; `#3F7030` → `text-court-accent-dark`; `#EAF4E4` / `#F4F8F0` → `bg-court-accent-tint` (use `/40` or `/50` opacity modifier for the lighter hover/active variants); `#F0F2F0` → `border-court-border-soft`; `#E5E8ED` / `#E5E7EB` → `border-court-border`; `#5B6476` / `#6B7280` → `text-court-fg-muted`; `#111` → `text-court-fg`. If a spec hex genuinely doesn't map to any existing token, call it out — don't paste the literal hex and don't invent a new token without approval.
-- **Playfair Display maps to `font-serif`.** Specs occasionally name Playfair for hero / subject typography. The project's `font-serif` token resolves to Bricolage Grotesque (the display family already used across hero headings). Treat the `font-serif` token as the canonical "display family" for spec compliance — do not introduce a Playfair font import.
-- **Layout-stability constraint.** The visual pass is surfaces-only by default. Do not move elements or change copy unless the spec explicitly calls for it. If a spec describes an element that doesn't exist in the current code (e.g. a per-row unread dot or label chip on mail), flag it in the wrap-up rather than silently adding new chrome.
-
-This section can be removed once Prompts 11-17 ship.
 
 ## Design Philosophy
 

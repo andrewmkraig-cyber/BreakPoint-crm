@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, CalendarDays } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -124,8 +124,7 @@ export function ThisWeekWidgetClient({
     <section className="flex h-full flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
-            <CalendarDays className="h-4 w-4 text-court-brand-dark" aria-hidden />
+          <div className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-court-fg-muted">
             THIS WEEK
           </div>
           <h2
@@ -235,7 +234,7 @@ export function ThisWeekWidgetClient({
           name + meta, type chip. Same layout pattern as Later this week
           so the two sections read as one continuous schedule. */}
       <div className="mt-5">
-        <div className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+        <div className="text-[10.5px] font-extrabold uppercase tracking-[0.18em] text-court-fg-muted">
           Up next today
         </div>
         {upNextToday.length === 0 ? (
@@ -269,7 +268,7 @@ export function ThisWeekWidgetClient({
           dayAbbr (top) + clock label (bottom) so the eye can scan by
           weekday in this section. */}
       <div className="mt-4">
-        <div className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+        <div className="text-[10.5px] font-extrabold uppercase tracking-[0.18em] text-court-fg-muted">
           Later this week
         </div>
         {laterRows.length === 0 ? (

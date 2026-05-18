@@ -1,7 +1,7 @@
 "use client";
 
 import { AlarmClock, Bell, Check, Clock, Plus, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import type { CalendarReminder } from "@/lib/calendar/types";
 import { cn } from "@/lib/utils";
@@ -11,12 +11,6 @@ type Props = {
   onDismiss: (id: string) => void;
   onSnooze: (id: string) => void;
   onCreate: (title: string, reminderAt: Date) => Promise<void>;
-  // Increment-only signal from the parent: every change opens the
-  // inline create form. Used by the global ComposeFAB + TopBar entry
-  // points so they can request a fresh reminder without owning the
-  // form state. Initial mount (signal=0) is a no-op so the form
-  // doesn't auto-open on every page load.
-  openSignal?: number;
 };
 
 export function CalendarRemindersPanel({
@@ -24,13 +18,8 @@ export function CalendarRemindersPanel({
   onDismiss,
   onSnooze,
   onCreate,
-  openSignal,
 }: Props) {
   const [formOpen, setFormOpen] = useState(false);
-
-  useEffect(() => {
-    if (openSignal && openSignal > 0) setFormOpen(true);
-  }, [openSignal]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">

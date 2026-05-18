@@ -36,6 +36,7 @@ import {
 } from "@/app/candidates/lists-actions";
 import {
   Fragment,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -212,18 +213,12 @@ function buildQuery(f: Filters): string {
 // rest of the rail instead of holding a hardcoded white that glares
 // against a dark page bg.
 const inputCls =
-  "block h-9 w-full rounded-xl border border-court-border bg-court-surface px-2.5 text-[13px] text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/10";
-
-// Variant for the active Keyword/Boolean input — applied when filters.q
-// has a value so the rail's main entry point picks up a brand-tinted
-// border to signal "this is what's driving the result set."
-const inputClsActive =
-  "block h-9 w-full rounded-xl border border-court-accent/50 bg-court-surface px-2.5 text-[13px] text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/10";
+  "block h-8 w-full rounded-md border border-court-border bg-court-surface px-2.5 text-xs text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
 
 // Bare select class. Wrap with SelectField so the inline chevron paints
 // over the native arrow we strip with appearance-none.
 const selectBareCls =
-  "block h-9 w-full appearance-none rounded-xl border border-court-border bg-court-surface pl-2.5 pr-7 text-[13px] text-court-fg focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/10";
+  "block h-8 w-full appearance-none rounded-md border border-court-border bg-court-surface pl-2.5 pr-7 text-xs text-court-fg focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
 
 function SelectField({
   className,
@@ -243,23 +238,18 @@ function SelectField({
   );
 }
 
-// Field label. Sits under a SectionTitle inside the same section.
-// Lighter weight + muted color so it reads as the subordinate heading
-// in the two-tier hierarchy.
+// Sentence-case field label. Replaces the old all-caps eyebrow.
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
-    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+    <label className="mb-0.5 block text-[10.5px] font-semibold tracking-normal text-court-fg-muted">
       {children}
     </label>
   );
 }
 
-// Section group header. One step heavier than FieldLabel + full
-// text-court-fg so the five rail sections (Identity / Compensation /
-// Location / Employment / Activity) read as a distinct tier.
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-court-fg">
+    <div className="mb-1 text-xs font-semibold tracking-normal text-court-fg">
       {children}
     </div>
   );
@@ -323,7 +313,7 @@ function TagInput({
   }
 
   return (
-    <div className="flex min-h-8 flex-wrap items-center gap-1 rounded-xl border border-court-border bg-court-surface px-1.5 py-0.5 focus-within:border-court-accent focus-within:ring-2 focus-within:ring-court-accent/20">
+    <div className="flex min-h-8 flex-wrap items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 focus-within:border-court-accent focus-within:ring-2 focus-within:ring-court-accent/20">
       {values.map((p) => {
         const tintCls = p.exclude
           ? "bg-red-100 text-red-700"
@@ -391,7 +381,7 @@ function SortHeader({
         ? "justify-center"
         : "justify-start";
   return (
-    <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+    <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
       <span className={`inline-flex items-center gap-1 ${justify}`}>
         {label}
       </span>
@@ -416,7 +406,7 @@ function SortableHeader({
   const active = sort?.column === column;
   return (
     <th
-      className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted"
+      className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted"
       aria-sort={
         active ? (sort?.direction === "asc" ? "ascending" : "descending") : "none"
       }
@@ -715,6 +705,72 @@ export default function CandidatesPage() {
     null,
   );
   const [bulkLoading, setBulkLoading] = useState(false);
+
+  const LIST_MIN = 220;
+  const LIST_MAX = 600;
+  const [listWidth, setListWidth] = useState<number>(300);
+  const isFirstListWidthLoad = useRef(true);
+  useEffect(() => {
+    if (isFirstListWidthLoad.current) {
+      isFirstListWidthLoad.current = false;
+      try {
+        const raw = window.localStorage.getItem("ace-candidates-list-width");
+        if (raw) {
+          const parsed = Number.parseInt(raw, 10);
+          if (Number.isFinite(parsed)) {
+            setListWidth(Math.max(LIST_MIN, Math.min(LIST_MAX, parsed)));
+          }
+        }
+      } catch {
+        // Corrupt storage — keep default.
+      }
+      return;
+    }
+    try {
+      window.localStorage.setItem("ace-candidates-list-width", String(listWidth));
+    } catch {
+      // Quota / private mode — non-fatal.
+    }
+  }, [listWidth]);
+
+  const [draggingSplit, setDraggingSplit] = useState(false);
+  const splitDragStartRef = useRef<{ x: number; width: number } | null>(null);
+  useEffect(() => {
+    if (!draggingSplit) return;
+    function onMove(e: MouseEvent) {
+      const start = splitDragStartRef.current;
+      if (!start) return;
+      const next = Math.max(
+        LIST_MIN,
+        Math.min(LIST_MAX, start.width + (e.clientX - start.x)),
+      );
+      setListWidth(next);
+    }
+    function onUp() {
+      setDraggingSplit(false);
+      splitDragStartRef.current = null;
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    const prevCursor = document.body.style.cursor;
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevSelect;
+    };
+  }, [draggingSplit]);
+  const beginSplitDrag = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      splitDragStartRef.current = { x: e.clientX, width: listWidth };
+      setDraggingSplit(true);
+    },
+    [listWidth],
+  );
 
   async function openBulkApply() {
     if (bulkSelectedIds.size === 0) return;
@@ -1070,7 +1126,7 @@ export default function CandidatesPage() {
     // 6px the bg-court-bg handle column shows as a green strip in dark
     // Grass mode between AppShell's nav and this aside — the aside's
     // bg-court-surface visually consumes the handle once they overlap.
-    <div className="-mb-6 -ml-[18px] -mr-6 -mt-4 flex h-[calc(100vh-80px)] overflow-hidden bg-court-surface-subtle md:-mb-8 md:-ml-[22px] md:-mr-8 md:-mt-4 xl:-ml-[38px] xl:-mr-8 2xl:-ml-[54px] 2xl:-mr-12">
+    <div className="-mb-6 -ml-[18px] -mr-6 -mt-4 flex h-[calc(100vh-80px)] overflow-hidden md:-mb-8 md:-ml-[22px] md:-mr-8 md:-mt-4 xl:-ml-[38px] xl:-mr-8 2xl:-ml-[54px] 2xl:-mr-12">
       {/* Mobile filter sheet wrapper. md:contents makes the wrapper
           inert at md+ so the aside renders as a direct flex child
           exactly as before. On phones, the wrapper becomes a fixed
@@ -1098,7 +1154,7 @@ export default function CandidatesPage() {
         </div>
       <aside
         className={
-          "flex shrink-0 flex-col transition-[width,border] duration-200 " +
+          "flex shrink-0 flex-col bg-court-surface transition-[width,border] duration-200 " +
           // Mobile (inside sheet): full-width, scrolls inside the
           // sheet's flex column. md+ keeps the original fixed-width
           // permanent rail with overflow-hidden + internal scrollers.
@@ -1138,7 +1194,7 @@ export default function CandidatesPage() {
                   value={filters.q}
                   onChange={(e) => setField("q", e.target.value)}
                   placeholder=""
-                  className={filters.q.trim() ? inputClsActive : inputCls}
+                  className={inputCls}
                 />
               </div>
               <div>
@@ -1315,11 +1371,11 @@ export default function CandidatesPage() {
         <div className="border-t border-court-border bg-court-surface px-3 py-2">
           <Button
             type="button"
-            variant="secondary"
+            variant="primary"
             size="sm"
             onClick={onSaveCurrent}
             disabled={!hasFilters}
-            className="h-9 w-full rounded-full border-court-accent bg-court-surface text-[12.5px] font-semibold text-court-accent hover:bg-court-brand-tint"
+            className="h-8 w-full rounded-full"
           >
             <Bookmark className="h-3.5 w-3.5" />
             Save search
@@ -1349,7 +1405,7 @@ export default function CandidatesPage() {
 
       {selectedId ? (
         // Split view = chrome bar on top, then the two-column body
-        // (fixed w-72 name list + iframe). The list column owns its own
+        // (300px name list + iframe). The list column owns its own
         // top chrome strip with the All Candidates / Prev / Next /
         // count controls; the resume column has no strip and slides
         // up flush with the page header — the close X floats absolute
@@ -1361,7 +1417,8 @@ export default function CandidatesPage() {
               flush. The X / "All Candidates" buttons in the iframe pane
               return them to the list. md+ keeps the resizable split. */}
           <section
-            className="hidden w-72 flex-shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface md:flex"
+            className="hidden shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface md:flex"
+            style={{ width: listWidth }}
           >
             {/* List-column chrome strip. Used to be the LEFT segment
                 of a full-width chrome bar; the RIGHT segment had only
@@ -1522,7 +1579,22 @@ export default function CandidatesPage() {
               )}
             </div>
           </section>
-          <section className="relative flex flex-1 flex-col overflow-hidden rounded-2xl bg-court-surface pt-5 shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.06)]">
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize candidate list"
+            onMouseDown={beginSplitDrag}
+            className={
+              "group relative hidden w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-court-accent/40 md:block " +
+              (draggingSplit ? "bg-court-accent/60" : "")
+            }
+          >
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 -left-1 -right-1"
+            />
+          </div>
+          <section className="relative flex flex-1 flex-col bg-court-bg pt-5">
             {/* Close X — a discrete glyph in the small bg-court-bg
                 gap above the embedded profile so it doesn't crowd the
                 right-rail card's top-right corner. No border / no fill
@@ -1546,11 +1618,12 @@ export default function CandidatesPage() {
               }`}
               title="Candidate profile"
               className="w-full flex-1 border-0"
+              style={draggingSplit ? { pointerEvents: "none" } : undefined}
             />
           </section>
         </div>
       ) : (
-        <section className="flex flex-1 flex-col bg-transparent">
+        <section className="flex flex-1 flex-col bg-court-bg">
           {/* Results header strip — count on the left, Saved Lists pill
               on the right. justify-between pins the two ends; the count
               + label keep items-baseline alignment internally while the
@@ -1584,10 +1657,10 @@ export default function CandidatesPage() {
                 )}
               </button>
               <div className="flex items-baseline gap-2.5">
-                <span className="font-serif text-[24px] font-extrabold leading-none text-court-fg">
+                <span className="font-serif text-[28px] font-extrabold leading-none text-court-fg">
                   {total ?? 0}
                 </span>
-                <span className="text-[13px] text-court-fg-muted">
+                <span className="text-sm text-court-fg-muted">
                   {!hasFilters
                     ? "No filters applied yet"
                     : (total ?? 0) === 0
@@ -1709,7 +1782,7 @@ export default function CandidatesPage() {
               )}
               <div className="flex-1 overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="border-b border-court-border bg-court-brand-tint">
+                <thead className="border-b border-court-border bg-court-surface-subtle">
                   <tr>
                     <th className="w-10 px-3 py-2">
                       <input
@@ -1757,7 +1830,7 @@ export default function CandidatesPage() {
                 </thead>
                 <tbody
                   className={
-                    "divide-y divide-court-border-soft transition-opacity " +
+                    "divide-y divide-court-border/60 transition-opacity " +
                     (loading ? "opacity-50" : "opacity-100")
                   }
                 >
@@ -1775,7 +1848,7 @@ export default function CandidatesPage() {
                     <Fragment key={c.id}>
                     <tr
                       onClick={() => setSelectedId(c.id)}
-                      className="h-14 cursor-pointer py-1 transition hover:bg-court-brand-tint/60"
+                      className="h-14 cursor-pointer py-1 transition hover:bg-court-accent-tint/40"
                     >
                       <td
                         className="w-10 px-3"
@@ -1796,37 +1869,37 @@ export default function CandidatesPage() {
                           className="h-4 w-4 cursor-pointer accent-brand"
                         />
                       </td>
-                      <td className="px-3 text-[13px] font-semibold text-court-fg">
+                      <td className="px-3 text-sm font-semibold text-court-fg">
                         <Highlight text={c.name} tokens={matchTokens} />
                       </td>
-                      <td className="px-3 text-[13px] text-court-fg">
+                      <td className="px-3 text-court-fg-muted">
                         {c.title ? (
                           <Highlight text={c.title} tokens={matchTokens} />
                         ) : (
                           "—"
                         )}
                       </td>
-                      <td className="px-3 text-[12px] text-court-fg-muted">
+                      <td className="px-3 text-court-fg-muted">
                         {c.employer ? (
                           <Highlight text={c.employer} tokens={matchTokens} />
                         ) : (
                           "—"
                         )}
                       </td>
-                      <td className="px-3 text-[12px] text-court-fg-muted">
+                      <td className="px-3 text-court-fg-muted">
                         {c.location ? (
                           <Highlight text={c.location} tokens={matchTokens} />
                         ) : (
                           "—"
                         )}
                       </td>
-                      <td className="px-3 text-right font-mono text-[11px] tabular-nums text-court-fg-muted">
+                      <td className="px-3 text-right tabular-nums text-court-fg-muted">
                         {c.salary}
                       </td>
-                      <td className="px-3 font-mono text-[11px] text-court-fg-muted">
+                      <td className="px-3 text-court-fg-muted">
                         {c.lastApply}
                       </td>
-                      <td className="px-3 font-mono text-[11px] text-court-fg-muted">
+                      <td className="px-3 text-court-fg-muted">
                         {c.lastAction}
                       </td>
                     </tr>
@@ -1838,7 +1911,7 @@ export default function CandidatesPage() {
                       // divide-y on the next candidate's data row).
                       <tr
                         onClick={() => setSelectedId(c.id)}
-                        className="!border-t-0 cursor-pointer transition hover:bg-court-brand-tint/60"
+                        className="!border-t-0 cursor-pointer transition hover:bg-court-accent-tint/40"
                       >
                         <td className="px-3" />
                         <td

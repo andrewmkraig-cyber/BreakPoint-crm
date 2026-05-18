@@ -40,16 +40,14 @@ export default async function PhonePage() {
   // negative-margin claw-up. Height accounts for the h-20 (80px)
   // topbar plus the AppShell's pt-4 + pb gutters.
   return (
-    <div className="-m-4 min-h-[calc(100vh-6rem)] bg-court-surface-subtle p-4 sm:-m-6 sm:p-6">
-      <div className="flex h-[calc(100vh-8rem)] flex-col md:h-[calc(100vh-9rem)]">
-        {quoStatus.state !== "connected" ? (
-          <ConnectorBanner
-            variant="quo-down"
-            message={`Quo ${quoStatus.state === "degraded" ? "looks degraded" : "unreachable"} — calls and texts may not work. ${quoStatus.detail}`}
-          />
-        ) : null}
-        <PhoneView />
-      </div>
+    <div className="flex h-[calc(100vh-8rem)] flex-col md:h-[calc(100vh-9rem)]">
+      {quoStatus.state !== "connected" ? (
+        <ConnectorBanner
+          variant="quo-down"
+          message={`Quo ${quoStatus.state === "degraded" ? "looks degraded" : "unreachable"} — calls and texts may not work. ${quoStatus.detail}`}
+        />
+      ) : null}
+      <PhoneView />
     </div>
   );
 }

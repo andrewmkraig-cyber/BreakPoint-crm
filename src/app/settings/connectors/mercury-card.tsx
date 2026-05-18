@@ -48,7 +48,7 @@ export function MercuryConnectorCard({
   }
 
   return (
-    <div className="flex items-start justify-between gap-4 border-t border-court-border-soft py-3.5">
+    <div className="flex items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span
@@ -57,22 +57,22 @@ export function MercuryConnectorCard({
           >
             M
           </span>
-          <span className="text-[13px] font-medium text-court-fg">Mercury</span>
+          <span className="text-sm font-semibold text-court-fg">Mercury</span>
           {isConnected ? (
-            <span className="inline-flex h-6 items-center rounded-full bg-court-accent-tint px-3 text-[10px] font-semibold uppercase tracking-wider text-court-brand-dark">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-court-brand-dark">
               Connected
             </span>
           ) : (
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
               Not connected
             </span>
           )}
         </div>
-        <div className="mt-0.5 truncate text-[11px] text-court-fg-muted">
+        <div className="mt-1 truncate text-xs text-court-fg-muted">
           Auto-import expenses for ROI and Financial Performance tracking
         </div>
         {isConnected ? (
-          <div className="mt-2 font-mono text-[11px] text-court-fg-muted">
+          <div className="mt-2 font-mono text-xs text-court-fg-muted">
             {maskedKey}
           </div>
         ) : (
@@ -83,13 +83,13 @@ export function MercuryConnectorCard({
               onChange={(e) => setDraft(e.target.value)}
               placeholder="Mercury API key"
               disabled={pending}
-              className="h-10 w-64 rounded-xl border border-court-border bg-court-surface px-3 text-[13px] text-court-fg placeholder:text-court-fg-muted/60 focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/10 disabled:opacity-60"
+              className="w-64 rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg placeholder:text-court-fg-dim focus:border-court-brand focus:outline-none disabled:opacity-60"
             />
             <button
               type="button"
               onClick={onSave}
               disabled={pending || draft.trim().length === 0}
-              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-court-accent px-4 text-[12.5px] font-semibold text-white transition hover:bg-court-accent-dark disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-full bg-court-brand px-3 py-1 text-xs font-semibold text-white transition hover:bg-court-brand-dark disabled:opacity-60"
             >
               {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
               Save
@@ -103,7 +103,7 @@ export function MercuryConnectorCard({
             type="button"
             onClick={onDisconnect}
             disabled={pending}
-            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-semibold text-court-fg transition hover:border-court-accent/40 disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:opacity-60"
           >
             {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
             Disconnect

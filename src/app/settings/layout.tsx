@@ -19,16 +19,12 @@ import { SettingsNav } from "@/app/settings/settings-nav";
 // list above whatever panel they're on.
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="-m-4 min-h-[calc(100vh-6rem)] bg-court-surface-subtle p-4 sm:-m-6 sm:p-6">
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-        <aside className="lg:sticky lg:top-24 lg:w-56 lg:shrink-0">
-          <div className="rounded-2xl border-0 bg-court-surface p-3 shadow-sm">
-            <SettingsNav />
-          </div>
-        </aside>
+    <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
+      <aside className="lg:sticky lg:top-24 lg:w-56 lg:shrink-0">
+        <SettingsNav />
+      </aside>
 
-        <div className="min-w-0 flex-1">{children}</div>
-      </div>
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }

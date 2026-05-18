@@ -30,7 +30,6 @@ import { CandidateCompactOverview } from "@/components/candidate-compact-overvie
 import { TextHighlighter } from "@/components/text-highlighter";
 import { parseHighlightTokens } from "@/app/candidates/[id]/highlight-tokens";
 import { LocalCandidateProfile } from "@/app/candidates/[id]/local-profile";
-import { ResumeMatchesRail } from "@/app/candidates/[id]/resume-matches-rail";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getPlacementsForOrg } from "@/lib/placements";
 import { getInterviewsForOrg } from "@/lib/interviews";
@@ -619,12 +618,8 @@ export default async function CandidateProfilePage({
             />
           </div>
           {/* Right rail. CompactOverview as a single tight summary box,
-              the highlighting matches panel directly below it (was an
-              aside next to the resume; moved here so the center pane is
-              all resume), then skills, then the call/email/text activity
-              card. Width locked to w-80 so the center resume pane keeps
-              the dominant width on the page. */}
-          <aside className="flex w-80 flex-shrink-0 flex-col gap-4 overflow-y-auto">
+              then skills, then the call/email/text activity card. */}
+          <aside className="flex w-[280px] shrink-0 flex-col gap-4 overflow-y-auto">
             <CandidateCompactOverview
               candidateRef={candidate.id}
               fullName={name}
@@ -637,10 +632,6 @@ export default async function CandidateProfilePage({
               phone={phoneValue || null}
               linkedinProfile={identityInitial.linkedin_profile || null}
               compensation={compensation}
-            />
-            <ResumeMatchesRail
-              resumeId={resumeVersions[0]?.resumeId ?? null}
-              tokens={highlightTokens}
             />
             <EditableSkills candidateId={id} initial={skillsInitial} />
             <CandidateActivityCard
@@ -800,7 +791,6 @@ function UnderlineTabs({ tab, candidateId }: { tab: CandidateTab; candidateId: n
     <TabStrip<CandidateTab>
       activeId={tab}
       ariaLabel="Candidate profile sections"
-      size="lg"
       items={[
         { id: "profile", label: "Profile", href: `/candidates/${candidateId}` },
         { id: "game-plan", label: "Game Plan", href: `/candidates/${candidateId}?tab=game-plan` },

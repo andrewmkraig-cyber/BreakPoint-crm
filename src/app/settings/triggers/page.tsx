@@ -23,7 +23,6 @@ export default async function TriggersSettingsPage() {
   return (
     <CollapsibleSection
       id="triggers"
-      eyebrow="Automation"
       title="Triggers"
       description="Automatic sends and event-driven actions Ace fires on your behalf."
     >

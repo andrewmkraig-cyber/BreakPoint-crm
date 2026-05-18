@@ -4,30 +4,10 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LayoutGrid, List, Search } from "lucide-react";
-import { ClientLogo, clientIdentityColor } from "@/components/clients/client-logo";
+import { ClientLogo } from "@/components/clients/client-logo";
 import { PipelinePill } from "@/components/clients/pipeline-pill";
 import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
 import { TabStrip } from "@/components/ui/tab-strip";
-import { cn } from "@/lib/utils";
-
-// Card avatar palette — deterministic by first letter so the same client
-// always lands on the same chip color. Tokens only (no hardcoded hex)
-// per Rule 12. Letters fall through to the neutral surface tint.
-function clientAvatarPalette(name: string): string {
-  const ch = (name.trim().charAt(0) || "?").toUpperCase();
-  if (ch >= "A" && ch <= "F") return "bg-court-accent-tint text-court-brand-dark";
-  if (ch >= "G" && ch <= "L") return "bg-blue-50 text-blue-700";
-  if (ch >= "M" && ch <= "R") return "bg-amber-50 text-amber-700";
-  if (ch >= "S" && ch <= "Z") return "bg-purple-50 text-purple-700";
-  return "bg-court-surface-subtle text-court-fg-muted";
-}
-
-function clientAvatarInitials(name: string): string {
-  const parts = name.split(/[\s.,]+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-}
 
 // Existing data shape — unchanged. Owned by the server side; the
 // client-side renderer reads it directly. id is the Neon cuid (for
@@ -127,31 +107,16 @@ function ShieldCheck() {
 
 function ClientGridCard({ card, quietTier }: { card: ClientCard; quietTier?: QuietTier }) {
   const activeStages = PIPELINE_STAGES.filter((s: StageEntry) => (card[s.countField] ?? 0) > 0);
-  const accentColor = clientIdentityColor(card.name || "(unnamed)");
   return (
     <Link
       href={`/clients/${card.slug}`}
-      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl bg-court-surface p-5 shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+      className="group relative flex cursor-pointer flex-col rounded-2xl border border-court-border/40 bg-court-surface p-5 transition hover:border-brand/40 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
     >
-      <span
-        aria-hidden
-        className="absolute left-0 right-0 top-0 h-1 rounded-t-2xl"
-        style={{ background: accentColor }}
-      />
-
       <div className="flex items-start gap-3">
-        <div
-          className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[13px] font-bold",
-            clientAvatarPalette(card.name || "(unnamed)"),
-          )}
-          aria-hidden="true"
-        >
-          {clientAvatarInitials(card.name || "(unnamed)")}
-        </div>
+        <ClientLogo domain={card.domain} name={card.name || "(unnamed)"} size={44} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <h3 className="truncate font-serif text-[17px] font-bold text-court-fg">
+            <h3 className="truncate font-serif text-lg font-semibold text-court-fg">
               {card.name || "(unnamed)"}
             </h3>
             {card.isVerified && (
@@ -161,7 +126,7 @@ function ClientGridCard({ card, quietTier }: { card: ClientCard; quietTier?: Qui
             )}
           </div>
           {(card.industry || card.location) && (
-            <p className="mt-0.5 truncate text-[11.5px] text-court-fg-muted">
+            <p className="mt-0.5 truncate text-xs text-court-fg-muted">
               {[card.industry, card.location].filter(Boolean).join(" · ")}
             </p>
           )}
@@ -201,42 +166,18 @@ function ClientGridCard({ card, quietTier }: { card: ClientCard; quietTier?: Qui
         )}
       </div>
 
-      <div className="mt-4 grid grid-cols-3 gap-2 border-t border-court-border-soft pt-3">
-        <CardStat label="Open" value={card.openJobsCount} />
-        <CardStat label="Closed" value={card.closedJobsCount} />
-        <CardStat
-          label="Fee"
-          value={card.feePct != null ? `${card.feePct}%` : 0}
-          isZero={card.feePct == null || card.feePct === 0}
-        />
+      <div className="mt-5 flex items-center justify-between border-t border-court-border pt-3 text-[11px] text-court-fg-muted">
+        <span>
+          Job status: <span className="font-semibold text-court-fg">{card.openJobsCount}</span> Open,{" "}
+          <span className="font-semibold text-court-fg">{card.closedJobsCount}</span> closed
+        </span>
+        {card.feePct != null && (
+          <span>
+            Fee <span className="font-semibold text-court-fg">{card.feePct}%</span>
+          </span>
+        )}
       </div>
     </Link>
-  );
-}
-
-function CardStat({
-  label,
-  value,
-  isZero,
-}: {
-  label: string;
-  value: number | string;
-  isZero?: boolean;
-}) {
-  const blank = isZero ?? (typeof value === "number" && value === 0);
-  return (
-    <div className="flex flex-col">
-      <span
-        className={`font-serif text-[22px] font-extrabold leading-none ${
-          blank ? "text-court-fg-dim" : "text-court-fg"
-        }`}
-      >
-        {value}
-      </span>
-      <span className="mt-1 text-[9.5px] font-medium uppercase tracking-wider text-court-fg-muted">
-        {label}
-      </span>
-    </div>
   );
 }
 
@@ -366,7 +307,6 @@ export function ClientsView({
           ariaLabel="Client status"
           activeId={tab}
           onChange={setTab}
-          variant="underline"
           items={[
             { id: "active", label: "Active", count: activeCards.length },
             { id: "quiet", label: "Quiet", count: quietCards.length },

@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Bell,
   CalendarPlus,
   GripVertical,
   Mail,
@@ -599,24 +598,6 @@ export function ComposeFAB() {
     router.push("/calendar");
   }
 
-  function pickCalendarReminder() {
-    closeAll();
-    // Mirrors pickCalendarEvent: when already on /calendar, dispatch
-    // directly so the Reminders rail's inline form opens. Otherwise
-    // set the sessionStorage flag and navigate — calendar-view picks
-    // the flag up on mount.
-    if (pathname === "/calendar") {
-      window.dispatchEvent(new CustomEvent("ace:calendar:new-reminder"));
-      return;
-    }
-    try {
-      window.sessionStorage.setItem("ace.calendar.openNewReminder", "1");
-    } catch {
-      // Best-effort; recruiter can still open the form by hand.
-    }
-    router.push("/calendar");
-  }
-
   function pickRecent(t: RecentThread) {
     setPendingContact({
       candidateId: t.candidateId,
@@ -773,10 +754,10 @@ export function ComposeFAB() {
                 onClick={pickEmail}
               />
               <ActionRow
-                icon={<PhoneCall className="h-4 w-4" />}
-                label="New Call"
-                hint="Pick a recent contact"
-                onClick={pickCall}
+                icon={<CalendarPlus className="h-4 w-4" />}
+                label="New Event"
+                hint="Schedule on the calendar"
+                onClick={pickCalendarEvent}
               />
               <ActionRow
                 icon={<MessageSquare className="h-4 w-4" />}
@@ -785,22 +766,16 @@ export function ComposeFAB() {
                 onClick={pickText}
               />
               <ActionRow
+                icon={<PhoneCall className="h-4 w-4" />}
+                label="New Call"
+                hint="Pick a recent contact"
+                onClick={pickCall}
+              />
+              <ActionRow
                 icon={<StickyNote className="h-4 w-4" />}
                 label="New Note"
                 hint="Quick note + attach to a profile"
                 onClick={pickNotes}
-              />
-              <ActionRow
-                icon={<CalendarPlus className="h-4 w-4" />}
-                label="New Event"
-                hint="Schedule on the calendar"
-                onClick={pickCalendarEvent}
-              />
-              <ActionRow
-                icon={<Bell className="h-4 w-4" />}
-                label="New Reminder"
-                hint="Drop a reminder on the calendar"
-                onClick={pickCalendarReminder}
               />
             </div>
           )}

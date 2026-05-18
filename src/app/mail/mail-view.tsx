@@ -198,17 +198,6 @@ export function MailView({
             .map((l) => ({ id: l.id, name: l.name })),
     [labels],
   );
-  // Lookup the ThreadRow uses to render a chip per user label on a
-  // thread. Hashing on user-label ids alone naturally drops Gmail
-  // system labels (INBOX, UNREAD, CATEGORY_*, etc.) — those never
-  // appear in this map so no per-row filter is needed.
-  const userLabelNamesById = useMemo(() => {
-    const m = new Map<string, string>();
-    if (userLabels) {
-      for (const l of userLabels) m.set(l.id, l.name);
-    }
-    return m;
-  }, [userLabels]);
   const labelTree = useMemo(() => (labels ? buildLabelTree(labels) : []), [labels]);
   // Flat list of every parent (has-children) node path, for the
   // Collapse all / Expand all toggle below the Inbox card.
@@ -940,7 +929,7 @@ export function MailView({
           }
         }
       `}</style>
-      <aside className="flex flex-col overflow-hidden border border-court-border-soft bg-court-surface lg:border-0 lg:border-r lg:border-court-border-soft lg:bg-court-surface">
+      <aside className="flex flex-col overflow-hidden border border-court-border bg-court-surface lg:border-0 lg:bg-transparent">
         <nav className="flex-1 overflow-y-auto p-2 text-sm">
           {/* Inbox entry — the visual anchor of the sidebar but
               proportioned to match the Sent / Drafts / label rows
@@ -952,12 +941,12 @@ export function MailView({
           <button
             type="button"
             onClick={() => setSelectedLabel(null)}
-            className="flex h-9 w-full items-center gap-2 rounded-lg bg-court-accent-tint px-3 text-left font-semibold text-court-accent-dark transition hover:bg-court-accent-tint"
+            className="flex min-h-9 w-full items-center gap-2 rounded-lg border border-[#5A9642]/40 bg-[#EAF4E4] px-3 py-1.5 text-left transition hover:border-[#5A9642]"
           >
-            <MailIcon className="h-4 w-4 shrink-0 text-court-accent" />
-            <span className="flex-1 text-sm font-semibold text-court-accent-dark">Inbox</span>
+            <MailIcon className="h-4 w-4 shrink-0 text-[#5A9642]" />
+            <span className="flex-1 text-sm font-semibold text-[#3F7030]">Inbox</span>
             {unreadCount > 0 && (
-              <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-court-surface px-1.5 py-0.5 text-[11px] font-bold text-court-accent-dark">
+              <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-white px-1.5 py-0.5 text-[11px] font-bold text-[#3F7030]">
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
@@ -989,10 +978,10 @@ export function MailView({
                 type="button"
                 onClick={() => setSelectedLabel({ id: "SENT", name: "Sent" })}
                 className={
-                  "flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left transition " +
+                  "flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition " +
                   (selectedLabel?.id === "SENT"
-                    ? "bg-court-accent-tint font-semibold text-court-accent-dark"
-                    : "text-court-fg-muted hover:bg-court-accent-tint/50")
+                    ? "bg-[#EAF4E4] text-[#3F7030]"
+                    : "text-court-fg hover:bg-slate-50")
                 }
               >
                 <Send className="h-4 w-4 shrink-0" />
@@ -1004,10 +993,10 @@ export function MailView({
                 type="button"
                 onClick={() => setSelectedLabel({ id: "DRAFT", name: "Drafts" })}
                 className={
-                  "flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left transition " +
+                  "flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition " +
                   (selectedLabel?.id === "DRAFT"
-                    ? "bg-court-accent-tint font-semibold text-court-accent-dark"
-                    : "text-court-fg-muted hover:bg-court-accent-tint/50")
+                    ? "bg-[#EAF4E4] text-[#3F7030]"
+                    : "text-court-fg hover:bg-slate-50")
                 }
               >
                 <FileText className="h-4 w-4 shrink-0" />
@@ -1018,7 +1007,8 @@ export function MailView({
 
           {labelTree.length > 0 && (
             <>
-              <div className="mt-4 mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+              <div className="my-3 border-t border-court-border" />
+              <div className="px-3 text-[11px] uppercase tracking-wider text-court-fg-muted">
                 Labels
               </div>
               <ul className="mt-1 space-y-1">
@@ -1123,8 +1113,8 @@ export function MailView({
         <span className="my-2 w-px self-stretch bg-court-border/70" />
       </div>
 
-      <aside className="flex flex-col overflow-hidden border border-court-border-soft bg-court-surface lg:border-0 lg:border-r lg:border-court-border-soft lg:bg-court-surface">
-        <div className="shrink-0 border-b border-court-border-soft bg-court-surface px-3 py-2.5">
+      <aside className="flex flex-col overflow-hidden border border-court-border bg-court-surface lg:border-0 lg:bg-transparent">
+        <div className="shrink-0 border-b border-court-border bg-court-surface-subtle/60 px-3 py-2.5">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
             <input
@@ -1147,7 +1137,7 @@ export function MailView({
             )}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2 border-b border-court-border-soft bg-court-surface px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+        <div className="flex shrink-0 items-center gap-2 border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
           <input
             type="checkbox"
             checked={allSelected}
@@ -1252,7 +1242,7 @@ export function MailView({
             </p>
           </div>
         ) : (
-          <ul className="flex-1 divide-y divide-court-border-soft overflow-y-auto">
+          <ul className="flex-1 divide-y divide-court-border overflow-y-auto">
             {threads.map((t) => (
               <li key={t.id}>
                 <ThreadRow
@@ -1262,7 +1252,6 @@ export function MailView({
                   checked={selectedIds.has(t.id)}
                   anySelected={selectedIds.size > 0}
                   selectedIds={selectedIds}
-                  labelNamesById={userLabelNamesById}
                   onOpen={() => setSelected(t.id)}
                   onArchive={() => archiveThread(t.id)}
                   onToggle={() => toggleSelectedId(t.id)}
@@ -1288,7 +1277,7 @@ export function MailView({
         <span className="my-2 w-px self-stretch bg-court-border/70" />
       </div>
 
-      <section className="flex min-h-0 flex-col overflow-hidden border border-court-border-soft bg-court-surface lg:border-0 lg:bg-court-surface">
+      <section className="flex min-h-0 flex-col overflow-hidden border border-court-border bg-court-surface lg:border-0 lg:bg-transparent">
         {!selected ? (
           <EmptyRightPane />
         ) : loading ? (
@@ -1335,7 +1324,6 @@ function ThreadRow({
   checked,
   anySelected,
   selectedIds,
-  labelNamesById,
   onOpen,
   onArchive,
   onToggle,
@@ -1346,17 +1334,10 @@ function ThreadRow({
   checked: boolean;
   anySelected: boolean;
   selectedIds: Set<string>;
-  labelNamesById: Map<string, string>;
   onOpen: () => void;
   onArchive: () => void;
   onToggle: () => void;
 }) {
-  // User labels applied to this thread (system labels naturally drop
-  // out — they're not in the lookup map). Empty for unlabeled threads
-  // so the chip row collapses without reserving space.
-  const userLabelNames = t.labelIds
-    .map((id) => labelNamesById.get(id))
-    .filter((n): n is string => typeof n === "string");
   // Checkbox visibility: hidden until you hover the row, OR pinned
   // visible whenever the row is checked / any row is checked. Keeps
   // the inbox visually clean in zero-selection state but doesn't
@@ -1403,26 +1384,15 @@ function ThreadRow({
       }}
       onDragEnd={() => setDragging(false)}
       className={
-        "group relative flex cursor-pointer items-stretch transition " +
-        (selected ? "bg-court-accent-tint/40" : "hover:bg-court-accent-tint/50") +
+        "group relative flex items-stretch transition " +
+        (selected ? "bg-court-accent-tint/60" : "hover:bg-court-accent-tint/30") +
         (dragging ? " opacity-50" : "")
       }
     >
-      <div
-        aria-hidden={!t.unread}
-        className="flex w-3 shrink-0 items-center justify-center pl-1"
-      >
-        {t.unread ? (
-          <span
-            aria-label="Unread"
-            className="h-2 w-2 rounded-full bg-court-accent"
-          />
-        ) : null}
-      </div>
       <label
         onClick={(e) => e.stopPropagation()}
         className={
-          "flex cursor-pointer items-center pl-1 pr-1 transition " +
+          "flex cursor-pointer items-center pl-3 pr-1 transition " +
           (checkboxVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100")
         }
       >
@@ -1437,13 +1407,13 @@ function ThreadRow({
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-w-0 flex-1 flex-col items-start gap-0.5 py-2.5 pl-1 pr-10 text-left"
+        className="flex min-w-0 flex-1 flex-col items-start gap-0.5 py-3 pl-1 pr-10 text-left"
       >
         <div className="flex w-full items-baseline justify-between gap-3">
           <span
             className={
-              "truncate text-[13px] text-court-fg " +
-              (t.unread ? "font-bold" : "font-normal")
+              "truncate text-sm " +
+              (t.unread ? "font-semibold text-court-fg" : "text-court-fg")
             }
           >
             {t.fromName || t.fromEmail || "(unknown sender)"}
@@ -1452,22 +1422,15 @@ function ThreadRow({
             {formatRelative(t.timestampIso)}
           </span>
         </div>
-        <div className="w-full truncate text-[12.5px] font-medium text-court-fg">
+        <div
+          className={
+            "w-full truncate text-xs " +
+            (t.unread ? "font-medium text-court-fg" : "text-court-fg-muted")
+          }
+        >
           {t.subject}
         </div>
-        <div className="w-full truncate text-[11.5px] text-court-fg-muted">{t.snippet}</div>
-        {userLabelNames.length > 0 ? (
-          <div className="mt-1 flex w-full flex-wrap items-center gap-1">
-            {userLabelNames.map((name) => (
-              <span
-                key={name}
-                className="rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] text-court-fg-muted"
-              >
-                {name}
-              </span>
-            ))}
-          </div>
-        ) : null}
+        <div className="w-full truncate text-[11px] text-court-fg-muted">{t.snippet}</div>
       </button>
       <button
         type="button"
@@ -2157,7 +2120,7 @@ export function ThreadDetail({
       >
         {!isFloating && (
           <div className="min-w-0">
-            <h2 className="font-serif text-[20px] font-bold leading-tight text-court-fg break-words">
+            <h2 className="font-serif text-base font-semibold leading-tight text-court-fg break-words">
               {detail.subject}
             </h2>
             <p className="mt-0.5 text-xs text-court-fg-muted">
@@ -2181,7 +2144,7 @@ export function ThreadDetail({
             type="button"
             onClick={() => setComposerMode("reply")}
             disabled={composerOpen}
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-court-border bg-court-surface px-3 text-[12px] font-medium text-court-fg-muted shadow-sm transition hover:border-court-accent/40 hover:text-court-fg disabled:opacity-60"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
           >
             <Reply className="h-3 w-3" /> Reply
           </button>
@@ -2195,7 +2158,7 @@ export function ThreadDetail({
               type="button"
               onClick={() => setComposerMode("replyAll")}
               disabled={composerOpen}
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-court-border bg-court-surface px-3 text-[12px] font-medium text-court-fg-muted shadow-sm transition hover:border-court-accent/40 hover:text-court-fg disabled:opacity-60"
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
             >
               <ReplyAll className="h-3 w-3" /> Reply All
             </button>
@@ -2204,7 +2167,7 @@ export function ThreadDetail({
             type="button"
             onClick={() => setComposerMode("forward")}
             disabled={composerOpen}
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-court-border bg-court-surface px-3 text-[12px] font-medium text-court-fg-muted shadow-sm transition hover:border-court-accent/40 hover:text-court-fg disabled:opacity-60"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
           >
             <Forward className="h-3 w-3" /> Forward
           </button>
@@ -2212,7 +2175,7 @@ export function ThreadDetail({
             type="button"
             onClick={onArchive}
             disabled={archiving}
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-court-border bg-court-surface px-3 text-[12px] font-medium text-court-fg-muted shadow-sm transition hover:border-court-accent/40 hover:text-court-fg disabled:opacity-60"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
           >
             {archiving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
             Archive
@@ -2222,7 +2185,7 @@ export function ThreadDetail({
             onClick={onMarkUnread}
             disabled={markingUnread}
             title="Mark this thread unread"
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-court-border bg-court-surface px-3 text-[12px] font-medium text-court-fg-muted shadow-sm transition hover:border-court-accent/40 hover:text-court-fg disabled:opacity-60"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
           >
             {markingUnread ? <Loader2 className="h-3 w-3 animate-spin" /> : <MailIcon className="h-3 w-3" />}
             Mark Unread
@@ -2256,7 +2219,7 @@ export function ThreadDetail({
                 })
               }
               aria-label="Pop out thread into a floating window"
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-court-border bg-court-surface px-3 text-[12px] font-medium text-court-fg-muted shadow-sm transition hover:border-court-accent/40 hover:text-court-fg"
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
             >
               <SquareArrowOutUpRight className="h-3 w-3" /> Pop out
             </button>

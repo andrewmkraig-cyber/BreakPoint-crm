@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp, FileEdit, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { MERGE_FIELDS } from "@/lib/merge-fields";
 import { TRIGGER_OPTIONS, labelForTrigger } from "@/app/settings/template-constants";
 import {
@@ -68,7 +69,7 @@ export function TemplatesView({ initial }: { initial: TemplateRow[] }) {
       </div>
 
       <div className="flex items-center justify-between">
-        <div className="text-[12px] text-court-fg-muted">
+        <div className="text-xs text-court-fg-muted">
           {visible.length === 0
             ? tab === "active"
               ? "No active templates."
@@ -76,29 +77,23 @@ export function TemplatesView({ initial }: { initial: TemplateRow[] }) {
             : `${visible.length} ${visible.length === 1 ? "template" : "templates"}`}
         </div>
         {tab === "active" && (
-          <button
-            type="button"
-            onClick={() => setEditing("new")}
-            className="inline-flex h-9 items-center gap-1.5 rounded-full bg-court-accent px-4 text-[12.5px] font-semibold text-white transition hover:bg-court-accent-dark"
-          >
+          <Button type="button" size="sm" onClick={() => setEditing("new")}>
             <Plus className="h-3.5 w-3.5" /> New template
-          </button>
+          </Button>
         )}
       </div>
 
-      {visible.length > 0 && (
-        <ul className="divide-y divide-court-border-soft">
-          {visible.map((tpl, i) => (
-            <TemplateCard
-              key={tpl.id}
-              tpl={tpl}
-              isFirst={i === 0}
-              isLast={i === visible.length - 1}
-              onEdit={() => setEditing(tpl)}
-            />
-          ))}
-        </ul>
-      )}
+      <ul className="space-y-3">
+        {visible.map((tpl, i) => (
+          <TemplateCard
+            key={tpl.id}
+            tpl={tpl}
+            isFirst={i === 0}
+            isLast={i === visible.length - 1}
+            onEdit={() => setEditing(tpl)}
+          />
+        ))}
+      </ul>
 
       {editing !== null && (
         <TemplateEditor
@@ -232,115 +227,127 @@ function TemplateCard({
   }
 
   return (
-    <li className="flex flex-col gap-3 py-3.5 sm:flex-row sm:items-start sm:justify-between">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-[13px] font-medium text-court-fg">{tpl.name}</h3>
-          <span
-            className={cn(
-              "inline-flex h-6 items-center rounded-full px-2.5 text-[10px] font-semibold uppercase tracking-wider",
-              tpl.trigger
-                ? "bg-court-accent-tint text-court-brand-dark"
-                : "bg-court-surface-subtle text-court-fg-muted",
-            )}
-          >
-            {labelForTrigger(tpl.trigger)}
-          </span>
-          {tpl.audience && (
-            <span className="inline-flex h-6 items-center rounded-full bg-court-surface-subtle px-2.5 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
-              {tpl.audience}
+    <li className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-serif text-base font-semibold text-court-fg">{tpl.name}</h3>
+            <span
+              className={cn(
+                "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                tpl.trigger
+                  ? "bg-court-accent-tint text-court-accent-dark"
+                  : "bg-court-surface-subtle text-court-fg-muted",
+              )}
+            >
+              Trigger: {labelForTrigger(tpl.trigger)}
             </span>
-          )}
+            {tpl.audience && (
+              <span className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                {tpl.audience}
+              </span>
+            )}
+          </div>
           {sendAsDraft && (
-            <span className="inline-flex h-6 items-center gap-1 rounded-full bg-court-surface-subtle px-2.5 text-[10px] font-medium text-court-fg-muted">
+            <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-court-fg-muted">
               <FileEdit className="h-3 w-3" />
-              Drafts
-            </span>
+              Drafts to your inbox
+            </div>
           )}
+          <div className="mt-1 text-sm text-court-fg-muted">{tpl.subject}</div>
+          <pre className="mt-2 max-h-32 overflow-hidden whitespace-pre-wrap font-sans text-xs leading-relaxed text-court-fg-muted">
+            {tpl.body}
+          </pre>
         </div>
-        <div className="mt-0.5 truncate text-[11px] text-court-fg-muted">{tpl.subject}</div>
-      </div>
-      <div className="flex shrink-0 items-center gap-1.5 sm:flex-wrap sm:justify-end">
-        {/* Up/down chevrons drive the manual order picked up by the
-            mail composer's Use Template dropdown. */}
-        <div className="inline-flex h-8 overflow-hidden rounded-full border border-court-border bg-court-surface">
-          <button
-            type="button"
-            onClick={() => onMove("up")}
-            disabled={isFirst || isReordering}
-            aria-label="Move template up"
-            className="inline-flex items-center justify-center px-2 text-court-fg-muted transition hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <ChevronUp className="h-3 w-3" />
-          </button>
-          <button
-            type="button"
-            onClick={() => onMove("down")}
-            disabled={isLast || isReordering}
-            aria-label="Move template down"
-            className="inline-flex items-center justify-center border-l border-court-border px-2 text-court-fg-muted transition hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <ChevronDown className="h-3 w-3" />
-          </button>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <div className="flex items-center gap-2">
+            {/* Up/down chevrons drive the manual order picked up by the
+                mail composer's Use Template dropdown. Disabled at the
+                top/bottom of the visible (active or inactive) list. */}
+            <div className="inline-flex overflow-hidden rounded-md border border-court-border bg-court-surface shadow-sm">
+              <button
+                type="button"
+                onClick={() => onMove("up")}
+                disabled={isFirst || isReordering}
+                aria-label="Move template up"
+                className="inline-flex items-center justify-center px-1.5 py-1 text-court-fg-muted transition hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronUp className="h-3 w-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onMove("down")}
+                disabled={isLast || isReordering}
+                aria-label="Move template down"
+                className="inline-flex items-center justify-center border-l border-court-border px-1.5 py-1 text-court-fg-muted transition hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronDown className="h-3 w-3" />
+              </button>
+            </div>
+            <label className="inline-flex items-center gap-2 text-[11px] text-court-fg">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={active}
+                onClick={() => onToggleActive(!active)}
+                disabled={isToggling}
+                className={cn(
+                  "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
+                  active ? "bg-brand" : "bg-court-fg-muted/40",
+                  isToggling && "opacity-60",
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-block h-4 w-4 transform rounded-full bg-white shadow transition",
+                    active ? "translate-x-4" : "translate-x-0.5",
+                  )}
+                />
+              </button>
+              {active ? "Active" : "Inactive"}
+            </label>
+          </div>
+          <label className="inline-flex items-center gap-2 text-[11px] text-court-fg">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={sendAsDraft}
+              onClick={() => onToggleSendAsDraft(!sendAsDraft)}
+              disabled={isDraftToggling}
+              className={cn(
+                "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
+                sendAsDraft ? "bg-brand" : "bg-court-fg-muted/40",
+                isDraftToggling && "opacity-60",
+              )}
+            >
+              <span
+                className={cn(
+                  "inline-block h-4 w-4 transform rounded-full bg-white shadow transition",
+                  sendAsDraft ? "translate-x-4" : "translate-x-0.5",
+                )}
+              />
+            </button>
+            Approve before sending
+          </label>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-court-accent/40 hover:text-court-fg"
+            >
+              <Pencil className="h-3 w-3" /> Edit
+            </button>
+            {/* Destructive action keeps red semantics in all three modes. */}
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={isDeleting}
+              className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-court-surface px-2.5 py-1 text-[11px] font-medium text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-50 disabled:opacity-60"
+            >
+              {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          role="switch"
-          aria-label={active ? "Mark inactive" : "Mark active"}
-          aria-checked={active}
-          onClick={() => onToggleActive(!active)}
-          disabled={isToggling}
-          title={active ? "Active" : "Inactive"}
-          className={cn(
-            "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
-            active ? "bg-court-accent" : "bg-court-fg-muted/40",
-            isToggling && "opacity-60",
-          )}
-        >
-          <span
-            className={cn(
-              "inline-block h-4 w-4 transform rounded-full bg-white shadow transition",
-              active ? "translate-x-4" : "translate-x-0.5",
-            )}
-          />
-        </button>
-        <button
-          type="button"
-          role="switch"
-          aria-label={sendAsDraft ? "Send live" : "Approve before sending"}
-          aria-checked={sendAsDraft}
-          onClick={() => onToggleSendAsDraft(!sendAsDraft)}
-          disabled={isDraftToggling}
-          title="Approve before sending"
-          className={cn(
-            "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
-            sendAsDraft ? "bg-court-accent" : "bg-court-fg-muted/40",
-            isDraftToggling && "opacity-60",
-          )}
-        >
-          <span
-            className={cn(
-              "inline-block h-4 w-4 transform rounded-full bg-white shadow transition",
-              sendAsDraft ? "translate-x-4" : "translate-x-0.5",
-            )}
-          />
-        </button>
-        <button
-          type="button"
-          onClick={onEdit}
-          className="inline-flex h-8 items-center gap-1 rounded-full border border-court-border bg-court-surface px-3 text-[11px] font-semibold text-court-fg transition hover:border-court-accent/40"
-        >
-          <Pencil className="h-3 w-3" /> Edit
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={isDeleting}
-          aria-label="Delete template"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-200 bg-court-surface text-red-700 transition hover:bg-red-50 disabled:opacity-60"
-        >
-          {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
-        </button>
       </div>
     </li>
   );

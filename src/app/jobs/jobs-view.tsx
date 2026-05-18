@@ -6,12 +6,7 @@ import { Search, Loader2, MapPin } from "lucide-react";
 import { Pagination } from "@/components/pagination";
 import { SortableHeader, type SortDirection } from "@/components/sortable-header";
 import { cn } from "@/lib/utils";
-import {
-  DataTableBody,
-  DataTableHead,
-  DataTableHeaderCell,
-  DataTableRow,
-} from "@/components/ui/data-table";
+import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
 import { TabStrip } from "@/components/ui/tab-strip";
 
 export type JobLifecycle = "active" | "private" | "inactive";
@@ -159,7 +154,7 @@ export function JobsView(props: JobsViewProps) {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-2xl border-0 bg-court-surface shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] text-left text-sm">
             <DataTableHead>
@@ -174,7 +169,7 @@ export function JobsView(props: JobsViewProps) {
                 <DataTableHeaderCell align="right"><SortableHeader label="Hired" columnKey="hired" activeKey={sort} activeDir={dir} buildHref={buildSortHref} align="right" /></DataTableHeaderCell>
               </tr>
             </DataTableHead>
-            <DataTableBody>
+            <tbody>
               {rows.length === 0 && !error && (
                 <tr>
                   <td colSpan={8} className="px-5 py-12 text-center text-sm text-court-fg-muted">
@@ -188,12 +183,12 @@ export function JobsView(props: JobsViewProps) {
                 </tr>
               )}
               {rows.map((r) => (
-                <DataTableRow
+                <tr
                   key={r.id}
-                  className="group cursor-pointer"
+                  className="cursor-pointer border-b border-court-border/40 transition hover:bg-court-surface-subtle"
                   onClick={() => router.push(`/jobs/${r.slug}`)}
                 >
-                  <td className="px-4 py-3 align-top text-[13px] font-semibold text-court-fg">
+                  <td className="px-5 py-3 align-top font-medium text-court-fg">
                     {/* Whole row navigates to the job — the client name
                         cell intentionally has no separate <Link>, so a
                         click anywhere in the row (including this cell)
@@ -211,10 +206,10 @@ export function JobsView(props: JobsViewProps) {
                       )}
                     </span>
                   </td>
-                  <td className="px-4 py-3 align-top">
-                    <div className="text-[13px] font-semibold text-court-fg group-hover:text-court-brand-dark">{r.title}</div>
+                  <td className="px-5 py-3 align-top text-court-fg">
+                    <div className="font-medium">{r.title}</div>
                   </td>
-                  <td className="px-4 py-3 align-top font-mono text-[12px] text-court-fg-muted">
+                  <td className="px-5 py-3 align-top text-court-fg-muted">
                     {r.location ? (
                       <span className="inline-flex items-center gap-1">
                         <MapPin className="h-3 w-3 text-court-fg-muted" />
@@ -224,22 +219,22 @@ export function JobsView(props: JobsViewProps) {
                       "—"
                     )}
                   </td>
-                  <td className="px-4 py-3 align-top font-mono text-[12px] text-court-fg-muted">{r.compensation || "—"}</td>
-                  <td className="px-4 py-3 align-top font-mono text-[12px] text-court-fg-muted">
+                  <td className="px-5 py-3 align-top text-court-fg-muted">{r.compensation || "—"}</td>
+                  <td className="px-5 py-3 align-top text-court-fg-muted">
                     {r.lastEditedAt ? new Date(r.lastEditedAt).toLocaleDateString() : "—"}
                   </td>
-                  <td className="px-4 py-3 align-top text-right">
-                    <CountPill value={r.submittedCount} tone="submitted" />
+                  <td className="px-5 py-3 align-top text-right">
+                    <CountPill value={r.submittedCount} />
                   </td>
-                  <td className="px-4 py-3 align-top text-right">
-                    <CountPill value={r.interviewingCount} tone="interviewing" />
+                  <td className="px-5 py-3 align-top text-right">
+                    <CountPill value={r.interviewingCount} />
                   </td>
-                  <td className="px-4 py-3 align-top text-right">
-                    <CountPill value={r.hiredCount} tone="hired" />
+                  <td className="px-5 py-3 align-top text-right">
+                    <CountPill value={r.hiredCount} />
                   </td>
-                </DataTableRow>
+                </tr>
               ))}
-            </DataTableBody>
+            </tbody>
           </table>
         </div>
         <Pagination
@@ -281,26 +276,16 @@ function Tabs({
   );
 }
 
-type CountPillTone = "submitted" | "interviewing" | "hired";
-
-// Zero rows read as plain dim text; non-zero rows pick up a stage-
-// specific tone so submitted / interviewing / hired scan as distinct
-// pipeline signals on a long table.
-const COUNT_PILL_TONE: Record<CountPillTone, string> = {
-  submitted: "bg-court-brand-tint text-court-brand-dark",
-  interviewing: "bg-blue-100 text-blue-800",
-  hired: "bg-emerald-100 text-emerald-800",
-};
-
-function CountPill({ value, tone }: { value: number; tone: CountPillTone }) {
-  if (!value) {
-    return <span className="font-mono text-[12px] text-court-fg-dim">0</span>;
-  }
+function CountPill({ value }: { value: number }) {
+  if (!value) return <span className="text-court-fg-muted/60">0</span>;
+  // Andrew's call: submitted / interviewing / hired all read with the
+  // same per-mode accent color so the row scans as a single pipeline
+  // signal instead of three competing color codes.
   return (
     <span
       className={cn(
-        "inline-flex h-6 min-w-6 items-center justify-center rounded-full px-2.5 text-[11px] font-bold",
-        COUNT_PILL_TONE[tone],
+        "inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold",
+        "bg-court-accent-tint text-court-accent-dark",
       )}
     >
       {value}

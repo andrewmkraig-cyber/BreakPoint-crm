@@ -52,7 +52,7 @@ export function CandidateActivityCard({
   }, [candidateId]);
 
   return (
-    <section className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+    <section className="rounded-2xl border border-court-border bg-court-surface shadow-sm">
       <div className="px-4 pt-4">
         <h3 className="font-serif text-base font-semibold text-court-fg">Activity</h3>
         <div className="mt-2 flex gap-4 border-b border-court-border">
@@ -77,7 +77,7 @@ export function CandidateActivityCard({
 
       {recent.length > 0 && (
         <div className="border-t border-court-border px-4 py-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+          <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
             Recent activity
           </div>
           <ul className="space-y-2">

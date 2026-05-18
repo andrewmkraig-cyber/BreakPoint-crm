@@ -363,7 +363,6 @@ export function FloatingThreadWindow() {
         subject: detail.subject,
         timestampIso: detail.messages[0]?.dateIso ?? null,
         unread: false,
-        labelIds: [],
       }
     : null;
 

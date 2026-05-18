@@ -5,14 +5,6 @@ import { useRouter } from "next/navigation";
 import { Pencil, Check, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { updateBdOrgConfig, updateVerticalDailyCap } from "./actions";
-import {
-  BD_NUMBER_INPUT,
-  BD_ROW,
-  BD_ROW_DESC,
-  BD_ROW_GROUP,
-  BD_ROW_LABEL,
-  BD_SAVE_BUTTON,
-} from "./spec-classes";
 
 export type LimitsConfig = {
   globalDailyCap: number;
@@ -44,21 +36,20 @@ export function LimitsSection({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className={BD_ROW_GROUP}>
-        <PauseAllRow
-          pauseAll={config.pauseAll}
-          onToggle={(value) => toggleConfig("pauseAll", value)}
-          pending={pending}
-        />
-        <GlobalCapRow value={config.globalDailyCap} />
-      </div>
+      <PauseAllRow
+        pauseAll={config.pauseAll}
+        onToggle={(value) => toggleConfig("pauseAll", value)}
+        pending={pending}
+      />
+
+      <GlobalCapRow value={config.globalDailyCap} />
 
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
           Per-vertical caps
         </p>
         {verticals.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-court-border bg-court-surface-subtle p-3 text-xs text-court-fg-muted">
+          <p className="rounded-md border border-dashed border-court-border bg-court-surface-subtle p-3 text-xs text-court-fg-muted">
             Add a vertical above to set per-vertical caps.
           </p>
         ) : (
@@ -77,7 +68,7 @@ export function LimitsSection({
       </div>
 
       <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
           Blackout windows
         </p>
         <div className="flex flex-wrap gap-2">
@@ -117,29 +108,35 @@ function PauseAllRow({
   pending: boolean;
 }) {
   return (
-    <div className={BD_ROW}>
-      <div className="min-w-0">
+    <div
+      className={cn(
+        "flex items-center justify-between rounded-lg border px-4 py-3",
+        pauseAll
+          ? "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40"
+          : "border-court-border bg-court-surface",
+      )}
+    >
+      <div>
         <p
           className={cn(
-            BD_ROW_LABEL,
-            pauseAll && "text-red-700 dark:text-red-200",
+            "text-sm font-semibold",
+            pauseAll ? "text-red-700 dark:text-red-200" : "text-court-fg",
           )}
         >
           Pause all sends
         </p>
         <p
           className={cn(
-            "mt-0.5",
-            BD_ROW_DESC,
-            pauseAll && "text-red-700/80 dark:text-red-200/80",
+            "text-xs",
+            pauseAll ? "text-red-700/80 dark:text-red-200/80" : "text-court-fg-muted",
           )}
         >
           Global kill switch. Disables Launch BD Run across every vertical.
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex items-center gap-2">
         {pauseAll && (
-          <span className="inline-flex h-6 items-center rounded-full bg-red-100 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-red-700 dark:bg-red-950 dark:text-red-200">
+          <span className="inline-flex items-center rounded-full border border-red-200 bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
             Paused
           </span>
         )}
@@ -164,14 +161,14 @@ function GlobalCapRow({ value }: { value: number }) {
   };
 
   return (
-    <div className={BD_ROW}>
-      <div className="min-w-0">
-        <p className={BD_ROW_LABEL}>Global daily contact cap</p>
-        <p className={`mt-0.5 ${BD_ROW_DESC}`}>
+    <div className="flex items-center justify-between rounded-lg border border-court-border bg-court-surface px-4 py-3">
+      <div>
+        <p className="text-sm font-semibold text-court-fg">Global daily contact cap</p>
+        <p className="text-xs text-court-fg-muted">
           Default ceiling on contacts enrolled per BD run. Per-vertical and per-search caps override.
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex items-center gap-2">
         {editing ? (
           <>
             <input
@@ -179,7 +176,7 @@ function GlobalCapRow({ value }: { value: number }) {
               min={0}
               value={draft}
               onChange={(e) => setDraft(Number(e.target.value))}
-              className={`${BD_NUMBER_INPUT} w-24 text-right tabular-nums`}
+              className="w-20 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
             />
             <button
               type="button"
@@ -187,7 +184,7 @@ function GlobalCapRow({ value }: { value: number }) {
                 setDraft(value);
                 setEditing(false);
               }}
-              className="rounded-full p-2 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
+              className="rounded-md p-1.5 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
               aria-label="Cancel"
             >
               <X className="h-3.5 w-3.5" />
@@ -196,15 +193,15 @@ function GlobalCapRow({ value }: { value: number }) {
               type="button"
               onClick={onSave}
               disabled={pending}
-              className={BD_SAVE_BUTTON}
+              className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-2.5 py-1 text-xs font-semibold text-court-brand-dark transition hover:bg-court-brand/25 disabled:opacity-60"
             >
-              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+              {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
               Save
             </button>
           </>
         ) : (
           <>
-            <span className="font-serif text-2xl font-bold tabular-nums text-court-fg">{value}</span>
+            <span className="text-lg font-semibold tabular-nums text-court-fg">{value}</span>
             <button
               type="button"
               onClick={() => {
@@ -212,7 +209,7 @@ function GlobalCapRow({ value }: { value: number }) {
                 setEditing(true);
               }}
               aria-label="Edit global cap"
-              className="rounded-full p-2 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
+              className="rounded-md p-1.5 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
             >
               <Pencil className="h-3.5 w-3.5" />
             </button>
@@ -240,22 +237,22 @@ function VerticalCapCard({
   const [pending, startTransition] = useTransition();
 
   return (
-    <div className="rounded-2xl bg-court-surface-subtle p-4 shadow-sm">
-      <p className="truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">{name}</p>
-      <div className="mt-2 flex items-center justify-between gap-2">
+    <div className="rounded-lg border border-court-border bg-court-surface p-3">
+      <p className="truncate text-xs font-semibold uppercase tracking-wide text-court-fg-muted">{name}</p>
+      <div className="mt-1 flex items-center justify-between gap-2">
         {editing ? (
           <input
             type="number"
             min={0}
             value={draft}
             onChange={(e) => setDraft(Number(e.target.value))}
-            className={`${BD_NUMBER_INPUT} w-24 text-right tabular-nums`}
+            className="w-20 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
           />
         ) : (
-          <span className="font-serif text-2xl font-bold tabular-nums text-court-fg">
+          <span className="text-2xl font-semibold tabular-nums text-court-fg">
             {value ?? globalFallback}
             {value == null && (
-              <span className="ml-1 text-[10px] font-normal uppercase tracking-wider text-court-fg-dim">
+              <span className="ml-1 text-[10px] font-normal uppercase tracking-wide text-court-fg-dim">
                 inherits
               </span>
             )}
@@ -271,7 +268,7 @@ function VerticalCapCard({
                   setEditing(false);
                 }}
                 aria-label="Cancel"
-                className="rounded-full p-1.5 text-court-fg-muted hover:bg-court-surface hover:text-court-fg"
+                className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -285,7 +282,7 @@ function VerticalCapCard({
                     setEditing(false);
                   });
                 }}
-                className="inline-flex h-7 items-center gap-1 rounded-full bg-court-brand px-2.5 text-[11px] font-semibold text-white transition hover:bg-court-brand-dark disabled:opacity-60"
+                className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-2 py-0.5 text-xs font-semibold text-court-brand-dark transition hover:bg-court-brand/25 disabled:opacity-60"
               >
                 {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
               </button>
@@ -298,7 +295,7 @@ function VerticalCapCard({
                 setEditing(true);
               }}
               aria-label="Edit cap"
-              className="rounded-full p-1.5 text-court-fg-muted hover:bg-court-surface hover:text-court-fg"
+              className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
             >
               <Pencil className="h-3.5 w-3.5" />
             </button>
@@ -323,10 +320,10 @@ function BlackoutPill({
       type="button"
       onClick={() => onChange(!on)}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border-0 px-3 py-1.5 text-[11px] font-medium transition",
+        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition",
         on
-          ? "bg-court-brand-tint text-court-brand-dark"
-          : "bg-court-surface-subtle text-court-fg-muted hover:text-court-fg",
+          ? "border-court-brand/30 bg-court-brand-tint text-court-brand-dark"
+          : "border-court-border bg-court-surface text-court-fg-muted hover:text-court-fg",
       )}
     >
       {on ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}

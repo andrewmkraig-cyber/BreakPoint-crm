@@ -32,7 +32,7 @@ export default function BdLayout({ children }: { children: ReactNode }) {
   const active = resolveTab(pathname);
 
   return (
-    <div className="-m-4 flex min-h-[calc(100vh-6rem)] flex-col gap-6 bg-court-surface-subtle p-4 sm:-m-6 sm:p-6">
+    <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <TabStrip<BdTabId> items={TABS} activeId={active} ariaLabel="BD sections" />
         <Link

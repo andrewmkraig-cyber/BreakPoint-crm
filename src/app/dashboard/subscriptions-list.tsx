@@ -99,18 +99,8 @@ const MONEY_IN_GRID = "grid grid-cols-[minmax(0,1.6fr)_1fr_1fr]";
 
 function MatchedPill() {
   return (
-    <span className="inline-flex h-6 items-center whitespace-nowrap rounded-full bg-court-accent-tint px-2.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-court-brand-dark">
+    <span className="inline-flex items-center whitespace-nowrap rounded-full border border-court-border bg-court-surface-subtle px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-[0.06em] text-court-fg">
       Matched
-    </span>
-  );
-}
-
-// Unmatched rows render the word plain in `text-court-border` per spec
-// rule 2 so the absence reads as muted-disabled rather than missing.
-function UnmatchedLabel() {
-  return (
-    <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-court-border">
-      Unmatched
     </span>
   );
 }
@@ -311,7 +301,7 @@ function RecurringRowItem({ row }: { row: RecurringRow }) {
   return (
     <li className={`${RECURRING_GRID} items-center gap-x-4 gap-y-2 px-1 py-2 text-sm`}>
       <div className="flex min-w-0 items-center gap-2">
-        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-court-surface-subtle text-[10px] font-bold text-court-brand-dark">
+        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
           {initials}
         </span>
         <div className="min-w-0 flex-1">
@@ -331,14 +321,14 @@ function RecurringRowItem({ row }: { row: RecurringRow }) {
           ) : null}
         </div>
       </div>
-      <span className="text-right font-mono text-[12px] tabular-nums text-court-fg">
+      <span className="text-right tabular-nums text-court-fg">
         {formatUsdCents(row.catalogCost)}
       </span>
-      <span className="text-right font-mono text-[12px] font-semibold tabular-nums text-court-fg">
+      <span className="text-right font-semibold tabular-nums text-court-fg">
         {row.totalYtdUsd > 0 ? formatUsdCents(row.totalYtdUsd) : "—"}
       </span>
       <span className="flex items-center justify-end">
-        {row.matched ? <MatchedPill /> : <UnmatchedLabel />}
+        {row.matched ? <MatchedPill /> : null}
       </span>
       <span className="flex items-center justify-end">
         {row.toolExpenseId && !row.matched ? (
@@ -431,7 +421,7 @@ function OneTimeRowItem({ row }: { row: OneTimeRow }) {
   return (
     <li className={`${ONE_TIME_GRID} items-center gap-x-4 gap-y-2 px-1 py-2 text-sm`}>
       <div className="flex min-w-0 items-center gap-2">
-        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-court-surface-subtle text-[10px] font-bold text-court-brand-dark">
+        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
           {initials}
         </span>
         <div className="min-w-0 flex-1">
@@ -451,14 +441,14 @@ function OneTimeRowItem({ row }: { row: OneTimeRow }) {
           ) : null}
         </div>
       </div>
-      <span className="text-right font-mono text-[12px] font-semibold tabular-nums text-court-fg">
+      <span className="text-right font-semibold tabular-nums text-court-fg">
         {formatUsdCents(row.amountUsd)}
       </span>
-      <span className="hidden text-right font-mono text-[11px] tabular-nums text-court-fg-muted lg:block">
+      <span className="hidden text-right tabular-nums text-court-fg-muted lg:block">
         {formatDate(row.date)}
       </span>
       <span className="flex items-center justify-end">
-        {row.matched ? <MatchedPill /> : <UnmatchedLabel />}
+        {row.matched ? <MatchedPill /> : null}
       </span>
       <span className="flex items-center justify-end">
         {row.toolExpenseId && !row.matched ? (

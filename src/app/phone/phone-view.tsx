@@ -357,8 +357,8 @@ export function PhoneView() {
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-12">
       {/* LEFT SIDEBAR — hidden below lg (mobile + tablet rely on
           MobileBucketTabs above). */}
-      <aside className="hidden flex-col overflow-hidden border-r border-court-border-soft bg-court-surface lg:col-span-2 lg:flex">
-        <div className="shrink-0 border-b border-court-border-soft px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+      <aside className="hidden flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-2 lg:flex">
+        <div className="shrink-0 border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
           Phone
         </div>
         <nav className="flex-1 overflow-y-auto p-2 text-sm">
@@ -400,7 +400,7 @@ export function PhoneView() {
             />
           </BucketSection>
 
-          <div className="my-3 border-t border-court-border-soft" />
+          <div className="my-3 border-t border-court-border" />
 
           <BucketSection title="Saved Views">
             <BucketItem
@@ -444,7 +444,7 @@ export function PhoneView() {
           " flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-3"
         }
       >
-        <div className="flex shrink-0 items-center gap-2 border-b border-court-border-soft px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+        <div className="flex shrink-0 items-center gap-2 border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
           <span>
             {filteredThreads.length}{" "}
             {filteredThreads.length === 1 ? "thread" : "threads"}
@@ -475,7 +475,7 @@ export function PhoneView() {
             <span>No conversations yet</span>
           </div>
         ) : (
-          <ul className="flex-1 divide-y divide-court-border-soft overflow-y-auto">
+          <ul className="flex-1 divide-y divide-court-border overflow-y-auto">
             {filteredThreads.map((t) => (
               <li key={t.id}>
                 <ThreadRow
@@ -619,7 +619,7 @@ function BucketSection({
 }) {
   return (
     <>
-      <div className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+      <div className="px-3 pb-1 text-[11px] uppercase tracking-wider text-court-fg-muted">
         {title}
       </div>
       <ul className="space-y-0.5">{children}</ul>
@@ -648,8 +648,8 @@ function BucketItem({
         className={
           "flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left transition " +
           (active
-            ? "bg-court-brand-tint font-semibold text-court-brand-dark"
-            : "text-court-fg-muted hover:bg-court-brand-tint")
+            ? "bg-[#EAF4E4] text-[#3F7030]"
+            : "text-court-fg hover:bg-slate-50")
         }
       >
         <span className="shrink-0 text-court-fg-muted">{icon}</span>
@@ -659,7 +659,7 @@ function BucketItem({
             className={
               "inline-flex min-w-[20px] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold " +
               (active
-                ? "bg-court-surface text-court-brand-dark"
+                ? "bg-white text-[#3F7030]"
                 : "bg-court-surface-subtle text-court-fg-muted")
             }
           >
@@ -701,16 +701,21 @@ function ThreadRow({
       type="button"
       onClick={onClick}
       className={
-        "flex w-full items-start gap-3 px-4 py-2.5 text-left transition " +
-        (selected ? "bg-court-brand-tint" : "hover:bg-court-brand-tint")
+        "flex w-full items-start gap-3 px-3 py-3 text-left transition " +
+        (selected ? "bg-court-accent-tint/60" : "hover:bg-court-accent-tint/30")
       }
     >
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-court-fg-muted text-[11px] font-semibold uppercase text-white">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-court-surface-subtle text-[11px] font-semibold uppercase text-court-fg-muted">
         {initials || <UserIcon className="h-4 w-4" />}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="truncate text-[13px] font-semibold text-court-fg">
+          <span
+            className={
+              "truncate text-sm text-court-fg " +
+              (thread.hasUnread ? "font-semibold" : "font-medium")
+            }
+          >
             {thread.contactName || thread.phoneNumber || "(unknown)"}
           </span>
           <div className="flex shrink-0 items-center gap-1.5">
@@ -727,11 +732,11 @@ function ThreadRow({
         </div>
         <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-court-fg-muted">
           {thread.kind === "candidate" ? (
-            <span className="rounded-full bg-court-brand-tint px-2 py-0.5 text-[9.5px] font-bold uppercase text-court-brand-dark">
+            <span className="rounded-sm bg-court-surface-subtle px-1 py-0.5 text-[10px] uppercase tracking-wider">
               Candidate
             </span>
           ) : (
-            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[9.5px] font-bold uppercase text-amber-700">
+            <span className="rounded-sm bg-amber-50 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-700">
               Unknown
             </span>
           )}
@@ -773,7 +778,7 @@ function EmptyDetail({ keyboardCapture }: { keyboardCapture: boolean }) {
   // helper text without clipping.
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 overflow-y-auto px-6 py-8">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+      <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
         Start a new conversation
       </div>
       <DialPad keyboardCapture={keyboardCapture} />
@@ -886,9 +891,7 @@ function DialPad({
       <div className="flex w-full max-w-[280px] items-center gap-2">
         <div className="flex-1 rounded-lg border border-court-border bg-court-surface-subtle px-3 py-3 text-center font-mono text-xl tracking-wider text-court-fg">
           {formatted || (
-            <span className="font-serif text-[24px] font-bold text-court-fg-muted">
-              Enter number
-            </span>
+            <span className="text-court-fg-muted">Enter number</span>
           )}
         </div>
         {number && (
@@ -902,29 +905,29 @@ function DialPad({
           </button>
         )}
       </div>
-      <div className="grid w-full max-w-[260px] grid-cols-3 place-items-center gap-3">
+      <div className="grid w-full max-w-[280px] grid-cols-3 gap-2">
         {KEYS.map((k) => (
           <button
             key={k.digit}
             type="button"
             onClick={() => append(k.digit)}
-            className="flex h-16 w-16 flex-col items-center justify-center rounded-2xl border border-court-border bg-court-surface transition hover:border-court-accent/40 hover:shadow-md active:bg-court-brand-tint"
+            className="flex h-14 flex-col items-center justify-center rounded-lg border border-court-border bg-court-surface text-court-fg shadow-sm transition hover:bg-court-surface-subtle active:bg-[#EAF4E4]"
           >
-            <span className="text-[22px] font-bold leading-none text-court-fg">{k.digit}</span>
+            <span className="text-xl font-semibold leading-none">{k.digit}</span>
             {k.letters && (
-              <span className="mt-0.5 text-[8px] font-bold uppercase tracking-wider text-court-fg-muted">
+              <span className="mt-0.5 text-[9px] uppercase tracking-widest text-court-fg-muted">
                 {k.letters}
               </span>
             )}
           </button>
         ))}
       </div>
-      <div className="flex w-full max-w-[260px] justify-center gap-3">
+      <div className="flex w-full max-w-[280px] gap-2">
         <button
           type="button"
           onClick={() => dispatch("text")}
           disabled={!number.trim()}
-          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-court-border bg-court-surface px-5 text-[13px] font-semibold text-court-fg transition hover:bg-court-surface-subtle disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-md border border-court-border bg-court-surface text-sm font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Send className="h-4 w-4" />
           Text
@@ -933,7 +936,7 @@ function DialPad({
           type="button"
           onClick={() => dispatch("call")}
           disabled={!number.trim()}
-          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-court-accent px-5 text-[13px] font-semibold text-white transition hover:bg-court-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-md bg-[#5A9642] text-sm font-semibold text-white shadow-sm transition hover:bg-[#3F7030] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <PhoneCall className="h-4 w-4" />
           Call
@@ -957,7 +960,7 @@ export function DialPadModal({ onClose }: { onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+          <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
             New text or call
           </div>
           <button

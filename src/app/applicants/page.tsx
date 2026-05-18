@@ -303,7 +303,7 @@ export default async function ApplicantsPage() {
   }
 
   return (
-    <div className="-m-4 min-h-[calc(100vh-6rem)] space-y-4 bg-court-surface-subtle p-4 sm:-m-6 sm:p-6">
+    <div className="space-y-4">
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <div className="font-semibold">Couldn&apos;t load applicants.</div>

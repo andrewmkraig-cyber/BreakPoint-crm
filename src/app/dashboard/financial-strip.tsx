@@ -1,6 +1,5 @@
 "use client";
 
-import { DollarSign } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -61,17 +60,16 @@ export function FinancialStrip({
   const remainingUsd = Math.max(0, goalUsd - revenueUsd);
 
   return (
-    <section className="rounded-3xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
+    <section className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
-          <DollarSign className="h-4 w-4 text-court-brand-dark" aria-hidden />
+        <div className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted">
           Billing Tower
         </div>
         <select
           aria-label="Billing Tower period"
           value={period}
           onChange={(e) => setPeriod(e.target.value as PeriodKey)}
-          className="h-8 rounded-lg border border-court-border bg-court-surface px-2 text-[11px] text-court-fg-muted transition hover:text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/40"
+          className="rounded-lg border border-court-border bg-court-surface px-2 py-0.5 text-[11px] text-court-fg-muted transition hover:text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/40"
         >
           <option value="current">{`Current Quarter (${currentQuarterLabel})`}</option>
           <option value="previous">Previous Quarter</option>
@@ -132,15 +130,13 @@ function Stat({
 }) {
   const inner = (
     <>
-      <div className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+      <div className="text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">
         {label}
       </div>
       <div
         className={cn(
-          "mt-0.5 font-serif text-[32px] leading-none tracking-[-0.02em] tabular-nums",
-          dim
-            ? "font-semibold text-court-fg-muted opacity-50"
-            : "font-bold text-court-fg",
+          "mt-0.5 font-serif text-[26px] font-bold leading-none tracking-[-0.02em] tabular-nums",
+          dim ? "text-court-fg-dim" : "text-court-fg",
         )}
       >
         {value}
@@ -180,19 +176,12 @@ function GoalStat({
 }) {
   return (
     <div className="flex min-w-0 flex-col sm:border-l-2 sm:border-court-border-soft sm:pl-6">
-      <div className="text-xs font-semibold uppercase tracking-wider text-court-brand-dark">
+      <div className="text-[10px] font-extrabold uppercase tracking-wide text-court-brand-dark">
         Goal Progress · {formatGoalUsd(goalUsd)} Quarter
       </div>
-      <div
-        className={cn(
-          "mt-0.5 flex items-baseline gap-2.5 font-serif text-[32px] leading-none tracking-[-0.02em] tabular-nums",
-          pct === 0
-            ? "font-semibold text-court-fg-muted opacity-50"
-            : "font-bold text-court-fg",
-        )}
-      >
+      <div className="mt-0.5 flex items-baseline gap-2.5 font-serif text-[26px] font-bold leading-none tracking-[-0.02em] tabular-nums text-court-fg">
         {pct}%
-        <span className="text-[11.5px] font-semibold tracking-normal text-court-fg-muted opacity-100">
+        <span className="text-[11.5px] font-semibold tracking-normal text-court-fg-muted">
           · {formatGoalUsd(remainingUsd)} to go
         </span>
       </div>
