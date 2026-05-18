@@ -891,14 +891,14 @@ function ActionRow({
         )}
         Apply
       </Button>
-      <Button
+      <button
         type="button"
-        size="sm"
         onClick={onSubmit}
         disabled={applying || rejecting}
+        className="inline-flex items-center justify-center gap-1.5 rounded-md border border-brand bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
       >
         <Send className="h-3 w-3" /> Submit
-      </Button>
+      </button>
       <Button
         type="button"
         size="sm"

@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   FileSignature,
   Loader2,
+  Send,
   Sparkles,
   Target,
   X,
@@ -128,14 +129,13 @@ export function LocalCandidateActions(props: {
     <div className={props.hideButtons ? "contents" : "rounded-xl border border-court-border/40 bg-court-surface px-5 py-4 shadow-sm"}>
       {!props.hideButtons && (
         <div className="flex flex-wrap items-center gap-2">
-          <Button
+          <button
             type="button"
-            size="sm"
-            variant="primary"
             onClick={() => setModal("submit")}
+            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-brand bg-brand px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark"
           >
-            <FileSignature className="h-3 w-3" /> Submit to Job
-          </Button>
+            <Send className="h-3 w-3" /> Submit to Job
+          </button>
           <Button
             type="button"
             size="sm"
