@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Briefcase, Building2, Check, Search, User, X } from "lucide-react";
 
 import { TabStrip } from "@/components/ui/tab-strip";
