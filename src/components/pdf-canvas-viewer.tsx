@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Minus, Plus, RotateCcw } from "lucide-react";
-import { loadPdfjs, type PdfJsDocument } from "@/lib/pdfjs-loader";
+import {
+  loadPdfjs,
+  type PdfJsDocument,
+  type PdfJsLib,
+  type PdfJsTextContent,
+} from "@/lib/pdfjs-loader";
 
 // In-browser PDF viewer that renders each page to its own <canvas> via
 // pdfjs-dist. Beats an <iframe> pointed at the raw PDF because Chrome's
@@ -26,12 +31,28 @@ export type PdfCanvasViewerProps = {
   // pages up so each fills it. Pass a number to force a specific scale
   // (1.0 = 100% PDF-native, 1.5 = 150%, etc.).
   initialScale?: "fit" | number;
+  // Optional in-document highlighting. When tokens is non-empty, each page
+  // gets a transparent text-overlay built from getTextContent; matches are
+  // wrapped in <mark> styled with highlightClassMap[token]. The mark sits
+  // on top of the canvas-rendered glyphs so the bg-color reads as a
+  // highlight over the original PDF text. Empty/undefined = canvas only.
+  highlightTokens?: string[];
+  // Map keyed by the original token string (case-sensitive); value is a
+  // Tailwind class string applied to the <mark>'s background. Falls back
+  // to a neutral amber if a match's token isn't in the map.
+  highlightClassMap?: Map<string, string>;
 };
 
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 3.0;
 
-export function PdfCanvasViewer({ src, className, initialScale = "fit" }: PdfCanvasViewerProps) {
+export function PdfCanvasViewer({
+  src,
+  className,
+  initialScale = "fit",
+  highlightTokens,
+  highlightClassMap,
+}: PdfCanvasViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const docRef = useRef<PdfJsDocument | null>(null);
@@ -101,14 +122,27 @@ export function PdfCanvasViewer({ src, className, initialScale = "fit" }: PdfCan
     const effective = usingFit && fitScale ? fitScale : scale;
     // Guard: don't render if fit hasn't been measured yet and we're using fit.
     if (usingFit && !fitScale) return;
+    const tokens = highlightTokens ?? [];
+    const classMap = highlightClassMap ?? new Map<string, string>();
     let cancelled = false;
     (async () => {
+      const pdfjsLib = await loadPdfjs();
+      if (cancelled) return;
       host.innerHTML = "";
       const dpr = typeof window !== "undefined" ? Math.max(1, window.devicePixelRatio || 1) : 1;
       for (let p = 1; p <= doc.numPages; p++) {
         if (cancelled) return;
         const page = await doc.getPage(p);
         const viewport = page.getViewport({ scale: effective });
+        // Per-page wrapper so the absolute-positioned text overlay aligns
+        // against the canvas. width/height match the CSS pixel size of the
+        // canvas (not the DPR-scaled bitmap dimensions).
+        const pageWrap = document.createElement("div");
+        pageWrap.style.position = "relative";
+        pageWrap.style.width = `${viewport.width}px`;
+        pageWrap.style.height = `${viewport.height}px`;
+        host.appendChild(pageWrap);
+
         const canvas = document.createElement("canvas");
         canvas.width = Math.round(viewport.width * dpr);
         canvas.height = Math.round(viewport.height * dpr);
@@ -118,17 +152,39 @@ export function PdfCanvasViewer({ src, className, initialScale = "fit" }: PdfCan
         // white sheet regardless of Court Mode. A court-* surface token
         // would tint the page in Clay/Grass and make body text unreadable.
         canvas.className = "block rounded-md bg-white shadow-sm";
-        host.appendChild(canvas);
+        pageWrap.appendChild(canvas);
         const ctx = canvas.getContext("2d");
         if (!ctx) continue;
         ctx.scale(dpr, dpr);
         await page.render({ canvasContext: ctx, viewport }).promise;
+        if (cancelled) return;
+
+        if (tokens.length > 0) {
+          const textContent = await page.getTextContent();
+          if (cancelled) return;
+          const overlay = document.createElement("div");
+          overlay.style.position = "absolute";
+          overlay.style.inset = "0";
+          overlay.style.overflow = "hidden";
+          overlay.style.lineHeight = "1";
+          overlay.style.pointerEvents = "none";
+          overlay.setAttribute("aria-hidden", "true");
+          pageWrap.appendChild(overlay);
+          paintHighlightOverlay({
+            overlay,
+            textContent,
+            viewportTransform: viewport.transform,
+            tokens,
+            classMap,
+            Util: pdfjsLib.Util,
+          });
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [loading, scale, fitScale, usingFit]);
+  }, [loading, scale, fitScale, usingFit, highlightTokens, highlightClassMap]);
 
   function zoomIn() {
     setUsingFit(false);
@@ -210,4 +266,108 @@ export function PdfCanvasViewer({ src, className, initialScale = "fit" }: PdfCan
       </div>
     </div>
   );
+}
+
+// Paints a transparent text-overlay on top of the canvas. Each pdfjs
+// TextItem becomes an absolutely-positioned <span> with color:transparent
+// so the canvas-rendered glyphs underneath remain visible; matched
+// substrings get wrapped in <mark> with the token's chip class so the
+// highlight bg shows through. Positioning math mirrors what pdfjs's own
+// TextLayer does: combine viewport.transform with item.transform, then
+// extract the baseline + font-height in screen pixels.
+function paintHighlightOverlay({
+  overlay,
+  textContent,
+  viewportTransform,
+  tokens,
+  classMap,
+  Util,
+}: {
+  overlay: HTMLElement;
+  textContent: PdfJsTextContent;
+  viewportTransform: number[];
+  tokens: string[];
+  classMap: Map<string, string>;
+  Util: PdfJsLib["Util"];
+}) {
+  const escaped = tokens.map(escapeRegex).filter(Boolean);
+  if (escaped.length === 0) return;
+  const pattern = `(${escaped.join("|")})`;
+
+  for (const raw of textContent.items) {
+    if (!raw || typeof raw !== "object" || !("str" in raw)) continue;
+    const item = raw as { str: string; transform: number[] };
+    if (!item.str) continue;
+    // Cheap rejection so we don't allocate spans for items that contain
+    // no token match at all — typical resume page has hundreds of items
+    // and only a handful match. Reset lastIndex before each test().
+    const probe = new RegExp(pattern, "i");
+    if (!probe.test(item.str)) continue;
+
+    const tx = Util.transform(viewportTransform, item.transform);
+    const fontHeight = Math.hypot(tx[2], tx[3]);
+    const angle = Math.atan2(tx[1], tx[0]);
+    const left = tx[4];
+    const top = tx[5] - fontHeight;
+
+    const span = document.createElement("span");
+    span.style.position = "absolute";
+    span.style.left = `${left}px`;
+    span.style.top = `${top}px`;
+    span.style.fontSize = `${fontHeight}px`;
+    // sans-serif is a deliberate approximation — the canvas renders with
+    // the PDF's embedded font but we only need the overlay's <mark> bg to
+    // sit roughly over the same glyphs. A few px of width drift on bold
+    // or condensed faces is acceptable; the recruiter still gets a clear
+    // "this word appears here" cue.
+    span.style.fontFamily = "sans-serif";
+    span.style.whiteSpace = "pre";
+    span.style.color = "transparent";
+    span.style.transformOrigin = "0% 100%";
+    if (Math.abs(angle) > 0.001) {
+      span.style.transform = `rotate(${angle}rad)`;
+    }
+    span.innerHTML = wrapMatches(item.str, tokens, classMap, pattern);
+    overlay.appendChild(span);
+  }
+}
+
+function wrapMatches(
+  text: string,
+  tokens: string[],
+  classMap: Map<string, string>,
+  pattern: string,
+): string {
+  const re = new RegExp(pattern, "gi");
+  let out = "";
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out += escapeHtml(text.slice(last, m.index));
+    const hit = m[0];
+    // Match the chip's color by the original token key (case-insensitive).
+    const tokenKey = tokens.find((t) => t.toLowerCase() === hit.toLowerCase());
+    const cls = (tokenKey && classMap.get(tokenKey)) || "bg-amber-200";
+    // Inline color:transparent so the chip palette's text-* class (e.g.
+    // text-amber-900) doesn't make the mark text visible on top of the
+    // canvas-rendered glyphs underneath.
+    out += `<mark class="rounded-sm ${cls}" style="color:transparent">${escapeHtml(hit)}</mark>`;
+    last = m.index + hit.length;
+    if (hit.length === 0) re.lastIndex++;
+  }
+  if (last < text.length) out += escapeHtml(text.slice(last));
+  return out;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

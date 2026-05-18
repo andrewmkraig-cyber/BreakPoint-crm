@@ -639,10 +639,7 @@ export default async function CandidateProfilePage({
               linkedinProfile={identityInitial.linkedin_profile || null}
               compensation={compensation}
             />
-            <ResumeMatchesRail
-              resumeId={resumeVersions[0]?.resumeId ?? null}
-              tokens={highlightTokens}
-            />
+            <ResumeMatchesRail tokens={highlightTokens} />
             <EditableSkills candidateId={id} initial={skillsInitial} />
             <CandidateActivityCard
               candidateId={candidate.id}

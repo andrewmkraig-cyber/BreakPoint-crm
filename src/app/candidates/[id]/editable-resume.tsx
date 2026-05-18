@@ -27,7 +27,10 @@ import {
   renameCandidateResume,
 } from "@/app/candidates/[id]/actions";
 import { generateAiResume } from "@/app/candidates/[id]/generate-resume-action";
-import { HighlightTokenChips } from "@/app/candidates/[id]/resume-matches-rail";
+import {
+  buildTokenColorMap,
+  HighlightTokenChips,
+} from "@/app/candidates/[id]/resume-matches-rail";
 import { Sparkles } from "lucide-react";
 
 const ACCEPT_RESUME_MIME =
@@ -177,6 +180,10 @@ export function EditableResume({
   }, [versions, selectedKey, defaultKey, pendingSelectId]);
 
   const selected = versions.find((v) => v.key === selectedKey) ?? null;
+  // One color-map per active token set, shared by the chip strip above
+  // and the in-PDF highlight overlay below — chip color must match the
+  // highlight bg color for the same token.
+  const tokenColorMap = useMemo(() => buildTokenColorMap(tokens), [tokens]);
 
   async function onFiles(files: File[]) {
     const file = files[0];
@@ -554,6 +561,8 @@ export function EditableResume({
               key={previewUrl}
               src={previewUrl}
               className="min-h-[900px] w-full rounded-b-xl"
+              highlightTokens={tokens}
+              highlightClassMap={tokenColorMap}
             />
           ) : docx ? (
             <DocxPreview

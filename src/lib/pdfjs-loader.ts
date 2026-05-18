@@ -27,11 +27,33 @@ type PdfJsDocument = {
   numPages: number;
   getPage(n: number): Promise<PdfJsPage>;
 };
+type PdfJsViewport = {
+  width: number;
+  height: number;
+  scale: number;
+  transform: number[];
+};
+// Subset of pdfjs's TextItem shape. getTextContent.items also returns
+// TextMarkedContent objects (no `str` field) — callers filter on `str in
+// item` before reading these fields.
+type PdfJsTextItem = {
+  str: string;
+  dir: "ltr" | "rtl";
+  width: number;
+  height: number;
+  transform: number[];
+  fontName: string;
+  hasEOL?: boolean;
+};
+type PdfJsTextContent = {
+  items: Array<PdfJsTextItem | { type: string }>;
+};
 type PdfJsPage = {
-  getViewport(args: { scale: number }): { width: number; height: number };
+  getViewport(args: { scale: number }): PdfJsViewport;
+  getTextContent(): Promise<PdfJsTextContent>;
   render(args: {
     canvasContext: CanvasRenderingContext2D;
-    viewport: { width: number; height: number };
+    viewport: PdfJsViewport;
   }): { promise: Promise<void> };
 };
 type PdfJsLib = {
@@ -41,6 +63,10 @@ type PdfJsLib = {
     withCredentials?: boolean;
   }) => { promise: Promise<PdfJsDocument> };
   GlobalWorkerOptions: { workerSrc: string };
+  // Matrix composition used by the text-overlay math: combines
+  // viewport.transform with item.transform to get on-screen baseline
+  // coordinates.
+  Util: { transform(m1: number[], m2: number[]): number[] };
   version: string;
 };
 
@@ -82,4 +108,4 @@ export async function loadPdfjs({
   }
 }
 
-export type { PdfJsDocument, PdfJsLib, PdfJsPage };
+export type { PdfJsDocument, PdfJsLib, PdfJsPage, PdfJsTextContent, PdfJsTextItem, PdfJsViewport };
