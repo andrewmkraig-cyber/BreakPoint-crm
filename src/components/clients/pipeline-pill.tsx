@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 
-// Stage dot colors — kept fixed (not Court Mode tokens) because these
-// are semantic stage indicators that should mean the same thing in
-// every theme. Court tokens carry the surrounding pill chrome.
-const DOT_COLORS: Record<string, string> = {
-  submitted: "#3F6B2E",
-  interviewing: "#1D4ED8",
-  offer: "#7C3AED",
-  pending_start: "#B45309",
-  hired: "#16A34A",
+// Stage dot color classes. Brand greens (submitted/hired) ride Court
+// Mode tokens so they retheme with Hard/Clay/Grass/Night; typed stages
+// (interviewing/offer/pending_start) use the same Tailwind hues the
+// canonical StageBadge uses so semantic meaning stays consistent.
+const DOT_CLASSES: Record<string, string> = {
+  submitted: "bg-court-brand-dark",
+  interviewing: "bg-blue-700",
+  offer: "bg-purple-600",
+  pending_start: "bg-amber-700",
+  hired: "bg-court-brand",
 };
 
 const STAGE_LABELS: Record<string, string> = {
@@ -33,8 +34,7 @@ export function PipelinePill({
   const pill = (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-[11px] font-medium text-court-fg">
       <span
-        className="h-1.5 w-1.5 rounded-full"
-        style={{ background: DOT_COLORS[stage] ?? "#6B7280" }}
+        className={`h-1.5 w-1.5 rounded-full ${DOT_CLASSES[stage] ?? "bg-court-fg-muted"}`}
       />
       <span className="font-semibold">{count}</span>
       <span className="text-court-fg-muted">{STAGE_LABELS[stage] ?? stage}</span>

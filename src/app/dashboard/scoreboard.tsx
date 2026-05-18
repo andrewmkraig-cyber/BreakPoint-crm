@@ -155,6 +155,9 @@ function ScoreboardKpiTile({
       >
         {value}
       </div>
+      <div className="mt-1 text-center text-[10px] text-court-fg-dim">
+        {sub}
+      </div>
     </div>
   );
 }

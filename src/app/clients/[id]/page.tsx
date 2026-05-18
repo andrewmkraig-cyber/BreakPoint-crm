@@ -628,7 +628,7 @@ function Stat({
   const inner = (
     <>
       <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">{label}</div>
-      <div className={cn("font-serif text-3xl font-extrabold leading-none tracking-tight", effective)}>{value}</div>
+      <div className={cn("font-serif text-[26px] font-extrabold leading-none tracking-tight", effective)}>{value}</div>
     </>
   );
   const wrapperCls =
