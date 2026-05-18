@@ -773,6 +773,24 @@ export function ComposeFAB() {
                 onClick={pickEmail}
               />
               <ActionRow
+                icon={<PhoneCall className="h-4 w-4" />}
+                label="New Call"
+                hint="Pick a recent contact"
+                onClick={pickCall}
+              />
+              <ActionRow
+                icon={<MessageSquare className="h-4 w-4" />}
+                label="New Text"
+                hint="Pick a recent contact"
+                onClick={pickText}
+              />
+              <ActionRow
+                icon={<StickyNote className="h-4 w-4" />}
+                label="New Note"
+                hint="Quick note + attach to a profile"
+                onClick={pickNotes}
+              />
+              <ActionRow
                 icon={<CalendarPlus className="h-4 w-4" />}
                 label="New Event"
                 hint="Schedule on the calendar"
@@ -783,24 +801,6 @@ export function ComposeFAB() {
                 label="New Reminder"
                 hint="Drop a reminder on the calendar"
                 onClick={pickCalendarReminder}
-              />
-              <ActionRow
-                icon={<MessageSquare className="h-4 w-4" />}
-                label="New Text"
-                hint="Pick a recent contact"
-                onClick={pickText}
-              />
-              <ActionRow
-                icon={<PhoneCall className="h-4 w-4" />}
-                label="New Call"
-                hint="Pick a recent contact"
-                onClick={pickCall}
-              />
-              <ActionRow
-                icon={<StickyNote className="h-4 w-4" />}
-                label="New Note"
-                hint="Quick note + attach to a profile"
-                onClick={pickNotes}
               />
             </div>
           )}

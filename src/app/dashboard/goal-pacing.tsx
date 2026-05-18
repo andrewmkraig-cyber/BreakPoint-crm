@@ -185,7 +185,7 @@ export async function getGoalPacingData(
 
 export function GoalPacingCard({ data }: { data: GoalPacingCardData }) {
   return (
-    <div className="flex flex-col rounded-2xl border-0 bg-court-surface p-5 shadow-sm">
+    <div className="flex flex-col rounded-2xl border-0 bg-court-surface p-4 shadow-sm">
       <div>
         <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
           Goal Pacing

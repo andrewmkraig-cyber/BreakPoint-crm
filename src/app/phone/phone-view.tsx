@@ -701,7 +701,7 @@ function ThreadRow({
       type="button"
       onClick={onClick}
       className={
-        "flex w-full items-start gap-3 px-4 py-3 text-left transition " +
+        "flex w-full items-start gap-3 px-4 py-2.5 text-left transition " +
         (selected ? "bg-court-brand-tint" : "hover:bg-court-brand-tint")
       }
     >

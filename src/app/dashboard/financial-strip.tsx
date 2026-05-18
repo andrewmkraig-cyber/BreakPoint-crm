@@ -61,7 +61,7 @@ export function FinancialStrip({
   const remainingUsd = Math.max(0, goalUsd - revenueUsd);
 
   return (
-    <section className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
+    <section className="rounded-3xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
           <DollarSign className="h-4 w-4 text-court-brand-dark" aria-hidden />
@@ -137,7 +137,7 @@ function Stat({
       </div>
       <div
         className={cn(
-          "mt-0.5 font-serif text-[26px] leading-none tracking-[-0.02em] tabular-nums",
+          "mt-0.5 font-serif text-[32px] leading-none tracking-[-0.02em] tabular-nums",
           dim
             ? "font-semibold text-court-fg-muted opacity-50"
             : "font-bold text-court-fg",
@@ -185,7 +185,7 @@ function GoalStat({
       </div>
       <div
         className={cn(
-          "mt-0.5 flex items-baseline gap-2.5 font-serif text-[26px] leading-none tracking-[-0.02em] tabular-nums",
+          "mt-0.5 flex items-baseline gap-2.5 font-serif text-[32px] leading-none tracking-[-0.02em] tabular-nums",
           pct === 0
             ? "font-semibold text-court-fg-muted opacity-50"
             : "font-bold text-court-fg",

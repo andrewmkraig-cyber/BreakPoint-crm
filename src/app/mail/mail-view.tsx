@@ -1437,7 +1437,7 @@ function ThreadRow({
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-w-0 flex-1 flex-col items-start gap-0.5 py-3 pl-1 pr-10 text-left"
+        className="flex min-w-0 flex-1 flex-col items-start gap-0.5 py-2.5 pl-1 pr-10 text-left"
       >
         <div className="flex w-full items-baseline justify-between gap-3">
           <span
