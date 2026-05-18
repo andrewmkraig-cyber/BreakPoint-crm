@@ -219,9 +219,9 @@ export function TextingExchanges(props: TextingExchangesProps) {
                           // system-ui which reads as a different font).
                           "rounded-2xl px-3 py-2 font-sans text-sm break-words shadow-sm",
                           outbound
-                            ? "bg-brand text-white"
+                            ? "bg-court-brand-tint text-court-brand"
                             : "bg-court-surface-subtle text-court-fg",
-                          m.status === "failed" && outbound && "bg-red-500",
+                          m.status === "failed" && outbound && "bg-red-500 text-white",
                         )}
                       >
                         {m.mediaUrl && (
