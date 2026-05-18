@@ -1368,12 +1368,19 @@ function TrendCard({
               <div key={m} className="flex flex-1 flex-col items-center gap-1.5">
                 <div className="relative flex w-full flex-1 items-end justify-center">
                   {isFuture ? (
-                    <div className="h-full w-10 rounded-t-md border border-dashed border-court-border bg-transparent" />
+                    <div className="h-full w-10 rounded-lg border border-dashed border-court-border bg-transparent" />
                   ) : (
-                    <div
-                      className="w-10 rounded-t-md bg-court-brand"
-                      style={{ height: `${heightPct}%`, minHeight: 3 }}
-                    />
+                    // Track + fill mirrors the Submitted → Placed funnel
+                    // on the Scoreboard tab: bg-court-surface-subtle round
+                    // box with overflow-hidden, fill absolutely positioned
+                    // and grown via height % from the bottom. Tint instead
+                    // of solid brand — the dark fill read too heavy.
+                    <div className="relative h-full w-10 overflow-hidden rounded-lg bg-court-surface-subtle">
+                      <div
+                        className="absolute inset-x-0 bottom-0 bg-court-brand-tint"
+                        style={{ height: `${heightPct}%`, minHeight: 3 }}
+                      />
+                    </div>
                   )}
                 </div>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-court-fg-muted">
