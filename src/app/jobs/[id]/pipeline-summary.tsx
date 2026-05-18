@@ -32,6 +32,10 @@ export type JobPipelineRow = {
   stageName: string;
   bucket: PipelineBucket;
   stageMovedAt: string | null;
+  // Next-upcoming scheduled interview for this candidate on this job,
+  // or null if none. Drives the Edit Interview button in the
+  // PipelineRowActions interviewing case.
+  nextInterview?: { id: string; scheduledAt: string; type: string } | null;
 };
 
 // Game Plan Phase 2: rows surfaced in the new Matched tab. Sourced
@@ -342,6 +346,7 @@ export function JobPipelineSummary({
                         jobTitle={jobActions.jobTitle}
                         clientName={jobActions.clientName}
                         stage={r.bucket}
+                        nextInterview={r.nextInterview ?? null}
                       />
                     </td>
                   )}

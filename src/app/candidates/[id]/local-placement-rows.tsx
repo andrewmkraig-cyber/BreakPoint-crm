@@ -144,6 +144,7 @@ export function LocalPlacementRows({
             job={j}
             onSchedule={() => setScheduleFor(j)}
             onClientInvite={() => setClientInviteFor(j)}
+            onEditInterview={(iv) => setRescheduleFor(iv)}
           />
         ))}
       </div>
@@ -248,12 +249,14 @@ function LocalJobActionRow({
   job,
   onSchedule,
   onClientInvite,
+  onEditInterview,
 }: {
   candidateId: string;
   candidateName: string;
   job: LocalJobRow;
   onSchedule: () => void;
   onClientInvite: () => void;
+  onEditInterview: (interview: LocalInterview) => void;
 }) {
   const router = useRouter();
   const [isRejecting, startRejecting] = useTransition();
@@ -379,6 +382,17 @@ function LocalJobActionRow({
             >
               <Send className="h-3 w-3" /> Submit
             </Link>
+          )}
+          {normalizedStage === "interviewing" && nextInterview && (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => onEditInterview(nextInterview)}
+              title="Edit the upcoming interview"
+            >
+              <CalendarClock className="h-3 w-3" /> Edit Interview
+            </Button>
           )}
           {canSchedule && (
             <Button

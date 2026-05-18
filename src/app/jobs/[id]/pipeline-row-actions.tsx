@@ -75,6 +75,15 @@ export type PipelineRowActionsProps = {
   // optional rejection-email send) instead of the bare
   // window.confirm + server action that the Job page uses.
   onRejectDialog?: () => void;
+  // Next-upcoming scheduled interview for this candidate/job. When
+  // present and stage === "interviewing", the row renders an
+  // Edit Interview button. Profile-side callers also pass
+  // onEditInterview to open EditInterviewDialog inline; the
+  // job-page caller omits it and the button navigates via deep link
+  // (?edit=interview&interviewId=...) to the candidate profile,
+  // matching the /pipeline page's existing Edit Interview affordance.
+  nextInterview?: { id: string; scheduledAt: string; type: string } | null;
+  onEditInterview?: () => void;
   // Local Placement row id. Used by the "disqualified" branch of the
   // switch: older RF-imported placements carry stage="disqualified"
   // (rather than the canonical "rejected") and the Reapply path for
@@ -346,10 +355,27 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
       );
-    case "interviewing":
-      // Schedule Interview (next round) / Offer / Reject.
+    case "interviewing": {
+      // Edit Interview (when an upcoming interview is on file) /
+      // Schedule Interview (next round) / Offer / Reject. Edit
+      // Interview matches the /pipeline page's affordance and the
+      // candidate-profile job strip so the same gesture is available
+      // on every interviewing-stage surface.
+      const editInterviewHref = props.nextInterview
+        ? `${profileHref}?edit=interview&interviewId=${encodeURIComponent(props.nextInterview.id)}`
+        : profileHref;
       return (
         <ActionRow disabled={isPending}>
+          {props.nextInterview && (
+            <DialogOrNav
+              icon={Edit3}
+              label="Edit Interview"
+              title="Edit the upcoming interview"
+              tone="default"
+              onClick={props.onEditInterview}
+              href={editInterviewHref}
+            />
+          )}
           <DialogOrNav
             icon={CalendarClock}
             label="Schedule Interview"
@@ -369,6 +395,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
       );
+    }
     case "offer":
       return (
         <ActionRow disabled={isPending}>

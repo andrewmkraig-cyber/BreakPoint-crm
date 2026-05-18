@@ -851,6 +851,12 @@ function JobActionRow({
             onCancelPlacement={onCancel}
             onRejectDialog={onReject}
             onPlacementRemoved={onPlacementRemoved}
+            nextInterview={
+              nextInterview
+                ? { id: nextInterview.id, scheduledAt: nextInterview.scheduledAt, type: nextInterview.type }
+                : null
+            }
+            onEditInterview={nextInterview ? () => onEditInterview(nextInterview) : undefined}
           />
           {isCancelled && job.placement && (
             <CancelledRowActions placementId={job.placement.id} />

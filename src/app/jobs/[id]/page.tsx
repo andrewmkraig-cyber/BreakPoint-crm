@@ -75,7 +75,12 @@ export default async function JobDetailPage({
   const rfId = jobRow.legacyRfId;
   const isAceNative = rfId == null;
 
-  const [jobs, candidates, localPlacements] = await Promise.all([
+  // Hoisted ahead of the pipeline-rows fetch so the scheduled-interview
+  // query below can scope by organizationId without a second await
+  // gate. Reused later for the Game Plan / Matched query.
+  const org = await getCurrentOrg();
+
+  const [jobs, candidates, localPlacements, scheduledInterviews] = await Promise.all([
     getRfJobsForOrg(),
     getRfCandidatesForOrg(),
     // Phase 4a: Placement read routed through the tenant-scoped
@@ -85,7 +90,47 @@ export default async function JobDetailPage({
     getPlacementsForOrg({
       jobIdentifier: isAceNative ? jobRow.id : (rfId as number),
     }),
+    // Next-upcoming interview per candidate for the pipeline row's
+    // Edit Interview button. status="scheduled" + scheduledAt > now
+    // is the same filter the candidate-profile row uses; ordering asc
+    // means the first hit per candidate is the next one.
+    prisma.interview.findMany({
+      where: {
+        organizationId: org.id,
+        status: "scheduled",
+        scheduledAt: { gt: new Date() },
+        ...(isAceNative ? { jobId: jobRow.id } : { jobRfId: rfId as number }),
+      },
+      orderBy: { scheduledAt: "asc" },
+      select: {
+        id: true,
+        scheduledAt: true,
+        type: true,
+        candidateRfId: true,
+        candidateId: true,
+      },
+    }),
   ]);
+
+  // Earliest future scheduled interview per candidate. Two maps because
+  // RF-imported and Ace-native candidates carry incompatible id types.
+  const nextInterviewByRfCandidate = new Map<number, { id: string; scheduledAt: string; type: string }>();
+  const nextInterviewByAceCandidate = new Map<string, { id: string; scheduledAt: string; type: string }>();
+  for (const iv of scheduledInterviews) {
+    if (iv.candidateRfId != null && !nextInterviewByRfCandidate.has(iv.candidateRfId)) {
+      nextInterviewByRfCandidate.set(iv.candidateRfId, {
+        id: iv.id,
+        scheduledAt: iv.scheduledAt.toISOString(),
+        type: iv.type,
+      });
+    } else if (iv.candidateId && !nextInterviewByAceCandidate.has(iv.candidateId)) {
+      nextInterviewByAceCandidate.set(iv.candidateId, {
+        id: iv.id,
+        scheduledAt: iv.scheduledAt.toISOString(),
+        type: iv.type,
+      });
+    }
+  }
 
   // Locate the RFJob-shaped payload for display. RF-imported rows land
   // via legacyRfId match; Ace-native rows land via the synthetic-id
@@ -128,6 +173,7 @@ export default async function JobDetailPage({
     : [];
   const mainPipelineRows: JobPipelineRow[] = flatForJob.map((r) => {
     const local = stageByRfCandidate.get(r.candidateId);
+    const nextInterview = nextInterviewByRfCandidate.get(r.candidateId) ?? null;
     if (local) {
       return {
         candidateId: r.candidateId,
@@ -136,6 +182,7 @@ export default async function JobDetailPage({
         stageName: local.stage,
         bucket: local.stage as PipelineBucket,
         stageMovedAt: local.movedAt,
+        nextInterview,
       };
     }
     return {
@@ -145,6 +192,7 @@ export default async function JobDetailPage({
       stageName: r.stageName,
       bucket: "sourced",
       stageMovedAt: r.stageMovedAt,
+      nextInterview,
     };
   });
 
@@ -179,6 +227,7 @@ export default async function JobDetailPage({
         stageName: p.stage,
         bucket: p.stage as PipelineBucket,
         stageMovedAt: p.updatedAt.toISOString(),
+        nextInterview: nextInterviewByRfCandidate.get(p.candidateRfId) ?? null,
       });
       continue;
     }
@@ -194,6 +243,7 @@ export default async function JobDetailPage({
         stageName: p.stage,
         bucket: p.stage as PipelineBucket,
         stageMovedAt: p.updatedAt.toISOString(),
+        nextInterview: nextInterviewByAceCandidate.get(p.candidateId) ?? null,
       });
     }
   }
@@ -210,7 +260,6 @@ export default async function JobDetailPage({
   // above — exclude them from Matched so the tab stays focused on
   // candidates that still need a triage decision. The exclusion is
   // any Placement for this job, regardless of stage.
-  const org = await getCurrentOrg();
   const placedCandidateIds = Array.from(
     new Set(
       localPlacements
