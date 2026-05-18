@@ -102,7 +102,9 @@ export function CandidateCompactOverview({
   }
 
   return (
-    <section className="rounded-xl border border-court-border bg-court-surface px-4 py-3 shadow-sm">
+    // `isolate` keeps the inline-edit buttons clickable when sibling
+    // cards in the same parent flex/grid paint over the right rail.
+    <section className="relative isolate rounded-xl border border-court-border bg-court-surface px-4 py-3 shadow-sm">
       <h1 className="break-words font-serif text-lg font-bold leading-tight text-court-fg">
         {fullName}
       </h1>
@@ -347,7 +349,7 @@ function InlineEditableText({
       type="button"
       onClick={() => setEditing(true)}
       className={cn(
-        "-mx-1 inline-flex max-w-full items-baseline rounded px-1 text-left transition-colors hover:bg-court-surface-subtle/70",
+        "relative z-0 -mx-1 inline-flex max-w-full cursor-pointer items-center rounded px-1 text-left transition-colors hover:bg-court-surface-subtle/70",
         isEmpty && "text-court-fg-muted italic",
       )}
       title="Click to edit"
@@ -454,7 +456,7 @@ function InlineEditableComp({
       type="button"
       onClick={() => setEditing(true)}
       className={cn(
-        "-mx-1 inline-flex max-w-full items-baseline rounded px-1 text-left transition-colors hover:bg-court-surface-subtle/70",
+        "relative z-0 -mx-1 inline-flex max-w-full cursor-pointer items-center rounded px-1 text-left transition-colors hover:bg-court-surface-subtle/70",
         isEmpty && "text-court-fg-muted italic",
       )}
       title="Click to edit"

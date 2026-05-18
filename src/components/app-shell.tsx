@@ -136,6 +136,19 @@ export function AppShell({
     );
   }
 
+  // /candidates owns its own full-viewport split-view layout (filter
+  // aside + iframe) and breaks out of main's px-3/px-8 padding with
+  // negative margins. The xl+ max-w-[1600px] + mx-auto cap below adds
+  // a centering margin on monitors wider than ~1900px that those
+  // negative margins can't escape, opening a gap to the left of the
+  // filter aside. Drop the cap for this route so the wrapper's
+  // existing -ml-[18px/22px/38px/54px] still lands flush with the
+  // sidebar edge.
+  const isFullBleed = pathname === "/candidates";
+  const mainCls = isFullBleed
+    ? "min-w-0 flex-1 p-6 pl-3 pt-4 md:p-8 md:pl-4 md:pt-4 xl:px-8 2xl:px-12"
+    : "min-w-0 flex-1 p-6 pl-3 pt-4 md:p-8 md:pl-4 md:pt-4 xl:mx-auto xl:w-full xl:max-w-[1600px] xl:px-8 2xl:px-12";
+
   // MailProvider polls /api/mail/unread every 30s; the SSR count seeds
   // its initial value so the badge has a number to show before the
   // first poll lands. Sidebar + tab title both read from the context
@@ -209,8 +222,13 @@ export function AppShell({
                   assumption holds. Tables (candidates / clients /
                   jobs / pipeline) already use `w-full` inside their
                   containers so they fill the 1600px cap rather than
-                  staying at intrinsic width. */}
-              <main className="min-w-0 flex-1 p-6 pl-3 pt-4 md:p-8 md:pl-4 md:pt-4 xl:mx-auto xl:w-full xl:max-w-[1600px] xl:px-8 2xl:px-12">{children}</main>
+                  staying at intrinsic width.
+                  Full-bleed pages (/candidates split view) opt out of
+                  the xl+ max-w cap because the auto-margin from
+                  mx-auto on wide monitors opens a visible gap to the
+                  left of the filter aside that the page's own
+                  negative-margin scheme can't escape. */}
+              <main className={mainCls}>{children}</main>
             </div>
           </div>
         </TextingProvider>
