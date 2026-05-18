@@ -1369,6 +1369,12 @@ function TrendCard({
                 <div className="relative flex w-full flex-1 items-end justify-center">
                   {isFuture ? (
                     <div className="h-full w-10 rounded-lg border border-dashed border-court-border bg-transparent" />
+                  ) : usd === 0 ? (
+                    // $0 month renders no bar at all — not even the track —
+                    // so it reads clearly distinct from a month with revenue.
+                    // The empty slot still occupies its flex-1 height so the
+                    // sibling APR/MAY/JUN labels stay aligned.
+                    null
                   ) : (
                     // Track + fill mirrors the Submitted → Placed funnel
                     // on the Scoreboard tab: bg-court-surface-subtle round
