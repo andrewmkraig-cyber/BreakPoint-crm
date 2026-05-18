@@ -2,6 +2,21 @@
 
 import { useMemo, useState } from "react";
 
+// Client.website rows are stored with whatever the recruiter pasted, so they
+// can be "https://sheehanvending.com/", "www.sheehanvending.com", or just
+// "sheehanvending.com". Clearbit only accepts the bare host, so we normalize
+// down to that before building the logo URL.
+function normalizeDomain(input: string | null | undefined): string | null {
+  if (!input) return null;
+  let v = input.trim();
+  if (!v) return null;
+  v = v.replace(/^https?:\/\//i, "");
+  v = v.replace(/^www\./i, "");
+  v = v.split("/")[0];
+  v = v.replace(/\/+$/, "");
+  return v || null;
+}
+
 function initials(name: string) {
   const parts = name.split(/[\s.,]+/).filter(Boolean);
   if (parts.length === 0) return "?";
@@ -44,8 +59,9 @@ export function ClientLogo({
   const [failed, setFailed] = useState(false);
   const bg = useMemo(() => clientIdentityColor(name), [name]);
   const radius = shape === "squircle" ? "rounded-xl" : "rounded-lg";
+  const normalizedDomain = useMemo(() => normalizeDomain(domain), [domain]);
 
-  if (variant === "initials" || !domain || failed) {
+  if (variant === "initials" || !normalizedDomain || failed) {
     return (
       <div
         className={`flex shrink-0 items-center justify-center ${radius} font-extrabold text-white`}
@@ -57,6 +73,13 @@ export function ClientLogo({
     );
   }
 
+  const clearbitUrl = `https://logo.clearbit.com/${normalizedDomain}?size=${size}`;
+  if (typeof window !== "undefined") {
+    // Debug aid while the regression is fresh; logs the resolved Clearbit
+    // URL so we can see when the request is firing and what domain it
+    // resolved to before Clearbit 404s into the initials fallback.
+    console.log("[ClientLogo] clearbit url", clearbitUrl);
+  }
   // Clearbit returns the company's real logo (not a favicon), so size scales
   // to whatever the consumer asks for and we don't pad inside the chip.
   // Plain <img> instead of next/image — Clearbit isn't on the next.config
@@ -64,7 +87,7 @@ export function ClientLogo({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={`https://logo.clearbit.com/${domain}`}
+      src={clearbitUrl}
       alt={`${name} logo`}
       width={size}
       height={size}
