@@ -6,7 +6,12 @@ import { Search, Loader2, MapPin } from "lucide-react";
 import { Pagination } from "@/components/pagination";
 import { SortableHeader, type SortDirection } from "@/components/sortable-header";
 import { cn } from "@/lib/utils";
-import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
+import {
+  DataTableBody,
+  DataTableHead,
+  DataTableHeaderCell,
+  DataTableRow,
+} from "@/components/ui/data-table";
 import { TabStrip } from "@/components/ui/tab-strip";
 
 export type JobLifecycle = "active" | "private" | "inactive";
@@ -157,19 +162,19 @@ export function JobsView(props: JobsViewProps) {
       <div className="overflow-hidden rounded-2xl border-0 bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] text-left text-sm">
-            <DataTableHead className="border-b-0 bg-court-surface-subtle text-[10px] tracking-[0.18em]">
+            <DataTableHead>
               <tr>
-                <DataTableHeaderCell className="py-3"><SortableHeader label="Client" columnKey="client" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
-                <DataTableHeaderCell className="py-3"><SortableHeader label="Job Title" columnKey="title" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
-                <DataTableHeaderCell className="py-3"><SortableHeader label="Location" columnKey="location" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
-                <DataTableHeaderCell className="py-3"><SortableHeader label="Compensation" columnKey="compensation" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
-                <DataTableHeaderCell className="py-3"><SortableHeader label="Last Edited" columnKey="lastEdited" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
-                <DataTableHeaderCell align="right" className="py-3"><SortableHeader label="Submitted" columnKey="submitted" activeKey={sort} activeDir={dir} buildHref={buildSortHref} align="right" /></DataTableHeaderCell>
-                <DataTableHeaderCell align="right" className="py-3"><SortableHeader label="Interviewing" columnKey="interviewing" activeKey={sort} activeDir={dir} buildHref={buildSortHref} align="right" /></DataTableHeaderCell>
-                <DataTableHeaderCell align="right" className="py-3"><SortableHeader label="Hired" columnKey="hired" activeKey={sort} activeDir={dir} buildHref={buildSortHref} align="right" /></DataTableHeaderCell>
+                <DataTableHeaderCell><SortableHeader label="Client" columnKey="client" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
+                <DataTableHeaderCell><SortableHeader label="Job Title" columnKey="title" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
+                <DataTableHeaderCell><SortableHeader label="Location" columnKey="location" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
+                <DataTableHeaderCell><SortableHeader label="Compensation" columnKey="compensation" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
+                <DataTableHeaderCell><SortableHeader label="Last Edited" columnKey="lastEdited" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
+                <DataTableHeaderCell align="right"><SortableHeader label="Submitted" columnKey="submitted" activeKey={sort} activeDir={dir} buildHref={buildSortHref} align="right" /></DataTableHeaderCell>
+                <DataTableHeaderCell align="right"><SortableHeader label="Interviewing" columnKey="interviewing" activeKey={sort} activeDir={dir} buildHref={buildSortHref} align="right" /></DataTableHeaderCell>
+                <DataTableHeaderCell align="right"><SortableHeader label="Hired" columnKey="hired" activeKey={sort} activeDir={dir} buildHref={buildSortHref} align="right" /></DataTableHeaderCell>
               </tr>
             </DataTableHead>
-            <tbody className="divide-y divide-court-border-soft">
+            <DataTableBody>
               {rows.length === 0 && !error && (
                 <tr>
                   <td colSpan={8} className="px-5 py-12 text-center text-sm text-court-fg-muted">
@@ -183,12 +188,12 @@ export function JobsView(props: JobsViewProps) {
                 </tr>
               )}
               {rows.map((r) => (
-                <tr
+                <DataTableRow
                   key={r.id}
-                  className="group cursor-pointer transition hover:bg-court-brand-tint/60"
+                  className="group cursor-pointer"
                   onClick={() => router.push(`/jobs/${r.slug}`)}
                 >
-                  <td className="px-5 py-3 align-top text-[13px] font-semibold text-court-fg">
+                  <td className="px-4 py-3 align-top text-[13px] font-semibold text-court-fg">
                     {/* Whole row navigates to the job — the client name
                         cell intentionally has no separate <Link>, so a
                         click anywhere in the row (including this cell)
@@ -206,10 +211,10 @@ export function JobsView(props: JobsViewProps) {
                       )}
                     </span>
                   </td>
-                  <td className="px-5 py-3 align-top">
-                    <div className="text-[13px] font-medium text-court-fg group-hover:text-court-brand-dark">{r.title}</div>
+                  <td className="px-4 py-3 align-top">
+                    <div className="text-[13px] font-semibold text-court-fg group-hover:text-court-brand-dark">{r.title}</div>
                   </td>
-                  <td className="px-5 py-3 align-top font-mono text-[12px] text-court-fg-muted">
+                  <td className="px-4 py-3 align-top font-mono text-[12px] text-court-fg-muted">
                     {r.location ? (
                       <span className="inline-flex items-center gap-1">
                         <MapPin className="h-3 w-3 text-court-fg-muted" />
@@ -219,22 +224,22 @@ export function JobsView(props: JobsViewProps) {
                       "—"
                     )}
                   </td>
-                  <td className="px-5 py-3 align-top font-mono text-[12px] text-court-fg-muted">{r.compensation || "—"}</td>
-                  <td className="px-5 py-3 align-top font-mono text-[12px] text-court-fg-muted">
+                  <td className="px-4 py-3 align-top font-mono text-[12px] text-court-fg-muted">{r.compensation || "—"}</td>
+                  <td className="px-4 py-3 align-top font-mono text-[12px] text-court-fg-muted">
                     {r.lastEditedAt ? new Date(r.lastEditedAt).toLocaleDateString() : "—"}
                   </td>
-                  <td className="px-5 py-3 align-top text-right">
+                  <td className="px-4 py-3 align-top text-right">
                     <CountPill value={r.submittedCount} tone="submitted" />
                   </td>
-                  <td className="px-5 py-3 align-top text-right">
+                  <td className="px-4 py-3 align-top text-right">
                     <CountPill value={r.interviewingCount} tone="interviewing" />
                   </td>
-                  <td className="px-5 py-3 align-top text-right">
+                  <td className="px-4 py-3 align-top text-right">
                     <CountPill value={r.hiredCount} tone="hired" />
                   </td>
-                </tr>
+                </DataTableRow>
               ))}
-            </tbody>
+            </DataTableBody>
           </table>
         </div>
         <Pagination

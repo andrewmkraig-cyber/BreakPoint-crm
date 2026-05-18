@@ -8,6 +8,12 @@ import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
+  DataTableBody,
+  DataTableHead,
+  DataTableHeaderCell,
+  DataTableRow,
+} from "@/components/ui/data-table";
+import {
   keepCandidateForJob,
   keepLocalCandidateForJob,
   rejectLocalCandidateJob,
@@ -81,7 +87,7 @@ function JobCell({
 }
 
 // Spec rule 3 — status pills.
-function StatusChip({ status }: { status: "new" | "reviewed" | "rejected" }) {
+export function StatusChip({ status }: { status: "new" | "reviewed" | "rejected" }) {
   const label = status === "new" ? "New" : status === "reviewed" ? "Kept" : "Rejected";
   const cls =
     status === "new"
@@ -253,33 +259,21 @@ export function ApplicantsView({
     }
   }
 
-  // Spec rule 5: large serif count + "applicants" muted; zero count
-  // dims to text-court-border opacity-50 per rule 6.
   const visibleCount = visibleRows.length;
-  const colSpan = tab === "applied" ? 7 : 6;
+  const colSpan = tab === "applied" ? 6 : 5;
 
   return (
     <div className="-m-4 min-h-[calc(100vh-6rem)] bg-court-surface-subtle p-4 sm:-m-6 sm:p-6">
       <div className="space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="flex items-baseline gap-2">
-            <span
-              className={cn(
-                "font-serif text-[22px] font-extrabold leading-none tabular-nums",
-                visibleCount === 0 ? "text-court-border opacity-50" : "text-court-fg",
-              )}
-            >
-              {visibleCount}
-            </span>
-            <span className="text-[13px] text-court-fg-muted">
-              {visibleCount === 1 ? "applicant" : "applicants"}
-            </span>
-          </div>
+        <div className="flex flex-wrap items-center gap-3">
           <FilterChips
             tab={tab}
             onTab={setTab}
             counts={{ applied: applied.length, kept: kept.length }}
           />
+          <span className="text-[13px] text-court-fg-muted">
+            {visibleCount} {visibleCount === 1 ? "applicant" : "applicants"}
+          </span>
         </div>
 
         {selectedKeys.size > 0 && (
@@ -313,7 +307,7 @@ export function ApplicantsView({
         <div className="overflow-hidden rounded-2xl border-0 bg-court-surface shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[960px] text-left text-sm">
-              <thead className="bg-court-surface-subtle">
+              <DataTableHead>
                 <tr>
                   <th scope="col" className="w-px px-3 py-3 text-center">
                     <input
@@ -337,15 +331,10 @@ export function ApplicantsView({
                   {tab === "applied" && (
                     <ColHeader label="Source" active={sortKey === "source"} dir={sortDir} onClick={() => toggleSort("source")} />
                   )}
-                  <th scope="col" className="px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
-                    Status
-                  </th>
-                  <th scope="col" className="px-5 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
-                    Actions
-                  </th>
+                  <DataTableHeaderCell align="right">Actions</DataTableHeaderCell>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-court-border-soft">
+              </DataTableHead>
+              <DataTableBody>
                 {tab === "applied" ? (
                   sortedApplied.length === 0 ? (
                     <EmptyRow label="No applicants in this view." colSpan={colSpan} />
@@ -377,7 +366,7 @@ export function ApplicantsView({
                     );
                   })
                 )}
-              </tbody>
+              </DataTableBody>
             </table>
           </div>
         </div>
@@ -470,7 +459,7 @@ function ColHeader({
   onClick: () => void;
 }) {
   return (
-    <th scope="col" className="px-5 py-3">
+    <th scope="col" className="px-4 py-3">
       <button
         type="button"
         onClick={onClick}
@@ -518,7 +507,7 @@ function AppliedRowView({
   }
 
   return (
-    <tr className="transition hover:bg-court-surface-subtle/60">
+    <DataTableRow>
       <td className="w-px px-3 py-3 align-middle text-center">
         <input
           type="checkbox"
@@ -528,7 +517,7 @@ function AppliedRowView({
           className="h-3.5 w-3.5 cursor-pointer accent-brand"
         />
       </td>
-      <td className="px-5 py-3 align-middle">
+      <td className="px-4 py-3 align-middle">
         <Link
           href={`/candidates/${row.candidateId}`}
           className="text-[13px] font-semibold text-court-fg hover:text-court-brand-dark"
@@ -536,7 +525,7 @@ function AppliedRowView({
           {row.candidateName}
         </Link>
       </td>
-      <td className="px-5 py-3 align-middle">
+      <td className="px-4 py-3 align-middle">
         <JobCell
           jobId={row.jobId}
           jobTitle={row.jobTitle}
@@ -544,17 +533,14 @@ function AppliedRowView({
           clientName={row.clientName}
         />
       </td>
-      <td className="px-5 py-3 align-middle font-mono text-[11px] text-court-fg-muted">
+      <td className="px-4 py-3 align-middle font-mono text-[11px] text-court-fg-muted">
         {formatDate(row.appliedAt)}
       </td>
-      <td className="px-5 py-3 align-middle font-mono text-[11px] text-court-fg-muted">
+      <td className="px-4 py-3 align-middle font-mono text-[11px] text-court-fg-muted">
         {formatSourceLabel(row.source)}
       </td>
-      <td className="px-5 py-3 align-middle">
-        <StatusChip status="new" />
-      </td>
-      <td className="px-5 py-3 align-middle">
-        <div className="flex flex-nowrap items-center justify-end gap-1.5">
+      <td className="px-4 py-3 align-middle">
+        <div className="flex flex-row flex-nowrap items-center justify-end gap-2">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
           <Link
             href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
@@ -610,7 +596,7 @@ function AppliedRowView({
           </Button>
         </div>
       </td>
-    </tr>
+    </DataTableRow>
   );
 }
 
@@ -639,7 +625,7 @@ function KeptRowView({
   }
 
   return (
-    <tr className="transition hover:bg-court-surface-subtle/60">
+    <DataTableRow>
       <td className="w-px px-3 py-3 align-middle text-center">
         <input
           type="checkbox"
@@ -649,7 +635,7 @@ function KeptRowView({
           className="h-3.5 w-3.5 cursor-pointer accent-brand"
         />
       </td>
-      <td className="px-5 py-3 align-middle">
+      <td className="px-4 py-3 align-middle">
         <Link
           href={`/candidates/${row.candidateId}`}
           className="text-[13px] font-semibold text-court-fg hover:text-court-brand-dark"
@@ -657,7 +643,7 @@ function KeptRowView({
           {row.candidateName}
         </Link>
       </td>
-      <td className="px-5 py-3 align-middle">
+      <td className="px-4 py-3 align-middle">
         <JobCell
           jobId={row.jobId}
           jobTitle={row.jobTitle}
@@ -665,14 +651,11 @@ function KeptRowView({
           clientName={row.clientName}
         />
       </td>
-      <td className="px-5 py-3 align-middle font-mono text-[11px] text-court-fg-muted">
+      <td className="px-4 py-3 align-middle font-mono text-[11px] text-court-fg-muted">
         {formatDate(row.keptAt)}
       </td>
-      <td className="px-5 py-3 align-middle">
-        <StatusChip status="reviewed" />
-      </td>
-      <td className="px-5 py-3 align-middle">
-        <div className="flex flex-nowrap items-center justify-end gap-1.5">
+      <td className="px-4 py-3 align-middle">
+        <div className="flex flex-row flex-nowrap items-center justify-end gap-2">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
           <Link
             href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
@@ -714,7 +697,7 @@ function KeptRowView({
           </Button>
         </div>
       </td>
-    </tr>
+    </DataTableRow>
   );
 }
 

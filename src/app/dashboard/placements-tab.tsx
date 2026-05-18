@@ -1,3 +1,5 @@
+import { Clock, DollarSign, TrendingUp } from "lucide-react";
+
 import { PlacementsBreakdowns } from "@/components/placements/placements-breakdowns";
 import {
   PlacementsLedger,
@@ -37,7 +39,7 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
   const metrics = computeMetrics(rows);
 
   return (
-    <div className="flex flex-col gap-6 rounded-2xl bg-court-brand-tint p-5">
+    <div className="flex flex-col gap-6 rounded-2xl bg-court-surface-subtle p-5">
       <div className="flex items-center justify-between gap-3">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           PLACEMENTS ON THE BOOKS
@@ -49,6 +51,7 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
           <KpiTile
             label="Fees"
             value={metrics.fees > 0 ? formatMoneyShort(metrics.fees) : "—"}
+            icon={DollarSign}
             zeroDim
           />
         </div>
@@ -56,6 +59,7 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
           <KpiTile
             label="Revenue"
             value={metrics.revenue > 0 ? formatMoneyShort(metrics.revenue) : "—"}
+            icon={TrendingUp}
             zeroDim
           />
         </div>
@@ -63,6 +67,7 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
           <KpiTile
             label="Pending Starts"
             value={String(metrics.pendingStarts)}
+            icon={Clock}
             zeroDim
           />
         </div>
