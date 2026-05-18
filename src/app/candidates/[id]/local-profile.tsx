@@ -417,15 +417,17 @@ export async function LocalCandidateProfile({
     // re-runs this component and the new placement lands here on the
     // next render, so the pill shows up without the iframe having to
     // navigate away.
-    const embedPills = placements.map((p) => {
-      const rfJob = p.jobRfId != null
-        ? allJobs.find((j) => j.id === p.jobRfId) ?? null
-        : p.jobId
-          ? allJobs.find((j) => (j as { _aceJobId?: string })._aceJobId === p.jobId) ?? null
-          : null;
-      const title = rfJob ? normalizeJob(rfJob).title : "(job)";
-      return { id: p.id, title, stage: p.stage };
-    });
+    const embedPills = placements
+      .filter((p) => p.stage !== "cancelled" && p.stage !== "rejected")
+      .map((p) => {
+        const rfJob = p.jobRfId != null
+          ? allJobs.find((j) => j.id === p.jobRfId) ?? null
+          : p.jobId
+            ? allJobs.find((j) => (j as { _aceJobId?: string })._aceJobId === p.jobId) ?? null
+            : null;
+        const title = rfJob ? normalizeJob(rfJob).title : "(job)";
+        return { id: p.id, title, stage: p.stage };
+      });
     return (
       <>
         {/* Scoped to #resume-document-content (rendered by
@@ -688,6 +690,22 @@ export async function LocalCandidateProfile({
     return { firstName, fullName, email, phone };
   })();
 
+  // Active-placement pills shown above the tab strip on the non-embed
+  // profile. Filters out cancelled / rejected so the strip only shows
+  // jobs the candidate is still in play for. Embed surface uses its
+  // own embedPills (computed up in the embed branch) and is unaffected.
+  const activePills = placements
+    .filter((p) => p.stage !== "cancelled" && p.stage !== "rejected")
+    .map((p) => {
+      const rfJob = p.jobRfId != null
+        ? allJobs.find((j) => j.id === p.jobRfId) ?? null
+        : p.jobId
+          ? allJobs.find((j) => (j as { _aceJobId?: string })._aceJobId === p.jobId) ?? null
+          : null;
+      const title = rfJob ? normalizeJob(rfJob).title : "(job)";
+      return { id: p.id, title, stage: p.stage };
+    });
+
   return (
     <div className="space-y-6">
       {embed ? null : <CandidateProfileNav currentId={candidate.id} />}
@@ -741,6 +759,18 @@ export async function LocalCandidateProfile({
           CompactOverview box. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="space-y-4 lg:col-span-8">
+          {activePills.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {activePills.map((p) => (
+                <span
+                  key={p.id}
+                  className="inline-flex items-center gap-1 rounded-full border border-court-accent/40 bg-court-accent-tint px-2.5 py-0.5 text-[11px] font-semibold text-court-brand-dark"
+                >
+                  {p.title} · {p.stage}
+                </span>
+              ))}
+            </div>
+          )}
           <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center gap-3 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
             <UnderlineTabs tab={tab} candidateId={candidate.id} />
           </div>

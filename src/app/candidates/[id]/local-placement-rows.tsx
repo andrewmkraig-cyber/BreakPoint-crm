@@ -300,9 +300,9 @@ function LocalJobActionRow({
     normalizedStage === "submitted" || normalizedStage === "interviewing";
 
   // Reapply is the inverse of Reject — visible only on already-rejected
-  // rows. Deletes the Placement row entirely so the candidate gets a
-  // clean slate for that job (no submitted-fallback to manage), and
-  // drops the row from local state via onPlacementRemoved.
+  // rows. Moves the row back to "applied" stage so the candidate
+  // appears on /applicants and the job pill stays visible on their
+  // profile.
   const canReapply = normalizedStage === "rejected";
 
   function onReject() {
@@ -312,7 +312,7 @@ function LocalJobActionRow({
   function onReapply() {
     if (
       !confirm(
-        `Reapply ${candidateName} to ${job.jobTitle}? This deletes the rejected placement row so the candidate gets a clean slate for this job.`,
+        `Reapply ${candidateName} to ${job.jobTitle}? Moves the placement back to Applied so they show up on /applicants.`,
       )
     ) {
       return;
@@ -324,11 +324,7 @@ function LocalJobActionRow({
         return;
       }
       toast.success(`Reapplied ${candidateName}`);
-      if (onPlacementRemoved) {
-        onPlacementRemoved(job.placementId);
-      } else {
-        router.refresh();
-      }
+      router.refresh();
     });
   }
 

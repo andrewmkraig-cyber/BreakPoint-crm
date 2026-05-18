@@ -16,6 +16,9 @@ import {
   Receipt,
   Calendar,
   Settings,
+  NotebookPen,
+  BarChart3,
+  Trophy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandMark } from "@/components/brand-mark";
@@ -25,13 +28,11 @@ import { usePhoneContext } from "@/lib/phone-context";
 
 // Main nav grouped into recruiter workflow sections:
 //   Clubhouse (ungrouped overview at top — home/dashboard surface)
+//   Inbox — Mail → Phone (inbox check pinned high so unread badges read fast)
 //   ATS — Pipeline → Applicants → Candidates (active recruiting work)
-//   CRM — Clients → Jobs → BD (reference surfaces)
-//   Inbox — Mail → Phone (inbox check)
-//   Ops · Invoices, Calendar (back-office surfaces)
-// The inbox + ops blocks live toward the bottom because the recruiter
-// spends most of the day in ATS/CRM and only dips into them when an
-// alert (or a billing task) pulls them there.
+//   CRM — Jobs → Clients → BD (reference surfaces)
+//   Ops — Calendar → Finances → Notes (back-office surfaces)
+//   Scoreboard — Metrics → Placements (dashboard deep-links)
 type NavGroup = {
   title: string | null;
   items: ReadonlyArray<{
@@ -54,6 +55,13 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
     ],
   },
   {
+    title: "Inbox",
+    items: [
+      { href: "/mail", label: "Mail", icon: Mail, iconColor: "text-red-400" },
+      { href: "/phone", label: "Phone", icon: Phone, iconColor: "text-teal-400" },
+    ],
+  },
+  {
     title: "ATS",
     items: [
       { href: "/pipeline", label: "Pipeline", icon: GitBranch, iconColor: "text-sky-400" },
@@ -70,18 +78,18 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
     ],
   },
   {
-    title: "Inbox",
-    items: [
-      { href: "/mail", label: "Mail", icon: Mail, iconColor: "text-red-400" },
-      { href: "/phone", label: "Phone", icon: Phone, iconColor: "text-teal-400" },
-    ],
-  },
-  // OPS · back-office surfaces. Calendar first, Invoices below it.
-  {
     title: "Ops",
     items: [
       { href: "/calendar", label: "Calendar", icon: Calendar, iconColor: "text-orange-400" },
       { href: "/finances", label: "Finances", icon: Receipt, iconColor: "text-lime-400" },
+      { href: "/notes", label: "Notes", icon: NotebookPen, iconColor: "text-yellow-400" },
+    ],
+  },
+  {
+    title: "Scoreboard",
+    items: [
+      { href: "/dashboard?tab=scoreboard", label: "Metrics", icon: BarChart3, iconColor: "text-fuchsia-400" },
+      { href: "/dashboard?tab=placements", label: "Placements", icon: Trophy, iconColor: "text-emerald-400" },
     ],
   },
 ];

@@ -664,15 +664,23 @@ export async function reapplyCancelledPlacement(input: ReapplyInput): Promise<Re
     if (!p) return { ok: false, error: "Placement not found." };
     if (p.stage !== "cancelled") return { ok: false, error: "Not a cancelled placement." };
 
-    await prisma.placement.delete({ where: { id: input.placementId } });
+    // Reapply now moves the cancelled row to "applied" stage so the
+    // candidate appears on /applicants and the job pill stays visible
+    // on their profile. Previous behavior (delete the row) wiped the
+    // pill entirely and dropped them off Applicants.
+    await prisma.placement.update({
+      where: { id: input.placementId },
+      data: { stage: "applied", syncedToRf: false, invoicingFlagged: false },
+    });
     await createActionLog({
       userId,
       actionType: "reapply_cancelled_placement",
       subjectType: "candidate",
       subjectId: String(p.candidateRfId),
-      metadata: { jobRfId: p.jobRfId, clientRfId: p.clientRfId, placementId: input.placementId, target: "submitted" },
+      metadata: { jobRfId: p.jobRfId, clientRfId: p.clientRfId, placementId: input.placementId, target: "applied" },
     });
     revalidatePath(`/candidates/${p.candidateRfId}`);
+    revalidatePath(`/applicants`);
     revalidatePath(`/pipeline`);
     return { ok: true };
   } catch (e) {
@@ -1528,6 +1536,7 @@ export type SendSubmittalInput = {
   clientName: string;
   to: string[];
   cc: string[];
+  bcc?: string[];
   subject: string;
   body: string;
   // When the composer is in rich-text (Tiptap) mode, the client sends HTML
@@ -1646,6 +1655,7 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
       fromName,
       to: input.to,
       cc: input.cc,
+      bcc: input.bcc,
       subject: input.subject.trim(),
       // Rich path: the Tiptap editor already produced the <p>/<strong>/<u>
       // structure we want in Gmail, so skip the marker conversion. The plain

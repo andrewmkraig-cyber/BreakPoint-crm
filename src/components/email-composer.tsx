@@ -709,6 +709,19 @@ export function EmailComposer({
               <Row label="Cc">
                 <ContactMultiPicker value={cc} onChange={setCc} options={recipientOptions} />
               </Row>
+              <Row label="Bcc">
+                {effectiveBccOptions && effectiveBccOptions.length > 0 ? (
+                  <ContactComboMulti
+                    value={bcc}
+                    onChange={setBcc}
+                    options={effectiveBccOptions}
+                    pinned={ccBccPinned}
+                    placeholder="Pick a teammate or type email…"
+                  />
+                ) : (
+                  <Input value={bcc} onChange={setBcc} placeholder="bcc@example.com" />
+                )}
+              </Row>
             </>
           ) : (
             <>

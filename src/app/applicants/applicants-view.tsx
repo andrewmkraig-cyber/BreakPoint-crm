@@ -632,31 +632,28 @@ function KeptRowView({
   );
 }
 
-// Shared row-action chip styles. All three tones (primary/keep/reject)
-// share the same shape, padding, and font so Submit/Keep/Reject read
-// as one button family. Each tone carries its own light + dark
-// palette — the dark variants drop the saturated bg-X-50 tiles down
-// to bg-X-950/40 so they don't pop on a dark page. Submit uses court-
-// brand tokens because primary action color follows whichever Court
-// Mode is active.
+// Shared row-action chip styles. Submit is the affirmative pill — green
+// filled, rounded-full. Keep/Reject stay as the tinted rounded-md chips
+// they were so the destructive/save intents read as their own family.
+// Submit uses court-brand tokens so primary action color follows
+// whichever Court Mode is active; the same shape ships on the
+// candidate profile action row so the Submit pill matches across both
+// surfaces.
 const ROW_ACTION_BASE =
-  "inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border px-2.5 text-[11px] font-semibold shadow-sm transition disabled:opacity-60";
+  "inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap border px-2.5 text-[11px] font-semibold shadow-sm transition disabled:opacity-60";
 
-// Token-aligned twins of Button "primary" / "keep" / "reject" variants
-// so the row-action chips read identically to the shared <Button>
-// primitive without forcing every row into the larger <Button> sizing.
 const ROW_ACTION_CLASS = {
   primary: cn(
     ROW_ACTION_BASE,
-    "border-court-brand bg-court-brand-tint text-court-brand-dark hover:bg-court-brand/25",
+    "rounded-full border-court-brand bg-court-brand text-white hover:bg-court-brand-dark",
   ),
   keep: cn(
     ROW_ACTION_BASE,
-    "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60",
+    "rounded-md border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60",
   ),
   reject: cn(
     ROW_ACTION_BASE,
-    "border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60",
+    "rounded-md border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60",
   ),
 };
 

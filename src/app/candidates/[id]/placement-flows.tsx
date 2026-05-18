@@ -919,13 +919,13 @@ function CancelledRowActions({ placementId }: { placementId: string }) {
                 <button
                   type="button"
                   onClick={() =>
-                    run("Moved to Submitted", () =>
+                    run("Moved to Applied", () =>
                       reapplyCancelledPlacement({ placementId }),
                     )
                   }
                   className="block w-full px-3 py-2 text-left text-court-fg hover:bg-court-brand-tint"
                 >
-                  Reapply (move to Submitted)
+                  Reapply (move to Applied)
                 </button>
               </li>
               <li>
@@ -939,19 +939,6 @@ function CancelledRowActions({ placementId }: { placementId: string }) {
                   className="block w-full px-3 py-2 text-left text-court-fg hover:bg-court-brand-tint"
                 >
                   Move to Sourced
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() =>
-                    run("Moved to Applied", () =>
-                      moveCancelledToAceStage({ placementId, target: "applied" }),
-                    )
-                  }
-                  className="block w-full px-3 py-2 text-left text-court-fg hover:bg-court-brand-tint"
-                >
-                  Move to Applied
                 </button>
               </li>
               <li>
@@ -3103,6 +3090,7 @@ function SubmittalEmailCompose({
           clientName: job.clientName,
           to: draft.to,
           cc: draft.cc,
+          bcc: draft.bcc,
           subject: draft.subject,
           body: draft.body,
           bodyHtml: draft.bodyHtml,

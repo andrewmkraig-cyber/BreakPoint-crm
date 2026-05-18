@@ -612,10 +612,17 @@ export async function reapplyLocalPlacement(input: {
       },
     });
     if (!placement) return { ok: false, error: "Placement not found." };
-    if (placement.stage !== "rejected") {
-      return { ok: false, error: "Only rejected placements can be reapplied." };
+    if (placement.stage !== "rejected" && placement.stage !== "cancelled") {
+      return { ok: false, error: "Only rejected or cancelled placements can be reapplied." };
     }
-    await prisma.placement.delete({ where: { id: input.placementId } });
+    // Reapply moves the row to "applied" stage so the candidate appears
+    // on /applicants and the job pill stays visible on their profile.
+    // Previous behavior deleted the row entirely, which dropped them
+    // from Applicants and wiped the pill.
+    await prisma.placement.update({
+      where: { id: input.placementId },
+      data: { stage: "applied", syncedToRf: false, invoicingFlagged: false },
+    });
     await createActionLog({
       userId: user.id,
       actionType: "reapply_local_placement",
@@ -627,11 +634,13 @@ export async function reapplyLocalPlacement(input: {
         jobRfId: placement.jobRfId,
         clientId: placement.clientId,
         clientRfId: placement.clientRfId,
-        previousStage: "rejected",
+        previousStage: placement.stage,
+        target: "applied",
         local: true,
       },
     });
     if (placement.candidateId) revalidatePath(`/candidates/${placement.candidateId}`);
+    revalidatePath(`/applicants`);
     revalidatePath(`/pipeline`);
     return { ok: true };
   } catch (e) {
