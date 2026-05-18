@@ -37,26 +37,24 @@ export async function Scoreboard({
   ]);
 
   return (
-    <div className="-m-4 min-h-[calc(100vh-6rem)] bg-court-surface-subtle p-4 sm:-m-6 sm:p-6">
-      <div className="flex flex-col gap-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
-            Deal Flow &amp; Forecast
-          </p>
-          <PeriodPillToggle period={period} />
-        </div>
-        <KpiRow kpis={data.kpis} periodLabel={data.period.label} />
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-          <FunnelCard funnel={data.funnel} />
-          <CashForecastCard cash={data.cashForecast} />
-        </div>
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-          <TopClientsCard rows={data.topClients} />
-          <TopRolesCard rows={data.topRoles} />
-          <MomentumCard events={data.momentum} />
-        </div>
-        <GoalPacingCard data={goalPacing} />
+    <div className="flex flex-col gap-6 rounded-2xl bg-court-surface-subtle p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
+          Deal Flow &amp; Forecast
+        </p>
+        <PeriodPillToggle period={period} />
       </div>
+      <KpiRow kpis={data.kpis} periodLabel={data.period.label} />
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <FunnelCard funnel={data.funnel} />
+        <CashForecastCard cash={data.cashForecast} />
+      </div>
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+        <TopClientsCard rows={data.topClients} />
+        <TopRolesCard rows={data.topRoles} />
+        <MomentumCard events={data.momentum} />
+      </div>
+      <GoalPacingCard data={goalPacing} />
     </div>
   );
 }
@@ -109,14 +107,15 @@ function KpiRow({ kpis, periodLabel }: { kpis: Kpis; periodLabel: string }) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5">
       {tiles.map((t) => (
-        <KpiTile
-          key={t.label}
-          label={t.label}
-          value={t.value}
-          icon={t.icon}
-          subtext={t.sub}
-          zeroDim
-        />
+        <div key={t.label} className="rounded-2xl shadow-sm">
+          <KpiTile
+            label={t.label}
+            value={t.value}
+            icon={t.icon}
+            subtext={t.sub}
+            zeroDim
+          />
+        </div>
       ))}
     </div>
   );
@@ -508,7 +507,7 @@ function SectionHeader({
 }) {
   return (
     <div>
-      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
         {eyebrow}
       </p>
       <h3 className="font-serif text-[18px] font-bold tracking-tight text-court-fg">

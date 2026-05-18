@@ -106,21 +106,33 @@ export async function MyDashboard({
   const currentQuarterLabel = `Q${Math.floor(now.getMonth() / 3) + 1} ${now.getFullYear()}`;
 
   return (
-    <div className="flex w-full flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-court-border bg-court-surface px-4 py-3">
-        <p className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+    <div className="flex flex-col gap-6 rounded-2xl bg-court-surface-subtle p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           {activityEyebrow}
         </p>
         <ClubhousePeriodTabs period={period} />
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 md:grid-cols-6">
-        <KpiTile label="New Clients" value={newClientsCount} icon={Building2} live={newClientsCount > 0} />
-        <KpiTile label="Agreements Signed" value={agreementsSignedCount} icon={FileSignature} live={agreementsSignedCount > 0} />
-        <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} live={submitLogCount > 0} />
-        <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} live={interviewsScheduledCount > 0} />
-        <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} live={offersExtendedCount > 0} />
-        <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} live={placementsMadeCount > 0} />
+        <div className="rounded-2xl shadow-sm">
+          <KpiTile label="New Clients" value={newClientsCount} icon={Building2} live={newClientsCount > 0} />
+        </div>
+        <div className="rounded-2xl shadow-sm">
+          <KpiTile label="Agreements Signed" value={agreementsSignedCount} icon={FileSignature} live={agreementsSignedCount > 0} />
+        </div>
+        <div className="rounded-2xl shadow-sm">
+          <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} live={submitLogCount > 0} />
+        </div>
+        <div className="rounded-2xl shadow-sm">
+          <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} live={interviewsScheduledCount > 0} />
+        </div>
+        <div className="rounded-2xl shadow-sm">
+          <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} live={offersExtendedCount > 0} />
+        </div>
+        <div className="rounded-2xl shadow-sm">
+          <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} live={placementsMadeCount > 0} />
+        </div>
       </div>
 
       <FinancialStrip
