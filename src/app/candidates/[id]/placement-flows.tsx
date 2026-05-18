@@ -66,6 +66,14 @@ import {
 import { PipelineRowActions } from "@/app/jobs/[id]/pipeline-row-actions";
 import { LEAD_SOURCES } from "@/lib/lead-sources";
 
+// Submittal composer BCC dropdown is locked to a single Austin entry —
+// every other Submit composer surface (Ace-native, Submittal compose,
+// etc.) uses the same constant so the BCC roster is one source of
+// truth. Add a teammate here when the roster grows.
+const AUSTIN_BCC = [
+  { id: "austin", name: "Austin Barnard", email: "austin@breakpointtalent.com" },
+];
+
 export type ClientContactRef = {
   id: number;
   name: string;
@@ -726,7 +734,6 @@ export function PlacementActions({
           candidateLastName={candidateLastName}
           candidateEmail={candidateEmail}
           openJobs={openJobs}
-          allContacts={collectAllContacts(openJobs)}
           initialJobRfId={submitInitialJobRfId ?? undefined}
           onClose={() => {
             setSubmitOpen(false);
@@ -2795,33 +2802,12 @@ function ApplyToJobDialog({
 // sending, the candidate confirmation ("Great News…") is auto-drafted in
 // Gmail for the recruiter to review and send manually.
 
-// Dedupe contacts across every job in the candidate's open-jobs pool so
-// the Submit composer's BCC dropdown lists every contact the recruiter
-// could reasonably loop in, not just the picked client's own roster.
-// Keyed by lowercased email since the same person can appear under
-// multiple clients with case-only variants.
-function collectAllContacts(
-  openJobs: OpenJobOption[],
-): { id: string; name: string; email: string }[] {
-  const byEmail = new Map<string, { id: string; name: string; email: string }>();
-  for (const j of openJobs) {
-    for (const c of j.clientContacts) {
-      if (!c.email) continue;
-      const key = c.email.toLowerCase();
-      if (byEmail.has(key)) continue;
-      byEmail.set(key, { id: String(c.id), name: c.name, email: c.email });
-    }
-  }
-  return Array.from(byEmail.values()).sort((a, b) => a.name.localeCompare(b.name));
-}
-
 function SubmitToJobDialog({
   candidateRfId,
   candidateFirstName,
   candidateLastName,
   candidateEmail,
   openJobs,
-  allContacts,
   initialJobRfId,
   onClose,
 }: {
@@ -2830,9 +2816,6 @@ function SubmitToJobDialog({
   candidateLastName: string;
   candidateEmail: string;
   openJobs: OpenJobOption[];
-  // Deduped contact pool surfaced in the Submit composer's BCC field —
-  // not just the picked client's own roster.
-  allContacts: { id: string; name: string; email: string }[];
   // When set (e.g. via the ?compose=submittal&jobId=X deep link from
   // the Applicants page or the Job-page pipeline row), skip the
   // job-picker step entirely and open the composer for that job.
@@ -2874,7 +2857,6 @@ function SubmitToJobDialog({
         candidateLastName={candidateLastName}
         candidateEmail={candidateEmail}
         job={picked}
-        allContacts={allContacts}
         onBack={() => setComposing(false)}
         onDone={() => {
           onClose();
@@ -2924,7 +2906,6 @@ function SubmittalEmailCompose({
   candidateLastName,
   candidateEmail,
   job,
-  allContacts,
   onBack,
   onDone,
 }: {
@@ -2933,10 +2914,6 @@ function SubmittalEmailCompose({
   candidateLastName: string;
   candidateEmail: string;
   job: OpenJobOption;
-  // Full deduped contact pool used for the BCC picker — wider than the
-  // picked client's own roster so the recruiter can BCC anyone they've
-  // touched recently.
-  allContacts: { id: string; name: string; email: string }[];
   onBack: () => void;
   onDone: () => void;
 }) {
@@ -2999,7 +2976,7 @@ function SubmittalEmailCompose({
         body: "",
       }}
       recipientOptions={contactOptions}
-      bccOptions={[{ id: "austin", name: "Austin Barnard", email: "austin@breakpointtalent.com" }]}
+      bccOptions={AUSTIN_BCC}
       onClose={onBack}
       sendLabel="Send Submittal"
       sendingLabel="Sending…"
