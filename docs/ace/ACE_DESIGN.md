@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-05-16 · Ace 50.0
+Last updated: 2026-05-18 · Ace 54.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -231,7 +231,19 @@ When Claude Code builds any new component or page:
 
 After dedicated polish phase ships, Andrew sends updated screenshots for a second-pass tightening (micro-interactions, spacing tuning, alignment, "this still looks off" fixes).
 
-## Button System (added Ace 24.0)
+## Button Standard (added Ace 54.0 - DO NOT CHANGE)
+Source of truth for every button across the app. Mirrors the same block in ACE_RULES.md.
+- **Action row buttons** (Submit, Apply, Keep, Reject, Add Note, Add to List): `rounded-md`, outlined, colored border + text, transparent background.
+- **Toolbar buttons** (Use Template, Insert Field, Edit with Claude, Delete, Save Draft, Send): `rounded-md`, outlined, NOT pill shaped.
+- **Generate with Claude / Generate Resume / Generate JD**: `rounded-md`, dark green outlined (`border-court-brand-dark text-court-brand-dark`), NOT solid filled.
+- **Primary CTA** (New Candidate, New Job, + New X at page tops, Save, Create): `rounded-md`, filled green (`bg-court-brand text-white`).
+- **Upload Resume**: `rounded-md`, blue outlined (`border-blue-500 text-blue-600`).
+- **Tab strip active**: `rounded-md border-court-brand text-court-brand font-semibold` transparent background.
+- **NEVER use `rounded-full` on any button.** `rounded-full` is reserved for badges, chips, status pills, and avatars ONLY.
+
+Supersedes the older "All buttons are rounded-full" rule from the Ace 24.0 Button System section below.
+
+## Button System (added Ace 24.0 — superseded by Button Standard above as of Ace 54.0; kept for historical context)
 Shared component: src/components/ui/button.tsx
 Variants:
 - primary: bg-brand text-white hover:bg-brand-dark (green - Submit, Save, Create)
@@ -240,7 +252,7 @@ Variants:
 - apply: bg-amber-50 text-amber-700 border border-amber-200 (Apply)
 - schedule: bg-blue-50 text-blue-700 border border-blue-200 (Schedule Interview)
 - ghost: transparent hover:bg-court-surface-subtle
-All buttons are rounded-full. No rounded-lg on brand buttons anywhere.
+~~All buttons are rounded-full. No rounded-lg on brand buttons anywhere.~~ (Superseded — see Button Standard above.)
 
 ## Stage Badge Colors (added Ace 24.0)
 - SOURCED: slate

@@ -1,10 +1,75 @@
 # ACE_STATE.md
-Last updated: 2026-05-17 · Ace 53.0
+Last updated: 2026-05-18 · Ace 54.0
 
 ## Current Status
-Current Version: Ace 53.0
-Last Shipped: 2026-05-17
+Current Version: Ace 54.0
+Last Shipped: 2026-05-18
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 54.0 (2026-05-18)
+
+Polish + feature session across the candidate, dashboard, finances, calendar, sidebar, and global-chrome surfaces. Closes most of the 30-item Active Build Sequence carried out of Ace 53.0 and ships the Notes feature end-to-end as a new product surface.
+
+### Candidate search + profile
+- **Boolean AND search** on `/candidates`. Multi-token queries now require every term to hit instead of OR'ing, so a 3-term search returns only candidates that match all 3. Replaces the implicit OR behavior that was burying tight matches under loose ones.
+- **Keyword highlighting** on the candidate profile resume — search tokens propagated from `/candidates` carry through to the embed and highlight every hit inside the resume text.
+- **Candidate inline editing** for top-of-profile fields (name, title, current employer, location, email, phone, LinkedIn) — save-on-blur, no separate Edit modal.
+- **Tabs on /candidates** — the candidate search page now carries a tab strip for filtering instead of the previous flat list, matching the chrome on `/applicants` and `/pipeline`.
+- **Job pill after apply** — applying a candidate to a job now renders the job as an inline pill on the candidate profile immediately, no reload.
+- **Resume highlight right panel removed** — the inline highlighting panel that lived to the right of the resume PDF in embed view was dropped per design feedback; the panel was crowding the resume and the highlights inside the PDF itself already carry the signal.
+- **Submit modal portal fix** — submit-to-job modal renders as a true viewport overlay via portal instead of inside the app shell, so the candidate's split-view iframe can't clip it.
+
+### Composer + AI
+- **Custom Edit with Claude** — recruiter can now type a freeform instruction ("make it shorter", "more enthusiastic") into the Edit with Claude affordance on the mail composer instead of choosing from a fixed preset menu.
+- **Chevron fix on Generate with Claude** — trailing chevron on the Generate with Claude pill points the right way and matches the sibling Use Template / Insert Field / Edit with Claude buttons on the composer toolbar row.
+
+### Dashboard + finances
+- **TrendCard zero-revenue fallback** — Trend tile on the Financial Performance tab renders a clean 3-column text layout when a quarter has zero revenue, instead of three flat 4%-tall bars stamped with `$0`.
+- **Momentum excludes rejected** — the dashboard Momentum widget no longer counts rejected placements toward weekly movement so the number reflects real forward motion.
+- **Goal Pacing sized down** — GoalPacingCard padding + internal type scaled to match the canonical big-panel chrome on Scoreboard.
+- **Invoice blank cells** — invoice table empty cells now render em-dash placeholders instead of fully blank cells.
+
+### Settings + triggers
+- **Trigger warning banners** — Settings ▸ Triggers shows a yellow warning row when a rule is enabled but its template is missing/inactive or `sendAsDraft` is on without an email account connected.
+
+### Phone + texting
+- **SMS bubbles polish** — outbound bubble color and weight tightened on both `/phone` and the candidate sidebar to match the rest of the brand-green surface family.
+- **Add Number inline** — SMS composer now surfaces an "Add Number" affordance when the candidate has no phone on file instead of dead-ending the recruiter at a disabled input.
+
+### Mail + phone layout
+- **Email + phone full-width** — `/mail` and `/phone` content surfaces now extend full viewport width on wide displays, matching `/candidates` and `/pipeline`. The previous max-width cap was leaving dead space on the right.
+
+### Sidebar + chrome
+- **Sidebar restructure** — top-level groups reorganized to Inbox → ATS → CRM → Ops → Scoreboard with Inbox pinned high so unread badges read fast. Items within ATS and CRM groups alphabetized (Applicants → Candidates → Pipeline; BD → Clients → Jobs).
+- **White X bar fix** — the white close affordance bar that was bleeding into the topbar / app-shell seam was anchored correctly so it stops floating over content.
+
+### Buttons + TabStrip + visual unification
+- **Submit button style** unified across every surface (`/candidates`, `/applicants`, `/pipeline`, candidate profile, embed view) — rounded-md, filled brand green, white text. Stops the variant drift where Submit read as four different buttons depending on which page surfaced it.
+- **TabStrip conversion** — final per-page tab strips converted to the canonical `TabStrip` component. No more one-off pill rows in product surfaces.
+- **Applicants job title** — `/applicants` table now shows the linked job title inline on each row instead of forcing the recruiter to drill into the candidate to see what they applied to.
+
+### Notes feature — full build
+New `/notes` page + standalone `Note` model + activity-feed integration.
+- **Schema** — new `Note` Prisma model (org-scoped, per-user-private) with implicit many-to-many relations to Candidate / Client / Job. One note can be attached to any combination of candidates, clients, and jobs simultaneously; Prisma manages the three join tables. Back-relations named `noteEntries` on each entity to avoid collision with the existing `Candidate.notes` / `Client.notes` text columns that back the legacy profile Notes tabs.
+- **/notes page** — composer-first layout. Always-visible doc-style composer card with optional title, required body, and an Attach button that expands an inline multi-select picker (no popover — the absolute-positioned popover the first cut shipped with overflowed the viewport). TabStrip filter (All Notes / My Notes / Attached) sits above the composer with live counts. Saved notes render below as `NoteCard` rows with hover toolbar (pin / re-attach / edit / delete).
+- **Server actions + queries** — `createNote / updateNote / deleteNote / attachNote / setPinned` in `src/app/notes/actions.ts`, all scoped by `organizationId AND createdById`. Attachment payloads carry arrays per kind; the action verifies every id belongs to the same org before connecting. Queries in `src/lib/notes/queries.ts` filter via Prisma `some` / `none` on each relation.
+- **ComposeFAB** — root menu collapsed to the six canonical entries in the requested order: New Email → New Call → New Text → New Note → New Event → New Reminder. New Note opens a popup with title + body + inline multi-select picker so the recruiter can attach to any combo of profiles in one save. New Reminder dispatches `ace:calendar:new-reminder` to mirror the TopBar reminder affordance.
+- **Activity feed integration** — `EntityNotesSection` server component reads notes attached to the current entity and renders them above the existing `ActivityFeed` on `/clients/[id]` and `/jobs/[id]` activity tabs, and inline below `CandidateActivityCard` in the candidate-profile right rail. Cross-attachment chips on each note row link to every other profile the note also lives on.
+- **Sidebar** — new `/notes` nav entry under Ops with the StickyNote lucide icon, replacing the NotebookPen stub that was sitting there.
+- **TopBar** — `/notes` title wired through `top-bar-page-title.tsx` under the Ops group breadcrumb.
+
+## Known Issues Carrying Into Ace 55.0
+- **Button styles inconsistent across app.** Submit was unified this session but a sweep across every page reveals other buttons still drift — some surfaces use `rounded-full` (banned by the new Button Standard in ACE_RULES.md), some hardcode color literals instead of routing through the shared Button component, some buttons bypass the component entirely. Full audit needed before any further visual work. Ace 55.0 opens with this.
+- **BCC hardcoded to Austin (item 46).** Bulk and individual email send paths hardcode Austin's address into the BCC field for every send. Should be a per-user setting (or removed entirely for non-bulk sends). Clean fix queued for Ace 55.0.
+- **Templates + Triggers unified page (item 45).** Settings currently exposes Templates and Triggers as two separate panels even though every Trigger row references a Template and vice versa. Unify into one Settings page so a recruiter editing a template can see which trigger uses it without tab-hopping.
+
+## Next Task
+Open Ace 55.0 with a full button/color audit before any other work. Scan the entire codebase for:
+- `rounded-full` on `<button>` elements or Button component instances (banned by the new Button Standard — `rounded-full` is reserved for badges, chips, status pills, and avatars only).
+- Hardcoded color literals (`bg-emerald-*`, `bg-green-*`, `text-white`, hex codes) on buttons that should be routing through Court Mode tokens.
+- `<button>` elements that bypass the shared `src/components/ui/button.tsx` component entirely (one-off styles instead of variants).
+
+Report findings by file with line numbers before changing anything. Then fix in one sweep. Item 2 after the audit is the BCC Austin clean fix; item 3 is the Templates + Triggers unified Settings page.
 
 ## What Shipped in Ace 53.0 (2026-05-17)
 
@@ -44,12 +109,15 @@ Visual redesign session. Attempted Prompts 1-17 of a sweeping visual pass across
 - `candidates/[id]/resume-matches-rail.tsx` (new) — houses the moved highlighting panel; renders colored token chips + `ResumeMatchesPanel` against the most-recent resume.
 - `scoreboard.tsx` — imported `Clock`, `DollarSign`, `Target`, `TrendingUp`, `Users` from lucide-react. Each of the 5 KPI tiles now carries an icon: Pipeline Value=TrendingUp, Avg Fee Size=DollarSign, Placements=Users, Win Rate=Target, Avg Days to Fill=Clock. `ScoreboardKpiTile` renders the icon in an `h-5 w-5 rounded-lg bg-court-brand-tint` chip top-left next to the label so the Scoreboard reads as one family with the canonical `KpiTile` on Clubhouse / Finances.
 
-## Known Issues Carrying Into Ace 54
-- **No shared `PageWrapper` / `SectionCard` components yet.** This was the root cause of the redesign session failing - per-page changes drifted because each page held its own chrome. Next session opens with building these primitives before touching any individual page surface.
-- **30 outstanding visual / functional items queued.** Full numbered list lives in the active build sequence on ACE_ROADMAP.md. Covers client logo Clearbit restoration, ComposeFAB Reminder entry, applicants / pipeline green background leaks, oversized Goal Pacing, Event modal mismatch, JD markdown rendering, delete button anchoring, invoice empty cells, trigger warning alerts, negative ROI handling, date format inconsistency, finances number consistency, dashboard subtext alignment, client card colored top borders, client detail pipeline number style, jobs table font, candidate profile edit affordance next to job pill, empty state phrasing, texting Add Number inline button, pipeline stage condensation, action button iconography, briefing pill stacking, Ace assistant mobile freeze, resizable panels on `/candidates`, finances company logos on expenses, Slack annual recategorization on expenses, Quo notification read-state sync, and the unread badge count audit.
-
-## Next Task
-Open Ace 54 by reading the actual file contents of `src/app/` and `src/components/` before writing any prompts. Build shared `PageWrapper` + `SectionCard` components first - no per-page visual changes until those primitives exist. Then work the 30 outstanding items in numbered order off ACE_ROADMAP.md.
+## Known Issues That Carried Into Ace 54 (historical, mostly resolved this session)
+- ComposeFAB New Reminder entry — restored.
+- Applicants + pipeline page green background leaks — fixed.
+- Oversized Goal Pacing — fixed.
+- Invoice empty cells — em-dash placeholders added.
+- Trigger warning alerts — added.
+- Texting Add Number inline button — added.
+- Resume highlight right panel — removed.
+- Notes feature — built (see What Shipped above).
 
 ## What Shipped in Ace 51.0 (2026-05-17)
 

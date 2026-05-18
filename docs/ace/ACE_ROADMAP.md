@@ -1,39 +1,14 @@
 # Ace Roadmap
-Last updated: 2026-05-17 · Ace 53.0
+Last updated: 2026-05-18 · Ace 54.0
 
 ## Active Build Sequence
-Ace 53.0 closed with a full revert of the 41-commit visual redesign attempt (Prompts 1-17), followed by surgical cherry-pick restoration of three confirmed-good fix commits. Final state on `main` carries the unified table system, applicants page restored, pipeline buttons side by side, ComposeFAB ordering fixed, stage chip colors restored, tighter mail/phone row heights, dashboard sizing tightened, Internal Recruiter Notes removed from JD tab, rebuilt bulk email modal with FROM row, resume pane containment, apply live update without hard refresh, scoreboard KPI icons, and the corrected candidate split view column widths. Ace 54 opens on shared component primitives - the redesign attempt failed because every page held its own chrome, so per-page tweaks drifted instantly. Next session must build `PageWrapper` + `SectionCard` first before touching any individual page.
+Ace 54.0 closed most of the 30-item polish queue carried out of Ace 53.0 and shipped the Notes feature end-to-end (page + schema + actions + queries + sidebar + FAB + activity feed integration). Ace 55.0 opens with a full button + color audit before any further visual work — the Submit button was unified this session but a sweep across other surfaces shows continued drift (rounded-full on banned surfaces, hardcoded color literals on buttons, buttons bypassing the shared Button component entirely). The new Button Standard in ACE_RULES.md is the source of truth; the audit measures the codebase against it.
 
-1. **Shared `PageWrapper` + `SectionCard` components** - extract the page-chrome and card-chrome patterns into two primitives in `src/components/ui/`. Audit every page surface (`/dashboard`, `/clients`, `/jobs`, `/candidates`, `/pipeline`, `/applicants`, `/finances`, `/invoices`, `/mail`, `/phone`, `/calendar`, all `/settings/*`) for the wrappers they're currently rolling by hand and identify the canonical shape. Build the two components, write a one-pager doc on usage, then convert one reference page (Clubhouse / Dashboard) to prove the pattern before any further visual work. No per-page visual changes until these primitives exist.
-2. **Client logos - Clearbit API restoration** - `Client.logoUrl` was being constructed at create-time via `https://logo.clearbit.com/{domain}` and stored on the row. Current state uses Google favicons. Restore the Clearbit URL construction in `src/app/clients/new/actions.ts` + the BD reply-prompt route. `<ClientLogo>` component already has a Google-favicon → initials fallback chain; switch the primary source back to Clearbit + size param + domain normalization (strip protocol, strip trailing slash, strip `www.`).
-3. **ComposeFAB - New Reminder entry** - `ComposeFAB` currently surfaces Email / Call / Text / Note / Event. New Reminder existed in a reverted commit and never made it back. Add it as a sixth row after Event so the global add affordance reaches every calendar flow.
-4. **Applicants page background still green** - `/applicants` page wrapper is bleeding `bg-court-brand-tint` or similar. Should be neutral surface; green is reserved for primary buttons, active nav, active tabs, positive status chips per Design Rules.
-5. **Pipeline page background still green** - same as item 4, on `/pipeline`.
-6. **Goal Pacing section oversized** - GoalPacingCard renders too large on the Scoreboard. Audit its padding, internal typography, and bar chrome against the canonical big-panel chrome (`rounded-3xl bg-court-surface p-5`).
-7. **New Event modal mismatch with Edit Event drawer** - create flow and edit flow are different shells. Pick one (drawer), fold the other into it so both create and edit live in the same UI.
-8. **JD body not rendering markdown** - Job Description tab is showing the raw markdown source instead of the rendered output. `react-markdown` is supposed to be the single renderer per the Job + JD rule but a callsite is using `PlainProse` or raw text. Find and switch.
-9. **Delete button anchor inconsistent** - cross-app audit of every Delete affordance. Some are floating bottom-right (candidate profile), some are inline in row actions, some are inside a kebab. Pick one anchor per context and document.
-10. **Invoice blank cells need placeholder text** - Invoices table empty cells render as fully blank. Switch to em-dash typographic placeholder (em-dash is allowed inside table cells per the no-em-dash rule).
-11. **Trigger yellow warning alerts** - Settings ▸ Triggers needs a warning banner when a rule is enabled but its template is missing / inactive, or when `sendAsDraft` is on without an email account connected.
-12. **Negative ROI showing -100%** - Finances ROI per tool calculation overflows to -100% when revenue is 0 and cost > 0. Cap at -99% or use a different sentinel ("No revenue logged yet").
-13. **Date format inconsistent** - audit every date render across the app. Pick one short form (`Mar 15, 2026`) and one long form, document, and convert offenders.
-14. **Finances numbers inconsistent** - some surfaces show `$12.4k`, others `$12,400`, others `$12,372.18`. Pick a per-context rule (KPI tiles use short; ledger rows use full) and convert.
-15. **Dashboard subtext misalignment** - dashboard KPI tile sub-line metadata is not consistently aligned across tiles. Audit and fix.
-16. **Client cards colored top borders** - client grid cards on `/clients` need a top border colored per vertical / quiet tier / activity bucket so the cards scan as differentiated at a glance.
-17. **Client detail pipeline numbers different style** - the pipeline-counts row on the client profile page renders the numbers in a different typographic style than the same numbers on `/clients` grid cards. Unify.
-18. **Jobs table font still off** - `/jobs` table body text reads at a different weight / size than the rest of the unified table system. Compare against `/applicants` and `/pipeline` and converge.
-19. **Candidate profile - no edit option next to job pill** - on candidate profile, each linked job pill should expose an inline edit affordance so the recruiter can update the placement without leaving the profile.
-20. **Empty state phrasing inconsistent** - "No matches found." vs "Nothing here yet." vs "0 results" — pick one voice and convert.
-21. **Texting - no inline Add Number button** - SMS composer when the candidate has no phone on file should surface an inline "Add Number" affordance instead of dead-ending the recruiter.
-22. **Pipeline stage condensation inconsistent** - the days-in-stage pill renders at different sizes / colors depending on which page surfaces it. Centralize.
-23. **Action button iconography inconsistent** - row actions across pipeline / applicants / candidates use different lucide icons for the same intents. Pick one icon per action (Submit / Keep / Reject / Schedule / Offer / Confirm / Edit / Remove) and apply globally.
-24. **Briefing pills stacking on small screens** - the daily-companion mini-grid inside Today's Briefing wraps awkwardly below `sm`. Adjust grid breakpoint or stack pattern.
-25. **Ace assistant freezes on mobile** - the floating Ace Assistant panel becomes unresponsive on mobile viewports. Investigate touch event handling / pointer capture (likely conflicts with the drag/resize logic).
-26. **Resizable panels on `/candidates`** - the resize handle was removed when the outer left list was locked to `w-64` for the column-width fix. Re-add it with proper persistence + handle.
-27. **Finances company logos on expenses** - Mercury-matched expense rows should render the tool's logo next to the name (Apollo, Anthropic, Vercel, etc.). Hook into Clearbit by tool domain.
-28. **Slack recategorized to annual on expenses** - Slack subscription is showing as monthly recurring; should be annual on the Finances tab (recurring subscriptions filter).
-29. **Notification read-state sync for Quo** - carried from Ace 51. Reading a thread on the Quo app side doesn't clear the Ace badge (no read-receipt webhook from Quo). Workaround would be a periodic Quo API poll (rate-limit risk) or a manual "Mark as read in Quo" affordance.
-30. **Unread badge count audit** - carried from Ace 51. Mail leg fixed via push-driven refresh; Quo unread count + reminder due count still need an audit pass before the aggregate badge is provably correct.
+1. **Full button + color audit (entire codebase)** — scan every `.tsx` under `src/` for: `rounded-full` on `<button>` elements or `Button` component instances (banned by Button Standard — `rounded-full` is reserved for badges, chips, status pills, and avatars only); hardcoded color literals (`bg-emerald-*`, `bg-green-*`, `text-white`, hex codes) on buttons that should route through Court Mode tokens; `<button>` elements that bypass the shared `src/components/ui/button.tsx` component (one-off styles instead of variants). Report findings by file with line numbers before changing anything. Then fix in one sweep.
+2. **BCC Austin only — clean fix** — bulk and individual mail send paths hardcode Austin's email into the BCC field for every send. Should be a per-user setting (or removed entirely for non-bulk sends). Pick one approach, ship it, retire the hardcoded constant.
+3. **Templates + Triggers unified Settings page** — currently two separate Settings panels even though every Trigger row references a Template. Unify so a recruiter editing a template can see which trigger uses it without tab-hopping.
+4. **Resizable panels on `/candidates`** — the resize handle was removed when the outer left list was locked to `w-64` for the column-width fix in Ace 53.0. Re-add with proper drag + persistence (localStorage so the chosen width survives reloads).
+5. **Bulk reject from Lists** — saved Candidate Lists currently support bulk email but not bulk reject. Add the action so a recruiter can disqualify everyone on a list in one pass without walking each profile.
 
 ## Branch Status
 - **`design/phase-1`** — local-only branch with Cursor UI redesign Phases 1-2 not yet merged to `main`. Carries `86d3e31` (Phase 1 design system foundation), `38f119c` (Phase 2a card shells on dashboard/placements/finances), `d7f5437` (Phase 2b TableRow + TableCell on list views), `c0fb973` (Phase 2c sidebar polish + list table chrome). Review pending; `main` is the source of truth for shipped state until this lands.
@@ -114,6 +89,61 @@ Revisit at scale or workflow change — do not build now.
 - MCP Connection (Claude reads/writes Ace database directly).
 - Co-recruiter splits.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
+
+---
+
+## Completed - Ace 54.0 Polish queue close-out + Notes feature build (May 18, 2026)
+
+Closed most of the 30-item polish queue carried out of Ace 53.0 and shipped the standalone Notes feature end-to-end.
+
+### Candidate search + profile
+- Boolean AND search on `/candidates` — multi-token queries require every term to hit; replaces the implicit OR.
+- Keyword highlighting on the candidate profile resume — search tokens carry into the embed and `<mark>` every hit inside the resume text.
+- Candidate inline editing for top-of-profile fields (name, title, employer, location, email, phone, LinkedIn) — save-on-blur.
+- Tabs on `/candidates` for filtering, matching `/applicants` + `/pipeline` chrome.
+- Job pill renders immediately after Apply without a reload.
+- Resume highlight right panel removed from embed view (was crowding the resume).
+- Submit modal renders as a true viewport overlay via portal so the candidate split-view iframe can't clip it.
+
+### Composer + AI
+- Custom Edit with Claude — freeform instruction input instead of a fixed preset menu.
+- Generate with Claude chevron flipped to match sibling toolbar buttons.
+
+### Dashboard + finances
+- TrendCard zero-revenue fallback (clean 3-col text layout instead of three flat `$0` bars).
+- Momentum widget excludes rejected placements.
+- Goal Pacing padding + internal type scaled down to match canonical big-panel chrome.
+- Invoice empty cells render em-dash placeholders.
+
+### Settings + triggers
+- Trigger warning banners on Settings ▸ Triggers when a rule is enabled but its template is missing/inactive or sendAsDraft is on without an email account connected.
+
+### Phone + texting
+- Outbound SMS bubble polish across `/phone` and the candidate sidebar.
+- Add Number inline affordance on SMS composer when the candidate has no phone on file.
+
+### Mail + phone layout
+- `/mail` and `/phone` content surfaces extend full viewport width on wide displays.
+
+### Sidebar + chrome
+- Sidebar restructure: Inbox → ATS → CRM → Ops → Scoreboard, with Inbox pinned high; items within ATS and CRM alphabetized.
+- White X bar anchored correctly so it stops floating over content at the topbar / app-shell seam.
+
+### Buttons + TabStrip + visual unification
+- Submit button unified across `/candidates`, `/applicants`, `/pipeline`, candidate profile, and embed view (rounded-md, filled brand green, white text).
+- Final per-page tab strips converted to the canonical `TabStrip` component.
+- `/applicants` table shows linked job title inline on each row.
+
+### Notes feature — full build
+- **Schema** — new `Note` Prisma model (org-scoped, per-user-private) with implicit many-to-many relations to Candidate / Client / Job; one note can attach to any combination at once. Back-relations named `noteEntries` on each entity to avoid collision with the existing `Candidate.notes` / `Client.notes` text columns. Prisma manages the three join tables.
+- **/notes page** — composer-first layout. Always-visible doc-style composer with optional title, required body, and an Attach button that expands an inline multi-select picker (no popover — the initial popover overflowed the viewport on narrow surfaces). TabStrip filter (All Notes / My Notes / Attached) sits above the composer with live counts. Saved notes render below as NoteCard rows with hover toolbar (pin / re-attach / edit / delete).
+- **Server actions + queries** — `createNote / updateNote / deleteNote / attachNote / setPinned` in `src/app/notes/actions.ts`, all scoped by `organizationId AND createdById`. Attachment payloads carry arrays per kind; the action verifies every id belongs to the same org before connecting. Queries in `src/lib/notes/queries.ts` use Prisma `some` / `none` on each relation.
+- **ComposeFAB** — root menu collapsed to the six canonical entries in order: New Email → New Call → New Text → New Note → New Event → New Reminder. New Note opens a popup with title + body + inline multi-select picker. New Reminder dispatches `ace:calendar:new-reminder` to mirror the TopBar reminder affordance.
+- **Activity feed integration** — `EntityNotesSection` server component reads notes attached to the current entity and renders above the existing `ActivityFeed` on `/clients/[id]` + `/jobs/[id]` activity tabs, and inline below `CandidateActivityCard` in the candidate-profile right rail. Cross-attachment chips link to every other profile the same note also lives on.
+- **Sidebar** — new `/notes` entry under Ops with the StickyNote lucide icon, replacing the NotebookPen stub.
+- **TopBar** — `/notes` title wired through `top-bar-page-title.tsx` under the Ops group breadcrumb.
+
+Ace 55.0 opens with a full button + color audit (item 1 in the new Active Build Sequence) before any further visual work.
 
 ---
 

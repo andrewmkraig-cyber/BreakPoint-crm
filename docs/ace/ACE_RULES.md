@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-05-17 · Ace 53.0
+Last updated: 2026-05-18 · Ace 54.0
 
 ## How to Start Every Session
 Every Ace session opens with this exact sequence:
@@ -98,6 +98,17 @@ Claude must ask Andrew a full set of scoping questions before writing any BD Pha
 - Reduce borders by ~40%, use spacing instead.
 - Dark themes (Clay + Grass): charcoal/graphite base, NOT green. Green as accent only.
 - No hardcoded colors anywhere.
+
+## Button Standard (added Ace 54.0 - DO NOT CHANGE)
+- Action row buttons (Submit, Apply, Keep, Reject, Add Note, Add to List): rounded-md, outlined, colored border + text, transparent background.
+- Toolbar buttons (Use Template, Insert Field, Edit with Claude, Delete, Save Draft, Send): rounded-md, outlined, NOT pill shaped.
+- Generate with Claude / Generate Resume / Generate JD: rounded-md, dark green outlined (`border-court-brand-dark text-court-brand-dark`), NOT solid filled.
+- Primary CTA (New Candidate, New Job, + New X at page tops, Save, Create): rounded-md, filled green (`bg-court-brand text-white`).
+- Upload Resume: rounded-md, blue outlined (`border-blue-500 text-blue-600`).
+- Tab strip active: `rounded-md border-court-brand text-court-brand font-semibold` transparent background.
+- NEVER use `rounded-full` on any button. `rounded-full` is reserved for badges, chips, status pills, and avatars ONLY.
+
+This rule supersedes the older "All buttons are rounded-full" line in the Ace 24.0 Button System section of ACE_DESIGN.md. ACE_DESIGN.md carries the same Button Standard block — both docs hold the same source of truth.
 
 ## UI Consistency Rules (added 2026-05-12 · Ace 43.0)
 - **TabStrip is the single source of truth.** All tab strips and filter pill groups across the app route through `src/components/ui/tab-strip.tsx`. No one-off pill groups anywhere — if a new surface needs filter pills or a tabbed selector, use TabStrip (link mode for navigation, controlled mode for in-page state).
