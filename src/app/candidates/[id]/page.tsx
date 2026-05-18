@@ -616,6 +616,7 @@ export default async function CandidateProfilePage({
               candidateRfId={id}
               candidateId={candidate.id}
               versions={resumeVersions}
+              tokens={highlightTokens}
             />
           </div>
           {/* Right rail. CompactOverview as a single tight summary box,

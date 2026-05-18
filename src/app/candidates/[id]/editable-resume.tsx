@@ -27,6 +27,7 @@ import {
   renameCandidateResume,
 } from "@/app/candidates/[id]/actions";
 import { generateAiResume } from "@/app/candidates/[id]/generate-resume-action";
+import { HighlightTokenChips } from "@/app/candidates/[id]/resume-matches-rail";
 import { Sparkles } from "lucide-react";
 
 const ACCEPT_RESUME_MIME =
@@ -122,6 +123,7 @@ export function EditableResume({
   candidateRfId,
   candidateId,
   versions,
+  tokens = [],
 }: {
   // RF-imported candidates pass their numeric rfId for the legacy
   // upload path; Ace-native candidates pass null and route by
@@ -129,6 +131,10 @@ export function EditableResume({
   candidateRfId: number | null;
   candidateId: string;
   versions: ResumeVersion[];
+  // Search-token highlights threaded in from ?highlight= on the embed
+  // candidate profile. Empty when absent; chip row above the viewer
+  // only renders when at least one token survives the parser.
+  tokens?: string[];
 }) {
   const router = useRouter();
   const [isUploading, setIsUploading] = useState(false);
@@ -533,6 +539,13 @@ export function EditableResume({
           </button>
         </div>
       </div>
+
+      {tokens.length > 0 && (
+        <HighlightTokenChips
+          tokens={tokens}
+          className="border-b border-court-border px-3 py-1.5"
+        />
+      )}
 
       <div className="flex flex-col">
         <div className="relative min-w-0 flex-1">

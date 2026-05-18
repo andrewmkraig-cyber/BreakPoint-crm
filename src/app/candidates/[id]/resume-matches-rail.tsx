@@ -37,22 +37,10 @@ export function ResumeMatchesRail({
   if (tokens.length === 0) return null;
   return (
     <section className="flex flex-col rounded-2xl border border-court-border bg-court-surface-subtle/60">
-      <div className="flex flex-wrap items-center gap-2 border-b border-court-border px-3 py-2">
-        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
-          Highlighting:
-        </span>
-        {tokens.map((t) => (
-          <span
-            key={t}
-            className={cn(
-              "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
-              colorMap.get(t) ?? TOKEN_COLORS[0],
-            )}
-          >
-            {t}
-          </span>
-        ))}
-      </div>
+      <HighlightTokenChips
+        tokens={tokens}
+        className="border-b border-court-border px-3 py-2"
+      />
       {resumeId ? (
         <ResumeMatchesPanel
           resumeId={resumeId}
@@ -65,6 +53,42 @@ export function ResumeMatchesRail({
         </div>
       )}
     </section>
+  );
+}
+
+// Shared chip row: label + colored pills, wrapping. Used by the rail's
+// header and by EditableResume above the viewer so both surfaces read
+// off the same TOKEN_COLORS palette as <MarkedSnippet>'s <mark> tags.
+export function HighlightTokenChips({
+  tokens,
+  className,
+  label = "Highlighting:",
+}: {
+  tokens: string[];
+  className?: string;
+  label?: string;
+}) {
+  const colorMap = useMemo(() => buildTokenColorMap(tokens), [tokens]);
+  if (tokens.length === 0) return null;
+  return (
+    <div className={cn("flex flex-wrap items-center gap-2", className)}>
+      {label && (
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+          {label}
+        </span>
+      )}
+      {tokens.map((t) => (
+        <span
+          key={t}
+          className={cn(
+            "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
+            colorMap.get(t) ?? TOKEN_COLORS[0],
+          )}
+        >
+          {t}
+        </span>
+      ))}
+    </div>
   );
 }
 
