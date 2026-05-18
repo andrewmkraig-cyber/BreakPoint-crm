@@ -18,7 +18,8 @@ import {
 import { getRfShapedContactsForOrg } from "@/lib/contacts";
 import { type IdentityState } from "@/app/candidates/[id]/editable-identity";
 import { EditableSkills } from "@/app/candidates/[id]/editable-skills";
-import { EditableNotes, type NoteRow } from "@/app/candidates/[id]/editable-notes";
+import { getNotesForEntity } from "@/lib/notes/queries";
+import { CandidateNotesPanel } from "@/components/notes/candidate-notes-panel";
 import { EditableResume, type ResumeVersion } from "@/app/candidates/[id]/editable-resume";
 // BrandResumeButton import removed in 5A.5.a — branding moves into the
 // Edit Resume modal in 5A.5.b. The component itself still exists.
@@ -78,8 +79,6 @@ function normalizeBillingContacts(
   }
   return out;
 }
-
-type NoteRaw = { id?: number; note?: string; added_time?: string; added_by?: { name?: string } | null };
 
 export default async function CandidateProfilePage({
   params,
@@ -277,14 +276,6 @@ export default async function CandidateProfilePage({
   const skillsInitial = Array.isArray(c.skills)
     ? (c.skills as unknown[]).filter((s): s is string => typeof s === "string")
     : [];
-
-  const notesRaw: NoteRaw[] = Array.isArray(c.notes) ? (c.notes as NoteRaw[]) : [];
-  const notesInitial: NoteRow[] = notesRaw.map((n) => ({
-    id: n.id ?? null,
-    note: n.note ?? "",
-    addedByName: n.added_by?.name ?? null,
-    addedAt: n.added_time ?? null,
-  }));
 
   const linkedSubmittals = (Array.isArray(c.jobs) ? c.jobs : []).filter((j) => typeof j?.job_id === "number");
 
@@ -668,11 +659,7 @@ export default async function CandidateProfilePage({
                 recipientEmail={candidate.email ?? null}
               />
             ) : tab === "notes" ? (
-              <CandidateNotesTab
-                candidateId={candidate.id}
-                legacyCandidateId={id}
-                initialNotes={notesInitial}
-              />
+              <CandidateNotesTab candidateId={candidate.id} />
             ) : (
               <EditableResume
                 candidateRfId={id}
@@ -806,11 +793,7 @@ export default async function CandidateProfilePage({
               recipientEmail={candidate.email ?? null}
             />
           ) : tab === "notes" ? (
-            <CandidateNotesTab
-              candidateId={candidate.id}
-              legacyCandidateId={id}
-              initialNotes={notesInitial}
-            />
+            <CandidateNotesTab candidateId={candidate.id} />
           ) : (
             <EditableResume
               candidateRfId={id}
@@ -845,21 +828,9 @@ export default async function CandidateProfilePage({
   );
 }
 
-function CandidateNotesTab({
-  candidateId,
-  legacyCandidateId,
-  initialNotes,
-}: {
-  candidateId: string;
-  legacyCandidateId: number;
-  initialNotes: NoteRow[];
-}) {
-  return (
-    <div className="space-y-4">
-      <EntityNotesSection entityType="candidate" entityId={candidateId} />
-      <EditableNotes candidateId={legacyCandidateId} initial={initialNotes} />
-    </div>
-  );
+async function CandidateNotesTab({ candidateId }: { candidateId: string }) {
+  const notes = await getNotesForEntity("candidate", candidateId);
+  return <CandidateNotesPanel candidateId={candidateId} initialNotes={notes} />;
 }
 
 
