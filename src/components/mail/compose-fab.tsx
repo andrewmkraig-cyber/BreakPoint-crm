@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   Bell,
   CalendarPlus,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useComposerManager } from "@/lib/composer-manager";
+import { useCalendarDrawer } from "@/lib/calendar-drawer-context";
 import {
   usePhonePanels,
   type PhoneContact,
@@ -103,7 +104,6 @@ const EMPTY_ATTACH: Attachments = {
 
 export function ComposeFAB() {
   const pathname = usePathname();
-  const router = useRouter();
 
   // Open / close state for the FAB's outer popover and the active
   // sub-view (menu vs phone picker vs notes popup). Keeping all three
@@ -180,6 +180,7 @@ export function ComposeFAB() {
 
   const composer = useComposerManager();
   const phonePanels = usePhonePanels();
+  const calendarDrawer = useCalendarDrawer();
 
   // Mail-only context: when on /candidates/[id], pre-fill the To field
   // and pass the candidate ref through to the composer so smart
@@ -546,40 +547,16 @@ export function ComposeFAB() {
 
   function pickCalendarEvent() {
     closeAll();
-    // Same dispatch the TopBar "+ New event" button uses. Only fires
-    // when the listener is already mounted (i.e. the user is on
-    // /calendar). On any other route we set a session-storage flag and
-    // navigate — calendar-view picks the flag up on mount and opens
-    // the modal once, then clears it.
-    if (pathname === "/calendar") {
-      window.dispatchEvent(new CustomEvent("ace:calendar:new-event"));
-      return;
-    }
-    try {
-      window.sessionStorage.setItem("ace.calendar.openNewEvent", "1");
-    } catch {
-      // Quota / private mode: best-effort. Worst case the recruiter
-      // lands on /calendar and clicks New event themselves.
-    }
-    router.push("/calendar");
+    // Drawer is mounted globally in providers, so opening it from
+    // /mail or /candidates or anywhere else renders as an overlay
+    // without navigation — same UX as the email composer popping
+    // over the current page.
+    calendarDrawer.open();
   }
 
   function pickCalendarReminder() {
     closeAll();
-    // Mirrors pickCalendarEvent: when already on /calendar, dispatch
-    // directly so the Reminders rail's inline form opens. Otherwise
-    // set the sessionStorage flag and navigate — calendar-view picks
-    // the flag up on mount.
-    if (pathname === "/calendar") {
-      window.dispatchEvent(new CustomEvent("ace:calendar:new-reminder"));
-      return;
-    }
-    try {
-      window.sessionStorage.setItem("ace.calendar.openNewReminder", "1");
-    } catch {
-      // Best-effort; recruiter can still open the form by hand.
-    }
-    router.push("/calendar");
+    calendarDrawer.open({ type: "reminder" });
   }
 
   function pickRecent(t: RecentThread) {

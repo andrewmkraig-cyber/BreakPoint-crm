@@ -12,9 +12,9 @@ import { CalendarMonthView } from "@/components/calendar/month-view";
 import { CalendarRemindersPanel } from "@/components/calendar/reminders-panel";
 import { CalendarWeekView } from "@/components/calendar/week-view";
 import { TabStrip } from "@/components/ui/tab-strip";
+import { useCalendarDrawer } from "@/lib/calendar-drawer-context";
 import type {
   CalendarEvent,
-  CalendarEventType,
   CalendarReminder,
   CalendarScope,
   CalendarTeamMember,
@@ -157,21 +157,12 @@ export function CalendarView({
     [currentDate],
   );
 
+  // /calendar's local drawer is edit-only now — create flows go
+  // through the global drawer mounted in providers so the FAB can
+  // pop the same form as an overlay on any other page.
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerMode, setDrawerMode] = useState<"create" | "edit">("edit");
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  // Prefill carries the date/time from an empty-cell or empty-slot
-  // click into the drawer's create form. Cleared whenever an event is
-  // opened for edit or the "New event" button is used without a
-  // specific anchor.
-  const [createPrefill, setCreatePrefill] = useState<
-    { date: Date; hour?: number; minute?: number } | null
-  >(null);
-  // Pre-pick the type pill when an entry point already knows what
-  // the recruiter wants (e.g. ComposeFAB's "New Reminder" passes
-  // "reminder"). Cleared on edit and on plain "+ New event" so the
-  // drawer defaults to "interview".
-  const [createPrefillType, setCreatePrefillType] = useState<CalendarEventType | null>(null);
+  const calendarDrawer = useCalendarDrawer();
 
   // Upcoming-reminders list shown in the right-rail panel. Past-due
   // toasts are owned by the global ReminderToastProvider mounted in the
@@ -192,77 +183,20 @@ export function CalendarView({
   // each event.
   const teamMode = scope !== "me";
 
-  // Unified "New event" entry. Every create surface — subheader
-  // button, global TopBar dispatch, ComposeFAB menu, grid empty-slot
-  // clicks, and the ComposeFAB "New Reminder" entry — funnels through
-  // here. There is no longer a separate CreateEventModal; the right-
-  // side drawer owns both create and edit so the recruiter never
-  // leaves the calendar page just to drop a meeting.
-  const openCreate = useCallback(
-    (opts?: {
-      prefill?: { date: Date; hour?: number; minute?: number };
-      type?: CalendarEventType;
-    }) => {
-      setSelectedEvent(null);
-      setCreatePrefill(opts?.prefill ?? null);
-      setCreatePrefillType(opts?.type ?? null);
-      setDrawerMode("create");
-      setDrawerOpen(true);
-    },
-    [],
-  );
-
-  // Global TopBar + ComposeFAB dispatch `ace:calendar:new-event` from
-  // their "+ New event" entries. Always opens with no prefill so the
-  // drawer defaults to "today, next quarter hour." Grid slot clicks
-  // go through openCreateAt with the clicked date/time as prefill.
-  useEffect(() => {
-    const handler = () => openCreate();
-    window.addEventListener("ace:calendar:new-event", handler);
-    return () => window.removeEventListener("ace:calendar:new-event", handler);
-  }, [openCreate]);
-
-  // ComposeFAB's "New Reminder" entry. When the recruiter is already
-  // on /calendar, the FAB dispatches this event directly; we open the
-  // drawer with the reminder pill pre-selected so they don't have to
-  // re-pick the type after the form mounts.
-  useEffect(() => {
-    const handler = () => openCreate({ type: "reminder" });
-    window.addEventListener("ace:calendar:new-reminder", handler);
-    return () =>
-      window.removeEventListener("ace:calendar:new-reminder", handler);
-  }, [openCreate]);
-
-  // Cross-route entry: the ComposeFAB on a non-/calendar page can't
-  // dispatch the event directly (no listener mounted yet), so it sets
-  // a sessionStorage flag and navigates. We pick the flag up on mount
-  // and open the drawer once. Cleared synchronously so a manual
-  // refresh doesn't re-trigger.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (window.sessionStorage.getItem("ace.calendar.openNewEvent") === "1") {
-      window.sessionStorage.removeItem("ace.calendar.openNewEvent");
-      openCreate();
-    }
-    if (
-      window.sessionStorage.getItem("ace.calendar.openNewReminder") === "1"
-    ) {
-      window.sessionStorage.removeItem("ace.calendar.openNewReminder");
-      openCreate({ type: "reminder" });
-    }
-  }, [openCreate]);
+  // Create entries — subheader "+ New event" button, grid slot
+  // clicks — open the global drawer. The TopBar dispatch and the
+  // ComposeFAB "New Event/Reminder" entries don't pass through here
+  // anymore; GlobalCalendarDrawer in providers owns those listeners
+  // so they fire from any page including /calendar.
   const openCreateAt = (
     date: Date,
     hour?: number,
     minute?: number,
   ) => {
-    openCreate({ prefill: { date, hour, minute } });
+    calendarDrawer.open({ prefill: { date, hour, minute } });
   };
   const openEdit = (ev: CalendarEvent) => {
     setSelectedEvent(ev);
-    setCreatePrefill(null);
-    setCreatePrefillType(null);
-    setDrawerMode("edit");
     setDrawerOpen(true);
   };
   const closeDrawer = () => setDrawerOpen(false);
@@ -345,7 +279,7 @@ export function CalendarView({
         onSync={handleSync}
         isSyncing={isSyncing}
         latestSyncedAt={latestSyncedAt}
-        onNewEvent={() => openCreate()}
+        onNewEvent={() => calendarDrawer.open()}
       />
 
       <div className="flex min-w-0 gap-5">
@@ -417,10 +351,8 @@ export function CalendarView({
 
       <CalendarEventDrawer
         open={drawerOpen}
-        mode={drawerMode}
-        event={drawerMode === "edit" ? selectedEvent : null}
-        prefill={drawerMode === "create" ? createPrefill : null}
-        prefillType={drawerMode === "create" ? createPrefillType : null}
+        mode="edit"
+        event={selectedEvent}
         onClose={closeDrawer}
       />
     </div>

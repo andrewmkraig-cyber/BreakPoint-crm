@@ -9,6 +9,7 @@ import { FloatingThreadProvider } from "@/lib/floating-thread-context";
 import { PhonePanelsProvider } from "@/lib/phone-panels-context";
 import { FindMatchesProvider } from "@/lib/find-matches-context";
 import { ClaudePanelProvider } from "@/lib/claude-panel-context";
+import { CalendarDrawerProvider } from "@/lib/calendar-drawer-context";
 import { YouTubePanelProvider } from "@/components/youtube-panel/YouTubePanelProvider";
 import { SpotifyPanelProvider } from "@/components/spotify-panel/SpotifyPanelProvider";
 import { MinimizedTray } from "@/components/composer/minimized-tray";
@@ -18,6 +19,7 @@ import { FindMatchesPanel } from "@/components/game-plan/find-matches-panel";
 import { ClaudePanel } from "@/components/claude-panel/ClaudePanel";
 import { YouTubePanel } from "@/components/youtube-panel/YouTubePanel";
 import { SpotifyPanel } from "@/components/spotify-panel/SpotifyPanel";
+import { GlobalCalendarDrawer } from "@/components/calendar/global-calendar-drawer";
 
 // ComposeFAB used to mount here as a portal-style fixed FAB. It now
 // lives inside TopBar (left of the user info cluster) so it can't
@@ -33,29 +35,32 @@ export function Providers({ children }: { children: ReactNode }) {
             <PhonePanelsProvider>
               <FindMatchesProvider>
                 <ClaudePanelProvider>
-                  <YouTubePanelProvider>
-                    <SpotifyPanelProvider>
-                      {children}
-                      <MinimizedTray />
-                      <FloatingThreadWindow />
-                      <GlobalPhonePanels />
-                      <FindMatchesPanel />
-                      <ClaudePanel />
-                      <YouTubePanel />
-                      <SpotifyPanel />
-                      <Toaster
-                        position="bottom-right"
-                        richColors
-                        closeButton
-                        toastOptions={{
-                          style: {
-                            fontFamily:
-                              "var(--font-inter), system-ui, sans-serif",
-                          },
-                        }}
-                      />
-                    </SpotifyPanelProvider>
-                  </YouTubePanelProvider>
+                  <CalendarDrawerProvider>
+                    <YouTubePanelProvider>
+                      <SpotifyPanelProvider>
+                        {children}
+                        <MinimizedTray />
+                        <FloatingThreadWindow />
+                        <GlobalPhonePanels />
+                        <FindMatchesPanel />
+                        <ClaudePanel />
+                        <GlobalCalendarDrawer />
+                        <YouTubePanel />
+                        <SpotifyPanel />
+                        <Toaster
+                          position="bottom-right"
+                          richColors
+                          closeButton
+                          toastOptions={{
+                            style: {
+                              fontFamily:
+                                "var(--font-inter), system-ui, sans-serif",
+                            },
+                          }}
+                        />
+                      </SpotifyPanelProvider>
+                    </YouTubePanelProvider>
+                  </CalendarDrawerProvider>
                 </ClaudePanelProvider>
               </FindMatchesProvider>
             </PhonePanelsProvider>
