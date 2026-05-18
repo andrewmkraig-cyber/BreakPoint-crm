@@ -161,8 +161,33 @@ async function resolveTokenCandidateIds(
         OR "currentOrganization" ILIKE ${pattern}
         OR location ILIKE ${pattern}
         OR EXISTS (SELECT 1 FROM unnest(skills) s WHERE s ILIKE ${pattern})
-        OR (experience IS NOT NULL AND experience::text ILIKE ${pattern})
-        OR (education IS NOT NULL AND education::text ILIKE ${pattern})
+        OR EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(
+            CASE
+              WHEN jsonb_typeof(experience) = 'array' THEN experience
+              ELSE '[]'::jsonb
+            END
+          ) AS exp(item)
+          WHERE
+            exp.item->>'designation' ILIKE ${pattern}
+            OR exp.item->>'title' ILIKE ${pattern}
+            OR exp.item->>'description' ILIKE ${pattern}
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(
+            CASE
+              WHEN jsonb_typeof(education) = 'array' THEN education
+              ELSE '[]'::jsonb
+            END
+          ) AS edu(item)
+          WHERE
+            edu.item->>'degree' ILIKE ${pattern}
+            OR edu.item->>'field' ILIKE ${pattern}
+            OR edu.item->>'major' ILIKE ${pattern}
+            OR edu.item->>'description' ILIKE ${pattern}
+        )
       )
     UNION
     SELECT cr."candidateId" AS id
