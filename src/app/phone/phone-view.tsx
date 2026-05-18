@@ -3,13 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertCircle,
   Building2,
   CheckCheck,
   ChevronLeft,
   ExternalLink,
   Loader2,
-  Mic,
   Phone,
   PhoneCall,
   PhoneMissed,
@@ -46,9 +44,7 @@ type PhoneBucket =
   | "missed"
   | "voicemails"
   | "candidates"
-  | "clients"
-  | "unknown"
-  | "needsReply";
+  | "clients";
 
 type ThreadEntryLast =
   | { kind: "sms"; at: string; body: string; direction: string }
@@ -124,8 +120,6 @@ export function PhoneView() {
     voicemails: 0,
     candidates: 0,
     clients: 0,
-    unknown: 0,
-    needsReply: 0,
   });
   const [bucket, setBucket] = useState<PhoneBucket>("all");
   const [listLoading, setListLoading] = useState(true);
@@ -311,14 +305,6 @@ export function PhoneView() {
         return threads.filter((t) => t.kind === "candidate");
       case "clients":
         return [];
-      case "unknown":
-        return [];
-      case "needsReply":
-        return threads.filter(
-          (t) =>
-            t.lastActivity?.kind === "sms" &&
-            t.lastActivity.direction === "inbound",
-        );
       default:
         return threads;
     }
@@ -401,20 +387,6 @@ export function PhoneView() {
               active={bucket === "clients"}
               count={bucketCounts.clients}
               onClick={() => setBucket("clients")}
-            />
-            <BucketItem
-              icon={<AlertCircle className="h-4 w-4" />}
-              label="Unknown Numbers"
-              active={bucket === "unknown"}
-              count={bucketCounts.unknown}
-              onClick={() => setBucket("unknown")}
-            />
-            <BucketItem
-              icon={<Mic className="h-4 w-4" />}
-              label="Needs Reply"
-              active={bucket === "needsReply"}
-              count={bucketCounts.needsReply}
-              onClick={() => setBucket("needsReply")}
             />
           </BucketSection>
         </nav>
@@ -577,8 +549,6 @@ function MobileBucketTabs({
     { key: "voicemails", icon: <Voicemail className="h-3.5 w-3.5" />, label: "Voicemails", count: counts.voicemails },
     { key: "candidates", icon: <UserIcon className="h-3.5 w-3.5" />, label: "Candidates", count: counts.candidates },
     { key: "clients", icon: <UsersIcon className="h-3.5 w-3.5" />, label: "Clients", count: counts.clients },
-    { key: "unknown", icon: <AlertCircle className="h-3.5 w-3.5" />, label: "Unknown", count: counts.unknown },
-    { key: "needsReply", icon: <Mic className="h-3.5 w-3.5" />, label: "Needs Reply", count: counts.needsReply },
   ];
   return (
     <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 pb-1 lg:hidden">
@@ -1104,9 +1074,9 @@ function ThreadDetailPane({
                       // next/font's CSS var hasn't applied yet on
                       // iOS Safari first paint (otherwise falls back
                       // to system-ui and reads as a different font).
-                      "max-w-[75%] rounded-2xl px-3 py-2 font-sans text-sm " +
+                      "max-w-[75%] rounded-2xl px-3 py-2 font-sans text-sm shadow-sm " +
                       (e.direction === "outbound"
-                        ? "bg-brand text-white"
+                        ? "bg-court-brand-tint text-court-brand"
                         : "bg-court-surface-subtle text-court-fg")
                     }
                   >
@@ -1132,7 +1102,7 @@ function ThreadDetailPane({
                       className={
                         "mt-1 text-[10px] " +
                         (e.direction === "outbound"
-                          ? "text-white/70"
+                          ? "text-court-brand/70"
                           : "text-court-fg-muted")
                       }
                     >
@@ -1273,7 +1243,7 @@ function OpenProfileButton({ match }: { match: PhoneMatch | null }) {
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-1 rounded-md bg-[#5A9642] px-2 py-1 text-[11px] font-medium text-white shadow-sm transition hover:bg-[#3F7030]"
+      className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-transparent px-2 py-1 text-[11px] font-medium text-court-brand transition hover:bg-court-brand-tint"
     >
       <UserIcon className="h-3 w-3" />
       Open Profile
