@@ -78,7 +78,7 @@ export function BillingSettingsForm({ initial }: { initial: BillingSettings }) {
           type="button"
           disabled={isPending}
           onClick={save}
-          className="rounded-full bg-court-fg px-4 py-2 text-[12px] font-semibold uppercase tracking-wider text-court-surface shadow-sm hover:bg-court-brand-dark disabled:opacity-60"
+          className="rounded-md bg-court-fg px-4 py-2 text-[12px] font-semibold uppercase tracking-wider text-court-surface shadow-sm hover:bg-court-brand-dark disabled:opacity-60"
         >
           {isPending ? "Saving…" : "Save"}
         </button>

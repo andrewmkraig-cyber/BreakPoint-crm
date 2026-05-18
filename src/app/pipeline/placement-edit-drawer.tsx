@@ -265,7 +265,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
             size="md"
             onClick={onClose}
             disabled={pending}
-            className="h-9 rounded-full px-4 text-[12.5px]"
+            className="h-9 rounded-md px-4 text-[12.5px]"
           >
             Cancel
           </Button>
@@ -275,7 +275,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
             size="md"
             onClick={handleSave}
             disabled={pending || !context}
-            className="h-9 gap-1.5 rounded-full px-4 text-[12.5px]"
+            className="h-9 gap-1.5 rounded-md px-4 text-[12.5px]"
           >
             {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
             Save changes

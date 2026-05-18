@@ -89,7 +89,7 @@ export function MercuryConnectorCard({
               type="button"
               onClick={onSave}
               disabled={pending || draft.trim().length === 0}
-              className="inline-flex items-center gap-1.5 rounded-full bg-court-brand px-3 py-1 text-xs font-semibold text-white transition hover:bg-court-brand-dark disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-md bg-court-brand px-3 py-1 text-xs font-semibold text-white transition hover:bg-court-brand-dark disabled:opacity-60"
             >
               {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
               Save

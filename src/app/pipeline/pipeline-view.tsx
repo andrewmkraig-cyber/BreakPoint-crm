@@ -637,14 +637,14 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
           <Link
             href={`/candidates/${row.candidateId}?confirmStart=1&jobId=${row.jobId}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex h-8 items-center justify-center whitespace-nowrap rounded-full border border-court-brand bg-court-brand-tint px-4 text-[12px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
+            className="inline-flex h-8 items-center justify-center whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-4 text-[12px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
           >
             Confirm Start
           </Link>
           <Link
             href={`/candidates/${row.candidateId}?edit=placement&jobId=${row.jobId}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex h-8 items-center justify-center whitespace-nowrap rounded-full border border-court-border bg-court-surface px-4 text-[12px] font-semibold text-court-fg-muted shadow-sm transition hover:border-court-accent/40 hover:text-court-fg"
+            className="inline-flex h-8 items-center justify-center whitespace-nowrap rounded-md border border-court-border bg-court-surface px-4 text-[12px] font-semibold text-court-fg-muted shadow-sm transition hover:border-court-accent/40 hover:text-court-fg"
           >
             Edit Placement
           </Link>

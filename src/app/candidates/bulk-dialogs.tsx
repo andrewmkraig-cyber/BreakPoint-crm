@@ -27,6 +27,7 @@ import {
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
 import type { EmailDraft } from "@/components/email-composer";
 import { EditWithClaudeMenu, EditWithClaudeCustomPanel, type EditType } from "@/components/edit-with-claude-menu";
+import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 import { MERGE_FIELDS, type MergeFieldValues } from "@/lib/merge-fields";
 import { cn } from "@/lib/utils";
@@ -843,7 +844,7 @@ export function BulkEmailDialog({
             type="button"
             onClick={onGenerateClick}
             disabled={isGenerating || isSending || isEditing}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-court-brand bg-court-brand-tint px-3 text-[12px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+            className={CLAUDE_PILL_CLASS}
           >
             {isGenerating ? (
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -1064,7 +1065,7 @@ export function BulkEmailDialog({
               type="button"
               onClick={onSendClick}
               disabled={isSending || confirmDraft !== null}
-              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-court-brand bg-court-brand-tint px-4 text-[12px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-4 text-[12px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
             >
               {isSending ? (
                 <>

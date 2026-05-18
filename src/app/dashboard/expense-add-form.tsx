@@ -114,7 +114,7 @@ export function ExpenseAddForm() {
         <button
           type="submit"
           disabled={pending}
-          className="rounded-full bg-court-brand px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-court-brand-dark disabled:opacity-50"
+          className="rounded-md bg-court-brand px-3 py-1 text-xs font-semibold text-white transition-colors hover:bg-court-brand-dark disabled:opacity-50"
         >
           {pending ? "Saving…" : "Save"}
         </button>

@@ -55,7 +55,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import { EditWithClaudeMenu, EditWithClaudeCustomPanel, type EditType } from "@/components/edit-with-claude-menu";
 import {
@@ -2404,18 +2404,16 @@ function ComposerAddonToolbar({
         )}
       </div>
 
-      {/* Generate with Claude — outlined green pill sibling of the Send
-          button so the panel toggle sits next to Send as a matched pair
-          (same height + padding + weight, just outlined instead of
-          filled). Trailing chevron points toward where the panel sits:
-          closed shows ChevronUp (panel opens upward, above this row);
-          open shows ChevronDown (collapses back down). */}
-      <Button
+      {/* Generate with Claude — canonical dark-green Claude pill via
+          the shared CLAUDE_PILL_CLASS so this toggle reads identically
+          to every other Generate-with-Claude affordance in the app.
+          Trailing chevron points toward where the panel sits: closed
+          shows ChevronUp (panel opens upward, above this row); open
+          shows ChevronDown (collapses back down). */}
+      <button
         type="button"
-        variant="secondary"
-        size="sm"
         onClick={() => setOpenAi(!openAi)}
-        className="rounded-full border-court-brand text-court-brand hover:bg-court-brand hover:text-white"
+        className={CLAUDE_PILL_CLASS}
       >
         Generate with Claude
         {openAi ? (
@@ -2423,7 +2421,7 @@ function ComposerAddonToolbar({
         ) : (
           <ChevronUp className="h-3 w-3" />
         )}
-      </Button>
+      </button>
 
       {/* Edit with Claude — separate from Generate. Revises the
           existing draft instead of writing one from scratch. */}

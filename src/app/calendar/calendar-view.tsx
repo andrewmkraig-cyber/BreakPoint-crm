@@ -491,7 +491,7 @@ function CalSubheader({
         <button
           type="button"
           onClick={onToday}
-          className="ml-1 h-9 rounded-full border border-court-border bg-court-surface px-3.5 text-[12.5px] font-medium text-court-fg transition hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark"
+          className="ml-1 h-9 rounded-md border border-court-border bg-court-surface px-3.5 text-[12.5px] font-medium text-court-fg transition hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark"
         >
           Today
         </button>
@@ -509,7 +509,7 @@ function CalSubheader({
         <button
           type="button"
           onClick={onNewEvent}
-          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-3.5 text-[12.5px] font-medium text-court-fg transition hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark"
+          className="inline-flex h-9 items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3.5 text-[12.5px] font-medium text-court-fg transition hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark"
         >
           <Plus className="h-3.5 w-3.5" />
           New event
@@ -518,7 +518,7 @@ function CalSubheader({
           type="button"
           onClick={onSync}
           disabled={isSyncing}
-          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-3.5 text-[12.5px] font-medium text-court-fg transition hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-9 items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3.5 text-[12.5px] font-medium text-court-fg transition hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
         >
           <RefreshCw
             className={`h-3.5 w-3.5 ${isSyncing ? "animate-spin" : ""}`}

@@ -163,7 +163,7 @@ export function EditWithClaudeCustomPanel({
           size="sm"
           onClick={onRun}
           disabled={isRunning || !value.trim()}
-          className="rounded-full text-sm"
+          className="rounded-md text-sm"
         >
           {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
           Run

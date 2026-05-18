@@ -440,7 +440,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               type="button"
               disabled={isPending}
               onClick={() => save()}
-              className="rounded-full border border-court-border bg-court-surface px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle disabled:opacity-60"
+              className="rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle disabled:opacity-60"
             >
               Save draft
             </button>
@@ -448,7 +448,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               type="button"
               disabled={isPending}
               onClick={handleSend}
-              className="rounded-full bg-court-fg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-surface shadow-sm hover:bg-court-brand-dark disabled:opacity-60"
+              className="rounded-md bg-court-fg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-surface shadow-sm hover:bg-court-brand-dark disabled:opacity-60"
             >
               Mark as sent
             </button>
@@ -456,7 +456,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               type="button"
               disabled={isPending || draftingEmail}
               onClick={handleEmailDraft}
-              className="rounded-full border border-court-border bg-court-surface px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle disabled:opacity-60"
+              className="rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle disabled:opacity-60"
             >
               {draftingEmail ? "Opening…" : "Draft Email"}
             </button>
@@ -471,7 +471,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
                   return r;
                 });
               }}
-              className="ml-auto rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-700 hover:bg-red-100 disabled:opacity-60"
+              className="ml-auto rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-700 hover:bg-red-100 disabled:opacity-60"
             >
               Delete draft
             </button>
@@ -508,7 +508,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
                       markInvoicePaidAction(props.id, paymentMethod as InvoicePaymentMethod),
                     );
                   }}
-                  className="rounded-full bg-court-fg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-surface shadow-sm hover:bg-court-brand-dark disabled:opacity-60"
+                  className="rounded-md bg-court-fg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-surface shadow-sm hover:bg-court-brand-dark disabled:opacity-60"
                 >
                   Mark as paid
                 </button>
@@ -519,7 +519,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
                 type="button"
                 disabled={isPending}
                 onClick={() => runAction(() => restoreInvoiceDraftAction(props.id))}
-                className="rounded-full border border-court-border bg-court-surface px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle disabled:opacity-60"
+                className="rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle disabled:opacity-60"
               >
                 Restore to draft
               </button>
@@ -532,7 +532,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
                   if (!confirm("Void this invoice? It stays on file but won't count toward outstanding.")) return;
                   runAction(() => markInvoiceVoidAction(props.id));
                 }}
-                className="ml-auto rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-700 hover:bg-red-100 disabled:opacity-60"
+                className="ml-auto rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-700 hover:bg-red-100 disabled:opacity-60"
               >
                 Void
               </button>
@@ -586,7 +586,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
           href={`/invoices/${props.id}/pdf`}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center justify-center gap-2 rounded-full border border-court-border bg-court-surface px-4 py-3 text-[12px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle"
+          className="inline-flex items-center justify-center gap-2 rounded-md border border-court-border bg-court-surface px-4 py-3 text-[12px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle"
         >
           Open invoice PDF
         </a>
@@ -730,7 +730,7 @@ function ContactSection({
                 <button
                   type="button"
                   onClick={() => onRemove(i)}
-                  className="rounded-full border border-court-border bg-court-surface px-2 text-[11px] font-semibold text-court-fg-muted hover:bg-court-surface-subtle"
+                  className="rounded-md border border-court-border bg-court-surface px-2 text-[11px] font-semibold text-court-fg-muted hover:bg-court-surface-subtle"
                   aria-label="Remove contact"
                 >
                   ×
