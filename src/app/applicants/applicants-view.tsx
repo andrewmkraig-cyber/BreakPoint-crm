@@ -632,28 +632,26 @@ function KeptRowView({
   );
 }
 
-// Shared row-action chip styles. Submit is the affirmative pill — green
-// filled, rounded-full. Keep/Reject stay as the tinted rounded-md chips
-// they were so the destructive/save intents read as their own family.
-// Submit uses court-brand tokens so primary action color follows
-// whichever Court Mode is active; the same shape ships on the
-// candidate profile action row so the Submit pill matches across both
-// surfaces.
+// Shared row-action chip styles. Submit mirrors the candidate-profile
+// pipeline row's Submit button (filled brand green, rounded-md) so the
+// affirmative submittal action reads identically across surfaces.
+// Keep/Reject stay as the tinted rounded-md chips so the destructive
+// and save intents read as their own family.
 const ROW_ACTION_BASE =
-  "inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap border px-2.5 text-[11px] font-semibold shadow-sm transition disabled:opacity-60";
+  "inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border px-2.5 text-[11px] font-semibold shadow-sm transition disabled:opacity-60";
 
 const ROW_ACTION_CLASS = {
   primary: cn(
     ROW_ACTION_BASE,
-    "rounded-full border-court-brand bg-court-brand text-white hover:bg-court-brand-dark",
+    "border-brand bg-brand text-white hover:bg-brand-dark",
   ),
   keep: cn(
     ROW_ACTION_BASE,
-    "rounded-md border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60",
+    "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60",
   ),
   reject: cn(
     ROW_ACTION_BASE,
-    "rounded-md border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60",
+    "border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60",
   ),
 };
 
