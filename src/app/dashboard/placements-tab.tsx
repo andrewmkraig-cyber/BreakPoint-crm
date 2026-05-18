@@ -52,6 +52,7 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
             label="Fees"
             value={metrics.fees > 0 ? formatMoneyShort(metrics.fees) : "—"}
             icon={DollarSign}
+            subtext="All placements this period"
             zeroDim
           />
         </div>
@@ -60,6 +61,7 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
             label="Revenue"
             value={metrics.revenue > 0 ? formatMoneyShort(metrics.revenue) : "—"}
             icon={TrendingUp}
+            subtext="Cash collected this period"
             zeroDim
           />
         </div>
@@ -68,6 +70,7 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
             label="Pending Starts"
             value={String(metrics.pendingStarts)}
             icon={Clock}
+            subtext="Placements not yet started"
             zeroDim
           />
         </div>
