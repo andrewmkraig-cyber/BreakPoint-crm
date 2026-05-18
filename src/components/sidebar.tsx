@@ -26,12 +26,14 @@ import { SidebarProfileCard } from "@/components/sidebar-profile-card";
 import { useMailContext } from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
 
-// Main nav grouped into recruiter workflow sections:
+// Main nav grouped into recruiter workflow sections. Items inside a
+// group are alphabetized so the eye doesn't have to learn a custom
+// per-group order; the groups themselves stay in workflow order.
 //   Clubhouse (ungrouped overview at top — home/dashboard surface)
 //   Inbox — Mail → Phone (inbox check pinned high so unread badges read fast)
-//   ATS — Pipeline → Applicants → Candidates (active recruiting work)
-//   CRM — Jobs → Clients → BD (reference surfaces)
-//   Ops — Calendar → Finances → Notes (back-office surfaces)
+//   ATS — Applicants → Candidates → Pipeline
+//   CRM — BD → Clients → Jobs
+//   Ops — Calendar → Finances → Notes
 //   Scoreboard — Metrics → Placements (dashboard deep-links)
 type NavGroup = {
   title: string | null;
@@ -64,17 +66,17 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
   {
     title: "ATS",
     items: [
-      { href: "/pipeline", label: "Pipeline", icon: GitBranch, iconColor: "text-sky-400" },
       { href: "/applicants", label: "Applicants", icon: User, iconColor: "text-amber-400" },
       { href: "/candidates", label: "Candidates", icon: Users, iconColor: "text-violet-400" },
+      { href: "/pipeline", label: "Pipeline", icon: GitBranch, iconColor: "text-sky-400" },
     ],
   },
   {
     title: "CRM",
     items: [
-      { href: "/jobs", label: "Jobs", icon: Briefcase, iconColor: "text-indigo-400" },
-      { href: "/clients", label: "Clients", icon: Building2, iconColor: "text-cyan-400" },
       { href: "/bd", label: "BD", icon: Megaphone, iconColor: "text-rose-400" },
+      { href: "/clients", label: "Clients", icon: Building2, iconColor: "text-cyan-400" },
+      { href: "/jobs", label: "Jobs", icon: Briefcase, iconColor: "text-indigo-400" },
     ],
   },
   {
