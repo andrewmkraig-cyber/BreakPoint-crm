@@ -359,7 +359,7 @@ export function NewsFeed() {
                     {list.map((story, idx) => (
                       <li
                         key={`${idx}-${story.url}`}
-                        className="border-b border-court-border last:border-b-0 even:bg-court-surface-subtle"
+                        className="border-b border-court-border last:border-b-0"
                       >
                         <a
                           href={story.url}

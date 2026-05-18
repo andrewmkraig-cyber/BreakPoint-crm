@@ -57,18 +57,18 @@ export function ClientLogo({
     );
   }
 
-  // Plain <img>, not next/image — Google's favicon endpoint doesn't fit
-  // Next's image-optimization model (size param controls output) and
-  // adding it to the next.config images allow-list isn't worth it for
-  // a 32-128px favicon.
+  // Clearbit returns the company's real logo (not a favicon), so size scales
+  // to whatever the consumer asks for and we don't pad inside the chip.
+  // Plain <img> instead of next/image — Clearbit isn't on the next.config
+  // images allow-list and the URL is per-render, not a build-time asset.
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`}
+      src={`https://logo.clearbit.com/${domain}`}
       alt={`${name} logo`}
       width={size}
       height={size}
-      className={`shrink-0 ${radius} border border-court-border bg-court-surface object-contain p-1`}
+      className={`shrink-0 ${radius} border border-court-border bg-court-surface object-contain`}
       style={{ width: size, height: size }}
       onError={() => setFailed(true)}
     />

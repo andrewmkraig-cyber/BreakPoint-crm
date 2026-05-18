@@ -575,13 +575,13 @@ export function EditableResume({
       <div
         className={cn(
           "flex flex-col",
-          highlightTokens.length > 0 && "md:flex-row",
+          highlightTokens.length > 0 && "flex-row",
         )}
       >
         <div
           className={cn(
             "relative",
-            highlightTokens.length > 0 && "md:min-w-0 md:flex-1",
+            highlightTokens.length > 0 && "min-w-0 flex-1",
           )}
         >
           {selected.mimeType === "application/pdf" || selected.kind === "redacted" ? (
@@ -615,13 +615,7 @@ export function EditableResume({
         {highlightTokens.length > 0 && (
           <aside
             className={cn(
-              "flex flex-col border-t border-court-border bg-court-surface-subtle/60",
-              // Fixed 260px rail at md+; tokens-active gives no responsive
-              // shrink so the layout stays predictable inside narrow
-              // embed iframes. PDF wrapper above takes md:flex-1 so it
-              // absorbs whatever remains after the 260px aside.
-              "md:w-[260px] md:shrink-0 md:max-h-[calc(100vh-200px)]",
-              "md:border-l md:border-t-0",
+              "flex w-72 flex-shrink-0 flex-col border-l border-court-border bg-court-surface-subtle/60",
             )}
           >
             <div className="flex flex-wrap items-center gap-2 border-b border-court-border px-3 py-2">
