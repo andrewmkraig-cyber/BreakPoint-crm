@@ -185,9 +185,9 @@ export async function getGoalPacingData(
 
 export function GoalPacingCard({ data }: { data: GoalPacingCardData }) {
   return (
-    <div className="flex flex-col rounded-3xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
+    <div className="flex flex-col rounded-2xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <div>
-        <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
+        <p className="font-serif text-sm font-bold tracking-tight text-court-fg">
           Goal pacing
         </p>
         <p className="mt-0.5 text-xs text-court-fg-muted">
@@ -251,7 +251,7 @@ function PacingBlock({
       <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-court-fg-muted">
         {eyebrow}
       </p>
-      <p className="mt-2 font-serif text-[26px] font-semibold leading-none tabular-nums text-court-fg">
+      <p className="mt-2 font-serif text-[20px] font-bold leading-none tracking-[-0.04em] tabular-nums text-court-fg">
         {revenueFormatted}
       </p>
       <p className="mt-1 text-xs text-court-fg-muted">

@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertTriangle } from "lucide-react";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -20,10 +21,12 @@ export function TriggersView({
   autoSendCandidateConfirmation,
   rules,
   templateOptionsByKey,
+  gmailConnected,
 }: {
   autoSendCandidateConfirmation: boolean;
   rules: TriggerRuleRow[];
   templateOptionsByKey: Record<string, TemplateOption[]>;
+  gmailConnected: boolean;
 }) {
   return (
     <div className="space-y-6">
@@ -42,6 +45,7 @@ export function TriggersView({
               key={rule.triggerKey}
               rule={rule}
               templates={templateOptionsByKey[rule.triggerKey] ?? []}
+              gmailConnected={gmailConnected}
             />
           ))}
         </div>
@@ -87,9 +91,11 @@ function AutoSendCandidateConfirmationRow({ initial }: { initial: boolean }) {
 function TriggerRuleRowEditor({
   rule,
   templates,
+  gmailConnected,
 }: {
   rule: TriggerRuleRow;
   templates: TemplateOption[];
+  gmailConnected: boolean;
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = useState(rule.enabled);
@@ -142,48 +148,78 @@ function TriggerRuleRowEditor({
 
   const hasNoTemplates = templates.length === 0;
 
-  return (
-    <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-start sm:justify-between">
-      <div className="min-w-0 sm:flex-1">
-        <div className="text-sm font-semibold text-court-fg">{rule.label}</div>
-        <div className="mt-1 text-xs text-court-fg-muted">{rule.description}</div>
-      </div>
+  // Warnings reflect *current* (optimistic) row state, not the saved
+  // rule, so toggling enabled/draft immediately shows or hides the
+  // banner the user is reasoning about.
+  const warnings: string[] = [];
+  if (enabled) {
+    if (templateId && !templates.some((t) => t.id === templateId)) {
+      warnings.push("Assigned template is missing or inactive — this trigger won't send until you reassign it.");
+    } else if (!templateId && hasNoTemplates) {
+      warnings.push("No active templates assigned to this trigger — nothing will send until one is published.");
+    }
+  }
+  if (sendAsDraft && !gmailConnected) {
+    warnings.push("Approve-before-sending is on but Gmail isn't connected — drafts can't be created.");
+  }
 
-      <div className="flex flex-col gap-2 sm:w-72 sm:shrink-0">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-xs font-medium text-court-fg">Enabled</span>
-          <Toggle checked={enabled} pending={pending} onToggle={onToggleEnabled} />
+  return (
+    <div className="flex flex-col gap-3 p-3">
+      {warnings.length > 0 && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-900"
+        >
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          <ul className="space-y-1">
+            {warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 sm:flex-1">
+          <div className="text-sm font-semibold text-court-fg">{rule.label}</div>
+          <div className="mt-1 text-xs text-court-fg-muted">{rule.description}</div>
         </div>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-court-fg">Template</span>
-          <select
-            value={templateId}
-            onChange={(e) => onTemplateChange(e.target.value)}
-            disabled={pending || hasNoTemplates}
-            className={cn(
-              "w-full rounded-md border border-court-border bg-court-bg px-2 py-1 text-xs text-court-fg",
-              "focus:outline-none focus:ring-2 focus:ring-brand/40",
-              (pending || hasNoTemplates) && "opacity-60",
-            )}
-          >
-            <option value="">System default (most recent active)</option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-          {hasNoTemplates && (
-            <span className="text-[11px] text-court-fg-muted">
-              No active templates assigned to this trigger yet.
-            </span>
-          )}
-        </label>
+        <div className="flex flex-col gap-2 sm:w-72 sm:shrink-0">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-medium text-court-fg">Enabled</span>
+            <Toggle checked={enabled} pending={pending} onToggle={onToggleEnabled} />
+          </div>
 
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-xs font-medium text-court-fg">Approve before sending</span>
-          <Toggle checked={sendAsDraft} pending={pending} onToggle={onToggleDraft} />
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-court-fg">Template</span>
+            <select
+              value={templateId}
+              onChange={(e) => onTemplateChange(e.target.value)}
+              disabled={pending || hasNoTemplates}
+              className={cn(
+                "w-full rounded-md border border-court-border bg-court-bg px-2 py-1 text-xs text-court-fg",
+                "focus:outline-none focus:ring-2 focus:ring-brand/40",
+                (pending || hasNoTemplates) && "opacity-60",
+              )}
+            >
+              <option value="">System default (most recent active)</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            {hasNoTemplates && (
+              <span className="text-[11px] text-court-fg-muted">
+                No active templates assigned to this trigger yet.
+              </span>
+            )}
+          </label>
+
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-medium text-court-fg">Approve before sending</span>
+            <Toggle checked={sendAsDraft} pending={pending} onToggle={onToggleDraft} />
+          </div>
         </div>
       </div>
     </div>

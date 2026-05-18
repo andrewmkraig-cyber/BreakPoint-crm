@@ -70,6 +70,13 @@ function formatDate(d: Date | null): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+// Render an em-dash when a string field is null, undefined, or whitespace-only
+// so empty cells share the same typographic anchor as our null money / null
+// date fallbacks instead of leaving a visually blank gap in the row.
+function orDash(v: string | null | undefined): string {
+  return v && v.trim() !== "" ? v : "—";
+}
+
 type RawParams = { tab?: string; filter?: string; period?: string };
 type ParamsInput = Promise<RawParams> | RawParams;
 
@@ -201,7 +208,7 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
                   const billing = parseInvoiceContacts(inv.billingContacts);
                   const primary = billing[0];
                   const candName = inv.candidate
-                    ? `${inv.candidate.firstName} ${inv.candidate.lastName ?? ""}`.trim()
+                    ? orDash(`${inv.candidate.firstName ?? ""} ${inv.candidate.lastName ?? ""}`.trim())
                     : "—";
                   const status = STATUS_COPY[inv.status] ?? { label: inv.status, tone: "bg-court-surface-subtle text-court-fg" };
                   const isOverdue = inv.status === "SENT" && inv.dueDate && inv.dueDate < new Date();
@@ -209,18 +216,16 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
                     <InvoiceRow key={inv.id} href={`/invoices/${inv.id}`}>
                       <td className="px-6 py-3 align-top">
                         <span className="font-mono text-[12px] font-semibold text-court-fg">
-                          {inv.invoiceNumber}
+                          {orDash(inv.invoiceNumber)}
                         </span>
                       </td>
                       <td className="px-6 py-3 align-top">
-                        <div className="font-medium text-court-fg">{inv.client?.name ?? "—"}</div>
-                        {primary?.name ? (
-                          <div className="text-[12px] text-court-fg-muted">{primary.name}</div>
-                        ) : null}
+                        <div className="font-medium text-court-fg">{orDash(inv.client?.name)}</div>
+                        <div className="text-[12px] text-court-fg-muted">{orDash(primary?.name)}</div>
                       </td>
                       <td className="px-6 py-3 align-top">
                         <div className="font-medium text-court-fg">{candName}</div>
-                        <div className="text-[12px] text-court-fg-muted">{inv.roleTitle ?? "—"}</div>
+                        <div className="text-[12px] text-court-fg-muted">{orDash(inv.roleTitle)}</div>
                       </td>
                       <td className="px-6 py-3 align-top tabular-nums">{formatUsdDecimal(inv.feeAmount)}</td>
                       <td className="px-6 py-3 align-top text-court-fg-muted">{formatDate(inv.startDate)}</td>
