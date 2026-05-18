@@ -25,9 +25,11 @@ import { cn } from "@/lib/utils";
 export function AddToListButton({
   candidateId,
   candidateName,
+  className,
 }: {
   candidateId: string;
   candidateName: string;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -35,7 +37,7 @@ export function AddToListButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={ADD_TO_LIST_BUTTON_CLASS}
+        className={cn(ADD_TO_LIST_BUTTON_CLASS, className)}
       >
         <ListPlus className="h-3 w-3" /> Add to List
       </button>

@@ -45,6 +45,7 @@ export function KeepCandidateButton({
       disabled={isPending}
       aria-pressed={isKept}
       title={isKept ? "Remove from Kept" : "Mark as Kept"}
+      className="text-sm"
     >
       {isPending ? (
         <Loader2 className="h-3 w-3 animate-spin" />

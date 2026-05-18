@@ -655,7 +655,11 @@ export default async function CandidateProfilePage({
               >
                 <NotebookPen className="h-3 w-3" /> Add Note
               </Link>
-              <AddToListButton candidateId={candidate.id} candidateName={name} />
+              <AddToListButton
+              candidateId={candidate.id}
+              candidateName={name}
+              className="px-3 py-1.5 text-sm font-medium"
+            />
             </div>
             {tab === "game-plan" ? (
               <AiWorkspace
@@ -784,7 +788,11 @@ export default async function CandidateProfilePage({
             >
               <NotebookPen className="h-3 w-3" /> Add Note
             </Link>
-            <AddToListButton candidateId={candidate.id} candidateName={name} />
+            <AddToListButton
+              candidateId={candidate.id}
+              candidateName={name}
+              className="px-3 py-1.5 text-sm font-medium"
+            />
           </div>
           {tab === "game-plan" ? (
             <AiWorkspace
@@ -837,13 +845,13 @@ export default async function CandidateProfilePage({
 // green primary variant so Submit to Job sits as the affirmative action
 // at the head of the row.
 const SUBMIT_LINK_CLASS =
-  "inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25";
+  "inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25";
 
 // Anchor-shaped twin of <Button variant="apply">. Token classes mirror
 // the amber apply variant so the Apply to Job link renders identically
 // to the matching <Button> without nesting a <button> inside an <a>.
 const APPLY_LINK_CLASS =
-  "inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60";
+  "inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60";
 
 const ADD_NOTE_LINK_CLASS =
   "inline-flex items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 dark:hover:bg-slate-800";
