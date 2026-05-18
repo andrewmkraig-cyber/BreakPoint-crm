@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, Wand2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 // Edit instruction names match the API's EditType union exactly so the
 // callback can pass through without translation. "custom" opens a free-
@@ -156,15 +157,17 @@ export function EditWithClaudeCustomPanel({
         >
           Cancel
         </button>
-        <button
+        <Button
           type="button"
+          variant="primary"
+          size="sm"
           onClick={onRun}
           disabled={isRunning || !value.trim()}
-          className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+          className="rounded-full text-sm"
         >
           {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
           Run
-        </button>
+        </Button>
       </div>
     </div>
   );

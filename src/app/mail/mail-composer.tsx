@@ -55,7 +55,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import { EditWithClaudeMenu, EditWithClaudeCustomPanel, type EditType } from "@/components/edit-with-claude-menu";
 import {
@@ -2404,16 +2404,17 @@ function ComposerAddonToolbar({
         )}
       </div>
 
-      {/* Generate with Claude — canonical CLAUDE_PILL_CLASS so this
-          button reads identically wherever Ace asks Claude to write
-          (mail, submittals, agreements, summaries, find matches).
-          Trailing chevron points toward where the panel sits: closed
-          shows ChevronUp (panel will open upward, above this button
-          row); open shows ChevronDown (collapses the panel back down). */}
-      <button
+      {/* Generate with Claude — dark-green sibling of the Submit /
+          Apply action-row buttons so the panel toggle reads as part of
+          the same family. Trailing chevron points toward where the panel
+          sits: closed shows ChevronUp (panel will open upward, above
+          this button row); open shows ChevronDown (collapses back down). */}
+      <Button
         type="button"
+        variant="primary"
+        size="sm"
         onClick={() => setOpenAi(!openAi)}
-        className={CLAUDE_PILL_CLASS}
+        className="rounded-full border-court-brand bg-court-brand text-sm font-semibold text-white hover:bg-court-brand-dark"
       >
         Generate with Claude
         {openAi ? (
@@ -2421,7 +2422,7 @@ function ComposerAddonToolbar({
         ) : (
           <ChevronUp className="h-3 w-3" />
         )}
-      </button>
+      </Button>
 
       {/* Edit with Claude — separate from Generate. Revises the
           existing draft instead of writing one from scratch. */}

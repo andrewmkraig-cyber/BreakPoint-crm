@@ -726,6 +726,7 @@ export function PlacementActions({
           candidateLastName={candidateLastName}
           candidateEmail={candidateEmail}
           openJobs={openJobs}
+          allContacts={collectAllContacts(openJobs)}
           initialJobRfId={submitInitialJobRfId ?? undefined}
           onClose={() => {
             setSubmitOpen(false);
@@ -2807,12 +2808,33 @@ function ApplyToJobDialog({
 // sending, the candidate confirmation ("Great News…") is auto-drafted in
 // Gmail for the recruiter to review and send manually.
 
+// Dedupe contacts across every job in the candidate's open-jobs pool so
+// the Submit composer's BCC dropdown lists every contact the recruiter
+// could reasonably loop in, not just the picked client's own roster.
+// Keyed by lowercased email since the same person can appear under
+// multiple clients with case-only variants.
+function collectAllContacts(
+  openJobs: OpenJobOption[],
+): { id: string; name: string; email: string }[] {
+  const byEmail = new Map<string, { id: string; name: string; email: string }>();
+  for (const j of openJobs) {
+    for (const c of j.clientContacts) {
+      if (!c.email) continue;
+      const key = c.email.toLowerCase();
+      if (byEmail.has(key)) continue;
+      byEmail.set(key, { id: String(c.id), name: c.name, email: c.email });
+    }
+  }
+  return Array.from(byEmail.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function SubmitToJobDialog({
   candidateRfId,
   candidateFirstName,
   candidateLastName,
   candidateEmail,
   openJobs,
+  allContacts,
   initialJobRfId,
   onClose,
 }: {
@@ -2821,6 +2843,9 @@ function SubmitToJobDialog({
   candidateLastName: string;
   candidateEmail: string;
   openJobs: OpenJobOption[];
+  // Deduped contact pool surfaced in the Submit composer's BCC field —
+  // not just the picked client's own roster.
+  allContacts: { id: string; name: string; email: string }[];
   // When set (e.g. via the ?compose=submittal&jobId=X deep link from
   // the Applicants page or the Job-page pipeline row), skip the
   // job-picker step entirely and open the composer for that job.
@@ -2862,6 +2887,7 @@ function SubmitToJobDialog({
         candidateLastName={candidateLastName}
         candidateEmail={candidateEmail}
         job={picked}
+        allContacts={allContacts}
         onBack={() => setComposing(false)}
         onDone={() => {
           onClose();
@@ -2911,6 +2937,7 @@ function SubmittalEmailCompose({
   candidateLastName,
   candidateEmail,
   job,
+  allContacts,
   onBack,
   onDone,
 }: {
@@ -2919,6 +2946,10 @@ function SubmittalEmailCompose({
   candidateLastName: string;
   candidateEmail: string;
   job: OpenJobOption;
+  // Full deduped contact pool used for the BCC picker — wider than the
+  // picked client's own roster so the recruiter can BCC anyone they've
+  // touched recently.
+  allContacts: { id: string; name: string; email: string }[];
   onBack: () => void;
   onDone: () => void;
 }) {
@@ -2973,11 +3004,15 @@ function SubmittalEmailCompose({
       initial={{
         to: [],
         cc: [],
-        bcc: [],
+        // Austin pre-populated by default — matches the Interview
+        // scheduler's BCC convention so Ops gets looped in on every
+        // submittal without the recruiter having to remember.
+        bcc: [AUSTIN_PINNED_CONTACT.email],
         subject,
         body: "",
       }}
       recipientOptions={contactOptions}
+      bccOptions={allContacts}
       onClose={onBack}
       sendLabel="Send Submittal"
       sendingLabel="Sending…"
@@ -3803,21 +3838,22 @@ export function CcBccPicker({
   );
 }
 
-// One row in the dropdown. Uses onMouseDown + preventDefault so the
-// toggle commits BEFORE the typed input's blur handler fires; without
-// this the blur ran addTyped with the pre-toggle `selected` closure
-// and the parent's onChange got called with the stale value, racing
-// the click-driven toggle and dropping the chip.
+// One row in the dropdown. Uses onMouseDown + preventDefault so focus
+// never leaves the typed input (no blur → no stale-closure addTyped
+// race) AND onClick with stopPropagation so the add commits cleanly
+// without bubbling to the container / document outside-click handler.
+// Click semantics are add-only — clicking an already-selected contact
+// is a no-op rather than toggling off; that's the X on the chip's job.
 function PickerOption({
   name,
   email,
   checked,
-  onToggle,
+  onAdd,
 }: {
   name: string;
   email: string;
   checked: boolean;
-  onToggle: () => void;
+  onAdd: () => void;
 }) {
   return (
     <li>
@@ -3826,7 +3862,12 @@ function PickerOption({
         onMouseDown={(e) => {
           if (!email) return;
           e.preventDefault();
-          onToggle();
+        }}
+        onClick={(e) => {
+          if (!email) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onAdd();
         }}
         disabled={!email}
         className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-court-fg hover:bg-court-brand-tint disabled:cursor-not-allowed disabled:opacity-60"
@@ -3895,11 +3936,11 @@ export function InlineContactMultiInput({
     latestValueRef.current = joined;
     onChange(joined);
   }
-  function toggle(email: string) {
+  function add(email: string) {
     if (!email) return;
     const next = new Set(parseEmailCsv(latestValueRef.current));
-    if (next.has(email)) next.delete(email);
-    else next.add(email);
+    if (next.has(email)) return;
+    next.add(email);
     commit(next);
   }
   function addTyped() {
@@ -4013,7 +4054,7 @@ export function InlineContactMultiInput({
                       name={c.name}
                       email={c.email}
                       checked={selected.has(c.email)}
-                      onToggle={() => toggle(c.email)}
+                      onAdd={() => add(c.email)}
                     />
                   ))}
                   <li className="mx-2 my-1 border-t border-court-border" />
@@ -4030,7 +4071,7 @@ export function InlineContactMultiInput({
                   name={c.name}
                   email={c.email}
                   checked={selected.has(c.email)}
-                  onToggle={() => toggle(c.email)}
+                  onAdd={() => add(c.email)}
                 />
               ))}
             </ul>

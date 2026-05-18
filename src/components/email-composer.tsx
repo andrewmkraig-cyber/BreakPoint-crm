@@ -1202,18 +1202,24 @@ function ContactComboMulti({
     onChange(joined);
   }
 
-  function toggle(email: string) {
+  function add(email: string) {
     if (!email) return;
     const key = email.trim();
     if (!key) return;
     const next = new Set(parseCsv(latestValueRef.current));
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
+    if (next.has(key)) return;
+    next.add(key);
     commit(next);
   }
 
+  // Use a ref so addTyped called from the document-mousedown closure
+  // always reads the freshest typed value, not whatever was captured
+  // when the listener was attached.
+  const typedRef = useRef(typed);
+  typedRef.current = typed;
+
   function addTyped() {
-    const raw = typed.trim();
+    const raw = typedRef.current.trim();
     if (!raw) return;
     // Allow comma/semicolon-separated bulk paste.
     const next = new Set(parseCsv(latestValueRef.current));
@@ -1228,8 +1234,26 @@ function ContactComboMulti({
     commit(next);
   }
 
+  // Outside-click dismisses the dropdown via a document-level listener
+  // (gated by `open` and scoped to this picker's container). Replaces
+  // an earlier `fixed inset-0` overlay that sat on top of the entire
+  // viewport and ate clicks on surrounding composer chrome.
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDocMouseDown(e: MouseEvent) {
+      const node = containerRef.current;
+      if (node && node.contains(e.target as Node)) return;
+      addTyped();
+      setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <div
         className="flex min-h-[34px] w-full flex-wrap items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm focus-within:border-brand"
         onClick={() => setOpen(true)}
@@ -1273,53 +1297,42 @@ function ContactComboMulti({
         />
       </div>
       {open && (
-        <>
-          <div
-            className="fixed inset-0 z-[60]"
-            onClick={() => {
-              // Commit typed before dismiss — onBlur alone doesn't fire
-              // when the outside click lands on a non-focusable element.
-              addTyped();
-              setOpen(false);
-            }}
-          />
-          <div className="absolute left-0 top-full z-[70] mt-1 w-full overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
-            <ul className="max-h-64 overflow-y-auto py-1">
-              {pinnedList.length > 0 && (
-                <>
-                  <li className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
-                    Quick pick
-                  </li>
-                  {pinnedList.map((c) => (
-                    <ContactRow
-                      key={`pinned-${c.id}`}
-                      c={c}
-                      checked={Boolean(c.email && selected.has(c.email))}
-                      onToggle={() => toggle(c.email)}
-                    />
-                  ))}
-                  <li className="mx-2 my-1 border-t border-court-border" />
-                </>
-              )}
-              {rest.length === 0 && pinnedList.length === 0 && (
-                <li className="px-3 py-2 text-xs text-court-fg-muted">
-                  No contacts on file. Type an email and press Enter.
+        <div className="absolute left-0 top-full z-[70] mt-1 w-full overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
+          <ul className="max-h-64 overflow-y-auto py-1">
+            {pinnedList.length > 0 && (
+              <>
+                <li className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                  Quick pick
                 </li>
-              )}
-              {rest.map((c) => (
-                <ContactRow
-                  key={c.id}
-                  c={c}
-                  checked={Boolean(c.email && selected.has(c.email))}
-                  onToggle={() => toggle(c.email)}
-                />
-              ))}
-            </ul>
-            <div className="border-t border-court-border bg-court-surface-subtle/40 px-3 py-1.5 text-[10px] text-court-fg-muted">
-              Or type an email and press Enter to add.
-            </div>
+                {pinnedList.map((c) => (
+                  <ContactRow
+                    key={`pinned-${c.id}`}
+                    c={c}
+                    checked={Boolean(c.email && selected.has(c.email))}
+                    onAdd={() => add(c.email)}
+                  />
+                ))}
+                <li className="mx-2 my-1 border-t border-court-border" />
+              </>
+            )}
+            {rest.length === 0 && pinnedList.length === 0 && (
+              <li className="px-3 py-2 text-xs text-court-fg-muted">
+                No contacts on file. Type an email and press Enter.
+              </li>
+            )}
+            {rest.map((c) => (
+              <ContactRow
+                key={c.id}
+                c={c}
+                checked={Boolean(c.email && selected.has(c.email))}
+                onAdd={() => add(c.email)}
+              />
+            ))}
+          </ul>
+          <div className="border-t border-court-border bg-court-surface-subtle/40 px-3 py-1.5 text-[10px] text-court-fg-muted">
+            Or type an email and press Enter to add.
           </div>
-        </>
+        </div>
       )}
     </div>
   );
@@ -1328,24 +1341,17 @@ function ContactComboMulti({
 function ContactRow({
   c,
   checked,
-  onToggle,
+  onAdd,
 }: {
   c: ContactOption;
   checked: boolean;
-  onToggle: () => void;
+  onAdd: () => void;
 }) {
-  // Why a <button> with onMouseDown instead of a <label><input
-  // type=checkbox onChange>>: a click on the original checkbox
-  // raced the typed input's onBlur. The blur fired first, addTyped
-  // ran with the pre-toggle closure of `selected` and called
-  // setAll(...staleSelected), which onChange()'d the parent with
-  // the value AS IT WAS BEFORE the click — wiping any chip the
-  // click was about to add.
-  //
-  // Fix: commit the toggle on mouseDown (which fires BEFORE blur),
-  // and preventDefault so focus never leaves the typed input. The
-  // typed input never blurs, addTyped never fires its blur path,
-  // and the toggle's setAll() is the only state mutation in flight.
+  // mouseDown + preventDefault keeps focus on the typed input (no blur
+  // → no stale-closure addTyped race). onClick with stopPropagation
+  // commits the add cleanly without bubbling to the container or
+  // document outside-click handler. Add-only — clicking an already-
+  // selected contact is a no-op; the X on the chip removes it.
   return (
     <li>
       <button
@@ -1353,7 +1359,12 @@ function ContactRow({
         onMouseDown={(e) => {
           if (!c.email) return;
           e.preventDefault();
-          onToggle();
+        }}
+        onClick={(e) => {
+          if (!c.email) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onAdd();
         }}
         disabled={!c.email}
         className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-court-fg hover:bg-court-brand-tint disabled:cursor-not-allowed disabled:opacity-60"
