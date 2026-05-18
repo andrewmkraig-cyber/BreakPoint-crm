@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus, Send, X } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 import { normalizeToE164 } from "@/lib/rf-payload-shapes";
 import {
@@ -127,19 +127,18 @@ export function SmsComposer({
           >
             {openingQuo ? <Loader2 className="h-3 w-3 animate-spin" /> : "Quo"}
           </button>
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="sm"
             onClick={onSend}
             disabled={disabled}
-            className={cn(
-              "inline-flex h-8 items-center gap-1 rounded-lg px-3 text-xs font-semibold text-white shadow-sm transition",
-              "bg-court-brand hover:bg-court-brand-dark disabled:cursor-not-allowed disabled:opacity-50",
-            )}
+            className="rounded-full"
             title="Send SMS"
           >
             {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
             Send
-          </button>
+          </Button>
         </div>
         {error && (
           <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-800">

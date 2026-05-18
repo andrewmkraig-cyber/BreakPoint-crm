@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { DocumentDropzone } from "@/components/document-dropzone";
 import { DocxPreview } from "@/components/docx-preview";
 import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
@@ -362,30 +363,34 @@ export function EditableResume({
                 e.currentTarget.value = "";
               }}
             />
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="sm"
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading || isGenerating}
-              className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+              className="rounded-full"
             >
               {isUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
               Upload Resume
-            </button>
+            </Button>
             {/* Generate Resume — only renders in the empty-state branch
                 (no resume on file). Uses Sparkles icon to match the
                 Generate-with-Claude treatment elsewhere in the app
                 (mail composer, JD generator, etc.). Disabled while
                 an upload OR another generation is in flight so the
                 two paths can't race. */}
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
               onClick={() => void onGenerate()}
               disabled={isUploading || isGenerating}
-              className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:bg-court-surface-subtle disabled:opacity-60"
+              className="rounded-full"
             >
               {isGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
               Generate Resume
-            </button>
+            </Button>
             <span className="text-[11px] text-court-fg-muted">or drag and drop a file above.</span>
           </div>
         </div>
