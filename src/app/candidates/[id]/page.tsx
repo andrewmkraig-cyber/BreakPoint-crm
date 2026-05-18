@@ -634,6 +634,7 @@ export default async function CandidateProfilePage({
               the resume PDF. CompactOverview moved to the right rail
               so it's not duplicated against the resume header. */}
           <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+            <UnderlineTabs tab={tab} candidateId={id} embed />
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 href={`/candidates/${id}?embed=true&openSubmit=1`}
@@ -649,20 +650,29 @@ export default async function CandidateProfilePage({
               </Link>
               <KeepCandidateButton candidateId={candidate.id} isKept={isKept} />
               <Link
-                href={`/candidates/${id}?tab=notes`}
-                target="_top"
+                href={`/candidates/${id}?embed=true&tab=notes`}
                 className={ADD_NOTE_LINK_CLASS}
               >
                 <NotebookPen className="h-3 w-3" /> Add Note
               </Link>
               <AddToListButton candidateId={candidate.id} candidateName={name} />
             </div>
-            <EditableResume
-              candidateRfId={id}
-              candidateId={candidate.id}
-              versions={resumeVersions}
-              tokens={highlightTokens}
-            />
+            {tab === "game-plan" ? (
+              <AiWorkspace
+                entityType="candidate"
+                entityId={String(id)}
+                recipientEmail={candidate.email ?? null}
+              />
+            ) : tab === "notes" ? (
+              <EditableNotes candidateId={id} initial={notesInitial} />
+            ) : (
+              <EditableResume
+                candidateRfId={id}
+                candidateId={candidate.id}
+                versions={resumeVersions}
+                tokens={highlightTokens}
+              />
+            )}
           </div>
           {/* Right rail. CompactOverview as a single tight summary box,
               then skills, then the call/email/text activity card. The
@@ -836,17 +846,38 @@ const APPLY_LINK_CLASS =
   "inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60";
 
 const ADD_NOTE_LINK_CLASS =
-  "inline-flex items-center justify-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface";
+  "inline-flex items-center justify-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1.5 text-sm font-medium text-court-fg shadow-sm transition hover:bg-court-surface";
 
-function UnderlineTabs({ tab, candidateId }: { tab: CandidateTab; candidateId: number }) {
+function UnderlineTabs({
+  tab,
+  candidateId,
+  embed = false,
+}: {
+  tab: CandidateTab;
+  candidateId: number;
+  embed?: boolean;
+}) {
+  const embedPrefix = embed ? "embed=true&" : "";
   return (
     <TabStrip<CandidateTab>
       activeId={tab}
       ariaLabel="Candidate profile sections"
       items={[
-        { id: "profile", label: "Profile", href: `/candidates/${candidateId}` },
-        { id: "game-plan", label: "Game Plan", href: `/candidates/${candidateId}?tab=game-plan` },
-        { id: "notes", label: "Notes", href: `/candidates/${candidateId}?tab=notes` },
+        {
+          id: "profile",
+          label: "Profile",
+          href: `/candidates/${candidateId}${embed ? "?embed=true" : ""}`,
+        },
+        {
+          id: "game-plan",
+          label: "Game Plan",
+          href: `/candidates/${candidateId}?${embedPrefix}tab=game-plan`,
+        },
+        {
+          id: "notes",
+          label: "Notes",
+          href: `/candidates/${candidateId}?${embedPrefix}tab=notes`,
+        },
       ]}
     />
   );
