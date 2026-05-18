@@ -400,6 +400,13 @@ export function PlacementActions({
           );
         } catch {
           // Swallow — optimistic row stays as-is on fetch failure.
+        } finally {
+          // Reconcile RSC after the snapshot lands so external surfaces
+          // (pipeline, applicants, jobs) update without a manual reload.
+          // The useEffect that syncs jobsState ← jobs runs after the
+          // refresh and replaces the optimistic row with the canonical
+          // server prop, which by now includes the new placement.
+          router.refresh();
         }
       })();
     }, 500);

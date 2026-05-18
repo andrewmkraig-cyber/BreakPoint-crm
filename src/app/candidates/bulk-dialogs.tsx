@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -10,24 +10,26 @@ import {
   ListPlus,
   Sparkles,
   Users,
+  Variable,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useSession } from "next-auth/react";
 import {
   bulkApplyCandidatesToJob,
   bulkAddCandidatesToList,
   bulkAddCandidatesToNewList,
   bulkSendEmail,
-  getCandidateContactsForBulk,
   getJobMergeValuesForBulk,
   getOpenJobsForBulkPicker,
   type BulkPickerJob,
-  type BulkRecipient,
 } from "@/app/candidates/bulk-actions";
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
-import { EmailComposer, type EmailDraft } from "@/components/email-composer";
+import type { EmailDraft } from "@/components/email-composer";
+import { EditWithClaudeMenu, type EditType } from "@/components/edit-with-claude-menu";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
-import type { MergeFieldValues } from "@/lib/merge-fields";
+import { MERGE_FIELDS, type MergeFieldValues } from "@/lib/merge-fields";
+import { cn } from "@/lib/utils";
 
 // Shared bulk-action modals used by both the /candidates global page
 // and the job Matches tab. Extracted out of candidates-view.tsx so the
@@ -266,14 +268,15 @@ export function BulkAddToListDialog({
   );
 }
 
-// Email-specific bulk dialog. Wraps EmailComposer (which does not
-// render its own modal shell) in a wider backdrop than BulkModal —
-// the composer needs room for the body editor + template picker.
+// Email-specific bulk dialog. Standalone modal layout (FROM / TO chip /
+// SUBJECT / AI toolbar / body / footer) rather than wrapping the shared
+// EmailComposer — the bulk flow needs its own chrome (recipient chip,
+// AI controls above body, ghost-pill footer) that doesn't fit the
+// composer's generic shape.
 //
-// Recipients are NOT taken from the composer's To/Cc/Bcc fields;
-// bulkSendEmail resolves Candidate.email per id server-side. The
-// notice above the composer makes this explicit so the recruiter
-// doesn't waste keystrokes filling in those fields.
+// Recipients are resolved server-side: bulkSendEmail looks up
+// Candidate.email per id at send time, so the dialog only shows the
+// selected count, not editable To/Cc/Bcc fields.
 const BULK_EMAIL_CONFIRM_THRESHOLD = 25;
 
 // Job + client tokens that, when present in a picked template OR in
@@ -330,32 +333,36 @@ export function BulkEmailDialog({
   onDone: () => void;
 }) {
   const n = candidateIds.length;
+  const { data: session } = useSession();
+  const fromEmail = session?.user?.email ?? "";
 
-  // Recruiter-typed prompt for Generate-with-Claude. Lives outside
-  // EmailComposer because the composer's onGenerate callback has no
-  // prompt arg — we read this state inside our onGenerate handler.
+  // Composer state lives locally — EmailComposer is no longer mounted.
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const subjectRef = useRef<HTMLInputElement | null>(null);
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+  const [lastFocus, setLastFocus] = useState<"subject" | "body">("subject");
+  const subjectCaret = useRef<number | null>(null);
+  const bodyCaret = useRef<number | null>(null);
+
+  // Recruiter-typed prompt for Generate-with-Claude. Collapsible strip
+  // above the AI toolbar so the recruiter can describe the email before
+  // firing the generator.
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const [isGenerating, startGenerate] = useTransition();
+  const [isEditing, startEdit] = useTransition();
+  const [isSending, startSend] = useTransition();
 
-  // Local "Use Template" picker. Bulk email bypasses EmailComposer's
-  // built-in showTemplatePicker because the two-step job-tokens flow
-  // required parking a Promise inside the composer's onPickTemplate
-  // transition, which left the picker stuck whenever the parent re-
-  // rendered. Driving the composer's draft from outside via the
-  // declarative externalDraft prop makes this a normal local UI flow.
+  // Local "Use Template" picker. Bulk email runs the template picker
+  // inline so the two-step "pick template → pick job" flow can park
+  // between steps without fighting another component's lifecycle.
   const [localTemplates, setLocalTemplates] = useState<ActiveTemplateSummary[]>([]);
   const [localTemplatesLoaded, setLocalTemplatesLoaded] = useState(false);
   const [localTemplatesError, setLocalTemplatesError] = useState<string | null>(null);
-  // Anchored popover for the Use Template button. No backdrop overlay —
-  // dismiss is handled by a document-level pointerdown listener scoped
-  // to the wrapper ref below. The previous full-screen backdrop fought
-  // the bulk modal's stacking context and stayed stuck open on every
-  // parent re-render.
   const [openTemplate, setOpenTemplate] = useState(false);
   const templateContainerRef = useRef<HTMLDivElement | null>(null);
-  // Fresh object per pick so EmailComposer's externalDraft effect re-fires
-  // even when the same template is picked twice.
-  const [externalDraft, setExternalDraft] = useState<{ subject: string; body: string } | null>(null);
 
   // Load active templates once when the bulk dialog mounts so the
   // picker dropdown opens instantly with the full list.
@@ -435,19 +442,18 @@ export function BulkEmailDialog({
     };
   }, [openTemplate]);
 
-  // Push a draft into EmailComposer. When jobValues is provided, the job
-  // tokens ([Job Title], [Client Company Name], etc.) are resolved before
-  // the composer sees them — so the recruiter reads the real role name in
-  // the subject/body instead of raw placeholders. Per-recipient candidate
-  // tokens ([Candidate First Name], etc.) stay as tokens and resolve
+  // Resolve job tokens up front when a jobValues map is provided so the
+  // recruiter reads the real role name in the subject/body instead of raw
+  // placeholders. Per-recipient candidate tokens stay as tokens and resolve
   // server-side at send time.
   function applyTemplateDraft(
     template: ActiveTemplateSummary,
     jobValues?: MergeFieldValues,
   ) {
-    const subject = jobValues ? applyJobTokensOnly(template.subject, jobValues) : template.subject;
-    const body = jobValues ? applyJobTokensOnly(template.body, jobValues) : template.body;
-    setExternalDraft({ subject, body });
+    const subj = jobValues ? applyJobTokensOnly(template.subject, jobValues) : template.subject;
+    const bod = jobValues ? applyJobTokensOnly(template.body, jobValues) : template.body;
+    setSubject(subj);
+    setBody(bod);
   }
 
   function onPickLocalTemplate(template: ActiveTemplateSummary) {
@@ -500,47 +506,73 @@ export function BulkEmailDialog({
     setPendingJobPick(null);
   }
 
-  // Recipients panel state — lazy-fetched on first toggle expand so a
-  // dialog the recruiter never opens the panel on doesn't pay the
-  // round-trip.
-  const [recipientsOpen, setRecipientsOpen] = useState(false);
-  const [recipients, setRecipients] = useState<BulkRecipient[] | null>(null);
-  const [recipientsLoading, setRecipientsLoading] = useState(false);
+  // Insert Field popover — anchored to its trigger button, dismissed on
+  // outside pointerdown or Escape (same pattern as the template popover).
+  const [fieldOpen, setFieldOpen] = useState(false);
+  const fieldContainerRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (!recipientsOpen) return;
-    if (recipients !== null || recipientsLoading) return;
-    setRecipientsLoading(true);
-    void (async () => {
-      try {
-        const rows = await getCandidateContactsForBulk(candidateIds);
-        setRecipients(rows);
-      } catch {
-        toast.error("Couldn't load recipient list");
-        setRecipients([]);
-      } finally {
-        setRecipientsLoading(false);
-      }
-    })();
-  }, [recipientsOpen, recipients, recipientsLoading, candidateIds]);
+    if (!fieldOpen) return;
+    function onDocPointer(e: PointerEvent) {
+      const el = fieldContainerRef.current;
+      if (!el) return;
+      if (el.contains(e.target as Node)) return;
+      setFieldOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setFieldOpen(false);
+    }
+    document.addEventListener("pointerdown", onDocPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDocPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [fieldOpen]);
+
+  function rememberCaret(el: HTMLInputElement | HTMLTextAreaElement) {
+    const pos = el.selectionStart ?? 0;
+    if (el === subjectRef.current) subjectCaret.current = pos;
+    else if (el === bodyRef.current) bodyCaret.current = pos;
+  }
+
+  function insertMergeToken(token: string) {
+    if (lastFocus === "subject") {
+      const el = subjectRef.current;
+      const start = subjectCaret.current ?? el?.selectionStart ?? subject.length;
+      const next = subject.slice(0, start) + token + subject.slice(start);
+      setSubject(next);
+      requestAnimationFrame(() => {
+        if (!el) return;
+        el.focus();
+        const pos = start + token.length;
+        el.setSelectionRange(pos, pos);
+        subjectCaret.current = pos;
+      });
+    } else {
+      const el = bodyRef.current;
+      const start = bodyCaret.current ?? el?.selectionStart ?? body.length;
+      const next = body.slice(0, start) + token + body.slice(start);
+      setBody(next);
+      requestAnimationFrame(() => {
+        if (!el) return;
+        el.focus();
+        const pos = start + token.length;
+        el.setSelectionRange(pos, pos);
+        bodyCaret.current = pos;
+      });
+    }
+    setFieldOpen(false);
+  }
 
   // Confirmation gate for batches > 25.
   const [confirmDraft, setConfirmDraft] = useState<EmailDraft | null>(null);
   const [confirming, setConfirming] = useState(false);
-
-  const initial: EmailDraft = {
-    to: [],
-    cc: [],
-    bcc: [],
-    subject: "",
-    body: "",
-  };
 
   async function actualSend(draft: EmailDraft): Promise<void> {
     const res = await bulkSendEmail({
       candidateIds,
       subject: draft.subject,
       body: draft.body,
-      bodyHtml: draft.bodyHtml,
       jobMergeValues: jobMergeValues ?? undefined,
     });
     if (res.sent === 0) {
@@ -563,21 +595,34 @@ export function BulkEmailDialog({
     onDone();
   }
 
-  async function onSend(draft: EmailDraft): Promise<void> {
-    // Block sending when the draft still contains job tokens but no
-    // job has been picked. Catches the case where the recruiter
-    // cancelled the picker after applying a job-using template, or
-    // typed tokens manually without picking a job.
-    const haystack = `${draft.subject}\n${draft.body}`;
-    if (textNeedsJob(haystack) && !jobMergeValues) {
-      toast.error("Pick a job for the job context fields, or remove them from the body.");
-      throw new Error("job_context_required");
+  function onSendClick() {
+    setErr(null);
+    if (!subject.trim() || !body.trim()) {
+      setErr("Subject and body are required.");
+      return;
     }
+    // Block sending when the draft still carries unresolved job tokens
+    // (recruiter cancelled the picker after applying a job-using
+    // template, or typed tokens manually without picking a job).
+    const haystack = `${subject}\n${body}`;
+    if (textNeedsJob(haystack) && !jobMergeValues) {
+      const msg = "Pick a job for the job context fields, or remove them from the body.";
+      setErr(msg);
+      toast.error(msg);
+      return;
+    }
+    const draft: EmailDraft = { to: [], cc: [], bcc: [], subject, body };
     if (n > BULK_EMAIL_CONFIRM_THRESHOLD) {
       setConfirmDraft(draft);
       return;
     }
-    await actualSend(draft);
+    startSend(async () => {
+      try {
+        await actualSend(draft);
+      } catch {
+        // toast already fired in actualSend
+      }
+    });
   }
 
   async function onConfirmYes() {
@@ -592,40 +637,74 @@ export function BulkEmailDialog({
     }
   }
 
-  // Claude generator — reads aiPrompt from local state, POSTs to the
-  // same /api/mail/ai-compose endpoint the mail-tab composer uses, and
-  // returns the body string. EmailComposer replaces its body content
-  // with the returned text. Throws on missing prompt / empty response
-  // so the composer surfaces the error to the recruiter.
-  async function onGenerateBody(): Promise<string> {
+  function onGenerateClick() {
     const prompt = aiPrompt.trim();
     if (!prompt) {
       setAiPanelOpen(true);
-      throw new Error("Type a prompt in the AI panel above first.");
+      toast.error("Type a prompt in the AI panel first.");
+      return;
     }
-    const res = await fetch("/api/mail/ai-compose", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, includeSubject: false }),
+    setErr(null);
+    startGenerate(async () => {
+      try {
+        const res = await fetch("/api/mail/ai-compose", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt, includeSubject: false }),
+        });
+        const json = await res.json().catch(() => null);
+        if (!res.ok) {
+          const msg = json?.error ?? `Generation failed (${res.status})`;
+          throw new Error(msg);
+        }
+        const text =
+          typeof json?.body === "string" && json.body
+            ? json.body
+            : typeof json?.bodyHtml === "string"
+              ? json.bodyHtml
+              : "";
+        if (!text) throw new Error("Claude returned an empty draft.");
+        setBody(text);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to generate.";
+        setErr(msg);
+        toast.error("Couldn't generate draft", { description: msg });
+      }
     });
-    const json = await res.json().catch(() => null);
-    if (!res.ok) {
-      const msg = json?.error ?? `Generation failed (${res.status})`;
-      throw new Error(msg);
-    }
-    const text =
-      typeof json?.body === "string" && json.body
-        ? json.body
-        : typeof json?.bodyHtml === "string"
-          ? json.bodyHtml
-          : "";
-    if (!text) throw new Error("Claude returned an empty draft.");
-    return text;
   }
 
-  const noEmailCount = recipients
-    ? recipients.filter((r) => !r.email).length
-    : 0;
+  function onEditClick(editType: EditType) {
+    if (!body.trim()) return;
+    setErr(null);
+    startEdit(async () => {
+      try {
+        const res = await fetch("/api/email/edit-with-claude", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body, editType, format: "text" }),
+          cache: "no-store",
+        });
+        const json = (await res.json().catch(() => null)) as
+          | { body?: string; error?: string }
+          | null;
+        if (!res.ok) {
+          const msg = json?.error ?? `Edit failed (${res.status})`;
+          throw new Error(msg);
+        }
+        const next = (json?.body ?? "").trim();
+        if (!next) throw new Error("Claude returned an empty edit.");
+        setBody(next);
+        toast.success("Draft revised");
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to edit draft.";
+        setErr(msg);
+        toast.error("Couldn't edit draft", { description: msg });
+      }
+    });
+  }
+
+  const ghostPill =
+    "inline-flex h-8 items-center gap-1.5 rounded-full border border-court-border bg-transparent px-3 text-[12px] font-semibold text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-60";
 
   return (
     <div
@@ -638,23 +717,11 @@ export function BulkEmailDialog({
         onClick={(e) => e.stopPropagation()}
         className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
       >
-        <div className="flex items-start justify-between gap-3 border-b border-court-border px-5 py-3">
-          <div className="min-w-0">
-            <h2 className="font-serif text-base font-semibold text-court-fg">
-              Email {n} candidate{n === 1 ? "" : "s"}
-            </h2>
-            <p className="mt-0.5 text-xs text-court-fg-muted">
-              One Gmail send per recipient. Recipients are resolved automatically from each candidate&apos;s email on file.
-            </p>
-            <p className="mt-1 text-[11px] text-court-fg-muted">
-              Merge fields: <code>[Candidate First Name]</code>,{" "}
-              <code>[Candidate Last Name]</code>,{" "}
-              <code>[Candidate Current Title]</code>,{" "}
-              <code>[Candidate Current Company]</code>,{" "}
-              <code>[Job Title]</code>, <code>[Job Location]</code>,{" "}
-              <code>[Client Company Name]</code>
-            </p>
-          </div>
+        {/* Header */}
+        <div className="flex items-center justify-between gap-3 border-b border-court-border px-5 py-3">
+          <h2 className="font-serif text-base font-semibold text-court-fg">
+            Email {n} candidate{n === 1 ? "" : "s"}
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -665,73 +732,52 @@ export function BulkEmailDialog({
           </button>
         </div>
 
-        <div className="border-b border-court-border bg-court-surface-subtle/40">
-          <button
-            type="button"
-            onClick={() => setRecipientsOpen((v) => !v)}
-            className="flex w-full items-center justify-between gap-2 px-5 py-2 text-left transition hover:bg-court-surface-subtle/70"
-          >
-            <span className="inline-flex items-center gap-2 text-xs font-semibold text-court-fg">
-              {recipientsOpen ? (
-                <ChevronDown className="h-3.5 w-3.5" />
-              ) : (
-                <ChevronRight className="h-3.5 w-3.5" />
-              )}
-              <Users className="h-3.5 w-3.5" />
-              {recipientsOpen ? "Hide" : "View"} {n} recipient{n === 1 ? "" : "s"}
+        {/* FROM / TO / SUBJECT rows */}
+        <div className="space-y-2 border-b border-court-border px-5 py-3">
+          <div className="flex items-center gap-3">
+            <span className="w-16 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+              FROM
             </span>
-            {!recipientsOpen && recipients && noEmailCount > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-700">
-                {noEmailCount} no email
-              </span>
-            )}
-          </button>
-          {recipientsOpen && (
-            <div>
-              {recipientsLoading && (
-                <div className="px-5 pb-3 pt-1 text-[11px] text-court-fg-muted">
-                  Loading recipient list…
-                </div>
-              )}
-              {!recipientsLoading && recipients && (
-                <>
-                  {noEmailCount > 0 && (
-                    <div className="border-t border-court-border bg-red-50 px-5 py-1.5 text-[11px] font-semibold text-red-700">
-                      {noEmailCount} of {recipients.length} recipient{recipients.length === 1 ? "" : "s"} {noEmailCount === 1 ? "has" : "have"} no email on file and will be skipped.
-                    </div>
-                  )}
-                  <ul className="max-h-56 overflow-y-auto divide-y divide-court-border/60 border-t border-court-border bg-court-surface text-xs">
-                    {recipients.map((r) => (
-                      <li
-                        key={r.id}
-                        className="flex items-center justify-between gap-3 px-5 py-1.5"
-                      >
-                        <span className="min-w-0 flex-1 truncate font-medium text-court-fg">
-                          {r.name}
-                        </span>
-                        {r.email ? (
-                          <span className="shrink-0 truncate text-court-fg-muted">
-                            {r.email}
-                          </span>
-                        ) : (
-                          <span className="inline-flex shrink-0 items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-700">
-                            No email
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </div>
-          )}
+            <span className="min-w-0 truncate text-[13px] text-court-fg">
+              {fromEmail || "—"}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="w-16 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+              TO
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-court-accent-tint px-3 py-1 text-[11px] font-semibold text-court-brand-dark">
+              <Users className="h-3 w-3" /> To: {n} selected candidate{n === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="w-16 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+              SUBJECT
+            </span>
+            <input
+              ref={subjectRef}
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              onFocus={(e) => {
+                setLastFocus("subject");
+                rememberCaret(e.currentTarget);
+              }}
+              onSelect={(e) => rememberCaret(e.currentTarget)}
+              onKeyUp={(e) => rememberCaret(e.currentTarget)}
+              onClick={(e) => rememberCaret(e.currentTarget)}
+              placeholder="Subject"
+              className="min-w-0 flex-1 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            />
+          </div>
         </div>
 
+        {/* AI prompt — collapsible */}
         <div className="border-b border-court-border bg-court-surface-subtle/40">
           <button
             type="button"
             onClick={() => setAiPanelOpen((v) => !v)}
-            className="flex w-full items-center gap-1.5 px-5 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-court-fg-muted transition hover:text-court-fg"
+            className="flex w-full items-center gap-1.5 px-5 py-1.5 text-left text-[11px] font-medium uppercase tracking-wider text-court-fg-muted transition hover:text-court-fg"
           >
             {aiPanelOpen ? (
               <ChevronDown className="h-3 w-3" />
@@ -752,140 +798,241 @@ export function BulkEmailDialog({
               <textarea
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
-                placeholder="Describe the email Claude should draft — e.g. 'Friendly outreach about a senior backend role at our fintech client, ask if they're open to a 15-min intro call.'"
-                rows={3}
+                placeholder="Describe the email Claude should draft."
+                rows={2}
                 className="w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
               />
-              <p className="mt-1 text-[11px] text-court-fg-muted">
-                Then click <span className="font-medium">Generate with Claude</span> in the composer toolbar to draft the body. Edit with Claude refines the body in place.
-              </p>
             </div>
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          <EmailComposer
-            title={`Bulk email — ${n} recipient${n === 1 ? "" : "s"}`}
-            subtitle={`To: ${n} selected candidate${n === 1 ? "" : "s"}`}
-            initial={initial}
-            onClose={onClose}
-            onSend={onSend}
-            hideRecipientFields
-            enableEditWithClaude
-            onGenerate={onGenerateBody}
-            externalDraft={externalDraft}
-            perRecipientCandidateHint
-            sendLabel={`Send to ${n} candidate${n === 1 ? "" : "s"}`}
-            sendingLabel="Sending…"
-            sendDisabled={confirmDraft !== null}
-            footerExtras={
-              <div className="relative" ref={templateContainerRef}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = !openTemplate;
-                    setOpenTemplate(next);
-                    // Closing the popover also cancels any in-flight job
-                    // pick so re-opening starts back at the template list.
-                    if (!next && pendingJobPick) onCancelJobPick();
-                  }}
-                  disabled={
-                    !localTemplatesLoaded ||
-                    Boolean(localTemplatesError) ||
-                    localTemplates.length === 0
-                  }
-                  title="Apply a saved template to this bulk email"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
-                >
-                  <FileText className="h-3.5 w-3.5" /> Use Template <ChevronDown className="h-3.5 w-3.5" />
-                </button>
-                {openTemplate && (
-                  <div
-                    role="menu"
-                    className="absolute bottom-full right-0 z-20 mb-1 max-h-80 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg"
-                  >
-                    {pendingJobPick ? (
-                      <div>
-                        <div className="flex items-center justify-between border-b border-court-border px-3 py-1.5">
-                          <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
-                            {pendingJobPick.template.name} · pick a job
-                          </span>
-                          <button
-                            type="button"
-                            onClick={onCancelJobPick}
-                            disabled={resolvingJob}
-                            className="text-[10px] font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
-                          >
-                            Back
-                          </button>
-                        </div>
-                        {jobsLoading || jobs === null ? (
-                          <div className="flex items-center gap-2 px-3 py-2 text-xs text-court-fg-muted">
-                            <Loader2 className="h-3 w-3 animate-spin" /> Loading jobs…
-                          </div>
-                        ) : jobs.length === 0 ? (
-                          <div className="px-3 py-2 text-xs text-court-fg-muted">
-                            No open jobs found.
-                          </div>
-                        ) : (
-                          jobs.map((j) => (
-                            <button
-                              key={j.key}
-                              type="button"
-                              disabled={resolvingJob}
-                              onClick={() => void onPickJob(j)}
-                              className="block w-full truncate px-3 py-1.5 text-left text-xs text-court-fg transition hover:bg-court-accent-tint/40 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {j.label}
-                            </button>
-                          ))
-                        )}
-                        {resolvingJob && (
-                          <div className="flex items-center gap-2 border-t border-court-border px-3 py-1.5 text-[10px] text-court-fg-muted">
-                            <Loader2 className="h-3 w-3 animate-spin" /> Resolving job fields…
-                          </div>
-                        )}
-                      </div>
-                    ) : !localTemplatesLoaded ? (
-                      <div className="flex items-center gap-2 px-3 py-2 text-xs text-court-fg-muted">
-                        <Loader2 className="h-3 w-3 animate-spin" /> Loading templates…
-                      </div>
-                    ) : localTemplatesError ? (
-                      <div className="px-3 py-2 text-xs text-court-fg-muted">{localTemplatesError}.</div>
-                    ) : localTemplates.length === 0 ? (
-                      <div className="px-3 py-2 text-xs text-court-fg-muted">
-                        No templates yet. Create one in Settings &gt; Templates.
-                      </div>
-                    ) : (
-                      localTemplates.map((t) => (
-                        <button
-                          key={t.id}
-                          type="button"
-                          onClick={() => onPickLocalTemplate(t)}
-                          className="flex w-full flex-col gap-0.5 px-3 py-1.5 text-left text-court-fg transition hover:bg-court-accent-tint/40"
-                        >
-                          <span className="flex items-center justify-between gap-2">
-                            <span className="truncate text-xs font-medium">{t.name}</span>
-                            {t.category && (
-                              <span className="shrink-0 text-[10px] uppercase tracking-wider text-court-fg-muted">
-                                {t.category}
-                              </span>
-                            )}
-                          </span>
-                          <span className="truncate text-[10px] text-court-fg-muted">{t.subject}</span>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            }
+        {/* AI toolbar above body */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-court-border px-5 py-2">
+          <button
+            type="button"
+            onClick={onGenerateClick}
+            disabled={isGenerating || isSending || isEditing}
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-court-brand bg-court-brand-tint px-3 text-[12px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+          >
+            {isGenerating ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Sparkles className="h-3 w-3" />
+            )}
+            Generate with Claude
+          </button>
+          <EditWithClaudeMenu
+            isEditing={isEditing}
+            disabled={!body.trim() || isGenerating || isSending}
+            onPick={onEditClick}
           />
-          {jobMergeValues && (
-            <div className="border-t border-court-border bg-court-surface-subtle/40 px-5 py-1.5 text-[11px] text-court-fg-muted">
-              Job context resolved. Recipients will receive filled job fields at send time.
+        </div>
+
+        {/* Body fills available space */}
+        <div className="flex min-h-0 flex-1 px-5 py-3">
+          <textarea
+            ref={bodyRef}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            onFocus={(e) => {
+              setLastFocus("body");
+              rememberCaret(e.currentTarget);
+            }}
+            onSelect={(e) => rememberCaret(e.currentTarget)}
+            onKeyUp={(e) => rememberCaret(e.currentTarget)}
+            onClick={(e) => rememberCaret(e.currentTarget)}
+            placeholder="Write your message, or click Generate with Claude above."
+            className="h-full min-h-[200px] w-full resize-none whitespace-pre-wrap rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm leading-relaxed text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          />
+        </div>
+
+        {err && (
+          <div className="mx-5 mb-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+            {err}
+          </div>
+        )}
+
+        {jobMergeValues && (
+          <div className="border-t border-court-border bg-court-surface-subtle/40 px-5 py-1.5 text-[11px] text-court-fg-muted">
+            Job context resolved. Recipients will receive filled job fields at send time.
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-court-border px-5 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Use Template */}
+            <div className="relative" ref={templateContainerRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !openTemplate;
+                  setOpenTemplate(next);
+                  if (!next && pendingJobPick) onCancelJobPick();
+                }}
+                disabled={
+                  !localTemplatesLoaded ||
+                  Boolean(localTemplatesError) ||
+                  localTemplates.length === 0
+                }
+                title="Apply a saved template to this bulk email"
+                className={cn(ghostPill, "text-court-fg")}
+              >
+                <FileText className="h-3.5 w-3.5" /> Use Template <ChevronDown className="h-3 w-3" />
+              </button>
+              {openTemplate && (
+                <div
+                  role="menu"
+                  className="absolute bottom-full left-0 z-[70] mb-1 max-h-80 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg"
+                >
+                  {pendingJobPick ? (
+                    <div>
+                      <div className="flex items-center justify-between border-b border-court-border px-3 py-1.5">
+                        <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                          {pendingJobPick.template.name} · pick a job
+                        </span>
+                        <button
+                          type="button"
+                          onClick={onCancelJobPick}
+                          disabled={resolvingJob}
+                          className="text-[10px] font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+                        >
+                          Back
+                        </button>
+                      </div>
+                      {jobsLoading || jobs === null ? (
+                        <div className="flex items-center gap-2 px-3 py-2 text-xs text-court-fg-muted">
+                          <Loader2 className="h-3 w-3 animate-spin" /> Loading jobs…
+                        </div>
+                      ) : jobs.length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-court-fg-muted">
+                          No open jobs found.
+                        </div>
+                      ) : (
+                        jobs.map((j) => (
+                          <button
+                            key={j.key}
+                            type="button"
+                            disabled={resolvingJob}
+                            onClick={() => void onPickJob(j)}
+                            className="block w-full truncate px-3 py-1.5 text-left text-xs text-court-fg transition hover:bg-court-accent-tint/40 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {j.label}
+                          </button>
+                        ))
+                      )}
+                      {resolvingJob && (
+                        <div className="flex items-center gap-2 border-t border-court-border px-3 py-1.5 text-[10px] text-court-fg-muted">
+                          <Loader2 className="h-3 w-3 animate-spin" /> Resolving job fields…
+                        </div>
+                      )}
+                    </div>
+                  ) : !localTemplatesLoaded ? (
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs text-court-fg-muted">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Loading templates…
+                    </div>
+                  ) : localTemplatesError ? (
+                    <div className="px-3 py-2 text-xs text-court-fg-muted">{localTemplatesError}.</div>
+                  ) : localTemplates.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-court-fg-muted">
+                      No templates yet. Create one in Settings &gt; Templates.
+                    </div>
+                  ) : (
+                    localTemplates.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => onPickLocalTemplate(t)}
+                        className="flex w-full flex-col gap-0.5 px-3 py-1.5 text-left text-court-fg transition hover:bg-court-accent-tint/40"
+                      >
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="truncate text-xs font-medium">{t.name}</span>
+                          {t.category && (
+                            <span className="shrink-0 text-[10px] uppercase tracking-wider text-court-fg-muted">
+                              {t.category}
+                            </span>
+                          )}
+                        </span>
+                        <span className="truncate text-[10px] text-court-fg-muted">{t.subject}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
-          )}
+
+            {/* Insert Field */}
+            <div className="relative" ref={fieldContainerRef}>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setFieldOpen((v) => !v)}
+                disabled={isSending || isGenerating}
+                title={`Insert a merge field into the ${lastFocus}`}
+                className={cn(ghostPill, "text-court-fg")}
+              >
+                <Variable className="h-3.5 w-3.5" /> Insert Field
+              </button>
+              {fieldOpen && (
+                <div className="absolute bottom-full left-0 z-[70] mb-1 w-80 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
+                  <div className="border-b border-court-border bg-court-surface-subtle/40 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                    Inserts into {lastFocus}
+                  </div>
+                  <ul className="max-h-80 overflow-y-auto py-1 text-sm">
+                    {groupedMergeFields().map(({ group, items }) => (
+                      <li key={group}>
+                        <div className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                          {group}
+                        </div>
+                        {items.map((f) => (
+                          <button
+                            key={f.token}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => insertMergeToken(f.token)}
+                            className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs text-court-fg hover:bg-court-brand-tint"
+                          >
+                            <span>{f.label}</span>
+                            <code className="rounded bg-court-surface-subtle px-1 py-0.5 text-[10px] text-court-fg-muted">
+                              {f.token}
+                            </code>
+                          </button>
+                        ))}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right side: Cancel + Send */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSending}
+              className={ghostPill}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onSendClick}
+              disabled={isSending || confirmDraft !== null}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-court-brand bg-court-brand-tint px-4 text-[12px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+            >
+              {isSending ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" /> Sending…
+                </>
+              ) : (
+                <>
+                  <Send className="h-3 w-3" /> Send to {n} candidate{n === 1 ? "" : "s"}
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {confirmDraft && (
@@ -926,6 +1073,21 @@ export function BulkEmailDialog({
       </div>
     </div>
   );
+}
+
+function groupedMergeFields(): { group: string; items: typeof MERGE_FIELDS[number][] }[] {
+  const ordered: { group: string; items: typeof MERGE_FIELDS[number][] }[] = [];
+  const seen = new Map<string, { group: string; items: typeof MERGE_FIELDS[number][] }>();
+  for (const f of MERGE_FIELDS) {
+    let entry = seen.get(f.group);
+    if (!entry) {
+      entry = { group: f.group, items: [] };
+      seen.set(f.group, entry);
+      ordered.push(entry);
+    }
+    entry.items.push(f);
+  }
+  return ordered;
 }
 
 function BulkModal({
