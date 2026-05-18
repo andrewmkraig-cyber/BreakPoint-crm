@@ -373,11 +373,18 @@ export async function LocalCandidateProfile({
       });
     return (
       <>
-        {/* Mount once at the top of the embed shell. Walks the DOM
-            on mount and wraps any search-token match inside the
-            overview / resume metadata / skills / activity cards
-            with a styled <mark>. */}
-        {highlightTokens.length > 0 && <TextHighlighter tokens={highlightTokens} />}
+        {/* Scoped to #resume-document-content (rendered by
+            EditableResume around the DOCX preview only). Keeps
+            highlights inside the resume body so the overview, skills,
+            activity cards, and the chip strip above the viewer never
+            get amber-marked. PDF mode skips the wrapper — the canvas
+            overlay handles its own colored marks. */}
+        {highlightTokens.length > 0 && (
+          <TextHighlighter
+            tokens={highlightTokens}
+            containerId="resume-document-content"
+          />
+        )}
         <LocalCandidateActions
           candidateId={candidate.id}
           candidateName={fullName}

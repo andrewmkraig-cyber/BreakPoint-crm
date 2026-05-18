@@ -40,7 +40,10 @@ export function TextHighlighter({
 
     const escaped = tokens.map(escapeRegex).filter(Boolean);
     if (escaped.length === 0) return;
-    const pattern = `(${escaped.join("|")})`;
+    // \b word boundaries mirror PdfCanvasViewer's overlay pattern so
+    // "tax" never matches "syntax"/"taxonomy". Without them the DOM
+    // walker and the PDF overlay would disagree on what counts as a hit.
+    const pattern = `\\b(${escaped.join("|")})\\b`;
 
     // Re-run on next paint so React has committed the initial render
     // before we mutate text nodes — mid-commit mutation can drop

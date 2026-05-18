@@ -22,21 +22,23 @@ const TOKEN_COLORS = [
 ] as const;
 
 // Parallel bg-only classes for the in-PDF mark overlay. Index-aligned with
-// TOKEN_COLORS so a chip and its in-doc highlight share the same hue. /35
-// alpha + mix-blend-multiply on the mark = soft translucent wash over the
-// canvas glyphs. Literal class names are mandatory for the Tailwind JIT —
-// dynamic `${bg}/35` would be silently dropped.
+// TOKEN_COLORS so a chip and its in-doc highlight share the same hue. The
+// 200/70 weight + mix-blend-multiply lands at a Jax-style marker pass —
+// solidly visible over canvas glyphs but still letting the underlying
+// letterforms read through. 100/35 was too faint to see at a glance.
+// Literal class names are mandatory for the Tailwind JIT — dynamic
+// `${bg}/70` would be silently dropped.
 const TOKEN_MARK_BG_CLASSES = [
-  "bg-amber-100/35",
-  "bg-blue-100/35",
-  "bg-purple-100/35",
-  "bg-green-100/35",
-  "bg-rose-100/35",
-  "bg-orange-100/35",
-  "bg-teal-100/35",
-  "bg-indigo-100/35",
-  "bg-yellow-100/35",
-  "bg-pink-100/35",
+  "bg-amber-200/70",
+  "bg-blue-200/70",
+  "bg-purple-200/70",
+  "bg-green-200/70",
+  "bg-rose-200/70",
+  "bg-orange-200/70",
+  "bg-teal-200/70",
+  "bg-indigo-200/70",
+  "bg-yellow-200/70",
+  "bg-pink-200/70",
 ] as const;
 
 // Stable token → chip-class assignment. Used by HighlightTokenChips.

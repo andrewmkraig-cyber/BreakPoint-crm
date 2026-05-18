@@ -30,7 +30,6 @@ import { CandidateCompactOverview } from "@/components/candidate-compact-overvie
 import { TextHighlighter } from "@/components/text-highlighter";
 import { parseHighlightTokens } from "@/app/candidates/[id]/highlight-tokens";
 import { LocalCandidateProfile } from "@/app/candidates/[id]/local-profile";
-import { ResumeMatchesRail } from "@/app/candidates/[id]/resume-matches-rail";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getPlacementsForOrg } from "@/lib/placements";
 import { getInterviewsForOrg } from "@/lib/interviews";
@@ -554,12 +553,21 @@ export default async function CandidateProfilePage({
     const highlightTokens = parseHighlightTokens(searchParams?.highlight);
     return (
       <CandidateProfileBoundary>
-        {/* TextHighlighter walks the embed DOM on mount and wraps
-            matching tokens. Mounting it once at the top of the embed
-            shell catches text in the compact overview, resume metadata,
-            skills card, and activity feed without each component
-            opting in via prop. */}
-        {highlightTokens.length > 0 && <TextHighlighter tokens={highlightTokens} />}
+        {/* TextHighlighter walks the resume document subtree on mount
+            and wraps matching tokens. Scoped to #resume-document-content
+            (rendered by EditableResume around the DOCX preview only) so
+            highlights never leak into the compact overview, name/email/
+            phone/location header, skill chips, activity feed, or the
+            highlight chip strip above the viewer. PDF resumes get their
+            colored in-PDF marks from PdfCanvasViewer's canvas overlay
+            instead — when PDF is showing, the scoped container doesn't
+            exist and the walker no-ops. */}
+        {highlightTokens.length > 0 && (
+          <TextHighlighter
+            tokens={highlightTokens}
+            containerId="resume-document-content"
+          />
+        )}
         <PlacementActionsIsland
           chromeless
           candidateRfId={id}
@@ -620,11 +628,11 @@ export default async function CandidateProfilePage({
             />
           </div>
           {/* Right rail. CompactOverview as a single tight summary box,
-              the highlighting matches panel directly below it (was an
-              aside next to the resume; moved here so the center pane is
-              all resume), then skills, then the call/email/text activity
-              card. Width locked to w-72 so the center resume pane keeps
-              the dominant width on the page. */}
+              then skills, then the call/email/text activity card. The
+              highlight chip strip lives above the resume viewer (rendered
+              by EditableResume), so the right rail no longer repeats it.
+              Width locked to w-72 so the center resume pane keeps the
+              dominant width on the page. */}
           <aside className="flex w-72 flex-shrink-0 flex-col gap-4 overflow-y-auto">
             <CandidateCompactOverview
               candidateRef={candidate.id}
@@ -639,7 +647,6 @@ export default async function CandidateProfilePage({
               linkedinProfile={identityInitial.linkedin_profile || null}
               compensation={compensation}
             />
-            <ResumeMatchesRail tokens={highlightTokens} />
             <EditableSkills candidateId={id} initial={skillsInitial} />
             <CandidateActivityCard
               candidateId={candidate.id}

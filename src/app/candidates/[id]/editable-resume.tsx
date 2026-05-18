@@ -180,7 +180,7 @@ export function EditableResume({
   }, [versions, selectedKey, defaultKey, pendingSelectId]);
 
   const selected = versions.find((v) => v.key === selectedKey) ?? null;
-  // /35-alpha bg variants for the in-PDF mark overlay. HighlightTokenChips
+  // 200/70 bg variants for the in-PDF mark overlay. HighlightTokenChips
   // builds its own (solid-100) map from buildTokenColorMap internally; this
   // mark map indexes off the same TOKEN_COLORS order so each token's chip
   // hue and in-doc highlight hue stay locked together.
@@ -566,10 +566,20 @@ export function EditableResume({
               highlightClassMap={tokenMarkMap}
             />
           ) : docx ? (
-            <DocxPreview
-              idOrRfId={candidateRfId ?? candidateId}
-              className="min-h-[900px] w-full overflow-auto rounded-b-xl"
-            />
+            // id="resume-document-content" scopes TextHighlighter's DOM
+            // walker to the rendered DOCX body only — without it the
+            // walker would mark text in the right-rail overview, skill
+            // chips, activity feed, and even the highlight chips above
+            // the viewer. PDF mode skips this wrapper because
+            // PdfCanvasViewer paints its own colored marks on a canvas
+            // overlay; the DOM walker can't (and shouldn't) reach the
+            // canvas glyphs.
+            <div id="resume-document-content">
+              <DocxPreview
+                idOrRfId={candidateRfId ?? candidateId}
+                className="min-h-[900px] w-full overflow-auto rounded-b-xl"
+              />
+            </div>
           ) : (
             <div className="flex h-64 flex-col items-center justify-center gap-2 border-t border-dashed border-court-border bg-court-surface-subtle/40 text-sm text-court-fg-muted">
               <FileText className="h-6 w-6 text-court-fg-muted" />
