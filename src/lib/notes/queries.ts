@@ -7,6 +7,14 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 
+export type NoteAttachedCandidate = {
+  id: string;
+  firstName: string;
+  lastName: string | null;
+};
+export type NoteAttachedClient = { id: string; name: string };
+export type NoteAttachedJob = { id: string; title: string };
+
 export type NoteRow = {
   id: string;
   title: string | null;
@@ -14,12 +22,9 @@ export type NoteRow = {
   pinned: boolean;
   createdAt: Date;
   updatedAt: Date;
-  candidateId: string | null;
-  clientId: string | null;
-  jobId: string | null;
-  candidate: { id: string; firstName: string; lastName: string | null } | null;
-  client: { id: string; name: string; slug?: string | null } | null;
-  job: { id: string; title: string } | null;
+  candidates: NoteAttachedCandidate[];
+  clients: NoteAttachedClient[];
+  jobs: NoteAttachedJob[];
 };
 
 export type NoteFilter = "all" | "mine" | "attached";
@@ -35,13 +40,11 @@ async function getCurrentUserId(): Promise<string | null> {
   return user?.id ?? null;
 }
 
-function notesInclude() {
-  return {
-    candidate: { select: { id: true, firstName: true, lastName: true } },
-    client: { select: { id: true, name: true } },
-    job: { select: { id: true, title: true } },
-  } as const;
-}
+const NOTE_INCLUDE = {
+  candidates: { select: { id: true, firstName: true, lastName: true } },
+  clients: { select: { id: true, name: true } },
+  jobs: { select: { id: true, title: true } },
+} as const;
 
 // Loads the signed-in user's notes for the /notes page. Scoped to
 // organizationId + createdById on every branch so a stranger probing
@@ -60,23 +63,25 @@ export async function getNotesForUser(
     createdById: userId,
   };
   if (filter === "mine") {
-    where.candidateId = null;
-    where.clientId = null;
-    where.jobId = null;
+    where.AND = [
+      { candidates: { none: {} } },
+      { clients: { none: {} } },
+      { jobs: { none: {} } },
+    ];
   } else if (filter === "attached") {
     where.OR = [
-      { candidateId: { not: null } },
-      { clientId: { not: null } },
-      { jobId: { not: null } },
+      { candidates: { some: {} } },
+      { clients: { some: {} } },
+      { jobs: { some: {} } },
     ];
   }
 
   const rows = await prisma.note.findMany({
     where,
     orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
-    include: notesInclude(),
+    include: NOTE_INCLUDE,
   });
-  return rows as NoteRow[];
+  return rows;
 }
 
 // Loads notes attached to a specific entity for the activity feed on
@@ -93,21 +98,24 @@ export async function getNotesForEntity(
     organizationId: org.id,
     createdById: userId,
   };
-  if (entityType === "candidate") where.candidateId = entityId;
-  else if (entityType === "client") where.clientId = entityId;
-  else where.jobId = entityId;
+  if (entityType === "candidate") {
+    where.candidates = { some: { id: entityId } };
+  } else if (entityType === "client") {
+    where.clients = { some: { id: entityId } };
+  } else {
+    where.jobs = { some: { id: entityId } };
+  }
 
   const rows = await prisma.note.findMany({
     where,
     orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
-    include: notesInclude(),
+    include: NOTE_INCLUDE,
   });
-  return rows as NoteRow[];
+  return rows;
 }
 
 // Counts feed the TabStrip pills on /notes so each tab shows its own
-// total without three round-trips on the client. One query, grouped
-// per-attachment-kind via a CASE-style aggregate.
+// total without three round-trips on the client.
 export async function getNoteCountsForUser(): Promise<{
   all: number;
   mine: number;
@@ -125,9 +133,9 @@ export async function getNoteCountsForUser(): Promise<{
         organizationId: org.id,
         createdById: userId,
         OR: [
-          { candidateId: { not: null } },
-          { clientId: { not: null } },
-          { jobId: { not: null } },
+          { candidates: { some: {} } },
+          { clients: { some: {} } },
+          { jobs: { some: {} } },
         ],
       },
     }),

@@ -454,7 +454,7 @@ model Candidate {
   gmailTags       GmailThreadTag[]
   matches         CandidateMatch[]
   calendarEvents  CalendarEvent[]
-  noteEntries     Note[]
+  noteEntries     Note[]           @relation("NoteCandidates")
 
   @@index([email])
   @@index([firstName])
@@ -775,7 +775,7 @@ model Client {
   gmailTags     GmailThreadTag[]
   clientSignals ClientSignal[]
   calendarEvents CalendarEvent[]
-  noteEntries   Note[]
+  noteEntries   Note[]               @relation("NoteClients")
 
   @@index([name])
   @@index([organizationId])
@@ -874,7 +874,7 @@ model Job {
   matches      CandidateMatch[]
   boardStatuses JobBoardStatus[]
   calendarEvents CalendarEvent[]
-  noteEntries  Note[]
+  noteEntries  Note[]            @relation("NoteJobs")
 
   @@index([clientId])
   @@index([isOpen])
@@ -1964,10 +1964,11 @@ model PushSubscription {
 // Client.notes text columns and the Candidate.raw.notes array — those
 // stay in place for the existing profile Notes tabs. This model backs
 // the /notes page (composer + saved list) and the per-entity activity
-// feed entries. A note is either "loose" (no attachment) or attached
-// to exactly one of Candidate / Client / Job; the three foreign keys
-// are mutually exclusive at the application layer (createNote /
-// attachNote enforce it).
+// feed entries. A note can be loose (no attachments) OR attached to
+// any combination of Candidates, Clients, and Jobs at the same time —
+// recruiter often wants the same note showing on both the candidate
+// profile and the job profile. The three relations are implicit
+// many-to-many; Prisma manages the join tables.
 model Note {
   id             String   @id @default(cuid())
   organizationId String
@@ -1976,21 +1977,14 @@ model Note {
   body           String   @db.Text
   pinned         Boolean  @default(false)
 
-  candidateId String?
-  clientId    String?
-  jobId       String?
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy    User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  candidate    Candidate?   @relation(fields: [candidateId], references: [id], onDelete: SetNull)
-  client       Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  job          Job?         @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  candidates   Candidate[]  @relation("NoteCandidates")
+  clients      Client[]     @relation("NoteClients")
+  jobs         Job[]        @relation("NoteJobs")
 
   @@index([organizationId, createdById, updatedAt])
-  @@index([candidateId])
-  @@index([clientId])
-  @@index([jobId])
 }

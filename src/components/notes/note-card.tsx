@@ -4,8 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Building2,
   Briefcase,
+  Building2,
   Check,
   Edit3,
   Paperclip,
@@ -17,18 +17,20 @@ import {
 
 import { Button } from "@/components/ui/button";
 import {
+  attachNote,
   deleteNote,
   setPinned,
   updateNote,
-  type AttachKind,
+  type Attachments,
 } from "@/app/notes/actions";
 import type { NoteRow } from "@/lib/notes/queries";
 
-import { AttachPicker } from "./attach-picker";
+import { MultiAttachPicker } from "./multi-attach-picker";
 
 // Saved-note row. Idle state is read-only with a hover toolbar
 // (pin / attach / edit / delete). Edit state swaps body + title into
-// inline inputs that save on Enter (body via shift-enter for newline).
+// inline inputs. Attach state expands the picker inline below the
+// row (no popover, can't overflow).
 export function NoteCard({ note }: { note: NoteRow }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -36,6 +38,7 @@ export function NoteCard({ note }: { note: NoteRow }) {
   const [body, setBody] = useState(note.body);
   const [busy, setBusy] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerValue, setPickerValue] = useState<Attachments>(currentAttachments(note));
 
   async function onTogglePin() {
     setBusy(true);
@@ -59,6 +62,16 @@ export function NoteCard({ note }: { note: NoteRow }) {
     }
   }
 
+  async function onSaveAttachments() {
+    setBusy(true);
+    const result = await attachNote({ id: note.id, attach: pickerValue });
+    setBusy(false);
+    if (result.ok) {
+      setPickerOpen(false);
+      router.refresh();
+    }
+  }
+
   async function onDelete() {
     if (!confirm("Delete this note?")) return;
     setBusy(true);
@@ -67,7 +80,8 @@ export function NoteCard({ note }: { note: NoteRow }) {
     router.refresh();
   }
 
-  const chip = renderAttachmentChip(note);
+  const attachCount =
+    note.candidates.length + note.clients.length + note.jobs.length;
 
   return (
     <div className="group relative rounded-2xl bg-court-surface p-5 shadow-sm">
@@ -130,7 +144,7 @@ export function NoteCard({ note }: { note: NoteRow }) {
             <time dateTime={note.updatedAt.toISOString()}>
               {formatStamp(note.updatedAt)}
             </time>
-            {chip}
+            {renderAttachmentChips(note)}
           </div>
         </>
       )}
@@ -146,26 +160,16 @@ export function NoteCard({ note }: { note: NoteRow }) {
               className={`h-3.5 w-3.5 ${note.pinned ? "text-court-brand-dark" : ""}`}
             />
           </IconBtn>
-          <div className="relative">
-            <IconBtn
-              label="Attach"
-              onClick={() => setPickerOpen((v) => !v)}
-              disabled={busy}
-            >
-              <Paperclip className="h-3.5 w-3.5" />
-            </IconBtn>
-            {pickerOpen && (
-              <AttachPicker
-                noteId={note.id}
-                currentAttachment={currentAttachment(note)}
-                onClose={() => setPickerOpen(false)}
-                onChanged={() => {
-                  setPickerOpen(false);
-                  router.refresh();
-                }}
-              />
-            )}
-          </div>
+          <IconBtn
+            label={attachCount > 0 ? `${attachCount} attached` : "Attach"}
+            onClick={() => {
+              setPickerValue(currentAttachments(note));
+              setPickerOpen((v) => !v);
+            }}
+            disabled={busy}
+          >
+            <Paperclip className="h-3.5 w-3.5" />
+          </IconBtn>
           <IconBtn
             label="Edit"
             onClick={() => setEditing(true)}
@@ -176,6 +180,40 @@ export function NoteCard({ note }: { note: NoteRow }) {
           <IconBtn label="Delete" onClick={onDelete} disabled={busy} danger>
             <Trash2 className="h-3.5 w-3.5" />
           </IconBtn>
+        </div>
+      )}
+
+      {pickerOpen && !editing && (
+        <div className="mt-3">
+          <MultiAttachPicker
+            value={pickerValue}
+            onChange={setPickerValue}
+            variant="card"
+            showClose
+            onClose={() => setPickerOpen(false)}
+          />
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setPickerValue(currentAttachments(note));
+                setPickerOpen(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={onSaveAttachments}
+              disabled={busy}
+            >
+              <Check className="h-3.5 w-3.5" /> Save attachments
+            </Button>
+          </div>
         </div>
       )}
     </div>
@@ -213,48 +251,51 @@ function IconBtn({
   );
 }
 
-function currentAttachment(note: NoteRow): { kind: AttachKind; id: string | null } {
-  if (note.candidateId) return { kind: "candidate", id: note.candidateId };
-  if (note.clientId) return { kind: "client", id: note.clientId };
-  if (note.jobId) return { kind: "job", id: note.jobId };
-  return { kind: null, id: null };
+function currentAttachments(note: NoteRow): Attachments {
+  return {
+    candidateIds: note.candidates.map((c) => c.id),
+    clientIds: note.clients.map((c) => c.id),
+    jobIds: note.jobs.map((j) => j.id),
+  };
 }
 
-function renderAttachmentChip(note: NoteRow) {
-  if (note.candidate) {
-    const name = [note.candidate.firstName, note.candidate.lastName]
-      .filter(Boolean)
-      .join(" ");
-    return (
+function renderAttachmentChips(note: NoteRow) {
+  const chips: React.ReactNode[] = [];
+  for (const c of note.candidates) {
+    const name = [c.firstName, c.lastName].filter(Boolean).join(" ");
+    chips.push(
       <Link
-        href={`/candidates/${note.candidate.id}`}
+        key={`cand-${c.id}`}
+        href={`/candidates/${c.id}`}
         className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 hover:underline"
       >
         <User className="h-3 w-3" /> {name || "Candidate"}
-      </Link>
+      </Link>,
     );
   }
-  if (note.client) {
-    return (
+  for (const c of note.clients) {
+    chips.push(
       <Link
-        href={`/clients/${note.client.id}`}
+        key={`cli-${c.id}`}
+        href={`/clients/${c.id}`}
         className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 hover:underline"
       >
-        <Building2 className="h-3 w-3" /> {note.client.name}
-      </Link>
+        <Building2 className="h-3 w-3" /> {c.name}
+      </Link>,
     );
   }
-  if (note.job) {
-    return (
+  for (const j of note.jobs) {
+    chips.push(
       <Link
-        href={`/jobs/${note.job.id}`}
+        key={`job-${j.id}`}
+        href={`/jobs/${j.id}`}
         className="inline-flex items-center gap-1 rounded-full bg-court-brand-tint px-2 py-0.5 text-[11px] font-medium text-court-brand-dark hover:underline"
       >
-        <Briefcase className="h-3 w-3" /> {note.job.title}
-      </Link>
+        <Briefcase className="h-3 w-3" /> {j.title}
+      </Link>,
     );
   }
-  return null;
+  return chips;
 }
 
 function formatStamp(d: Date): string {

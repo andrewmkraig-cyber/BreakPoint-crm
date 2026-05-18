@@ -11,12 +11,36 @@ import { prisma } from "@/lib/prisma";
 // Notes are private to their author; the tenant guard keeps cross-org
 // probing out, the createdById guard keeps teammates' notes from
 // appearing in each other's lists.
+//
+// A note can be attached to any combination of Candidates, Clients,
+// and Jobs at once (Andrew often wants the same note showing on a
+// candidate AND the job they're being submitted for). The three
+// relations are implicit many-to-many; createNote/attachNote take
+// arrays of ids per kind and write them through Prisma's connect/set.
 
-export type AttachKind = "candidate" | "client" | "job" | null;
+export type Attachments = {
+  candidateIds: string[];
+  clientIds: string[];
+  jobIds: string[];
+};
 
 export type NoteActionResult =
   | { ok: true; id: string }
   | { ok: false; error: string };
+
+const EMPTY_ATTACHMENTS: Attachments = {
+  candidateIds: [],
+  clientIds: [],
+  jobIds: [],
+};
+
+function normalizeAttachments(input: Partial<Attachments> | null | undefined): Attachments {
+  return {
+    candidateIds: Array.from(new Set(input?.candidateIds ?? [])).filter(Boolean),
+    clientIds: Array.from(new Set(input?.clientIds ?? [])).filter(Boolean),
+    jobIds: Array.from(new Set(input?.jobIds ?? [])).filter(Boolean),
+  };
+}
 
 async function getAuthContext(): Promise<
   | { ok: true; orgId: string; userId: string }
@@ -33,48 +57,53 @@ async function getAuthContext(): Promise<
   return { ok: true, orgId: org.id, userId: user.id };
 }
 
-// Verifies the target entity belongs to the same org before letting an
+// Verifies every target id belongs to the same org before letting an
 // attachment land — otherwise a stranger's id could be passed in and
-// orphan a note onto a row in another tenant.
-async function verifyEntityInOrg(
+// connect a note to a row in another tenant. Returns ok only when
+// every id resolves; otherwise we drop the whole attach attempt.
+async function verifyAttachmentsInOrg(
   orgId: string,
-  attach: { kind: AttachKind; id: string | null },
+  attach: Attachments,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (!attach.kind || !attach.id) return { ok: true };
-  if (attach.kind === "candidate") {
-    const row = await prisma.candidate.findFirst({
-      where: { id: attach.id, organizationId: orgId },
-      select: { id: true },
+  if (attach.candidateIds.length > 0) {
+    const found = await prisma.candidate.count({
+      where: { id: { in: attach.candidateIds }, organizationId: orgId },
     });
-    return row ? { ok: true } : { ok: false, error: "Candidate not found." };
+    if (found !== attach.candidateIds.length) {
+      return { ok: false, error: "One or more candidates not found in this workspace." };
+    }
   }
-  if (attach.kind === "client") {
-    const row = await prisma.client.findFirst({
-      where: { id: attach.id, organizationId: orgId },
-      select: { id: true },
+  if (attach.clientIds.length > 0) {
+    const found = await prisma.client.count({
+      where: { id: { in: attach.clientIds }, organizationId: orgId },
     });
-    return row ? { ok: true } : { ok: false, error: "Client not found." };
+    if (found !== attach.clientIds.length) {
+      return { ok: false, error: "One or more clients not found in this workspace." };
+    }
   }
-  const row = await prisma.job.findFirst({
-    where: { id: attach.id, organizationId: orgId },
-    select: { id: true },
-  });
-  return row ? { ok: true } : { ok: false, error: "Job not found." };
+  if (attach.jobIds.length > 0) {
+    const found = await prisma.job.count({
+      where: { id: { in: attach.jobIds }, organizationId: orgId },
+    });
+    if (found !== attach.jobIds.length) {
+      return { ok: false, error: "One or more jobs not found in this workspace." };
+    }
+  }
+  return { ok: true };
 }
 
-function attachmentPaths(
-  attach: { kind: AttachKind; id: string | null } | null,
-): string[] {
-  if (!attach || !attach.kind || !attach.id) return [];
-  if (attach.kind === "candidate") return [`/candidates/${attach.id}`];
-  if (attach.kind === "client") return [`/clients/${attach.id}`];
-  return [`/jobs/${attach.id}`];
+function attachmentRevalidatePaths(attach: Attachments): string[] {
+  const paths: string[] = [];
+  for (const id of attach.candidateIds) paths.push(`/candidates/${id}`);
+  for (const id of attach.clientIds) paths.push(`/clients/${id}`);
+  for (const id of attach.jobIds) paths.push(`/jobs/${id}`);
+  return paths;
 }
 
 export type CreateNoteInput = {
   title?: string | null;
   body: string;
-  attach?: { kind: AttachKind; id: string | null } | null;
+  attach?: Partial<Attachments> | null;
 };
 
 export async function createNote(input: CreateNoteInput): Promise<NoteActionResult> {
@@ -84,8 +113,8 @@ export async function createNote(input: CreateNoteInput): Promise<NoteActionResu
   const ctx = await getAuthContext();
   if (!ctx.ok) return ctx;
 
-  const attach = input.attach ?? null;
-  const verified = await verifyEntityInOrg(ctx.orgId, attach ?? { kind: null, id: null });
+  const attach = normalizeAttachments(input.attach);
+  const verified = await verifyAttachmentsInOrg(ctx.orgId, attach);
   if (!verified.ok) return verified;
 
   const note = await prisma.note.create({
@@ -94,15 +123,15 @@ export async function createNote(input: CreateNoteInput): Promise<NoteActionResu
       createdById: ctx.userId,
       title: input.title?.trim() || null,
       body,
-      candidateId: attach?.kind === "candidate" ? attach.id : null,
-      clientId: attach?.kind === "client" ? attach.id : null,
-      jobId: attach?.kind === "job" ? attach.id : null,
+      candidates: { connect: attach.candidateIds.map((id) => ({ id })) },
+      clients: { connect: attach.clientIds.map((id) => ({ id })) },
+      jobs: { connect: attach.jobIds.map((id) => ({ id })) },
     },
     select: { id: true },
   });
 
   revalidatePath("/notes");
-  for (const p of attachmentPaths(attach)) revalidatePath(p);
+  for (const p of attachmentRevalidatePaths(attach)) revalidatePath(p);
   return { ok: true, id: note.id };
 }
 
@@ -118,7 +147,12 @@ export async function updateNote(input: UpdateNoteInput): Promise<NoteActionResu
 
   const existing = await prisma.note.findFirst({
     where: { id: input.id, organizationId: ctx.orgId, createdById: ctx.userId },
-    select: { id: true, candidateId: true, clientId: true, jobId: true },
+    select: {
+      id: true,
+      candidates: { select: { id: true } },
+      clients: { select: { id: true } },
+      jobs: { select: { id: true } },
+    },
   });
   if (!existing) return { ok: false, error: "Note not found." };
 
@@ -136,9 +170,9 @@ export async function updateNote(input: UpdateNoteInput): Promise<NoteActionResu
   });
 
   revalidatePath("/notes");
-  if (existing.candidateId) revalidatePath(`/candidates/${existing.candidateId}`);
-  if (existing.clientId) revalidatePath(`/clients/${existing.clientId}`);
-  if (existing.jobId) revalidatePath(`/jobs/${existing.jobId}`);
+  for (const c of existing.candidates) revalidatePath(`/candidates/${c.id}`);
+  for (const c of existing.clients) revalidatePath(`/clients/${c.id}`);
+  for (const j of existing.jobs) revalidatePath(`/jobs/${j.id}`);
   return { ok: true, id: existing.id };
 }
 
@@ -148,26 +182,31 @@ export async function deleteNote(id: string): Promise<NoteActionResult> {
 
   const existing = await prisma.note.findFirst({
     where: { id, organizationId: ctx.orgId, createdById: ctx.userId },
-    select: { id: true, candidateId: true, clientId: true, jobId: true },
+    select: {
+      id: true,
+      candidates: { select: { id: true } },
+      clients: { select: { id: true } },
+      jobs: { select: { id: true } },
+    },
   });
   if (!existing) return { ok: false, error: "Note not found." };
 
   await prisma.note.delete({ where: { id: existing.id } });
 
   revalidatePath("/notes");
-  if (existing.candidateId) revalidatePath(`/candidates/${existing.candidateId}`);
-  if (existing.clientId) revalidatePath(`/clients/${existing.clientId}`);
-  if (existing.jobId) revalidatePath(`/jobs/${existing.jobId}`);
+  for (const c of existing.candidates) revalidatePath(`/candidates/${c.id}`);
+  for (const c of existing.clients) revalidatePath(`/clients/${c.id}`);
+  for (const j of existing.jobs) revalidatePath(`/jobs/${j.id}`);
   return { ok: true, id: existing.id };
 }
 
-// Re-attach (or detach) a saved note. Passing kind=null clears every
-// foreign key so the note becomes loose. Otherwise we set exactly one
-// of candidateId/clientId/jobId and null the other two — mutual
-// exclusion is an application-layer invariant.
+// Replaces the full attachment set on a saved note. Pass empty arrays
+// for each kind to detach completely. Use `set` semantics (not
+// merge) so the picker has a single "this is the new full state"
+// shape — easier to reason about than connect+disconnect deltas.
 export type AttachNoteInput = {
   id: string;
-  attach: { kind: AttachKind; id: string | null };
+  attach: Partial<Attachments>;
 };
 
 export async function attachNote(input: AttachNoteInput): Promise<NoteActionResult> {
@@ -176,27 +215,35 @@ export async function attachNote(input: AttachNoteInput): Promise<NoteActionResu
 
   const existing = await prisma.note.findFirst({
     where: { id: input.id, organizationId: ctx.orgId, createdById: ctx.userId },
-    select: { id: true, candidateId: true, clientId: true, jobId: true },
+    select: {
+      id: true,
+      candidates: { select: { id: true } },
+      clients: { select: { id: true } },
+      jobs: { select: { id: true } },
+    },
   });
   if (!existing) return { ok: false, error: "Note not found." };
 
-  const verified = await verifyEntityInOrg(ctx.orgId, input.attach);
+  const attach = normalizeAttachments(input.attach);
+  const verified = await verifyAttachmentsInOrg(ctx.orgId, attach);
   if (!verified.ok) return verified;
 
   await prisma.note.update({
     where: { id: existing.id },
     data: {
-      candidateId: input.attach.kind === "candidate" ? input.attach.id : null,
-      clientId: input.attach.kind === "client" ? input.attach.id : null,
-      jobId: input.attach.kind === "job" ? input.attach.id : null,
+      candidates: { set: attach.candidateIds.map((id) => ({ id })) },
+      clients: { set: attach.clientIds.map((id) => ({ id })) },
+      jobs: { set: attach.jobIds.map((id) => ({ id })) },
     },
   });
 
   revalidatePath("/notes");
-  if (existing.candidateId) revalidatePath(`/candidates/${existing.candidateId}`);
-  if (existing.clientId) revalidatePath(`/clients/${existing.clientId}`);
-  if (existing.jobId) revalidatePath(`/jobs/${existing.jobId}`);
-  for (const p of attachmentPaths(input.attach)) revalidatePath(p);
+  // Revalidate both old and new attachments so pages that lost a note
+  // refresh too.
+  for (const c of existing.candidates) revalidatePath(`/candidates/${c.id}`);
+  for (const c of existing.clients) revalidatePath(`/clients/${c.id}`);
+  for (const j of existing.jobs) revalidatePath(`/jobs/${j.id}`);
+  for (const p of attachmentRevalidatePaths(attach)) revalidatePath(p);
   return { ok: true, id: existing.id };
 }
 
@@ -206,7 +253,12 @@ export async function setPinned(id: string, pinned: boolean): Promise<NoteAction
 
   const existing = await prisma.note.findFirst({
     where: { id, organizationId: ctx.orgId, createdById: ctx.userId },
-    select: { id: true, candidateId: true, clientId: true, jobId: true },
+    select: {
+      id: true,
+      candidates: { select: { id: true } },
+      clients: { select: { id: true } },
+      jobs: { select: { id: true } },
+    },
   });
   if (!existing) return { ok: false, error: "Note not found." };
 
@@ -216,15 +268,12 @@ export async function setPinned(id: string, pinned: boolean): Promise<NoteAction
   });
 
   revalidatePath("/notes");
-  if (existing.candidateId) revalidatePath(`/candidates/${existing.candidateId}`);
-  if (existing.clientId) revalidatePath(`/clients/${existing.clientId}`);
-  if (existing.jobId) revalidatePath(`/jobs/${existing.jobId}`);
+  for (const c of existing.candidates) revalidatePath(`/candidates/${c.id}`);
+  for (const c of existing.clients) revalidatePath(`/clients/${c.id}`);
+  for (const j of existing.jobs) revalidatePath(`/jobs/${j.id}`);
   return { ok: true, id: existing.id };
 }
 
-// Small helper exposed to the attach-picker popover so the picker can
-// fetch its own candidate/client/job options via a server action
-// instead of an extra /api/* round-trip.
 export type AttachOption = {
   id: string;
   label: string;
@@ -318,3 +367,81 @@ export async function searchAttachOptions(
     })),
   };
 }
+
+// Used by both the /notes composer and the global ComposeFAB popup to
+// resolve already-picked attachment ids into display labels (so the
+// chip row above the buttons doesn't have to do its own lookup).
+export type ResolvedSelection = {
+  candidates: Array<{ id: string; label: string }>;
+  clients: Array<{ id: string; label: string }>;
+  jobs: Array<{ id: string; label: string }>;
+};
+
+export type ResolveSelectionResult =
+  | { ok: true; selection: ResolvedSelection }
+  | { ok: false; error: string };
+
+export async function resolveAttachmentLabels(
+  attach: Partial<Attachments>,
+): Promise<ResolveSelectionResult> {
+  const ctx = await getAuthContext();
+  if (!ctx.ok) return ctx;
+
+  const a = normalizeAttachments(attach);
+  const [candidates, clients, jobs] = await Promise.all([
+    a.candidateIds.length === 0
+      ? Promise.resolve([])
+      : prisma.candidate.findMany({
+          where: { id: { in: a.candidateIds }, organizationId: ctx.orgId },
+          select: { id: true, firstName: true, lastName: true },
+        }),
+    a.clientIds.length === 0
+      ? Promise.resolve([])
+      : prisma.client.findMany({
+          where: { id: { in: a.clientIds }, organizationId: ctx.orgId },
+          select: { id: true, name: true },
+        }),
+    a.jobIds.length === 0
+      ? Promise.resolve([])
+      : prisma.job.findMany({
+          where: { id: { in: a.jobIds }, organizationId: ctx.orgId },
+          select: { id: true, title: true },
+        }),
+  ]);
+
+  return {
+    ok: true,
+    selection: {
+      candidates: candidates.map((c) => ({
+        id: c.id,
+        label: [c.firstName, c.lastName].filter(Boolean).join(" ") || "Unnamed",
+      })),
+      clients: clients.map((c) => ({ id: c.id, label: c.name })),
+      jobs: jobs.map((j) => ({ id: j.id, label: j.title })),
+    },
+  };
+}
+
+// Helper used by the candidate-profile / client-profile / job-profile
+// EntityNotesSection (and the activity feeds): same shape as
+// createNote but pre-attached to a single entity so the page-side
+// caller doesn't have to construct the Attachments object.
+export async function createNoteAttachedTo(
+  entity: { kind: "candidate" | "client" | "job"; id: string },
+  body: string,
+  title: string | null = null,
+): Promise<NoteActionResult> {
+  return createNote({
+    title,
+    body,
+    attach: {
+      candidateIds: entity.kind === "candidate" ? [entity.id] : [],
+      clientIds: entity.kind === "client" ? [entity.id] : [],
+      jobIds: entity.kind === "job" ? [entity.id] : [],
+    },
+  });
+}
+
+// Re-exported so existing callers that imported the old union type
+// don't blow up — the new shape supersedes it.
+export const EMPTY_ATTACHMENT_SET: Attachments = EMPTY_ATTACHMENTS;

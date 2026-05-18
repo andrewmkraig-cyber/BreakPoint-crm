@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { Briefcase, Building2, StickyNote, User } from "lucide-react";
 
-import { getNotesForEntity } from "@/lib/notes/queries";
+import { getNotesForEntity, type NoteRow } from "@/lib/notes/queries";
 
-// Server-rendered "Notes" section that lives in the activity feed on
-// the per-entity profile pages. Reads the signed-in user's notes
-// attached to {entityType, entityId} and renders them in the chrome
-// the handoff specified: StickyNote icon, optional title, body
-// clamped to 3 lines, timestamp. Loose notes (no attachment) never
-// appear here — only notes whose foreign key matches the entity.
+// Server-rendered "Notes" section rendered inside the activity feed on
+// the per-entity profile pages. Reads the signed-in user's notes that
+// have {entityType, entityId} in their attachment set and renders
+// them in the chrome the spec calls for: StickyNote icon, optional
+// title, body clamped to 3 lines, timestamp, plus chips for any
+// *other* entities the same note is attached to.
 export async function EntityNotesSection({
   entityType,
   entityId,
@@ -30,13 +30,7 @@ export async function EntityNotesSection({
           {notes.length} {notes.length === 1 ? "note" : "notes"}
         </span>
         <Link
-          href={
-            entityType === "candidate"
-              ? "/notes?filter=attached"
-              : entityType === "client"
-                ? "/notes?filter=attached"
-                : "/notes?filter=attached"
-          }
+          href="/notes?filter=attached"
           className="ml-auto text-[11px] font-medium text-court-fg-muted transition hover:text-court-fg"
         >
           View all
@@ -75,7 +69,7 @@ export async function EntityNotesSection({
                       Pinned
                     </span>
                   )}
-                  {renderOtherAttachments(n, entityType)}
+                  {renderOtherAttachments(n, entityType, entityId)}
                 </div>
               </div>
             </div>
@@ -86,48 +80,49 @@ export async function EntityNotesSection({
   );
 }
 
-// Always render chips for ANY attachment on the note that isn't the
-// page we're currently on. On a candidate page that's a no-op since
-// notes are exclusive to one foreign key, but the helper keeps the
-// renderer symmetric if mutual exclusion ever relaxes.
+// Renders chips for every attachment on the note that ISN'T the
+// current entity. Lets the recruiter see "this note also lives on
+// Acme Corp" while reading it inside the candidate profile.
 function renderOtherAttachments(
-  n: Awaited<ReturnType<typeof getNotesForEntity>>[number],
-  current: "candidate" | "client" | "job",
+  n: NoteRow,
+  currentKind: "candidate" | "client" | "job",
+  currentId: string,
 ) {
   const chips: React.ReactNode[] = [];
-  if (current !== "candidate" && n.candidate) {
-    const name =
-      [n.candidate.firstName, n.candidate.lastName].filter(Boolean).join(" ") ||
-      "Candidate";
+  for (const c of n.candidates) {
+    if (currentKind === "candidate" && c.id === currentId) continue;
+    const name = [c.firstName, c.lastName].filter(Boolean).join(" ") || "Candidate";
     chips.push(
       <Link
-        key="cand"
-        href={`/candidates/${n.candidate.id}`}
+        key={`cand-${c.id}`}
+        href={`/candidates/${c.id}`}
         className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 hover:underline"
       >
         <User className="h-3 w-3" /> {name}
       </Link>,
     );
   }
-  if (current !== "client" && n.client) {
+  for (const c of n.clients) {
+    if (currentKind === "client" && c.id === currentId) continue;
     chips.push(
       <Link
-        key="cli"
-        href={`/clients/${n.client.id}`}
+        key={`cli-${c.id}`}
+        href={`/clients/${c.id}`}
         className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 hover:underline"
       >
-        <Building2 className="h-3 w-3" /> {n.client.name}
+        <Building2 className="h-3 w-3" /> {c.name}
       </Link>,
     );
   }
-  if (current !== "job" && n.job) {
+  for (const j of n.jobs) {
+    if (currentKind === "job" && j.id === currentId) continue;
     chips.push(
       <Link
-        key="job"
-        href={`/jobs/${n.job.id}`}
+        key={`job-${j.id}`}
+        href={`/jobs/${j.id}`}
         className="inline-flex items-center gap-1 rounded-full bg-court-brand-tint px-2 py-0.5 text-[11px] font-medium text-court-brand-dark hover:underline"
       >
-        <Briefcase className="h-3 w-3" /> {n.job.title}
+        <Briefcase className="h-3 w-3" /> {j.title}
       </Link>,
     );
   }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Bell,
   CalendarPlus,
   GripVertical,
   Mail,
@@ -21,7 +22,8 @@ import {
   type PhoneContact,
 } from "@/lib/phone-panels-context";
 import { matchContactByPhone, type PhoneMatch } from "@/app/phone/actions";
-import { createNote, searchAttachOptions } from "@/app/notes/actions";
+import { createNote, type Attachments } from "@/app/notes/actions";
+import { MultiAttachPicker } from "@/components/notes/multi-attach-picker";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 
 // Global multi-action launcher pinned to the bottom-left corner. The
@@ -91,12 +93,12 @@ type PeopleSearchHit = {
 };
 
 type ActionView = "menu" | "phone" | "notes";
-// Notes sub-mode picked from the FAB root menu. "mine" saves a loose
-// note with no attachment; "candidate"/"client"/"job" launches the
-// notes panel pre-scoped to that entity type so the picker only
-// surfaces matches of the right kind.
-type NoteMode = "mine" | "candidate" | "client" | "job";
-type AttachOption = { id: string; label: string; sublabel: string | null };
+
+const EMPTY_ATTACH: Attachments = {
+  candidateIds: [],
+  clientIds: [],
+  jobIds: [],
+};
 
 export function ComposeFAB() {
   const pathname = usePathname();
@@ -438,23 +440,16 @@ export function ComposeFAB() {
   // the standalone Note table — the legacy /api/notes append path that
   // wrote into Candidate.raw.notes / Client.notes is still in place
   // for old profile reads but new FAB-driven notes go through the new
-  // schema so they show up on /notes too.
+  // schema so they show up on /notes AND on every attached profile.
   //
-  //   noteMode: which entry the recruiter picked from the root menu
-  //             ("mine" = save loose, no picker; otherwise scope the
-  //             picker to that entity kind).
-  //   noteTitle: optional headline. Empty string means "no title."
-  //   noteText : required body.
-  //   noteAttach: the picked target (only meaningful when noteMode is
-  //               not "mine"). id+label, no kind — kind is derived
-  //               from noteMode.
-  const [noteMode, setNoteMode] = useState<NoteMode>("mine");
+  //   noteTitle  : optional headline
+  //   noteText   : required body
+  //   noteAttach : multi-kind attachment set (candidate/client/job ids)
+  //   showPicker : reveals the MultiAttachPicker inline under the body
   const [noteTitle, setNoteTitle] = useState("");
   const [noteText, setNoteText] = useState("");
-  const [noteSearch, setNoteSearch] = useState("");
-  const [noteAttachOptions, setNoteAttachOptions] = useState<AttachOption[]>([]);
-  const [noteSearching, setNoteSearching] = useState(false);
-  const [noteAttach, setNoteAttach] = useState<AttachOption | null>(null);
+  const [noteAttach, setNoteAttach] = useState<Attachments>(EMPTY_ATTACH);
+  const [showNotePicker, setShowNotePicker] = useState(false);
   const [noteSubmitting, setNoteSubmitting] = useState(false);
   const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   useEffect(() => {
@@ -463,29 +458,6 @@ export function ComposeFAB() {
       return () => clearTimeout(t);
     }
   }, [open, view]);
-  useEffect(() => {
-    if (!open || view !== "notes") return;
-    if (noteMode === "mine") {
-      setNoteAttachOptions([]);
-      setNoteSearching(false);
-      return;
-    }
-    let cancelled = false;
-    setNoteSearching(true);
-    const handle = setTimeout(() => {
-      void (async () => {
-        const result = await searchAttachOptions(noteMode, noteSearch);
-        if (!cancelled) {
-          setNoteAttachOptions(result.ok ? result.options : []);
-          setNoteSearching(false);
-        }
-      })();
-    }, 180);
-    return () => {
-      cancelled = true;
-      clearTimeout(handle);
-    };
-  }, [open, view, noteMode, noteSearch]);
 
   // Outside-click + Escape dismiss for the whole popover. Keeping the
   // listeners attached only while the popover is mounted avoids a
@@ -521,12 +493,10 @@ export function ComposeFAB() {
     setView("menu");
     setPendingContact(null);
     setPhoneSearch("");
-    setNoteMode("mine");
     setNoteTitle("");
     setNoteText("");
-    setNoteSearch("");
-    setNoteAttachOptions([]);
-    setNoteAttach(null);
+    setNoteAttach(EMPTY_ATTACH);
+    setShowNotePicker(false);
     setNoteSubmitting(false);
   }
 
@@ -567,10 +537,9 @@ export function ComposeFAB() {
     setView("phone");
   }
 
-  function pickNotes(mode: NoteMode) {
-    setNoteMode(mode);
-    setNoteAttach(null);
-    setNoteSearch("");
+  function pickNotes() {
+    setNoteAttach(EMPTY_ATTACH);
+    setShowNotePicker(false);
     setView("notes");
   }
 
@@ -590,6 +559,24 @@ export function ComposeFAB() {
     } catch {
       // Quota / private mode: best-effort. Worst case the recruiter
       // lands on /calendar and clicks New event themselves.
+    }
+    router.push("/calendar");
+  }
+
+  function pickCalendarReminder() {
+    closeAll();
+    // Mirrors pickCalendarEvent: when already on /calendar, dispatch
+    // directly so the Reminders rail's inline form opens. Otherwise
+    // set the sessionStorage flag and navigate — calendar-view picks
+    // the flag up on mount.
+    if (pathname === "/calendar") {
+      window.dispatchEvent(new CustomEvent("ace:calendar:new-reminder"));
+      return;
+    }
+    try {
+      window.sessionStorage.setItem("ace.calendar.openNewReminder", "1");
+    } catch {
+      // Best-effort; recruiter can still open the form by hand.
     }
     router.push("/calendar");
   }
@@ -629,16 +616,12 @@ export function ComposeFAB() {
   async function commitNote() {
     const trimmed = noteText.trim();
     if (!trimmed) return;
-    if (noteMode !== "mine" && !noteAttach) return;
     setNoteSubmitting(true);
     try {
       const result = await createNote({
         title: noteTitle.trim() || null,
         body: trimmed,
-        attach:
-          noteMode === "mine"
-            ? null
-            : { kind: noteMode, id: noteAttach!.id },
+        attach: noteAttach,
       });
       if (!result.ok) {
         const { toast } = await import("sonner");
@@ -646,11 +629,15 @@ export function ComposeFAB() {
         return;
       }
       const { toast } = await import("sonner");
-      const label =
-        noteMode === "mine"
-          ? "My Notes"
-          : (noteAttach?.label ?? noteMode);
-      toast.success(`Note saved to ${label}`);
+      const total =
+        noteAttach.candidateIds.length +
+        noteAttach.clientIds.length +
+        noteAttach.jobIds.length;
+      toast.success(
+        total === 0
+          ? "Note saved to My Notes"
+          : `Note saved to ${total} profile${total === 1 ? "" : "s"}`,
+      );
       closeAll();
     } catch (e) {
       const { toast } = await import("sonner");
@@ -748,33 +735,21 @@ export function ComposeFAB() {
               />
               <ActionRow
                 icon={<StickyNote className="h-4 w-4" />}
-                label="Save to My Notes"
-                hint="Quick loose note, no attachment"
-                onClick={() => pickNotes("mine")}
-              />
-              <ActionRow
-                icon={<StickyNote className="h-4 w-4" />}
-                label="Attach to candidate"
-                hint="Note tied to a candidate profile"
-                onClick={() => pickNotes("candidate")}
-              />
-              <ActionRow
-                icon={<StickyNote className="h-4 w-4" />}
-                label="Attach to client"
-                hint="Note tied to a client profile"
-                onClick={() => pickNotes("client")}
-              />
-              <ActionRow
-                icon={<StickyNote className="h-4 w-4" />}
-                label="Attach to job"
-                hint="Note tied to a specific job"
-                onClick={() => pickNotes("job")}
+                label="New Note"
+                hint="Save to My Notes or attach to profiles"
+                onClick={pickNotes}
               />
               <ActionRow
                 icon={<CalendarPlus className="h-4 w-4" />}
                 label="New Event"
                 hint="Schedule on the calendar"
                 onClick={pickCalendarEvent}
+              />
+              <ActionRow
+                icon={<Bell className="h-4 w-4" />}
+                label="New Reminder"
+                hint="Drop a reminder on the calendar"
+                onClick={pickCalendarReminder}
               />
             </div>
           )}
@@ -1051,7 +1026,7 @@ export function ComposeFAB() {
           )}
 
           {view === "notes" && (
-            <div className="p-3">
+            <div className="max-h-[80vh] overflow-y-auto p-3">
               <div className="flex items-center justify-between pb-2">
                 <button
                   type="button"
@@ -1061,9 +1036,7 @@ export function ComposeFAB() {
                   ← Back
                 </button>
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
-                  {noteMode === "mine"
-                    ? "Save to My Notes"
-                    : `Attach to ${noteMode}`}
+                  New Note
                 </span>
                 <button
                   type="button"
@@ -1086,86 +1059,47 @@ export function ComposeFAB() {
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
                 rows={4}
-                placeholder={
-                  noteMode === "mine"
-                    ? "Write a note, then hit Save."
-                    : `Write the note, then pick a ${noteMode} below.`
-                }
+                placeholder="Write a note. Attach to any candidates, clients, or jobs below."
                 className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 outline-none focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
               />
-              {noteMode !== "mine" && (
-                <>
-                  <div className="relative mt-2">
-                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
-                    <input
-                      type="search"
-                      value={noteSearch}
-                      onChange={(e) => setNoteSearch(e.target.value)}
-                      placeholder={`Search ${noteMode}s...`}
-                      aria-label={`Search ${noteMode}s`}
-                      className="h-9 w-full rounded-md border border-court-border bg-court-surface pl-8 pr-2 text-sm text-court-fg outline-none focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
-                    />
-                  </div>
-                  <div className="mt-2 max-h-48 overflow-y-auto">
-                    {noteSearching && noteAttachOptions.length === 0 ? (
-                      <div className="px-2 py-3 text-xs text-court-fg-muted">
-                        Searching...
-                      </div>
-                    ) : noteAttachOptions.length === 0 ? (
-                      <div className="px-2 py-3 text-xs text-court-fg-muted">
-                        No matches.
-                      </div>
-                    ) : (
-                      <ul className="space-y-0.5">
-                        {noteAttachOptions.map((o) => {
-                          const active = noteAttach?.id === o.id;
-                          return (
-                            <li key={o.id}>
-                              <button
-                                type="button"
-                                onClick={() => setNoteAttach(o)}
-                                className={
-                                  "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition " +
-                                  (active
-                                    ? "bg-court-brand-tint text-court-brand-dark"
-                                    : "text-court-fg hover:bg-court-surface-subtle")
-                                }
-                              >
-                                <span className="min-w-0 flex-1">
-                                  <span className="block truncate text-sm">
-                                    {o.label}
-                                  </span>
-                                  {o.sublabel && (
-                                    <span className="block truncate text-[11px] text-court-fg-muted">
-                                      {o.sublabel}
-                                    </span>
-                                  )}
-                                </span>
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </div>
-                </>
-              )}
-              <div className="mt-3 flex items-center justify-between gap-2 border-t border-court-border pt-3">
-                <span className="min-w-0 truncate text-[11px] text-court-fg-muted">
-                  {noteMode === "mine"
-                    ? "Saves to /notes under My Notes."
-                    : noteAttach
-                      ? `Attaching to ${noteAttach.label}`
-                      : `Pick a ${noteMode} to attach.`}
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <span className="text-[11px] text-court-fg-muted">
+                  {(() => {
+                    const total =
+                      noteAttach.candidateIds.length +
+                      noteAttach.clientIds.length +
+                      noteAttach.jobIds.length;
+                    if (total === 0) return "Saves to My Notes if you don't attach.";
+                    return `${total} attachment${total === 1 ? "" : "s"}`;
+                  })()}
                 </span>
                 <button
                   type="button"
-                  onClick={commitNote}
-                  disabled={
-                    noteSubmitting ||
-                    !noteText.trim() ||
-                    (noteMode !== "mine" && !noteAttach)
+                  onClick={() => setShowNotePicker((v) => !v)}
+                  className={
+                    "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition " +
+                    (showNotePicker
+                      ? "border-court-brand bg-court-brand-tint text-court-brand-dark"
+                      : "border-court-border bg-court-surface text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg")
                   }
+                >
+                  {showNotePicker ? "Done picking" : "Attach"}
+                </button>
+              </div>
+              {showNotePicker && (
+                <div className="mt-2">
+                  <MultiAttachPicker
+                    value={noteAttach}
+                    onChange={setNoteAttach}
+                    variant="compact"
+                  />
+                </div>
+              )}
+              <div className="mt-3 flex items-center justify-end gap-2 border-t border-court-border pt-3">
+                <button
+                  type="button"
+                  onClick={commitNote}
+                  disabled={noteSubmitting || !noteText.trim()}
                   className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-court-brand px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {noteSubmitting ? "Saving..." : "Save"}

@@ -28,8 +28,6 @@ export function NotesView({
 
   return (
     <div className="space-y-5">
-      <NoteComposer />
-
       <div className="flex flex-wrap items-center gap-3">
         <TabStrip<NoteFilter>
           ariaLabel="Notes filter"
@@ -42,6 +40,8 @@ export function NotesView({
           ]}
         />
       </div>
+
+      <NoteComposer />
 
       {initialNotes.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 rounded-2xl bg-court-surface p-12 text-center shadow-sm">
