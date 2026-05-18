@@ -1,6 +1,6 @@
 // Ace PWA service worker. Bump CACHE_NAME on any logic change so
 // the activate handler purges the previous shell.
-const CACHE_NAME = "ace-shell-v2";
+const CACHE_NAME = "ace-shell-v3";
 const PRECACHE_URLS = ["/", "/offline"];
 
 self.addEventListener("install", (event) => {
@@ -122,17 +122,21 @@ self.addEventListener("push", (event) => {
         //                     correctly as more pushes arrive.
         //   badgeCount === 0 → clearAppBadge(): sender explicitly says
         //                     "nothing left to read."
-        //   badgeCount missing/null → setAppBadge() with no arg:
-        //                     generic dot. Avoids clobbering a true
-        //                     count that the client already painted.
+        //   badgeCount null / missing → leave the badge ALONE. Means
+        //                     the sender couldn't compute the total
+        //                     (e.g. Gmail unreachable when a text push
+        //                     fires) — clobbering with a partial count
+        //                     would regress an already-correct badge.
+        //
+        // Awaited inside the outer waitUntil so the SW isn't killed
+        // before the badge promise resolves (iOS Safari especially is
+        // quick to kill SW work that escapes waitUntil).
         if ("setAppBadge" in self.navigator) {
           const n = data.badgeCount;
           if (typeof n === "number" && n > 0) {
-            self.navigator.setAppBadge(n).catch(() => {});
+            await self.navigator.setAppBadge(n).catch(() => {});
           } else if (n === 0) {
-            self.navigator.clearAppBadge?.().catch(() => {});
-          } else {
-            self.navigator.setAppBadge().catch(() => {});
+            await self.navigator.clearAppBadge?.().catch(() => {});
           }
         }
         // Also tell any open Ace windows (even backgrounded ones) to

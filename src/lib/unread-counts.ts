@@ -19,9 +19,12 @@ export type UnreadCounts = {
   // clearing it.
   mailUnread: number | null;
   phoneUnread: number;
-  // mailUnread (or 0 when null) + phoneUnread. Sent on the wire as
-  // payload.badgeCount; sw.js maps it directly to setAppBadge(N).
-  badgeCount: number;
+  // mailUnread + phoneUnread when both are known. null when mailUnread
+  // is null (Gmail unreachable / no watch) so the SW treats it as
+  // "missing" and leaves the existing badge intact — sending the
+  // phone-only count there would regress the displayed total whenever
+  // a text push fires while mail is temporarily unavailable.
+  badgeCount: number | null;
 };
 
 // Distinct unread *conversations*, not message rows — mirrors the
@@ -79,6 +82,12 @@ export async function getUnreadCountsForOrg(
   return {
     mailUnread,
     phoneUnread,
-    badgeCount: (mailUnread ?? 0) + phoneUnread,
+    // Only emit a numeric badgeCount when BOTH counts are known. A
+    // text push that reports phoneUnread-only would shrink an
+    // already-correct badge (e.g. 2 → 1 when mail=1 but unreachable +
+    // phone=1). The SW maps a null badgeCount to "leave the badge
+    // alone" so the client-side mail-tab-title-sync poll reconciles
+    // to the real total within seconds without flickering.
+    badgeCount: mailUnread == null ? null : mailUnread + phoneUnread,
   };
 }

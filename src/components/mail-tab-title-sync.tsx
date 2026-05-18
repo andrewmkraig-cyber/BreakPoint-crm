@@ -25,22 +25,43 @@ type NavigatorWithBadge = Navigator & {
   clearAppBadge?: () => Promise<void>;
 };
 
+const BADGE_REGISTERED_KEY = "ace_badge_registered_v1";
+
 export function MailTabTitleSync() {
   const { unreadCount: mailUnread } = useMailContext();
   const { unreadCount: phoneUnread } = usePhoneContext();
   // One-time registration on mount. macOS won't surface the installed
   // PWA in System Settings → Notifications until the page has
-  // exercised the Badging API at least once. Calling setAppBadge(0)
-  // up front registers Ace as a badge-capable app without showing a
-  // dot for "0 unread", and the dependency-driven effect below takes
-  // over from there as soon as a real count arrives.
+  // exercised the Badging API at least once — but firing setAppBadge(0)
+  // on EVERY mount stomps on any badge the service worker set while
+  // Ace was closed (e.g. a push that landed during background, then
+  // the user opens Ace → badge briefly drops to 0 before the
+  // dep-driven effect below restores the real total).
+  //
+  // Gate behind a localStorage flag so the registration call fires
+  // exactly once per install. After that the dep-driven effect is the
+  // sole writer of the badge from the client side.
   useEffect(() => {
+    try {
+      if (window.localStorage.getItem(BADGE_REGISTERED_KEY) === "1") return;
+    } catch {
+      // localStorage unavailable (private mode etc.) — fall through and
+      // attempt the register; worst case it runs more than once.
+    }
     const nav = navigator as Navigator & {
       setAppBadge?: (contents?: number) => Promise<void>;
     };
-    if (typeof nav.setAppBadge === "function") {
-      void nav.setAppBadge(0).catch(() => {});
-    }
+    if (typeof nav.setAppBadge !== "function") return;
+    void nav
+      .setAppBadge(0)
+      .then(() => {
+        try {
+          window.localStorage.setItem(BADGE_REGISTERED_KEY, "1");
+        } catch {
+          // Persisting is best-effort; the API was still exercised.
+        }
+      })
+      .catch(() => {});
   }, []);
   // Bridge from sw.js: when a push lands, the SW fans out a
   // PUSH_RECEIVED message to every open Ace window. Rebroadcast it as
