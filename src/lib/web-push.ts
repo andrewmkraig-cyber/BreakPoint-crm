@@ -32,6 +32,14 @@ export type PushPayload = {
   // replace the previous notification rather than stacking. Pass a
   // stable thread / call id (e.g. `sms-<candidateId>`).
   tag?: string;
+  // App-icon badge fields. sw.js reads `badgeCount` directly and calls
+  // setAppBadge(N). mailUnread / phoneUnread ride along for debugging
+  // and let the SW reason about which surface stacked (Mail or Phone)
+  // without having to query Ace itself. All three are optional — when
+  // omitted the SW falls back to the generic dot rather than clearing.
+  mailUnread?: number | null;
+  phoneUnread?: number | null;
+  badgeCount?: number | null;
 };
 
 // Push is best-effort. Any error here must NOT bubble up — webhook

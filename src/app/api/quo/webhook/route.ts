@@ -3,6 +3,7 @@ import crypto from 'node:crypto'
 import { prisma } from '@/lib/prisma'
 import { matchClientByPhone } from '@/lib/quo-contact-match'
 import { sendPushToOrg, sendPushToUser } from '@/lib/web-push'
+import { getUnreadCountsForOrg } from '@/lib/unread-counts'
 
 // Quo (formerly KrispCall / OpenPhone) inbound webhook.
 //
@@ -109,11 +110,15 @@ export async function POST(req: NextRequest) {
         const dest = candidate
           ? `/phone?candidateId=${candidate.id}`
           : `/phone?from=${encodeURIComponent(fromNumber)}`
+        const counts = await getUnreadCountsForOrg(orgId)
         const payload = {
           title: `New text from ${senderName}`,
           body: (content ?? '').slice(0, 100),
           url: dest,
           tag: `sms-${tagKey}`,
+          mailUnread: counts.mailUnread,
+          phoneUnread: counts.phoneUnread,
+          badgeCount: counts.badgeCount,
         }
         if (candidate?.createdById) {
           await sendPushToUser(candidate.createdById, orgId, payload)
@@ -352,6 +357,7 @@ export async function POST(req: NextRequest) {
                 .trim()
             : '') || fromNumber || 'Unknown'
         const isMissed = !duration || duration <= 3
+        const counts = await getUnreadCountsForOrg(orgId)
         const payload = {
           title: isMissed ? 'Missed call' : 'Call ended',
           body: duration
@@ -359,6 +365,9 @@ export async function POST(req: NextRequest) {
             : callerName,
           url: `/phone?call=${callLogRow.id}`,
           tag: `call-${callLogRow.id}`,
+          mailUnread: counts.mailUnread,
+          phoneUnread: counts.phoneUnread,
+          badgeCount: counts.badgeCount,
         }
         if (candidate?.createdById) {
           await sendPushToUser(candidate.createdById, orgId, payload)

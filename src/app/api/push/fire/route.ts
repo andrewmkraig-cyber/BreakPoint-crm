@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { sendPushToUser, type PushPayload } from "@/lib/web-push";
+import { getUnreadCountsForOrg } from "@/lib/unread-counts";
 
 export const dynamic = "force-dynamic";
 
@@ -52,12 +53,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "user not found" }, { status: 401 });
   }
   const org = await getCurrentOrg();
+  const counts = await getUnreadCountsForOrg(org.id);
 
   await sendPushToUser(user.id, org.id, {
     title: body.title,
     body: body.body,
     url: body.url,
     tag: body.tag,
+    mailUnread: counts.mailUnread,
+    phoneUnread: counts.phoneUnread,
+    badgeCount: counts.badgeCount,
   });
 
   return NextResponse.json({ ok: true });

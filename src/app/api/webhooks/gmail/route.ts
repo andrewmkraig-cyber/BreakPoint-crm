@@ -6,6 +6,7 @@ import {
   tagThreadByAddresses,
 } from "@/lib/gmail";
 import { sendPushToOrg } from "@/lib/web-push";
+import { getUnreadCountsForOrg } from "@/lib/unread-counts";
 
 export const dynamic = "force-dynamic";
 
@@ -187,11 +188,15 @@ export async function POST(req: NextRequest) {
     });
 
     if (addedCount > 0) {
+      const counts = await getUnreadCountsForOrg(organizationId);
       await sendPushToOrg(organizationId, {
         title: "New Email",
         body: "You have a new message in Ace",
         url: "/mail",
         tag: "gmail-push",
+        mailUnread: counts.mailUnread,
+        phoneUnread: counts.phoneUnread,
+        badgeCount: counts.badgeCount,
       });
     }
   } catch (err) {

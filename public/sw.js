@@ -1,6 +1,6 @@
 // Ace PWA service worker. Bump CACHE_NAME on any logic change so
 // the activate handler purges the previous shell.
-const CACHE_NAME = "ace-shell-v1";
+const CACHE_NAME = "ace-shell-v2";
 const PRECACHE_URLS = ["/", "/offline"];
 
 self.addEventListener("install", (event) => {
@@ -116,8 +116,24 @@ self.addEventListener("push", (event) => {
         // closed there's no client to call setAppBadge, so the SW does
         // it from here — otherwise the home-screen dot only appears
         // after the user opens Ace and the 30s poll fires.
+        //
+        // Payload contract (see src/lib/web-push.ts + unread-counts.ts):
+        //   badgeCount > 0  → setAppBadge(N): real count, badge stacks
+        //                     correctly as more pushes arrive.
+        //   badgeCount === 0 → clearAppBadge(): sender explicitly says
+        //                     "nothing left to read."
+        //   badgeCount missing/null → setAppBadge() with no arg:
+        //                     generic dot. Avoids clobbering a true
+        //                     count that the client already painted.
         if ("setAppBadge" in self.navigator) {
-          self.navigator.setAppBadge().catch(() => {});
+          const n = data.badgeCount;
+          if (typeof n === "number" && n > 0) {
+            self.navigator.setAppBadge(n).catch(() => {});
+          } else if (n === 0) {
+            self.navigator.clearAppBadge?.().catch(() => {});
+          } else {
+            self.navigator.setAppBadge().catch(() => {});
+          }
         }
         // Also tell any open Ace windows (even backgrounded ones) to
         // refresh their unread counts immediately instead of waiting
@@ -134,32 +150,34 @@ self.addEventListener("push", (event) => {
 // (so we don't pile up tabs), otherwise open a fresh one. The window
 // is navigated to the payload's url so the click deep-links to the
 // thread / call that triggered the notification.
+//
+// Badge policy: do NOT clear here. A tap acknowledges one notification
+// but other unread mail/text may still exist. Once Ace is focused or
+// opened, the PUSH_RECEIVED postMessage triggers mail-tab-title-sync's
+// real-count reconciliation, which clears the badge only if the true
+// unread total is 0. Same goes for notificationclose — banner auto-
+// dismiss used to clear the badge here, which caused the flash-and-
+// disappear bug, so the close handler is gone entirely.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = event.notification.data?.url || "/";
   event.waitUntil(
-    self.clients.matchAll({ type: "window" }).then((clients) => {
+    self.clients.matchAll({ type: "window" }).then(async (clients) => {
       const existing = clients.find((c) =>
         c.url.includes(self.location.origin),
       );
       if (existing) {
         existing.focus();
         existing.navigate(url);
+        // Nudge mail-tab-title-sync to re-poll immediately so the
+        // badge converges on the true unread total within seconds of
+        // the tap instead of waiting for the next 15s/30s tick.
+        existing.postMessage({ type: "PUSH_RECEIVED" });
         return;
       }
-      return self.clients.openWindow(url);
+      // No window open — opening one mounts MailProvider + PhoneProvider
+      // which auto-poll and reconcile the badge on their own.
+      await self.clients.openWindow(url);
     }),
   );
-  // Drop the home-screen badge dot the moment the user acknowledges the
-  // notification by tapping it. The push handler sets the dot when Ace
-  // is closed; without this clear, the dot lingers until Ace opens and
-  // the client-side 30s poll runs mail-tab-title-sync's recount.
-  self.navigator.clearAppBadge?.().catch(() => {});
-});
-
-// Dismiss/swipe handler. Same badge-clear policy as click: any
-// acknowledgment (even just dismissing) should drop the home-screen dot
-// so it doesn't outlive the notification that produced it.
-self.addEventListener("notificationclose", () => {
-  self.navigator.clearAppBadge?.().catch(() => {});
 });
