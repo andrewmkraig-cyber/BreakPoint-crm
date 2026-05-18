@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Loader2, Send, Sparkles, Variable, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -665,14 +666,22 @@ export function EmailComposer({
     clearDraft(draftKey);
   }
 
-  return (
+  // Portal to document.body so the composer overlay escapes the
+  // caller's React tree. Without the portal, ancestor stacking
+  // contexts / containing blocks (backdrop-filter, transform, contain)
+  // can trap `fixed inset-0` inside the page layout — the visible
+  // symptom is the app shell (sidebar / topbar) bleeding through the
+  // overlay because the backdrop no longer covers the full viewport.
+  // Guard SSR with typeof document === "undefined".
+  if (typeof document === "undefined") return null;
+  return createPortal(
     // Backdrop has NO close handlers. A recruiter selecting text in the body
     // who drags past the panel boundary used to trigger the backdrop's
     // onClick={onClose} via the mouseup landing on the backdrop (whose click
     // target is the common ancestor of mousedown + mouseup). Closing on that
     // path destroyed half-written submittal drafts with no undo. Dismissal is
     // explicit only: the header X button or the footer Cancel button.
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-ink/40 p-4">
       <div className="flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl">
 
         <div className="flex items-start justify-between border-b border-court-border px-5 py-3">
@@ -1026,7 +1035,8 @@ export function EmailComposer({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

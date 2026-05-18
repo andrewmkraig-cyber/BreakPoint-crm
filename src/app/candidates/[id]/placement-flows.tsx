@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition, type ChangeEvent, type DragEvent } from "react";
+import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Briefcase,
@@ -3223,8 +3224,16 @@ function Modal({
   children: React.ReactNode;
   wide?: boolean;
 }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
+  // Portal to document.body so the overlay escapes the candidate
+  // profile's React tree. Without the portal, ancestor stacking
+  // contexts / containing blocks (e.g. backdrop-filter, transform,
+  // contain) can trap `fixed inset-0` inside the page layout — the
+  // visible symptom is the app shell (sidebar / topbar) bleeding
+  // through the modal because the overlay no longer covers the full
+  // viewport. Guard SSR with typeof document === "undefined".
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
       <div
         className={cn(
           "w-full overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl",
@@ -3247,7 +3256,8 @@ function Modal({
             forms that fit comfortably. */}
         <div className={cn("overflow-y-auto p-5", wide ? "max-h-[85vh]" : "max-h-[70vh]")}>{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
