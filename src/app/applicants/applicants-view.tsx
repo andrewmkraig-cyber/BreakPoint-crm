@@ -632,18 +632,21 @@ function KeptRowView({
   );
 }
 
-// Shared row-action chip styles. Submit mirrors the candidate-profile
-// pipeline row's Submit button (filled brand green, rounded-md) so the
-// affirmative submittal action reads identically across surfaces.
-// Keep/Reject stay as the tinted rounded-md chips so the destructive
-// and save intents read as their own family.
+// Shared row-action chip styles. All three tones (Submit / Keep /
+// Reject) share the same rounded-md tinted-outline silhouette — only
+// the color family changes. Submit reuses the Court Mode brand tokens
+// (tint bg, dark fg, brand border) so the affirmative submittal
+// action color follows whichever Court Mode is active. This is the
+// canonical Submit chip used across every surface — Applicants table,
+// candidate profile action row, pipeline rows, Pipeline page,
+// Search / Find Matches.
 const ROW_ACTION_BASE =
   "inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border px-2.5 text-[11px] font-semibold shadow-sm transition disabled:opacity-60";
 
 const ROW_ACTION_CLASS = {
   primary: cn(
     ROW_ACTION_BASE,
-    "border-brand bg-brand text-white hover:bg-brand-dark",
+    "border-court-brand bg-court-brand-tint text-court-brand-dark hover:bg-court-brand/25",
   ),
   keep: cn(
     ROW_ACTION_BASE,

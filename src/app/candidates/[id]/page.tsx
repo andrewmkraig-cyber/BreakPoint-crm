@@ -840,13 +840,14 @@ export default async function CandidateProfilePage({
 // Used for the candidate-level action row above the resume so the buttons
 // pick up the same Court Mode tokens as <Button> without nesting a
 // <button> inside an <a> (Link wraps an <a>).
-// Submit to Job chip — green filled, rounded-md. One canonical Submit
-// look across every surface: candidate profile action row, candidate
-// profile pipeline row, Applicants table, Pipeline page, Search /
-// Find Matches. All use border-brand bg-brand text-white hover so the
-// affirmative submittal action reads identically wherever it lands.
+// Submit to Job chip — tinted brand green, rounded-md. One canonical
+// Submit look across every surface: candidate profile action row,
+// candidate profile pipeline row, Applicants table, Pipeline page,
+// Search / Find Matches. All use the brand-tint + brand-border + dark
+// text token trio so the affirmative submittal action reads
+// identically wherever it lands and follows Court Mode skinning.
 const SUBMIT_LINK_CLASS =
-  "inline-flex items-center justify-center gap-1.5 rounded-md border border-brand bg-brand px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark";
+  "inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25";
 
 // Anchor-shaped twin of <Button variant="apply">. Token classes mirror
 // the amber apply variant so the Apply to Job link renders identically

@@ -132,7 +132,7 @@ export function LocalCandidateActions(props: {
           <button
             type="button"
             onClick={() => setModal("submit")}
-            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-brand bg-brand px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
           >
             <Send className="h-3 w-3" /> Submit to Job
           </button>

@@ -367,14 +367,14 @@ function LocalJobActionRow({
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           {canSubmit && (
-            // Canonical Submit chip — green filled, rounded-md. Same
-            // signature as the candidate-profile action row, the
+            // Canonical Submit chip — tinted brand green, rounded-md.
+            // Same signature as the candidate-profile action row, the
             // Applicants table, and the Pipeline / Search Submit
             // buttons so the affirmative submittal action reads
             // identically wherever it lands.
             <Link
               href={`/candidates/${candidateId}?submit=${job.jobRfId}`}
-              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-brand bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
               title="Open submittal composer"
             >
               <Send className="h-3 w-3" /> Submit

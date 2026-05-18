@@ -490,7 +490,8 @@ type Tone =
 const TONE_CLASS: Record<Tone, string> = {
   default:
     "border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800",
-  primary: "border-brand bg-brand text-white hover:bg-brand-dark",
+  primary:
+    "border-court-brand bg-court-brand-tint text-court-brand-dark hover:bg-court-brand/25",
   danger:
     "border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60",
   schedule:
