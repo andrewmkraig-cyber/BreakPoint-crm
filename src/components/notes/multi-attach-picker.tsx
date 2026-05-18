@@ -50,16 +50,20 @@ export function MultiAttachPicker({
   // doesn't lose state.
   const [labelCache, setLabelCache] = useState<Record<string, string>>({});
 
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setErrorMsg(null);
     const handle = setTimeout(() => {
       void (async () => {
-        const result = await searchAttachOptions(tab, query);
-        if (!cancelled) {
+        try {
+          const result = await searchAttachOptions(tab, query);
+          if (cancelled) return;
           const opts = result.ok ? result.options : [];
           setOptions(opts);
-          setLoading(false);
+          if (!result.ok) setErrorMsg(result.error);
           // Fold any new labels into the cache so subsequent renders
           // can resolve ids the user has already toggled.
           if (opts.length > 0) {
@@ -69,6 +73,13 @@ export function MultiAttachPicker({
               return next;
             });
           }
+        } catch (e) {
+          if (!cancelled) {
+            setOptions([]);
+            setErrorMsg(e instanceof Error ? e.message : "Search failed");
+          }
+        } finally {
+          if (!cancelled) setLoading(false);
         }
       })();
     }, 180);
@@ -181,6 +192,8 @@ export function MultiAttachPicker({
       <div className="mt-2 max-h-56 overflow-y-auto">
         {loading && options.length === 0 ? (
           <div className="px-2 py-3 text-xs text-court-fg-muted">Searching...</div>
+        ) : errorMsg ? (
+          <div className="px-2 py-3 text-xs text-red-600">{errorMsg}</div>
         ) : options.length === 0 ? (
           <div className="px-2 py-3 text-xs text-court-fg-muted">No matches.</div>
         ) : (

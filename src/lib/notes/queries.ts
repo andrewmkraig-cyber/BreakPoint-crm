@@ -55,33 +55,38 @@ const NOTE_INCLUDE = {
 export async function getNotesForUser(
   filter: NoteFilter = "all",
 ): Promise<NoteRow[]> {
-  const [org, userId] = await Promise.all([getCurrentOrg(), getCurrentUserId()]);
-  if (!userId) return [];
+  try {
+    const [org, userId] = await Promise.all([getCurrentOrg(), getCurrentUserId()]);
+    if (!userId) return [];
 
-  const where: Prisma.NoteWhereInput = {
-    organizationId: org.id,
-    createdById: userId,
-  };
-  if (filter === "mine") {
-    where.AND = [
-      { candidates: { none: {} } },
-      { clients: { none: {} } },
-      { jobs: { none: {} } },
-    ];
-  } else if (filter === "attached") {
-    where.OR = [
-      { candidates: { some: {} } },
-      { clients: { some: {} } },
-      { jobs: { some: {} } },
-    ];
+    const where: Prisma.NoteWhereInput = {
+      organizationId: org.id,
+      createdById: userId,
+    };
+    if (filter === "mine") {
+      where.AND = [
+        { candidates: { none: {} } },
+        { clients: { none: {} } },
+        { jobs: { none: {} } },
+      ];
+    } else if (filter === "attached") {
+      where.OR = [
+        { candidates: { some: {} } },
+        { clients: { some: {} } },
+        { jobs: { some: {} } },
+      ];
+    }
+
+    const rows = await prisma.note.findMany({
+      where,
+      orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
+      include: NOTE_INCLUDE,
+    });
+    return rows;
+  } catch (e) {
+    console.error("[notes.getNotesForUser] failed", { filter, error: e });
+    return [];
   }
-
-  const rows = await prisma.note.findMany({
-    where,
-    orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
-    include: NOTE_INCLUDE,
-  });
-  return rows;
 }
 
 // Loads notes attached to a specific entity for the activity feed on
@@ -91,27 +96,32 @@ export async function getNotesForEntity(
   entityType: "candidate" | "client" | "job",
   entityId: string,
 ): Promise<NoteRow[]> {
-  const [org, userId] = await Promise.all([getCurrentOrg(), getCurrentUserId()]);
-  if (!userId) return [];
+  try {
+    const [org, userId] = await Promise.all([getCurrentOrg(), getCurrentUserId()]);
+    if (!userId) return [];
 
-  const where: Prisma.NoteWhereInput = {
-    organizationId: org.id,
-    createdById: userId,
-  };
-  if (entityType === "candidate") {
-    where.candidates = { some: { id: entityId } };
-  } else if (entityType === "client") {
-    where.clients = { some: { id: entityId } };
-  } else {
-    where.jobs = { some: { id: entityId } };
+    const where: Prisma.NoteWhereInput = {
+      organizationId: org.id,
+      createdById: userId,
+    };
+    if (entityType === "candidate") {
+      where.candidates = { some: { id: entityId } };
+    } else if (entityType === "client") {
+      where.clients = { some: { id: entityId } };
+    } else {
+      where.jobs = { some: { id: entityId } };
+    }
+
+    const rows = await prisma.note.findMany({
+      where,
+      orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
+      include: NOTE_INCLUDE,
+    });
+    return rows;
+  } catch (e) {
+    console.error("[notes.getNotesForEntity] failed", { entityType, entityId, error: e });
+    return [];
   }
-
-  const rows = await prisma.note.findMany({
-    where,
-    orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
-    include: NOTE_INCLUDE,
-  });
-  return rows;
 }
 
 // Counts feed the TabStrip pills on /notes so each tab shows its own
@@ -121,24 +131,29 @@ export async function getNoteCountsForUser(): Promise<{
   mine: number;
   attached: number;
 }> {
-  const [org, userId] = await Promise.all([getCurrentOrg(), getCurrentUserId()]);
-  if (!userId) return { all: 0, mine: 0, attached: 0 };
+  try {
+    const [org, userId] = await Promise.all([getCurrentOrg(), getCurrentUserId()]);
+    if (!userId) return { all: 0, mine: 0, attached: 0 };
 
-  const [all, attached] = await Promise.all([
-    prisma.note.count({
-      where: { organizationId: org.id, createdById: userId },
-    }),
-    prisma.note.count({
-      where: {
-        organizationId: org.id,
-        createdById: userId,
-        OR: [
-          { candidates: { some: {} } },
-          { clients: { some: {} } },
-          { jobs: { some: {} } },
-        ],
-      },
-    }),
-  ]);
-  return { all, mine: all - attached, attached };
+    const [all, attached] = await Promise.all([
+      prisma.note.count({
+        where: { organizationId: org.id, createdById: userId },
+      }),
+      prisma.note.count({
+        where: {
+          organizationId: org.id,
+          createdById: userId,
+          OR: [
+            { candidates: { some: {} } },
+            { clients: { some: {} } },
+            { jobs: { some: {} } },
+          ],
+        },
+      }),
+    ]);
+    return { all, mine: all - attached, attached };
+  } catch (e) {
+    console.error("[notes.getNoteCountsForUser] failed", e);
+    return { all: 0, mine: 0, attached: 0 };
+  }
 }
