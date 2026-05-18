@@ -292,7 +292,10 @@ function paintHighlightOverlay({
 }) {
   const escaped = tokens.map(escapeRegex).filter(Boolean);
   if (escaped.length === 0) return;
-  const pattern = `(${escaped.join("|")})`;
+  // \b word boundaries keep "tax" from matching "taxonomy" or "syntax".
+  // Identical pattern is reused by the per-item probe below and by
+  // wrapMatches so the cheap pre-filter and the actual highlighter agree.
+  const pattern = `\\b(${escaped.join("|")})\\b`;
 
   for (const raw of textContent.items) {
     if (!raw || typeof raw !== "object" || !("str" in raw)) continue;
@@ -347,11 +350,14 @@ function wrapMatches(
     const hit = m[0];
     // Match the chip's color by the original token key (case-insensitive).
     const tokenKey = tokens.find((t) => t.toLowerCase() === hit.toLowerCase());
-    const cls = (tokenKey && classMap.get(tokenKey)) || "bg-amber-200";
-    // Inline color:transparent so the chip palette's text-* class (e.g.
-    // text-amber-900) doesn't make the mark text visible on top of the
-    // canvas-rendered glyphs underneath.
-    out += `<mark class="rounded-sm ${cls}" style="color:transparent">${escapeHtml(hit)}</mark>`;
+    const cls = (tokenKey && classMap.get(tokenKey)) || "bg-amber-100/35";
+    // color:inherit — the parent span is color:transparent so the mark
+    //   text also stays invisible (canvas glyphs underneath are the real
+    //   text). mix-blend-mode:multiply layers the /35-alpha highlight bg
+    //   onto the canvas pixels so the wash reads as a translucent
+    //   marker pass instead of an opaque sticker. pointer-events:none so
+    //   the highlight never steals clicks from the underlying canvas.
+    out += `<mark class="rounded-sm ${cls}" style="color:inherit;mix-blend-mode:multiply;pointer-events:none">${escapeHtml(hit)}</mark>`;
     last = m.index + hit.length;
     if (hit.length === 0) re.lastIndex++;
   }

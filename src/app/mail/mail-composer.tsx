@@ -46,6 +46,7 @@ import {
   Sparkles,
   Variable,
   ChevronDown,
+  ChevronUp,
   Minus,
   GripVertical,
   SquareArrowOutUpRight,
@@ -2363,19 +2364,20 @@ function ComposerAddonToolbar({
       {/* Generate with Claude — canonical CLAUDE_PILL_CLASS so this
           button reads identically wherever Ace asks Claude to write
           (mail, submittals, agreements, summaries, find matches).
-          Trailing chevron matches the sibling buttons (Use Template,
-          Insert Field, Edit with Claude) so all four affordances on
-          this row read as the same vocabulary. Chevron flips to point
-          up when the prompt panel is open to read as a close. */}
+          Trailing chevron points toward where the panel sits: closed
+          shows ChevronUp (panel will open upward, above this button
+          row); open shows ChevronDown (collapses the panel back down). */}
       <button
         type="button"
         onClick={() => setOpenAi(!openAi)}
         className={CLAUDE_PILL_CLASS}
       >
         Generate with Claude
-        <ChevronDown
-          className={cn("h-3 w-3 transition-transform", openAi && "rotate-180")}
-        />
+        {openAi ? (
+          <ChevronDown className="h-3 w-3" />
+        ) : (
+          <ChevronUp className="h-3 w-3" />
+        )}
       </button>
 
       {/* Edit with Claude — separate from Generate. Revises the

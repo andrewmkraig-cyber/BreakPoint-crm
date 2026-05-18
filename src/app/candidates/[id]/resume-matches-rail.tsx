@@ -6,23 +6,56 @@ import { cn } from "@/lib/utils";
 // Distinct-hue palette for multi-token highlighting. Each entry is a full
 // class string so Tailwind's JIT picks it up — dynamic `bg-${color}` would
 // be silently dropped. Court tokens are a single hue family and can't make
-// five visually distinct chips, so this palette predates and remains the
+// ten visually distinct chips, so this palette predates and remains the
 // canonical highlight palette for token chips + in-PDF marks.
 const TOKEN_COLORS = [
   "bg-amber-100 text-amber-900",
   "bg-blue-100 text-blue-800",
-  "bg-green-100 text-green-800",
   "bg-purple-100 text-purple-800",
+  "bg-green-100 text-green-800",
   "bg-rose-100 text-rose-800",
+  "bg-orange-100 text-orange-800",
+  "bg-teal-100 text-teal-800",
+  "bg-indigo-100 text-indigo-800",
+  "bg-yellow-100 text-yellow-800",
+  "bg-pink-100 text-pink-800",
 ] as const;
 
-// Stable token → class assignment. Exported so the PDF viewer's in-doc
-// highlight overlay reuses the same palette as the chip strip — chip color
-// and in-PDF highlight color must match for the same token.
+// Parallel bg-only classes for the in-PDF mark overlay. Index-aligned with
+// TOKEN_COLORS so a chip and its in-doc highlight share the same hue. /35
+// alpha + mix-blend-multiply on the mark = soft translucent wash over the
+// canvas glyphs. Literal class names are mandatory for the Tailwind JIT —
+// dynamic `${bg}/35` would be silently dropped.
+const TOKEN_MARK_BG_CLASSES = [
+  "bg-amber-100/35",
+  "bg-blue-100/35",
+  "bg-purple-100/35",
+  "bg-green-100/35",
+  "bg-rose-100/35",
+  "bg-orange-100/35",
+  "bg-teal-100/35",
+  "bg-indigo-100/35",
+  "bg-yellow-100/35",
+  "bg-pink-100/35",
+] as const;
+
+// Stable token → chip-class assignment. Used by HighlightTokenChips.
 export function buildTokenColorMap(tokens: string[]): Map<string, string> {
   const m = new Map<string, string>();
   tokens.forEach((t, i) => {
     m.set(t, TOKEN_COLORS[i % TOKEN_COLORS.length]);
+  });
+  return m;
+}
+
+// Stable token → mark-bg-class assignment. Used by PdfCanvasViewer's
+// highlight overlay so the same token shows the same hue in the chip and
+// in the rendered PDF, but the mark gets the /35 alpha + mix-blend variant
+// instead of the chip's solid 100 fill.
+export function buildTokenMarkBgMap(tokens: string[]): Map<string, string> {
+  const m = new Map<string, string>();
+  tokens.forEach((t, i) => {
+    m.set(t, TOKEN_MARK_BG_CLASSES[i % TOKEN_MARK_BG_CLASSES.length]);
   });
   return m;
 }

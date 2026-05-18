@@ -210,9 +210,13 @@ export async function getScoreboardData(
     }),
     // Momentum: any placement that has moved in the last 30 days. We
     // surface the most recent of placedAt / offerReceivedAt as the event.
+    // Rejected placements drop out at the query level — a stale
+    // offerReceivedAt on a since-rejected row was leaking into Recent
+    // deal moves as "Offer extended" long after the deal died.
     prisma.placement.findMany({
       where: {
         organizationId: org.id,
+        stage: { notIn: ["rejected"] },
         OR: [
           { placedAt: { gte: new Date(now.getTime() - 30 * DAYS) } },
           { offerReceivedAt: { gte: new Date(now.getTime() - 30 * DAYS) } },
