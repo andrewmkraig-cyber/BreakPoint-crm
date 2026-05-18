@@ -409,6 +409,23 @@ export async function LocalCandidateProfile({
         if (c !== 0) return c;
         return (a.jobTitle || "").localeCompare(b.jobTitle || "");
       });
+    // Compact placement pills surfaced at the top of the embed so the
+    // recruiter sees pipeline state without scrolling. Re-derives the
+    // job title from the same RF-jobs shim the non-embed pipeline rows
+    // use; falls back to "(job)" when the job lookup misses. Apply
+    // writes through ApplyModal trigger router.refresh() — the refresh
+    // re-runs this component and the new placement lands here on the
+    // next render, so the pill shows up without the iframe having to
+    // navigate away.
+    const embedPills = placements.map((p) => {
+      const rfJob = p.jobRfId != null
+        ? allJobs.find((j) => j.id === p.jobRfId) ?? null
+        : p.jobId
+          ? allJobs.find((j) => (j as { _aceJobId?: string })._aceJobId === p.jobId) ?? null
+          : null;
+      const title = rfJob ? normalizeJob(rfJob).title : "(job)";
+      return { id: p.id, title, stage: p.stage };
+    });
     return (
       <>
         {/* Scoped to #resume-document-content (rendered by
@@ -432,11 +449,25 @@ export async function LocalCandidateProfile({
           hideButtons
         />
         <div className="flex h-[calc(100vh-3rem)] gap-4 md:h-[calc(100vh-4rem)]">
-          {/* Left column. Resume sits as high as possible — the action
-              row above it is the only thing between the iframe top and
-              the resume PDF. CompactOverview moved to the right rail
-              so it's not duplicated against the resume header. */}
+          {/* Left column. The pill strip + tab strip sit above the
+              action row so pipeline state and tab navigation are the
+              first things a recruiter sees in the iframe. CompactOverview
+              moved to the right rail so it's not duplicated against the
+              resume header. */}
           <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+            {embedPills.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {embedPills.map((p) => (
+                  <span
+                    key={p.id}
+                    className="inline-flex items-center gap-1 rounded-full border border-court-accent/40 bg-court-accent-tint px-2.5 py-0.5 text-[11px] font-semibold text-court-brand-dark"
+                  >
+                    {p.title} · {p.stage}
+                  </span>
+                ))}
+              </div>
+            )}
+            <UnderlineTabs tab={tab} candidateId={candidate.id} embed />
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 href={`/candidates/${candidate.id}?embed=true&openApply=1`}
@@ -454,12 +485,25 @@ export async function LocalCandidateProfile({
               </Link>
               <AddToListButton candidateId={candidate.id} candidateName={fullName} />
             </div>
-            <EditableResume
-              candidateRfId={null}
-              candidateId={candidate.id}
-              versions={resumeVersions}
-              tokens={highlightTokens}
-            />
+            {tab === "game-plan" ? (
+              <AiWorkspace
+                entityType="candidate"
+                entityId={candidate.id}
+                recipientEmail={candidate.email ?? null}
+              />
+            ) : tab === "notes" ? (
+              <LocalNotesTab
+                candidateId={candidate.id}
+                initialNotes={candidate.notes}
+              />
+            ) : (
+              <EditableResume
+                candidateRfId={null}
+                candidateId={candidate.id}
+                versions={resumeVersions}
+                tokens={highlightTokens}
+              />
+            )}
           </div>
           {/* Right rail. CompactOverview as a single tight summary box,
               then skills, then the call/email/text activity card. */}
@@ -820,15 +864,39 @@ const APPLY_LINK_CLASS =
 const ADD_NOTE_LINK_CLASS =
   "inline-flex items-center justify-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface";
 
-function UnderlineTabs({ tab, candidateId }: { tab: LocalCandidateTab; candidateId: string }) {
+function UnderlineTabs({
+  tab,
+  candidateId,
+  embed = false,
+}: {
+  tab: LocalCandidateTab;
+  candidateId: string;
+  // When true, every tab href carries embed=true so the iframe stays in
+  // embed mode after a tab switch instead of breaking out to the
+  // full-page layout.
+  embed?: boolean;
+}) {
+  const embedPrefix = embed ? "embed=true&" : "";
   return (
     <TabStrip<LocalCandidateTab>
       activeId={tab}
       ariaLabel="Candidate profile sections"
       items={[
-        { id: "profile", label: "Profile", href: `/candidates/${candidateId}` },
-        { id: "game-plan", label: "Game Plan", href: `/candidates/${candidateId}?tab=game-plan` },
-        { id: "notes", label: "Notes", href: `/candidates/${candidateId}?tab=notes` },
+        {
+          id: "profile",
+          label: "Profile",
+          href: `/candidates/${candidateId}${embed ? "?embed=true" : ""}`,
+        },
+        {
+          id: "game-plan",
+          label: "Game Plan",
+          href: `/candidates/${candidateId}?${embedPrefix}tab=game-plan`,
+        },
+        {
+          id: "notes",
+          label: "Notes",
+          href: `/candidates/${candidateId}?${embedPrefix}tab=notes`,
+        },
       ]}
     />
   );
