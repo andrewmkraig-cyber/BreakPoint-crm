@@ -421,6 +421,40 @@ export async function resolveAttachmentLabels(
   }
 }
 
+// Persist a drag-and-drop reorder. Caller passes the full list of
+// note ids in the desired display order; we assign positions 100,
+// 200, 300, ... in a single transaction. The gaps leave room for
+// new notes (default position 0) to keep floating above the
+// reordered set, and they make it cheap to insert between two
+// existing notes later without rewriting every row. Only the
+// signed-in user's own notes are touched.
+export async function reorderNotes(
+  orderedIds: string[],
+): Promise<NoteActionResult> {
+  try {
+    if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+      return { ok: true, id: "" };
+    }
+    const ctx = await getAuthContext();
+    if (!ctx.ok) return ctx;
+
+    await prisma.$transaction(
+      orderedIds.map((id, index) =>
+        prisma.note.updateMany({
+          where: { id, organizationId: ctx.orgId, createdById: ctx.userId },
+          data: { position: (index + 1) * 100 },
+        }),
+      ),
+    );
+
+    revalidatePath("/notes");
+    return { ok: true, id: orderedIds[0] };
+  } catch (e) {
+    console.error("[notes.reorderNotes] failed", e);
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to reorder notes." };
+  }
+}
+
 // Helper used by the candidate-profile / client-profile / job-profile
 // EntityNotesSection (and the activity feeds): same shape as
 // createNote but pre-attached to a single entity so the page-side

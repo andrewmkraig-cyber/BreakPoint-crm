@@ -8,12 +8,15 @@ import {
   Building2,
   Check,
   Edit3,
+  GripVertical,
   Paperclip,
   Pin,
   Trash2,
   User,
   X,
 } from "lucide-react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +42,29 @@ export function NoteCard({ note }: { note: NoteRow }) {
   const [busy, setBusy] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerValue, setPickerValue] = useState<Attachments>(currentAttachments(note));
+
+  // Sortable wiring: the listeners + attributes spread onto the
+  // grip handle, not the card root. That way clicks anywhere else
+  // on the card (edit / delete / pin / attach / links inside notes)
+  // still fire normally — only deliberately grabbing the grip
+  // starts a drag. Combined with PointerSensor's 8px activation
+  // distance in the parent DndContext, this is what prevents the
+  // "drag is stuck and won't release" feel.
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: note.id });
+
+  const sortableStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : undefined,
+    opacity: isDragging ? 0.85 : undefined,
+  } as React.CSSProperties;
 
   async function onTogglePin() {
     setBusy(true);
@@ -84,12 +110,32 @@ export function NoteCard({ note }: { note: NoteRow }) {
     note.candidates.length + note.clients.length + note.jobs.length;
 
   return (
-    <div className="group relative w-fit min-w-[12rem] max-w-xs break-words rounded-md border border-amber-200/80 bg-amber-50 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-amber-900/50 dark:bg-amber-950/30">
+    <div
+      ref={setNodeRef}
+      style={sortableStyle}
+      className={`group relative w-fit min-w-[12rem] max-w-xs break-words rounded-md border border-amber-200/80 bg-amber-50 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-amber-900/50 dark:bg-amber-950/30 ${
+        isDragging ? "cursor-grabbing shadow-lg" : ""
+      }`}
+    >
       {note.pinned && (
-        <span className="absolute right-5 top-5 inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-800 dark:border-amber-800 dark:bg-amber-900/50 dark:text-amber-200">
-          <Pin className="h-3 w-3" /> Pinned
-        </span>
+        <Pin
+          className="absolute right-3 top-3 h-4 w-4 -rotate-45 fill-amber-300 text-amber-700 drop-shadow-sm dark:fill-amber-500 dark:text-amber-300"
+          aria-label="Pinned"
+        />
       )}
+
+      {/* Drag handle. Only this grip carries the sortable listeners,
+          so the rest of the card stays interactive. Visible on hover
+          to keep the post-it surface clean when idle. */}
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder"
+        className="absolute left-1 top-1 hidden h-6 w-6 cursor-grab touch-none items-center justify-center rounded text-amber-700/70 hover:bg-amber-100/60 hover:text-amber-900 group-hover:flex active:cursor-grabbing dark:text-amber-300/70 dark:hover:bg-amber-900/40 dark:hover:text-amber-100"
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
 
       {editing ? (
         <div className="space-y-2">
@@ -135,7 +181,7 @@ export function NoteCard({ note }: { note: NoteRow }) {
           {note.title && (
             <div
               className={`mb-1 text-sm font-semibold text-court-fg ${
-                note.pinned ? "pr-16" : ""
+                note.pinned ? "pr-8" : ""
               }`}
             >
               {note.title}

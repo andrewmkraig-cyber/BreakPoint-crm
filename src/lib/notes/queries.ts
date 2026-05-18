@@ -79,7 +79,7 @@ export async function getNotesForUser(
 
     const rows = await prisma.note.findMany({
       where,
-      orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
+      orderBy: [{ pinned: "desc" }, { position: "asc" }, { updatedAt: "desc" }],
       include: NOTE_INCLUDE,
     });
     return rows;
@@ -114,7 +114,7 @@ export async function getNotesForEntity(
 
     const rows = await prisma.note.findMany({
       where,
-      orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
+      orderBy: [{ pinned: "desc" }, { position: "asc" }, { updatedAt: "desc" }],
       include: NOTE_INCLUDE,
     });
     return rows;

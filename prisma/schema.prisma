@@ -1976,6 +1976,11 @@ model Note {
   title          String?
   body           String   @db.Text
   pinned         Boolean  @default(false)
+  // Drag-and-drop ordering within the user's note list. Lower wins;
+  // new notes default to 0 (top of list) and the recruiter can drag
+  // to assign explicit positions. Tied positions break by updatedAt
+  // desc so brand-new notes still float above the reordered set.
+  position       Int      @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
