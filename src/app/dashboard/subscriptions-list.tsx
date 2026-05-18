@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Pencil, Trash2, X, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ExpenseMerchantLogo } from "@/components/expense-merchant-logo";
 import {
   updateToolExpense,
   deleteToolExpense,
@@ -22,6 +23,7 @@ export type RecurringRow = {
   toolExpenseId?: string;
   startDate?: Date | null;
   notes?: string;
+  domain?: string;
 };
 
 export type OneTimeRow = {
@@ -32,6 +34,7 @@ export type OneTimeRow = {
   notes?: string;
   matched: boolean;
   toolExpenseId?: string;
+  domain?: string;
 };
 
 export type MoneyInRow = {
@@ -66,10 +69,6 @@ function formatDate(d: Date | null): string {
     day: "numeric",
     year: "numeric",
   }).format(d);
-}
-function avatarFor(name: string): string {
-  const cleaned = name.replace(/[^a-zA-Z0-9]/g, "");
-  return (cleaned.slice(0, 2) || "??").toUpperCase();
 }
 function dateInputValue(d: Date | null | undefined): string {
   if (!d) return "";
@@ -284,7 +283,6 @@ function RecurringSection({
 
 function RecurringRowItem({ row }: { row: RecurringRow }) {
   const [editing, setEditing] = useState(false);
-  const initials = avatarFor(row.toolName);
 
   if (editing && row.toolExpenseId) {
     return (
@@ -301,9 +299,7 @@ function RecurringRowItem({ row }: { row: RecurringRow }) {
   return (
     <li className={`${RECURRING_GRID} items-center gap-x-4 gap-y-2 px-1 py-2 text-sm`}>
       <div className="flex min-w-0 items-center gap-2">
-        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
-          {initials}
-        </span>
+        <ExpenseMerchantLogo domain={row.domain} name={row.toolName} size={20} />
         <div className="min-w-0 flex-1">
           <div
             className="truncate font-medium text-court-fg"
@@ -404,7 +400,6 @@ function OneTimeSection({
 
 function OneTimeRowItem({ row }: { row: OneTimeRow }) {
   const [editing, setEditing] = useState(false);
-  const initials = avatarFor(row.toolName);
 
   if (editing && row.toolExpenseId) {
     return (
@@ -421,9 +416,7 @@ function OneTimeRowItem({ row }: { row: OneTimeRow }) {
   return (
     <li className={`${ONE_TIME_GRID} items-center gap-x-4 gap-y-2 px-1 py-2 text-sm`}>
       <div className="flex min-w-0 items-center gap-2">
-        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
-          {initials}
-        </span>
+        <ExpenseMerchantLogo domain={row.domain} name={row.toolName} size={20} />
         <div className="min-w-0 flex-1">
           <div
             className="truncate font-medium text-court-fg"

@@ -25,6 +25,7 @@ Items scoped during recent sessions. Each needs its own prompt before slotting i
 - **Bulk email scheduled send + throttle** — Ace 51 ships bulk email synchronously. Phase-2 work: scheduled send time picker, 30-60 sec throttle, 5-domain rotation sharing the BD warmed pool.
 - **Search expansion map** — geocoded map visualization over Candidate Sourcing Surface.
 - **Mercury + QuickBooks integration follow-through** — Mercury feed is live for the Finances module as of Ace 46; QuickBooks sync + variable-cost categorization still pending.
+- **Admin edit UI for ToolExpense rows (item 28 follow-up)** — `updateToolExpense` server action already exists in `src/app/dashboard/expense-actions.ts` but no UI wires it up; only `createToolExpense` (the "+ New expense" form) has a path. Add a pencil affordance on each ToolExpense-backed row in `SubscriptionsList` that opens an edit dialog mirroring the "+ New expense" form, pre-filled with current values. Save calls `updateToolExpense`. Item 28 (move Slack from monthly to annual) was dropped from the Ace 54.0 ship because the row lives in the `ToolExpense` DB table, not in code — the admin UI unblocks Andrew editing it (and any future cadence/cost edits) from the app instead of needing a DB update.
 
 ## Non-Urgent
 Build soon, lower priority than the active sequence above.

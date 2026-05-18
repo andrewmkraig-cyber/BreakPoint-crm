@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Building2,
+  CheckCheck,
   ChevronLeft,
   ExternalLink,
   Loader2,
@@ -510,6 +511,23 @@ export function PhoneView() {
           <ThreadDetailPane
             detail={detail}
             profileMatch={profileMatch}
+            hasUnread={threads.find((t) => t.id === selectedId)?.hasUnread ?? false}
+            onMarkRead={() => {
+              if (!selectedId) return;
+              void (async () => {
+                try {
+                  await markThreadRead(selectedId);
+                  setThreads((prev) =>
+                    prev.map((t) =>
+                      t.id === selectedId ? { ...t, hasUnread: false } : t,
+                    ),
+                  );
+                  await phoneCtx.refreshUnread();
+                } catch {
+                  // Silent: badge will catch up on next 30s poll.
+                }
+              })();
+            }}
             onBack={() => setSelectedId(null)}
             onSent={() => {
               void loadThreads();
@@ -1002,6 +1020,8 @@ function ThreadDetailPane({
   profileMatch,
   onSent,
   onBack,
+  hasUnread,
+  onMarkRead,
 }: {
   detail: ThreadDetail;
   profileMatch: PhoneMatch | null;
@@ -1009,6 +1029,12 @@ function ThreadDetailPane({
   // Mobile-only — the desktop split view already has the list visible
   // alongside, so the back affordance only renders below md.
   onBack?: () => void;
+  // Quo sends no read-receipt webhook, so the unread state lives in
+  // Ace's DB. Auto-mark-on-open clears it for the common case; this
+  // button is the manual fallback when the auto-mark errored or the
+  // user wants to clear without scrolling.
+  hasUnread?: boolean;
+  onMarkRead?: () => void;
 }) {
   return (
     <div className="flex h-full flex-col">
@@ -1060,6 +1086,17 @@ function ThreadDetailPane({
           ) : (
             <OpenProfileButton match={profileMatch} />
           )}
+          {hasUnread && onMarkRead ? (
+            <button
+              type="button"
+              onClick={onMarkRead}
+              title="Mark as read"
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 text-[11px] font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+            >
+              <CheckCheck className="h-3 w-3" />
+              Mark as read
+            </button>
+          ) : null}
           <ActionPlaceholder label="More" icon={<MoreHorizontal className="h-3 w-3" />} />
         </div>
       </div>

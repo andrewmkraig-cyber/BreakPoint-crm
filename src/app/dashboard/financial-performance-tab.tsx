@@ -16,6 +16,7 @@ import {
 import {
   matchTransaction,
   shouldIgnoreTransaction,
+  domainForTool,
 } from "@/lib/mercury-matcher";
 import {
   SubscriptionsList,
@@ -419,24 +420,28 @@ export async function FinancialPerformanceTab({
     matchMax?: number;
     // Optional muted line under the tool name (e.g. "billed every 3 years").
     subline?: string;
+    // Domain used by ExpenseMerchantLogo for the favicon. Falls back to
+    // domainForTool(matcherName) when omitted.
+    domain?: string;
     // When Mercury never sees this tool (paid via personal card, etc.),
     // fall back to a stated YTD spend so the row doesn't sit at $0.
     fallbackPaidCount?: number;
     fallbackTotalUsd?: number;
   };
   const RECURRING_MONTHLY_CATALOG: RecurringCatalogEntry[] = [
-    { displayName: "Pin", matcherName: "Pin", catalogCost: 299 },
+    { displayName: "Pin", matcherName: "Pin", catalogCost: 299, domain: "pin.com" },
     {
       displayName: "Anthropic / Claude Code",
       matcherName: "Anthropic / Claude",
       catalogCost: 100,
       matchMin: 95,
       matchMax: 115,
+      domain: "anthropic.com",
     },
-    { displayName: "TheirStack", matcherName: "TheirStack", catalogCost: 58.95 },
-    { displayName: "OpenPhone / Quo", matcherName: "OpenPhone / Quo", catalogCost: 35.64 },
-    { displayName: "Vercel", matcherName: "Vercel", catalogCost: 21.6 },
-    { displayName: "OpenAI / ChatGPT", matcherName: "OpenAI / ChatGPT", catalogCost: 20 },
+    { displayName: "TheirStack", matcherName: "TheirStack", catalogCost: 58.95, domain: "theirstack.com" },
+    { displayName: "OpenPhone / Quo", matcherName: "OpenPhone / Quo", catalogCost: 35.64, domain: "quo.com" },
+    { displayName: "Vercel", matcherName: "Vercel", catalogCost: 21.6, domain: "vercel.com" },
+    { displayName: "OpenAI / ChatGPT", matcherName: "OpenAI / ChatGPT", catalogCost: 20, domain: "openai.com" },
   ];
   const RECURRING_ANNUAL_CATALOG: RecurringCatalogEntry[] = [
     {
@@ -450,14 +455,16 @@ export async function FinancialPerformanceTab({
       matchMax: 700,
       fallbackPaidCount: 1,
       fallbackTotalUsd: 500,
+      domain: "apollo.io",
     },
-    { displayName: "Zoho", matcherName: "Zoho", catalogCost: 104 },
+    { displayName: "Zoho", matcherName: "Zoho", catalogCost: 104, domain: "zoho.com" },
     {
       displayName: "DocuSign",
       matcherName: "DocuSign",
       catalogCost: 321.29,
       fallbackPaidCount: 1,
       fallbackTotalUsd: 321.29,
+      domain: "docusign.com",
     },
   ];
   // Surfaced in its own "Every 3 Years" section below the annual list.
@@ -467,6 +474,7 @@ export async function FinancialPerformanceTab({
       matcherName: "GoDaddy",
       catalogCost: 46.59,
       subline: "$15.53/yr equivalent",
+      domain: "godaddy.com",
     },
   ];
 
@@ -570,6 +578,7 @@ export async function FinancialPerformanceTab({
       amountUsd: spend,
       date: stamp ? new Date(stamp) : null,
       matched: true,
+      domain: domainForTool(tool) ?? undefined,
     });
   }
 
@@ -584,6 +593,7 @@ export async function FinancialPerformanceTab({
       paidCount: matched ? agg!.paidCount : (c.fallbackPaidCount ?? 0),
       matched,
       subline: c.subline,
+      domain: c.domain ?? domainForTool(c.matcherName) ?? undefined,
     };
   });
   const recurringAnnual: RecurringRow[] = RECURRING_ANNUAL_CATALOG.map((c) => {
@@ -597,6 +607,7 @@ export async function FinancialPerformanceTab({
       paidCount: matched ? agg!.paidCount : (c.fallbackPaidCount ?? 0),
       matched,
       subline: c.subline,
+      domain: c.domain ?? domainForTool(c.matcherName) ?? undefined,
     };
   });
   const recurringEvery3Years: RecurringRow[] = RECURRING_EVERY_3_YEARS_CATALOG.map((c) => {
@@ -610,6 +621,7 @@ export async function FinancialPerformanceTab({
       paidCount: matched ? agg!.paidCount : (c.fallbackPaidCount ?? 0),
       matched,
       subline: c.subline,
+      domain: c.domain ?? domainForTool(c.matcherName) ?? undefined,
     };
   });
 
@@ -621,6 +633,7 @@ export async function FinancialPerformanceTab({
     const paidCount = m.paidCount > 0 ? m.paidCount : 1;
     const totalYtdUsd = m.cost * paidCount;
     const freq = m.frequency.trim().toLowerCase();
+    const manualDomain = domainForTool(m.name) ?? undefined;
     if (freq === "monthly") {
       recurringMonthly.push({
         key: `manual-mo-${m.id}`,
@@ -633,6 +646,7 @@ export async function FinancialPerformanceTab({
         toolExpenseId: m.id,
         startDate: m.startDate ?? null,
         notes: m.notes ?? undefined,
+        domain: manualDomain,
       });
     } else if (freq === "quarterly") {
       recurringMonthly.push({
@@ -646,6 +660,7 @@ export async function FinancialPerformanceTab({
         toolExpenseId: m.id,
         startDate: m.startDate ?? null,
         notes: m.notes ?? undefined,
+        domain: manualDomain,
       });
     } else if (freq === "annual" || freq === "annually" || freq === "yearly") {
       recurringAnnual.push({
@@ -659,6 +674,7 @@ export async function FinancialPerformanceTab({
         toolExpenseId: m.id,
         startDate: m.startDate ?? null,
         notes: m.notes ?? undefined,
+        domain: manualDomain,
       });
     } else {
       // "One-time" and any other unrecognized frequency falls through
@@ -671,6 +687,7 @@ export async function FinancialPerformanceTab({
         matched: false,
         notes: m.notes ?? undefined,
         toolExpenseId: m.id,
+        domain: manualDomain,
       });
     }
   }
@@ -686,6 +703,7 @@ export async function FinancialPerformanceTab({
       date: new Date(2026, 2, 30),
       notes: "USBC to USB converter",
       matched: false,
+      domain: "amazon.com",
     },
     {
       key: "manual-lone-wolf",
@@ -718,6 +736,7 @@ export async function FinancialPerformanceTab({
       date: new Date(2026, 3, 1),
       notes: "1 month Claude Pro",
       matched: false,
+      domain: "claude.ai",
     },
   ];
   oneTimeRowsRaw.push(...HARDCODED_ONE_TIME);

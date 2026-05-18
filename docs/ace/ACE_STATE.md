@@ -28,6 +28,7 @@ Polish + feature session across the candidate, dashboard, finances, calendar, si
 - **Momentum excludes rejected** — the dashboard Momentum widget no longer counts rejected placements toward weekly movement so the number reflects real forward motion.
 - **Goal Pacing sized down** — GoalPacingCard padding + internal type scaled to match the canonical big-panel chrome on Scoreboard.
 - **Invoice blank cells** — invoice table empty cells now render em-dash placeholders instead of fully blank cells.
+- **Merchant favicons on Expenses rows (item 27)** — new `ExpenseMerchantLogo` component (`src/components/expense-merchant-logo.tsx`) renders the Google `s2/favicons` icon (sz=32, 20px) next to every recurring/one-time row on the Finances Expenses tab, with initials fallback when the favicon errors. Domain colocated on each `KNOWN_TOOLS` entry in `src/lib/mercury-matcher.ts` (new `domain?: string` field + `domainForTool()` helper) and on each `RecurringCatalogEntry` in `financial-performance-tab.tsx`. Manual `ToolExpense` rows resolve their domain via `domainForTool(name)` when the name matches a known tool; arbitrary names fall through to initials. LinkedIn intentionally skipped (not in `KNOWN_TOOLS`).
 
 ### Settings + triggers
 - **Trigger warning banners** — Settings ▸ Triggers shows a yellow warning row when a rule is enabled but its template is missing/inactive or `sendAsDraft` is on without an email account connected.
@@ -35,6 +36,7 @@ Polish + feature session across the candidate, dashboard, finances, calendar, si
 ### Phone + texting
 - **SMS bubbles polish** — outbound bubble color and weight tightened on both `/phone` and the candidate sidebar to match the rest of the brand-green surface family.
 - **Add Number inline** — SMS composer now surfaces an "Add Number" affordance when the candidate has no phone on file instead of dead-ending the recruiter at a disabled input.
+- **Mark-as-read button on Quo thread (item 29)** — `ThreadDetailPane` header now renders a manual "Mark as read" button (CheckCheck icon) when the current thread has `hasUnread: true`. Wraps the existing `markThreadRead` server action (writes Ace DB, not Quo's API) + the same optimistic local thread flip + `phoneCtx.refreshUnread()` chain as auto-mark-on-open. Acts as a fallback when auto-mark errored or the recruiter wants to clear without scrolling.
 
 ### Mail + phone layout
 - **Email + phone full-width** — `/mail` and `/phone` content surfaces now extend full viewport width on wide displays, matching `/candidates` and `/pipeline`. The previous max-width cap was leaving dead space on the right.
