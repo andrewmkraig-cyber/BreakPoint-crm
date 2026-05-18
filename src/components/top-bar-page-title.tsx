@@ -66,6 +66,7 @@ function resolveGroup(pathname: string): string | undefined {
     pathname.startsWith("/finances")
     || pathname.startsWith("/invoices")
     || pathname.startsWith("/calendar")
+    || pathname.startsWith("/notes")
   ) {
     return "Ops";
   }
@@ -173,6 +174,7 @@ function resolveBaseSpec(
 
   if (pathname === "/pipeline") return { title: { label: "Pipeline" } };
   if (pathname === "/applicants") return { title: { label: "Applicants" } };
+  if (pathname === "/notes") return { title: { label: "Notes" } };
   // BD module — title flips per active tab so the topbar mirrors the
   // section the recruiter is looking at, instead of a flat "BD" label.
   // Detail page (/bd/campaigns/[id]) reuses "Active Campaigns" as a

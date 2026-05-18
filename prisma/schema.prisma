@@ -71,6 +71,7 @@ model User {
   chessPuzzleStreak     ChessPuzzleStreak?
   funFactFeedback       FunFactFeedback[]
   pushSubscriptions     PushSubscription[]
+  notes                 Note[]
 }
 
 // Per-user branding for the email signature, resume header, and any
@@ -453,6 +454,7 @@ model Candidate {
   gmailTags       GmailThreadTag[]
   matches         CandidateMatch[]
   calendarEvents  CalendarEvent[]
+  noteEntries     Note[]
 
   @@index([email])
   @@index([firstName])
@@ -773,6 +775,7 @@ model Client {
   gmailTags     GmailThreadTag[]
   clientSignals ClientSignal[]
   calendarEvents CalendarEvent[]
+  noteEntries   Note[]
 
   @@index([name])
   @@index([organizationId])
@@ -871,6 +874,7 @@ model Job {
   matches      CandidateMatch[]
   boardStatuses JobBoardStatus[]
   calendarEvents CalendarEvent[]
+  noteEntries  Note[]
 
   @@index([clientId])
   @@index([isOpen])
@@ -1046,6 +1050,7 @@ model Organization {
   gmailPushWatches     GmailPushWatch[]
   microsoftToken       MicrosoftToken?
   triggerRules         TriggerRule[]
+  notes                Note[]
 }
 
 // One row per org holding the Microsoft Graph OAuth tokens that let us
@@ -1953,4 +1958,39 @@ model PushSubscription {
 
   @@index([userId])
   @@index([organizationId])
+}
+
+// Standalone recruiter notes. Distinct from the legacy Candidate.notes /
+// Client.notes text columns and the Candidate.raw.notes array — those
+// stay in place for the existing profile Notes tabs. This model backs
+// the /notes page (composer + saved list) and the per-entity activity
+// feed entries. A note is either "loose" (no attachment) or attached
+// to exactly one of Candidate / Client / Job; the three foreign keys
+// are mutually exclusive at the application layer (createNote /
+// attachNote enforce it).
+model Note {
+  id             String   @id @default(cuid())
+  organizationId String
+  createdById    String
+  title          String?
+  body           String   @db.Text
+  pinned         Boolean  @default(false)
+
+  candidateId String?
+  clientId    String?
+  jobId       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  candidate    Candidate?   @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  job          Job?         @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdById, updatedAt])
+  @@index([candidateId])
+  @@index([clientId])
+  @@index([jobId])
 }

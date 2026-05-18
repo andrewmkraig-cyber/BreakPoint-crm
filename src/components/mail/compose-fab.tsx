@@ -21,6 +21,7 @@ import {
   type PhoneContact,
 } from "@/lib/phone-panels-context";
 import { matchContactByPhone, type PhoneMatch } from "@/app/phone/actions";
+import { createNote, searchAttachOptions } from "@/app/notes/actions";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 
 // Global multi-action launcher pinned to the bottom-left corner. The
@@ -80,14 +81,6 @@ type RecentThread = {
   counts: { sms: number; calls: number };
 };
 
-type ProfileHit = {
-  kind: "candidate" | "client";
-  id: string;
-  href: string;
-  label: string;
-  sublabel: string | null;
-};
-
 type PeopleSearchHit = {
   key: string;
   name: string;
@@ -98,6 +91,12 @@ type PeopleSearchHit = {
 };
 
 type ActionView = "menu" | "phone" | "notes";
+// Notes sub-mode picked from the FAB root menu. "mine" saves a loose
+// note with no attachment; "candidate"/"client"/"job" launches the
+// notes panel pre-scoped to that entity type so the picker only
+// surfaces matches of the right kind.
+type NoteMode = "mine" | "candidate" | "client" | "job";
+type AttachOption = { id: string; label: string; sublabel: string | null };
 
 export function ComposeFAB() {
   const pathname = usePathname();
@@ -435,20 +434,27 @@ export function ComposeFAB() {
     };
   }, [open, view, adhocPhoneInput, adhocAlreadyKnown]);
 
-  // Notes popup state: free-text body + profile-search query + the
-  // current set of hits split into candidates / clients. Picking a
-  // result selects the target (highlight only) — the actual write
-  // happens on Add-to-profile click. This two-step is deliberate:
-  // the recruiter often refines the search to verify they have the
-  // right person before committing.
+  // Notes popup state. Backed by the new createNote server action and
+  // the standalone Note table — the legacy /api/notes append path that
+  // wrote into Candidate.raw.notes / Client.notes is still in place
+  // for old profile reads but new FAB-driven notes go through the new
+  // schema so they show up on /notes too.
+  //
+  //   noteMode: which entry the recruiter picked from the root menu
+  //             ("mine" = save loose, no picker; otherwise scope the
+  //             picker to that entity kind).
+  //   noteTitle: optional headline. Empty string means "no title."
+  //   noteText : required body.
+  //   noteAttach: the picked target (only meaningful when noteMode is
+  //               not "mine"). id+label, no kind — kind is derived
+  //               from noteMode.
+  const [noteMode, setNoteMode] = useState<NoteMode>("mine");
+  const [noteTitle, setNoteTitle] = useState("");
   const [noteText, setNoteText] = useState("");
   const [noteSearch, setNoteSearch] = useState("");
-  const [noteResults, setNoteResults] = useState<{
-    candidates: ProfileHit[];
-    clients: ProfileHit[];
-  }>({ candidates: [], clients: [] });
+  const [noteAttachOptions, setNoteAttachOptions] = useState<AttachOption[]>([]);
   const [noteSearching, setNoteSearching] = useState(false);
-  const [noteTarget, setNoteTarget] = useState<ProfileHit | null>(null);
+  const [noteAttach, setNoteAttach] = useState<AttachOption | null>(null);
   const [noteSubmitting, setNoteSubmitting] = useState(false);
   const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   useEffect(() => {
@@ -459,34 +465,19 @@ export function ComposeFAB() {
   }, [open, view]);
   useEffect(() => {
     if (!open || view !== "notes") return;
-    const q = noteSearch.trim();
-    if (!q) {
-      setNoteResults({ candidates: [], clients: [] });
+    if (noteMode === "mine") {
+      setNoteAttachOptions([]);
+      setNoteSearching(false);
       return;
     }
     let cancelled = false;
     setNoteSearching(true);
     const handle = setTimeout(() => {
       void (async () => {
-        try {
-          const res = await fetch(
-            `/api/search/profiles?q=${encodeURIComponent(q)}`,
-            { cache: "no-store" },
-          );
-          if (!res.ok) return;
-          const body = (await res.json().catch(() => null)) as
-            | { candidates?: ProfileHit[]; clients?: ProfileHit[] }
-            | null;
-          if (!cancelled && body) {
-            setNoteResults({
-              candidates: body.candidates ?? [],
-              clients: body.clients ?? [],
-            });
-          }
-        } catch {
-          // Silent: empty list reads as "no matches."
-        } finally {
-          if (!cancelled) setNoteSearching(false);
+        const result = await searchAttachOptions(noteMode, noteSearch);
+        if (!cancelled) {
+          setNoteAttachOptions(result.ok ? result.options : []);
+          setNoteSearching(false);
         }
       })();
     }, 180);
@@ -494,7 +485,7 @@ export function ComposeFAB() {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [open, view, noteSearch]);
+  }, [open, view, noteMode, noteSearch]);
 
   // Outside-click + Escape dismiss for the whole popover. Keeping the
   // listeners attached only while the popover is mounted avoids a
@@ -530,10 +521,12 @@ export function ComposeFAB() {
     setView("menu");
     setPendingContact(null);
     setPhoneSearch("");
+    setNoteMode("mine");
+    setNoteTitle("");
     setNoteText("");
     setNoteSearch("");
-    setNoteResults({ candidates: [], clients: [] });
-    setNoteTarget(null);
+    setNoteAttachOptions([]);
+    setNoteAttach(null);
     setNoteSubmitting(false);
   }
 
@@ -574,7 +567,10 @@ export function ComposeFAB() {
     setView("phone");
   }
 
-  function pickNotes() {
+  function pickNotes(mode: NoteMode) {
+    setNoteMode(mode);
+    setNoteAttach(null);
+    setNoteSearch("");
     setView("notes");
   }
 
@@ -630,47 +626,32 @@ export function ComposeFAB() {
     closeAll();
   }
 
-  function selectProfileForNote(hit: ProfileHit) {
-    // Highlight-only: actual persistence happens when the user
-    // clicks Add to profile. Lets the recruiter type → search →
-    // verify → commit instead of clobbering on the first list click.
-    setNoteTarget(hit);
-  }
-
   async function commitNote() {
-    if (!noteTarget) return;
     const trimmed = noteText.trim();
     if (!trimmed) return;
+    if (noteMode !== "mine" && !noteAttach) return;
     setNoteSubmitting(true);
     try {
-      const res = await fetch("/api/notes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          entityType: noteTarget.kind,
-          entityId: noteTarget.id,
-          note: trimmed,
-        }),
+      const result = await createNote({
+        title: noteTitle.trim() || null,
+        body: trimmed,
+        attach:
+          noteMode === "mine"
+            ? null
+            : { kind: noteMode, id: noteAttach!.id },
       });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) {
-        const msg = body?.error ?? `HTTP ${res.status}`;
-        // Fail loud — the toast layer is mounted at Providers; we use
-        // dynamic import only because sonner's toast is a side-effect
-        // import this file otherwise wouldn't carry.
+      if (!result.ok) {
         const { toast } = await import("sonner");
-        toast.error("Couldn't save note", { description: msg });
+        toast.error("Couldn't save note", { description: result.error });
         return;
       }
       const { toast } = await import("sonner");
-      toast.success(`Note added to ${noteTarget.label}`);
-      const sep = noteTarget.href.includes("?") ? "&" : "?";
-      const target =
-        noteTarget.kind === "candidate"
-          ? `${noteTarget.href}${sep}tab=notes`
-          : `${noteTarget.href}${sep}tab=notes`;
+      const label =
+        noteMode === "mine"
+          ? "My Notes"
+          : (noteAttach?.label ?? noteMode);
+      toast.success(`Note saved to ${label}`);
       closeAll();
-      router.push(target);
     } catch (e) {
       const { toast } = await import("sonner");
       toast.error("Couldn't save note", {
@@ -767,9 +748,27 @@ export function ComposeFAB() {
               />
               <ActionRow
                 icon={<StickyNote className="h-4 w-4" />}
-                label="New Note"
-                hint="Quick note + attach to a profile"
-                onClick={pickNotes}
+                label="Save to My Notes"
+                hint="Quick loose note, no attachment"
+                onClick={() => pickNotes("mine")}
+              />
+              <ActionRow
+                icon={<StickyNote className="h-4 w-4" />}
+                label="Attach to candidate"
+                hint="Note tied to a candidate profile"
+                onClick={() => pickNotes("candidate")}
+              />
+              <ActionRow
+                icon={<StickyNote className="h-4 w-4" />}
+                label="Attach to client"
+                hint="Note tied to a client profile"
+                onClick={() => pickNotes("client")}
+              />
+              <ActionRow
+                icon={<StickyNote className="h-4 w-4" />}
+                label="Attach to job"
+                hint="Note tied to a specific job"
+                onClick={() => pickNotes("job")}
               />
               <ActionRow
                 icon={<CalendarPlus className="h-4 w-4" />}
@@ -1062,7 +1061,9 @@ export function ComposeFAB() {
                   ← Back
                 </button>
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
-                  Quick note
+                  {noteMode === "mine"
+                    ? "Save to My Notes"
+                    : `Attach to ${noteMode}`}
                 </span>
                 <button
                   type="button"
@@ -1073,101 +1074,101 @@ export function ComposeFAB() {
                   <X className="h-3.5 w-3.5" />
                 </button>
               </div>
+              <input
+                type="text"
+                value={noteTitle}
+                onChange={(e) => setNoteTitle(e.target.value)}
+                placeholder="Title (optional)"
+                className="mb-2 w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-sm font-semibold text-court-fg placeholder:text-court-fg-muted/60 outline-none focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
+              />
               <textarea
                 ref={noteTextareaRef}
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
                 rows={4}
-                placeholder="Type your note, then pick a profile and click Add to profile."
-                className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                placeholder={
+                  noteMode === "mine"
+                    ? "Write a note, then hit Save."
+                    : `Write the note, then pick a ${noteMode} below.`
+                }
+                className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 outline-none focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
               />
-              <div className="relative mt-2">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
-                <input
-                  type="search"
-                  value={noteSearch}
-                  onChange={(e) => setNoteSearch(e.target.value)}
-                  placeholder="Search in Ace"
-                  aria-label="Search profiles"
-                  className="h-9 w-full rounded-md border border-court-border bg-court-surface pl-8 pr-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-                />
-              </div>
-              <div className="mt-2 max-h-48 overflow-y-auto">
-                {noteSearch.trim() === "" ? (
-                  <div className="px-2 py-3 text-xs text-court-fg-muted">
-                    Start typing to search candidates and clients.
+              {noteMode !== "mine" && (
+                <>
+                  <div className="relative mt-2">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
+                    <input
+                      type="search"
+                      value={noteSearch}
+                      onChange={(e) => setNoteSearch(e.target.value)}
+                      placeholder={`Search ${noteMode}s...`}
+                      aria-label={`Search ${noteMode}s`}
+                      className="h-9 w-full rounded-md border border-court-border bg-court-surface pl-8 pr-2 text-sm text-court-fg outline-none focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
+                    />
                   </div>
-                ) : noteSearching ? (
-                  <div className="px-2 py-3 text-xs text-court-fg-muted">
-                    Searching…
-                  </div>
-                ) : noteResults.candidates.length === 0 &&
-                  noteResults.clients.length === 0 ? (
-                  <div className="px-2 py-3 text-xs text-court-fg-muted">
-                    No matching profiles.
-                  </div>
-                ) : (
-                  <>
-                    {noteResults.candidates.length > 0 && (
-                      <>
-                        <div className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
-                          Candidates
-                        </div>
-                        <ul className="space-y-0.5">
-                          {noteResults.candidates.map((c) => (
-                            <ProfileResultRow
-                              key={`cand-${c.id}`}
-                              hit={c}
-                              selected={
-                                noteTarget?.kind === c.kind &&
-                                noteTarget?.id === c.id
-                              }
-                              onPick={() => selectProfileForNote(c)}
-                            />
-                          ))}
-                        </ul>
-                      </>
+                  <div className="mt-2 max-h-48 overflow-y-auto">
+                    {noteSearching && noteAttachOptions.length === 0 ? (
+                      <div className="px-2 py-3 text-xs text-court-fg-muted">
+                        Searching...
+                      </div>
+                    ) : noteAttachOptions.length === 0 ? (
+                      <div className="px-2 py-3 text-xs text-court-fg-muted">
+                        No matches.
+                      </div>
+                    ) : (
+                      <ul className="space-y-0.5">
+                        {noteAttachOptions.map((o) => {
+                          const active = noteAttach?.id === o.id;
+                          return (
+                            <li key={o.id}>
+                              <button
+                                type="button"
+                                onClick={() => setNoteAttach(o)}
+                                className={
+                                  "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition " +
+                                  (active
+                                    ? "bg-court-brand-tint text-court-brand-dark"
+                                    : "text-court-fg hover:bg-court-surface-subtle")
+                                }
+                              >
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm">
+                                    {o.label}
+                                  </span>
+                                  {o.sublabel && (
+                                    <span className="block truncate text-[11px] text-court-fg-muted">
+                                      {o.sublabel}
+                                    </span>
+                                  )}
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
                     )}
-                    {noteResults.clients.length > 0 && (
-                      <>
-                        <div className="mt-2 px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
-                          Clients
-                        </div>
-                        <ul className="space-y-0.5">
-                          {noteResults.clients.map((c) => (
-                            <ProfileResultRow
-                              key={`cli-${c.id}`}
-                              hit={c}
-                              selected={
-                                noteTarget?.kind === c.kind &&
-                                noteTarget?.id === c.id
-                              }
-                              onPick={() => selectProfileForNote(c)}
-                            />
-                          ))}
-                        </ul>
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
+                  </div>
+                </>
+              )}
               <div className="mt-3 flex items-center justify-between gap-2 border-t border-court-border pt-3">
                 <span className="min-w-0 truncate text-[11px] text-court-fg-muted">
-                  {noteTarget
-                    ? `Adding to ${noteTarget.label}`
-                    : "Pick a profile to attach this note."}
+                  {noteMode === "mine"
+                    ? "Saves to /notes under My Notes."
+                    : noteAttach
+                      ? `Attaching to ${noteAttach.label}`
+                      : `Pick a ${noteMode} to attach.`}
                 </span>
                 <button
                   type="button"
                   onClick={commitNote}
                   disabled={
                     noteSubmitting ||
-                    !noteTarget ||
-                    !noteText.trim()
+                    !noteText.trim() ||
+                    (noteMode !== "mine" && !noteAttach)
                   }
                   className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-court-brand px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {noteSubmitting ? "Adding…" : "Add to profile"}
+                  {noteSubmitting ? "Saving..." : "Save"}
                 </button>
               </div>
             </div>
@@ -1210,47 +1211,3 @@ function ActionRow({
   );
 }
 
-function ProfileResultRow({
-  hit,
-  onPick,
-  selected,
-}: {
-  hit: ProfileHit;
-  onPick: () => void;
-  selected?: boolean;
-}) {
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onPick}
-        aria-pressed={selected}
-        className={
-          "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition " +
-          (selected
-            ? "bg-court-brand-tint text-court-brand-dark"
-            : "text-court-fg hover:bg-court-surface-subtle")
-        }
-      >
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm">{hit.label}</span>
-          {hit.sublabel && (
-            <span className="block truncate text-[11px] text-court-fg-muted">
-              {hit.sublabel}
-            </span>
-          )}
-        </span>
-        <span
-          className={
-            "shrink-0 rounded-sm px-1 py-0.5 text-[10px] uppercase tracking-wider " +
-            (selected
-              ? "bg-court-brand/20 text-court-brand-dark"
-              : "bg-court-surface-subtle text-court-fg-muted")
-          }
-        >
-          {hit.kind === "candidate" ? "Candidate" : "Client"}
-        </span>
-      </button>
-    </li>
-  );
-}

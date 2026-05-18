@@ -16,7 +16,7 @@ import {
   Receipt,
   Calendar,
   Settings,
-  NotebookPen,
+  StickyNote,
   BarChart3,
   Trophy,
 } from "lucide-react";
@@ -82,7 +82,7 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
     items: [
       { href: "/calendar", label: "Calendar", icon: Calendar, iconColor: "text-orange-400" },
       { href: "/finances", label: "Finances", icon: Receipt, iconColor: "text-lime-400" },
-      { href: "/notes", label: "Notes", icon: NotebookPen, iconColor: "text-yellow-400" },
+      { href: "/notes", label: "Notes", icon: StickyNote, iconColor: "text-yellow-400" },
     ],
   },
   {

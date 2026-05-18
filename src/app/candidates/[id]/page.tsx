@@ -25,6 +25,7 @@ import { EditableResume, type ResumeVersion } from "@/app/candidates/[id]/editab
 import { AddToListButton } from "@/components/lists/add-to-list-button";
 import { KeepCandidateButton } from "@/components/keep-candidate-button";
 import { CandidateActivityCard } from "@/components/candidate-activity-card";
+import { EntityNotesSection } from "@/components/notes/entity-notes-section";
 import { CandidateProfileNav } from "@/components/candidate-profile-nav";
 import { CandidateCompactOverview } from "@/components/candidate-compact-overview";
 import { toExpectedSalary } from "@/components/candidate-overview-helpers";
@@ -703,6 +704,7 @@ export default async function CandidateProfilePage({
               candidateId={candidate.id}
               toNumber={phoneValue || null}
             />
+            <EntityNotesSection entityType="candidate" entityId={candidate.id} />
           </aside>
         </div>
       </CandidateProfileBoundary>

@@ -26,6 +26,7 @@ import { PromoteTab } from "@/app/jobs/[id]/promote-tab";
 import { MatchesTab } from "@/app/jobs/[id]/matches-tab";
 import AiWorkspace from "@/components/AiWorkspace";
 import { ActivityFeed } from "@/components/activity-feed";
+import { EntityNotesSection } from "@/components/notes/entity-notes-section";
 import { ensureMajorBoardsSeeded, listJobBoardStatuses } from "@/lib/job-boards";
 import { prisma } from "@/lib/prisma";
 import { TabStrip } from "@/components/ui/tab-strip";
@@ -456,7 +457,10 @@ export default async function JobDetailPage({
         ) : tab === "game-plan" ? (
           <AiWorkspace entityType="job" entityId={jobRow.id} />
         ) : tab === "activity" ? (
-          <ActivityFeed entityType="job" entityId={jobRow.id} />
+          <div className="space-y-6">
+            <EntityNotesSection entityType="job" entityId={jobRow.id} />
+            <ActivityFeed entityType="job" entityId={jobRow.id} />
+          </div>
         ) : tab === "matches" ? (
           <MatchesTab
             jobCuid={jobRow.id}

@@ -27,6 +27,7 @@ import { ClientLogo } from "@/components/clients/client-logo";
 import AiWorkspace from "@/components/AiWorkspace";
 import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
 import { ActivityFeed } from "@/components/activity-feed";
+import { EntityNotesSection } from "@/components/notes/entity-notes-section";
 import { CallLogs } from "@/components/call-logs";
 import { TextingExchanges } from "@/components/texting-exchanges";
 import { TaggedThreadList } from "@/components/mail/tagged-thread-list";
@@ -540,6 +541,7 @@ export default async function ClientDetailPage({
             <CallLogs clientId={client.id} defaultOpen />
             <TextingExchanges clientId={client.id} defaultOpen />
           </section>
+          <EntityNotesSection entityType="client" entityId={client.id} />
           <ActivityFeed entityType="client" entityId={client.id} />
         </div>
       ) : tab === "email" ? (
