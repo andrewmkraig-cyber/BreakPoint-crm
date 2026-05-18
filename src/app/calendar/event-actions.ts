@@ -273,13 +273,17 @@ export type CreateMeetingType =
 
 export type CreateCalendarEventInput = {
   title: string;
-  // Local-date string in YYYY-MM-DD; the action assembles the
-  // start/end ISO strings against America/New_York rather than
-  // forcing the client to do timezone math.
+  // Required when allDay is true. YYYY-MM-DD — the server builds a
+  // midnight-to-midnight ET range from it.
   date: string;
-  // HH:MM 24h. Ignored when allDay is true.
-  startTime: string;
-  endTime: string;
+  // For timed events the client (browser, always in ET for our
+  // recruiters) builds the wall-clock as a local Date and hands us
+  // its toISOString(). Doing this on the client mirrors
+  // updateCalendarEventAction's `startISO` / `endISO` contract; doing
+  // it server-side would skew by the ET offset because Vercel's Node
+  // runtime parses naive datetime strings as UTC.
+  startISO?: string;
+  endISO?: string;
   allDay: boolean;
   meetingType: CreateMeetingType;
   location: string | null;
@@ -341,29 +345,28 @@ function buildStartEndForDay(date: string): { startISO: string; endISO: string; 
   };
 }
 
-function buildStartEndForTimed(
-  date: string,
-  startTime: string,
-  endTime: string,
+function buildStartEndForTimedISO(
+  startISO: string,
+  endISO: string,
 ): { startISO: string; endISO: string; durationMin: number; startDate: Date; endDate: Date } {
-  const startLocal = new Date(`${date}T${startTime}:00`);
-  const endLocal = new Date(`${date}T${endTime}:00`);
-  if (Number.isNaN(startLocal.getTime()) || Number.isNaN(endLocal.getTime())) {
+  const startDate = new Date(startISO);
+  const endDate = new Date(endISO);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
     throw new Error("Invalid start/end time");
   }
-  if (endLocal.getTime() <= startLocal.getTime()) {
+  if (endDate.getTime() <= startDate.getTime()) {
     throw new Error("End must be after start");
   }
   const durationMin = Math.max(
     1,
-    Math.round((endLocal.getTime() - startLocal.getTime()) / 60_000),
+    Math.round((endDate.getTime() - startDate.getTime()) / 60_000),
   );
   return {
-    startISO: startLocal.toISOString(),
-    endISO: endLocal.toISOString(),
+    startISO,
+    endISO,
     durationMin,
-    startDate: startLocal,
-    endDate: endLocal,
+    startDate,
+    endDate,
   };
 }
 
@@ -397,9 +400,12 @@ export async function createCalendarEventAction(
     const title = input.title.trim();
     if (!title) return { ok: false, error: "Title is required" };
 
+    if (!input.allDay && (!input.startISO || !input.endISO)) {
+      return { ok: false, error: "Missing start/end time." };
+    }
     const range = input.allDay
       ? buildStartEndForDay(input.date)
-      : buildStartEndForTimed(input.date, input.startTime, input.endTime);
+      : buildStartEndForTimedISO(input.startISO!, input.endISO!);
 
     // Teams requires its own connected token at the org level — fail
     // early so the recruiter doesn't see a half-created Google event.

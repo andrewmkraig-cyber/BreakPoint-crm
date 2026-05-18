@@ -124,11 +124,33 @@ export function CreateEventModal({
     }
     setSubmitting(true);
     try {
+      // Build the wall-clock as a local Date here so the server
+      // receives a true UTC instant — Vercel's Node runtime parses
+      // naive `date + time` strings as UTC and would skew the event
+      // by the ET offset. Matches the drawer's create + edit paths.
+      let startISO: string | undefined;
+      let endISO: string | undefined;
+      if (!allDay) {
+        const startLocal = new Date(`${date}T${startTime}:00`);
+        const endLocal = new Date(`${date}T${endTime}:00`);
+        if (
+          Number.isNaN(startLocal.getTime()) ||
+          Number.isNaN(endLocal.getTime())
+        ) {
+          setErr("Invalid start/end time.");
+          toast.error("Couldn't create event", {
+            description: "Invalid start/end time.",
+          });
+          return;
+        }
+        startISO = startLocal.toISOString();
+        endISO = endLocal.toISOString();
+      }
       const res = await createCalendarEventAction({
         title: title.trim(),
         date,
-        startTime,
-        endTime,
+        startISO,
+        endISO,
         allDay,
         meetingType,
         location: meetingType === "in_person" ? location.trim() || null : null,

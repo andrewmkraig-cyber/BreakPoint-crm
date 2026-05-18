@@ -329,11 +329,33 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
     setCreating(true);
     setError(null);
     try {
+      // Build the wall-clock as a local Date here (browser is in ET
+      // for our recruiters) and pass toISOString() to the server —
+      // same contract as doSave. Server-side parsing of naive
+      // datetime strings would skew by the ET offset on Vercel's UTC
+      // Node runtime.
+      let startISO: string | undefined;
+      let endISO: string | undefined;
+      if (!allDay) {
+        const startDate = fromDateTimeInput(date, startTime);
+        const endDate = fromDateTimeInput(date, endTime);
+        if (
+          Number.isNaN(startDate.getTime()) ||
+          Number.isNaN(endDate.getTime())
+        ) {
+          throw new Error("Invalid date or time.");
+        }
+        if (endDate.getTime() <= startDate.getTime()) {
+          throw new Error("End time must be after start time.");
+        }
+        startISO = startDate.toISOString();
+        endISO = endDate.toISOString();
+      }
       const res = await createCalendarEventAction({
         title: title.trim(),
         date,
-        startTime,
-        endTime,
+        startISO,
+        endISO,
         allDay,
         meetingType,
         // Modal used to feed an "in person" address through this
