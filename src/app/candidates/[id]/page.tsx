@@ -542,22 +542,6 @@ export default async function CandidateProfilePage({
     });
   placementJobs.push(...localOnlyJobs);
 
-  // Active-placement pills shown above the candidate-profile tab strip
-  // on both surfaces (embed + non-embed). Only rows with a real local
-  // Placement become pills (RF-only "sourced" tracking rows are not
-  // pills). Filters out cancelled and rejected so the strip only
-  // reflects jobs the candidate is still in play for.
-  const activePills = placementJobs
-    .filter((j) => {
-      if (!j.placement) return false;
-      return j.placement.stage !== "cancelled" && j.placement.stage !== "rejected";
-    })
-    .map((j) => ({
-      id: j.placement!.id,
-      title: j.jobTitle || "(job)",
-      stage: j.placement!.stage as string,
-    }));
-
   const phoneValue = normalizePhone(c.phone_number);
 
   // Embed = split-view iframe. Mirrors the non-embed left column
@@ -622,7 +606,6 @@ export default async function CandidateProfilePage({
           />
         )}
         <PlacementActionsIsland
-          chromeless
           candidateRfId={id}
           candidateFirstName={extractedName.firstName}
           candidateLastName={extractedName.lastName}
@@ -650,18 +633,6 @@ export default async function CandidateProfilePage({
               the resume PDF. CompactOverview moved to the right rail
               so it's not duplicated against the resume header. */}
           <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-            {activePills.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                {activePills.map((p) => (
-                  <span
-                    key={p.id}
-                    className="inline-flex items-center gap-1 rounded-full border border-court-accent/40 bg-court-accent-tint px-2.5 py-0.5 text-[11px] font-semibold text-court-brand-dark"
-                  >
-                    {p.title} · {p.stage}
-                  </span>
-                ))}
-              </div>
-            )}
             <UnderlineTabs tab={tab} candidateId={id} embed />
             <div className="flex flex-wrap items-center gap-2">
               <Link
@@ -788,18 +759,6 @@ export default async function CandidateProfilePage({
           CompactOverview box. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="space-y-4 lg:col-span-8">
-          {activePills.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {activePills.map((p) => (
-                <span
-                  key={p.id}
-                  className="inline-flex items-center gap-1 rounded-full border border-court-accent/40 bg-court-accent-tint px-2.5 py-0.5 text-[11px] font-semibold text-court-brand-dark"
-                >
-                  {p.title} · {p.stage}
-                </span>
-              ))}
-            </div>
-          )}
           <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center gap-3 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
             <UnderlineTabs tab={tab} candidateId={id} />
             {displayTags.slice(0, 3).map((t) => (

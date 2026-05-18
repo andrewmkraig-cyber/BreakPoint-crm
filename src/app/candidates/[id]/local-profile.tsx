@@ -302,6 +302,141 @@ export async function LocalCandidateProfile({
 
   const fullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ") || "(unnamed)";
 
+  // Two identity keys — RF-imported placements hash by jobRfId (numeric),
+  // Ace-native placements hash by jobId (cuid string). The LocalOpenJob
+  // matcher below tries both so the "alreadyLinked" flag works for either
+  // identity shape without a third keyspace.
+  const linkedByRfJob = new Map<number, string>();
+  const linkedByAceJob = new Map<string, string>();
+  for (const p of placements) {
+    if (p.jobRfId != null) linkedByRfJob.set(p.jobRfId, p.stage);
+    else if (p.jobId) linkedByAceJob.set(p.jobId, p.stage);
+  }
+
+  const clientById = new Map<number, (typeof allClients)[number]>();
+  for (const cl of allClients) clientById.set(cl.id, cl);
+
+  const openJobs: LocalOpenJob[] = allJobs
+    .filter((j) => j.is_open !== false)
+    .map((raw) => {
+      const j = normalizeJob(raw);
+      const client = j.companyId != null ? clientById.get(j.companyId) : null;
+      const aceJobId = (raw as { _aceJobId?: string })._aceJobId ?? null;
+      const aceClientId = (raw as { _aceClientId?: string })._aceClientId ?? null;
+      const clientContacts = j.companyId != null
+        ? allContacts
+            .filter((ct) => ct.client_company_id === j.companyId)
+            .map((ct) => ({
+              id: ct.id,
+              name:
+                [ct.first_name, ct.last_name].filter(Boolean).join(" ") ||
+                ct.name ||
+                "(unnamed)",
+              title: ct.current_designation ?? "",
+              email: Array.isArray(ct.email) ? ct.email[0] ?? "" : ct.email ?? "",
+            }))
+        : [];
+      const alreadyLinked = aceJobId
+        ? linkedByAceJob.has(aceJobId)
+        : linkedByRfJob.has(j.id);
+      const linkedStage = aceJobId
+        ? linkedByAceJob.get(aceJobId) ?? null
+        : linkedByRfJob.get(j.id) ?? null;
+      return {
+        jobRfId: j.id,
+        jobCuid: aceJobId,
+        jobTitle: j.title,
+        jobLocation: j.location,
+        jobCompensation: j.compensation,
+        clientRfId: j.companyId ?? 0,
+        clientCuid: aceClientId,
+        clientName: client ? normalizeClient(client).name : j.company,
+        alreadyLinked,
+        linkedStage,
+        clientContacts,
+      };
+    })
+    .sort((a, b) => {
+      if (a.alreadyLinked !== b.alreadyLinked) return a.alreadyLinked ? 1 : -1;
+      const c = (a.clientName || "").localeCompare(b.clientName || "");
+      if (c !== 0) return c;
+      return (a.jobTitle || "").localeCompare(b.jobTitle || "");
+    });
+
+  // Interview join key: RF-imported → numeric jobRfId, Ace-native →
+  // cuid jobId. Stringify so the same Map covers both.
+  const interviewsByJob = new Map<string, LocalInterview[]>();
+  for (const iv of interviews) {
+    const key = iv.jobRfId != null ? `rf:${iv.jobRfId}` : iv.jobId ? `ace:${iv.jobId}` : null;
+    if (!key) continue;
+    const list = interviewsByJob.get(key) ?? [];
+    const attendees = Array.isArray(iv.clientAttendees)
+      ? (iv.clientAttendees as { name?: string; email?: string }[])
+          .map((a) => ({ name: a.name ?? "", email: a.email ?? "" }))
+          .filter((a) => a.name || a.email)
+      : [];
+    list.push({
+      id: iv.id,
+      scheduledAt: iv.scheduledAt.toISOString(),
+      durationMin: iv.durationMin,
+      type: iv.type as LocalInterview["type"],
+      status: iv.status as LocalInterview["status"],
+      source: iv.source as LocalInterview["source"],
+      meetLink: iv.meetLink,
+      attendees,
+    });
+    interviewsByJob.set(key, list);
+  }
+
+  const jobRows: LocalJobRow[] = placements.map((p) => {
+    const rfJob = p.jobRfId != null
+      ? allJobs.find((j) => j.id === p.jobRfId) ?? null
+      : p.jobId
+        ? allJobs.find((j) => (j as { _aceJobId?: string })._aceJobId === p.jobId) ?? null
+        : null;
+    const job = rfJob ? normalizeJob(rfJob) : null;
+    const clientRaw = p.clientRfId != null ? clientById.get(p.clientRfId) ?? null : null;
+    const client = clientRaw ? normalizeClient(clientRaw) : null;
+    const clientContacts = p.clientRfId != null
+      ? allContacts
+          .filter((ct) => ct.client_company_id === p.clientRfId)
+          .map((ct) => {
+            const firstEmail = Array.isArray(ct.email) ? ct.email[0] ?? "" : ct.email ?? "";
+            const fullNameC = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.name || "(unnamed)";
+            return { id: ct.id, name: fullNameC, title: ct.current_designation ?? "", email: firstEmail };
+          })
+      : [];
+    const rawDescription = typeof rfJob?.description === "string" ? rfJob.description : "";
+    const interviewKey = p.jobRfId != null ? `rf:${p.jobRfId}` : p.jobId ? `ace:${p.jobId}` : "";
+    return {
+      placementId: p.id,
+      jobRfId: p.jobRfId ?? (rfJob?.id ?? 0),
+      jobTitle: job?.title ?? "(job)",
+      jobLocation: job?.location ?? "",
+      jobDescription:
+        (p.jobRfId != null ? overrideByJob.get(p.jobRfId) : null) ??
+        rawDescription,
+      jobSalaryRange: job?.compensation ?? "",
+      clientRfId: p.clientRfId ?? 0,
+      clientName: client?.name ?? job?.company ?? "",
+      clientWebsite: client?.website ?? "",
+      clientLinkedIn: client?.linkedIn ?? "",
+      clientContacts,
+      stage: p.stage,
+      interviews: interviewsByJob.get(interviewKey) ?? [],
+    };
+  });
+
+  const recruiter = (() => {
+    const email = session?.user?.email ?? "";
+    const fullName2 = session?.user?.name ?? "";
+    const firstName = fullName2.split(/\s+/)[0] ?? "";
+    const phone = email
+      ? prefs.recruiterPhones[email] ?? prefs.recruiterPhones[email.toLowerCase()] ?? ""
+      : "";
+    return { firstName, fullName: fullName2, email, phone };
+  })();
+
   // Embed = split-view iframe. Renders the same left column as the full
   // profile (compact overview + action row + resume) and a 280px right
   // rail with skills + activity. The action row is the single source of
@@ -351,83 +486,11 @@ export async function LocalCandidateProfile({
       const lower = t.trim().toLowerCase();
       return lower === "kept" || lower === "keep";
     });
-    // Same openJobs assembly as the non-embed branch below — embed needs
-    // it so LocalCandidateActions has a list to render in its Apply
-    // modal. Kept inline (small enough to not warrant a helper) and
-    // tolerant of empty fetches so a Neon hiccup doesn't 500 the iframe.
-    const linkedByRfJobE = new Map<number, string>();
-    const linkedByAceJobE = new Map<string, string>();
-    for (const p of placements) {
-      if (p.jobRfId != null) linkedByRfJobE.set(p.jobRfId, p.stage);
-      else if (p.jobId) linkedByAceJobE.set(p.jobId, p.stage);
-    }
-    const clientByIdE = new Map<number, (typeof allClients)[number]>();
-    for (const cl of allClients) clientByIdE.set(cl.id, cl);
-    const openJobsEmbed: LocalOpenJob[] = allJobs
-      .filter((j) => j.is_open !== false)
-      .map((raw) => {
-        const j = normalizeJob(raw);
-        const client = j.companyId != null ? clientByIdE.get(j.companyId) : null;
-        const aceJobId = (raw as { _aceJobId?: string })._aceJobId ?? null;
-        const aceClientId = (raw as { _aceClientId?: string })._aceClientId ?? null;
-        const clientContacts = j.companyId != null
-          ? allContacts
-              .filter((ct) => ct.client_company_id === j.companyId)
-              .map((ct) => ({
-                id: ct.id,
-                name:
-                  [ct.first_name, ct.last_name].filter(Boolean).join(" ") ||
-                  ct.name ||
-                  "(unnamed)",
-                title: ct.current_designation ?? "",
-                email: Array.isArray(ct.email) ? ct.email[0] ?? "" : ct.email ?? "",
-              }))
-          : [];
-        const alreadyLinked = aceJobId
-          ? linkedByAceJobE.has(aceJobId)
-          : linkedByRfJobE.has(j.id);
-        const linkedStage = aceJobId
-          ? linkedByAceJobE.get(aceJobId) ?? null
-          : linkedByRfJobE.get(j.id) ?? null;
-        return {
-          jobRfId: j.id,
-          jobCuid: aceJobId,
-          jobTitle: j.title,
-          jobLocation: j.location,
-          jobCompensation: j.compensation,
-          clientRfId: j.companyId ?? 0,
-          clientCuid: aceClientId,
-          clientName: client ? normalizeClient(client).name : j.company,
-          alreadyLinked,
-          linkedStage,
-          clientContacts,
-        };
-      })
-      .sort((a, b) => {
-        if (a.alreadyLinked !== b.alreadyLinked) return a.alreadyLinked ? 1 : -1;
-        const c = (a.clientName || "").localeCompare(b.clientName || "");
-        if (c !== 0) return c;
-        return (a.jobTitle || "").localeCompare(b.jobTitle || "");
-      });
-    // Compact placement pills surfaced at the top of the embed so the
-    // recruiter sees pipeline state without scrolling. Re-derives the
-    // job title from the same RF-jobs shim the non-embed pipeline rows
-    // use; falls back to "(job)" when the job lookup misses. Apply
-    // writes through ApplyModal trigger router.refresh() — the refresh
-    // re-runs this component and the new placement lands here on the
-    // next render, so the pill shows up without the iframe having to
-    // navigate away.
-    const embedPills = placements
-      .filter((p) => p.stage !== "cancelled" && p.stage !== "rejected")
-      .map((p) => {
-        const rfJob = p.jobRfId != null
-          ? allJobs.find((j) => j.id === p.jobRfId) ?? null
-          : p.jobId
-            ? allJobs.find((j) => (j as { _aceJobId?: string })._aceJobId === p.jobId) ?? null
-            : null;
-        const title = rfJob ? normalizeJob(rfJob).title : "(job)";
-        return { id: p.id, title, stage: p.stage };
-      });
+    // openJobs / jobRows / interviewsByJob were lifted above the
+    // embed/non-embed split so both surfaces share the same shaped
+    // data. LocalCandidateActions takes the same openJobs in both
+    // branches, and the standard LocalPlacementRows pipeline strip
+    // (rendered below) takes jobRows.
     return (
       <>
         {/* Scoped to #resume-document-content (rendered by
@@ -447,27 +510,29 @@ export async function LocalCandidateProfile({
           candidateName={fullName}
           candidateFirstName={candidate.firstName}
           candidateEmail={candidate.email}
-          openJobs={openJobsEmbed}
+          openJobs={openJobs}
           hideButtons
         />
         <div className="flex h-[calc(100vh-3rem)] gap-4 md:h-[calc(100vh-4rem)]">
-          {/* Left column. The pill strip + tab strip sit above the
+          {/* Left column. The pipeline strip + tab strip sit above the
               action row so pipeline state and tab navigation are the
               first things a recruiter sees in the iframe. CompactOverview
               moved to the right rail so it's not duplicated against the
               resume header. */}
           <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-            {embedPills.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                {embedPills.map((p) => (
-                  <span
-                    key={p.id}
-                    className="inline-flex items-center gap-1 rounded-full border border-court-accent/40 bg-court-accent-tint px-2.5 py-0.5 text-[11px] font-semibold text-court-brand-dark"
-                  >
-                    {p.title} · {p.stage}
-                  </span>
-                ))}
-              </div>
+            {jobRows.length > 0 && (
+              <LocalPlacementRows
+                candidateId={candidate.id}
+                candidateName={fullName}
+                candidateEmail={candidate.email}
+                candidatePhone={candidate.phone}
+                candidateLocation={candidate.location}
+                candidateCurrentTitle={candidate.currentDesignation}
+                candidateCurrentEmployer={candidate.currentOrganization}
+                recruiter={recruiter}
+                jobs={jobRows}
+                aceTeam={aceTeam}
+              />
             )}
             <UnderlineTabs tab={tab} candidateId={candidate.id} embed />
             <div className="flex flex-wrap items-center gap-2">
@@ -542,170 +607,6 @@ export async function LocalCandidateProfile({
     );
   }
 
-  // Two identity keys — RF-imported placements hash by jobRfId (numeric),
-  // Ace-native placements hash by jobId (cuid string). The LocalOpenJob
-  // matcher below tries both so the "alreadyLinked" flag works for either
-  // identity shape without a third keyspace.
-  const linkedByRfJob = new Map<number, string>();
-  const linkedByAceJob = new Map<string, string>();
-  for (const p of placements) {
-    if (p.jobRfId != null) linkedByRfJob.set(p.jobRfId, p.stage);
-    else if (p.jobId) linkedByAceJob.set(p.jobId, p.stage);
-  }
-
-  const clientById = new Map<number, (typeof allClients)[number]>();
-  for (const cl of allClients) clientById.set(cl.id, cl);
-
-  const openJobs: LocalOpenJob[] = allJobs
-    .filter((j) => j.is_open !== false)
-    .map((raw) => {
-      const j = normalizeJob(raw);
-      const client = j.companyId != null ? clientById.get(j.companyId) : null;
-      // Ace-native Jobs ride the broadened getRfJobsForOrg shim with
-      // _aceJobId + _aceClientId tucked onto the payload. Carry those
-      // through to LocalOpenJob so submit/apply writes can set the
-      // cuid FKs on Placement (and leave jobRfId / clientRfId null).
-      const aceJobId = (raw as { _aceJobId?: string })._aceJobId ?? null;
-      const aceClientId = (raw as { _aceClientId?: string })._aceClientId ?? null;
-      // Filter the contact list to this job's client so the Submit
-      // modal's To/Cc picker only surfaces relevant people. Mirrors
-      // the shape the RF-imported Submit flow uses in placement-flows.
-      const clientContacts = j.companyId != null
-        ? allContacts
-            .filter((ct) => ct.client_company_id === j.companyId)
-            .map((ct) => ({
-              id: ct.id,
-              name:
-                [ct.first_name, ct.last_name].filter(Boolean).join(" ") ||
-                ct.name ||
-                "(unnamed)",
-              title: ct.current_designation ?? "",
-              email: Array.isArray(ct.email) ? ct.email[0] ?? "" : ct.email ?? "",
-            }))
-        : [];
-      const alreadyLinked = aceJobId
-        ? linkedByAceJob.has(aceJobId)
-        : linkedByRfJob.has(j.id);
-      const linkedStage = aceJobId
-        ? linkedByAceJob.get(aceJobId) ?? null
-        : linkedByRfJob.get(j.id) ?? null;
-      return {
-        jobRfId: j.id,
-        jobCuid: aceJobId,
-        jobTitle: j.title,
-        jobLocation: j.location,
-        jobCompensation: j.compensation,
-        clientRfId: j.companyId ?? 0,
-        clientCuid: aceClientId,
-        clientName: client ? normalizeClient(client).name : j.company,
-        alreadyLinked,
-        linkedStage,
-        clientContacts,
-      };
-    })
-    .sort((a, b) => {
-      if (a.alreadyLinked !== b.alreadyLinked) return a.alreadyLinked ? 1 : -1;
-      const c = (a.clientName || "").localeCompare(b.clientName || "");
-      if (c !== 0) return c;
-      return (a.jobTitle || "").localeCompare(b.jobTitle || "");
-    });
-
-  // Interview join key: RF-imported → numeric jobRfId, Ace-native →
-  // cuid jobId. Stringify so the same Map covers both.
-  const interviewsByJob = new Map<string, LocalInterview[]>();
-  for (const iv of interviews) {
-    const key = iv.jobRfId != null ? `rf:${iv.jobRfId}` : iv.jobId ? `ace:${iv.jobId}` : null;
-    if (!key) continue;
-    const list = interviewsByJob.get(key) ?? [];
-    const attendees = Array.isArray(iv.clientAttendees)
-      ? (iv.clientAttendees as { name?: string; email?: string }[])
-          .map((a) => ({ name: a.name ?? "", email: a.email ?? "" }))
-          .filter((a) => a.name || a.email)
-      : [];
-    list.push({
-      id: iv.id,
-      scheduledAt: iv.scheduledAt.toISOString(),
-      durationMin: iv.durationMin,
-      type: iv.type as LocalInterview["type"],
-      status: iv.status as LocalInterview["status"],
-      source: iv.source as LocalInterview["source"],
-      meetLink: iv.meetLink,
-      attendees,
-    });
-    interviewsByJob.set(key, list);
-  }
-
-  const jobRows: LocalJobRow[] = placements.map((p) => {
-    // Find the RF-shaped Job payload by whichever identity the
-    // Placement row carries. Ace-native placements match via the
-    // shim's _aceJobId tag; RF-imported placements match via numeric id.
-    const rfJob = p.jobRfId != null
-      ? allJobs.find((j) => j.id === p.jobRfId) ?? null
-      : p.jobId
-        ? allJobs.find((j) => (j as { _aceJobId?: string })._aceJobId === p.jobId) ?? null
-        : null;
-    const job = rfJob ? normalizeJob(rfJob) : null;
-    const clientRaw = p.clientRfId != null ? clientById.get(p.clientRfId) ?? null : null;
-    const client = clientRaw ? normalizeClient(clientRaw) : null;
-    const clientContacts = p.clientRfId != null
-      ? allContacts
-          .filter((ct) => ct.client_company_id === p.clientRfId)
-          .map((ct) => {
-            const firstEmail = Array.isArray(ct.email) ? ct.email[0] ?? "" : ct.email ?? "";
-            const fullName = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.name || "(unnamed)";
-            return { id: ct.id, name: fullName, title: ct.current_designation ?? "", email: firstEmail };
-          })
-      : [];
-    const rawDescription = typeof rfJob?.description === "string" ? rfJob.description : "";
-    const interviewKey = p.jobRfId != null ? `rf:${p.jobRfId}` : p.jobId ? `ace:${p.jobId}` : "";
-    return {
-      placementId: p.id,
-      // LocalPlacementRows keeps a numeric jobRfId prop. Ace-native rows
-      // surface their synthetic id (from rfJob.id when available) or 0
-      // as a fallback; write paths key on the placementId anyway.
-      jobRfId: p.jobRfId ?? (rfJob?.id ?? 0),
-      jobTitle: job?.title ?? "(job)",
-      jobLocation: job?.location ?? "",
-      jobDescription:
-        (p.jobRfId != null ? overrideByJob.get(p.jobRfId) : null) ??
-        rawDescription,
-      jobSalaryRange: job?.compensation ?? "",
-      clientRfId: p.clientRfId ?? 0,
-      clientName: client?.name ?? job?.company ?? "",
-      clientWebsite: client?.website ?? "",
-      clientLinkedIn: client?.linkedIn ?? "",
-      clientContacts,
-      stage: p.stage,
-      interviews: interviewsByJob.get(interviewKey) ?? [],
-    };
-  });
-
-  const recruiter = (() => {
-    const email = session?.user?.email ?? "";
-    const fullName = session?.user?.name ?? "";
-    const firstName = fullName.split(/\s+/)[0] ?? "";
-    const phone = email
-      ? prefs.recruiterPhones[email] ?? prefs.recruiterPhones[email.toLowerCase()] ?? ""
-      : "";
-    return { firstName, fullName, email, phone };
-  })();
-
-  // Active-placement pills shown above the tab strip on the non-embed
-  // profile. Filters out cancelled / rejected so the strip only shows
-  // jobs the candidate is still in play for. Embed surface uses its
-  // own embedPills (computed up in the embed branch) and is unaffected.
-  const activePills = placements
-    .filter((p) => p.stage !== "cancelled" && p.stage !== "rejected")
-    .map((p) => {
-      const rfJob = p.jobRfId != null
-        ? allJobs.find((j) => j.id === p.jobRfId) ?? null
-        : p.jobId
-          ? allJobs.find((j) => (j as { _aceJobId?: string })._aceJobId === p.jobId) ?? null
-          : null;
-      const title = rfJob ? normalizeJob(rfJob).title : "(job)";
-      return { id: p.id, title, stage: p.stage };
-    });
-
   return (
     <div className="space-y-6">
       {embed ? null : <CandidateProfileNav currentId={candidate.id} />}
@@ -759,18 +660,6 @@ export async function LocalCandidateProfile({
           CompactOverview box. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="space-y-4 lg:col-span-8">
-          {activePills.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {activePills.map((p) => (
-                <span
-                  key={p.id}
-                  className="inline-flex items-center gap-1 rounded-full border border-court-accent/40 bg-court-accent-tint px-2.5 py-0.5 text-[11px] font-semibold text-court-brand-dark"
-                >
-                  {p.title} · {p.stage}
-                </span>
-              ))}
-            </div>
-          )}
           <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center gap-3 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
             <UnderlineTabs tab={tab} candidateId={candidate.id} />
           </div>
