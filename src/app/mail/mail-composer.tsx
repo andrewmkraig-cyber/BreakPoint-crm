@@ -2404,17 +2404,18 @@ function ComposerAddonToolbar({
         )}
       </div>
 
-      {/* Generate with Claude — dark-green sibling of the Submit /
-          Apply action-row buttons so the panel toggle reads as part of
-          the same family. Trailing chevron points toward where the panel
-          sits: closed shows ChevronUp (panel will open upward, above
-          this button row); open shows ChevronDown (collapses back down). */}
+      {/* Generate with Claude — outlined green pill sibling of the Send
+          button so the panel toggle sits next to Send as a matched pair
+          (same height + padding + weight, just outlined instead of
+          filled). Trailing chevron points toward where the panel sits:
+          closed shows ChevronUp (panel opens upward, above this row);
+          open shows ChevronDown (collapses back down). */}
       <Button
         type="button"
-        variant="primary"
+        variant="secondary"
         size="sm"
         onClick={() => setOpenAi(!openAi)}
-        className="rounded-full border-court-brand bg-court-brand text-sm font-semibold text-white hover:bg-court-brand-dark"
+        className="rounded-full border-court-brand text-court-brand hover:bg-court-brand hover:text-white"
       >
         Generate with Claude
         {openAi ? (
