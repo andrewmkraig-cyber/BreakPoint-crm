@@ -2991,15 +2991,15 @@ function SubmittalEmailCompose({
       initial={{
         to: [],
         cc: [],
-        // Austin pre-populated by default — matches the Interview
-        // scheduler's BCC convention so Ops gets looped in on every
-        // submittal without the recruiter having to remember.
-        bcc: [AUSTIN_PINNED_CONTACT.email],
+        // BCC starts empty — recruiter opts in per send. The dropdown
+        // is hard-locked to the single Austin Barnard entry so it's a
+        // one-click loop-in when wanted and nothing else can sneak in.
+        bcc: [],
         subject,
         body: "",
       }}
       recipientOptions={contactOptions}
-      bccOptions={allContacts}
+      bccOptions={[{ id: "austin", name: "Austin Barnard", email: "austin@breakpointtalent.com" }]}
       onClose={onBack}
       sendLabel="Send Submittal"
       sendingLabel="Sending…"
