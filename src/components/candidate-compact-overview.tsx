@@ -15,6 +15,16 @@ import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn, formatLocation } from "@/lib/utils";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 import { buildTokenColorMap } from "@/app/candidates/[id]/resume-matches-rail";
+import type { CandidateCompactOverviewExpectedSalary } from "@/components/candidate-overview-helpers";
+
+// Re-export the shared type from the helper module so existing
+// `import { CandidateCompactOverviewExpectedSalary } from
+// "@/components/candidate-compact-overview"` callers keep working
+// without a hop through a second module path. The runtime helper
+// (toExpectedSalary) lives in candidate-overview-helpers.ts because
+// server components need to call it during SSR — exporting it from
+// here would make it a client reference and 500 the page render.
+export type { CandidateCompactOverviewExpectedSalary };
 
 // Right-rail compact overview shared by the candidate full-page profile
 // and the candidates split-view embed.
@@ -31,34 +41,6 @@ import { buildTokenColorMap } from "@/app/candidates/[id]/resume-matches-rail";
 //     its mention in the candidate header read as the same hue. The
 //     split-view passes tokens here when a candidate has no resume so
 //     the right rail still surfaces *where* the matches live.
-export type CandidateCompactOverviewExpectedSalary = {
-  number: number | null;
-  currency: string | null;
-};
-
-// Coerce the loose JsonValue / RFCandidate.expected_salary blob shape
-// into the structured value the inline editor needs. Centralized here
-// so every call site (full-page + embed across both RF + local-profile
-// paths) stays in sync with the editor's value model.
-export function toExpectedSalary(
-  raw: unknown,
-): CandidateCompactOverviewExpectedSalary | null {
-  if (!raw || typeof raw !== "object") return null;
-  const obj = raw as { number?: unknown; currency?: unknown };
-  const num =
-    typeof obj.number === "number" && Number.isFinite(obj.number)
-      ? obj.number
-      : typeof obj.number === "string" && obj.number.trim() !== ""
-        ? Number(obj.number)
-        : null;
-  const currency =
-    typeof obj.currency === "string" && obj.currency.trim() !== ""
-      ? obj.currency.trim()
-      : null;
-  if (num == null && !currency) return null;
-  return { number: num != null && Number.isFinite(num) ? num : null, currency };
-}
-
 export function CandidateCompactOverview({
   candidateRef,
   fullName,
