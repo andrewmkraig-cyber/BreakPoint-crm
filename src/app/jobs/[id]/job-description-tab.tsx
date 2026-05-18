@@ -13,7 +13,6 @@ import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
 import type { MatchTarget } from "@/lib/find-matches-context";
 import {
   saveJobGeneratedDescription,
-  saveJobInternalRecruiterNotes,
   saveJobSearchKeywords,
 } from "@/app/jobs/[id]/job-overview-actions";
 
@@ -25,7 +24,6 @@ export function JobDescriptionTab({
   jobId,
   initialDescription,
   initialDescriptionGeneratedAt,
-  initialInternalNotes,
   initialSearchKeywords,
   jobMeta,
   matchTarget,
@@ -33,7 +31,6 @@ export function JobDescriptionTab({
   jobId: string;
   initialDescription: string | null;
   initialDescriptionGeneratedAt: string | null;
-  initialInternalNotes: string | null;
   initialSearchKeywords: string | null;
   jobMeta: {
     title: string;
@@ -107,11 +104,6 @@ export function JobDescriptionTab({
         onSavedEdit={(next) => setGenerated(next || null)}
       />
 
-      <InternalNotesCard
-        jobId={jobId}
-        initialNotes={initialInternalNotes}
-      />
-
       <SearchKeywordsCard
         jobId={jobId}
         initialKeywords={initialSearchKeywords}
@@ -120,73 +112,10 @@ export function JobDescriptionTab({
   );
 }
 
-// Recruiter-only context (compensation flexibility, client quirks,
-// dealbreakers). Already consumed by AI compose + ai-workspace-context;
-// this card is the missing UI to populate the column from /jobs/[id].
-// Save-on-blur mirrors the keywords card below it.
-function InternalNotesCard({
-  jobId,
-  initialNotes,
-}: {
-  jobId: string;
-  initialNotes: string | null;
-}) {
-  const [value, setValue] = useState(initialNotes ?? "");
-  const [saving, setSaving] = useState(false);
-  const lastSavedRef = useRef(initialNotes ?? "");
-
-  async function commit() {
-    const next = value;
-    if (next === lastSavedRef.current) return;
-    setSaving(true);
-    try {
-      const res = await saveJobInternalRecruiterNotes({ jobId, notes: next });
-      if (!res.ok) {
-        toast.error("Couldn't save notes", { description: res.error });
-        return;
-      }
-      lastSavedRef.current = next;
-      toast.success("Notes saved");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="font-serif text-lg font-semibold text-court-fg">Internal Recruiter Notes</h2>
-          <p className="text-[11px] text-court-fg-muted">
-            Private notes — never shown to candidates or clients.
-          </p>
-        </div>
-        {saving && (
-          <span className="inline-flex items-center gap-1 text-[11px] text-court-fg-muted">
-            <Loader2 className="h-3 w-3 animate-spin" /> Saving…
-          </span>
-        )}
-      </div>
-      <textarea
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={() => void commit()}
-        rows={5}
-        placeholder="e.g. salary is flexible up to 140k for a strong candidate, client hates LinkedIn-only outreach, never submit anyone from competitor X"
-        className={cn(
-          "mt-3 w-full resize-y rounded-md border border-court-border bg-court-bg px-3 py-2 text-sm text-court-fg shadow-sm",
-          "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-        )}
-      />
-    </div>
-  );
-}
-
 // Recruiter-tunable keyword list that feeds Find Matches scoring and
 // any Boolean candidate search built off this job. Plain text — the
 // readers (find-matches, boolean search) split + lowercase as needed.
-// Save-on-blur mirrors saveJobInternalRecruiterNotes' UX so the
-// recruiter can tab away without a save button.
+// Save-on-blur lets the recruiter tab away without a save button.
 function SearchKeywordsCard({
   jobId,
   initialKeywords,

@@ -60,7 +60,7 @@ export function FinancialStrip({
   const remainingUsd = Math.max(0, goalUsd - revenueUsd);
 
   return (
-    <section className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
+    <section className="rounded-3xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <div className="flex items-center justify-between gap-3">
         <div className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted">
           Billing Tower
@@ -135,7 +135,7 @@ function Stat({
       </div>
       <div
         className={cn(
-          "mt-0.5 font-serif text-[26px] font-bold leading-none tracking-[-0.02em] tabular-nums",
+          "mt-0.5 font-serif text-[32px] font-bold leading-none tracking-[-0.02em] tabular-nums",
           dim ? "text-court-fg-dim" : "text-court-fg",
         )}
       >
@@ -179,7 +179,7 @@ function GoalStat({
       <div className="text-[10px] font-extrabold uppercase tracking-wide text-court-brand-dark">
         Goal Progress · {formatGoalUsd(goalUsd)} Quarter
       </div>
-      <div className="mt-0.5 flex items-baseline gap-2.5 font-serif text-[26px] font-bold leading-none tracking-[-0.02em] tabular-nums text-court-fg">
+      <div className="mt-0.5 flex items-baseline gap-2.5 font-serif text-[32px] font-bold leading-none tracking-[-0.02em] tabular-nums text-court-fg">
         {pct}%
         <span className="text-[11.5px] font-semibold tracking-normal text-court-fg-muted">
           · {formatGoalUsd(remainingUsd)} to go

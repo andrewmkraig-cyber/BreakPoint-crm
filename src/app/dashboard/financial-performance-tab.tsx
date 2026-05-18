@@ -1337,37 +1337,60 @@ function TrendCard({
         </div>
       </div>
 
-      <div className="mt-4 flex h-28 items-end gap-3">
-        {quarterMonths.map((m) => {
-          const usd = monthlyRevenue.get(m) ?? 0;
-          const heightPct = maxMonthUsd > 0 ? (usd / maxMonthUsd) * 100 : 0;
-          const isFuture = m > currentMonth;
-          const isCurrent = m === currentMonth;
-          return (
-            <div key={m} className="flex flex-1 flex-col items-center gap-1.5">
-              <div className="relative flex h-full w-full items-end">
-                {isFuture ? (
-                  <div className="h-full w-full rounded-md border border-dashed border-court-border bg-transparent" />
-                ) : (
-                  <div
-                    className={
-                      "w-full rounded-md " +
-                      (isCurrent ? "bg-court-brand/60" : "bg-court-brand")
-                    }
-                    style={{ height: `${Math.max(4, heightPct)}%` }}
-                  />
-                )}
+      {maxMonthUsd === 0 ? (
+        // Fallback: zero revenue across every month in the quarter would
+        // otherwise render three flat 4%-tall bars stamped with $0 — the
+        // chart reads as empty. Drop to a clean 3-column month + value
+        // text layout instead so the panel still scans cleanly.
+        <div className="mt-4 grid grid-cols-3 gap-3">
+          {quarterMonths.map((m) => {
+            const usd = monthlyRevenue.get(m) ?? 0;
+            const isFuture = m > currentMonth;
+            return (
+              <div key={m} className="flex flex-col items-center gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-court-fg-muted">
+                  {MONTH_FULL[m].slice(0, 3)}
+                </span>
+                <span className="text-[18px] font-semibold tabular-nums text-court-fg">
+                  {isFuture || usd === 0 ? "—" : formatUsd(usd)}
+                </span>
               </div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-court-fg-muted">
-                {MONTH_FULL[m].slice(0, 3)}
+            );
+          })}
+        </div>
+      ) : (
+        <div className="mt-4 flex h-28 items-end gap-3">
+          {quarterMonths.map((m) => {
+            const usd = monthlyRevenue.get(m) ?? 0;
+            const heightPct = maxMonthUsd > 0 ? (usd / maxMonthUsd) * 100 : 0;
+            const isFuture = m > currentMonth;
+            const isCurrent = m === currentMonth;
+            return (
+              <div key={m} className="flex flex-1 flex-col items-center gap-1.5">
+                <div className="relative flex h-full w-full items-end">
+                  {isFuture ? (
+                    <div className="h-full w-full rounded-md border border-dashed border-court-border bg-transparent" />
+                  ) : (
+                    <div
+                      className={
+                        "w-full rounded-md " +
+                        (isCurrent ? "bg-court-brand/60" : "bg-court-brand")
+                      }
+                      style={{ height: `${Math.max(4, heightPct)}%` }}
+                    />
+                  )}
+                </div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-court-fg-muted">
+                  {MONTH_FULL[m].slice(0, 3)}
+                </div>
+                <div className="text-[11px] font-semibold tabular-nums text-court-fg">
+                  {isFuture ? "—" : formatUsd(usd)}
+                </div>
               </div>
-              <div className="text-[11px] font-semibold tabular-nums text-court-fg">
-                {isFuture ? "—" : formatUsd(usd)}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       <p className="mt-3 text-xs text-court-fg-muted">{forecastLabel}</p>
     </div>
