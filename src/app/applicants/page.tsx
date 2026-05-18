@@ -12,7 +12,7 @@ import {
   type RFJob,
 } from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg, getRfJobsForOrg } from "@/lib/candidates";
-import { getPlacementsForOrg } from "@/lib/placements";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { resolveJobTitle } from "@/lib/job-title";
 
 export const dynamic = "force-dynamic";
@@ -23,24 +23,39 @@ export default async function ApplicantsPage() {
   let error: string | null = null;
 
   try {
+    const org = await getCurrentOrg();
     const [candidates, placements, allJobs, jobOverrides] = await Promise.all([
       getRfCandidatesForOrg(),
-      // Phase 4a: the Placement read routes through the tenant-scoped
-      // helper with the applicants page's stage filter. The helper
-      // returns full rows (no select projection); every column the
-      // renderer reads below lives on the Placement model.
-      getPlacementsForOrg({
-        stages: [
-          "kept",
-          "rejected",
-          "offer",
-          "pending_start",
-          "hired",
-          "cancelled",
-          "submitted",
-          "applied",
-          "sourced",
-        ],
+      // Ace-native placements carry jobRfId=null + jobId=<cuid>, so the
+      // RF-jobs shim lookup below can't resolve their title. Include the
+      // Job relation here so describeJob can fall back to placement.job
+      // when the numeric id is missing.
+      prisma.placement.findMany({
+        where: {
+          organizationId: org.id,
+          stage: {
+            in: [
+              "kept",
+              "rejected",
+              "offer",
+              "pending_start",
+              "hired",
+              "cancelled",
+              "submitted",
+              "applied",
+              "sourced",
+            ],
+          },
+        },
+        include: {
+          job: {
+            select: {
+              title: true,
+              locations: true,
+              client: { select: { name: true } },
+            },
+          },
+        },
       }),
       // Pull the full job list so we can resolve each row's title /
       // location. The RFCandidateJob rows hanging off c.jobs are sparse
@@ -58,8 +73,27 @@ export default async function ApplicantsPage() {
     const overrideByJob = new Map<number, { title: string | null }>();
     for (const o of jobOverrides) overrideByJob.set(o.jobRfId, { title: o.title });
 
-    const describeJob = (jobId: number | null, fallbackJob?: RFCandidateJob): { title: string; location: string; clientName: string } => {
+    type PlacementJob = {
+      title: string;
+      locations: string[];
+      client: { name: string | null } | null;
+    };
+    const describeJob = (
+      jobId: number | null,
+      fallbackJob?: RFCandidateJob,
+      placementJob?: PlacementJob | null,
+    ): { title: string; location: string; clientName: string } => {
       if (jobId == null) {
+        // Ace-native placement: jobRfId is null, so the RF-jobs map can't
+        // resolve a title. Fall back to the Job relation we included on
+        // the placement query.
+        if (placementJob) {
+          return {
+            title: placementJob.title || "(job)",
+            location: placementJob.locations?.[0] ?? "",
+            clientName: placementJob.client?.name ?? "",
+          };
+        }
         return { title: "(job)", location: "", clientName: "" };
       }
       const rfJob = jobById.get(jobId) ?? null;
@@ -229,7 +263,7 @@ export default async function ApplicantsPage() {
         const aceName = ace
           ? [ace.firstName, ace.lastName].filter(Boolean).join(" ") || "(unnamed)"
           : "(unnamed)";
-        const desc = describeJob(p.jobRfId);
+        const desc = describeJob(p.jobRfId, undefined, p.job);
         appliedRows.push({
           candidateId: p.candidateId,
           candidateName: aceName,
@@ -284,7 +318,7 @@ export default async function ApplicantsPage() {
         const aceName = ace
           ? [ace.firstName, ace.lastName].filter(Boolean).join(" ") || "(unnamed)"
           : "(unnamed)";
-        const desc = describeJob(p.jobRfId);
+        const desc = describeJob(p.jobRfId, undefined, p.job);
         keptRows.push({
           candidateId: p.candidateId,
           candidateName: aceName,
