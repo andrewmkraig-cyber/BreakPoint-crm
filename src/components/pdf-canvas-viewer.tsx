@@ -174,6 +174,7 @@ export function PdfCanvasViewer({
             overlay,
             textContent,
             viewportTransform: viewport.transform,
+            viewportScale: viewport.scale,
             tokens,
             classMap,
             Util: pdfjsLib.Util,
@@ -279,6 +280,7 @@ function paintHighlightOverlay({
   overlay,
   textContent,
   viewportTransform,
+  viewportScale,
   tokens,
   classMap,
   Util,
@@ -286,6 +288,10 @@ function paintHighlightOverlay({
   overlay: HTMLElement;
   textContent: PdfJsTextContent;
   viewportTransform: number[];
+  // viewport.scale (CSS-px-per-PDF-unit) — multiplied with item.width to
+  // get the canvas-rendered width of the text item in screen pixels, so
+  // scaleX below can stretch the sans-serif overlay to match it.
+  viewportScale: number;
   tokens: string[];
   classMap: Map<string, string>;
   Util: PdfJsLib["Util"];
@@ -297,9 +303,16 @@ function paintHighlightOverlay({
   // wrapMatches so the cheap pre-filter and the actual highlighter agree.
   const pattern = `\\b(${escaped.join("|")})\\b`;
 
+  // Single off-DOM canvas used to measure sans-serif text widths. Reused
+  // across every text item on the page so we're not allocating one per
+  // call to measureText. Browser-only — paintHighlightOverlay is invoked
+  // from a useEffect that itself only runs after pdfjs has loaded.
+  const measureCanvas = document.createElement("canvas");
+  const mctx = measureCanvas.getContext("2d");
+
   for (const raw of textContent.items) {
     if (!raw || typeof raw !== "object" || !("str" in raw)) continue;
-    const item = raw as { str: string; transform: number[] };
+    const item = raw as { str: string; transform: number[]; width: number };
     if (!item.str) continue;
     // Cheap rejection so we don't allocate spans for items that contain
     // no token match at all — typical resume page has hundreds of items
@@ -313,23 +326,41 @@ function paintHighlightOverlay({
     const left = tx[4];
     const top = tx[5] - fontHeight;
 
+    // Stretch the overlay span horizontally so its sans-serif rendering
+    // occupies the same screen-px width as the canvas's PDF-font glyphs.
+    // Without this, a multi-word item like "education teaching" measures
+    // wider/narrower in sans-serif than in the embedded PDF font, and an
+    // inline-flowed <mark> for "teaching" lands on top of "education"
+    // (or floats past the canvas word entirely). Mirrors what pdfjs's
+    // own TextLayer does with its per-item scaleX. transform-origin is
+    // bottom-left below so the span's left edge stays pinned to `left`
+    // — only the internal width scales.
+    let scaleX = 1;
+    if (mctx && item.width > 0) {
+      mctx.font = `${fontHeight}px sans-serif`;
+      const naturalWidth = mctx.measureText(item.str).width;
+      const targetWidth = item.width * viewportScale;
+      if (naturalWidth > 0) scaleX = targetWidth / naturalWidth;
+    }
+
     const span = document.createElement("span");
     span.style.position = "absolute";
     span.style.left = `${left}px`;
     span.style.top = `${top}px`;
     span.style.fontSize = `${fontHeight}px`;
     // sans-serif is a deliberate approximation — the canvas renders with
-    // the PDF's embedded font but we only need the overlay's <mark> bg to
-    // sit roughly over the same glyphs. A few px of width drift on bold
-    // or condensed faces is acceptable; the recruiter still gets a clear
-    // "this word appears here" cue.
+    // the PDF's embedded font but we only need the overlay's <mark> bg
+    // to sit on top of the same glyphs. The scaleX correction above
+    // compensates for the sans-serif vs PDF-font width mismatch so the
+    // mark's position inside the span aligns with the canvas word.
     span.style.fontFamily = "sans-serif";
     span.style.whiteSpace = "pre";
     span.style.color = "transparent";
     span.style.transformOrigin = "0% 100%";
-    if (Math.abs(angle) > 0.001) {
-      span.style.transform = `rotate(${angle}rad)`;
-    }
+    const transforms: string[] = [];
+    if (Math.abs(angle) > 0.001) transforms.push(`rotate(${angle}rad)`);
+    if (Math.abs(scaleX - 1) > 0.001) transforms.push(`scaleX(${scaleX})`);
+    if (transforms.length > 0) span.style.transform = transforms.join(" ");
     span.innerHTML = wrapMatches(item.str, tokens, classMap, pattern);
     overlay.appendChild(span);
   }

@@ -38,8 +38,13 @@ export function CandidateCompactOverview({
         {fullName}
       </h1>
       <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-        <Field label="Title">{currentDesignation || "—"}</Field>
-        <Field label="Employer">{currentOrganization || "—"}</Field>
+        {/* Title and Employer get their own full-width rows so long
+            titles like "Senior Director, Strategic Partnerships" and
+            multi-word company names ("Heat and Control Inc.") render
+            in full instead of clipping with an ellipsis. Email and
+            Phone already use the same `wide noTruncate` treatment. */}
+        <Field label="Title" wide noTruncate>{currentDesignation || "—"}</Field>
+        <Field label="Employer" wide noTruncate>{currentOrganization || "—"}</Field>
         <Field label="Email" wide noTruncate>
           {email ? (
             <EmailPopupLauncher
