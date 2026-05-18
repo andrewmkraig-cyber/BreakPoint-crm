@@ -10,7 +10,7 @@ import { listAceTeam } from "@/lib/ace-team";
 import { LocalEditableSkills } from "@/app/candidates/[id]/local-editable-skills";
 import { CandidateActivityCard } from "@/components/candidate-activity-card";
 import { CandidateProfileNav } from "@/components/candidate-profile-nav";
-import { CandidateCompactOverview } from "@/components/candidate-compact-overview";
+import { CandidateCompactOverview, toExpectedSalary } from "@/components/candidate-compact-overview";
 import { TextHighlighter } from "@/components/text-highlighter";
 import { parseHighlightTokens } from "@/app/candidates/[id]/highlight-tokens";
 import AiWorkspace from "@/components/AiWorkspace";
@@ -307,7 +307,6 @@ export async function LocalCandidateProfile({
   // alive (Apply dialog + searchParams trigger) without rendering a
   // second visible button row.
   if (embed) {
-    const compensation = formatExpectedSalary(candidate.expectedSalary);
     const highlightTokens = parseHighlightTokens(highlight);
     const isKeptEmbed = (candidate.tags ?? []).some((t) => {
       const lower = t.trim().toLowerCase();
@@ -437,7 +436,8 @@ export async function LocalCandidateProfile({
               email={candidate.email}
               phone={candidate.phone}
               linkedinProfile={candidate.linkedinProfile}
-              compensation={compensation}
+              expectedSalary={toExpectedSalary(candidate.expectedSalary)}
+              highlightTokens={highlightTokens}
             />
             <LocalEditableSkills
               candidateId={candidate.id}
@@ -711,7 +711,7 @@ export async function LocalCandidateProfile({
             email={candidate.email}
             phone={candidate.phone}
             linkedinProfile={candidate.linkedinProfile}
-            compensation={formatExpectedSalary(candidate.expectedSalary)}
+            expectedSalary={toExpectedSalary(candidate.expectedSalary)}
           />
           <LocalEditableSkills
             candidateId={candidate.id}
@@ -766,28 +766,6 @@ function LocalNotesTab({
       </div>
     </section>
   );
-}
-
-// expectedSalary is stored as a Json blob shaped { number, currency } —
-// the legacy RF shape. Render as "$120,000 USD" / "120,000 USD" / number
-// when one or both halves are missing. Returns null when nothing usable
-// is set so the compact overview can render an em-dash.
-function formatExpectedSalary(raw: unknown): string | null {
-  if (!raw || typeof raw !== "object") return null;
-  const obj = raw as { number?: unknown; currency?: unknown };
-  const num =
-    typeof obj.number === "number"
-      ? obj.number
-      : typeof obj.number === "string" && obj.number.trim() !== ""
-        ? Number(obj.number)
-        : null;
-  const currency =
-    typeof obj.currency === "string" && obj.currency.trim() !== ""
-      ? obj.currency.trim()
-      : null;
-  if (num == null || !Number.isFinite(num)) return currency;
-  const formatted = new Intl.NumberFormat("en-US").format(num);
-  return currency ? `${formatted} ${currency}` : formatted;
 }
 
 // Anchor-shaped twins of the shared Button "apply" / "secondary" variants.

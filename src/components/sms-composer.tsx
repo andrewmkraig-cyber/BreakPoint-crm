@@ -1,8 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { Loader2, Send } from "lucide-react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Loader2, Plus, Send, X } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { updateCandidate } from "@/app/candidates/[id]/actions";
+import { normalizeToE164 } from "@/lib/rf-payload-shapes";
 import {
   PHONE_SMS_SENT_EVENT,
   type PhoneSmsSentEventDetail,
@@ -92,9 +96,7 @@ export function SmsComposer({
       </div>
       <div className="space-y-2 p-4">
         {!toNumber && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
-            No phone on file — add one above to enable texting.
-          </div>
+          <AddPhoneInline candidateId={candidateId} />
         )}
         {/* Input on its own row, buttons on a second row right-aligned.
             Single-row layout pushed Send off-screen on narrow widths
@@ -144,6 +146,118 @@ export function SmsComposer({
             {error}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Inline "Add Number" affordance shown inside the texting card when the
+// candidate has no phone on file. Click "Add Number" → input + Save +
+// Cancel; on save we reuse the existing updateCandidate server action
+// (same one EditableIdentity uses) and refresh the route so the parent
+// re-renders with toNumber populated, which unlocks the SMS composer
+// without the recruiter leaving the page.
+function AddPhoneInline({ candidateId }: { candidateId: string }) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, startSave] = useTransition();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  function onSave() {
+    const trimmed = draft.trim();
+    if (!trimmed) {
+      toast.error("Enter a phone number first.");
+      return;
+    }
+    // E.164 normalize so the saved value matches the format Quo and
+    // the texting / call paths expect. normalizeToE164 returns null
+    // when the raw string can't be coerced — surface that as an
+    // inline error instead of silently saving garbage.
+    const normalized = normalizeToE164(trimmed);
+    if (!normalized) {
+      toast.error("Couldn't parse that number", {
+        description: "Try a US-style number like 216-555-5555.",
+      });
+      return;
+    }
+    startSave(async () => {
+      const res = await updateCandidate({
+        id: candidateId,
+        phone_number: normalized,
+      });
+      if (!res.ok) {
+        toast.error("Save failed", { description: res.error });
+        return;
+      }
+      toast.success("Phone number added");
+      setEditing(false);
+      setDraft("");
+      router.refresh();
+    });
+  }
+
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+        <span className="flex-1">No phone on file.</span>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-900 transition hover:bg-amber-200"
+        >
+          <Plus className="h-3 w-3" /> Add Number
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-2">
+      <div className="flex items-center gap-1">
+        <input
+          ref={inputRef}
+          type="tel"
+          value={draft}
+          disabled={saving}
+          placeholder="216-555-5555"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onSave();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              setEditing(false);
+              setDraft("");
+            }
+          }}
+          className="flex-1 rounded border border-amber-300 bg-court-surface px-2 py-1 text-xs text-court-fg placeholder:text-court-fg-muted/60 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-400 disabled:opacity-60"
+        />
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saving}
+          className="inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-200 px-2 py-1 text-[11px] font-semibold text-amber-900 transition hover:bg-amber-300 disabled:opacity-60"
+        >
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setEditing(false);
+            setDraft("");
+          }}
+          disabled={saving}
+          className="inline-flex items-center justify-center rounded border border-transparent p-1 text-amber-800 transition hover:bg-amber-100 disabled:opacity-60"
+          aria-label="Cancel"
+        >
+          <X className="h-3 w-3" />
+        </button>
       </div>
     </div>
   );

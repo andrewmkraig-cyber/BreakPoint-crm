@@ -333,6 +333,15 @@ export function EditableResume({
         <div className="flex items-center justify-between border-b border-court-border px-3 py-1.5">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">Resume</h2>
         </div>
+        {/* Chip strip renders here too — when a candidate has no resume
+            but the embed passed highlight tokens, the right-rail
+            overview (CandidateCompactOverview) tints matching Title /
+            Employer / Location text in these colors. Surfacing the chip
+            keys above the empty resume keeps the legend visible so the
+            recruiter knows what's being matched. */}
+        {tokens.length > 0 && (
+          <HighlightTokenChips tokens={tokens} className="px-3 pt-2" />
+        )}
         <div className="p-5">
           <DocumentDropzone
             multiple={false}

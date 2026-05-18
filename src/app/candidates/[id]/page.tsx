@@ -26,7 +26,7 @@ import { AddToListButton } from "@/components/lists/add-to-list-button";
 import { KeepCandidateButton } from "@/components/keep-candidate-button";
 import { CandidateActivityCard } from "@/components/candidate-activity-card";
 import { CandidateProfileNav } from "@/components/candidate-profile-nav";
-import { CandidateCompactOverview } from "@/components/candidate-compact-overview";
+import { CandidateCompactOverview, toExpectedSalary } from "@/components/candidate-compact-overview";
 import { TextHighlighter } from "@/components/text-highlighter";
 import { parseHighlightTokens } from "@/app/candidates/[id]/highlight-tokens";
 import { LocalCandidateProfile } from "@/app/candidates/[id]/local-profile";
@@ -549,7 +549,6 @@ export default async function CandidateProfilePage({
   // here so its Apply modal + ?openApply=true searchParams handler
   // stay alive without rendering the per-job pipeline row markup.
   if (isEmbed) {
-    const compensation = formatExpectedSalaryBlob(c.expected_salary);
     const highlightTokens = parseHighlightTokens(searchParams?.highlight);
     return (
       <CandidateProfileBoundary>
@@ -645,7 +644,8 @@ export default async function CandidateProfilePage({
               email={identityInitial.email || null}
               phone={phoneValue || null}
               linkedinProfile={identityInitial.linkedin_profile || null}
-              compensation={compensation}
+              expectedSalary={toExpectedSalary(c.expected_salary)}
+              highlightTokens={highlightTokens}
             />
             <EditableSkills candidateId={id} initial={skillsInitial} />
             <CandidateActivityCard
@@ -767,7 +767,7 @@ export default async function CandidateProfilePage({
             email={identityInitial.email || null}
             phone={phoneValue || null}
             linkedinProfile={identityInitial.linkedin_profile || null}
-            compensation={formatExpectedSalaryBlob(c.expected_salary)}
+            expectedSalary={toExpectedSalary(c.expected_salary)}
           />
           <EditableSkills candidateId={id} initial={skillsInitial} />
           <CandidateActivityCard candidateId={candidate.id} toNumber={phoneValue || null} />
@@ -878,28 +878,6 @@ function buildOpenJobOptions({
       if (c !== 0) return c;
       return (a.jobTitle || "").localeCompare(b.jobTitle || "");
     });
-}
-
-// expected_salary on the RF payload is { number, currency }. Render as
-// "120,000 USD" / number-only / currency-only depending on what's set.
-// Returns null when neither half is usable so the compact overview can
-// render an em-dash.
-function formatExpectedSalaryBlob(raw: unknown): string | null {
-  if (!raw || typeof raw !== "object") return null;
-  const obj = raw as { number?: unknown; currency?: unknown };
-  const num =
-    typeof obj.number === "number"
-      ? obj.number
-      : typeof obj.number === "string" && obj.number.trim() !== ""
-        ? Number(obj.number)
-        : null;
-  const currency =
-    typeof obj.currency === "string" && obj.currency.trim() !== ""
-      ? obj.currency.trim()
-      : null;
-  if (num == null || !Number.isFinite(num)) return currency;
-  const formatted = new Intl.NumberFormat("en-US").format(num);
-  return currency ? `${formatted} ${currency}` : formatted;
 }
 
 function normalizeEmail(raw: RFCandidate["email"]): string {
