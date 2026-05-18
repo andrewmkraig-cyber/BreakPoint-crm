@@ -1359,7 +1359,7 @@ function TrendCard({
           })}
         </div>
       ) : (
-        <div className="mt-4 flex h-28 items-end gap-3">
+        <div className="mt-4 flex h-28 gap-3">
           {quarterMonths.map((m) => {
             const usd = monthlyRevenue.get(m) ?? 0;
             const heightPct = maxMonthUsd > 0 ? (usd / maxMonthUsd) * 100 : 0;
@@ -1367,7 +1367,7 @@ function TrendCard({
             const isCurrent = m === currentMonth;
             return (
               <div key={m} className="flex flex-1 flex-col items-center gap-1.5">
-                <div className="relative flex h-full w-full items-end">
+                <div className="relative flex w-full flex-1 items-end">
                   {isFuture ? (
                     <div className="h-full w-full rounded-md border border-dashed border-court-border bg-transparent" />
                   ) : (
