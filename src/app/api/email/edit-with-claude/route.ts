@@ -18,10 +18,12 @@ export const maxDuration = 60;
 
 const anthropic = new Anthropic();
 
-const EDIT_TYPES = ["professional", "friendly", "casual", "shorter", "better"] as const;
+const EDIT_TYPES = ["professional", "friendly", "casual", "shorter", "better", "custom"] as const;
 export type EditType = (typeof EDIT_TYPES)[number];
 
-const EDIT_INSTRUCTIONS: Record<EditType, string> = {
+// "custom" carries its instruction in the request payload (customInstruction)
+// and is resolved per-request below — no fixed string here.
+const EDIT_INSTRUCTIONS: Record<Exclude<EditType, "custom">, string> = {
   professional:
     "Revise the email to sound more professional while keeping the core message intact.",
   friendly:
@@ -38,6 +40,9 @@ type ApiRequest = {
   body: string;
   editType: EditType;
   format: "text" | "html";
+  // Required when editType === "custom" — the recruiter's free-form
+  // revision instruction (e.g. "Make this quirkier and more conversational").
+  customInstruction?: string;
 };
 
 type ApiResponse = { body: string } | { error: string };
@@ -62,6 +67,13 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse>>
   if (!EDIT_TYPES.includes(payload.editType)) {
     return NextResponse.json({ error: "Invalid editType." }, { status: 400 });
   }
+  const customInstruction = (payload.customInstruction ?? "").toString().trim();
+  if (payload.editType === "custom" && !customInstruction) {
+    return NextResponse.json(
+      { error: "Custom edit requires an instruction." },
+      { status: 400 },
+    );
+  }
   const format: "text" | "html" = payload.format === "html" ? "html" : "text";
 
   const formatRule =
@@ -72,10 +84,15 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse>>
   const org = await getCurrentOrg();
   const trainerBlock = await buildPersonalTrainerBlock(org.id);
 
+  const instruction =
+    payload.editType === "custom"
+      ? `Revise the email per this recruiter instruction, keeping the core message intact: ${customInstruction}`
+      : EDIT_INSTRUCTIONS[payload.editType];
+
   const system =
     [
       "You are an email-revision assistant for a recruiter at BreakPoint Talent.",
-      `Edit instruction: ${EDIT_INSTRUCTIONS[payload.editType]}`,
+      `Edit instruction: ${instruction}`,
       "",
       "Hard rules:",
       "- Return ONLY the revised email body. No preamble, no commentary, no markdown code fences.",

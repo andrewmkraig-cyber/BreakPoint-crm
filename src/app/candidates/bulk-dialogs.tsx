@@ -26,7 +26,7 @@ import {
 } from "@/app/candidates/bulk-actions";
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
 import type { EmailDraft } from "@/components/email-composer";
-import { EditWithClaudeMenu, type EditType } from "@/components/edit-with-claude-menu";
+import { EditWithClaudeMenu, EditWithClaudeCustomPanel, type EditType } from "@/components/edit-with-claude-menu";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 import { MERGE_FIELDS, type MergeFieldValues } from "@/lib/merge-fields";
 import { cn } from "@/lib/utils";
@@ -354,6 +354,10 @@ export function BulkEmailDialog({
   const [isGenerating, startGenerate] = useTransition();
   const [isEditing, startEdit] = useTransition();
   const [isSending, startSend] = useTransition();
+  // Inline panel for the Edit-with-Claude "Custom…" option. Same
+  // pattern as the Generate prompt strip above the toolbar.
+  const [customEditOpen, setCustomEditOpen] = useState(false);
+  const [customInstruction, setCustomInstruction] = useState("");
 
   // Local "Use Template" picker. Bulk email runs the template picker
   // inline so the two-step "pick template → pick job" flow can park
@@ -674,6 +678,22 @@ export function BulkEmailDialog({
   }
 
   function onEditClick(editType: EditType) {
+    if (editType === "custom") {
+      if (!body.trim()) return;
+      setErr(null);
+      setCustomEditOpen(true);
+      return;
+    }
+    runEdit({ editType });
+  }
+
+  function runCustomEdit() {
+    const instruction = customInstruction.trim();
+    if (!instruction || !body.trim()) return;
+    runEdit({ editType: "custom", customInstruction: instruction });
+  }
+
+  function runEdit(opts: { editType: EditType; customInstruction?: string }) {
     if (!body.trim()) return;
     setErr(null);
     startEdit(async () => {
@@ -681,7 +701,14 @@ export function BulkEmailDialog({
         const res = await fetch("/api/email/edit-with-claude", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ body, editType, format: "text" }),
+          body: JSON.stringify({
+            body,
+            editType: opts.editType,
+            format: "text",
+            ...(opts.customInstruction
+              ? { customInstruction: opts.customInstruction }
+              : {}),
+          }),
           cache: "no-store",
         });
         const json = (await res.json().catch(() => null)) as
@@ -694,6 +721,10 @@ export function BulkEmailDialog({
         const next = (json?.body ?? "").trim();
         if (!next) throw new Error("Claude returned an empty edit.");
         setBody(next);
+        if (opts.editType === "custom") {
+          setCustomEditOpen(false);
+          setCustomInstruction("");
+        }
         toast.success("Draft revised");
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to edit draft.";
@@ -827,6 +858,19 @@ export function BulkEmailDialog({
             onPick={onEditClick}
           />
         </div>
+
+        {customEditOpen && (
+          <EditWithClaudeCustomPanel
+            value={customInstruction}
+            onChange={setCustomInstruction}
+            onRun={runCustomEdit}
+            onCancel={() => {
+              setCustomEditOpen(false);
+              setCustomInstruction("");
+            }}
+            isRunning={isEditing}
+          />
+        )}
 
         {/* Body fills available space */}
         <div className="flex min-h-0 flex-1 px-5 py-3">

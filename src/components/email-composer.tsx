@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 import { MERGE_FIELDS, applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
 import type { RichTextBodyEditorHandle } from "@/components/rich-text-body-editor";
-import { EditWithClaudeMenu, type EditType } from "@/components/edit-with-claude-menu";
+import { EditWithClaudeMenu, EditWithClaudeCustomPanel, type EditType } from "@/components/edit-with-claude-menu";
 import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
 
 // Lazy-load the Tiptap editor — pulls in ProseMirror and pdfjs-sized helpers,
@@ -224,6 +224,11 @@ export function EmailComposer({
   const [isSending, startSend] = useTransition();
   const [isGenerating, startGenerate] = useTransition();
   const [isEditing, startEdit] = useTransition();
+  // Custom edit-with-Claude inline panel. Opens when the recruiter picks
+  // "Custom…" from the Edit-with-Claude dropdown; the instruction is
+  // POSTed alongside the current body so Claude rewrites in place.
+  const [customEditOpen, setCustomEditOpen] = useState(false);
+  const [customInstruction, setCustomInstruction] = useState("");
 
   // Mirror every keystroke into localStorage when a draftKey is set.
   // Cheap (string write) and synchronous so we never race a wipe.
@@ -497,6 +502,24 @@ export function EmailComposer({
   }
 
   function onEditClick(editType: EditType) {
+    if (editType === "custom") {
+      // Open the inline instruction panel; the API call fires from
+      // runCustomEdit once the recruiter hits Run.
+      if (!body.trim()) return;
+      setErr(null);
+      setCustomEditOpen(true);
+      return;
+    }
+    runEdit({ editType });
+  }
+
+  function runCustomEdit() {
+    const instruction = customInstruction.trim();
+    if (!instruction || !body.trim()) return;
+    runEdit({ editType: "custom", customInstruction: instruction });
+  }
+
+  function runEdit(opts: { editType: EditType; customInstruction?: string }) {
     if (!body.trim()) return;
     setErr(null);
     startEdit(async () => {
@@ -506,8 +529,11 @@ export function EmailComposer({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             body,
-            editType,
+            editType: opts.editType,
             format: richTextBody ? "html" : "text",
+            ...(opts.customInstruction
+              ? { customInstruction: opts.customInstruction }
+              : {}),
           }),
           cache: "no-store",
         });
@@ -531,6 +557,10 @@ export function EmailComposer({
           }
         } else {
           applyEditedBodyToTextarea(next);
+        }
+        if (opts.editType === "custom") {
+          setCustomEditOpen(false);
+          setCustomInstruction("");
         }
         toast.success("Draft revised", { description: "Cmd+Z to restore your original." });
       } catch (e) {
@@ -806,6 +836,19 @@ export function EmailComposer({
 
         {attachmentsSlot && (
           <div className="border-t border-court-border px-5 py-3">{attachmentsSlot}</div>
+        )}
+
+        {customEditOpen && (
+          <EditWithClaudeCustomPanel
+            value={customInstruction}
+            onChange={setCustomInstruction}
+            onRun={runCustomEdit}
+            onCancel={() => {
+              setCustomEditOpen(false);
+              setCustomInstruction("");
+            }}
+            isRunning={isEditing}
+          />
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-court-border px-5 py-3">

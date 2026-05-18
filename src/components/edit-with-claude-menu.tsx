@@ -4,8 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, Wand2 } from "lucide-react";
 
 // Edit instruction names match the API's EditType union exactly so the
-// callback can pass through without translation.
-export type EditType = "professional" | "friendly" | "casual" | "shorter" | "better";
+// callback can pass through without translation. "custom" opens a free-
+// form instruction panel in the parent rather than firing the API
+// directly — callers branch on this value in their onPick handler.
+export type EditType =
+  | "professional"
+  | "friendly"
+  | "casual"
+  | "shorter"
+  | "better"
+  | "custom";
 
 const OPTIONS: { type: EditType; label: string }[] = [
   { type: "professional", label: "Make it more professional" },
@@ -13,6 +21,7 @@ const OPTIONS: { type: EditType; label: string }[] = [
   { type: "casual", label: "Make it more casual" },
   { type: "shorter", label: "Make it shorter" },
   { type: "better", label: "Make it better (general polish)" },
+  { type: "custom", label: "Custom…" },
 ];
 
 // Renders the "Edit with Claude" button + 5-option dropdown. The actual
@@ -104,6 +113,59 @@ export function EditWithClaudeMenu({
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+// Inline panel shown below the toolbar when the recruiter picks the
+// "Custom…" option in EditWithClaudeMenu. Mirrors the Generate-with-
+// Claude prompt box pattern: small textarea + Cancel / Run buttons.
+// The parent owns the state and the API call so the busy + error flow
+// can match each composer's existing handler.
+export function EditWithClaudeCustomPanel({
+  value,
+  onChange,
+  onRun,
+  onCancel,
+  isRunning,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  onRun: () => void;
+  onCancel: () => void;
+  isRunning: boolean;
+}) {
+  return (
+    <div className="space-y-2 border-b border-court-border bg-court-surface px-5 py-2">
+      <label className="block text-[11px] uppercase tracking-wider text-court-fg-muted">
+        How should Claude edit this draft?
+      </label>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={2}
+        placeholder="e.g. Make this quirkier and more conversational"
+        className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+      />
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isRunning}
+          className="rounded-md px-2 py-1 text-[11px] font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onRun}
+          disabled={isRunning || !value.trim()}
+          className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+        >
+          {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+          Run
+        </button>
+      </div>
     </div>
   );
 }

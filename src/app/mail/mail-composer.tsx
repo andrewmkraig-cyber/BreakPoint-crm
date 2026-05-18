@@ -57,7 +57,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
-import { EditWithClaudeMenu, type EditType } from "@/components/edit-with-claude-menu";
+import { EditWithClaudeMenu, EditWithClaudeCustomPanel, type EditType } from "@/components/edit-with-claude-menu";
 import {
   MAIL_MERGE_FIELDS,
   applyMailMergeFields,
@@ -397,6 +397,11 @@ export function MailComposer({
   const [aiIncludeSubject, setAiIncludeSubject] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
+  // Inline "Custom…" panel for Edit-with-Claude. Open state + free-form
+  // instruction; the rewrite fires from runCustomEdit so the existing
+  // editBusy spinner covers it too.
+  const [customEditOpen, setCustomEditOpen] = useState(false);
+  const [customInstruction, setCustomInstruction] = useState("");
 
   // Insert Field splices at the caret position of whichever control was
   // last focused. Body is the default — tiptap's insertContent handles
@@ -1048,6 +1053,24 @@ export function MailComposer({
   // the editor's chain() so the swap lands in ProseMirror's history —
   // Cmd+Z restores the pre-edit body. Disabled when the body is empty.
   async function onEditWithClaude(editType: EditType) {
+    if (editType === "custom") {
+      if (!editor || !stripHtml(editor.getHTML()).trim()) {
+        toast.error("Type something in the body first.");
+        return;
+      }
+      setCustomEditOpen(true);
+      return;
+    }
+    await runEdit({ editType });
+  }
+
+  async function runCustomEdit() {
+    const instruction = customInstruction.trim();
+    if (!instruction) return;
+    await runEdit({ editType: "custom", customInstruction: instruction });
+  }
+
+  async function runEdit(opts: { editType: EditType; customInstruction?: string }) {
     if (!editor) return;
     const currentHtml = editor.getHTML();
     if (!stripHtml(currentHtml).trim()) {
@@ -1061,8 +1084,11 @@ export function MailComposer({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           body: currentHtml,
-          editType,
+          editType: opts.editType,
           format: "html",
+          ...(opts.customInstruction
+            ? { customInstruction: opts.customInstruction }
+            : {}),
         }),
         cache: "no-store",
       });
@@ -1084,6 +1110,10 @@ export function MailComposer({
       // draft. Plain editor.commands.setContent would clear history.
       isProgrammaticEdit.current = true;
       editor.chain().focus().selectAll().insertContent(next).run();
+      if (opts.editType === "custom") {
+        setCustomEditOpen(false);
+        setCustomInstruction("");
+      }
       toast.success("Draft revised", { description: "Cmd+Z to restore your original." });
     } catch (e) {
       toast.error("Couldn't edit draft", {
@@ -1712,6 +1742,19 @@ export function MailComposer({
               Generate subject line with Claude
             </label>
           </div>
+        )}
+
+        {customEditOpen && (
+          <EditWithClaudeCustomPanel
+            value={customInstruction}
+            onChange={setCustomInstruction}
+            onRun={() => void runCustomEdit()}
+            onCancel={() => {
+              setCustomEditOpen(false);
+              setCustomInstruction("");
+            }}
+            isRunning={editBusy}
+          />
         )}
 
         <div
