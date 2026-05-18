@@ -13,7 +13,10 @@ import { CandidateProfileNav } from "@/components/candidate-profile-nav";
 import { CandidateCompactOverview } from "@/components/candidate-compact-overview";
 import { toExpectedSalary } from "@/components/candidate-overview-helpers";
 import { TextHighlighter } from "@/components/text-highlighter";
-import { parseHighlightTokens } from "@/app/candidates/[id]/highlight-tokens";
+import {
+  parseHighlightTokens,
+  filterTokensToHaystack,
+} from "@/app/candidates/[id]/highlight-tokens";
 import AiWorkspace from "@/components/AiWorkspace";
 import { cn } from "@/lib/utils";
 // 5A.5.b parity: Ace-native candidates now share the same resume
@@ -308,7 +311,42 @@ export async function LocalCandidateProfile({
   // alive (Apply dialog + searchParams trigger) without rendering a
   // second visible button row.
   if (embed) {
-    const highlightTokens = parseHighlightTokens(highlight);
+    const rawHighlightTokens = parseHighlightTokens(highlight);
+    // Drop tokens that don't actually appear anywhere on this candidate
+    // so the chip strip / in-doc highlights only surface terms with a
+    // real hit. The haystack mirrors the server-side search corpus
+    // (name + structured cols + skills + experience/education JSON +
+    // latest resume extracted text) so a token routed to the embed
+    // because a sibling row matched on it doesn't render an empty chip
+    // here. Latest resume only — older versions rarely change the
+    // outcome and would double the per-load query cost.
+    const latestResumeText = rawHighlightTokens.length
+      ? await prisma.candidateResume
+          .findFirst({
+            where: {
+              candidateId: candidate.id,
+              extractedText: { not: null },
+            },
+            orderBy: { uploadedAt: "desc" },
+            select: { extractedText: true },
+          })
+          .then((r) => r?.extractedText ?? "")
+      : "";
+    const candidateHaystack = [
+      candidate.firstName ?? "",
+      candidate.lastName ?? "",
+      candidate.currentDesignation ?? "",
+      candidate.currentOrganization ?? "",
+      candidate.location ?? "",
+      (candidate.skills ?? []).join(" "),
+      candidate.experience ? JSON.stringify(candidate.experience) : "",
+      candidate.education ? JSON.stringify(candidate.education) : "",
+      latestResumeText,
+    ].join(" ");
+    const highlightTokens = filterTokensToHaystack(
+      rawHighlightTokens,
+      candidateHaystack,
+    );
     const isKeptEmbed = (candidate.tags ?? []).some((t) => {
       const lower = t.trim().toLowerCase();
       return lower === "kept" || lower === "keep";

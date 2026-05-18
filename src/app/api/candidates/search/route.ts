@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { formatLocation } from "@/lib/utils";
+import { parseBooleanQuery, flattenBooleanQuery } from "@/lib/search/boolean-query";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,20 +84,6 @@ function mostRecentExperience(raw: unknown): ExperienceEntry | null {
     }
   }
   return best;
-}
-
-// Boolean connectives that recruiters type between real terms — the
-// search treats them as the implicit AND/OR they're already using
-// at the clause level, so the literal words shouldn't have to appear
-// in the candidate's data. "tax AND ohio" matches the same set as
-// "tax ohio".
-const BOOL_STOPWORDS = new Set(["and", "or"]);
-
-function tokenize(q: string): string[] {
-  return q
-    .trim()
-    .split(/\s+/)
-    .filter((s) => s.length > 0 && !BOOL_STOPWORDS.has(s.toLowerCase()));
 }
 
 function parseNumber(raw: string | null): number | null {
@@ -200,23 +187,28 @@ function jsonToSearchableText(value: unknown): string {
   }
 }
 
-function allTokensPresent(text: string, tokens: string[]): boolean {
+function anyTokenPresent(text: string, tokens: string[]): boolean {
   if (!text) return false;
   const lower = text.toLowerCase();
   for (const t of tokens) {
-    if (lower.indexOf(t.toLowerCase()) < 0) return false;
+    if (lower.indexOf(t.toLowerCase()) >= 0) return true;
   }
-  return true;
+  return false;
 }
 
 // For the visible page of candidates, resolve a single highlighted
-// snippet per candidate when every token appears together in either
-// source. Priority is resume first (recruiter-shipped copy) and the
-// candidate's experience JSON as fallback (RF/Pin import data) — that
-// way a structured-field-only match (e.g. token in the candidate's
+// snippet per candidate when at least one search token appears in
+// either source. Priority is resume first (recruiter-shipped copy) and
+// the candidate's experience JSON as fallback (RF/Pin import data) —
+// that way a structured-field-only match (e.g. token in the candidate's
 // name) still tries to surface adjacent context from a richer source.
 // One query for resumes covers the whole page; the experience fallback
 // reads off the rows already in memory from the main candidate query.
+//
+// Match check uses OR-of-tokens rather than AND because the candidate
+// is already guaranteed to satisfy the boolean query at the where-clause
+// level — the snippet just needs to surface adjacent context for any one
+// of the terms (buildResumeSnippet itself picks the earliest hit).
 async function snippetsForCandidates(
   orgId: string,
   pageRows: Array<{ id: string; experience: unknown }>,
@@ -229,7 +221,7 @@ async function snippetsForCandidates(
       organizationId: orgId,
       candidateId: { in: candidateIds },
       extractedText: { not: null },
-      AND: tokens.map((t) => ({
+      OR: tokens.map((t) => ({
         extractedText: { contains: t, mode: "insensitive" as const },
       })),
     },
@@ -251,7 +243,7 @@ async function snippetsForCandidates(
   for (const c of pageRows) {
     if (out.has(c.id)) continue;
     const text = jsonToSearchableText(c.experience);
-    if (!allTokensPresent(text, tokens)) continue;
+    if (!anyTokenPresent(text, tokens)) continue;
     const snip = buildResumeSnippet(text, tokens);
     if (snip) out.set(c.id, snip);
   }
@@ -468,19 +460,26 @@ export async function GET(req: Request) {
     const andClauses: Prisma.CandidateWhereInput[] = [];
 
     if (q) {
-      const tokens = tokenize(q);
-      if (tokens.length > 0) {
-        // Per token, resolve the union of candidate IDs across all
-        // three sources (structured columns, experience/education JSON
-        // cast to text, parsed resume text). Push one `id: { in: [...] }`
-        // clause per token so the final AND across them produces the
-        // intersection — a candidate must hit every token, but each
-        // token can land in any of the sources independently. Resolved
-        // in parallel since the queries are independent per token.
-        const idSetsByToken = await Promise.all(
-          tokens.map((t) => resolveTokenCandidateIds(org.id, t)),
+      const groups = parseBooleanQuery(q);
+      if (groups.length > 0) {
+        // Each parsed group is OR-composed (terms separated by an
+        // explicit `OR`, or a single bare term); the groups themselves
+        // are AND-composed. For each group, resolve the union of
+        // candidate IDs across all OR-tokens; then push one
+        // `id: { in: [...] }` clause per group so the final AND across
+        // groups produces the intersection. Per-token resolves stay
+        // parallel since they're independent reads.
+        const idSetsByGroup = await Promise.all(
+          groups.map(async (group) => {
+            const perToken = await Promise.all(
+              group.map((t) => resolveTokenCandidateIds(org.id, t)),
+            );
+            const union = new Set<string>();
+            for (const ids of perToken) for (const id of ids) union.add(id);
+            return Array.from(union);
+          }),
         );
-        for (const ids of idSetsByToken) {
+        for (const ids of idSetsByGroup) {
           andClauses.push({ id: { in: ids } });
         }
       }
@@ -637,8 +636,11 @@ export async function GET(req: Request) {
 
     // Tokens for the resume-snippet pass. Empty when the query has no
     // keyword (snippet enrichment becomes a no-op). Computed once so
-    // both code paths share the same token list.
-    const snippetTokens = q ? tokenize(q) : [];
+    // both code paths share the same token list. flattenBooleanQuery
+    // unions every OR-token across every AND-group, dedupes, and drops
+    // AND/OR keywords — the snippet builder only needs a flat list of
+    // searchable terms.
+    const snippetTokens = q ? flattenBooleanQuery(q) : [];
 
     if (!tenureRange) {
       // No tenure filter — paginate at the DB level.

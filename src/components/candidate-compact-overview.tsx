@@ -3,13 +3,20 @@
 import {
   useEffect,
   useMemo,
-  useRef,
   useState,
   useTransition,
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Loader2, Mail, Phone as PhoneIcon } from "lucide-react";
+import {
+  ExternalLink,
+  Loader2,
+  Mail,
+  Pencil,
+  Phone as PhoneIcon,
+  Save,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn, formatLocation } from "@/lib/utils";
@@ -29,18 +36,19 @@ export type { CandidateCompactOverviewExpectedSalary };
 // Right-rail compact overview shared by the candidate full-page profile
 // and the candidates split-view embed.
 //
-// Two behaviors layered on top of the static read-only original:
-//  1. Click-to-edit on Title, Employer, Location, Comp. Each field has
-//     its own draft / save / cancel cycle so saving Title doesn't reset
-//     a partially-typed Employer. Email / Phone / LinkedIn stay read-
-//     only — they have dedicated surfaces (EmailPopupLauncher, tel:
-//     handoff, sms-composer's Add Number).
-//  2. Optional highlightTokens. When passed, Title / Employer / Location
-//     wrap matching substrings in the same TOKEN_COLORS palette the
-//     resume chip strip + in-PDF marks use, so a token's chip color and
-//     its mention in the candidate header read as the same hue. The
-//     split-view passes tokens here when a candidate has no resume so
-//     the right rail still surfaces *where* the matches live.
+// Edit model: a single Edit button (matching the client overview card
+// style) flips all editable fields — Title, Employer, Location, Comp —
+// into edit mode at once. Save commits every field together, Cancel
+// discards. Email / Phone / LinkedIn stay read-only; they have
+// dedicated surfaces (EmailPopupLauncher, tel:, sms-composer add-number)
+// elsewhere on the profile.
+//
+// highlightTokens is optional. When passed, name + title + employer +
+// location wrap matching substrings in the same TOKEN_COLORS palette
+// the resume chip strip + in-PDF marks use so a token's chip color and
+// its mention in the candidate header read as the same hue. The
+// split-view passes the tokens it surfaced from the rail (already
+// filtered to ones that actually hit on this candidate).
 export function CandidateCompactOverview({
   candidateRef,
   fullName,
@@ -77,145 +85,265 @@ export function CandidateCompactOverview({
     expectedSalary,
   );
 
+  // Edit mode flips all four fields at once. Drafts seed from the saved
+  // values whenever editing flips off (matches the client overview card
+  // model, so canceling restores the exact persisted shape).
+  const [editing, setEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(titleSaved);
+  const [employerDraft, setEmployerDraft] = useState(employerSaved);
+  const [locationDraft, setLocationDraft] = useState(locationSaved);
+  const [compDraft, setCompDraft] = useState<string>(formatCompForEdit(compSaved));
+  const [isSaving, startSave] = useTransition();
+
+  useEffect(() => {
+    if (editing) return;
+    setTitleDraft(titleSaved);
+    setEmployerDraft(employerSaved);
+    setLocationDraft(locationSaved);
+    setCompDraft(formatCompForEdit(compSaved));
+  }, [editing, titleSaved, employerSaved, locationSaved, compSaved]);
+
   const tokens = useMemo(
     () => (highlightTokens ?? []).filter((t) => t.trim().length > 0),
     [highlightTokens],
   );
   const colorMap = useMemo(() => buildTokenColorMap(tokens), [tokens]);
 
-  async function persist(
-    patch: Parameters<typeof updateCandidate>[0],
-    onSuccess: () => void,
-  ): Promise<boolean> {
-    const res = await updateCandidate(patch);
-    if (!res.ok) {
-      toast.error("Save failed", { description: res.error });
-      return false;
+  function beginEdit() {
+    setTitleDraft(titleSaved);
+    setEmployerDraft(employerSaved);
+    setLocationDraft(locationSaved);
+    setCompDraft(formatCompForEdit(compSaved));
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    if (isSaving) return;
+    setEditing(false);
+  }
+
+  function commitEdit() {
+    const nextTitle = titleDraft.trim();
+    const nextEmployer = employerDraft.trim();
+    const nextLocation = locationDraft.trim();
+    const nextCompNumber = parseCompensation(compDraft.trim());
+    const currency = (compSaved?.currency ?? "USD").toUpperCase().slice(0, 3) || "USD";
+    const nextComp: CandidateCompactOverviewExpectedSalary | null =
+      nextCompNumber == null ? null : { number: nextCompNumber, currency };
+
+    const patch: Parameters<typeof updateCandidate>[0] = { id: candidateRef };
+    let dirty = false;
+    if (nextTitle !== titleSaved.trim()) {
+      patch.current_designation = nextTitle;
+      dirty = true;
     }
-    onSuccess();
-    // updateCandidate already revalidates the candidate path; refresh
-    // pulls the new RSC payload so other surfaces on the page (compact
-    // overview render in two places, activity card, etc.) see the
-    // canonical value on the next render.
-    router.refresh();
-    return true;
+    if (nextEmployer !== employerSaved.trim()) {
+      patch.current_organization = nextEmployer;
+      dirty = true;
+    }
+    if (nextLocation !== locationSaved.trim()) {
+      patch.location = { location: nextLocation };
+      dirty = true;
+    }
+    const compSavedNumber = compSaved?.number ?? null;
+    const compSavedCurrency = compSaved?.currency ?? null;
+    const compNextCurrency = nextComp?.currency ?? null;
+    if (
+      (nextComp?.number ?? null) !== compSavedNumber ||
+      compNextCurrency !== compSavedCurrency
+    ) {
+      patch.expected_salary = nextComp;
+      dirty = true;
+    }
+
+    if (!dirty) {
+      setEditing(false);
+      return;
+    }
+
+    startSave(async () => {
+      const res = await updateCandidate(patch);
+      if (!res.ok) {
+        toast.error("Save failed", { description: res.error });
+        return;
+      }
+      if (patch.current_designation !== undefined) setTitleSaved(nextTitle);
+      if (patch.current_organization !== undefined) setEmployerSaved(nextEmployer);
+      if (patch.location !== undefined) setLocationSaved(nextLocation);
+      if (patch.expected_salary !== undefined) setCompSaved(nextComp);
+      setEditing(false);
+      // updateCandidate already revalidates the candidate path; refresh
+      // pulls the new RSC payload so other surfaces on the page (compact
+      // overview render in two places, activity card, etc.) see the
+      // canonical value on the next render.
+      router.refresh();
+    });
   }
 
   return (
-    // `isolate` keeps the inline-edit buttons clickable when sibling
-    // cards in the same parent flex/grid paint over the right rail.
     <section className="relative isolate rounded-xl border border-court-border bg-court-surface px-4 py-3 shadow-sm">
-      <h1 className="break-words font-serif text-lg font-bold leading-tight text-court-fg">
-        {fullName}
-      </h1>
-      <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-        <Field label="Title" wide noTruncate>
-          <InlineEditableText
-            value={titleSaved}
-            placeholder="Add title"
-            tokens={tokens}
-            colorMap={colorMap}
-            onSave={(next) =>
-              persist(
-                { id: candidateRef, current_designation: next },
-                () => setTitleSaved(next),
-              )
-            }
-          />
-        </Field>
-        <Field label="Employer" wide noTruncate>
-          <InlineEditableText
-            value={employerSaved}
-            placeholder="Add employer"
-            tokens={tokens}
-            colorMap={colorMap}
-            onSave={(next) =>
-              persist(
-                { id: candidateRef, current_organization: next },
-                () => setEmployerSaved(next),
-              )
-            }
-          />
-        </Field>
-        <Field label="Email" wide noTruncate>
-          {email ? (
-            <EmailPopupLauncher
+      <div className="flex items-start justify-between gap-2">
+        <h1 className="min-w-0 break-words font-serif text-lg font-bold leading-tight text-court-fg">
+          <HighlightedText text={fullName} tokens={tokens} colorMap={colorMap} />
+        </h1>
+        {!editing && (
+          <button
+            type="button"
+            onClick={beginEdit}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-0.5 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
+          >
+            <Pencil className="h-3 w-3" /> Edit
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="mt-3 space-y-2 text-xs">
+          <EditField label="Title">
+            <input
+              type="text"
+              value={titleDraft}
+              disabled={isSaving}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              placeholder="Add title"
+              className={EDIT_INPUT_CLASS}
+            />
+          </EditField>
+          <EditField label="Employer">
+            <input
+              type="text"
+              value={employerDraft}
+              disabled={isSaving}
+              onChange={(e) => setEmployerDraft(e.target.value)}
+              placeholder="Add employer"
+              className={EDIT_INPUT_CLASS}
+            />
+          </EditField>
+          <EditField label="Location">
+            <input
+              type="text"
+              value={locationDraft}
+              disabled={isSaving}
+              onChange={(e) => setLocationDraft(e.target.value)}
+              placeholder="Add location"
+              className={EDIT_INPUT_CLASS}
+            />
+          </EditField>
+          <EditField label="Comp">
+            <input
+              type="text"
+              value={compDraft}
+              disabled={isSaving}
+              onChange={(e) => setCompDraft(e.target.value)}
+              placeholder="e.g. 120k"
+              className={EDIT_INPUT_CLASS}
+            />
+          </EditField>
+          <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            <Field label="Email" wide noTruncate>
+              <ReadEmail
+                email={email}
+                candidateRef={candidateRef}
+                firstName={firstName}
+                lastName={lastName}
+                title={titleSaved}
+                employer={employerSaved}
+              />
+            </Field>
+            <Field label="Phone" wide noTruncate>
+              <ReadPhone phone={phone} />
+            </Field>
+            <Field label="LinkedIn" wide>
+              <ReadLinkedIn linkedinProfile={linkedinProfile} />
+            </Field>
+          </dl>
+          <div className="flex items-center justify-end gap-2 border-t border-court-border pt-2">
+            <button
+              type="button"
+              onClick={cancelEdit}
+              disabled={isSaving}
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+            >
+              <X className="h-3 w-3" /> Cancel
+            </button>
+            <button
+              type="button"
+              onClick={commitEdit}
+              disabled={isSaving}
+              className="inline-flex items-center gap-1 rounded-md bg-brand px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+            >
+              {isSaving ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Save className="h-3 w-3" />
+              )}
+              Save
+            </button>
+          </div>
+        </div>
+      ) : (
+        <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+          <Field label="Title" wide noTruncate>
+            <ReadText
+              value={titleSaved}
+              tokens={tokens}
+              colorMap={colorMap}
+              placeholder="Add title"
+            />
+          </Field>
+          <Field label="Employer" wide noTruncate>
+            <ReadText
+              value={employerSaved}
+              tokens={tokens}
+              colorMap={colorMap}
+              placeholder="Add employer"
+            />
+          </Field>
+          <Field label="Email" wide noTruncate>
+            <ReadEmail
               email={email}
               candidateRef={candidateRef}
-              className="inline-flex max-w-full items-center gap-1 break-all text-brand-dark hover:underline"
-              context={{
-                candidate: {
-                  firstName: firstName ?? "",
-                  lastName: lastName ?? "",
-                  email,
-                  currentTitle: titleSaved,
-                  currentCompany: employerSaved,
-                },
-              }}
-            >
-              <Mail className="h-3 w-3 shrink-0" />
-              <span className="break-all">{email}</span>
-            </EmailPopupLauncher>
-          ) : (
-            <span className="text-court-fg-muted">—</span>
-          )}
-        </Field>
-        <Field label="Phone" wide noTruncate>
-          {phone ? (
-            <a
-              href={`tel:${phone}`}
-              className="inline-flex items-center gap-1 text-court-fg hover:text-brand-dark hover:underline"
-            >
-              <PhoneIcon className="h-3 w-3" />
-              {phone}
-            </a>
-          ) : (
-            <span className="text-court-fg-muted">—</span>
-          )}
-        </Field>
-        <Field label="Location">
-          <InlineEditableText
-            value={locationSaved}
-            placeholder="Add location"
-            tokens={tokens}
-            colorMap={colorMap}
-            display={(v) => formatLocation(v) || ""}
-            onSave={(next) =>
-              persist(
-                { id: candidateRef, location: { location: next } },
-                () => setLocationSaved(next),
-              )
-            }
-          />
-        </Field>
-        <Field label="Comp">
-          <InlineEditableComp
-            value={compSaved}
-            onSave={async (next) => {
-              const ok = await persist(
-                { id: candidateRef, expected_salary: next },
-                () => setCompSaved(next),
-              );
-              return ok;
-            }}
-          />
-        </Field>
-        <Field label="LinkedIn" wide>
-          {linkedinProfile ? (
-            <a
-              href={linkedinProfile}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-brand-dark hover:underline"
-            >
-              Profile <ExternalLink className="h-3 w-3" />
-            </a>
-          ) : (
-            <span className="text-court-fg-muted">—</span>
-          )}
-        </Field>
-      </dl>
+              firstName={firstName}
+              lastName={lastName}
+              title={titleSaved}
+              employer={employerSaved}
+            />
+          </Field>
+          <Field label="Phone" wide noTruncate>
+            <ReadPhone phone={phone} />
+          </Field>
+          <Field label="Location">
+            <ReadText
+              value={locationSaved}
+              tokens={tokens}
+              colorMap={colorMap}
+              placeholder="Add location"
+              display={(v) => formatLocation(v) || ""}
+            />
+          </Field>
+          <Field label="Comp">
+            <ReadComp value={compSaved} />
+          </Field>
+          <Field label="LinkedIn" wide>
+            <ReadLinkedIn linkedinProfile={linkedinProfile} />
+          </Field>
+        </dl>
+      )}
     </section>
+  );
+}
+
+const EDIT_INPUT_CLASS =
+  "w-full rounded border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand/30 disabled:opacity-60";
+
+function EditField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-[10px] uppercase tracking-wide text-court-fg-muted">
+        {label}
+      </span>
+      <div className="mt-0.5">{children}</div>
+    </label>
   );
 }
 
@@ -247,222 +375,94 @@ function Field({
   );
 }
 
-// Click-to-edit text field used for Title / Employer / Location.
-// Display mode renders the value (or "—") and accepts a hover/focus
-// affordance via the underline-on-hover style. Click flips to an
-// autofocused input; Enter/blur saves, Esc cancels. The save handler
-// is async so the input stays mounted (with a spinner) while the
-// server action is in flight — flipping back to display before save
-// completes would yank focus and confuse the recruiter on slow links.
-function InlineEditableText({
+function ReadText({
   value,
   placeholder,
-  onSave,
   tokens,
   colorMap,
   display,
 }: {
   value: string;
   placeholder: string;
-  onSave: (next: string) => Promise<boolean>;
   tokens: string[];
   colorMap: Map<string, string>;
-  // Optional display formatter — used for Location so the persisted
-  // raw string ("Cleveland, OH") still renders through formatLocation.
   display?: (raw: string) => string;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-  const [isPending, startSave] = useTransition();
-  const inputRef = useRef<HTMLInputElement>(null);
-  // Track whether we're currently mid-save. Without this guard, the
-  // input's onBlur fires when the value is set externally and would
-  // double-submit (or worse, re-open the editor after a successful
-  // save). The savingRef is checked in onBlur to suppress re-entry.
-  const savingRef = useRef(false);
-
-  // Keep draft synced when the saved value changes from a parent
-  // re-render (router.refresh after another field's save).
-  useEffect(() => {
-    if (!editing) setDraft(value);
-  }, [value, editing]);
-
-  useEffect(() => {
-    if (editing) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }
-  }, [editing]);
-
-  function commit() {
-    if (savingRef.current) return;
-    const next = draft.trim();
-    if (next === value.trim()) {
-      setEditing(false);
-      return;
-    }
-    savingRef.current = true;
-    startSave(async () => {
-      const ok = await onSave(next);
-      savingRef.current = false;
-      if (ok) setEditing(false);
-    });
-  }
-
-  function cancel() {
-    if (savingRef.current) return;
-    setDraft(value);
-    setEditing(false);
-  }
-
-  if (editing) {
-    return (
-      <span className="inline-flex w-full items-center gap-1">
-        <input
-          ref={inputRef}
-          type="text"
-          value={draft}
-          disabled={isPending}
-          placeholder={placeholder}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              commit();
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              cancel();
-            }
-          }}
-          className="w-full rounded border border-court-border bg-court-surface px-1.5 py-0.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand/30 disabled:opacity-60"
-        />
-        {isPending && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-court-fg-muted" />}
-      </span>
-    );
-  }
-
   const shown = display ? display(value) : value;
   const isEmpty = !value || !shown;
+  if (isEmpty) {
+    return <span className="italic text-court-fg-muted">{placeholder}</span>;
+  }
+  return <HighlightedText text={shown} tokens={tokens} colorMap={colorMap} />;
+}
+
+function ReadComp({ value }: { value: CandidateCompactOverviewExpectedSalary | null }) {
+  const display = formatCompForDisplay(value);
+  if (!display) return <span className="italic text-court-fg-muted">—</span>;
+  return <>{display}</>;
+}
+
+function ReadEmail({
+  email,
+  candidateRef,
+  firstName,
+  lastName,
+  title,
+  employer,
+}: {
+  email: string | null;
+  candidateRef: string;
+  firstName: string | null;
+  lastName: string | null;
+  title: string;
+  employer: string;
+}) {
+  if (!email) return <span className="text-court-fg-muted">—</span>;
   return (
-    <button
-      type="button"
-      onClick={() => setEditing(true)}
-      className={cn(
-        "relative z-0 -mx-1 inline-flex max-w-full cursor-pointer items-center rounded px-1 text-left transition-colors hover:bg-court-surface-subtle/70",
-        isEmpty && "text-court-fg-muted italic",
-      )}
-      title="Click to edit"
+    <EmailPopupLauncher
+      email={email}
+      candidateRef={candidateRef}
+      className="inline-flex max-w-full items-center gap-1 break-all text-brand-dark hover:underline"
+      context={{
+        candidate: {
+          firstName: firstName ?? "",
+          lastName: lastName ?? "",
+          email,
+          currentTitle: title,
+          currentCompany: employer,
+        },
+      }}
     >
-      {isEmpty ? (
-        <span>—</span>
-      ) : (
-        <HighlightedText text={shown} tokens={tokens} colorMap={colorMap} />
-      )}
-    </button>
+      <Mail className="h-3 w-3 shrink-0" />
+      <span className="break-all">{email}</span>
+    </EmailPopupLauncher>
   );
 }
 
-// Comp editor. Display reads from the structured {number, currency}
-// pair (so currency stays in sync); edit accepts "120k" / "120000" /
-// "1.2m" style entry and re-saves as {number, currency: existing||USD}.
-// Currency itself isn't user-editable from the compact overview —
-// recruiters change it from the full identity editor when needed.
-function InlineEditableComp({
-  value,
-  onSave,
-}: {
-  value: CandidateCompactOverviewExpectedSalary | null;
-  onSave: (next: CandidateCompactOverviewExpectedSalary | null) => Promise<boolean>;
-}) {
-  const display = useMemo(() => formatCompForDisplay(value), [value]);
-  const draftSeed = useMemo(() => formatCompForEdit(value), [value]);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(draftSeed);
-  const [isPending, startSave] = useTransition();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const savingRef = useRef(false);
-
-  useEffect(() => {
-    if (!editing) setDraft(draftSeed);
-  }, [draftSeed, editing]);
-
-  useEffect(() => {
-    if (editing) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }
-  }, [editing]);
-
-  function commit() {
-    if (savingRef.current) return;
-    const trimmed = draft.trim();
-    const nextNumber = parseCompensation(trimmed);
-    const currency = (value?.currency ?? "USD").toUpperCase().slice(0, 3) || "USD";
-    const next: CandidateCompactOverviewExpectedSalary | null =
-      nextNumber == null ? null : { number: nextNumber, currency };
-    // No-op when the parsed value matches the current saved value.
-    if (
-      (next?.number ?? null) === (value?.number ?? null) &&
-      (next?.currency ?? null) === (value?.currency ?? null)
-    ) {
-      setEditing(false);
-      return;
-    }
-    savingRef.current = true;
-    startSave(async () => {
-      const ok = await onSave(next);
-      savingRef.current = false;
-      if (ok) setEditing(false);
-    });
-  }
-
-  function cancel() {
-    if (savingRef.current) return;
-    setDraft(draftSeed);
-    setEditing(false);
-  }
-
-  if (editing) {
-    return (
-      <span className="inline-flex w-full items-center gap-1">
-        <input
-          ref={inputRef}
-          type="text"
-          value={draft}
-          disabled={isPending}
-          placeholder="e.g. 120k"
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              commit();
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              cancel();
-            }
-          }}
-          className="w-full rounded border border-court-border bg-court-surface px-1.5 py-0.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand/30 disabled:opacity-60"
-        />
-        {isPending && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-court-fg-muted" />}
-      </span>
-    );
-  }
-
-  const isEmpty = !display;
+function ReadPhone({ phone }: { phone: string | null }) {
+  if (!phone) return <span className="text-court-fg-muted">—</span>;
   return (
-    <button
-      type="button"
-      onClick={() => setEditing(true)}
-      className={cn(
-        "relative z-0 -mx-1 inline-flex max-w-full cursor-pointer items-center rounded px-1 text-left transition-colors hover:bg-court-surface-subtle/70",
-        isEmpty && "text-court-fg-muted italic",
-      )}
-      title="Click to edit"
+    <a
+      href={`tel:${phone}`}
+      className="inline-flex items-center gap-1 text-court-fg hover:text-brand-dark hover:underline"
     >
-      {isEmpty ? "—" : display}
-    </button>
+      <PhoneIcon className="h-3 w-3" />
+      {phone}
+    </a>
+  );
+}
+
+function ReadLinkedIn({ linkedinProfile }: { linkedinProfile: string | null }) {
+  if (!linkedinProfile) return <span className="text-court-fg-muted">—</span>;
+  return (
+    <a
+      href={linkedinProfile}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-1 text-brand-dark hover:underline"
+    >
+      Profile <ExternalLink className="h-3 w-3" />
+    </a>
   );
 }
 
@@ -496,10 +496,7 @@ function HighlightedText({
         if (!match) return <span key={i}>{part}</span>;
         const cls = colorMap.get(match) ?? "";
         return (
-          <mark
-            key={i}
-            className={cn("rounded px-0.5", cls)}
-          >
+          <mark key={i} className={cn("rounded px-0.5", cls)}>
             {part}
           </mark>
         );
@@ -532,8 +529,8 @@ function formatCompForDisplay(
   return currency ? `${formatted} ${currency}` : formatted;
 }
 
-// Seed for the inline input. Bare-number form keeps the editor terse
-// — typing 1 character to bump 120k → 130k beats clearing "120,000 USD"
+// Seed for the inline input. Bare-number form keeps the editor terse —
+// typing 1 character to bump 120k → 130k beats clearing "120,000 USD"
 // first. parseCompensation accepts both shapes on save.
 function formatCompForEdit(
   value: CandidateCompactOverviewExpectedSalary | null,

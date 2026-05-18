@@ -48,6 +48,7 @@ import { toast } from "sonner";
 import { Button, ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
 import { TabStrip } from "@/components/ui/tab-strip";
 import { cn } from "@/lib/utils";
+import { flattenBooleanQuery } from "@/lib/search/boolean-query";
 
 const DISTANCE_OPTIONS = [10, 25, 50, 100];
 const DATE_OPTIONS = [
@@ -509,15 +510,12 @@ function joinDot(parts: Array<string | null | undefined>): string {
     .join(" · ");
 }
 
-// Mirror of the server's tokenize: split on whitespace, drop the
-// boolean connective stopwords ("and"/"or") so they don't render as
-// highlighted hits.
-const HIGHLIGHT_STOPWORDS = new Set(["and", "or"]);
+// Highlight token derivation. Mirrors the server's boolean parser so
+// what gets highlighted matches the AND/OR clause structure that drove
+// the row into the result set: quoted phrases stay as one token,
+// AND/OR keywords drop, every unique remaining term highlights.
 function highlightTokens(q: string): string[] {
-  return q
-    .trim()
-    .split(/\s+/)
-    .filter((s) => s.length > 0 && !HIGHLIGHT_STOPWORDS.has(s.toLowerCase()));
+  return flattenBooleanQuery(q);
 }
 
 function escapeRegex(s: string): string {

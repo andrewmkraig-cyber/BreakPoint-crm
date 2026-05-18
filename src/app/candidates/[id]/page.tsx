@@ -29,7 +29,10 @@ import { CandidateProfileNav } from "@/components/candidate-profile-nav";
 import { CandidateCompactOverview } from "@/components/candidate-compact-overview";
 import { toExpectedSalary } from "@/components/candidate-overview-helpers";
 import { TextHighlighter } from "@/components/text-highlighter";
-import { parseHighlightTokens } from "@/app/candidates/[id]/highlight-tokens";
+import {
+  parseHighlightTokens,
+  filterTokensToHaystack,
+} from "@/app/candidates/[id]/highlight-tokens";
 import { LocalCandidateProfile } from "@/app/candidates/[id]/local-profile";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getPlacementsForOrg } from "@/lib/placements";
@@ -550,7 +553,41 @@ export default async function CandidateProfilePage({
   // here so its Apply modal + ?openApply=true searchParams handler
   // stay alive without rendering the per-job pipeline row markup.
   if (isEmbed) {
-    const highlightTokens = parseHighlightTokens(searchParams?.highlight);
+    const rawHighlightTokens = parseHighlightTokens(searchParams?.highlight);
+    // Same scope as the Ace-native embed (local-profile.tsx): keep only
+    // the highlight tokens that actually appear somewhere on this
+    // candidate so the chip strip / in-doc marks don't surface terms
+    // that hit on a sibling row but found nothing here. Latest resume
+    // extracted text only — the prior versions rarely change the set.
+    const latestResumeText = rawHighlightTokens.length
+      ? await prisma.candidateResume
+          .findFirst({
+            where: {
+              candidateId: candidate.id,
+              extractedText: { not: null },
+            },
+            orderBy: { uploadedAt: "desc" },
+            select: { extractedText: true },
+          })
+          .then((r) => r?.extractedText ?? "")
+      : "";
+    const candidateHaystack = [
+      candidate.firstName ?? "",
+      candidate.lastName ?? "",
+      identityInitial.first_name ?? "",
+      identityInitial.last_name ?? "",
+      identityInitial.current_designation ?? "",
+      identityInitial.current_organization ?? "",
+      identityInitial.location ?? "",
+      (skillsInitial ?? []).join(" "),
+      c.experience ? JSON.stringify(c.experience) : "",
+      c.education ? JSON.stringify(c.education) : "",
+      latestResumeText,
+    ].join(" ");
+    const highlightTokens = filterTokensToHaystack(
+      rawHighlightTokens,
+      candidateHaystack,
+    );
     return (
       <CandidateProfileBoundary>
         {/* TextHighlighter walks the resume document subtree on mount
