@@ -10,7 +10,6 @@ import {
   ExternalLink,
   Loader2,
   Mic,
-  MoreHorizontal,
   Phone,
   PhoneCall,
   PhoneMissed,
@@ -278,24 +277,9 @@ export function PhoneView() {
               }
             })();
           }
-          void (async () => {
-            try {
-              await markThreadRead(selectedId);
-              // Optimistic local clear so the row's unread badge
-              // disappears immediately. selectedId is the prefixed
-              // thread id (cand:<cuid> / unk:<digits>) — match it
-              // against the same field to stay aligned with the
-              // server's row identity.
-              setThreads((prev) =>
-                prev.map((t) =>
-                  t.id === selectedId ? { ...t, hasUnread: false } : t,
-                ),
-              );
-              await phoneCtx.refreshUnread();
-            } catch {
-              // Silent: badge will catch up on next 30s poll.
-            }
-          })();
+          // No auto-mark-on-open: clearing the unread badge is a manual
+          // action via the "Mark as read" button in the thread header,
+          // so opening a thread to glance at it doesn't dismiss it.
         }
       } catch (e) {
         if ((e as { name?: string }).name === "AbortError") return;
@@ -1086,18 +1070,18 @@ function ThreadDetailPane({
           ) : (
             <OpenProfileButton match={profileMatch} />
           )}
-          {hasUnread && onMarkRead ? (
+          {onMarkRead ? (
             <button
               type="button"
               onClick={onMarkRead}
-              title="Mark as read"
-              className="inline-flex h-7 items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 text-[11px] font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+              disabled={!hasUnread}
+              title={hasUnread ? "Mark as read" : "Already read"}
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-default disabled:opacity-50 disabled:hover:bg-court-surface disabled:hover:text-court-fg-muted"
             >
               <CheckCheck className="h-3 w-3" />
               Mark as read
             </button>
           ) : null}
-          <ActionPlaceholder label="More" icon={<MoreHorizontal className="h-3 w-3" />} />
         </div>
       </div>
       {/* Thread body */}
@@ -1276,25 +1260,6 @@ function InlineSmsComposer({
         Send
       </Button>
     </div>
-  );
-}
-
-function ActionPlaceholder({
-  label,
-  icon,
-}: {
-  label: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => toast.info(`${label}: ships in Phase 2`)}
-      className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
-    >
-      {icon}
-      {label}
-    </button>
   );
 }
 
