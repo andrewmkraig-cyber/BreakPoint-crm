@@ -485,6 +485,3 @@ export async function createNoteAttachedTo(
   });
 }
 
-// Re-exported so existing callers that imported the old union type
-// don't blow up — the new shape supersedes it.
-export const EMPTY_ATTACHMENT_SET: Attachments = EMPTY_ATTACHMENTS;
