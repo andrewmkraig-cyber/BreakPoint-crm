@@ -3,7 +3,7 @@
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   Check,
   Download,
@@ -20,15 +20,11 @@ import { toast } from "sonner";
 import { DocumentDropzone } from "@/components/document-dropzone";
 import { DocxPreview } from "@/components/docx-preview";
 import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
-import { parseHighlightTokens } from "@/app/candidates/[id]/highlight-tokens";
-import { cn } from "@/lib/utils";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import {
   convertDocxResumeToPdf,
   deleteCandidateResume,
-  findResumeMatches,
   renameCandidateResume,
-  type ResumeMatchSnippet,
 } from "@/app/candidates/[id]/actions";
 import { generateAiResume } from "@/app/candidates/[id]/generate-resume-action";
 import { Sparkles } from "lucide-react";
@@ -81,27 +77,6 @@ const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingm
 const LEGACY_DOC_MIME = "application/msword";
 
 // Static palette for multi-token highlighting. Tailwind JIT scans
-// source for class-name string literals — dynamic `bg-${color}-100`
-// would be silently dropped, so each entry is the full class string.
-// Same string powers both the pill chip and the <mark> in the
-// snippet panel, so token N's pill color matches its highlight.
-// Tokens past index 4 cycle back to amber via `index % length`.
-const TOKEN_COLORS = [
-  "bg-amber-100 text-amber-900",
-  "bg-blue-100 text-blue-800",
-  "bg-green-100 text-green-800",
-  "bg-purple-100 text-purple-800",
-  "bg-rose-100 text-rose-800",
-] as const;
-
-function buildTokenColorMap(tokens: string[]): Map<string, string> {
-  const m = new Map<string, string>();
-  tokens.forEach((t, i) => {
-    m.set(t, TOKEN_COLORS[i % TOKEN_COLORS.length]);
-  });
-  return m;
-}
-
 function isDocxResume(v: ResumeVersion): boolean {
   return (
     v.mimeType === DOCX_MIME ||
@@ -156,19 +131,6 @@ export function EditableResume({
   versions: ResumeVersion[];
 }) {
   const router = useRouter();
-  // Pulled directly from the URL so the candidates split-view's
-  // ?highlight=tax,cpa tokens reach the canvas viewer without
-  // plumbing a prop through three EditableResume mount sites
-  // (page.tsx embed + non-embed, local-profile.tsx embed + tab).
-  const searchParams = useSearchParams();
-  const highlightTokens = useMemo(
-    () => parseHighlightTokens(searchParams?.get("highlight") ?? null),
-    [searchParams],
-  );
-  const tokenColorMap = useMemo(
-    () => buildTokenColorMap(highlightTokens),
-    [highlightTokens],
-  );
   const [isUploading, setIsUploading] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [editorOpen, setEditorOpen] = useState(false);
@@ -572,28 +534,18 @@ export function EditableResume({
         </div>
       </div>
 
-      <div
-        className={cn(
-          "flex flex-col",
-          highlightTokens.length > 0 && "md:flex-row",
-        )}
-      >
-        <div
-          className={cn(
-            "relative",
-            highlightTokens.length > 0 && "md:min-w-0 md:flex-1",
-          )}
-        >
+      <div className="flex flex-col">
+        <div className="relative min-w-0 flex-1">
           {selected.mimeType === "application/pdf" || selected.kind === "redacted" ? (
             <PdfCanvasViewer
               key={previewUrl}
               src={previewUrl}
-              className="min-h-[900px] w-full rounded-b-xl [height:calc(100vh-200px)]"
+              className="min-h-[900px] w-full rounded-b-xl"
             />
           ) : docx ? (
             <DocxPreview
               idOrRfId={candidateRfId ?? candidateId}
-              className="min-h-[900px] w-full overflow-auto rounded-b-xl [height:calc(100vh-200px)]"
+              className="min-h-[900px] w-full overflow-auto rounded-b-xl"
             />
           ) : (
             <div className="flex h-64 flex-col items-center justify-center gap-2 border-t border-dashed border-court-border bg-court-surface-subtle/40 text-sm text-court-fg-muted">
@@ -605,44 +557,6 @@ export function EditableResume({
             </div>
           )}
         </div>
-
-        {highlightTokens.length > 0 && (
-          <aside
-            className={cn(
-              "flex flex-col border-t border-court-border bg-court-surface-subtle/60",
-              // Fixed 260px rail at md+; tokens-active gives no responsive
-              // shrink so the layout stays predictable inside narrow
-              // embed iframes. PDF wrapper above takes md:flex-1 so it
-              // absorbs whatever remains after the 260px aside.
-              "md:w-[260px] md:shrink-0 md:max-h-[calc(100vh-200px)]",
-              "md:border-l md:border-t-0",
-            )}
-          >
-            <div className="flex flex-wrap items-center gap-2 border-b border-court-border px-3 py-2">
-              <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
-                Highlighting:
-              </span>
-              {highlightTokens.map((t) => (
-                <span
-                  key={t}
-                  className={cn(
-                    "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
-                    tokenColorMap.get(t) ?? TOKEN_COLORS[0],
-                  )}
-                >
-                  {t}
-                </span>
-              ))}
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <ResumeMatchesPanel
-                resumeId={selected.resumeId}
-                tokens={highlightTokens}
-                colorMap={tokenColorMap}
-              />
-            </div>
-          </aside>
-        )}
       </div>
 
       {editorOpen && canEdit && (
@@ -663,161 +577,4 @@ export function EditableResume({
   );
 }
 
-// Reads matching lines from CandidateResume.extractedText when a
-// search-driven highlight is active. The PDF viewer itself no longer
-// tints the canvas (pdfjs text runs were line-granular and the
-// resulting amber blocks were unreadable); this panel gives the
-// recruiter the keyword confirmation in the right rail alongside
-// the resume. Outer chrome (border/bg) lives on the rail wrapper,
-// so each state below renders content only.
-function ResumeMatchesPanel({
-  resumeId,
-  tokens,
-  colorMap,
-}: {
-  resumeId: string;
-  tokens: string[];
-  // Token → Tailwind class string. Same string is also applied to
-  // the pill chip above so each token's pill and its <mark>
-  // highlights share one color.
-  colorMap: Map<string, string>;
-}) {
-  const [state, setState] = useState<
-    | { kind: "loading" }
-    | { kind: "ready"; snippets: ResumeMatchSnippet[]; totalMatches: number; hasExtractedText: boolean }
-    | { kind: "error"; error: string }
-  >({ kind: "loading" });
-
-  useEffect(() => {
-    let cancelled = false;
-    setState({ kind: "loading" });
-    (async () => {
-      const res = await findResumeMatches(resumeId, tokens);
-      if (cancelled) return;
-      if (!res.ok) {
-        setState({ kind: "error", error: res.error });
-        return;
-      }
-      setState({
-        kind: "ready",
-        snippets: res.snippets,
-        totalMatches: res.totalMatches,
-        hasExtractedText: res.hasExtractedText,
-      });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [resumeId, tokens]);
-
-  if (state.kind === "loading") {
-    return (
-      <div className="px-3 py-2 text-[11px] text-court-fg-muted">
-        Looking for matches in resume text…
-      </div>
-    );
-  }
-  if (state.kind === "error") {
-    return (
-      <div className="px-3 py-2 text-[11px] text-court-fg-muted">
-        Couldn&apos;t load resume matches: {state.error}
-      </div>
-    );
-  }
-  if (!state.hasExtractedText) {
-    return (
-      <div className="px-3 py-2 text-[11px] text-court-fg-muted">
-        No extracted resume text on file yet — scan the PDF manually.
-      </div>
-    );
-  }
-  if (state.totalMatches === 0) {
-    return (
-      <div className="px-3 py-2 text-[11px] text-court-fg-muted">
-        No matches found in resume text.
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-1.5 px-3 py-2">
-      <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
-        Matches in resume text
-        {state.totalMatches > state.snippets.length && (
-          <span className="ml-2 normal-case tracking-normal">
-            (+{state.totalMatches - state.snippets.length} more)
-          </span>
-        )}
-      </div>
-      <ul className="space-y-1.5">
-        {state.snippets.map((s, i) => (
-          <li key={i} className="text-xs leading-snug text-court-fg">
-            <MarkedSnippet
-              text={s.text}
-              tokens={s.matchedTokens}
-              colorMap={colorMap}
-            />
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-// Wraps each matched-token occurrence in the snippet with a <mark>
-// tinted to that token's pill color. Builds one global regex per
-// render — small inputs (≤240 chars × ≤5 lines) so the cost is
-// negligible. Per-segment color lookup is case-insensitive against
-// the originating token list so "Tax" inside the snippet picks up
-// the same color as the lowercased "tax" pill.
-function MarkedSnippet({
-  text,
-  tokens,
-  colorMap,
-}: {
-  text: string;
-  tokens: string[];
-  colorMap: Map<string, string>;
-}) {
-  const segments = useMemo(() => {
-    if (tokens.length === 0) return [{ text, token: null }] as { text: string; token: string | null }[];
-    const escaped = tokens
-      .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-      .join("|");
-    const re = new RegExp(`\\b(${escaped})\\b`, "gi");
-    const out: { text: string; token: string | null }[] = [];
-    let last = 0;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
-      if (m.index > last) out.push({ text: text.slice(last, m.index), token: null });
-      const hit = m[0];
-      const origin = tokens.find((t) => t.toLowerCase() === hit.toLowerCase()) ?? null;
-      out.push({ text: hit, token: origin });
-      last = m.index + hit.length;
-      if (hit.length === 0) re.lastIndex++;
-    }
-    if (last < text.length) out.push({ text: text.slice(last), token: null });
-    return out;
-  }, [text, tokens]);
-
-  return (
-    <>
-      {segments.map((seg, i) =>
-        seg.token ? (
-          <mark
-            key={i}
-            className={cn(
-              "rounded-sm px-0.5",
-              colorMap.get(seg.token) ?? TOKEN_COLORS[0],
-            )}
-          >
-            {seg.text}
-          </mark>
-        ) : (
-          <span key={i}>{seg.text}</span>
-        ),
-      )}
-    </>
-  );
-}
 

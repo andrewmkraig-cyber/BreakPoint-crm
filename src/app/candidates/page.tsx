@@ -36,7 +36,6 @@ import {
 } from "@/app/candidates/lists-actions";
 import {
   Fragment,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -706,72 +705,6 @@ export default function CandidatesPage() {
   );
   const [bulkLoading, setBulkLoading] = useState(false);
 
-  const LIST_MIN = 220;
-  const LIST_MAX = 600;
-  const [listWidth, setListWidth] = useState<number>(300);
-  const isFirstListWidthLoad = useRef(true);
-  useEffect(() => {
-    if (isFirstListWidthLoad.current) {
-      isFirstListWidthLoad.current = false;
-      try {
-        const raw = window.localStorage.getItem("ace-candidates-list-width");
-        if (raw) {
-          const parsed = Number.parseInt(raw, 10);
-          if (Number.isFinite(parsed)) {
-            setListWidth(Math.max(LIST_MIN, Math.min(LIST_MAX, parsed)));
-          }
-        }
-      } catch {
-        // Corrupt storage — keep default.
-      }
-      return;
-    }
-    try {
-      window.localStorage.setItem("ace-candidates-list-width", String(listWidth));
-    } catch {
-      // Quota / private mode — non-fatal.
-    }
-  }, [listWidth]);
-
-  const [draggingSplit, setDraggingSplit] = useState(false);
-  const splitDragStartRef = useRef<{ x: number; width: number } | null>(null);
-  useEffect(() => {
-    if (!draggingSplit) return;
-    function onMove(e: MouseEvent) {
-      const start = splitDragStartRef.current;
-      if (!start) return;
-      const next = Math.max(
-        LIST_MIN,
-        Math.min(LIST_MAX, start.width + (e.clientX - start.x)),
-      );
-      setListWidth(next);
-    }
-    function onUp() {
-      setDraggingSplit(false);
-      splitDragStartRef.current = null;
-    }
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-    const prevCursor = document.body.style.cursor;
-    const prevSelect = document.body.style.userSelect;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    return () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      document.body.style.cursor = prevCursor;
-      document.body.style.userSelect = prevSelect;
-    };
-  }, [draggingSplit]);
-  const beginSplitDrag = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      splitDragStartRef.current = { x: e.clientX, width: listWidth };
-      setDraggingSplit(true);
-    },
-    [listWidth],
-  );
-
   async function openBulkApply() {
     if (bulkSelectedIds.size === 0) return;
     setBulkLoading(true);
@@ -1405,7 +1338,7 @@ export default function CandidatesPage() {
 
       {selectedId ? (
         // Split view = chrome bar on top, then the two-column body
-        // (300px name list + iframe). The list column owns its own
+        // (fixed w-64 name list + iframe). The list column owns its own
         // top chrome strip with the All Candidates / Prev / Next /
         // count controls; the resume column has no strip and slides
         // up flush with the page header — the close X floats absolute
@@ -1417,8 +1350,7 @@ export default function CandidatesPage() {
               flush. The X / "All Candidates" buttons in the iframe pane
               return them to the list. md+ keeps the resizable split. */}
           <section
-            className="hidden shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface md:flex"
-            style={{ width: listWidth }}
+            className="hidden w-64 flex-shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface md:flex"
           >
             {/* List-column chrome strip. Used to be the LEFT segment
                 of a full-width chrome bar; the RIGHT segment had only
@@ -1579,21 +1511,6 @@ export default function CandidatesPage() {
               )}
             </div>
           </section>
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize candidate list"
-            onMouseDown={beginSplitDrag}
-            className={
-              "group relative hidden w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-court-accent/40 md:block " +
-              (draggingSplit ? "bg-court-accent/60" : "")
-            }
-          >
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 -left-1 -right-1"
-            />
-          </div>
           <section className="relative flex flex-1 flex-col overflow-hidden rounded-2xl bg-court-surface pt-5 shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.06)]">
             {/* Close X — a discrete glyph in the small bg-court-bg
                 gap above the embedded profile so it doesn't crowd the
@@ -1618,7 +1535,6 @@ export default function CandidatesPage() {
               }`}
               title="Candidate profile"
               className="w-full flex-1 border-0"
-              style={draggingSplit ? { pointerEvents: "none" } : undefined}
             />
           </section>
         </div>
