@@ -1,10 +1,55 @@
 # ACE_STATE.md
-Last updated: 2026-05-17 · Ace 51.0
+Last updated: 2026-05-17 · Ace 53.0
 
 ## Current Status
-Current Version: Ace 51.0
+Current Version: Ace 53.0
 Last Shipped: 2026-05-17
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 53.0 (2026-05-17)
+
+Visual redesign session. Attempted Prompts 1-17 of a sweeping visual pass across every surface; result was inconsistent and broke too many things at once, so the session pivoted to a full revert of all 41 redesign commits back to `f56b6be` ("typeahead contact suggestions on TO/CC/BCC chip inputs"), then surgically cherry-picked just the confirmed-good fixes back on top. Three batches of restoration landed clean, then one targeted re-revert on a problematic sub-change, then a final fix-up batch.
+
+### Redesign attempt + revert (`2a6b463`)
+- 41 commits across the redesign attempt (covering Cursor design phases 1-2, table unification, dashboard sizing, client cards, briefing polish, finances redesign, applicants/pipeline restyle, settings unification, scoreboard restyle, placements KPI normalization, mail/phone visual passes, stage chip recoloring, several rounds of KPI tile work, plus the per-item polish from `cdf7ece`, `b09ab5e`, `da8992d`, `ba38673`, `2dfb72c`, `5629d89`, `a987d66`, `5327215`, `76292b6`, `da75fda`, `cadfcf4`, `d1fdad0`, `f841e7c`, `963bbe2`, `8fa5c8b`, `f794cfc`, `9a2f0fb`, `ebd23c3`, `1251b9a`, `d2bea12`, `7095091`, `f293bd1`, `0677307`, `26770ab`, `7505552`, and the docs rolls between).
+- Result: visual inconsistencies across pages, several regressions (Clearbit logos overwritten, briefing card backgrounds going green, candidate resume pane shrunk, applicants/pipeline page backgrounds tinting green, Goal Pacing sized too large).
+- `2a6b463 revert: roll back to before redesign` — single revert commit unwound the entire range. 82 files, -3,744 / +2,443 lines. Original commits remain in git history for selective cherry-pick.
+
+### Batch 1 restoration: unified table system + applicants page + pipeline buttons (`4c915b1`, from `50f2c54`)
+- `data-table.tsx` — added `DataTableBody` + `DataTableRow` exports. `DataTableHead` shortened to `bg-court-surface-subtle`. Header cell helper carries spec padding/typography centrally so individual tables stop redefining the same classes.
+- `applicants-view.tsx` — switched table body + rows to the shared `DataTableBody`/`DataTableRow`. Tightened cell padding `px-5 → px-4`. Action-row gap `1.5 → 2`.
+- `jobs-view.tsx` — same body/row adoption + padding tightening.
+- `pipeline-view.tsx` — same body/row adoption + `px-5 → px-4` across the file. PendingStartCells action buttons restyled to spec: `flex-row gap-2`, taller pill chips (`h-8`, `rounded-full`, `text-[12px]`, no all-caps).
+- Skipped `placements-tab.tsx` — `50f2c54`'s diff there only re-skinned a KpiTile block introduced in an earlier (reverted) commit; nothing to update on the post-revert tree.
+
+### Batch 2 restoration: ComposeFAB / stage chips / row heights / dashboard sizing / JD tab (`32d4c44`, from `793f33c`)
+- `compose-fab.tsx` — ComposeFAB order is now Email → Call → Text → Note → Event. (No Reminder row — that entry never landed on the current base; queued separately for a follow-up.)
+- `pipeline-summary.tsx` — replaced the green-brand progression with the per-stage tonal palette: amber=applied/pending_start, slate=sourced/kept, blue=interviewing, purple=offer, court-brand=submitted/hired, red=rejected. Matched chip swapped from emerald to court-brand tokens.
+- `mail-view.tsx` + `phone-view.tsx` — thread row vertical padding `py-3 → py-2.5` in both.
+- `financial-strip.tsx` + `goal-pacing.tsx` + `financial-performance-tab.tsx` — Billing Tower section padding `p-5 → p-4`, stat values `26px → 32px` serif. GoalPacingCard padding `p-5 → p-4`. TrendCard gained the zero-revenue fallback grid so quarters with no revenue render a clean 3-col text layout instead of three flat 4%-tall bars stamped with `$0`.
+- `job-description-tab.tsx` + `jobs/[id]/page.tsx` — removed `InternalNotesCard` + `initialInternalNotes` prop + the `saveJobInternalRecruiterNotes` import.
+
+### Batch 3 restoration: resume pane containment + bulk email modal + apply live update (`e4af7b2`, from `b194adc`)
+- `placement-flows.tsx` — added `finally { router.refresh() }` after the optimistic submit IIFE so pipeline / applicants / jobs reconcile to RSC after a snapshot lands without a manual reload.
+- `bulk-dialogs.tsx` — byte-identical swap to the `b194adc` version (1,130 lines, +461 / -299). Current file was an exact match of `b194adc`'s parent so the rewrite applied cleanly without any conflict resolution. New layout adds a FROM row and unblocks the modal sizing.
+- `candidates/page.tsx` (outer split view) — three coordinated edits: outer wrapper gets `bg-court-surface-subtle`, the filter aside drops its own `bg-court-surface` so the wrapper tint shows through, and the iframe section becomes a contained card (`overflow-hidden rounded-2xl bg-court-surface` + soft long-shadow).
+
+### Sub-revert: drop client avatar palette change from batch 2 (`1e3054a`)
+- `clients-view.tsx` — surgical revert of the colorful A-Z avatar palette + helpers that batch 2 imported. Client grid cards are back to rendering `<ClientLogo>` (Google favicons + initials fallback). All other items from `32d4c44` stayed intact.
+
+### Final batch: candidate split view column widths + scoreboard KPI icons (`bebbe50`)
+- `candidates/page.tsx` — outer left list locked to `w-64 flex-shrink-0`. Dropped `listWidth` state, the localStorage persistence, the drag handlers, the resizer separator, the iframe `pointerEvents` override, and the now-unused `useCallback` import.
+- `candidates/[id]/page.tsx` (embed mode) — right aside switched from `w-[280px] shrink-0` to `w-72 flex-shrink-0`. Inserted `<ResumeMatchesRail>` between CompactOverview and EditableSkills so highlighting stacks inside the right panel below the candidate info instead of competing with the resume for horizontal space.
+- `candidates/[id]/editable-resume.tsx` — ripped out the inline highlighting `<aside>` and its wrapper flex-row plus `TOKEN_COLORS`, `buildTokenColorMap`, `ResumeMatchesPanel`, `MarkedSnippet`, `useSearchParams`, and `parseHighlightTokens`. Removed `[height:calc(100vh-200px)]` from both PdfCanvasViewer and DocxPreview so the resume iframe fills its container with no max-height cap.
+- `candidates/[id]/resume-matches-rail.tsx` (new) — houses the moved highlighting panel; renders colored token chips + `ResumeMatchesPanel` against the most-recent resume.
+- `scoreboard.tsx` — imported `Clock`, `DollarSign`, `Target`, `TrendingUp`, `Users` from lucide-react. Each of the 5 KPI tiles now carries an icon: Pipeline Value=TrendingUp, Avg Fee Size=DollarSign, Placements=Users, Win Rate=Target, Avg Days to Fill=Clock. `ScoreboardKpiTile` renders the icon in an `h-5 w-5 rounded-lg bg-court-brand-tint` chip top-left next to the label so the Scoreboard reads as one family with the canonical `KpiTile` on Clubhouse / Finances.
+
+## Known Issues Carrying Into Ace 54
+- **No shared `PageWrapper` / `SectionCard` components yet.** This was the root cause of the redesign session failing - per-page changes drifted because each page held its own chrome. Next session opens with building these primitives before touching any individual page surface.
+- **30 outstanding visual / functional items queued.** Full numbered list lives in the active build sequence on ACE_ROADMAP.md. Covers client logo Clearbit restoration, ComposeFAB Reminder entry, applicants / pipeline green background leaks, oversized Goal Pacing, Event modal mismatch, JD markdown rendering, delete button anchoring, invoice empty cells, trigger warning alerts, negative ROI handling, date format inconsistency, finances number consistency, dashboard subtext alignment, client card colored top borders, client detail pipeline number style, jobs table font, candidate profile edit affordance next to job pill, empty state phrasing, texting Add Number inline button, pipeline stage condensation, action button iconography, briefing pill stacking, Ace assistant mobile freeze, resizable panels on `/candidates`, finances company logos on expenses, Slack annual recategorization on expenses, Quo notification read-state sync, and the unread badge count audit.
+
+## Next Task
+Open Ace 54 by reading the actual file contents of `src/app/` and `src/components/` before writing any prompts. Build shared `PageWrapper` + `SectionCard` components first - no per-page visual changes until those primitives exist. Then work the 30 outstanding items in numbered order off ACE_ROADMAP.md.
 
 ## What Shipped in Ace 51.0 (2026-05-17)
 
