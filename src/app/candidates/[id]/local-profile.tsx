@@ -11,6 +11,7 @@ import { LocalEditableSkills } from "@/app/candidates/[id]/local-editable-skills
 import { CandidateActivityCard } from "@/components/candidate-activity-card";
 import { CandidateProfileNav } from "@/components/candidate-profile-nav";
 import { CandidateCompactOverview } from "@/components/candidate-compact-overview";
+import { EntityNotesSection } from "@/components/notes/entity-notes-section";
 import { toExpectedSalary } from "@/components/candidate-overview-helpers";
 import { TextHighlighter } from "@/components/text-highlighter";
 import {
@@ -748,33 +749,36 @@ function LocalNotesTab({
   initialNotes: string | null;
 }) {
   return (
-    <section className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
-      <header className="border-b border-court-border px-5 py-3">
-        <h2 className="font-serif text-base font-semibold text-court-fg">
-          Notes
-        </h2>
-        <p className="mt-0.5 text-xs text-court-fg-muted">
-          Recruiter notes attached to this candidate. Newest at the top.
-        </p>
-      </header>
-      <div className="p-5">
-        {initialNotes ? (
-          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-court-fg">
-            {initialNotes}
-          </pre>
-        ) : (
-          <p className="text-sm text-court-fg-muted">
-            No notes yet. Use the green + button in the top bar to add one.
+    <div className="space-y-4">
+      <EntityNotesSection entityType="candidate" entityId={candidateId} />
+      <section className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
+        <header className="border-b border-court-border px-5 py-3">
+          <h2 className="font-serif text-base font-semibold text-court-fg">
+            Notes
+          </h2>
+          <p className="mt-0.5 text-xs text-court-fg-muted">
+            Recruiter notes attached to this candidate. Newest at the top.
           </p>
-        )}
-        {/* Note: this read-only view is intentional for Ace-native
-            candidates today — the RF EditableNotes component still
-            relies on the legacy numeric-id update path. New notes
-            should land via the FAB Notes popup which writes through
-            POST /api/notes (cuid-aware). */}
-        <input type="hidden" data-candidate-id={candidateId} />
-      </div>
-    </section>
+        </header>
+        <div className="p-5">
+          {initialNotes ? (
+            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-court-fg">
+              {initialNotes}
+            </pre>
+          ) : (
+            <p className="text-sm text-court-fg-muted">
+              No notes yet. Use the green + button in the top bar to add one.
+            </p>
+          )}
+          {/* Note: this read-only view is intentional for Ace-native
+              candidates today — the RF EditableNotes component still
+              relies on the legacy numeric-id update path. New notes
+              should land via the FAB Notes popup which writes through
+              POST /api/notes (cuid-aware). */}
+          <input type="hidden" data-candidate-id={candidateId} />
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -828,4 +832,3 @@ function UnderlineTabs({
     />
   );
 }
-

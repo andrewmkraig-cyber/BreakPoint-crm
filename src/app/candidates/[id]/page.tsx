@@ -668,7 +668,11 @@ export default async function CandidateProfilePage({
                 recipientEmail={candidate.email ?? null}
               />
             ) : tab === "notes" ? (
-              <EditableNotes candidateId={id} initial={notesInitial} />
+              <CandidateNotesTab
+                candidateId={candidate.id}
+                legacyCandidateId={id}
+                initialNotes={notesInitial}
+              />
             ) : (
               <EditableResume
                 candidateRfId={id}
@@ -802,7 +806,11 @@ export default async function CandidateProfilePage({
               recipientEmail={candidate.email ?? null}
             />
           ) : tab === "notes" ? (
-            <EditableNotes candidateId={id} initial={notesInitial} />
+            <CandidateNotesTab
+              candidateId={candidate.id}
+              legacyCandidateId={id}
+              initialNotes={notesInitial}
+            />
           ) : (
             <EditableResume
               candidateRfId={id}
@@ -834,6 +842,23 @@ export default async function CandidateProfilePage({
       <DeleteCandidateButton candidateId={candidate.id} candidateName={name} />
     </div>
     </CandidateProfileBoundary>
+  );
+}
+
+function CandidateNotesTab({
+  candidateId,
+  legacyCandidateId,
+  initialNotes,
+}: {
+  candidateId: string;
+  legacyCandidateId: number;
+  initialNotes: NoteRow[];
+}) {
+  return (
+    <div className="space-y-4">
+      <EntityNotesSection entityType="candidate" entityId={candidateId} />
+      <EditableNotes candidateId={legacyCandidateId} initial={initialNotes} />
+    </div>
   );
 }
 
