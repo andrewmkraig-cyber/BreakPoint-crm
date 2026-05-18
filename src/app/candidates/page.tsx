@@ -1521,7 +1521,7 @@ export default function CandidatesPage() {
               type="button"
               onClick={() => setSelectedId(null)}
               aria-label="Close profile"
-              className="absolute right-2 top-1 z-10 inline-flex h-5 w-5 items-center justify-center rounded text-court-fg-muted/70 transition hover:text-court-fg"
+              className="absolute left-2 top-1 z-10 inline-flex h-5 w-5 items-center justify-center rounded text-court-fg-muted/70 transition hover:text-court-fg"
             >
               <X className="h-3 w-3" />
             </button>
