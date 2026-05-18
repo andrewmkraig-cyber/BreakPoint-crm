@@ -8,26 +8,6 @@ import { ClientLogo } from "@/components/clients/client-logo";
 import { PipelinePill } from "@/components/clients/pipeline-pill";
 import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
 import { TabStrip } from "@/components/ui/tab-strip";
-import { cn } from "@/lib/utils";
-
-// Card avatar palette — deterministic by first letter so the same client
-// always lands on the same chip color. Tokens only (no hardcoded hex)
-// per Rule 12. Letters fall through to the neutral surface tint.
-function clientAvatarPalette(name: string): string {
-  const ch = (name.trim().charAt(0) || "?").toUpperCase();
-  if (ch >= "A" && ch <= "F") return "bg-court-accent-tint text-court-brand-dark";
-  if (ch >= "G" && ch <= "L") return "bg-blue-50 text-blue-700";
-  if (ch >= "M" && ch <= "R") return "bg-amber-50 text-amber-700";
-  if (ch >= "S" && ch <= "Z") return "bg-purple-50 text-purple-700";
-  return "bg-court-surface-subtle text-court-fg-muted";
-}
-
-function clientAvatarInitials(name: string): string {
-  const parts = name.split(/[\s.,]+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-}
 
 // Existing data shape — unchanged. Owned by the server side; the
 // client-side renderer reads it directly. id is the Neon cuid (for
@@ -133,15 +113,7 @@ function ClientGridCard({ card, quietTier }: { card: ClientCard; quietTier?: Qui
       className="group relative flex cursor-pointer flex-col rounded-2xl border border-court-border/40 bg-court-surface p-5 transition hover:border-brand/40 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
     >
       <div className="flex items-start gap-3">
-        <div
-          className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[13px] font-bold",
-            clientAvatarPalette(card.name || "(unnamed)"),
-          )}
-          aria-hidden="true"
-        >
-          {clientAvatarInitials(card.name || "(unnamed)")}
-        </div>
+        <ClientLogo domain={card.domain} name={card.name || "(unnamed)"} size={44} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <h3 className="truncate font-serif text-lg font-semibold text-court-fg">
