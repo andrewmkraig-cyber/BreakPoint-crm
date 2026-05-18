@@ -125,18 +125,13 @@ export function LocalPlacementRows({
   const [rescheduleFor, setRescheduleFor] = useState<LocalInterview | null>(null);
   const [inviteFlow, setInviteFlow] = useState<LocalInviteFlow | null>(null);
 
-  // Mirror the jobs prop into local state so Reapply can drop the row
-  // immediately on delete-success. router.refresh() would race the
-  // Postgres commit and re-render the row before the delete is visible.
-  // Mirrors the jobsState pattern in placement-flows.tsx.
+  // Mirror the jobs prop into local state. Reapply / Reject now drive
+  // through router.refresh() so the row updates server-side; jobsState
+  // stays in lockstep with the latest `jobs` prop via the effect below.
   const [jobsState, setJobsState] = useState<LocalJobRow[]>(jobs);
   useEffect(() => {
     setJobsState(jobs);
   }, [jobs]);
-
-  function handlePlacementRemoved(placementId: string) {
-    setJobsState((prev) => prev.filter((j) => j.placementId !== placementId));
-  }
 
   return (
     <>
@@ -149,7 +144,6 @@ export function LocalPlacementRows({
             job={j}
             onSchedule={() => setScheduleFor(j)}
             onClientInvite={() => setClientInviteFor(j)}
-            onPlacementRemoved={handlePlacementRemoved}
           />
         ))}
       </div>
@@ -254,14 +248,12 @@ function LocalJobActionRow({
   job,
   onSchedule,
   onClientInvite,
-  onPlacementRemoved,
 }: {
   candidateId: string;
   candidateName: string;
   job: LocalJobRow;
   onSchedule: () => void;
   onClientInvite: () => void;
-  onPlacementRemoved?: (placementId: string) => void;
 }) {
   const router = useRouter();
   const [isRejecting, startRejecting] = useTransition();
