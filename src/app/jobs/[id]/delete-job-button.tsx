@@ -40,12 +40,12 @@ export function DeleteJobButton({
 
   if (!confirming) {
     return (
-      <div className="pt-24 text-right">
+      <div className="fixed bottom-3 right-3 z-30">
         <button
           type="button"
           onClick={() => setConfirming(true)}
           aria-label="Delete job"
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-court-fg-muted/70 transition hover:bg-red-50 hover:text-red-600"
+          className="inline-flex items-center gap-1 rounded-md bg-court-surface/80 px-2 py-1 text-[11px] font-medium text-court-fg-muted/70 backdrop-blur transition hover:bg-red-50 hover:text-red-600"
         >
           <Trash2 className="h-3 w-3" />
           Delete

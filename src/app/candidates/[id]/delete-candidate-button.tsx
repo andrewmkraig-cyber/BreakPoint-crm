@@ -42,17 +42,18 @@ export function DeleteCandidateButton({
   }
 
   if (!confirming) {
-    // Match the Delete client button: small ghost-style text button
-    // tucked low on the page with red only on hover. The recruiter
-    // rarely deletes profiles; the affordance shouldn't compete with
-    // active workflows above it.
+    // Pinned to the viewport's bottom-right corner so it never
+    // competes with active workflows in the middle of the page —
+    // matches DeleteClientButton. An inline footer button strands
+    // itself on short tabs (Email, etc.); fixed positioning sidesteps
+    // that. Only on hover does it pick up the danger color.
     return (
-      <div className="pt-24 text-right">
+      <div className="fixed bottom-3 right-3 z-30">
         <button
           type="button"
           onClick={() => setConfirming(true)}
           aria-label="Delete candidate"
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-court-fg-muted/70 transition hover:bg-red-50 hover:text-red-600"
+          className="inline-flex items-center gap-1 rounded-md bg-court-surface/80 px-2 py-1 text-[11px] font-medium text-court-fg-muted/70 backdrop-blur transition hover:bg-red-50 hover:text-red-600"
         >
           <Trash2 className="h-3 w-3" />
           Delete

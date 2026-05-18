@@ -18,9 +18,13 @@ import {
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { toast } from "sonner";
+
 import {
+  createCalendarEventAction,
   deleteCalendarEventAction,
   updateCalendarEventAction,
+  type CreateMeetingType,
 } from "@/app/calendar/event-actions";
 import { GoogleGlyph } from "@/components/calendar/left-rail";
 import { Button } from "@/components/ui/button";
@@ -36,8 +40,36 @@ type Props = {
   // `hour` is optional (month view passes date only); when present,
   // the form defaults to a 1-hour block starting at that hour:minute.
   prefill?: { date: Date; hour?: number; minute?: number } | null;
+  // Pre-picks the event type pill in create mode. The ComposeFAB's
+  // "New Reminder" entry passes "reminder" so the drawer opens with
+  // the right pill highlighted and a reminder-friendly meeting-type
+  // default ("none"). null falls back to "interview".
+  prefillType?: CalendarEventType | null;
   onClose: () => void;
 };
+
+const MEETING_TYPE_OPTS: Array<{ value: CreateMeetingType; label: string }> = [
+  { value: "google_meet", label: "Google Meet" },
+  { value: "teams", label: "Microsoft Teams" },
+  { value: "in_person", label: "In Person" },
+  { value: "phone", label: "Phone Call" },
+  { value: "none", label: "No Meeting" },
+];
+
+// Round a Date up to the next quarter hour so the create form opens
+// at 14:30 instead of 14:23 when no slot prefill is supplied.
+function roundUpQuarter(d: Date): Date {
+  const next = new Date(d);
+  next.setSeconds(0, 0);
+  const min = next.getMinutes();
+  const rounded = Math.ceil(min / 15) * 15;
+  if (rounded === 60) {
+    next.setHours(next.getHours() + 1, 0, 0, 0);
+  } else {
+    next.setMinutes(rounded);
+  }
+  return next;
+}
 
 // Convert a Date to the local "YYYY-MM-DD" and "HH:mm" strings the
 // native date/time inputs expect. We treat all events as
@@ -144,7 +176,7 @@ const TYPE_OPTS: Array<{ id: CalendarEventType; label: string; sub: string }> = 
   { id: "other", label: "Other", sub: "Anything else" },
 ];
 
-export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Props) {
+export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, onClose }: Props) {
   const router = useRouter();
   const [type, setType] = useState<CalendarEventType>(event?.type ?? "interview");
   const [title, setTitle] = useState(event?.title ?? "");
@@ -155,6 +187,16 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
+  // Create-only: all-day blocks render in Google as a date range with
+  // no time. Edit mode ignores this — Google's PATCH path through
+  // updateCalendarEventAction always sends start/end as ISO timed
+  // strings, so flipping allDay in edit would be a no-op against the
+  // existing event.
+  const [allDay, setAllDay] = useState(false);
+  // Create-only meeting type. "google_meet" is the recruiter's
+  // default; reminders override to "none" so a personal block doesn't
+  // attach a video link.
+  const [meetingType, setMeetingType] = useState<CreateMeetingType>("google_meet");
   const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
   // Default to read-only HTML preview when the synced description is
@@ -166,6 +208,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
   const [notesPreviewMode, setNotesPreviewMode] = useState(false);
   const [newGuests, setNewGuests] = useState<GuestSuggestion[]>([]);
   const [saving, setSaving] = useState<null | "all" | "new" | "none">(null);
+  const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -184,14 +227,18 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
       setNotes(incoming);
       setNotesPreviewMode(isHtmlDescription(incoming));
       setReminderOn(event.reminderEnabled ?? false);
+      setAllDay(false);
+      setMeetingType("google_meet");
     } else {
-      setType("interview");
+      const initialType: CalendarEventType = prefillType ?? "interview";
+      setType(initialType);
       setTitle("");
       // Month-cell clicks pass a date; day-slot clicks pass date +
       // hour + minute. Default end is one hour after start so the
       // form has a valid range without the recruiter having to tab
       // through both fields. When no prefill is supplied the form
-      // opens empty.
+      // opens at "today, next quarter hour" so submit can fire
+      // immediately without the recruiter typing a date.
       if (prefill) {
         setDate(toDateInput(prefill.date));
         if (prefill.hour != null) {
@@ -202,22 +249,31 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
           const endHour = Math.min(23, h + 1);
           setEndTime(`${pad(endHour)}:${pad(m)}`);
         } else {
-          setStartTime("");
-          setEndTime("");
+          const now = roundUpQuarter(new Date());
+          setStartTime(toTimeInput(now));
+          const end = new Date(now.getTime() + 60 * 60 * 1000);
+          setEndTime(toTimeInput(end));
         }
       } else {
-        setDate("");
-        setStartTime("");
-        setEndTime("");
+        const now = roundUpQuarter(new Date());
+        setDate(toDateInput(now));
+        setStartTime(toTimeInput(now));
+        const end = new Date(now.getTime() + 60 * 60 * 1000);
+        setEndTime(toTimeInput(end));
       }
       setLocation("");
       setNotes("");
       setNotesPreviewMode(false);
       setReminderOn(true);
+      setAllDay(false);
+      // Personal reminders shouldn't attach a video link by default;
+      // everything else opens with Google Meet pre-picked since most
+      // recruiter calls are video.
+      setMeetingType(initialType === "reminder" ? "none" : "google_meet");
     }
     setNewGuests([]);
     setError(null);
-  }, [event?.id, open, prefill]);
+  }, [event?.id, open, prefill, prefillType]);
 
   const meta = eventTypeMeta(type);
   const headerLabel = mode === "edit" ? "Edit event" : "New event";
@@ -228,6 +284,11 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
     date.length > 0 &&
     startTime.length > 0 &&
     endTime.length > 0;
+  const canCreate =
+    mode === "create" &&
+    title.trim().length > 0 &&
+    date.length > 0 &&
+    (allDay || (startTime.length > 0 && endTime.length > 0));
 
   async function doSave(notifyMode: "all" | "new" | "none") {
     if (!event || !canSave) return;
@@ -260,6 +321,48 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
       setSaving(null);
+    }
+  }
+
+  async function doCreate() {
+    if (!canCreate) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const res = await createCalendarEventAction({
+        title: title.trim(),
+        date,
+        startTime,
+        endTime,
+        allDay,
+        meetingType,
+        // Modal used to feed an "in person" address through this
+        // field; the drawer's single Location row carries the same
+        // value for any meeting type but the action only mirrors it
+        // when meetingType is in_person, so guard here too.
+        location: meetingType === "in_person" ? location.trim() || null : null,
+        notes: notes.trim() || null,
+        candidateId: null,
+        clientId: null,
+        // GuestTypeahead-picked rows go in TO; cc/bcc stay empty
+        // per the unified design (one Guests bucket, not three).
+        to: newGuests.map((g) => g.email),
+        cc: [],
+        bcc: [],
+        type,
+      });
+      if (!res.ok) {
+        setError(res.error);
+        toast.error("Couldn't create event", { description: res.error });
+        return;
+      }
+      toast.success("Event created");
+      router.refresh();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Create failed");
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -399,31 +502,68 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
                 <ChevronDown className="h-3 w-3 text-court-fg-muted" />
               </InputRow>
             </div>
-            <div>
-              <FieldLabel>Starts</FieldLabel>
-              <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
-                <Clock className="h-3.5 w-3.5 text-court-fg-muted" />
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none"
-                />
-              </div>
-            </div>
-            <div>
-              <FieldLabel>Ends</FieldLabel>
-              <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
-                <Clock className="h-3.5 w-3.5 text-court-fg-muted" />
-                <input
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none"
-                />
-              </div>
-            </div>
+            {!allDay && (
+              <>
+                <div>
+                  <FieldLabel>Starts</FieldLabel>
+                  <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
+                    <Clock className="h-3.5 w-3.5 text-court-fg-muted" />
+                    <input
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                      className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <FieldLabel>Ends</FieldLabel>
+                  <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
+                    <Clock className="h-3.5 w-3.5 text-court-fg-muted" />
+                    <input
+                      type="time"
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                      className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
+
+          {/* All-day + meeting type (create only). All-day is a
+              create-time choice — Google's PATCH path the edit
+              flow uses doesn't switch a timed event to all-day, so
+              hiding the toggle in edit avoids a no-op control. */}
+          {mode === "create" && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>All day</FieldLabel>
+                <label className="flex h-[38px] items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[12.5px] text-court-fg-muted">
+                  <input
+                    type="checkbox"
+                    checked={allDay}
+                    onChange={(e) => setAllDay(e.target.checked)}
+                    className="h-3.5 w-3.5 cursor-pointer accent-court-brand"
+                  />
+                  Block the whole day
+                </label>
+              </div>
+              <div>
+                <FieldLabel>Meeting type</FieldLabel>
+                <select
+                  value={meetingType}
+                  onChange={(e) => setMeetingType(e.target.value as CreateMeetingType)}
+                  className="h-[38px] w-full rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus:border-court-brand focus:outline-none focus:ring-2 focus:ring-court-brand/20"
+                >
+                  {MEETING_TYPE_OPTS.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
 
           {/* Guests */}
           <div>
@@ -640,17 +780,27 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
               </>
             ) : (
               <>
-                <Button variant="secondary" size="sm" onClick={onClose}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={onClose}
+                  disabled={creating}
+                >
                   Cancel
                 </Button>
                 <div className="flex-1" />
                 <Button
                   variant="primary"
                   size="sm"
-                  disabled
-                  title="Creating new events is coming next — for now use Google Calendar."
+                  onClick={() => void doCreate()}
+                  disabled={!canCreate || creating}
                 >
-                  <Plus className="h-3 w-3" /> Create event
+                  {creating ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Plus className="h-3 w-3" />
+                  )}
+                  Create event
                 </Button>
               </>
             )}

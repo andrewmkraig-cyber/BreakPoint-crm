@@ -301,6 +301,12 @@ export type CreateCalendarEventInput = {
   to: string[];
   cc: string[];
   bcc: string[];
+  // Optional recruiter-chosen event type from the unified create
+  // drawer's pill picker. When supplied, overrides the candidate /
+  // client linkage heuristic so a personal "reminder" doesn't get
+  // mis-derived to "other" just because it has no candidate/client
+  // attached.
+  type?: CalendarEventType;
 };
 
 export type CreateCalendarEventResult =
@@ -511,7 +517,7 @@ export async function createCalendarEventAction(
     // upsert key (organizationId + googleEventId + calendarId) lines
     // up and the row updates in place instead of duplicating.
     const calendarId = user.email ?? "primary";
-    const eventType = deriveEventType(input.candidateId, input.clientId);
+    const eventType = input.type ?? deriveEventType(input.candidateId, input.clientId);
     // Mirror attendees so the drawer renders the recipient list
     // immediately without waiting for the next full sync. Shape
     // matches what google-sync writes: { email, responseStatus }.

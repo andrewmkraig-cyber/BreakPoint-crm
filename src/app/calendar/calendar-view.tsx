@@ -14,6 +14,7 @@ import { CalendarWeekView } from "@/components/calendar/week-view";
 import { TabStrip } from "@/components/ui/tab-strip";
 import type {
   CalendarEvent,
+  CalendarEventType,
   CalendarReminder,
   CalendarScope,
   CalendarTeamMember,
@@ -27,7 +28,6 @@ import {
   getStartOfMonth,
 } from "@/lib/calendar/week";
 
-import { CreateEventModal } from "./create-event-modal";
 import { createReminder, dismissReminder as dismissReminderAction } from "./reminder-actions";
 
 // Persist the recruiter's "show / hide" choices for each teammate
@@ -167,6 +167,11 @@ export function CalendarView({
   const [createPrefill, setCreatePrefill] = useState<
     { date: Date; hour?: number; minute?: number } | null
   >(null);
+  // Pre-pick the type pill when an entry point already knows what
+  // the recruiter wants (e.g. ComposeFAB's "New Reminder" passes
+  // "reminder"). Cleared on edit and on plain "+ New event" so the
+  // drawer defaults to "interview".
+  const [createPrefillType, setCreatePrefillType] = useState<CalendarEventType | null>(null);
 
   // Upcoming-reminders list shown in the right-rail panel. Past-due
   // toasts are owned by the global ReminderToastProvider mounted in the
@@ -187,54 +192,76 @@ export function CalendarView({
   // each event.
   const teamMode = scope !== "me";
 
-  // Standalone "New event" modal (CreateEventModal). Now the entry
-  // point for every create surface: subheader button, global TopBar
-  // dispatch, ComposeFAB menu, and grid empty-slot clicks. The edit
-  // drawer's legacy `create` mode is no longer wired to a caller.
-  const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [modalPrefill, setModalPrefill] = useState<
-    { date: Date; hour?: number; minute?: number } | null
-  >(null);
-  const openCreateModal = useCallback(
-    (prefill?: { date: Date; hour?: number; minute?: number }) => {
-      setModalPrefill(prefill ?? null);
-      setCreateModalOpen(true);
+  // Unified "New event" entry. Every create surface — subheader
+  // button, global TopBar dispatch, ComposeFAB menu, grid empty-slot
+  // clicks, and the ComposeFAB "New Reminder" entry — funnels through
+  // here. There is no longer a separate CreateEventModal; the right-
+  // side drawer owns both create and edit so the recruiter never
+  // leaves the calendar page just to drop a meeting.
+  const openCreate = useCallback(
+    (opts?: {
+      prefill?: { date: Date; hour?: number; minute?: number };
+      type?: CalendarEventType;
+    }) => {
+      setSelectedEvent(null);
+      setCreatePrefill(opts?.prefill ?? null);
+      setCreatePrefillType(opts?.type ?? null);
+      setDrawerMode("create");
+      setDrawerOpen(true);
     },
     [],
   );
 
   // Global TopBar + ComposeFAB dispatch `ace:calendar:new-event` from
   // their "+ New event" entries. Always opens with no prefill so the
-  // modal defaults to "now, rounded up." Grid slot clicks go through
-  // openCreateAt with the clicked date/time as prefill.
+  // drawer defaults to "today, next quarter hour." Grid slot clicks
+  // go through openCreateAt with the clicked date/time as prefill.
   useEffect(() => {
-    const handler = () => openCreateModal();
+    const handler = () => openCreate();
     window.addEventListener("ace:calendar:new-event", handler);
     return () => window.removeEventListener("ace:calendar:new-event", handler);
-  }, [openCreateModal]);
+  }, [openCreate]);
+
+  // ComposeFAB's "New Reminder" entry. When the recruiter is already
+  // on /calendar, the FAB dispatches this event directly; we open the
+  // drawer with the reminder pill pre-selected so they don't have to
+  // re-pick the type after the form mounts.
+  useEffect(() => {
+    const handler = () => openCreate({ type: "reminder" });
+    window.addEventListener("ace:calendar:new-reminder", handler);
+    return () =>
+      window.removeEventListener("ace:calendar:new-reminder", handler);
+  }, [openCreate]);
 
   // Cross-route entry: the ComposeFAB on a non-/calendar page can't
   // dispatch the event directly (no listener mounted yet), so it sets
   // a sessionStorage flag and navigates. We pick the flag up on mount
-  // and open the modal once. Cleared synchronously so a manual refresh
-  // doesn't re-trigger.
+  // and open the drawer once. Cleared synchronously so a manual
+  // refresh doesn't re-trigger.
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (window.sessionStorage.getItem("ace.calendar.openNewEvent") === "1") {
       window.sessionStorage.removeItem("ace.calendar.openNewEvent");
-      openCreateModal();
+      openCreate();
     }
-  }, [openCreateModal]);
+    if (
+      window.sessionStorage.getItem("ace.calendar.openNewReminder") === "1"
+    ) {
+      window.sessionStorage.removeItem("ace.calendar.openNewReminder");
+      openCreate({ type: "reminder" });
+    }
+  }, [openCreate]);
   const openCreateAt = (
     date: Date,
     hour?: number,
     minute?: number,
   ) => {
-    openCreateModal({ date, hour, minute });
+    openCreate({ prefill: { date, hour, minute } });
   };
   const openEdit = (ev: CalendarEvent) => {
     setSelectedEvent(ev);
     setCreatePrefill(null);
+    setCreatePrefillType(null);
     setDrawerMode("edit");
     setDrawerOpen(true);
   };
@@ -318,7 +345,7 @@ export function CalendarView({
         onSync={handleSync}
         isSyncing={isSyncing}
         latestSyncedAt={latestSyncedAt}
-        onNewEvent={() => setCreateModalOpen(true)}
+        onNewEvent={() => openCreate()}
       />
 
       <div className="flex min-w-0 gap-5">
@@ -393,17 +420,8 @@ export function CalendarView({
         mode={drawerMode}
         event={drawerMode === "edit" ? selectedEvent : null}
         prefill={drawerMode === "create" ? createPrefill : null}
+        prefillType={drawerMode === "create" ? createPrefillType : null}
         onClose={closeDrawer}
-      />
-
-      <CreateEventModal
-        open={createModalOpen}
-        prefill={modalPrefill}
-        onClose={() => {
-          setCreateModalOpen(false);
-          setModalPrefill(null);
-        }}
-        onCreated={() => router.refresh()}
       />
     </div>
   );
