@@ -461,14 +461,28 @@ export async function GET(req: Request) {
 
     if (q) {
       const groups = parseBooleanQuery(q);
+      // Trace what the parser yielded so a recruiter reporting a
+      // boolean-logic miss has a server log to compare against. The
+      // q is short and PII-free; logging the full parse output is
+      // cheap and disambiguates "parser broke" from "ID resolution
+      // broke" without round-tripping.
+      // eslint-disable-next-line no-console
+      console.log(
+        "[candidate-search] q=%s groups=%s",
+        JSON.stringify(q),
+        JSON.stringify(groups),
+      );
       if (groups.length > 0) {
         // Each parsed group is OR-composed (terms separated by an
         // explicit `OR`, or a single bare term); the groups themselves
         // are AND-composed. For each group, resolve the union of
-        // candidate IDs across all OR-tokens; then push one
-        // `id: { in: [...] }` clause per group so the final AND across
-        // groups produces the intersection. Per-token resolves stay
-        // parallel since they're independent reads.
+        // candidate IDs across all OR-tokens; then intersect group
+        // sets in-process. We intersect here rather than pushing
+        // multiple `id: { in: [...] }` clauses into the where because
+        // Postgres struggles with large `IN` lists and Prisma's
+        // multi-clause `AND` ordering hasn't always behaved as the
+        // intersection we expect — doing the intersection up-front
+        // makes the AND semantics explicit and auditable in the log.
         const idSetsByGroup = await Promise.all(
           groups.map(async (group) => {
             const perToken = await Promise.all(
@@ -476,12 +490,38 @@ export async function GET(req: Request) {
             );
             const union = new Set<string>();
             for (const ids of perToken) for (const id of ids) union.add(id);
-            return Array.from(union);
+            const arr = Array.from(union);
+            // eslint-disable-next-line no-console
+            console.log(
+              "[candidate-search] group=%s union=%d",
+              JSON.stringify(group),
+              arr.length,
+            );
+            return arr;
           }),
         );
-        for (const ids of idSetsByGroup) {
-          andClauses.push({ id: { in: ids } });
+        // Intersect every group set down to a single ID list. Sort by
+        // ascending count first so the smallest set drives the inner
+        // loop — minimizes work when one group is very narrow (e.g.
+        // a rare term) and another is broad.
+        const sorted = idSetsByGroup
+          .map((ids) => new Set(ids))
+          .sort((a, b) => a.size - b.size);
+        let intersection: Set<string> = sorted[0] ?? new Set();
+        for (let i = 1; i < sorted.length; i++) {
+          const next = new Set<string>();
+          intersection.forEach((id) => {
+            if (sorted[i].has(id)) next.add(id);
+          });
+          intersection = next;
+          if (intersection.size === 0) break;
         }
+        // eslint-disable-next-line no-console
+        console.log(
+          "[candidate-search] intersection=%d",
+          intersection.size,
+        );
+        andClauses.push({ id: { in: Array.from(intersection) } });
       }
     }
 

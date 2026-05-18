@@ -1509,12 +1509,14 @@ export default function CandidatesPage() {
               )}
             </div>
           </section>
-          <section className="relative flex flex-1 flex-col overflow-hidden rounded-2xl bg-court-surface pt-5 shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.06)]">
+          <section className="relative flex flex-1 flex-col overflow-hidden bg-court-bg pt-5">
             {/* Close X — a discrete glyph in the small bg-court-bg
                 gap above the embedded profile so it doesn't crowd the
-                right-rail card's top-right corner. No border / no fill
-                so it reads as page chrome, not a button glued to the
-                card. The 20px pt on the section reserves the strip. */}
+                right-rail card's top-right corner. The section itself
+                is bg-court-bg (page background) and unshadowed so the
+                strip above the iframe reads as page chrome, not a
+                white card glued onto the page. The 20px pt reserves
+                the strip; the iframe paints its own surface below. */}
             <button
               type="button"
               onClick={() => setSelectedId(null)}
