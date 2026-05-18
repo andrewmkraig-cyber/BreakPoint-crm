@@ -6,6 +6,15 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
+import type {
+  Attachments,
+  AttachNoteInput,
+  AttachOptionsResult,
+  CreateNoteInput,
+  NoteActionResult,
+  ResolveSelectionResult,
+  UpdateNoteInput,
+} from "@/lib/notes/action-types";
 
 // All notes actions are scoped by both organizationId AND createdById.
 // Notes are private to their author; the tenant guard keeps cross-org
@@ -17,22 +26,6 @@ import { prisma } from "@/lib/prisma";
 // candidate AND the job they're being submitted for). The three
 // relations are implicit many-to-many; createNote/attachNote take
 // arrays of ids per kind and write them through Prisma's connect/set.
-
-export type Attachments = {
-  candidateIds: string[];
-  clientIds: string[];
-  jobIds: string[];
-};
-
-export type NoteActionResult =
-  | { ok: true; id: string }
-  | { ok: false; error: string };
-
-const EMPTY_ATTACHMENTS: Attachments = {
-  candidateIds: [],
-  clientIds: [],
-  jobIds: [],
-};
 
 function normalizeAttachments(input: Partial<Attachments> | null | undefined): Attachments {
   return {
@@ -100,12 +93,6 @@ function attachmentRevalidatePaths(attach: Attachments): string[] {
   return paths;
 }
 
-export type CreateNoteInput = {
-  title?: string | null;
-  body: string;
-  attach?: Partial<Attachments> | null;
-};
-
 export async function createNote(input: CreateNoteInput): Promise<NoteActionResult> {
   try {
     const body = input.body?.trim() ?? "";
@@ -139,12 +126,6 @@ export async function createNote(input: CreateNoteInput): Promise<NoteActionResu
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create note." };
   }
 }
-
-export type UpdateNoteInput = {
-  id: string;
-  title?: string | null;
-  body?: string;
-};
 
 export async function updateNote(input: UpdateNoteInput): Promise<NoteActionResult> {
   try {
@@ -219,11 +200,6 @@ export async function deleteNote(id: string): Promise<NoteActionResult> {
 // for each kind to detach completely. Use `set` semantics (not
 // merge) so the picker has a single "this is the new full state"
 // shape — easier to reason about than connect+disconnect deltas.
-export type AttachNoteInput = {
-  id: string;
-  attach: Partial<Attachments>;
-};
-
 export async function attachNote(input: AttachNoteInput): Promise<NoteActionResult> {
   try {
     const ctx = await getAuthContext();
@@ -298,16 +274,6 @@ export async function setPinned(id: string, pinned: boolean): Promise<NoteAction
     return { ok: false, error: e instanceof Error ? e.message : "Failed to toggle pin." };
   }
 }
-
-export type AttachOption = {
-  id: string;
-  label: string;
-  sublabel: string | null;
-};
-
-export type AttachOptionsResult =
-  | { ok: true; options: AttachOption[] }
-  | { ok: false; error: string };
 
 const PICKER_LIMIT = 20;
 
@@ -409,16 +375,6 @@ async function runSearch(
 // Used by both the /notes composer and the global ComposeFAB popup to
 // resolve already-picked attachment ids into display labels (so the
 // chip row above the buttons doesn't have to do its own lookup).
-export type ResolvedSelection = {
-  candidates: Array<{ id: string; label: string }>;
-  clients: Array<{ id: string; label: string }>;
-  jobs: Array<{ id: string; label: string }>;
-};
-
-export type ResolveSelectionResult =
-  | { ok: true; selection: ResolvedSelection }
-  | { ok: false; error: string };
-
 export async function resolveAttachmentLabels(
   attach: Partial<Attachments>,
 ): Promise<ResolveSelectionResult> {
@@ -484,4 +440,3 @@ export async function createNoteAttachedTo(
     },
   });
 }
-

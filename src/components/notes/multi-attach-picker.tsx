@@ -4,11 +4,8 @@ import { useEffect, useState } from "react";
 import { Briefcase, Building2, Check, Search, User, X } from "lucide-react";
 
 import { TabStrip } from "@/components/ui/tab-strip";
-import {
-  searchAttachOptions,
-  type Attachments,
-  type AttachOption,
-} from "@/app/notes/actions";
+import { searchAttachOptions } from "@/app/notes/actions";
+import type { Attachments, AttachOption } from "@/lib/notes/action-types";
 
 type Kind = "candidate" | "client" | "job";
 

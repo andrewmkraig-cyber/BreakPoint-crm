@@ -21,8 +21,8 @@ import {
   deleteNote,
   setPinned,
   updateNote,
-  type Attachments,
 } from "@/app/notes/actions";
+import type { Attachments } from "@/lib/notes/action-types";
 import type { NoteRow } from "@/lib/notes/queries";
 
 import { MultiAttachPicker } from "./multi-attach-picker";

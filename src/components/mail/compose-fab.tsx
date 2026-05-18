@@ -22,7 +22,8 @@ import {
   type PhoneContact,
 } from "@/lib/phone-panels-context";
 import { matchContactByPhone, type PhoneMatch } from "@/app/phone/actions";
-import { createNote, type Attachments } from "@/app/notes/actions";
+import { createNote } from "@/app/notes/actions";
+import type { Attachments } from "@/lib/notes/action-types";
 import { MultiAttachPicker } from "@/components/notes/multi-attach-picker";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 
@@ -1144,4 +1145,3 @@ function ActionRow({
     </button>
   );
 }
-

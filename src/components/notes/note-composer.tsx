@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Paperclip, Send } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { createNote, type Attachments } from "@/app/notes/actions";
+import { createNote } from "@/app/notes/actions";
+import type { Attachments } from "@/lib/notes/action-types";
 import { MultiAttachPicker } from "@/components/notes/multi-attach-picker";
 
 const EMPTY: Attachments = { candidateIds: [], clientIds: [], jobIds: [] };
