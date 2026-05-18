@@ -1355,26 +1355,26 @@ export default function CandidatesPage() {
                 an X and produced a blank strip across the resume pane.
                 Folded into the list column so the resume content rises
                 to meet the page header. */}
-            <div className="flex h-10 shrink-0 items-center gap-2 border-t border-b border-court-border bg-court-surface px-3">
+            <div className="flex h-10 shrink-0 items-center gap-1.5 border-t border-b border-court-border bg-court-surface px-2">
               <button
                 type="button"
                 onClick={() => setSelectedId(null)}
-                className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+                className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 text-xs font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
                 All Candidates
               </button>
-              <span className="mx-1 h-4 w-px bg-court-border" aria-hidden="true" />
+              <span className="h-4 w-px shrink-0 bg-court-border" aria-hidden="true" />
               <button
                 type="button"
                 onClick={goPrev}
                 disabled={!canPrev}
                 aria-label="Previous candidate"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-court-fg-muted"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-court-fg-muted"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <span className="text-xs font-medium tabular-nums text-court-fg-muted">
+              <span className="shrink-0 whitespace-nowrap text-xs font-medium tabular-nums text-court-fg-muted">
                 {currentIndex >= 0 ? currentIndex + 1 : "—"} of {sortedRows.length}
               </span>
               <button
@@ -1382,7 +1382,7 @@ export default function CandidatesPage() {
                 onClick={goNext}
                 disabled={!canNext}
                 aria-label="Next candidate"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-court-fg-muted"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-court-fg-muted"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
