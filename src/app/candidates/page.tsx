@@ -1126,7 +1126,7 @@ export default function CandidatesPage() {
     // 6px the bg-court-bg handle column shows as a green strip in dark
     // Grass mode between AppShell's nav and this aside — the aside's
     // bg-court-surface visually consumes the handle once they overlap.
-    <div className="-mb-6 -ml-[18px] -mr-6 -mt-4 flex h-[calc(100vh-80px)] overflow-hidden md:-mb-8 md:-ml-[22px] md:-mr-8 md:-mt-4 xl:-ml-[38px] xl:-mr-8 2xl:-ml-[54px] 2xl:-mr-12">
+    <div className="-mb-6 -ml-[18px] -mr-6 -mt-4 flex h-[calc(100vh-80px)] overflow-hidden bg-court-surface-subtle md:-mb-8 md:-ml-[22px] md:-mr-8 md:-mt-4 xl:-ml-[38px] xl:-mr-8 2xl:-ml-[54px] 2xl:-mr-12">
       {/* Mobile filter sheet wrapper. md:contents makes the wrapper
           inert at md+ so the aside renders as a direct flex child
           exactly as before. On phones, the wrapper becomes a fixed
@@ -1154,7 +1154,7 @@ export default function CandidatesPage() {
         </div>
       <aside
         className={
-          "flex shrink-0 flex-col bg-court-surface transition-[width,border] duration-200 " +
+          "flex shrink-0 flex-col transition-[width,border] duration-200 " +
           // Mobile (inside sheet): full-width, scrolls inside the
           // sheet's flex column. md+ keeps the original fixed-width
           // permanent rail with overflow-hidden + internal scrollers.
@@ -1594,7 +1594,7 @@ export default function CandidatesPage() {
               className="pointer-events-none absolute inset-y-0 -left-1 -right-1"
             />
           </div>
-          <section className="relative flex flex-1 flex-col bg-court-bg pt-5">
+          <section className="relative flex flex-1 flex-col overflow-hidden rounded-2xl bg-court-surface pt-5 shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.06)]">
             {/* Close X — a discrete glyph in the small bg-court-bg
                 gap above the embedded profile so it doesn't crowd the
                 right-rail card's top-right corner. No border / no fill
