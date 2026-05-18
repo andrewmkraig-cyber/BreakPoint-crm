@@ -1364,19 +1364,15 @@ function TrendCard({
             const usd = monthlyRevenue.get(m) ?? 0;
             const heightPct = maxMonthUsd > 0 ? (usd / maxMonthUsd) * 100 : 0;
             const isFuture = m > currentMonth;
-            const isCurrent = m === currentMonth;
             return (
               <div key={m} className="flex flex-1 flex-col items-center gap-1.5">
-                <div className="relative flex w-full flex-1 items-end">
+                <div className="relative flex w-full flex-1 items-end justify-center">
                   {isFuture ? (
-                    <div className="h-full w-full rounded-md border border-dashed border-court-border bg-transparent" />
+                    <div className="h-full w-10 rounded-t-md border border-dashed border-court-border bg-transparent" />
                   ) : (
                     <div
-                      className={
-                        "w-full rounded-md " +
-                        (isCurrent ? "bg-court-brand/60" : "bg-court-brand")
-                      }
-                      style={{ height: `${Math.max(4, heightPct)}%` }}
+                      className="w-10 rounded-t-md bg-court-brand"
+                      style={{ height: `${heightPct}%`, minHeight: 3 }}
                     />
                   )}
                 </div>
