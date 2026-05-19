@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Link2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -22,11 +22,19 @@ export function TriggersView({
   rules,
   templateOptionsByKey,
   gmailConnected,
+  highlightedKey,
+  onTemplateLinkClick,
 }: {
   autoSendCandidateConfirmation: boolean;
   rules: TriggerRuleRow[];
   templateOptionsByKey: Record<string, TemplateOption[]>;
   gmailConnected: boolean;
+  // Brief ring highlight + scrollIntoView target on the trigger row
+  // whose triggerKey matches. Cleared by the parent after the pulse.
+  highlightedKey?: string | null;
+  // Fires when a recruiter clicks the linked template chip so the
+  // parent can jump back to the Templates tab and highlight that card.
+  onTemplateLinkClick?: (templateId: string) => void;
 }) {
   return (
     <div className="space-y-6">
@@ -46,6 +54,8 @@ export function TriggersView({
               rule={rule}
               templates={templateOptionsByKey[rule.triggerKey] ?? []}
               gmailConnected={gmailConnected}
+              highlighted={highlightedKey === rule.triggerKey}
+              onTemplateLinkClick={onTemplateLinkClick}
             />
           ))}
         </div>
@@ -92,10 +102,14 @@ function TriggerRuleRowEditor({
   rule,
   templates,
   gmailConnected,
+  highlighted,
+  onTemplateLinkClick,
 }: {
   rule: TriggerRuleRow;
   templates: TemplateOption[];
   gmailConnected: boolean;
+  highlighted?: boolean;
+  onTemplateLinkClick?: (templateId: string) => void;
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = useState(rule.enabled);
@@ -163,8 +177,22 @@ function TriggerRuleRowEditor({
     warnings.push("Approve-before-sending is on but Gmail isn't connected — drafts can't be created.");
   }
 
+  // Linked template chip resolves the currently saved templateId
+  // (override) first, falling back to the rule's snapshot for the
+  // "system default" case. Clicking jumps back to the Templates tab.
+  const linkedTemplate = templates.find((t) => t.id === templateId)
+    ?? (rule.templateId && rule.templateName
+      ? { id: rule.templateId, name: rule.templateName }
+      : null);
+
   return (
-    <div className="flex flex-col gap-3 p-3">
+    <div
+      data-trigger-row-key={rule.triggerKey}
+      className={cn(
+        "flex flex-col gap-3 p-3 transition-shadow",
+        highlighted && "shadow-[inset_0_0_0_2px_var(--court-brand)]",
+      )}
+    >
       {warnings.length > 0 && (
         <div
           role="alert"
@@ -182,6 +210,15 @@ function TriggerRuleRowEditor({
         <div className="min-w-0 sm:flex-1">
           <div className="text-sm font-semibold text-court-fg">{rule.label}</div>
           <div className="mt-1 text-xs text-court-fg-muted">{rule.description}</div>
+          {linkedTemplate && (
+            <button
+              type="button"
+              onClick={() => onTemplateLinkClick?.(linkedTemplate.id)}
+              className="mt-2 inline-flex items-center gap-1 rounded-full border border-court-brand/40 bg-court-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-court-brand-dark transition hover:bg-court-brand/15"
+            >
+              <Link2 className="h-2.5 w-2.5" /> Template: {linkedTemplate.name}
+            </button>
+          )}
         </div>
 
         <div className="flex flex-col gap-2 sm:w-72 sm:shrink-0">

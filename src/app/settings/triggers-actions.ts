@@ -115,7 +115,7 @@ export async function upsertTriggerRule(input: {
     });
 
     revalidatePath("/settings");
-    revalidatePath("/settings/triggers");
+    revalidatePath("/settings/templates");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to save trigger." };

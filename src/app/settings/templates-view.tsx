@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, FileEdit, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, FileEdit, Link2, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,11 @@ import {
   type EmailTemplateInput,
 } from "@/app/settings/templates-actions";
 
+// Reverse-index entry surfaced from the unified Templates + Triggers
+// page so each template card can show which trigger(s) point at it.
+// Empty array renders as a muted "Unused" pill.
+export type TemplateUsage = { triggerKey: string; label: string };
+
 export type TemplateRow = {
   id: string;
   name: string;
@@ -28,6 +33,7 @@ export type TemplateRow = {
   sendAsDraft: boolean;
   sortOrder: number;
   updatedAt: string;
+  usedBy: TemplateUsage[];
 };
 
 type TabId = "active" | "inactive";
@@ -42,7 +48,19 @@ const CATEGORY_OPTIONS = ["outreach", "interview", "submittal", "offer", "reject
 const FIELD_CLASS =
   "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
 
-export function TemplatesView({ initial }: { initial: TemplateRow[] }) {
+export function TemplatesView({
+  initial,
+  highlightedId,
+  onUsedByClick,
+}: {
+  initial: TemplateRow[];
+  // Brief ring highlight + scrollIntoView target. Cleared by the
+  // parent after the highlight pulse finishes.
+  highlightedId?: string | null;
+  // Fires when a recruiter clicks a "Used by: <trigger>" badge so the
+  // parent can switch to the Triggers tab and scroll to that rule.
+  onUsedByClick?: (triggerKey: string) => void;
+}) {
   const [editing, setEditing] = useState<TemplateRow | "new" | null>(null);
   const [tab, setTab] = useState<TabId>("active");
 
@@ -91,6 +109,8 @@ export function TemplatesView({ initial }: { initial: TemplateRow[] }) {
             isFirst={i === 0}
             isLast={i === visible.length - 1}
             onEdit={() => setEditing(tpl)}
+            highlighted={highlightedId === tpl.id}
+            onUsedByClick={onUsedByClick}
           />
         ))}
       </ul>
@@ -143,6 +163,7 @@ function newTemplate(): TemplateRow {
     sendAsDraft: false,
     sortOrder: 0,
     updatedAt: new Date().toISOString(),
+    usedBy: [],
   };
 }
 
@@ -151,11 +172,15 @@ function TemplateCard({
   isFirst,
   isLast,
   onEdit,
+  highlighted,
+  onUsedByClick,
 }: {
   tpl: TemplateRow;
   isFirst: boolean;
   isLast: boolean;
   onEdit: () => void;
+  highlighted?: boolean;
+  onUsedByClick?: (triggerKey: string) => void;
 }) {
   const router = useRouter();
   const [isDeleting, startDelete] = useTransition();
@@ -227,7 +252,15 @@ function TemplateCard({
   }
 
   return (
-    <li className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
+    <li
+      data-template-card-id={tpl.id || undefined}
+      className={cn(
+        "rounded-xl border bg-court-surface p-4 shadow-sm transition-shadow",
+        highlighted
+          ? "border-court-brand shadow-[0_0_0_2px_var(--court-brand)]"
+          : "border-court-border",
+      )}
+    >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -246,6 +279,24 @@ function TemplateCard({
               <span className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
                 {tpl.audience}
               </span>
+            )}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {tpl.usedBy.length === 0 ? (
+              <span className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                Unused
+              </span>
+            ) : (
+              tpl.usedBy.map((u) => (
+                <button
+                  key={u.triggerKey}
+                  type="button"
+                  onClick={() => onUsedByClick?.(u.triggerKey)}
+                  className="inline-flex items-center gap-1 rounded-full border border-court-brand/40 bg-court-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-court-brand-dark transition hover:bg-court-brand/15"
+                >
+                  <Link2 className="h-2.5 w-2.5" /> Used by: {u.label}
+                </button>
+              ))
             )}
           </div>
           {sendAsDraft && (

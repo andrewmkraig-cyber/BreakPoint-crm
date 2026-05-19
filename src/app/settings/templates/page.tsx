@@ -1,19 +1,56 @@
-import { prisma } from "@/lib/prisma";
-import { ensureDefaultTemplates } from "@/app/settings/templates-actions";
-import { TemplatesView, type TemplateRow } from "@/app/settings/templates-view";
+import { getServerSession } from "next-auth";
+
 import { CollapsibleSection } from "@/components/settings/collapsible-section";
+import { prisma } from "@/lib/prisma";
+import { authOptions } from "@/lib/auth";
+import { getGmailStatus } from "@/lib/connectors";
+import { ensureDefaultPreferences, getAppPreferences } from "@/lib/preferences";
+import { ensureDefaultTemplates } from "@/app/settings/templates-actions";
+import {
+  getTriggerRules,
+  getTemplatesForTrigger,
+} from "@/app/settings/triggers-actions";
+import { TemplatesTriggersView } from "@/app/settings/templates-triggers-view";
+import type { TemplateRow, TemplateUsage } from "@/app/settings/templates-view";
 
 export const dynamic = "force-dynamic";
 
-export default async function TemplatesSettingsPage() {
+// Unified Templates + Triggers settings surface. Replaces the old split
+// between /settings/templates and /settings/triggers - both now render
+// here behind an internal TabStrip. /settings/triggers is kept as a
+// redirect so deep links survive.
+export default async function TemplatesTriggersSettingsPage() {
   await ensureDefaultTemplates();
+  await ensureDefaultPreferences();
 
-  const templates = await prisma.emailTemplate.findMany({
-    // Manual sortOrder drives display order; Active tab still groups
-    // first via isActive desc so the count in the segmented control
-    // matches the visible list.
-    orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { updatedAt: "desc" }],
-  });
+  const session = await getServerSession(authOptions);
+  const sessionUserId = (session?.user as { id?: string } | undefined)?.id ?? null;
+
+  const [templates, prefs, rules, gmailStatus] = await Promise.all([
+    prisma.emailTemplate.findMany({
+      orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { updatedAt: "desc" }],
+    }),
+    getAppPreferences(),
+    getTriggerRules(),
+    getGmailStatus(sessionUserId),
+  ]);
+
+  // Pre-fetch template options per trigger key so the dropdowns
+  // populate on initial render - same shape the old triggers page used.
+  const templateOptionsEntries = await Promise.all(
+    rules.map(async (r) => [r.triggerKey, await getTemplatesForTrigger(r.triggerKey)] as const),
+  );
+  const templateOptionsByKey = Object.fromEntries(templateOptionsEntries);
+
+  // Reverse-index: for each templateId, which trigger(s) point at it?
+  // Drives the "Used by" badge on every template card.
+  const usageByTemplate = new Map<string, TemplateUsage[]>();
+  for (const r of rules) {
+    if (!r.templateId) continue;
+    const list = usageByTemplate.get(r.templateId) ?? [];
+    list.push({ triggerKey: r.triggerKey, label: r.label });
+    usageByTemplate.set(r.templateId, list);
+  }
 
   const rows: TemplateRow[] = templates.map((t) => ({
     id: t.id,
@@ -27,15 +64,22 @@ export default async function TemplatesSettingsPage() {
     sendAsDraft: t.sendAsDraft,
     sortOrder: t.sortOrder,
     updatedAt: t.updatedAt.toISOString(),
+    usedBy: usageByTemplate.get(t.id) ?? [],
   }));
 
   return (
     <CollapsibleSection
       id="templates"
-      title="Templates"
-      description="Reusable subject + body. Use the Insert Field picker to add merge fields."
+      title="Templates + Triggers"
+      description="Reusable email templates plus the pipeline triggers that fire them. Every Trigger row points at a Template; click a Used by badge to jump between them."
     >
-      <TemplatesView initial={rows} />
+      <TemplatesTriggersView
+        templates={rows}
+        rules={rules}
+        templateOptionsByKey={templateOptionsByKey}
+        autoSendCandidateConfirmation={prefs.autoSendCandidateConfirmation}
+        gmailConnected={gmailStatus.state === "connected"}
+      />
     </CollapsibleSection>
   );
 }
