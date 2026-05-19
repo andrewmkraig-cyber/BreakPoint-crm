@@ -57,6 +57,7 @@ import { createClientContact } from "@/app/candidates/[id]/contact-actions";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { DateTime15Picker } from "@/components/datetime-15-picker";
 import { MeetingProviderSelect } from "@/components/meeting-provider-select";
+import { triggerCalendarSync } from "@/lib/calendar/trigger-sync";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
 import {
   formatInterviewDate as formatInterviewDateShared,
@@ -1802,6 +1803,7 @@ function ScheduleInterviewDialog({
   onScheduled: (ctx: Omit<InviteFlowState, "step">) => void;
 }) {
   void candidateEmail;
+  const router = useRouter();
   const [scheduledAt, setScheduledAt] = useState<string>("");
   const [durationMin, setDurationMin] = useState<number>(30);
   const [timeZone, setTimeZone] = useState<string>("America/New_York");
@@ -1882,6 +1884,10 @@ function ScheduleInterviewDialog({
         toast.error("Couldn't schedule interview", { description: result.error });
         return;
       }
+      // Same auto-sync the manual Sync button on /calendar fires, so
+      // the freshly created Google event lands in the local
+      // CalendarEvent mirror without the recruiter clicking Sync.
+      void triggerCalendarSync(router);
       // Pre-fetch the two interview-scheduled templates so the
       // composers can seed subject + body from them. Best-effort:
       // a failure here just leaves the composers to render their
@@ -2103,7 +2109,7 @@ function ClientInviteDialog({
         description: "Added to your calendar for tracking. No invites were sent to candidate or client.",
       });
       onClose();
-      router.refresh();
+      void triggerCalendarSync(router);
     });
   }
 

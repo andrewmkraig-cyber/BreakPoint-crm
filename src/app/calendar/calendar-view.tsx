@@ -20,6 +20,7 @@ import type {
   CalendarTeamMember,
   CalendarView,
 } from "@/lib/calendar/types";
+import { triggerCalendarSync } from "@/lib/calendar/trigger-sync";
 import {
   addDays,
   addMonths,
@@ -135,14 +136,7 @@ export function CalendarView({
     if (isSyncing) return;
     setIsSyncing(true);
     try {
-      const res = await fetch("/api/calendar/sync", { method: "POST" });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        console.error("Calendar sync failed", body);
-      }
-      router.refresh();
-    } catch (err) {
-      console.error("Calendar sync error", err);
+      await triggerCalendarSync(router);
     } finally {
       setIsSyncing(false);
     }

@@ -39,6 +39,7 @@ import {
   surfaceMeetSettingsLink,
   type AceTeamContact,
 } from "@/app/candidates/[id]/placement-flows";
+import { triggerCalendarSync } from "@/lib/calendar/trigger-sync";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
 import { StageBadge } from "@/components/stage-badge";
 import type { PipelineBucket } from "@/lib/rf-payload-shapes";
@@ -483,6 +484,7 @@ function ScheduleDialog({
   onClose: () => void;
   onScheduled: (ctx: Omit<LocalInviteFlow, "step">) => void;
 }) {
+  const router = useRouter();
   const [scheduledAt, setScheduledAt] = useState("");
   const [durationMin, setDurationMin] = useState(30);
   const [type, setType] = useState<InterviewType>("video");
@@ -551,6 +553,10 @@ function ScheduleDialog({
         toast.error("Couldn't schedule", { description: result.error });
         return;
       }
+      // Same auto-sync the manual Sync button on /calendar fires, so
+      // the freshly created Google event lands in the local
+      // CalendarEvent mirror without the recruiter clicking Sync.
+      void triggerCalendarSync(router);
       // Same pre-fetch as the RF flow — templates seed the composers,
       // failures fall back to hardcoded defaults silently.
       let templates: { candidate: { subject: string; body: string } | null; client: { subject: string; body: string } | null } = {
@@ -709,7 +715,7 @@ function ClientInviteDialog({
         description: "Added to your calendar for tracking. No invites were sent.",
       });
       onClose();
-      router.refresh();
+      void triggerCalendarSync(router);
     });
   }
 
@@ -770,7 +776,7 @@ function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; o
       }
       toast.success("Interview rescheduled");
       onClose();
-      router.refresh();
+      void triggerCalendarSync(router);
     });
   }
 
