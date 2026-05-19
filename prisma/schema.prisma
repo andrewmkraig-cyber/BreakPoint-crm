@@ -759,6 +759,15 @@ model Client {
   // "LinkedIn BD" | "Network" | "Referral" | "Existing client" |
   // "Website" | "Other". Powers the Financial Performance lead-source mix.
   leadSource     String?
+  // Fee Agreement metadata — Ace-native fields edited from the client
+  // profile Overview tab. For RF-imported clients these start null and
+  // the profile seeds the edit draft from raw.custom_fields on first
+  // touch; once the recruiter saves, the Ace columns are canonical and
+  // raw is never read again for these values.
+  feeAgreementSigned   Boolean?
+  feeAgreementSignedAt DateTime?
+  feePct               Float?
+  feeBillingContact    String?
   organizationId String
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

@@ -337,7 +337,7 @@ export async function summarizeBenefitsWithAI(
   }
 }
 
-// ---- Company (client/update) ----
+// ---- Company + Fee Agreement (client/update) ----
 
 export type UpdateClientInput = {
   clientCuid: string;
@@ -351,6 +351,10 @@ export type UpdateClientInput = {
   state: string;
   postalCode: string;
   country: string;
+  feeAgreementSigned: boolean;
+  feeAgreementSignedAt: string;
+  feePct: string;
+  feeBillingContact: string;
 };
 
 export async function updateClientCompany(input: UpdateClientInput): Promise<ActionResult> {
@@ -377,6 +381,10 @@ export async function updateClientCompany(input: UpdateClientInput): Promise<Act
       country: input.country.trim() || null,
     };
     const phoneTrimmed = input.phone.trim();
+    const signedAtTrimmed = input.feeAgreementSignedAt.trim();
+    const signedAtDate = signedAtTrimmed ? new Date(signedAtTrimmed) : null;
+    const feePctTrimmed = input.feePct.trim();
+    const feePctValue = feePctTrimmed ? Number(feePctTrimmed) : null;
 
     await prisma.client.update({
       where: { id: existing.id },
@@ -386,6 +394,11 @@ export async function updateClientCompany(input: UpdateClientInput): Promise<Act
         linkedinPage: linkedinUrlFrom(input.linkedin) || null,
         phoneNumbers: phoneTrimmed ? [{ number: phoneTrimmed }] : [],
         location,
+        feeAgreementSigned: input.feeAgreementSigned,
+        feeAgreementSignedAt:
+          signedAtDate && !Number.isNaN(signedAtDate.getTime()) ? signedAtDate : null,
+        feePct: feePctValue != null && !Number.isNaN(feePctValue) ? feePctValue : null,
+        feeBillingContact: input.feeBillingContact.trim() || null,
       },
     });
 

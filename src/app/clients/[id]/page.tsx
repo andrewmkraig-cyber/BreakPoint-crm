@@ -1,12 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import {
-  ArrowLeft,
-  ExternalLink,
-  FileText,
-  ShieldCheck,
-  Briefcase,
-} from "lucide-react";
+import { ArrowLeft, ShieldCheck, Briefcase } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import {
   canonicalStage,
@@ -169,7 +163,6 @@ export default async function ClientDetailPage({
   const agreementFile = Array.isArray(raw?.files)
     ? raw!.files!.find((f) => typeof f?.filename === "string" && f.filename.toLowerCase().includes("agreement")) ?? null
     : null;
-  const isVerified = agreements.length > 0 || Boolean(signedFlag) || Boolean(agreementFile);
   const feePct =
     typeof feePctRaw === "number" ? feePctRaw : typeof feePctRaw === "string" ? parseFloat(feePctRaw) || null : null;
 
@@ -261,6 +254,32 @@ export default async function ClientDetailPage({
   const openJobs = Array.isArray(raw?.open_jobs) ? raw!.open_jobs! : [];
   const closedJobs = Array.isArray(raw?.closed_jobs) ? raw!.closed_jobs! : [];
 
+  // Fee Agreement seed: prefer Ace-native columns; for clients imported
+  // before these columns existed, fall through to the RF custom_fields
+  // scrape so the recruiter sees the current value on first load. Once
+  // they hit Save in the unified editor the Ace columns are canonical.
+  const seedSignedAt =
+    client.feeAgreementSignedAt ??
+    (typeof agreementDate === "string" && agreementDate ? new Date(agreementDate) : null);
+  const seedSignedAtIso =
+    seedSignedAt instanceof Date && !Number.isNaN(seedSignedAt.getTime())
+      ? seedSignedAt.toISOString().slice(0, 10)
+      : "";
+  const seedFeePct =
+    client.feePct != null
+      ? String(client.feePct)
+      : feePct != null
+        ? String(feePct)
+        : "";
+  const seedBillingContact =
+    client.feeBillingContact ??
+    (typeof billingContact === "string" ? billingContact : "") ??
+    "";
+  const seedSigned =
+    client.feeAgreementSigned ??
+    Boolean(signedFlag) ??
+    false;
+
   const companyInitial: CompanyState = {
     website: client.domain ?? "",
     linkedin: client.linkedinPage ?? "",
@@ -272,7 +291,15 @@ export default async function ClientDetailPage({
     state: location?.state ?? "",
     postalCode: location?.postal_code ?? "",
     country: location?.country ?? "",
+    feeAgreementSigned: seedSigned,
+    feeAgreementSignedAt: seedSignedAtIso,
+    feePct: seedFeePct,
+    feeBillingContact: seedBillingContact,
   };
+
+  const agreementFileForCard = agreementFile?.link
+    ? { filename: agreementFile.filename ?? "Open PDF", link: agreementFile.link }
+    : null;
 
   return (
     <div className="space-y-6">
@@ -311,36 +338,11 @@ export default async function ClientDetailPage({
 
       {tab === "overview" ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <EditableCompany clientCuid={client.id} initial={companyInitial} />
-
-          <div className="rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
-            <h2 className="font-serif text-lg font-semibold text-court-fg">Fee Agreement</h2>
-            <dl className="mt-4 space-y-3 text-sm">
-              <Detail label="Status" icon={<ShieldCheck className="h-3 w-3" />}>
-                <span className={isVerified ? "font-medium text-brand-dark" : "text-court-fg-muted"}>
-                  {isVerified ? "Signed" : "Unsigned"}
-                </span>
-              </Detail>
-              <Detail label="Signed On">
-                <span>{typeof agreementDate === "string" && agreementDate ? new Date(agreementDate).toLocaleDateString() : "—"}</span>
-              </Detail>
-              <Detail label="Fee">
-                <span>{feePct != null ? `${feePct}%` : "—"}</span>
-              </Detail>
-              <Detail label="Billing Contact">
-                <span>{typeof billingContact === "string" && billingContact.trim() ? billingContact : "—"}</span>
-              </Detail>
-              <Detail label="Agreement File" icon={<FileText className="h-3 w-3" />}>
-                {agreementFile?.link ? (
-                  <a href={agreementFile.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand-dark hover:underline">
-                    {agreementFile.filename ?? "Open PDF"} <ExternalLink className="h-3 w-3" />
-                  </a>
-                ) : (
-                  <span>—</span>
-                )}
-              </Detail>
-            </dl>
-          </div>
+          <EditableCompany
+            clientCuid={client.id}
+            initial={companyInitial}
+            agreementFile={agreementFileForCard}
+          />
 
           <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm lg:col-span-3">
             <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
@@ -592,18 +594,6 @@ function Tabs({
     { id: "email", label: "Email", href: `/clients/${slug}?tab=email` },
   ];
   return <TabStrip<ClientTab> ariaLabel="Client section" activeId={tab} items={items} />;
-}
-
-function Detail({ label, icon, children }: { label: string; icon?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div>
-      <dt className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</dt>
-      <dd className="mt-0.5 inline-flex items-center gap-1 text-court-fg">
-        {icon}
-        {children}
-      </dd>
-    </div>
-  );
 }
 
 function Stat({
