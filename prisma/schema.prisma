@@ -1074,6 +1074,10 @@ model MicrosoftToken {
   refreshToken   String
   expiresAt      DateTime
   email          String?
+  // "connected" while the token (or its refresh grant) is usable;
+  // "expired" once a refresh fails (invalid_grant / missing refresh
+  // token). Drives the amber reconnect banner in Settings > Connectors.
+  status         String   @default("connected")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)

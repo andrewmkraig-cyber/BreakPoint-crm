@@ -2039,7 +2039,19 @@ function ScheduleInterviewDialog({
         />
         <LabeledTextarea label="Notes" value={notes} onChange={setNotes} rows={3} />
       </div>
-      {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
+      {err && (
+        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+          {err}
+          {err.includes("Reconnect in Settings") && (
+            <>
+              {" "}
+              <a href="/settings/connectors" className="font-semibold underline">
+                Go to Settings &gt; Connectors
+              </a>
+            </>
+          )}
+        </div>
+      )}
       <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Schedule" />
     </Modal>
   );

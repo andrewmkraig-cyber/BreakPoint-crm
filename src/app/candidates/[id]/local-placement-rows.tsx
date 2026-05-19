@@ -661,7 +661,19 @@ function ScheduleDialog({
           />
         }
       />
-      {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
+      {err && (
+        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+          {err}
+          {err.includes("Reconnect in Settings") && (
+            <>
+              {" "}
+              <a href="/settings/connectors" className="font-semibold underline">
+                Go to Settings &gt; Connectors
+              </a>
+            </>
+          )}
+        </div>
+      )}
       <Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Schedule" />
     </ModalShell>
   );

@@ -8,9 +8,16 @@ import { prisma } from "@/lib/prisma";
 const TOKEN_ENDPOINT = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0";
 
-// Refresh roughly a minute before the stored expiry so a long-running
-// scheduleInterview call doesn't race a token that expires mid-request.
-const EXPIRY_SKEW_MS = 60_000;
+// Treat a token as needing refresh once it is within 5 minutes of its
+// stored expiry, so a long-running scheduleInterview call never races a
+// token that expires mid-request.
+const EXPIRY_SKEW_MS = 5 * 60_000;
+
+// Exact copy surfaced to the recruiter wherever a Teams token has gone
+// bad. The interview scheduler matches the trailing "Reconnect in
+// Settings" substring to render a link, so keep that phrase stable.
+export const TEAMS_TOKEN_EXPIRED_MESSAGE =
+  "Microsoft Teams token expired. Reconnect in Settings > Connectors.";
 
 type GraphTokenRefreshResponse = {
   access_token: string;
@@ -30,16 +37,37 @@ class MicrosoftGraphError extends Error {
   }
 }
 
-export async function getValidAccessToken(organizationId: string): Promise<string> {
+// Flip the org's token row to "expired" so Settings > Connectors shows
+// the amber reconnect banner and the scheduler stops offering Teams.
+// Best-effort: a write failure here must not mask the original auth
+// failure the caller is already handling.
+async function markExpired(organizationId: string): Promise<void> {
+  await prisma.microsoftToken
+    .update({ where: { organizationId }, data: { status: "expired" } })
+    .catch(() => {});
+}
+
+// Returns a usable Graph access token for the org, or null when the
+// connection can't be used (no token row, or the refresh grant has been
+// revoked/expired). On a dead refresh the row is marked "expired" so the
+// UI can prompt a reconnect. Throws only on server misconfiguration
+// (missing OAuth env vars) or a transient/non-auth refresh failure that
+// a retry might clear, which are not "the user must reconnect" states.
+export async function getMicrosoftToken(organizationId: string): Promise<string | null> {
   const token = await prisma.microsoftToken.findUnique({
     where: { organizationId },
   });
-  if (!token) {
-    throw new MicrosoftGraphError("Microsoft account is not connected for this organization.");
-  }
+  if (!token) return null;
 
   if (token.expiresAt.getTime() > Date.now() + EXPIRY_SKEW_MS) {
     return token.accessToken;
+  }
+
+  // offline_access guarantees a refresh token at connect time, so an
+  // empty one means the connection is unusable and needs a reconnect.
+  if (!token.refreshToken) {
+    await markExpired(organizationId);
+    return null;
   }
 
   const clientId = process.env.MICROSOFT_CLIENT_ID;
@@ -62,6 +90,14 @@ export async function getValidAccessToken(organizationId: string): Promise<strin
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    // invalid_grant (or any 4xx) means the refresh token itself is dead.
+    // The only fix is a fresh OAuth consent, so mark expired and return
+    // null. A 5xx is Microsoft-side and transient; surface it as an error
+    // so we don't false-flag a healthy connection as expired.
+    if (res.status >= 400 && res.status < 500) {
+      await markExpired(organizationId);
+      return null;
+    }
     throw new MicrosoftGraphError(
       `Microsoft token refresh failed (${res.status}): ${text || "no body"}`,
       res.status,
@@ -79,6 +115,8 @@ export async function getValidAccessToken(organizationId: string): Promise<strin
       // not. Persist the new one when present; keep the old otherwise.
       refreshToken: refreshed.refresh_token ?? token.refreshToken,
       expiresAt,
+      // A successful refresh clears any prior expired flag.
+      status: "connected",
     },
   });
 
@@ -97,7 +135,10 @@ export async function createTeamsMeeting(args: {
   endISO: string;
   subject: string;
 }): Promise<{ joinWebUrl: string; meetingId: string }> {
-  const accessToken = await getValidAccessToken(args.organizationId);
+  const accessToken = await getMicrosoftToken(args.organizationId);
+  if (!accessToken) {
+    throw new MicrosoftGraphError(TEAMS_TOKEN_EXPIRED_MESSAGE);
+  }
 
   const res = await fetch(`${GRAPH_ROOT}/me/onlineMeetings`, {
     method: "POST",
@@ -114,6 +155,13 @@ export async function createTeamsMeeting(args: {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    // A 401 here means a token that passed the expiry check was revoked
+    // server-side; mark expired so the recruiter is prompted to reconnect
+    // instead of hitting the same dead token on the next schedule.
+    if (res.status === 401) {
+      await markExpired(args.organizationId);
+      throw new MicrosoftGraphError(TEAMS_TOKEN_EXPIRED_MESSAGE, 401);
+    }
     throw new MicrosoftGraphError(
       `Microsoft Graph onlineMeetings create failed (${res.status}): ${text || "no body"}`,
       res.status,

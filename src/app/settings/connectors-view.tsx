@@ -97,9 +97,11 @@ export function ConnectorsView({
 // Status comes from GET /api/auth/microsoft/status; Connect kicks off
 // GET /api/auth/microsoft which 302s to login.microsoftonline.com;
 // Disconnect calls DELETE /api/auth/microsoft.
+type MicrosoftConnState = "connected" | "expired" | "disconnected";
+
 function MicrosoftTeamsConnectorRow() {
   const [loading, setLoading] = useState(true);
-  const [connected, setConnected] = useState(false);
+  const [state, setState] = useState<MicrosoftConnState>("disconnected");
   const [email, setEmail] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -109,16 +111,20 @@ function MicrosoftTeamsConnectorRow() {
       try {
         const res = await fetch("/api/auth/microsoft/status");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = (await res.json()) as { connected: boolean; email: string | null };
+        const json = (await res.json()) as {
+          connected: boolean;
+          status?: MicrosoftConnState;
+          email: string | null;
+        };
         if (cancelled) return;
-        setConnected(json.connected);
+        setState(json.status ?? (json.connected ? "connected" : "disconnected"));
         setEmail(json.email);
       } catch {
         // Treat a status error as "not connected" — the user can still
         // click Connect; the real OAuth flow will surface any real
         // problem more usefully than a generic toast here.
         if (!cancelled) {
-          setConnected(false);
+          setState("disconnected");
           setEmail(null);
         }
       } finally {
@@ -130,6 +136,9 @@ function MicrosoftTeamsConnectorRow() {
     };
   }, []);
 
+  const connected = state === "connected";
+  const expired = state === "expired";
+
   async function disconnect() {
     if (busy) return;
     setBusy(true);
@@ -139,7 +148,7 @@ function MicrosoftTeamsConnectorRow() {
         const text = await res.text().catch(() => "");
         throw new Error(text || `HTTP ${res.status}`);
       }
-      setConnected(false);
+      setState("disconnected");
       setEmail(null);
       toast.success("Microsoft disconnected", {
         description: "Reconnect any time from this panel.",
@@ -157,22 +166,40 @@ function MicrosoftTeamsConnectorRow() {
     ? "Checking connection..."
     : connected
       ? "Connected — Teams meeting links will be generated when scheduling interviews."
-      : "Connect your Microsoft account to generate Teams meeting links when scheduling interviews.";
+      : expired
+        ? "Token expired - reconnect to keep generating Teams meeting links when scheduling interviews."
+        : "Connect your Microsoft account to generate Teams meeting links when scheduling interviews.";
 
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
+    <div
+      className={`flex items-start justify-between gap-4 rounded-lg border px-4 py-3 ${
+        expired
+          ? "border-amber-300 bg-amber-50"
+          : "border-court-border bg-court-surface-subtle/40"
+      }`}
+    >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <Video className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
-          <span className="text-sm font-semibold text-court-fg">Microsoft Teams</span>
+          <Video
+            className={`h-3.5 w-3.5 ${expired ? "text-amber-600" : "text-emerald-600"}`}
+            aria-hidden
+          />
+          <span className={`text-sm font-semibold ${expired ? "text-amber-900" : "text-court-fg"}`}>
+            Microsoft Teams
+          </span>
           {!loading && connected && (
             <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
               Connected
             </span>
           )}
+          {!loading && expired && (
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">
+              Token expired - reconnect
+            </span>
+          )}
         </div>
-        <div className="mt-1 truncate text-xs text-court-fg-muted">
-          {connected && email ? (
+        <div className={`mt-1 truncate text-xs ${expired ? "text-amber-800" : "text-court-fg-muted"}`}>
+          {email && (connected || expired) ? (
             <>
               <span className="font-mono">{email}</span> · {detail}
             </>
@@ -194,6 +221,14 @@ function MicrosoftTeamsConnectorRow() {
             {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
             Disconnect
           </button>
+        ) : expired ? (
+          <a
+            href="/api/auth/microsoft"
+            className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900 transition hover:bg-amber-200"
+          >
+            <RefreshCw className="h-3 w-3" />
+            Reconnect
+          </a>
         ) : (
           <a
             href="/api/auth/microsoft"

@@ -14,7 +14,7 @@ import {
   updateCalendarEvent,
   updateEventAsInvite,
 } from "@/lib/google-calendar";
-import { createTeamsMeeting } from "@/lib/microsoft-graph";
+import { createTeamsMeeting, getMicrosoftToken, TEAMS_TOKEN_EXPIRED_MESSAGE } from "@/lib/microsoft-graph";
 import { prisma } from "@/lib/prisma";
 import {
   CANDIDATE_INTERVIEW_PREP_TRIGGER,
@@ -292,8 +292,24 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
   }
 
   if (wantsVideoLink && meetingProvider === "teams") {
+    const org = await getCurrentOrg();
+    // Guard before minting the Teams link: getMicrosoftToken refreshes
+    // when it can and flips the org's token row to "expired" (returning
+    // null) when the refresh grant is dead. A null here means the
+    // recruiter must reconnect: bail with an actionable message rather
+    // than leaving the Google tracking event behind as a broken stub.
+    const teamsToken = await getMicrosoftToken(org.id);
+    if (!teamsToken) {
+      if (googleEventIdMine) {
+        try {
+          await deleteCalendarEvent({ userId: user.id, eventId: googleEventIdMine, sendUpdates: false });
+        } catch {
+          // best-effort
+        }
+      }
+      return { ok: false, error: TEAMS_TOKEN_EXPIRED_MESSAGE };
+    }
     try {
-      const org = await getCurrentOrg();
       const endISO = new Date(when.getTime() + input.durationMin * 60 * 1000).toISOString();
       const meeting = await createTeamsMeeting({
         organizationId: org.id,

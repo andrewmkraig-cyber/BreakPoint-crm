@@ -132,6 +132,9 @@ export async function GET(req: NextRequest) {
         refreshToken: tokens.refresh_token,
         expiresAt,
         email: email ?? undefined,
+        // Reconnecting clears a prior expired flag so the connector card
+        // flips back to the green Connected pill.
+        status: "connected",
       },
     });
   } catch (e) {
