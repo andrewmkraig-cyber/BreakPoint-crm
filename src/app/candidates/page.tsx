@@ -50,6 +50,16 @@ import { TabStrip } from "@/components/ui/tab-strip";
 import { cn } from "@/lib/utils";
 import { flattenBooleanQuery } from "@/lib/search/boolean-query";
 
+// Split-view left-panel resize. The name list used to be locked to
+// w-64 (256px) — that was the Ace 53.0 column-width fix. Now the
+// width is persisted per-user in localStorage and drag-adjusted via a
+// 4px handle. Clamp the final value so the panel can't be dragged to
+// zero (hiding the close X) or wider than half a 1024px screen.
+const LEFT_WIDTH_STORAGE_KEY = "ace-candidates-left-width";
+const LEFT_WIDTH_DEFAULT = 256;
+const LEFT_WIDTH_MIN = 200;
+const LEFT_WIDTH_MAX = 480;
+
 const DISTANCE_OPTIONS = [10, 25, 50, 100];
 const DATE_OPTIONS = [
   { value: "any", label: "Any time" },
@@ -754,6 +764,61 @@ export default function CandidatesPage() {
   // wouldn't trigger a reload).
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
+  // Split-view list-column width. State drives render; the ref mirrors
+  // it so the mouseup persist closure sees the latest value without
+  // re-binding the document listeners on every move. Initial value is
+  // restored from localStorage on mount (effect below) — leaving the
+  // initial state at the default avoids an SSR/CSR hydration mismatch.
+  const [leftWidth, setLeftWidth] = useState<number>(LEFT_WIDTH_DEFAULT);
+  const leftWidthRef = useRef<number>(LEFT_WIDTH_DEFAULT);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(LEFT_WIDTH_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = Number.parseInt(raw, 10);
+      if (!Number.isFinite(parsed)) return;
+      const clamped = Math.min(
+        LEFT_WIDTH_MAX,
+        Math.max(LEFT_WIDTH_MIN, parsed),
+      );
+      setLeftWidth(clamped);
+      leftWidthRef.current = clamped;
+    } catch {
+      // localStorage unavailable — keep default
+    }
+  }, []);
+  function onLeftWidthDragStart(e: React.MouseEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = leftWidthRef.current;
+    const onMove = (ev: MouseEvent) => {
+      const next = Math.min(
+        LEFT_WIDTH_MAX,
+        Math.max(LEFT_WIDTH_MIN, startWidth + (ev.clientX - startX)),
+      );
+      leftWidthRef.current = next;
+      setLeftWidth(next);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      try {
+        window.localStorage.setItem(
+          LEFT_WIDTH_STORAGE_KEY,
+          String(leftWidthRef.current),
+        );
+      } catch {
+        // localStorage unavailable — width survives until reload only
+      }
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }
+
   const hasFilters = hasAnyFilter(filters);
   // Stable string identity for the array filters so useEffect's dep
   // compare retriggers on pill add/remove and on exclude-toggle. Each
@@ -1348,7 +1413,8 @@ export default function CandidatesPage() {
               flush. The X / "All Candidates" buttons in the iframe pane
               return them to the list. md+ keeps the resizable split. */}
           <section
-            className="hidden w-64 flex-shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface md:flex"
+            style={{ width: leftWidth }}
+            className="hidden flex-shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface md:flex"
           >
             {/* List-column chrome strip. Used to be the LEFT segment
                 of a full-width chrome bar; the RIGHT segment had only
@@ -1509,6 +1575,20 @@ export default function CandidatesPage() {
               )}
             </div>
           </section>
+          {/* Resize handle — 4px column between the name list and the
+              iframe pane. Mouse-down captures the current width as the
+              drag origin so successive drags compose cleanly; mouse-up
+              persists the final width to localStorage so the next page
+              load (or route navigation back to /candidates) restores
+              the same split. Hidden below md to match the list column
+              (which collapses on mobile). */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize candidate list"
+            onMouseDown={onLeftWidthDragStart}
+            className="hidden w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-court-brand md:block"
+          />
           <section className="relative flex flex-1 flex-col overflow-hidden bg-court-bg pt-5">
             {/* Close X — a discrete glyph in the small bg-court-bg
                 gap above the embedded profile so it doesn't crowd the
