@@ -1,10 +1,49 @@
 # ACE_STATE.md
-Last updated: 2026-05-18 · Ace 54.0
+Last updated: 2026-05-18 · Ace 55.0
 
 ## Current Status
-Current Version: Ace 54.0
+Current Version: Ace 55.0
 Last Shipped: 2026-05-18
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 55.0 (2026-05-18)
+
+Polish queue close-out session. Closed 11 items from the queue carried out of Ace 54.0 — calendar create unification, ComposeFAB global drawer wiring, Delete button placement parity, Edit Interview button across all 4 pipeline surfaces, Scoreboard KPI subtext, PipelinePill Court Mode tokens + client profile Stat sizing, ExpenseMerchantLogo + favicons, Mark as Read on Quo thread, and Add Number SMS verified.
+
+### Calendar + reminders
+- **Item 7 — CreateEventModal killed.** All calendar create entry points unified into `CalendarEventDrawer` create mode. `allDay` toggle and meeting type picker (Google Meet / Teams / Phone / In Person) ported into the drawer; `GuestTypeahead` wired into the recipients field.
+- **Item 3 — ComposeFAB New Reminder wired to global drawer.** The ComposeFAB "New Reminder" entry now dispatches through `CalendarDrawerProvider` so the drawer opens inline on whatever page the recruiter is on. No navigation to `/calendar`.
+- **FAB overlay fix.** Both ComposeFAB New Event and ComposeFAB New Reminder open the drawer as a true overlay on the current page via the global `CalendarDrawerProvider`. Previously the FAB navigated the recruiter to `/calendar` before opening the create surface.
+- **Timezone fix.** `CalendarEventDrawer` create mode was persisting datetimes as UTC; fixed to write ET offset so a 3 PM ET event saves as 3 PM ET, not 3 PM UTC.
+
+### Pipeline + interviews
+- **Item 19 — Edit Interview button across 4 surfaces.** Added the Edit Interview affordance to `pipeline-view.tsx` (tiny underline link on `/pipeline`), `pipeline-row-actions.tsx` (rounded-md outlined button on the job pipeline tab), `local-placement-rows.tsx` (Ace-native candidate profile rows), and `placement-flows.tsx` (RF candidate profile rows). Consistent action across every surface that shows an interview.
+
+### Candidate + job profile chrome
+- **Item 9 — Delete buttons relocated to floating bottom-right.** `DeleteCandidateButton` and `DeleteJobButton` now match the `DeleteClientButton` pattern: floating in the bottom-right of the profile page so the action lives in a predictable place across all three entity profiles.
+
+### Dashboard + finances
+- **Item 27 — ExpenseMerchantLogo + Google s2 favicons on expense rows.** `ExpenseMerchantLogo` component renders Google `s2/favicons` icons next to every recurring/one-time expense row on the Finances Expenses tab, with initials fallback. Domain colocated on each `KNOWN_TOOLS` entry and on each `RecurringCatalogEntry` so the favicon URL resolves from the tool name automatically. (Item also appeared in the Ace 54.0 ship list — closed out in 55.0 with the catalog colocation pass.)
+- **Item 15 — Scoreboard KPI subtext now visible.** `ScoreboardKpiTile`'s `sub` prop renders as a visible 10px muted line under the value (was hover-only via `title=`). Five context strings ("Per placement, last 90 days", "Avg, job posted → placed (90d)", etc.) surface inline without a tooltip.
+- **Item 17 — PipelinePill Court Mode tokens + Stat sizing.** `PipelinePill` stage dots swapped from hardcoded hex to Court Mode tokens (`court-brand-dark` for submitted, `court-brand` for hired) + canonical Tailwind hues for typed stages (blue-700, purple-600, amber-700). Client profile `Stat` value sized to `text-[26px]` to match the canonical `KpiTile` chrome used on Clubhouse + Finances.
+
+### Phone + texting
+- **Item 29 — Mark as Read button on Quo thread.** `ThreadDetailPane` header renders a manual "Mark as read" button (CheckCheck icon) when the current thread has `hasUnread: true`. Reuses the same `markThreadRead` + `refreshUnread` chain as auto-mark-on-open. Fallback when auto-mark errored or the recruiter wants to clear without scrolling.
+- **Item 21 — Add Number inline on SMS composer verified.** Confirmed working in browser; shipped in Ace 54.0, no code changes needed this session.
+
+### New backlog items raised this session
+- **Inbound SMS bubble color** — inbound bubbles currently render brand-green; should be grey so they read as "not from me" at a glance. Outbound stays brand-green. Logged on ACE_ROADMAP.md.
+- **font-bold vs font-extrabold reconciliation** — open flag: `KpiTile` (`src/app/dashboard/kpi-tile.tsx`) uses `font-bold` on the 26px value; client profile `Stat` (`src/app/clients/[id]/page.tsx`) uses `font-extrabold`. Pick one weight and align across both.
+
+## Known Issues Carrying Into Ace 56.0
+- **Button styles inconsistent across app.** Submit was unified in Ace 54.0 and PipelinePill / Stat / Scoreboard subtext landed in 55.0, but the full button + color sweep is still outstanding. `rounded-full` still appears on some `<button>` elements, hardcoded color literals remain on others, and some buttons bypass the shared `Button` component entirely.
+- **BCC hardcoded to Austin.** Bulk and individual email send paths hardcode Austin's address into the BCC field for every send. Should be a per-user setting or removed entirely for non-bulk sends.
+- **Templates + Triggers unified Settings page.** Settings currently exposes Templates and Triggers as two separate panels even though every Trigger row references a Template.
+- **Inbound SMS bubble color** — new (see above).
+- **font-bold vs font-extrabold reconciliation** — new (see above).
+
+## Next Task
+Open Ace 56.0 with polish queue items 22, 24, 25 in that order (see backlog PDF for descriptions). After 22-25 land, work through the new backlog items (inbound SMS bubble color, font-weight reconciliation) and the carried-over Active Build Sequence (button + color audit, BCC Austin, Templates + Triggers, Resizable panels, Bulk reject). Item 1 (PageWrapper / SectionCard shared chrome) and item 13 (date format refactor, reclassified from sweep to refactor) stay at the bottom as lower-priority structural work.
 
 ## What Shipped in Ace 54.0 (2026-05-18)
 
@@ -59,19 +98,6 @@ New `/notes` page + standalone `Note` model + activity-feed integration.
 - **Activity feed integration** — `EntityNotesSection` server component reads notes attached to the current entity and renders them above the existing `ActivityFeed` on `/clients/[id]` and `/jobs/[id]` activity tabs, and inline below `CandidateActivityCard` in the candidate-profile right rail. Cross-attachment chips on each note row link to every other profile the note also lives on.
 - **Sidebar** — new `/notes` nav entry under Ops with the StickyNote lucide icon, replacing the NotebookPen stub that was sitting there.
 - **TopBar** — `/notes` title wired through `top-bar-page-title.tsx` under the Ops group breadcrumb.
-
-## Known Issues Carrying Into Ace 55.0
-- **Button styles inconsistent across app.** Submit was unified this session but a sweep across every page reveals other buttons still drift — some surfaces use `rounded-full` (banned by the new Button Standard in ACE_RULES.md), some hardcode color literals instead of routing through the shared Button component, some buttons bypass the component entirely. Full audit needed before any further visual work. Ace 55.0 opens with this.
-- **BCC hardcoded to Austin (item 46).** Bulk and individual email send paths hardcode Austin's address into the BCC field for every send. Should be a per-user setting (or removed entirely for non-bulk sends). Clean fix queued for Ace 55.0.
-- **Templates + Triggers unified page (item 45).** Settings currently exposes Templates and Triggers as two separate panels even though every Trigger row references a Template and vice versa. Unify into one Settings page so a recruiter editing a template can see which trigger uses it without tab-hopping.
-
-## Next Task
-Open Ace 55.0 with a full button/color audit before any other work. Scan the entire codebase for:
-- `rounded-full` on `<button>` elements or Button component instances (banned by the new Button Standard — `rounded-full` is reserved for badges, chips, status pills, and avatars only).
-- Hardcoded color literals (`bg-emerald-*`, `bg-green-*`, `text-white`, hex codes) on buttons that should be routing through Court Mode tokens.
-- `<button>` elements that bypass the shared `src/components/ui/button.tsx` component entirely (one-off styles instead of variants).
-
-Report findings by file with line numbers before changing anything. Then fix in one sweep. Item 2 after the audit is the BCC Austin clean fix; item 3 is the Templates + Triggers unified Settings page.
 
 ## What Shipped in Ace 53.0 (2026-05-17)
 

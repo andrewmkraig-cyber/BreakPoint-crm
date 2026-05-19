@@ -1,14 +1,33 @@
 # Ace Roadmap
-Last updated: 2026-05-18 · Ace 54.0
+Last updated: 2026-05-18 · Ace 55.0
 
 ## Active Build Sequence
-Ace 54.0 closed most of the 30-item polish queue carried out of Ace 53.0 and shipped the Notes feature end-to-end (page + schema + actions + queries + sidebar + FAB + activity feed integration). Ace 55.0 opens with a full button + color audit before any further visual work — the Submit button was unified this session but a sweep across other surfaces shows continued drift (rounded-full on banned surfaces, hardcoded color literals on buttons, buttons bypassing the shared Button component entirely). The new Button Standard in ACE_RULES.md is the source of truth; the audit measures the codebase against it.
 
-1. **Full button + color audit (entire codebase)** — scan every `.tsx` under `src/` for: `rounded-full` on `<button>` elements or `Button` component instances (banned by Button Standard — `rounded-full` is reserved for badges, chips, status pills, and avatars only); hardcoded color literals (`bg-emerald-*`, `bg-green-*`, `text-white`, hex codes) on buttons that should route through Court Mode tokens; `<button>` elements that bypass the shared `src/components/ui/button.tsx` component (one-off styles instead of variants). Report findings by file with line numbers before changing anything. Then fix in one sweep.
-2. **BCC Austin only — clean fix** — bulk and individual mail send paths hardcode Austin's email into the BCC field for every send. Should be a per-user setting (or removed entirely for non-bulk sends). Pick one approach, ship it, retire the hardcoded constant.
-3. **Templates + Triggers unified Settings page** — currently two separate Settings panels even though every Trigger row references a Template. Unify so a recruiter editing a template can see which trigger uses it without tab-hopping.
-4. **Resizable panels on `/candidates`** — the resize handle was removed when the outer left list was locked to `w-64` for the column-width fix in Ace 53.0. Re-add with proper drag + persistence (localStorage so the chosen width survives reloads).
-5. **Bulk reject from Lists** — saved Candidate Lists currently support bulk email but not bulk reject. Add the action so a recruiter can disqualify everyone on a list in one pass without walking each profile.
+### Session 55.0 Status
+Items 1-21 disposition as of Ace 55.0:
+- DONE: 3, 7, 8, 9, 10, 15, 17, 19, 21, 27, 29
+- DONE (confirmed in backlog PDF): 4, 5, 6, 2 (client logos - leave alone)
+- SKIPPED/REMOVED: 12, 14, 16, 18, 20, 23
+- BACKLOG (needs more work): 1, 13, 28
+- IN PROGRESS NEXT: 22, 24, 25
+- END OF LIST: S14, S17, 11
+
+### Next Up (Ace 56.0)
+Ace 55.0 closed 11 polish queue items end-to-end (3, 7, 8, 9, 10, 15, 17, 19, 21, 27, 29). The button + color sweep from Ace 55.0's open is partially absorbed (Stat sizing, PipelinePill tokens, Scoreboard subtext) but the full audit is still queued. Ace 56.0 opens with polish queue items 22, 24, 25 in that order.
+
+1. **Polish queue item 22** — see backlog PDF for description.
+2. **Polish queue item 24** — see backlog PDF.
+3. **Polish queue item 25** — see backlog PDF.
+4. **Inbound SMS bubble color** — inbound bubbles currently render brand-green; should be grey so they read as "not from me" at a glance. Outbound stays brand-green. Fix in `texting-exchanges.tsx` + `phone-view.tsx`.
+5. **font-bold vs font-extrabold reconciliation** — minor cleanup. `KpiTile` (`src/app/dashboard/kpi-tile.tsx`) uses `font-bold` on the 26px value; client profile `Stat` (`src/app/clients/[id]/page.tsx`) uses `font-extrabold`. Pick one weight and align across both.
+6. **Full button + color audit (entire codebase)** — partially absorbed in 55.0; still owes a full sweep. Scan every `.tsx` under `src/` for: `rounded-full` on `<button>` elements or `Button` component instances; hardcoded color literals (`bg-emerald-*`, `bg-green-*`, `text-white`, hex codes) on buttons; `<button>` elements that bypass the shared `src/components/ui/button.tsx`. Report findings by file with line numbers before changing anything.
+7. **BCC Austin only — clean fix** — bulk and individual mail send paths hardcode Austin's email into the BCC field for every send. Should be a per-user setting or removed entirely for non-bulk sends.
+8. **Templates + Triggers unified Settings page** — currently two separate panels even though every Trigger row references a Template. Unify so a recruiter editing a template can see which trigger uses it without tab-hopping.
+9. **Resizable panels on `/candidates`** — re-add the drag handle removed when the outer left list was locked to `w-64` for the column-width fix in Ace 53.0. Persist width to localStorage.
+10. **Bulk reject from Lists** — saved Candidate Lists currently support bulk email but not bulk reject. Add the action so a recruiter can disqualify everyone on a list in one pass.
+11. **Date format refactor (polish queue item 13)** — reclassified from a mechanical sweep to a refactor. Introduce shared date-format helpers and route callsites through them; do not grep/replace literals.
+12. **End of list — S14, S17, polish queue item 11.** Lower-priority structural items per Session 55.0 Status.
+13. **PageWrapper / SectionCard shared chrome (polish queue item 1)** — low priority, end of list. Extract shared page chrome primitives before any further per-page visual sweeps. Required reading: Visual Work Rules in ACE_RULES.md (Ace 53.0).
 
 ## Branch Status
 - **`design/phase-1`** — local-only branch with Cursor UI redesign Phases 1-2 not yet merged to `main`. Carries `86d3e31` (Phase 1 design system foundation), `38f119c` (Phase 2a card shells on dashboard/placements/finances), `d7f5437` (Phase 2b TableRow + TableCell on list views), `c0fb973` (Phase 2c sidebar polish + list table chrome). Review pending; `main` is the source of truth for shipped state until this lands.
@@ -90,6 +109,39 @@ Revisit at scale or workflow change — do not build now.
 - MCP Connection (Claude reads/writes Ace database directly).
 - Co-recruiter splits.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
+
+---
+
+## Completed - Ace 55.0 Polish queue close-out + visual token cleanup (May 18, 2026)
+
+Closed 11 items from the polish queue carried out of Ace 54.0 — calendar create unification, ComposeFAB global drawer wiring, Delete button placement parity, Edit Interview button across all 4 pipeline surfaces, Scoreboard KPI subtext, PipelinePill Court Mode tokens + client profile Stat sizing, ExpenseMerchantLogo + favicons, Mark as Read on Quo thread, and Add Number SMS verified.
+
+### Calendar + reminders
+- **CreateEventModal removed (item 7).** All calendar create entry points unified into `CalendarEventDrawer` create mode. `allDay` toggle and meeting type picker (Google Meet / Teams / Phone / In Person) ported into the drawer; `GuestTypeahead` wired into the recipients field.
+- **ComposeFAB New Reminder global drawer wiring (item 3).** The "New Reminder" entry now dispatches through `CalendarDrawerProvider` so the drawer opens inline on whatever page the recruiter is on. No navigation to `/calendar`.
+- **FAB overlay fix.** ComposeFAB New Event and New Reminder both open the drawer as a true overlay on the current page via the global `CalendarDrawerProvider`. Previously the FAB navigated the recruiter to `/calendar` before opening the create surface.
+- **Timezone fix.** `CalendarEventDrawer` create mode was persisting datetimes as UTC; fixed to write ET offset so a 3 PM ET event saves as 3 PM ET.
+
+### Pipeline + interviews
+- **Edit Interview button across 4 surfaces (item 19).** `pipeline-view.tsx` (tiny underline link on `/pipeline`), `pipeline-row-actions.tsx` (rounded-md outlined button on the job pipeline tab), `local-placement-rows.tsx` (Ace-native candidate profile rows), `placement-flows.tsx` (RF candidate profile rows). Consistent action across every surface that shows an interview.
+
+### Candidate + job profile chrome
+- **Delete button placement parity (item 9).** `DeleteCandidateButton` and `DeleteJobButton` moved to floating bottom-right matching the `DeleteClientButton` pattern. All three entity profiles now place the delete action in the same predictable spot.
+
+### Dashboard + finances
+- **ExpenseMerchantLogo + favicons (item 27).** `ExpenseMerchantLogo` component renders Google `s2/favicons` icons on every recurring/one-time expense row on the Finances Expenses tab. Domain colocated on each `KNOWN_TOOLS` entry and on each `RecurringCatalogEntry` so the favicon URL resolves from the tool name automatically. (Also appeared in the Ace 54.0 ship list — closed out in 55.0 with the catalog colocation pass.)
+- **Scoreboard KPI subtext now visible (item 15).** `ScoreboardKpiTile`'s `sub` prop renders as a visible 10px muted line under the value (was hover-only via `title=`).
+- **PipelinePill Court Mode tokens + Stat sizing (item 17).** `PipelinePill` stage dots swapped from hardcoded hex to Court Mode tokens (`court-brand-dark` for submitted, `court-brand` for hired) + canonical Tailwind hues for typed stages. Client profile `Stat` value sized to `text-[26px]` to match the canonical `KpiTile`.
+
+### Phone + texting
+- **Mark as Read on Quo thread (item 29).** `ThreadDetailPane` header renders a manual "Mark as read" button (CheckCheck icon) when the current thread has `hasUnread: true`. Reuses `markThreadRead` + `refreshUnread`.
+- **Add Number inline on SMS composer (item 21).** Verified working in browser; shipped in Ace 54.0, no code changes needed this session.
+
+### New backlog items raised this session
+- **Inbound SMS bubble color** — inbound bubbles should render grey (currently brand-green); outbound stays brand-green.
+- **font-bold vs font-extrabold reconciliation** — minor cleanup between `KpiTile` (font-bold) and client profile `Stat` (font-extrabold).
+
+Ace 56.0 opens with polish queue items 22, 24, 25 (see backlog PDF for descriptions).
 
 ---
 
