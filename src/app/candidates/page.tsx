@@ -791,6 +791,15 @@ export default function CandidatesPage() {
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = leftWidthRef.current;
+    // Crossing the cursor into the right-pane iframe during drag would
+    // hand mouse events off to the iframe's own document, so the
+    // outer-document mouseup never fires and the drag "sticks" until
+    // the user clicks again. Disabling pointer-events on the iframe
+    // for the duration of the drag keeps every move + the release
+    // event on the parent document where the listeners live.
+    const iframeEl = iframeRef.current;
+    const prevIframePointer = iframeEl?.style.pointerEvents ?? "";
+    if (iframeEl) iframeEl.style.pointerEvents = "none";
     const onMove = (ev: MouseEvent) => {
       const next = Math.min(
         LEFT_WIDTH_MAX,
@@ -804,6 +813,7 @@ export default function CandidatesPage() {
       document.removeEventListener("mouseup", onUp);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
+      if (iframeEl) iframeEl.style.pointerEvents = prevIframePointer;
       try {
         window.localStorage.setItem(
           LEFT_WIDTH_STORAGE_KEY,
@@ -1425,10 +1435,11 @@ export default function CandidatesPage() {
               <button
                 type="button"
                 onClick={() => setSelectedId(null)}
-                className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 text-xs font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+                aria-label="Back to all candidates"
+                title="Back to all candidates"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
-                All Candidates
               </button>
               <span className="h-4 w-px shrink-0 bg-court-border" aria-hidden="true" />
               <button
@@ -1458,15 +1469,9 @@ export default function CandidatesPage() {
                 so the rule above the header reads as continuous chrome
                 whether or not the candidate-search rail is collapsed. */}
             <div className="border-b border-b-court-border/60 border-t border-t-court-border/30 px-3.5 py-3">
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-bold text-court-fg">
-                  Search results
-                </h3>
-                <span className="rounded-full bg-court-accent-tint px-2 py-0.5 text-[11px] font-bold text-court-accent-dark">
-                  {sidebarRows.length} candidate
-                  {sidebarRows.length === 1 ? "" : "s"}
-                </span>
-              </div>
+              <h3 className="mb-2 text-sm font-bold text-court-fg">
+                Search results
+              </h3>
               <div className="relative">
                 <Search
                   className="pointer-events-none absolute left-2.5 top-1/2 h-[14px] w-[14px] -translate-y-1/2 text-court-fg-muted"
