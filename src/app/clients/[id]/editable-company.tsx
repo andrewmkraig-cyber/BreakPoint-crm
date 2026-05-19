@@ -263,93 +263,99 @@ export function EditableCompany({
           </div>
         </div>
       ) : (
-        <dl className="mt-3 grid grid-cols-1 gap-x-5 gap-y-2.5 text-sm sm:grid-cols-2 lg:grid-cols-3">
-          <Detail label="Website" icon={<Globe className="h-3 w-3" />}>
-            {websiteHref ? (
-              <a
-                href={websiteHref}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-brand-dark hover:underline"
+        <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+          <dl className="space-y-2.5">
+            <Detail label="Status" icon={<ShieldCheck className="h-3 w-3" />}>
+              <span
+                className={
+                  draft.feeAgreementSigned
+                    ? "font-medium text-brand-dark"
+                    : "text-court-fg-muted"
+                }
               >
-                {draft.website} <ExternalLink className="h-3 w-3" />
-              </a>
-            ) : (
-              <span>—</span>
-            )}
-          </Detail>
-          <Detail label="LinkedIn">
-            {draft.linkedin ? (
-              <a
-                href={draft.linkedin}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-brand-dark hover:underline"
-              >
-                Company page <ExternalLink className="h-3 w-3" />
-              </a>
-            ) : (
-              <span>—</span>
-            )}
-          </Detail>
-          <Detail label="Phone" icon={<Phone className="h-3 w-3" />}>
-            {draft.phone ? (
-              <a href={telHref(draft.phone)} className="text-court-fg hover:text-brand-dark">
-                {formatPhone(draft.phone)}
-              </a>
-            ) : (
-              <span>—</span>
-            )}
-          </Detail>
-          <Detail label="Industry">
-            <span>{draft.industry || "—"}</span>
-          </Detail>
-          <Detail label="Address" icon={<MapPin className="h-3 w-3" />}>
-            {addressLines.length ? (
-              <div className="space-y-0.5 text-court-fg">
-                {addressLines.map((line, i) => (
-                  <div key={i}>{line}</div>
-                ))}
-              </div>
-            ) : (
-              <span>—</span>
-            )}
-          </Detail>
-          <Detail label="Status" icon={<ShieldCheck className="h-3 w-3" />}>
-            <span
-              className={
-                draft.feeAgreementSigned
-                  ? "font-medium text-brand-dark"
-                  : "text-court-fg-muted"
-              }
-            >
-              {draft.feeAgreementSigned ? "Signed" : "Unsigned"}
-            </span>
-          </Detail>
-          <Detail label="Signed On">
-            <span>{signedOnDisplay || "—"}</span>
-          </Detail>
-          <Detail label="Fee">
-            <span>{draft.feePct ? `${draft.feePct}%` : "—"}</span>
-          </Detail>
-          <Detail label="Billing Contact">
-            <span>{draft.feeBillingContact || "—"}</span>
-          </Detail>
-          <Detail label="Agreement File" icon={<FileText className="h-3 w-3" />}>
-            {agreementFile?.link ? (
-              <a
-                href={agreementFile.link}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-brand-dark hover:underline"
-              >
-                {agreementFile.filename ?? "Open PDF"} <ExternalLink className="h-3 w-3" />
-              </a>
-            ) : (
-              <span>—</span>
-            )}
-          </Detail>
-        </dl>
+                {draft.feeAgreementSigned ? "Signed" : "Unsigned"}
+              </span>
+            </Detail>
+            <Detail label="Signed On">
+              <span>{signedOnDisplay || "—"}</span>
+            </Detail>
+            <Detail label="Fee">
+              <span>{draft.feePct ? `${draft.feePct}%` : "—"}</span>
+            </Detail>
+            <Detail label="Agreement File" icon={<FileText className="h-3 w-3" />}>
+              {agreementFile?.link ? (
+                <a
+                  href={agreementFile.link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-brand-dark hover:underline"
+                >
+                  {agreementFile.filename ?? "Open PDF"} <ExternalLink className="h-3 w-3" />
+                </a>
+              ) : (
+                <span>—</span>
+              )}
+            </Detail>
+          </dl>
+          <dl className="space-y-2.5">
+            <Detail label="Website" icon={<Globe className="h-3 w-3" />}>
+              {websiteHref ? (
+                <a
+                  href={websiteHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-brand-dark hover:underline"
+                >
+                  {draft.website} <ExternalLink className="h-3 w-3" />
+                </a>
+              ) : (
+                <span>—</span>
+              )}
+            </Detail>
+            <Detail label="LinkedIn">
+              {draft.linkedin ? (
+                <a
+                  href={draft.linkedin}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-brand-dark hover:underline"
+                >
+                  Company page <ExternalLink className="h-3 w-3" />
+                </a>
+              ) : (
+                <span>—</span>
+              )}
+            </Detail>
+            <Detail label="Industry">
+              <span>{draft.industry || "—"}</span>
+            </Detail>
+            <Detail label="Address" icon={<MapPin className="h-3 w-3" />}>
+              {addressLines.length ? (
+                <div className="space-y-0.5 text-court-fg">
+                  {addressLines.map((line, i) => (
+                    <div key={i}>{line}</div>
+                  ))}
+                </div>
+              ) : (
+                <span>—</span>
+              )}
+            </Detail>
+          </dl>
+          <dl className="space-y-2.5">
+            <Detail label="Phone" icon={<Phone className="h-3 w-3" />}>
+              {draft.phone ? (
+                <a href={telHref(draft.phone)} className="text-court-fg hover:text-brand-dark">
+                  {formatPhone(draft.phone)}
+                </a>
+              ) : (
+                <span>—</span>
+              )}
+            </Detail>
+            <Detail label="Billing Contact">
+              <span>{draft.feeBillingContact || "—"}</span>
+            </Detail>
+          </dl>
+        </div>
       )}
     </div>
   );
