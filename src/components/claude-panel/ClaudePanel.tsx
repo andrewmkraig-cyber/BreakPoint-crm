@@ -1198,6 +1198,7 @@ export function ClaudePanel() {
         <button
           type="button"
           onClick={close}
+          style={{ touchAction: "auto" }}
           className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
           aria-label="Close panel"
         >
@@ -1358,6 +1359,7 @@ export function ClaudePanel() {
               }
             }}
             placeholder="Message Ace…"
+            style={{ touchAction: "manipulation" }}
             className="min-h-[44px] flex-1 resize-none rounded-md border border-court-border bg-court-surface-subtle px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none"
           />
           <Button

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Archive,
+  CheckCheck,
   FolderInput,
   Forward,
   GripVertical,
@@ -68,6 +69,7 @@ export function FloatingThreadWindow() {
   const [archiving, setArchiving] = useState(false);
   const [moving, setMoving] = useState(false);
   const [markingUnread, setMarkingUnread] = useState(false);
+  const [markingRead, setMarkingRead] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
   // composerMode lives here (not in ThreadDetail) so the action toolbar
   // can ride on this window's title bar instead of duplicating chrome
@@ -294,6 +296,37 @@ export function FloatingThreadWindow() {
     }
   }
 
+  async function markReadCurrent() {
+    if (!detail) return;
+    setMarkingRead(true);
+    try {
+      const res = await fetch(
+        `/api/mail/threads/${encodeURIComponent(detail.id)}/read`,
+        { method: "POST" },
+      );
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error("Couldn't mark read", {
+          description: body?.error ?? `HTTP ${res.status}`,
+        });
+        return;
+      }
+      toast.success("Marked read");
+      markThreadRead(detail.id);
+      setDetail((prev) =>
+        prev
+          ? { ...prev, labelIds: prev.labelIds.filter((l) => l !== "UNREAD") }
+          : prev,
+      );
+    } catch (e) {
+      toast.error("Couldn't mark read", {
+        description: e instanceof Error ? e.message : "unknown error",
+      });
+    } finally {
+      setMarkingRead(false);
+    }
+  }
+
   async function markUnreadCurrent() {
     if (!detail) return;
     setMarkingUnread(true);
@@ -382,6 +415,7 @@ export function FloatingThreadWindow() {
   );
   const composerOpen = composerMode !== null;
   const actionsDisabled = !detail || composerOpen;
+  const threadIsUnread = detail?.labelIds?.includes("UNREAD") ?? false;
 
   return createPortal(
     <div
@@ -443,6 +477,17 @@ export function FloatingThreadWindow() {
             >
               <Forward className="h-3 w-3" /> Forward
             </button>
+            {threadIsUnread && (
+              <button
+                type="button"
+                onClick={markReadCurrent}
+                disabled={markingRead || actionsDisabled}
+                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+              >
+                {markingRead ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCheck className="h-3 w-3" />}
+                Mark Read
+              </button>
+            )}
             <button
               type="button"
               onClick={archiveCurrent}

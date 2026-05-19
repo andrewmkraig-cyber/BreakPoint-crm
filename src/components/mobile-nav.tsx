@@ -4,15 +4,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  BarChart3,
   Building2,
   Briefcase,
+  Calendar,
   GitBranch,
   Home,
   Mail,
   Megaphone,
   Menu,
   Phone,
+  Receipt,
   Settings,
+  StickyNote,
+  Trophy,
   User,
   Users,
   X,
@@ -45,6 +50,13 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
     items: [{ href: "/dashboard", label: "Clubhouse", icon: Home }],
   },
   {
+    title: "Inbox",
+    items: [
+      { href: "/mail", label: "Mail", icon: Mail },
+      { href: "/phone", label: "Phone", icon: Phone },
+    ],
+  },
+  {
     title: "ATS",
     items: [
       { href: "/pipeline", label: "Pipeline", icon: GitBranch },
@@ -61,10 +73,18 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
     ],
   },
   {
-    title: "Inbox",
+    title: "Ops",
     items: [
-      { href: "/mail", label: "Mail", icon: Mail },
-      { href: "/phone", label: "Phone", icon: Phone },
+      { href: "/calendar", label: "Calendar", icon: Calendar },
+      { href: "/finances", label: "Finances", icon: Receipt },
+      { href: "/notes", label: "Notes", icon: StickyNote },
+    ],
+  },
+  {
+    title: "Scoreboard",
+    items: [
+      { href: "/dashboard?tab=scoreboard", label: "Metrics", icon: BarChart3 },
+      { href: "/dashboard?tab=placements", label: "Placements", icon: Trophy },
     ],
   },
   {
