@@ -993,8 +993,8 @@ function ThreadDetailPane({
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 border-b border-court-border px-5 py-3">
-        <div className="flex min-w-0 items-center gap-2">
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-court-border px-5 py-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           {onBack && (
             <button
               type="button"
@@ -1026,7 +1026,7 @@ function ThreadDetailPane({
           </p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {/* Text button removed — the inline composer at the bottom of
               this pane is the same surface, so a separate header
               button would just be a redundant entry point. Call hands
@@ -1115,7 +1115,7 @@ function ThreadDetailPane({
                         "max-w-[75%] rounded-2xl px-4 py-2.5 font-sans text-sm shadow-sm " +
                         (e.direction === "outbound"
                           ? "rounded-br-sm bg-court-brand text-white"
-                          : "rounded-bl-sm bg-white text-court-fg dark:bg-court-surface-subtle")
+                          : "rounded-bl-sm bg-court-fg/10 text-court-fg")
                       }
                     >
                       {e.mediaUrl && (
