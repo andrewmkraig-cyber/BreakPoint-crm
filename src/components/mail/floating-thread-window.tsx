@@ -137,22 +137,7 @@ export function FloatingThreadWindow() {
         }
         if (!cancelled) {
           setDetail(body as MailThreadDetail);
-          // Mirror the Mail Tab's open-thread side effects so opening
-          // from a notification toast (or any other entry point) marks
-          // the thread read in Gmail and clears the unread badge / new-
-          // mail toast for it. Fire-and-forget; failures must not block
-          // the popup. Skipped on the reloadTick refresh path (e.g.
-          // after a reply send) is harmless — the endpoints and the
-          // optimistic clear are idempotent.
-          markThreadRead(threadId);
           toast.dismiss(mailToastIdForThread(threadId));
-          void fetch(
-            `/api/mail/threads/${encodeURIComponent(threadId)}/read`,
-            { method: "POST" },
-          ).catch((err: unknown) => {
-            // eslint-disable-next-line no-console
-            console.warn("[mail] floating markThreadRead failed", err);
-          });
         }
       } catch (e) {
         if (!cancelled) {
