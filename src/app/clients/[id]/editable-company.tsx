@@ -7,7 +7,6 @@ import {
   FileText,
   Globe,
   Loader2,
-  MapPin,
   Pencil,
   Phone,
   Save,
@@ -329,7 +328,7 @@ export function EditableCompany({
             <Detail label="Industry">
               <span>{draft.industry || "—"}</span>
             </Detail>
-            <Detail label="Address" icon={<MapPin className="h-3 w-3" />}>
+            <Detail label="Address">
               {addressLines.length ? (
                 <div className="space-y-0.5 text-court-fg">
                   {addressLines.map((line, i) => (
