@@ -1055,73 +1055,110 @@ function ThreadDetailPane({
         </div>
       </div>
       {/* Thread body */}
-      <div className="flex-1 overflow-y-auto px-5 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-3">
         {detail.entries.length === 0 ? (
           <div className="py-12 text-center text-sm text-court-fg-muted">
             No history yet.
           </div>
         ) : (
-          <ul className="space-y-3">
-            {detail.entries.map((e) =>
-              e.kind === "sms" ? (
-                <li key={e.id} className={
-                  "flex " +
-                  (e.direction === "outbound" ? "justify-end" : "justify-start")
-                }>
-                  <div
+          <ul className="flex flex-col">
+            {detail.entries.flatMap((e, i) => {
+              const prev = i > 0 ? detail.entries[i - 1] : null;
+              const sameDay = prev ? isSameDay(prev.createdAt, e.createdAt) : false;
+              const sameSenderAsPrev =
+                !!prev &&
+                prev.kind === "sms" &&
+                e.kind === "sms" &&
+                prev.direction === e.direction;
+              const showDateSep = !sameDay;
+              const compact = sameDay && sameSenderAsPrev;
+              const itemMargin = showDateSep
+                ? "mt-3"
+                : i === 0
+                  ? ""
+                  : compact
+                    ? "mt-1"
+                    : "mt-3";
+
+              const nodes: React.ReactNode[] = [];
+
+              if (showDateSep) {
+                nodes.push(
+                  <li
+                    key={`sep-${e.id}`}
+                    className={"flex justify-center " + (i > 0 ? "mt-3" : "")}
+                  >
+                    <span className="rounded-full bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg-muted">
+                      {formatDateSeparator(e.createdAt)}
+                    </span>
+                  </li>,
+                );
+              }
+
+              if (e.kind === "sms") {
+                nodes.push(
+                  <li
+                    key={e.id}
                     className={
-                      // font-sans pins the bubble to Inter even when
-                      // next/font's CSS var hasn't applied yet on
-                      // iOS Safari first paint (otherwise falls back
-                      // to system-ui and reads as a different font).
-                      "max-w-[75%] rounded-2xl px-3 py-2 font-sans text-sm shadow-sm " +
-                      (e.direction === "outbound"
-                        ? "bg-court-brand-tint text-court-brand"
-                        : "bg-court-surface-subtle text-court-fg")
+                      "flex flex-col " +
+                      itemMargin +
+                      " " +
+                      (e.direction === "outbound" ? "items-end" : "items-start")
                     }
                   >
-                    {e.mediaUrl && (
-                      <a
-                        href={e.mediaUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mb-1 block"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={e.mediaUrl}
-                          alt="MMS attachment"
-                          className="max-h-72 max-w-full rounded-lg object-contain"
-                        />
-                      </a>
-                    )}
-                    {e.body && (
-                      <div className="whitespace-pre-wrap break-words">{e.body}</div>
-                    )}
                     <div
                       className={
-                        "mt-1 text-[10px] " +
+                        // font-sans pins the bubble to Inter even when
+                        // next/font's CSS var hasn't applied yet on
+                        // iOS Safari first paint (otherwise falls back
+                        // to system-ui and reads as a different font).
+                        "max-w-[75%] rounded-2xl px-4 py-2.5 font-sans text-sm shadow-sm " +
                         (e.direction === "outbound"
-                          ? "text-court-brand/70"
-                          : "text-court-fg-muted")
+                          ? "rounded-br-sm bg-court-brand text-white"
+                          : "rounded-bl-sm bg-white text-court-fg dark:bg-court-surface-subtle")
                       }
                     >
-                      {new Date(e.createdAt).toLocaleString()}
+                      {e.mediaUrl && (
+                        <a
+                          href={e.mediaUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mb-1 block"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={e.mediaUrl}
+                            alt="MMS attachment"
+                            className="max-h-72 max-w-full rounded-lg object-contain"
+                          />
+                        </a>
+                      )}
+                      {e.body && (
+                        <div className="whitespace-pre-wrap break-words">{e.body}</div>
+                      )}
                     </div>
-                  </div>
-                </li>
-              ) : (
-                <li key={e.id} className="flex justify-center">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1.5 text-xs text-court-fg-muted">
-                    {callIcon(e)}
-                    <span>{formatCallSummary(e)}</span>
-                    <span className="text-[10px]">
-                      · {new Date(e.createdAt).toLocaleString()}
-                    </span>
-                  </div>
-                </li>
-              ),
-            )}
+                    <div className="mt-1 text-xs text-court-fg-muted">
+                      {e.direction === "outbound" ? "Sent" : "Received"} ·{" "}
+                      {formatTimeOfDay(e.createdAt)}
+                    </div>
+                  </li>,
+                );
+              } else {
+                nodes.push(
+                  <li key={e.id} className={"flex justify-center " + itemMargin}>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1.5 text-xs text-court-fg-muted">
+                      {callIcon(e)}
+                      <span>{formatCallSummary(e)}</span>
+                      <span className="text-[10px]">
+                        · {new Date(e.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                  </li>,
+                );
+              }
+
+              return nodes;
+            })}
           </ul>
         )}
       </div>
@@ -1410,6 +1447,27 @@ function callIcon(e: { kind: "call"; status: string; direction: string }) {
     return <PhoneMissed className="h-3 w-3 text-red-600" />;
   }
   return <PhoneCall className="h-3 w-3 text-court-fg-muted" />;
+}
+
+function isSameDay(a: string, b: string): boolean {
+  return new Date(a).toDateString() === new Date(b).toDateString();
+}
+
+function formatDateSeparator(iso: string): string {
+  return new Date(iso)
+    .toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    })
+    .toUpperCase();
+}
+
+function formatTimeOfDay(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function formatRelative(iso: string | null): string {
