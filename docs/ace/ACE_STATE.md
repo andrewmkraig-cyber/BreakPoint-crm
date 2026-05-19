@@ -1,10 +1,75 @@
 # ACE_STATE.md
-Last updated: 2026-05-18 · Ace 55.0
+Last updated: 2026-05-19 · Ace 56.0
 
 ## Current Status
-Current Version: Ace 55.0
-Last Shipped: 2026-05-18
+Current Version: Ace 56.0
+Last Shipped: 2026-05-19
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 56.0 (2026-05-19)
+
+Polish queue close-out session covering the next slice of the backlog: StageAgePill extraction (22), news-feed mobile overflow (24), ClaudePanel touch fixes (25 + 25b), candidates panel resizer (26), PWA badge audit (30), em-dash scrub on outbound email (37), AI Workspace prose line breaks (41), plus font-weight reconciliation, PWA nav rebuild, email popup Mark as Read, and iMessage-style texting polish. Item 36 (calendar auto-sync after scheduling) is in progress.
+
+### Pipeline + reusable UI
+- **Item 22 — StageAgePill extracted.** New shared component at `src/components/ui/stage-age-pill.tsx`. `pipeline-view.tsx` now consumes `<StageAgePill value={r.daysInStage} />`. Verbatim className, thresholds, and null em-dash placeholder preserved end-to-end so the pill reads identically to the inline version it replaced.
+
+### News feed
+- **Item 24 — Mobile overflow fix on news feed companions.** Wrapper at `news-feed.tsx:398` got `overflow-x-auto`. Four child pills wrapped in `min-w-0 overflow-hidden` divs so long entity strings don't blow out the row on narrow viewports. Desktop 2-col grid unchanged.
+
+### Claude Panel — mobile touch
+- **Item 25 — Drag + scroll touch behavior.** `ClaudePanel.tsx` header drag div gets `touchAction: none` so the panel drag claims the gesture without browser scroll cancelling it. `onHeaderPointerDown` calls `stopPropagation` after `preventDefault`. `listRef` scroll container gets `touchAction: pan-y` so vertical scrolls inside the panel pass through without triggering drag.
+- **Item 25b — Composer affordances.** Close X button (`ClaudePanel.tsx:1196`) gets `touchAction: auto`. Message textarea (`ClaudePanel.tsx:1328`) gets `touchAction: manipulation` so input gestures don't fight the panel-level pan-y rule.
+
+### PWA — nav + manifest shortcuts
+- **`mobile-nav.tsx` NAV_GROUPS rebuilt** to Clubhouse / Inbox / ATS / CRM / Ops / Scoreboard / Settings so the installed PWA's nav reads like the desktop sidebar instead of the old flat list.
+- **`manifest.json` shortcuts array** populated with 14 long-press home-screen targets so a recruiter can jump straight to specific surfaces (Inbox, Phone, Candidates, Pipeline, Calendar, etc.) without going through the app shell.
+
+### Email popup — Mark as Read
+- **CheckCheck button on floating thread toolbar.** Renders only when the thread carries `UNREAD` via a `useState<boolean>` gate. Click POSTs `/api/mail/threads/{id}/read` + fires Gmail `labelMessage` to remove the UNREAD label. Local state only flips to `false` after the API resolves so an error keeps the button visible. No auto-mark-on-open — explicit click only.
+
+### Texting visual polish
+- **iMessage-style bubbles in `phone-view.tsx`.** Inbound bubbles render `bg-white rounded-bl-sm` left-aligned (grey backdrop reads as "not from me"). Outbound bubbles render `bg-court-brand text-white rounded-br-sm` right-aligned. Timestamps moved outside the bubbles (italic, muted). Day separators render as pill chips in `MON, APR 27` format. Closes the inbound SMS bubble color item raised at Ace 55.0 close.
+
+### Candidates split view — resizable left panel
+- **Item 26 — Resizable left panel restored.** Drag handle between the candidate list and the detail iframe (re-adds the affordance that was locked to `w-64` in Ace 53.0). Constraints: min 200px, max 480px. Width persists to localStorage at key `"ace-candidates-left-width"`. Default 256px so first-load matches the previous fixed layout.
+
+### Notifications + badges
+- **Item 30 — PWA badge audit only.** Gmail leg confirmed working via push-driven `ace:refresh-unread` event. Quo leg confirmed working via webhook → DB → context refresh. Reminders leg is intentionally NOT contributing to the badge — `ReminderToastProvider` still fires toast-only (no badge increment) for now. Stale `unreadCount:0` field at `src/app/api/phone/threads/route.ts:251` flagged for future cleanup (no consumer reads it). No code changes — audit-only pass to confirm the aggregate badge reads correctly with the current legs wired.
+
+### Em dashes — outbound email scrub
+- **Item 37 — Em dashes scrubbed from every outbound-email surface.** Template seeds in `templates-actions.ts` cleaned (Applied Confirmation, Offer Extended, Hired Welcome, Client Interview Scheduled, Candidate Interview Prep, Reference Check). New `stripEmDashesFromTemplates` migration runs from `ensureDefaultTemplates` and scrubs existing DB rows so customized templates also catch up. Runtime strip added in `fireTemplatedEmail` after `applyMergeFields` so any em dash that arrives via a merge value (e.g. a free-form notes field) still gets caught before send. Claude prompts cleaned in `claude.ts` (submittal generator + JD generator + agreements + benefits), `format-email/route.ts`, and `ai-workspace/route.ts` so generated copy no longer carries em dashes back into emails. Table cell em-dash placeholders for null/empty states preserved per [[feedback_no_em_dashes]] exception in `ACE_RULES.md`.
+
+### Font-weight reconciliation
+- **`kpi-tile.tsx:53` font-bold → font-extrabold.** Now matches the 26px `Stat` value at `clients/[id]/page.tsx:621`. Single canonical weight across both KPI surfaces. Closes the font-weight reconciliation item raised at Ace 55.0 close.
+
+### AI Workspace — prose line breaks
+- **Item 41 — Mid-sentence breaks fixed.** `MarkdownContent` in `AiWorkspace.tsx` now passes content through a `collapseProseHardBreaks` preprocessor before `ReactMarkdown` renders. Strips CommonMark hard-break syntax (two trailing spaces + newline, backslash + newline) so single newlines in Claude output no longer render as visible `<br>`. Paragraph breaks (double newlines) preserved so structure survives. Scoped to AI Workspace + Claude Panel only (same `MarkdownContent` export). `MarkdownProse` (used by client agreements + benefits) untouched.
+
+### In progress
+- **Item 36 — Calendar auto-sync after scheduling.** Helper `triggerCalendarSync(router)` extracted from the Sync button at `calendar-view.tsx` to `src/lib/calendar/trigger-sync.ts`. Wired into all 4 schedule + 1 reschedule callsites in `local-placement-rows.tsx` + `placement-flows.tsx`, plus the `CalendarEventDrawer` create + edit handlers. Prompt sent; Andrew's browser verification pending so it carries into Ace 57.0 as the first item.
+
+## Known Issues Carrying Into Ace 57.0
+- **Button styles inconsistent across app.** Submit was unified in Ace 54.0 and PipelinePill / Stat / Scoreboard subtext landed in 55.0, but the full button + color sweep is still outstanding. `rounded-full` still appears on some `<button>` elements, hardcoded color literals remain on others, and some buttons bypass the shared `Button` component entirely.
+- **BCC hardcoded to Austin.** Bulk and individual email send paths hardcode Austin's address into the BCC field for every send. Should be a per-user setting or removed entirely for non-bulk sends.
+- **Templates + Triggers unified Settings page.** Settings currently exposes Templates and Triggers as two separate panels even though every Trigger row references a Template.
+- **Reminders leg not contributing to PWA badge.** Intentional for now — `ReminderToastProvider` fires toast-only. Revisit when the badge story needs the third leg.
+- **Stale `unreadCount:0` field in `src/app/api/phone/threads/route.ts:251`.** No consumer reads it; safe to remove on the next pass through that file. Future cleanup only.
+
+## Next Task
+Open Ace 57.0 by finishing **Item 36 — Calendar auto-sync after scheduling** (prompt is sent; verify the auto-sync fires correctly after schedule + reschedule + drawer save). After 36 confirms, work through this priority order:
+1. Item 34 — Bulk reject from Lists
+2. Item 35 — Interview auto-reminder on scheduling
+3. Item 33 — Templates + Triggers unified page
+4. Item 28 — Admin edit UI for ToolExpense rows
+5. Item 39 — Calendar invite unknown sender warning
+6. Item 38 — Microsoft Teams OAuth token expired
+7. Item 43 — Bulk email Phase 2
+8. Item 13 — Date format refactor
+9. Item 1 — PageWrapper / SectionCard shared chrome
+10. Item 32 — BCC Austin clean fix
+11. Item 31+45 — Full button/color audit
+12. QB — QuickBooks standalone page (`/finances/quickbooks`, isolated from existing Finances page)
+13. MULTI-USER — Multi-user login + permissions model (full spec lives in ACE_ROADMAP.md under Queued Specs)
 
 ## What Shipped in Ace 55.0 (2026-05-18)
 
@@ -34,16 +99,6 @@ Polish queue close-out session. Closed 11 items from the queue carried out of Ac
 ### New backlog items raised this session
 - **Inbound SMS bubble color** — inbound bubbles currently render brand-green; should be grey so they read as "not from me" at a glance. Outbound stays brand-green. Logged on ACE_ROADMAP.md.
 - **font-bold vs font-extrabold reconciliation** — open flag: `KpiTile` (`src/app/dashboard/kpi-tile.tsx`) uses `font-bold` on the 26px value; client profile `Stat` (`src/app/clients/[id]/page.tsx`) uses `font-extrabold`. Pick one weight and align across both.
-
-## Known Issues Carrying Into Ace 56.0
-- **Button styles inconsistent across app.** Submit was unified in Ace 54.0 and PipelinePill / Stat / Scoreboard subtext landed in 55.0, but the full button + color sweep is still outstanding. `rounded-full` still appears on some `<button>` elements, hardcoded color literals remain on others, and some buttons bypass the shared `Button` component entirely.
-- **BCC hardcoded to Austin.** Bulk and individual email send paths hardcode Austin's address into the BCC field for every send. Should be a per-user setting or removed entirely for non-bulk sends.
-- **Templates + Triggers unified Settings page.** Settings currently exposes Templates and Triggers as two separate panels even though every Trigger row references a Template.
-- **Inbound SMS bubble color** — new (see above).
-- **font-bold vs font-extrabold reconciliation** — new (see above).
-
-## Next Task
-Open Ace 56.0 with polish queue items 22, 24, 25 in that order (see backlog PDF for descriptions). After 22-25 land, work through the new backlog items (inbound SMS bubble color, font-weight reconciliation) and the carried-over Active Build Sequence (button + color audit, BCC Austin, Templates + Triggers, Resizable panels, Bulk reject). Item 1 (PageWrapper / SectionCard shared chrome) and item 13 (date format refactor, reclassified from sweep to refactor) stay at the bottom as lower-priority structural work.
 
 ## What Shipped in Ace 54.0 (2026-05-18)
 
