@@ -28,6 +28,7 @@ import {
 } from "@/app/calendar/event-actions";
 import { GoogleGlyph } from "@/components/calendar/left-rail";
 import { Button } from "@/components/ui/button";
+import { triggerCalendarSync } from "@/lib/calendar/trigger-sync";
 import type { CalendarEvent, CalendarEventType } from "@/lib/calendar/types";
 import { eventTypeMeta } from "@/lib/calendar/utils";
 import { cn } from "@/lib/utils";
@@ -315,7 +316,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
         reminderEnabled: reminderOn,
         type,
       });
-      router.refresh();
+      void triggerCalendarSync(router);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -379,7 +380,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
         return;
       }
       toast.success("Event created");
-      router.refresh();
+      void triggerCalendarSync(router);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Create failed");
