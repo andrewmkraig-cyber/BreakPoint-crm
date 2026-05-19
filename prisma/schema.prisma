@@ -1936,6 +1936,10 @@ model AceReminder {
   // toggle in the right state when the drawer reopens. Standalone
   // panel-created reminders leave this null.
   calendarEventId String?
+  // Optional link to the Interview row that minted this reminder via
+  // the scheduling flow. Lets reschedule upsert the existing reminder
+  // by interviewId instead of creating a duplicate.
+  interviewId    String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -1944,6 +1948,7 @@ model AceReminder {
   @@index([organizationId])
   @@index([userId])
   @@index([calendarEventId])
+  @@index([interviewId])
 }
 
 // Web push subscription stamped per browser/device that opts in. The

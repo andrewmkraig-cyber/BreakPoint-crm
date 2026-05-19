@@ -1010,6 +1010,102 @@ export type InterviewSchedulingTemplates = {
   client: InterviewSchedulingTemplate | null;
 };
 
+// 60-minute lead time so the site-wide amber reminder toast fires an hour
+// ahead of every interview without recruiter setup.
+const INTERVIEW_REMINDER_LEAD_MS = 60 * 60 * 1000;
+
+function composeCandidateName(first: string | null, last: string | null): string {
+  const parts = [first, last].map((p) => (p ?? "").trim()).filter(Boolean);
+  return parts.length ? parts.join(" ") : "Candidate";
+}
+
+// Fire-and-forget side effect from every schedule + reschedule callsite.
+// Looks up the Interview row, builds a title from candidate + client,
+// and upserts an AceReminder keyed on interviewId so reschedule shifts
+// the existing row's reminderAt instead of stacking duplicates. Any
+// failure swallows silently — the recruiter already saw the schedule
+// succeed and the reminder is a convenience, not a primary side effect.
+export async function upsertInterviewReminder(interviewId: string): Promise<void> {
+  if (!interviewId) return;
+  const user = await requireUser();
+  if (!user) return;
+  try {
+    const iv = await prisma.interview.findUnique({
+      where: { id: interviewId },
+      select: {
+        id: true,
+        scheduledAt: true,
+        organizationId: true,
+        candidateRfId: true,
+        candidateId: true,
+        clientRfId: true,
+        clientId: true,
+      },
+    });
+    if (!iv) return;
+
+    let candidateName = "Candidate";
+    if (iv.candidateId) {
+      const c = await prisma.candidate.findUnique({
+        where: { id: iv.candidateId },
+        select: { firstName: true, lastName: true },
+      });
+      if (c) candidateName = composeCandidateName(c.firstName, c.lastName);
+    } else if (iv.candidateRfId != null) {
+      const c = await prisma.candidate.findUnique({
+        where: { rfId: iv.candidateRfId },
+        select: { firstName: true, lastName: true },
+      });
+      if (c) candidateName = composeCandidateName(c.firstName, c.lastName);
+    }
+
+    let companyName = "Client";
+    if (iv.clientId) {
+      const cl = await prisma.client.findUnique({
+        where: { id: iv.clientId },
+        select: { name: true },
+      });
+      if (cl?.name) companyName = cl.name;
+    } else if (iv.clientRfId != null) {
+      const cl = await prisma.client.findUnique({
+        where: { legacyRfId: iv.clientRfId },
+        select: { name: true, organizationId: true },
+      });
+      if (cl?.name && cl.organizationId === iv.organizationId) companyName = cl.name;
+    }
+
+    const title = `Interview: ${candidateName} - ${companyName}`;
+    const reminderAt = new Date(iv.scheduledAt.getTime() - INTERVIEW_REMINDER_LEAD_MS);
+
+    // Same findFirst + update-or-create shape used by the calendar event
+    // drawer reminder path (src/app/calendar/event-actions.ts:218). Scope
+    // to non-dismissed rows so a previously dismissed reminder for the
+    // same interview is not silently revived.
+    const existing = await prisma.aceReminder.findFirst({
+      where: { interviewId, dismissed: false },
+      select: { id: true },
+    });
+    if (existing) {
+      await prisma.aceReminder.update({
+        where: { id: existing.id },
+        data: { title, reminderAt },
+      });
+    } else {
+      await prisma.aceReminder.create({
+        data: {
+          organizationId: iv.organizationId,
+          userId: user.id,
+          title,
+          reminderAt,
+          interviewId,
+        },
+      });
+    }
+  } catch {
+    // best-effort — never break the schedule flow on reminder failure
+  }
+}
+
 export async function getInterviewSchedulingTemplates(): Promise<InterviewSchedulingTemplates> {
   const user = await requireUser();
   if (!user) return { candidate: null, client: null };

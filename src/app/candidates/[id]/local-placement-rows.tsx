@@ -23,6 +23,7 @@ import {
   rescheduleInterview,
   scheduleInterview,
   sendInterviewInvite,
+  upsertInterviewReminder,
   type InterviewType,
   type MeetingProvider,
 } from "@/app/candidates/[id]/interview-actions";
@@ -557,6 +558,10 @@ function ScheduleDialog({
       // the freshly created Google event lands in the local
       // CalendarEvent mirror without the recruiter clicking Sync.
       void triggerCalendarSync(router);
+      // Auto-fire the site-wide amber reminder toast an hour ahead of
+      // every interview. Best-effort: reminder failures never block the
+      // schedule success path.
+      void upsertInterviewReminder(result.value.interviewId);
       // Same pre-fetch as the RF flow — templates seed the composers,
       // failures fall back to hardcoded defaults silently.
       let templates: { candidate: { subject: string; body: string } | null; client: { subject: string; body: string } | null } = {
@@ -716,6 +721,7 @@ function ClientInviteDialog({
       });
       onClose();
       void triggerCalendarSync(router);
+      void upsertInterviewReminder(result.value.interviewId);
     });
   }
 
@@ -777,6 +783,7 @@ function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; o
       toast.success("Interview rescheduled");
       onClose();
       void triggerCalendarSync(router);
+      void upsertInterviewReminder(interview.id);
     });
   }
 

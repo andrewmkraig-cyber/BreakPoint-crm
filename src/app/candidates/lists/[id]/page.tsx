@@ -116,7 +116,7 @@ export default async function CandidateListDetailPage({
           No candidates in this list yet.
         </div>
       ) : (
-        <CandidateListDetailView rows={rows} />
+        <CandidateListDetailView listId={list.id} rows={rows} />
       )}
     </div>
   );

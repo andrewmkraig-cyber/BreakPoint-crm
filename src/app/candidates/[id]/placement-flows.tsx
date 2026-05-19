@@ -50,6 +50,7 @@ import {
   scheduleInterview,
   sendInterviewInvite,
   updateInterview,
+  upsertInterviewReminder,
   type InterviewType,
   type MeetingProvider,
 } from "@/app/candidates/[id]/interview-actions";
@@ -1888,6 +1889,10 @@ function ScheduleInterviewDialog({
       // the freshly created Google event lands in the local
       // CalendarEvent mirror without the recruiter clicking Sync.
       void triggerCalendarSync(router);
+      // Auto-fire the site-wide amber reminder toast an hour ahead of
+      // every interview. Best-effort: reminder failures never block the
+      // schedule success path.
+      void upsertInterviewReminder(result.value.interviewId);
       // Pre-fetch the two interview-scheduled templates so the
       // composers can seed subject + body from them. Best-effort:
       // a failure here just leaves the composers to render their
@@ -2110,6 +2115,7 @@ function ClientInviteDialog({
       });
       onClose();
       void triggerCalendarSync(router);
+      void upsertInterviewReminder(result.value.interviewId);
     });
   }
 

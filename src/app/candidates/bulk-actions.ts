@@ -208,6 +208,120 @@ export async function bulkApplyCandidatesToJob(input: {
   return { ok: errors.length === 0 || applied > 0, applied, skipped, errors };
 }
 
+// Bulk reject every candidate on a Saved List. For each candidate we
+// flip every non-terminal Placement (sourced / applied / submitted /
+// kept / interviewing / offer / pending_start) to "rejected". Terminal
+// rows (hired / rejected / cancelled) are left alone. Candidates with
+// zero active placements still count as "rejected" from the recruiter's
+// perspective — the action surfaces the split so the toast can be
+// honest about how many actually had open work.
+export type BulkRejectResult = {
+  ok: boolean;
+  rejected: number;
+  candidatesWithoutActivePlacements: number;
+  errors: string[];
+};
+
+const ACTIVE_STAGES = [
+  "sourced",
+  "applied",
+  "submitted",
+  "kept",
+  "interviewing",
+  "offer",
+  "pending_start",
+];
+
+export async function bulkRejectCandidatesFromList(input: {
+  candidateIds: string[];
+  listId: string;
+}): Promise<BulkRejectResult> {
+  const user = await requireUser();
+  if (!user) return { ok: false, rejected: 0, candidatesWithoutActivePlacements: 0, errors: ["Not signed in."] };
+  if (input.candidateIds.length === 0) {
+    return { ok: false, rejected: 0, candidatesWithoutActivePlacements: 0, errors: ["No candidates selected."] };
+  }
+  if (!input.listId) {
+    return { ok: false, rejected: 0, candidatesWithoutActivePlacements: 0, errors: ["Missing list id."] };
+  }
+
+  const org = await getCurrentOrg();
+
+  // Tenant-check the list itself so a forged listId can't drive a
+  // cross-org reject sweep.
+  const list = await prisma.candidateList.findFirst({
+    where: { id: input.listId, organizationId: org.id },
+    select: { id: true },
+  });
+  if (!list) {
+    return { ok: false, rejected: 0, candidatesWithoutActivePlacements: 0, errors: ["List not found."] };
+  }
+
+  // Constrain the candidate set to (a) members of this list and
+  // (b) in-org. Defends against a stale candidateIds array driving a
+  // reject for someone who was just removed from the list.
+  const allowed = await prisma.candidateListMembership.findMany({
+    where: {
+      listId: list.id,
+      candidate: { organizationId: org.id, id: { in: input.candidateIds } },
+    },
+    select: { candidateId: true },
+  });
+  const allowedIds = allowed.map((m) => m.candidateId);
+  if (allowedIds.length === 0) {
+    return { ok: false, rejected: 0, candidatesWithoutActivePlacements: 0, errors: ["No matching candidates on this list."] };
+  }
+
+  let rejectedCandidates = 0;
+  let candidatesWithoutActivePlacements = 0;
+  const errors: string[] = [];
+
+  // Loop per candidate so per-row failures get caught without sinking
+  // the rest of the batch. Inside each candidate we do a single
+  // updateMany so all of that candidate's active placements flip atomically.
+  await Promise.all(
+    allowedIds.map(async (candidateId) => {
+      try {
+        const update = await prisma.placement.updateMany({
+          where: {
+            organizationId: org.id,
+            stage: { in: ACTIVE_STAGES },
+            OR: [{ candidateId }, { candidate: { id: candidateId } }],
+          },
+          data: { stage: "rejected", syncedToRf: false, invoicingFlagged: false },
+        });
+        if (update.count > 0) {
+          rejectedCandidates += 1;
+          await logActivity({
+            organizationId: org.id,
+            userId: user.id,
+            actionType: "candidate_rejected_bulk",
+            targetType: "candidate",
+            targetId: candidateId,
+            metadata: { listId: list.id, placementCount: update.count },
+          });
+        } else {
+          candidatesWithoutActivePlacements += 1;
+        }
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : "reject failed");
+      }
+    }),
+  );
+
+  revalidatePath("/candidates");
+  revalidatePath("/candidates/lists");
+  revalidatePath(`/candidates/lists/${list.id}`);
+  revalidatePath("/pipeline");
+  revalidatePath("/applicants");
+  return {
+    ok: errors.length === 0,
+    rejected: rejectedCandidates,
+    candidatesWithoutActivePlacements,
+    errors,
+  };
+}
+
 // Bulk add-to-list against an EXISTING list. Tenant-checks the list
 // + filters the candidate set to in-org rows. createMany with
 // skipDuplicates so re-running with the same set is a no-op.
