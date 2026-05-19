@@ -395,11 +395,19 @@ export function NewsFeed() {
               popover; they were previously rendered as pills in the
               header but now read as secondary add-ons rather than
               competing with the briefing itself. */}
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <ChessPuzzle />
-            <WordOfDayCard />
-            <FunFact />
-            <Horoscope />
+          <div className="mt-3 grid grid-cols-2 gap-2 overflow-x-auto">
+            <div className="min-w-0 overflow-hidden">
+              <ChessPuzzle />
+            </div>
+            <div className="min-w-0 overflow-hidden">
+              <WordOfDayCard />
+            </div>
+            <div className="min-w-0 overflow-hidden">
+              <FunFact />
+            </div>
+            <div className="min-w-0 overflow-hidden">
+              <Horoscope />
+            </div>
           </div>
         </div>
       )}

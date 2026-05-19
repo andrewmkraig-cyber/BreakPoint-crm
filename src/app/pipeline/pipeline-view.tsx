@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Pagination } from "@/components/pagination";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
 import { StageBadge } from "@/components/stage-badge";
+import { StageAgePill } from "@/components/ui/stage-age-pill";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -477,26 +478,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                         {formatDate(r.lastActionAt)}
                       </td>
                       <td className="px-4 py-3 align-top text-center">
-                        {r.daysInStage == null ? (
-                          <span className="text-court-fg-muted">—</span>
-                        ) : (
-                          <span
-                            className={cn(
-                              "inline-flex min-w-8 items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold",
-                              // Red (≥14 days) and amber (≥7 days) pills are
-                              // status semantics — kept fixed across all
-                              // three modes. The "under 7 days" neutral pill
-                              // tracks the theme.
-                              r.daysInStage >= 14
-                                ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-200"
-                                : r.daysInStage >= 7
-                                  ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
-                                  : "bg-court-surface-subtle text-court-fg-muted",
-                            )}
-                          >
-                            {r.daysInStage}d
-                          </span>
-                        )}
+                        <StageAgePill value={r.daysInStage} />
                       </td>
                       <td className="w-px whitespace-nowrap px-4 py-3 align-top">
                         {/* Schedule (submitted) + Offer (interviewing) sit

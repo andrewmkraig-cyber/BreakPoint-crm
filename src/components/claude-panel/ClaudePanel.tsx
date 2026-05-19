@@ -550,6 +550,7 @@ export function ClaudePanel() {
         // elsewhere; the rest of the drag still works without it.
       }
       e.preventDefault();
+      e.stopPropagation();
       const startPx = e.clientX;
       const startPy = e.clientY;
       const startX = position.x;
@@ -1170,6 +1171,7 @@ export function ClaudePanel() {
     >
       <div
         onPointerDown={onHeaderPointerDown}
+        style={{ touchAction: "none" }}
         className="flex shrink-0 cursor-grab select-none items-center gap-2 border-b border-court-border px-4 py-2 active:cursor-grabbing"
       >
         <div className="flex flex-1 items-center gap-2 min-w-0">
@@ -1205,6 +1207,7 @@ export function ClaudePanel() {
 
       <div
         ref={listRef}
+        style={{ touchAction: "pan-y" }}
         className="flex-1 overflow-y-auto px-4 py-3"
       >
         {loading && items.length === 0 ? (
