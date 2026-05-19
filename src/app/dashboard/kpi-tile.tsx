@@ -50,7 +50,7 @@ export function KpiTile({
       </div>
       <div
         className={cn(
-          "mt-1.5 text-center font-serif text-[26px] font-bold leading-none tracking-[-0.04em] tabular-nums",
+          "mt-1.5 text-center font-serif text-[26px] font-extrabold leading-none tracking-[-0.04em] tabular-nums",
           isZero ? "text-court-fg-dim" : "text-court-fg",
         )}
       >

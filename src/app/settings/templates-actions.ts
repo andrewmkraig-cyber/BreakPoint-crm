@@ -242,19 +242,19 @@ const REFERENCE_CHECK_DEFAULT = {
     "Hi [Candidate First Name],\n\n" +
     "Things are moving in the right direction with [Client Company Name] on the [Job Title] role. " +
     "Before we go further, I'd like to line up a quick reference check.\n\n" +
-    "Please reply to this email with three professional references — ideally direct managers or senior colleagues from recent roles. " +
+    "Please reply to this email with three professional references - ideally direct managers or senior colleagues from recent roles. " +
     "For each, include:\n" +
     "• Full name\n" +
     "• Title and company\n" +
     "• Relationship to you\n" +
     "• Phone and email\n\n" +
-    "I keep it short and respectful — usually a 10–15 minute call. Let me know if any of them prefer email.\n\n" +
+    "I keep it short and respectful - usually a 10-15 minute call. Let me know if any of them prefer email.\n\n" +
     "Thanks,",
 } as const;
 
 const CANDIDATE_APPLIED_CONFIRMATION_DEFAULT = {
-  name: "Candidate Applied — Confirmation",
-  subject: "We've got your application — [Job Title] at [Client Company Name]",
+  name: "Candidate Applied - Confirmation",
+  subject: "We've got your application - [Job Title] at [Client Company Name]",
   trigger: CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
   audience: "candidate",
   category: "applied",
@@ -265,43 +265,43 @@ const CANDIDATE_APPLIED_CONFIRMATION_DEFAULT = {
     "Next steps: I'll review your background against what the client is looking for and reach " +
     "out within a few business days to talk through the role in more detail. If we move forward, " +
     "I'll submit your profile to the client and keep you posted on their feedback.\n\n" +
-    "If anything changes — availability, comp expectations, locations you'd consider — just reply " +
+    "If anything changes - availability, comp expectations, locations you'd consider - just reply " +
     "to this email and I'll update your file.",
 } as const;
 
 const OFFER_EXTENDED_DEFAULT = {
   name: "Offer Extended",
-  subject: "Offer extended — [Job Title] at [Client Company Name]",
+  subject: "Offer extended - [Job Title] at [Client Company Name]",
   trigger: OFFER_EXTENDED_TRIGGER,
   audience: "candidate",
   category: "offer",
   body:
     "Hi [Candidate First Name],\n\n" +
-    "Great news — [Client Company Name] has extended an offer for the [Job Title] role.\n\n" +
+    "Great news - [Client Company Name] has extended an offer for the [Job Title] role.\n\n" +
     "Take some time to review the details and let me know how you're feeling about it. " +
-    "Happy to walk through anything — comp, start date, benefits, the team, the role itself — " +
+    "Happy to walk through anything - comp, start date, benefits, the team, the role itself - " +
     "before you respond to them.\n\n" +
     "When you're ready to move forward, reply here and we'll line up next steps together.",
 } as const;
 
 const CANDIDATE_HIRED_WELCOME_DEFAULT = {
-  name: "Hired — Welcome / Next Steps",
-  subject: "Welcome to [Client Company Name] — [Job Title]",
+  name: "Hired - Welcome / Next Steps",
+  subject: "Welcome to [Client Company Name] - [Job Title]",
   trigger: CANDIDATE_HIRED_WELCOME_TRIGGER,
   audience: "candidate",
   category: "hired",
   body:
     "Hi [Candidate First Name],\n\n" +
-    "Congratulations on your new role as [Job Title] at [Client Company Name] — start date is locked in.\n\n" +
+    "Congratulations on your new role as [Job Title] at [Client Company Name] - start date is locked in.\n\n" +
     "From here, [Client Company Name] will reach out directly with onboarding paperwork, equipment, " +
     "first-day logistics, and anything else they need on their end. Keep an eye on your inbox for them.\n\n" +
     "On my side, I'll check in shortly after you start to make sure things are going well. If anything " +
-    "comes up between now and then — questions about the offer, paperwork, scheduling — just reply here.\n\n" +
+    "comes up between now and then - questions about the offer, paperwork, scheduling - just reply here.\n\n" +
     "Excited for you. Best of luck!",
 } as const;
 
 const CLIENT_INTERVIEW_SCHEDULED_DEFAULT = {
-  name: "Interview Scheduled — Client Confirmation",
+  name: "Interview Scheduled - Client Confirmation",
   subject: "Interview Confirmed - [Candidate Full Name] for [Job Title]",
   trigger: CLIENT_INTERVIEW_SCHEDULED_TRIGGER,
   audience: "client",
@@ -310,7 +310,7 @@ const CLIENT_INTERVIEW_SCHEDULED_DEFAULT = {
     "Hi [Client Contact First Name],\n\n" +
     "Confirming the interview with [Candidate Full Name] for the [Job Title] role. You should see the calendar invite hit your inbox shortly.\n\n" +
     "A quick recap of what we have on the books:\n" +
-    "• Candidate: [Candidate Full Name] — [Candidate Current Title]\n" +
+    "• Candidate: [Candidate Full Name] - [Candidate Current Title]\n" +
     "• Role: [Job Title]\n" +
     "• Format: [Interview Type]\n" +
     "• When: [Interview Date Time]\n" +
@@ -340,7 +340,7 @@ const CANDIDATE_RECRUIT_DEFAULT = {
 } as const;
 
 const CANDIDATE_INTERVIEW_PREP_DEFAULT = {
-  name: "Interview Scheduled — Candidate Prep",
+  name: "Interview Scheduled - Candidate Prep",
   subject: "You're confirmed - [Job Title] with [Client Company Name]",
   trigger: CANDIDATE_INTERVIEW_PREP_TRIGGER,
   audience: "candidate",
@@ -354,9 +354,9 @@ const CANDIDATE_INTERVIEW_PREP_DEFAULT = {
     "• Duration: [Interview Duration]\n" +
     "• Format: [Interview Type]\n\n" +
     "A few prep tips so you can show up sharp:\n" +
-    "• Review the job description and jot down 2–3 questions that show you've done your homework on the company.\n" +
-    "• Have a short tour of 2–3 recent projects ready — what the problem was, what you did, what the outcome was.\n" +
-    "• Log in a few minutes early — test camera, mic, and link if it's a video interview.\n\n" +
+    "• Review the job description and jot down 2-3 questions that show you've done your homework on the company.\n" +
+    "• Have a short tour of 2-3 recent projects ready - what the problem was, what you did, what the outcome was.\n" +
+    "• Log in a few minutes early - test camera, mic, and link if it's a video interview.\n\n" +
     "Reply to this email if anything comes up. Good luck!",
 } as const;
 
@@ -426,7 +426,27 @@ export async function ensureDefaultTemplates(): Promise<void> {
 
   await migrateClientNameToken();
   await stripSignatureBlocksFromTemplates();
+  await stripEmDashesFromTemplates();
   await backfillSortOrderForLegacyRows();
+}
+
+// Andrew doesn't want em dashes in outbound copy - they read as
+// AI-generated. Replace any em dash in existing template subjects and
+// bodies with a plain hyphen. Idempotent: only writes rows that had
+// at least one em dash.
+async function stripEmDashesFromTemplates(): Promise<void> {
+  const rows = await prisma.emailTemplate.findMany({
+    select: { id: true, subject: true, body: true },
+  });
+  for (const row of rows) {
+    const nextSubject = row.subject.replace(/—/g, "-");
+    const nextBody = row.body.replace(/—/g, "-");
+    if (nextSubject === row.subject && nextBody === row.body) continue;
+    await prisma.emailTemplate.update({
+      where: { id: row.id },
+      data: { subject: nextSubject, body: nextBody },
+    });
+  }
 }
 
 // Any non-seed row that still has the default sortOrder=0 gets an

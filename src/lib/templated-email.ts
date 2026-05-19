@@ -116,8 +116,12 @@ export async function fireTemplatedEmail(input: FireTemplatedEmailInput): Promis
   if (look.kind === "missing") return { status: "skipped", reason: "missing" };
   if (look.kind === "inactive") return { status: "skipped", reason: "inactive", templateName: look.name };
 
-  const subject = applyMergeFields(look.template.subject, input.values);
-  const body = applyMergeFields(look.template.body, input.values);
+  // Andrew never wants candidates or clients to receive an em dash -
+  // they read as AI-generated. Strip them from the resolved subject
+  // and body after merge fields apply (a merge value itself could
+  // carry one in from a free-form notes field).
+  const subject = applyMergeFields(look.template.subject, input.values).replace(/—/g, "-");
+  const body = applyMergeFields(look.template.body, input.values).replace(/—/g, "-");
   const html = plainToHtml(body);
 
   // Debug log: so we can trace blank-token reports in Vercel logs. Shows

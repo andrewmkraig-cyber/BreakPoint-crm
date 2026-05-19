@@ -425,10 +425,20 @@ export function MarkdownContent({ content }: { content: string }) {
           ),
         }}
       >
-        {content}
+        {collapseProseHardBreaks(content)}
       </ReactMarkdown>
     </div>
   );
+}
+
+// Strip CommonMark hard-break syntax from prose so a wrap mid-sentence
+// in the model output doesn't render as a visible <br>. Two trailing
+// spaces before \n and a backslash before \n both signal "force <br>"
+// to ReactMarkdown; removing them turns them into ordinary newlines,
+// which CommonMark collapses to a space within a paragraph. Paragraph
+// breaks (blank lines = \n\n) are untouched, so structure survives.
+function collapseProseHardBreaks(content: string): string {
+  return content.replace(/[ \t]{2,}\n/g, "\n").replace(/\\\n/g, "\n");
 }
 
 // Flatten Game Plan markdown into clean plaintext for the clipboard.

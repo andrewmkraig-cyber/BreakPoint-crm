@@ -248,7 +248,7 @@ export async function parseCandidateFields(params: {
   content.push({
     type: "text",
     text:
-      "Extract candidate fields from the source above. Return ONLY a JSON object with this exact shape — no prose, no markdown fences, no preamble:\n" +
+      "Extract candidate fields from the source above. Return ONLY a JSON object with this exact shape - no prose, no markdown fences, no preamble:\n" +
       "{\n" +
       '  "first_name": string|null,\n' +
       '  "last_name": string|null,\n' +
@@ -265,7 +265,7 @@ export async function parseCandidateFields(params: {
       "}\n\n" +
       "Rules:\n" +
       "- Use null (not empty string) for any field not present in the source.\n" +
-      "- 'current_designation' is the candidate's present job title; 'current_organization' is their present employer. A role is 'current' if its end date is 'Current', 'Present', 'Now', or blank — those all mean the candidate is still there. Prefer the most recent role explicitly marked 'Current'/'Present'/blank end date. If no role is explicitly current, use the most recent dated role. These MUST be non-empty whenever the resume lists any work history at all — never return '' here, use null only if the resume has zero work experience.\n" +
+      "- 'current_designation' is the candidate's present job title; 'current_organization' is their present employer. A role is 'current' if its end date is 'Current', 'Present', 'Now', or blank - those all mean the candidate is still there. Prefer the most recent role explicitly marked 'Current'/'Present'/blank end date. If no role is explicitly current, use the most recent dated role. These MUST be non-empty whenever the resume lists any work history at all - never return '' here, use null only if the resume has zero work experience.\n" +
       "- 'location' should be 'City, ST' if US, otherwise 'City, Country'.\n" +
       "- 'phone' keep the digits and country code as given; don't reformat.\n" +
       "- 'skills' is a short deduplicated array of 5–12 hard skills. Omit soft skills.\n" +
@@ -455,7 +455,7 @@ export async function summarizeAgreementTerms(params: {
     thinking: { type: "adaptive" },
     output_config: { effort: "medium" },
     system:
-      "You extract key commercial terms from recruiting / placement fee agreements. You are precise and conservative — " +
+      "You extract key commercial terms from recruiting / placement fee agreements. You are precise and conservative - " +
       "you never invent numbers or clauses, and if a term isn't present you write 'Not specified.'",
     messages: [
       {
@@ -474,18 +474,18 @@ export async function summarizeAgreementTerms(params: {
             type: "text",
             text:
               "Extract the key commercial terms from this placement / recruiting fee agreement. " +
-              "Output ONLY a bulleted list — no intro, no summary paragraph, no trailing commentary, no markdown, no code fences. " +
+              "Output ONLY a bulleted list - no intro, no summary paragraph, no trailing commentary, no markdown, no code fences. " +
               "Each line is plain text in the form: `- Label: value`. No asterisks, no bold syntax. " +
               "Keep values short and factual (numbers, percentages, day counts, state names). " +
-              "If a term isn't stated in the document, write the value as 'Not specified.' — never guess.\n\n" +
+              "If a term isn't stated in the document, write the value as 'Not specified.' - never guess.\n\n" +
               "Produce these bullets, in this order (skip any that aren't in the doc except the six core ones which always appear):\n" +
-              "- Fee Percentage: (percentage + base — e.g. '25% of first-year base salary')\n" +
+              "- Fee Percentage: (percentage + base - e.g. '25% of first-year base salary')\n" +
               "- Payment Terms: (e.g. 'Net 15 from start date')\n" +
               "- Guarantee Period: (e.g. '90 days, prorated replacement')\n" +
               "- Minimum Fee: (dollar amount, or 'None')\n" +
               "- Candidate Ownership Period: (e.g. '12 months from introduction')\n" +
               "- Governing Law: (state/jurisdiction)\n" +
-              "- {Other term label}: (add a bullet for any other notable/custom term — indemnification cap, arbitration, non-solicit scope, background-check responsibility, etc. One bullet per term. Omit if nothing else is notable.)\n\n" +
+              "- {Other term label}: (add a bullet for any other notable/custom term - indemnification cap, arbitration, non-solicit scope, background-check responsibility, etc. One bullet per term. Omit if nothing else is notable.)\n\n" +
               "No other content. Just the bullets.",
           },
         ],
@@ -595,15 +595,15 @@ export async function generateJobDescription(params: {
       "Top-level sections use '## ' (H2). Sub-sections under Job Details use '### ' (H3). Bullets use '- ' (hyphen + space). " +
       "No preamble before the first '## A Bit About Us'. No trailing sign-off after the final bullet.\n\n" +
       "## A Bit About Us\n" +
-      "<2 to 4 sentence paragraph describing the company in generic terms — industry, size, stage, mission. Neutral phrasing like 'Our client is…' or 'The team is…'. No client name. No fabrication.>\n\n" +
+      "<2 to 4 sentence paragraph describing the company in generic terms - industry, size, stage, mission. Neutral phrasing like 'Our client is…' or 'The team is…'. No client name. No fabrication.>\n\n" +
       "## Why Join Us\n" +
       "- <selling point>\n" +
       "- <selling point>\n" +
       "- <selling point>\n" +
       "- <selling point>\n" +
-      "(4 to 7 bullets — growth, team, mission, comp, culture, remote/hybrid, etc. Skip topics the source does not support — never fabricate.)\n\n" +
+      "(4 to 7 bullets - growth, team, mission, comp, culture, remote/hybrid, etc. Skip topics the source does not support - never fabricate.)\n\n" +
       "## Job Details\n" +
-      "(No body copy directly under this header — only the sub-sections below.)\n\n" +
+      "(No body copy directly under this header - only the sub-sections below.)\n\n" +
       "### Key Responsibilities and Duties\n" +
       "- <verb-led responsibility>\n" +
       "- <verb-led responsibility>\n" +
@@ -613,26 +613,26 @@ export async function generateJobDescription(params: {
       "- <qualification / skill / experience>\n" +
       "- <qualification / skill / experience>\n" +
       "- <qualification / skill / experience>\n" +
-      "(5 to 10 bullets — hard requirements: years, certifications, core skills.)\n\n" +
+      "(5 to 10 bullets - hard requirements: years, certifications, core skills.)\n\n" +
       "### Nice to Have\n" +
       "- <optional qualification>\n" +
-      "OMIT this entire sub-section (heading and all) if no preferred / nice-to-have items are present in the source — do not write 'None' or 'N/A'.\n\n" +
+      "OMIT this entire sub-section (heading and all) if no preferred / nice-to-have items are present in the source - do not write 'None' or 'N/A'.\n\n" +
       "Never mention 'BreakPoint' or 'the recruiter' in the body. Confident, concise recruiter voice.",
   });
 
   const system =
-    "You are BreakPoint Talent's recruiter copy assistant. You turn client-supplied job descriptions into polished, anonymous candidate-facing write-ups in the BreakPoint voice — professional, recruiter-friendly, never cheesy. " +
+    "You are BreakPoint Talent's recruiter copy assistant. You turn client-supplied job descriptions into polished, anonymous candidate-facing write-ups in the BreakPoint voice - professional, recruiter-friendly, never cheesy. " +
     "Output is GitHub-flavored markdown.\n\n" +
     "MARKDOWN HEADING RULES (these are non-negotiable):\n" +
     "- The top-level sections 'A Bit About Us', 'Why Join Us', and 'Job Details' MUST each start with '## ' (two hash characters plus a space).\n" +
-    "- The sub-sections under Job Details — 'Key Responsibilities and Duties', 'You Should Have Most of the Following', and 'Nice to Have' (when present) — MUST each start with '### ' (three hash characters plus a space).\n" +
+    "- The sub-sections under Job Details - 'Key Responsibilities and Duties', 'You Should Have Most of the Following', and 'Nice to Have' (when present) - MUST each start with '### ' (three hash characters plus a space).\n" +
     "- NEVER omit the '## ' prefix on a top-level section. NEVER use '### ' for a top-level section. NEVER use '## ' for a sub-section.\n" +
     "- NEVER use plain text (e.g. 'Job Details' on its own line, or 'Job Details:'). The heading must always be a markdown heading.\n" +
-    "- Use the EXACT section titles shown above — do not paraphrase to 'About Us' / 'What you'll do' / etc.\n" +
+    "- Use the EXACT section titles shown above - do not paraphrase to 'About Us' / 'What you'll do' / etc.\n" +
     "- Bullets always use '- ' (hyphen + space). Never '•'. Never '*'. Never '1.'.\n" +
     "- No preamble before the first heading. No sign-off after the final bullet.\n" +
     "- Do NOT use bold/italic emphasis on body copy. Do not add code fences. Do not add horizontal rules.\n" +
-    "- NEVER use em dashes (the long '—' character) or en dashes ('–'). Use a comma, colon, parentheses, or period instead.\n" +
+    "- NEVER use em dashes or en dashes. Use a comma, colon, parentheses, or period instead.\n" +
     "- Never fabricate compensation, benefits, or details that aren't in the source. " +
     "Every response must contain all five required headers: 'A Bit About Us', 'Why Join Us', 'Job Details', 'Key Responsibilities and Duties', AND 'You Should Have Most of the Following'.";
 
@@ -713,21 +713,21 @@ export async function extractJobFieldsFromGeneratedJd(markdown: string): Promise
     max_tokens: 400,
     system:
       "You extract structured fields from a job description for a recruiting CRM. " +
-      "Return STRICT JSON only — no prose, no markdown fences. Never invent values.",
+      "Return STRICT JSON only - no prose, no markdown fences. Never invent values.",
     messages: [
       {
         role: "user",
         content:
           "Extract the following fields from this job description. Return strict JSON only, no markdown, no explanation. Omit any field you are not confident about.\n\n" +
           "Fields:\n" +
-          "- title: string — the job title\n" +
-          "- location: string — the single most specific location mentioned. Prefer a format like 'Florence, KY' or 'Florence, KY 41042' over region descriptions like 'Cincinnati/Northern Kentucky'. If a commute requirement lists a specific city/zip, use that.\n" +
-          "- city: string — just the city name (e.g. 'Florence'). Omit if no specific city is mentioned.\n" +
-          "- state: string — the 2-letter abbreviation if US (e.g. 'KY'), or the full state/province name otherwise. Omit if no specific state is mentioned.\n" +
-          "- zip: string — the 5-digit US postal code if present (e.g. '41042'). Omit otherwise.\n" +
-          "- salaryLow: number — the lower bound of compensation, in dollars. If hourly, convert to the hourly rate as a number (e.g. 20 for $20/hr).\n" +
-          "- salaryHigh: number — the upper bound of compensation, in dollars. If hourly, use the hourly rate.\n" +
-          "- salaryType: string — either 'SALARY' or 'HOURLY'. Use 'HOURLY' if the compensation is described as per hour, /hr, hourly, or an hourly rate. Use 'SALARY' if annual or salaried.\n\n" +
+          "- title: string - the job title\n" +
+          "- location: string - the single most specific location mentioned. Prefer a format like 'Florence, KY' or 'Florence, KY 41042' over region descriptions like 'Cincinnati/Northern Kentucky'. If a commute requirement lists a specific city/zip, use that.\n" +
+          "- city: string - just the city name (e.g. 'Florence'). Omit if no specific city is mentioned.\n" +
+          "- state: string - the 2-letter abbreviation if US (e.g. 'KY'), or the full state/province name otherwise. Omit if no specific state is mentioned.\n" +
+          "- zip: string - the 5-digit US postal code if present (e.g. '41042'). Omit otherwise.\n" +
+          "- salaryLow: number - the lower bound of compensation, in dollars. If hourly, convert to the hourly rate as a number (e.g. 20 for $20/hr).\n" +
+          "- salaryHigh: number - the upper bound of compensation, in dollars. If hourly, use the hourly rate.\n" +
+          "- salaryType: string - either 'SALARY' or 'HOURLY'. Use 'HOURLY' if the compensation is described as per hour, /hr, hourly, or an hourly rate. Use 'SALARY' if annual or salaried.\n\n" +
           "=== Job Description ===\n" +
           text.slice(0, 50_000),
       },
@@ -869,7 +869,7 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
       "Section headers MUST be wrapped in **double-asterisks** (Markdown bold). The email renderer turns those into real bold tags in Gmail. " +
       "Bullets MUST use a leading dash followed by a space ('- '). " +
       "Do NOT use any other markdown (no #, no *, no _ italics, no numbered lists). " +
-      "NEVER use em dashes (the long `—` character) anywhere in the output. Use a colon, comma, parentheses, or a period plus new sentence instead. Hyphens (`-`) are fine for compound words and bullet markers. " +
+      "NEVER use em dashes anywhere in the output. Use a colon, comma, parentheses, or a period plus new sentence instead. Hyphens (`-`) are fine for compound words and bullet markers. " +
       "Confident, concise, recruiter voice. Never fabricate facts not in the source data. " +
       "Always tie the candidate's background to the specific role: this is a targeted pitch, not a generic summary.",
     messages: [
@@ -877,31 +877,31 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
         role: "user",
         content:
           `You are writing a candidate submittal for ${fullName} for the ${input.job.title} role at ${input.job.clientName || "the client"}. ` +
-          "Write a targeted submittal email that makes the case for why THIS candidate fits THIS role — not a generic candidate summary. " +
+          "Write a targeted submittal email that makes the case for why THIS candidate fits THIS role, not a generic candidate summary. " +
           "Use the role context (title, location, employment type, salary range, experience range, description if present, custom fields) to frame the candidate. " +
           "In 'What [She/He] Brings' and 'Technically', explicitly reference experience and skills from the candidate that align with what the role needs. " +
-          "If there's a real mismatch (e.g. candidate's stack doesn't match), stay honest — don't manufacture fit.\n\n" +
+          "If there's a real mismatch (e.g. candidate's stack doesn't match), stay honest, don't manufacture fit.\n\n" +
           "Output MUST match this EXACT structure, with the `**…**` bold wrappers and the dash bullets preserved verbatim:\n\n" +
           `Hi ${clientFirst},\n\n` +
           `Here is a candidate I wanted to show you for the ${input.job.title} role.\n\n` +
           `**About ${firstName}:**\n` +
-          "<2–3 sentence paragraph — who they are, where they're based, most relevant experience, closest parallel to what the job requires>\n\n" +
+          "<2 to 3 sentence paragraph: who they are, where they're based, most relevant experience, closest parallel to what the job requires>\n\n" +
           "**What [She/He] Brings:**\n" +
-          "- <Bullet 1 — strongest relevant point, naturally labeled>\n" +
+          "- <Bullet 1: strongest relevant point, naturally labeled>\n" +
           "- <Bullet 2>\n" +
           "- <Bullet 3>\n" +
           "- <Bullet 4>\n\n" +
           "**Technically:**\n" +
-          "- <Honest assessment of their technical toolkit — concrete tools / stacks / certifications that match the role>\n\n" +
-          "**Comp Target:** <range — if unknown, say 'Open / to be discussed'. If the role posts a range and the candidate's target falls inside it, say so.>\n\n" +
-          "**Location:** <city, state — note remote/hybrid/on-site posture if relevant>\n\n" +
+          "- <Honest assessment of their technical toolkit: concrete tools / stacks / certifications that match the role>\n\n" +
+          "**Comp Target:** <range; if unknown, say 'Open / to be discussed'. If the role posts a range and the candidate's target falls inside it, say so.>\n\n" +
+          "**Location:** <city, state; note remote/hybrid/on-site posture if relevant>\n\n" +
           "Let me know if you'd like to set up an interview with [her/him] this week.\n\n" +
           "Rules:\n" +
-          "- Replace [She/He] and [her/him] with the correct pronouns — infer from the candidate's name if possible, otherwise use 'them/they'.\n" +
+          "- Replace [She/He] and [her/him] with the correct pronouns; infer from the candidate's name if possible, otherwise use 'them/they'.\n" +
           "- Keep the `**…**` bold wrappers on the section headers, the `**Comp Target:**` and `**Location:**` labels, and the `**About [Name]:**` header. Do not bold body copy.\n" +
-          "- Dash bullets ('- ') only — never '•', '*', or numbered lists.\n" +
-          "- Do NOT include a signature or 'Dear' — the recruiter's email signature handles closings.\n" +
-          "- Do NOT paraphrase the whole job description — pull the parts that matter and tie them to the candidate.\n" +
+          "- Dash bullets ('- ') only; never '•', '*', or numbered lists.\n" +
+          "- Do NOT include a signature or 'Dear'; the recruiter's email signature handles closings.\n" +
+          "- Do NOT paraphrase the whole job description; pull the parts that matter and tie them to the candidate.\n" +
           "- Never invent facts not in the source data. If a field is missing, omit that line honestly.\n\n" +
           "=== Role context ===\n" +
           roleBlock +
@@ -934,7 +934,7 @@ export async function summarizeBenefits(params: {
   const pasted = (params.pastedText ?? "").trim();
 
   if (parts.length === 0 && !pasted) {
-    throw new Error("Nothing to summarize — upload a file or paste some text.");
+    throw new Error("Nothing to summarize - upload a file or paste some text.");
   }
 
   const content: Anthropic.Messages.ContentBlockParam[] = [];
@@ -977,9 +977,9 @@ export async function summarizeBenefits(params: {
     type: "text",
     text:
       "Extract the key benefits facts for a candidate. " +
-      "Output ONLY a bulleted list — no intro, no summary paragraph, no trailing commentary, no markdown, no code fences. " +
+      "Output ONLY a bulleted list - no intro, no summary paragraph, no trailing commentary, no markdown, no code fences. " +
       "Each line is plain text in the form: `- Label: value`. No asterisks, no bold syntax. " +
-      "Keep values short and factual — numbers, carriers, waiting-period days, match percentages. " +
+      "Keep values short and factual - numbers, carriers, waiting-period days, match percentages. " +
       "Do not invent details. If a category isn't in the source, skip the bullet.\n\n" +
       "Produce bullets for whichever of these are present:\n" +
       "- Medical: (carrier, employee cost, plan tiers)\n" +
@@ -1006,7 +1006,7 @@ export async function summarizeBenefits(params: {
     output_config: { effort: "low" },
     system:
       "You extract benefits facts from carrier packets, HR PDFs, and recruiter notes. " +
-      "Be factual — only summarize what's present. Never speculate about coverage levels that aren't stated.",
+      "Be factual - only summarize what's present. Never speculate about coverage levels that aren't stated.",
     messages: [{ role: "user", content }],
   });
 

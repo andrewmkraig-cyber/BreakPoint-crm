@@ -130,18 +130,18 @@ export async function POST(req: NextRequest) {
     "\n\n" +
     `TODAY: ${today}.\n\n` +
     "FRESHNESS RULES (mandatory):\n" +
-    "- Every external fact you cite — job titles, employers, comp ranges, market salaries, hiring activity, contact info, news — MUST be verified via web_search performed during THIS turn. Do not rely on training-data recollection for anything time-sensitive.\n" +
+    "- Every external fact you cite (job titles, employers, comp ranges, market salaries, hiring activity, contact info, news) MUST be verified via web_search performed during THIS turn. Do not rely on training-data recollection for anything time-sensitive.\n" +
     "- Every URL you include MUST be a link you just retrieved with web_search. If web_search cannot return a working, currently-live URL for a specific role, OMIT that role entirely. Do not guess, do not approximate, do not paste a careers-page URL as a substitute.\n" +
-    "- Prefer canonical ATS URLs over Google-cached snippets or third-party scraper sites. PREFERRED ATS hosts (the server can verify these against the ATS's public posting API, so closed jobs are caught with certainty): boards.greenhouse.io / job-boards.greenhouse.io, jobs.lever.co, jobs.ashbyhq.com. Acceptable secondary ATS hosts (server falls back to fetching the page and pattern-matching closure copy): workable.com, smartrecruiters.com, jobvite.com, applytojob.com, careers.<company>.com. Aggregator search-results pages (LinkedIn, Indeed, ZipRecruiter, Glassdoor, Wellfound, Built In) are NEVER acceptable as a Section-1 specific-role link — they belong in Section 2 only.\n" +
+    "- Prefer canonical ATS URLs over Google-cached snippets or third-party scraper sites. PREFERRED ATS hosts (the server can verify these against the ATS's public posting API, so closed jobs are caught with certainty): boards.greenhouse.io / job-boards.greenhouse.io, jobs.lever.co, jobs.ashbyhq.com. Acceptable secondary ATS hosts (server falls back to fetching the page and pattern-matching closure copy): workable.com, smartrecruiters.com, jobvite.com, applytojob.com, careers.<company>.com. Aggregator search-results pages (LinkedIn, Indeed, ZipRecruiter, Glassdoor, Wellfound, Built In) are NEVER acceptable as a Section-1 specific-role link, they belong in Section 2 only.\n" +
     "- Never write hedges like \"data may be old\", \"could be outdated\", \"information might have changed\", or similar. If you cannot verify it now, leave it out of the response.\n" +
-    "- When listing N jobs or N companies, every single one must have a verified live link. If you can only verify 4 of 6, return 4 — never pad with unverified items.\n" +
-    "- The server runs an automated URL-verification pass after you respond. If it finds dead URLs in your output it will send them back to you with a revision request — your revision must remove them entirely (or replace with verified live alternatives), never re-include them under a different framing.\n\n" +
+    "- When listing N jobs or N companies, every single one must have a verified live link. If you can only verify 4 of 6, return 4. Never pad with unverified items.\n" +
+    "- The server runs an automated URL-verification pass after you respond. If it finds dead URLs in your output it will send them back to you with a revision request, and your revision must remove them entirely (or replace with verified live alternatives), never re-include them under a different framing.\n\n" +
     "TWO-SECTION STRUCTURE (mandatory whenever the response contains job listings):\n" +
     "Specific role postings and broader job-board search pointers must NEVER be blended into a single numbered list. Split them into two clearly-labeled sections:\n\n" +
-    "**Open Roles:** — numbered (`1.`, `2.`, …). One entry per specific posting. Each entry: bold `**Title at Company (location, comp if known)**`, then 1–2 sentences on why it fits the candidate, then a single `[Apply at Company via <ATS>](url)` link to the canonical ATS page. Only roles with a verified live URL belong here.\n\n" +
-    "**Broader job-board searches to watch:** — bulleted (hyphens, NOT numbered). Frame the section header explicitly as \"pages to browse — these are search results, not pre-vetted roles.\" Each bullet: site name + the specific filter/keyword/location the candidate should browse, with a `[Browse on <Site>](url)` link. LinkedIn / Indeed / ZipRecruiter / Glassdoor / Wellfound / Built In keyword-search pages live HERE, never in Section 1.\n\n" +
-    "Section headers (the bolded `**Open Roles:**` / `**Broader job-board searches to watch:**` lines) MUST end with a trailing colon. Always. The colon is a hard rule — every future header for these sections lands with one.\n\n" +
-    "If a Section-1 posting closes, drop it — never demote it into Section 2. Section 2 is for aggregator pages, not stale specific roles.\n\n" +
+    "**Open Roles:** numbered (`1.`, `2.`, …). One entry per specific posting. Each entry: bold `**Title at Company (location, comp if known)**`, then 1 to 2 sentences on why it fits the candidate, then a single `[Apply at Company via <ATS>](url)` link to the canonical ATS page. Only roles with a verified live URL belong here.\n\n" +
+    "**Broader job-board searches to watch:** bulleted (hyphens, NOT numbered). Frame the section header explicitly as \"pages to browse, these are search results, not pre-vetted roles.\" Each bullet: site name + the specific filter/keyword/location the candidate should browse, with a `[Browse on <Site>](url)` link. LinkedIn / Indeed / ZipRecruiter / Glassdoor / Wellfound / Built In keyword-search pages live HERE, never in Section 1.\n\n" +
+    "Section headers (the bolded `**Open Roles:**` / `**Broader job-board searches to watch:**` lines) MUST end with a trailing colon. Always. The colon is a hard rule, every future header for these sections lands with one.\n\n" +
+    "If a Section-1 posting closes, drop it. Never demote it into Section 2. Section 2 is for aggregator pages, not stale specific roles.\n\n" +
     emailContextBlock +
     "FORMATTING RULES:\n" +
     "When returning lists of jobs, companies, or resources, use clean markdown: bold headers for categories, " +
@@ -173,7 +173,7 @@ export async function POST(req: NextRequest) {
       entityType,
       entityId,
       role: 'assistant',
-      content: '(response still processing — refresh in a moment)',
+      content: '(response still processing - refresh in a moment)',
     },
   })
 
@@ -232,7 +232,7 @@ export async function POST(req: NextRequest) {
     if (!assistantContent) {
       ok = false
       errorMessage = 'Claude returned no text content'
-      assistantContent = '(no response from the model — empty reply)'
+      assistantContent = '(no response from the model - empty reply)'
     } else {
       // URL verification pass. Extract every URL from the draft, fetch
       // the non-aggregator ones (LinkedIn / Indeed / etc. bot-block our
@@ -264,7 +264,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     ok = false
     errorMessage = err instanceof Error ? err.message : String(err)
-    assistantContent = `(no response from the model — ${errorMessage})`
+    assistantContent = `(no response from the model - ${errorMessage})`
   }
 
   await prisma.aiWorkspaceMessage.update({
