@@ -24,6 +24,11 @@ export type TriggerRuleRow = {
 export type TemplateOption = {
   id: string;
   name: string;
+  // True when this template's `trigger` column matches the trigger
+  // key the dropdown belongs to. UI renders a "Tagged for this trigger"
+  // suffix on these rows + sorts them to the top so the recruiter can
+  // see which template the "System default" fallback would land on.
+  matchesTrigger: boolean;
 };
 
 type ActionResult<T = undefined> =
@@ -122,10 +127,12 @@ export async function upsertTriggerRule(input: {
   }
 }
 
-// Active EmailTemplates for a given trigger key, ordered by sortOrder
-// then most-recently-updated (matches the default lookup precedence in
-// loadTriggeredTemplate so the selector "system default" row matches
-// what would fire without an override).
+// Active EmailTemplates for the trigger-override dropdown. Returns
+// EVERY active template, not just the trigger-tagged subset, so a
+// recruiter who never wired `template.trigger` to a specific
+// pipeline key can still pick any template as the override. Templates
+// that ARE tagged for this trigger are flagged with matchesTrigger:
+// true and sorted to the top so the relationship stays legible.
 export async function getTemplatesForTrigger(
   triggerKey: string,
 ): Promise<TemplateOption[]> {
@@ -133,9 +140,20 @@ export async function getTemplatesForTrigger(
   if (auth !== true) return [];
 
   const rows = await prisma.emailTemplate.findMany({
-    where: { trigger: triggerKey, isActive: true },
+    where: { isActive: true },
     orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
-    select: { id: true, name: true },
+    select: { id: true, name: true, trigger: true },
   });
-  return rows;
+  const options: TemplateOption[] = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    matchesTrigger: r.trigger === triggerKey,
+  }));
+  // Stable sort: matched-first, otherwise keep the existing sortOrder /
+  // updatedAt ordering from the Prisma query.
+  options.sort((a, b) => {
+    if (a.matchesTrigger === b.matchesTrigger) return 0;
+    return a.matchesTrigger ? -1 : 1;
+  });
+  return options;
 }

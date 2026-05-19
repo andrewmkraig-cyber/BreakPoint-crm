@@ -161,6 +161,13 @@ function TriggerRuleRowEditor({
   }
 
   const hasNoTemplates = templates.length === 0;
+  // System Default fallback resolves to the most-recently-updated
+  // active template whose `trigger` column matches this row's key.
+  // The dropdown now surfaces every active template so the recruiter
+  // can always pick an override, but the warning still fires when
+  // the System Default has nothing to land on so they know why the
+  // row would silently no-op.
+  const hasMatchingDefault = templates.some((t) => t.matchesTrigger);
 
   // Warnings reflect *current* (optimistic) row state, not the saved
   // rule, so toggling enabled/draft immediately shows or hides the
@@ -168,13 +175,15 @@ function TriggerRuleRowEditor({
   const warnings: string[] = [];
   if (enabled) {
     if (templateId && !templates.some((t) => t.id === templateId)) {
-      warnings.push("Assigned template is missing or inactive — this trigger won't send until you reassign it.");
+      warnings.push("Assigned template is missing or inactive - this trigger won't send until you reassign it.");
     } else if (!templateId && hasNoTemplates) {
-      warnings.push("No active templates assigned to this trigger — nothing will send until one is published.");
+      warnings.push("No active templates in the library - nothing will send until one is published.");
+    } else if (!templateId && !hasMatchingDefault) {
+      warnings.push("No template is tagged for this trigger, so System default won't fire. Pick an explicit template above.");
     }
   }
   if (sendAsDraft && !gmailConnected) {
-    warnings.push("Approve-before-sending is on but Gmail isn't connected — drafts can't be created.");
+    warnings.push("Approve-before-sending is on but Gmail isn't connected - drafts can't be created.");
   }
 
   // Linked template chip resolves the currently saved templateId
@@ -242,15 +251,19 @@ function TriggerRuleRowEditor({
               <option value="">System default (most recent active)</option>
               {templates.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.name}
+                  {t.matchesTrigger ? `${t.name} (tagged for this trigger)` : t.name}
                 </option>
               ))}
             </select>
-            {hasNoTemplates && (
+            {hasNoTemplates ? (
               <span className="text-[11px] text-court-fg-muted">
-                No active templates assigned to this trigger yet.
+                No active templates in your library yet.
               </span>
-            )}
+            ) : !hasMatchingDefault ? (
+              <span className="text-[11px] text-court-fg-muted">
+                No template is tagged for this trigger. Pick one above to use it as the override.
+              </span>
+            ) : null}
           </label>
 
           <div className="flex items-center justify-between gap-3">
