@@ -223,31 +223,40 @@ function QuoToast(props: QuoToastProps) {
     toast.dismiss(props.toastId);
   }
 
+  async function onMarkRead() {
+    // Same markThreadRead path the View popup uses: clears the unread
+    // badge for this thread (sidebar Phone badge + /phone list) and then
+    // closes the toast. Preview toast just closes; never hits the net.
+    if (isSample) {
+      toast.dismiss(props.toastId);
+      return;
+    }
+    await markThreadReadAndBroadcast({
+      candidateId,
+      toNumber: props.event.fromNumber,
+    });
+    toast.dismiss(props.toastId);
+  }
+
   return (
-    <div
-      className={
-        "relative flex w-[470px] max-w-[94vw] gap-4 rounded-2xl border border-court-brand/70 bg-court-brand-tint px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.08)] " +
-        (replying ? "items-start" : "items-center")
-      }
-    >
-      {/* Left icon: white rounded square. Text mode shows the lowercase
-          "text" label box (green border + green text); call mode keeps
-          the phone glyph inside the same square. */}
+    <div className="relative flex w-[470px] max-w-[94vw] items-center gap-4 rounded-2xl border border-court-brand/70 bg-court-brand-tint px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
+      {/* Left icon: white rounded square. Text mode shows a MessageSquare
+          glyph in green (matching the card's green border); call mode
+          keeps the phone glyph inside the same square. */}
       <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-court-surface shadow-sm">
         {props.mode === "text" ? (
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl border-[2.5px] border-court-brand text-[11px] font-bold lowercase tracking-tight text-court-brand-dark">
-            text
-          </div>
+          <MessageSquare className="h-6 w-6 text-court-brand" />
         ) : (
           <Phone className="h-6 w-6 text-court-brand-dark" />
         )}
       </div>
 
-      {/* Center: sender (name, or the full number for unmatched senders,
-          never truncated) with the preview below, or the inline quick-
-          reply input once Reply is clicked. */}
+      {/* Center column: sender (name, or the full number for unmatched
+          senders, never truncated) with the preview below, or the inline
+          quick-reply input once Reply is clicked, then a bottom-right
+          action row (matches the notification mockup). */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="text-[17px] font-semibold leading-tight tracking-[-0.02em] text-court-fg">
+        <div className="pr-8 text-[17px] font-semibold leading-tight tracking-[-0.02em] text-court-fg">
           {candidateName}
         </div>
         {replying ? (
@@ -278,57 +287,68 @@ function QuoToast(props: QuoToastProps) {
             {preview}
           </div>
         )}
-      </div>
 
-      {/* Right actions. Default: Reply (text only) + View. Replying:
-          Send + Cancel. Reply / View / Cancel share the white card +
-          gray border + ink text look; Send is the green primary. */}
-      <div className="flex shrink-0 items-center gap-2 self-end pr-8">
-        {replying ? (
-          <>
-            <button
-              type="button"
-              onClick={onSendReply}
-              disabled={sending || !body.trim()}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-court-brand bg-court-brand px-3 py-1.5 text-[13px] font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:opacity-60"
-            >
-              {sending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Send className="h-3.5 w-3.5" />
-              )}
-              Send
-            </button>
-            <button
-              type="button"
-              onClick={() => setReplying(false)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
-            >
-              Cancel
-            </button>
-          </>
-        ) : (
-          <>
-            {props.mode === "text" && (
+        {/* Action row beneath the content, right-aligned. Default: Reply
+            (text only) + View + Mark as Read (text only). Replying: Send +
+            Cancel. Reply / View / Mark as Read / Cancel share the white
+            card + gray border + ink text look; Send is the green primary. */}
+        <div className="mt-2 flex items-center justify-end gap-2">
+          {replying ? (
+            <>
               <button
                 type="button"
-                onClick={onStartReply}
+                onClick={onSendReply}
+                disabled={sending || !body.trim()}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-court-brand bg-court-brand px-3 py-1.5 text-[13px] font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:opacity-60"
+              >
+                {sending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Send className="h-3.5 w-3.5" />
+                )}
+                Send
+              </button>
+              <button
+                type="button"
+                onClick={() => setReplying(false)}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
               >
-                <Reply className="h-3.5 w-3.5" />
-                Reply
+                Cancel
               </button>
-            )}
-            <button
-              type="button"
-              onClick={onView}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
-            >
-              <Eye className="h-3.5 w-3.5" />
-              View
-            </button>
-          </>
-        )}
+            </>
+          ) : (
+            <>
+              {props.mode === "text" && (
+                <button
+                  type="button"
+                  onClick={onStartReply}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+                >
+                  <Reply className="h-3.5 w-3.5" />
+                  Reply
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onView}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                View
+              </button>
+              {props.mode === "text" && (
+                <button
+                  type="button"
+                  onClick={onMarkRead}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+                >
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  Mark as Read
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* X close: absolute top-right, white card + gray border. */}

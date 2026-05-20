@@ -1,8 +1,9 @@
 "use client";
 
-import { Mail as MailIcon, Eye, X } from "lucide-react";
+import { Mail as MailIcon, Reply, Eye, CheckCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import { useFloatingThread } from "@/lib/floating-thread-context";
+import { useMailContext } from "@/lib/mail-context";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import type { UnreadInboxThread } from "@/lib/mail-context";
 
@@ -77,8 +78,21 @@ function NewMailToast({
   toastId: string | number;
 }) {
   const floatingThread = useFloatingThread();
+  const { markThreadRead } = useMailContext();
+  // The Settings "Try it" preview fires a fake thread (id "sample-…").
+  // Its buttons just close the toast; there's no real thread to open or
+  // mark read.
+  const isSample = thread.id.startsWith("sample-");
 
-  async function onView() {
+  // Shared open path for View (read-only) and Reply. Reply passes
+  // composerMode so the floating window opens straight into the reply
+  // composer with the body focused (FloatingThreadWindow applies it, the
+  // composer auto-focuses the editor for non-forward modes).
+  async function openThread(composerMode?: "reply") {
+    if (isSample) {
+      toast.dismiss(toastId);
+      return;
+    }
     try {
       // Race the labels fetch against compose-init so we open the
       // popup as soon as both resolve — labels can be slower (Gmail
@@ -101,7 +115,7 @@ function NewMailToast({
         // history would force the recruiter to scroll past months of
         // older messages to reach the message they were just notified
         // about. Pop-out from the inline thread keeps the full history.
-        { previewLatestOnly: true },
+        { previewLatestOnly: true, composerMode },
       );
       toast.dismiss(toastId);
     } catch (err) {
@@ -109,6 +123,25 @@ function NewMailToast({
         description: err instanceof Error ? err.message : "unknown error",
       });
     }
+  }
+
+  // Mark read via the same /read route the mail system uses everywhere
+  // else, optimistically clear the sidebar + topbar badge, then close.
+  async function onMarkRead() {
+    if (isSample) {
+      toast.dismiss(toastId);
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/mail/threads/${encodeURIComponent(thread.id)}/read`,
+        { method: "POST" },
+      );
+      if (res.ok) markThreadRead(thread.id);
+    } catch {
+      // Best-effort; the badge still clears on the next poll.
+    }
+    toast.dismiss(toastId);
   }
 
   return (
@@ -119,26 +152,45 @@ function NewMailToast({
         <MailIcon className="h-6 w-6 text-court-brand-dark" />
       </div>
 
-      {/* Center: sender + subject preview. */}
+      {/* Center column: sender + subject preview, then a bottom-right
+          action row (matches the notification mockup). */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="truncate text-[17px] font-semibold leading-tight tracking-[-0.02em] text-court-fg">
+        <div className="truncate pr-8 text-[17px] font-semibold leading-tight tracking-[-0.02em] text-court-fg">
           {thread.fromName || thread.fromEmail || "(unknown sender)"}
         </div>
         <div className="mt-0.5 truncate text-[14px] font-medium text-court-fg-muted">
           {truncate(thread.subject || "(no subject)", 80)}
         </div>
-      </div>
 
-      {/* Right action: View opens the floating thread. */}
-      <div className="flex shrink-0 items-center gap-2 self-end pr-8">
-        <button
-          type="button"
-          onClick={onView}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
-        >
-          <Eye className="h-3.5 w-3.5" />
-          View
-        </button>
+        {/* Action row: Reply opens the composer focused, View opens the
+            thread read-only, Mark as Read clears it. Same white card +
+            gray border + ink text look across all three. */}
+        <div className="mt-2 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => openThread("reply")}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+          >
+            <Reply className="h-3.5 w-3.5" />
+            Reply
+          </button>
+          <button
+            type="button"
+            onClick={() => openThread()}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+          >
+            <Eye className="h-3.5 w-3.5" />
+            View
+          </button>
+          <button
+            type="button"
+            onClick={onMarkRead}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+          >
+            <CheckCheck className="h-3.5 w-3.5" />
+            Mark as Read
+          </button>
+        </div>
       </div>
 
       {/* X close: absolute top-right, white card + gray border. */}

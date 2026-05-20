@@ -42,6 +42,11 @@ export type FloatingThreadOpenOptions = {
   // message, not the full thread history. Older messages stay queryable
   // for reply-target resolution but don't render.
   previewLatestOnly?: boolean;
+  // When set, the popup opens straight into the composer in this mode
+  // instead of read-only. Used by the new-mail notification toast's
+  // Reply button so the cursor lands in the reply body immediately.
+  // Cleared on close.
+  composerMode?: "reply" | "replyAll" | "forward";
 };
 
 type FloatingThreadCtx = {
@@ -51,6 +56,7 @@ type FloatingThreadCtx = {
   size: FloatingSize;
   minimized: boolean;
   previewLatestOnly: boolean;
+  initialComposerMode: "reply" | "replyAll" | "forward" | null;
   open: (
     threadId: string,
     toolkit: FloatingThreadToolkit,
@@ -77,6 +83,9 @@ export function FloatingThreadProvider({ children }: { children: ReactNode }) {
   });
   const [minimized, setMinimizedState] = useState(false);
   const [previewLatestOnly, setPreviewLatestOnly] = useState(false);
+  const [initialComposerMode, setInitialComposerMode] = useState<
+    "reply" | "replyAll" | "forward" | null
+  >(null);
 
   const open = useCallback(
     (
@@ -96,6 +105,7 @@ export function FloatingThreadProvider({ children }: { children: ReactNode }) {
       setThreadId(id);
       setMinimizedState(false);
       setPreviewLatestOnly(options?.previewLatestOnly ?? false);
+      setInitialComposerMode(options?.composerMode ?? null);
     },
     [],
   );
@@ -104,6 +114,7 @@ export function FloatingThreadProvider({ children }: { children: ReactNode }) {
     setThreadId(null);
     setMinimizedState(false);
     setPreviewLatestOnly(false);
+    setInitialComposerMode(null);
   }, []);
 
   const setPosition = useCallback((next: FloatingPosition) => {
@@ -130,6 +141,7 @@ export function FloatingThreadProvider({ children }: { children: ReactNode }) {
         size,
         minimized,
         previewLatestOnly,
+        initialComposerMode,
         open,
         close,
         setPosition,

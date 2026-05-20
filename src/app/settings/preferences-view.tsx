@@ -17,7 +17,7 @@ import {
   type ToastThemeSpec,
 } from "@/lib/toast-theme";
 import { renderNewMailToast } from "@/components/mail-notification-toast";
-import { renderNewTextToast, renderNewCallToast } from "@/components/text-notification-toast";
+import { renderNewTextToast } from "@/components/text-notification-toast";
 
 // ----------------------------------------------------------------
 // NotificationPreferencesView — in-app notif master switch + email
@@ -401,11 +401,10 @@ function NotifStylePicker({
         <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
           Try it:
         </span>
-        {/* Each picker only previews the toasts it actually styles —
-            email picker fires the email toast; phone picker fires
-            text + call toasts. Cross-firing was confusing because a
-            test toast that doesn't use the picker's theme looks like
-            a bug. */}
+        {/* Each picker only previews the toast it actually styles.
+            Email picker fires the email toast; phone picker fires the
+            text toast. Cross-firing was confusing because a test toast
+            that doesn't use the picker's theme looks like a bug. */}
         {kind === "email" && (
           <button
             type="button"
@@ -416,22 +415,13 @@ function NotifStylePicker({
           </button>
         )}
         {kind === "text" && (
-          <>
-            <button
-              type="button"
-              onClick={fireSampleTextToast}
-              className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
-            >
-              Text
-            </button>
-            <button
-              type="button"
-              onClick={fireSampleCallToast}
-              className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
-            >
-              Call
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={fireSampleTextToast}
+            className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
+          >
+            Text
+          </button>
         )}
       </div>
     </div>
@@ -455,18 +445,6 @@ function fireSampleTextToast() {
     candidateName: "Sample Sender",
     fromNumber: "+15555550100",
     body: "Reply needed on the offer",
-    createdAtIso: new Date().toISOString(),
-  });
-}
-
-function fireSampleCallToast() {
-  renderNewCallToast({
-    id: `sample-${Date.now()}`,
-    candidateId: "",
-    candidateName: "Sample Sender",
-    fromNumber: "+15555550100",
-    duration: null,
-    status: "missed",
     createdAtIso: new Date().toISOString(),
   });
 }

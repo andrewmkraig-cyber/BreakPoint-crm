@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-20 · Ace 58.0
+Last updated: 2026-05-20 · Ace 59.0
 
 ## Active Build Sequence
 
@@ -7,6 +7,9 @@ Last updated: 2026-05-20 · Ace 58.0
 Reminder-system + calendar-drawer + dashboard-widget session as of Ace 57.0:
 - DONE this session: full reminder system (grid + widget render, edit/delete, stacked lead notifications, FAB writes AceReminder, ET times), calendar drawer overhaul (interactive timezone + four US zones, quarter-hour pickers, duration pills, persist type + reminder state), dashboard This Week widget (FAB reminders, reminder/event lane split, freshness fix, up to 5/day), 36 (calendar auto-sync verified), 34 (bulk reject from Lists), 35 (interview auto-reminder), 33 (Templates + Triggers unified), 38 (Teams OAuth expiry + connector polish)
 - DEFERRED (revisit after the sequence below): 28 (ToolExpense edit UI), 39 (calendar invite unknown-sender warning), 13 (date format refactor), 1 (PageWrapper / SectionCard chrome), 32 (BCC Austin clean fix)
+
+### Session 59.0 Status
+Notification toast polish (DONE Ace 59.0): SMS toast `MessageSquare` icon, action buttons moved to a bottom row on both the SMS + email toasts to match the mockup, Mark as Read added to both (SMS via `markThreadReadAndBroadcast`, email via the `/read` route + `markThreadRead`), email toast Reply opens the floating thread straight into the focused reply composer (new `composerMode` open option), and the Settings phone "Try it" Call test removed. Awaiting Andrew's browser verification.
 
 ### Next Up (Ace 58.0)
 Ace 57.0 closed the reminder system, the calendar drawer overhaul, the dashboard This Week widget, and items 33 / 34 / 35 / 36 / 38. Ace 58.0 opens by verifying the SMS toast View button fix, then runs Batch 2. Priority order:

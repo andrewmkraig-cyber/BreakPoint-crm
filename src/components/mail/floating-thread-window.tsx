@@ -50,6 +50,7 @@ export function FloatingThreadWindow() {
     size,
     minimized,
     previewLatestOnly,
+    initialComposerMode,
     close,
     setPosition,
     setSize,
@@ -78,9 +79,15 @@ export function FloatingThreadWindow() {
   const [composerMode, setComposerMode] = useState<
     null | "reply" | "replyAll" | "forward"
   >(null);
+  // Reset (or pre-open) the composer when the thread switches. Opening
+  // from the new-mail toast's Reply passes composerMode: "reply" via the
+  // context, so the popup lands straight in the reply editor with the
+  // body focused; opening from View passes null and it stays read-only.
+  // open() sets threadId + initialComposerMode together, so this effect
+  // sees both on the same tick.
   useEffect(() => {
-    setComposerMode(null);
-  }, [threadId]);
+    setComposerMode(initialComposerMode);
+  }, [threadId, initialComposerMode]);
   // When the user opens Reply / Reply All / Forward, expand the popup
   // to a height that leaves the editor body as the visual focal point.
   // The composer's chrome (To/CC/Subject/template+AI bar/format

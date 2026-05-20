@@ -1,10 +1,22 @@
 # ACE_STATE.md
-Last updated: 2026-05-20 · Ace 58.0
+Last updated: 2026-05-20 · Ace 59.0
 
 ## Current Status
-Current Version: Ace 58.0
+Current Version: Ace 59.0
 Last Shipped: 2026-05-20
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 59.0 (2026-05-20)
+
+Notification toast polish: SMS + email toasts redesigned to the shared mockup layout (Reply / View / Mark as Read), and the Settings phone "Try it" Call test removed.
+
+### SMS + email notification toasts
+- **SMS toast icon.** The lowercase "text" label box is replaced by a green `MessageSquare` lucide glyph inside the same white rounded square (`text-court-brand`, matching the card's green border). Call mode keeps its phone glyph.
+- **Actions moved to a bottom row.** Both toasts stack their action buttons on a right-aligned row beneath the sender + preview (matching the mockup) so three buttons fit the 470px card without crushing the sender. SMS: Reply (text only) + View + Mark as Read (text only); replying still swaps in Send + Cancel. Email: Reply + View + Mark as Read.
+- **Mark as Read on both toasts.** SMS Mark as Read runs the same `markThreadReadAndBroadcast` path the View popup uses (clears the sidebar Phone badge + /phone list), then closes. Email Mark as Read POSTs to `/api/mail/threads/[id]/read` and optimistically clears the badge via `useMailContext().markThreadRead`, then closes. Sample preview toasts (`id` prefixed `sample-`) just close.
+- **Email toast Reply opens the composer focused.** Reply opens the floating thread straight into the reply editor with the body focused, no read-only preview step. `FloatingThreadOpenOptions` gained a `composerMode` flag; `open()` stores it as `initialComposerMode`, and `FloatingThreadWindow` seeds its `composerMode` from it on open, so the existing `autoFocusBody` path drops the cursor in the reply body.
+- **Settings "Try it" Call test removed.** The phone notification-style picker's Try-it row shows Text only; the Call test button, `fireSampleCallToast`, and the now-unused `renderNewCallToast` import are gone.
+- Files: `src/components/text-notification-toast.tsx`, `src/components/mail-notification-toast.tsx`, `src/lib/floating-thread-context.tsx`, `src/components/mail/floating-thread-window.tsx`, `src/app/settings/preferences-view.tsx`.
 
 ## What Shipped in Ace 58.0 (2026-05-20)
 
