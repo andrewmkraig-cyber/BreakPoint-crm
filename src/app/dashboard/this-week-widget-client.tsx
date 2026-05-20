@@ -161,7 +161,7 @@ export function ThisWeekWidgetClient({
           plus a brand-colored day number so the eye lands on it first. */}
       <div className="mt-4 grid grid-cols-5 gap-1.5">
         {days.map((day) => {
-          const visible = day.events.slice(0, 2);
+          const visible = day.events.slice(0, 5);
           const overflow = day.events.length - visible.length;
           return (
             <div
