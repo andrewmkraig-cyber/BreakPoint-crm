@@ -4,7 +4,6 @@ import {
   Bell,
   Calendar,
   Check,
-  ChevronDown,
   Clock,
   ExternalLink,
   Globe,
@@ -57,6 +56,23 @@ const MEETING_TYPE_OPTS: Array<{ value: CreateMeetingType; label: string }> = [
   { value: "none", label: "No Meeting" },
 ];
 
+// IANA zones the recruiter can pick from. Default is Eastern since the
+// rest of the calendar surface assumes ET; the rest cover where
+// candidates and clients actually sit. Labels carry the common
+// abbreviation so "PST" / "CST" map without the recruiter knowing the
+// IANA name.
+const TIMEZONE_OPTS: Array<{ value: string; label: string }> = [
+  { value: "America/New_York", label: "Eastern (ET)" },
+  { value: "America/Chicago", label: "Central (CT)" },
+  { value: "America/Denver", label: "Mountain (MT)" },
+  { value: "America/Phoenix", label: "Arizona (MST)" },
+  { value: "America/Los_Angeles", label: "Pacific (PT)" },
+  { value: "America/Anchorage", label: "Alaska (AKT)" },
+  { value: "Pacific/Honolulu", label: "Hawaii (HT)" },
+];
+
+const DEFAULT_TIMEZONE = "America/New_York";
+
 // Round a Date up to the next quarter hour so the create form opens
 // at 14:30 instead of 14:23 when no slot prefill is supplied.
 function roundUpQuarter(d: Date): Date {
@@ -88,13 +104,61 @@ function toTimeInput(d: Date): string {
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `${h}:${mm}`;
 }
-function fromDateTimeInput(date: string, time: string): Date {
-  return new Date(`${date}T${time}`);
+
+// The wall-clock the recruiter typed into the date/time inputs is
+// meant in the timezone they picked from the selector, not the
+// browser's. tzOffsetMs returns how far ahead of UTC `timeZone` sits
+// at a given instant; zonedToInstant uses it to resolve a
+// "YYYY-MM-DD" + "HH:mm" pair into the correct absolute instant. Two
+// passes settle the DST edge where the offset differs between the
+// naive guess and the resolved instant.
+function tzOffsetMs(timeZone: string, at: Date): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const parts = dtf.formatToParts(at);
+  const pick = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+  const asUTC = Date.UTC(
+    pick("year"),
+    pick("month") - 1,
+    pick("day"),
+    pick("hour"),
+    pick("minute"),
+    pick("second"),
+  );
+  return asUTC - at.getTime();
+}
+
+function zonedToInstant(date: string, time: string, timeZone: string): Date {
+  const [y, mo, d] = date.split("-").map((n) => Number.parseInt(n, 10));
+  const [h, mi] = time.split(":").map((n) => Number.parseInt(n, 10));
+  const naiveUTC = Date.UTC(y, mo - 1, d, h, mi, 0);
+  const firstGuess = new Date(naiveUTC - tzOffsetMs(timeZone, new Date(naiveUTC)));
+  return new Date(naiveUTC - tzOffsetMs(timeZone, firstGuess));
+}
+
+const REMINDER_DEFAULT_LEAD_MS = 15 * 60 * 1000;
+
+// Reminders open pointed at "15 minutes from now" rather than the
+// next quarter hour, so a quick "ping me before I forget" needs no
+// time typing. Seconds zeroed so the native time input shows a clean
+// HH:mm.
+function reminderDefaultTime(): Date {
+  const t = new Date(Date.now() + REMINDER_DEFAULT_LEAD_MS);
+  t.setSeconds(0, 0);
+  return t;
 }
 
 // Used by the Location row to show an "open in new tab" affordance
 // whenever the recruiter pastes a video link (Zoom, Teams, Webex,
-// arbitrary) into the field. Tight check — the input still accepts
+// arbitrary) into the field. Tight check - the input still accepts
 // addresses and room names; the link button just stays hidden when
 // the value isn't a URL.
 function isUrlLike(s: string): boolean {
@@ -181,15 +245,19 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
   const router = useRouter();
   const [type, setType] = useState<CalendarEventType>(event?.type ?? "interview");
   const [title, setTitle] = useState(event?.title ?? "");
-  // Default to ON in create mode — recruiters want a toast 15 min
+  // Default to ON in create mode - recruiters want a toast 15 min
   // before every new event unless they explicitly opt out. Edit mode
   // mirrors whatever the linked AceReminder row already has.
   const [reminderOn, setReminderOn] = useState(event?.reminderEnabled ?? true);
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
+  // Recruiter-pickable timezone for the wall-clock entered above. The
+  // create/edit actions interpret startTime/endTime in this zone and
+  // send Google both the resolved instant and this zone for display.
+  const [timeZone, setTimeZone] = useState(DEFAULT_TIMEZONE);
   // Create-only: all-day blocks render in Google as a date range with
-  // no time. Edit mode ignores this — Google's PATCH path through
+  // no time. Edit mode ignores this - Google's PATCH path through
   // updateCalendarEventAction always sends start/end as ISO timed
   // strings, so flipping allDay in edit would be a no-op against the
   // existing event.
@@ -203,7 +271,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
   // Default to read-only HTML preview when the synced description is
   // HTML; otherwise jump straight into a plain-text textarea since
   // there's nothing to render. Clicking the Plain text toggle in HTML
-  // mode downgrades `notes` to plain text and flips this true — once
+  // mode downgrades `notes` to plain text and flips this true - once
   // a recruiter edits, formatting goes (and a save persists the plain
   // text to Google).
   const [notesPreviewMode, setNotesPreviewMode] = useState(false);
@@ -230,17 +298,27 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
       setReminderOn(event.reminderEnabled ?? false);
       setAllDay(false);
       setMeetingType("google_meet");
+      setTimeZone(DEFAULT_TIMEZONE);
     } else {
       const initialType: CalendarEventType = prefillType ?? "interview";
       setType(initialType);
       setTitle("");
-      // Month-cell clicks pass a date; day-slot clicks pass date +
-      // hour + minute. Default end is one hour after start so the
-      // form has a valid range without the recruiter having to tab
-      // through both fields. When no prefill is supplied the form
-      // opens at "today, next quarter hour" so submit can fire
-      // immediately without the recruiter typing a date.
-      if (prefill) {
+      setTimeZone(DEFAULT_TIMEZONE);
+      if (initialType === "reminder") {
+        // Reminder: a single TIME field defaulting to 15 min out. We
+        // still seed endTime (start + 15 min) so switching to a timed
+        // type later has a valid range instead of a blank Ends field.
+        const start = reminderDefaultTime();
+        setDate(toDateInput(prefill?.date ?? start));
+        setStartTime(toTimeInput(start));
+        setEndTime(
+          toTimeInput(new Date(start.getTime() + REMINDER_DEFAULT_LEAD_MS)),
+        );
+      } else if (prefill) {
+        // Month-cell clicks pass a date; day-slot clicks pass date +
+        // hour + minute. Default end is one hour after start so the
+        // form has a valid range without the recruiter having to tab
+        // through both fields.
         setDate(toDateInput(prefill.date));
         if (prefill.hour != null) {
           const h = prefill.hour;
@@ -256,6 +334,8 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
           setEndTime(toTimeInput(end));
         }
       } else {
+        // No prefill: open at "today, next quarter hour" so submit can
+        // fire immediately without the recruiter typing a date.
         const now = roundUpQuarter(new Date());
         setDate(toDateInput(now));
         setStartTime(toTimeInput(now));
@@ -277,27 +357,54 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
   }, [event?.id, open, prefill, prefillType]);
 
   const meta = eventTypeMeta(type);
+  const isReminder = type === "reminder";
   const headerLabel = mode === "edit" ? "Edit event" : "New event";
+
+  // Picking a type from the pill grid. In create mode, switching to
+  // Reminder re-points the time at "15 min from now" and drops the
+  // video link; switching back to a timed type restores Google Meet.
+  // Edit mode leaves the existing time untouched.
+  function pickType(next: CalendarEventType) {
+    setType(next);
+    if (mode !== "create") return;
+    if (next === "reminder") {
+      const start = reminderDefaultTime();
+      setStartTime(toTimeInput(start));
+      setEndTime(
+        toTimeInput(new Date(start.getTime() + REMINDER_DEFAULT_LEAD_MS)),
+      );
+      setDate((d) => d || toDateInput(start));
+      setMeetingType("none");
+    } else {
+      setMeetingType((m) => (m === "none" ? "google_meet" : m));
+    }
+  }
+
   const canSave =
     mode === "edit" &&
     event != null &&
     title.trim().length > 0 &&
     date.length > 0 &&
     startTime.length > 0 &&
-    endTime.length > 0;
+    (isReminder || endTime.length > 0);
   const canCreate =
     mode === "create" &&
     title.trim().length > 0 &&
     date.length > 0 &&
-    (allDay || (startTime.length > 0 && endTime.length > 0));
+    (allDay || startTime.length > 0) &&
+    (allDay || isReminder || endTime.length > 0);
 
   async function doSave(notifyMode: "all" | "new" | "none") {
     if (!event || !canSave) return;
     setSaving(notifyMode);
     setError(null);
     try {
-      const startDate = fromDateTimeInput(date, startTime);
-      const endDate = fromDateTimeInput(date, endTime);
+      const startDate = zonedToInstant(date, startTime, timeZone);
+      // Reminders carry no Ends field; pin a 15-min block so Google
+      // and the validation below always have a valid range.
+      const endDate = isReminder
+        ? new Date(startDate.getTime() + REMINDER_DEFAULT_LEAD_MS)
+        : zonedToInstant(date, endTime, timeZone);
       if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
         throw new Error("Invalid date or time.");
       }
@@ -315,6 +422,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
         notifyMode,
         reminderEnabled: reminderOn,
         type,
+        timeZone,
       });
       void triggerCalendarSync(router);
       onClose();
@@ -330,16 +438,19 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
     setCreating(true);
     setError(null);
     try {
-      // Build the wall-clock as a local Date here (browser is in ET
-      // for our recruiters) and pass toISOString() to the server —
-      // same contract as doSave. Server-side parsing of naive
-      // datetime strings would skew by the ET offset on Vercel's UTC
-      // Node runtime.
+      // Resolve the wall-clock in the recruiter-picked timezone into an
+      // absolute instant, then hand the server toISOString(). Doing the
+      // zone math here keeps the same startISO / endISO contract as
+      // doSave; server-side parsing of naive datetime strings would
+      // skew by the offset on Vercel's UTC Node runtime.
       let startISO: string | undefined;
       let endISO: string | undefined;
       if (!allDay) {
-        const startDate = fromDateTimeInput(date, startTime);
-        const endDate = fromDateTimeInput(date, endTime);
+        const startDate = zonedToInstant(date, startTime, timeZone);
+        // Reminders have no Ends field; pin a 15-min block.
+        const endDate = isReminder
+          ? new Date(startDate.getTime() + REMINDER_DEFAULT_LEAD_MS)
+          : zonedToInstant(date, endTime, timeZone);
         if (
           Number.isNaN(startDate.getTime()) ||
           Number.isNaN(endDate.getTime())
@@ -359,6 +470,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
         endISO,
         allDay,
         meetingType,
+        timeZone,
         // Modal used to feed an "in person" address through this
         // field; the drawer's single Location row carries the same
         // value for any meeting type but the action only mirrors it
@@ -479,7 +591,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
                   <button
                     key={t.id}
                     type="button"
-                    onClick={() => setType(t.id)}
+                    onClick={() => pickType(t.id)}
                     className={cn(
                       "rounded-[10px] border px-3 py-2.5 text-left transition",
                       active
@@ -519,13 +631,36 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
             </div>
             <div>
               <FieldLabel>Timezone</FieldLabel>
-              <InputRow>
-                <Globe className="h-3.5 w-3.5 text-court-fg-muted" />
-                <span className="flex-1">America/New_York (ET)</span>
-                <ChevronDown className="h-3 w-3 text-court-fg-muted" />
-              </InputRow>
+              <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
+                <Globe className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
+                <select
+                  value={timeZone}
+                  onChange={(e) => setTimeZone(e.target.value)}
+                  className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none"
+                >
+                  {TIMEZONE_OPTS.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-            {!allDay && (
+            {!allDay && isReminder && (
+              <div>
+                <FieldLabel>Time</FieldLabel>
+                <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
+                  <Clock className="h-3.5 w-3.5 text-court-fg-muted" />
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none"
+                  />
+                </div>
+              </div>
+            )}
+            {!allDay && !isReminder && (
               <>
                 <div>
                   <FieldLabel>Starts</FieldLabel>
@@ -556,7 +691,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
           </div>
 
           {/* All-day + meeting type (create only). All-day is a
-              create-time choice — Google's PATCH path the edit
+              create-time choice - Google's PATCH path the edit
               flow uses doesn't switch a timed event to all-day, so
               hiding the toggle in edit avoids a no-op control. */}
           {mode === "create" && (
@@ -651,7 +786,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
             </div>
           </div>
 
-          {/* Notes — Google Calendar event description */}
+          {/* Notes - Google Calendar event description */}
           <div>
             <div className="flex items-baseline justify-between">
               <FieldLabel>Notes</FieldLabel>
@@ -759,7 +894,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
                   size="sm"
                   onClick={() => doSave("none")}
                   disabled={!canSave || saving !== null || deleting}
-                  title="Patch Google silently — no emails go out, not even to new guests"
+                  title="Patch Google silently - no emails go out, not even to new guests"
                 >
                   {saving === "none" && (
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -778,7 +913,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
                   }
                   title={
                     newGuests.length === 0
-                      ? "Add a guest to enable — sends an invite to new guests only"
+                      ? "Add a guest to enable - sends an invite to new guests only"
                       : "Patch silently for existing guests, email only the new ones"
                   }
                 >
@@ -878,7 +1013,7 @@ function GuestTypeahead({
         setActiveIdx(0);
         setOpen(list.length > 0);
       } catch {
-        // Silent — typeahead just stays closed.
+        // Silent - typeahead just stays closed.
       }
     }, 120);
     return () => {
@@ -998,14 +1133,6 @@ function GuestTypeahead({
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
-      {children}
-    </div>
-  );
-}
-
-function InputRow({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg">
       {children}
     </div>
   );

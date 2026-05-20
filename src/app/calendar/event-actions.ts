@@ -36,7 +36,7 @@ type NewGuest = { email: string; name?: string };
 export type UpdateCalendarEventInput = {
   id: string;
   title: string;
-  // ISO strings — the drawer builds these from <input type="date"> +
+  // ISO strings - the drawer builds these from <input type="date"> +
   // <input type="time"> in America/New_York. We trust the caller to
   // hand us valid ISO; bad input fails at new Date() validation
   // below.
@@ -47,14 +47,14 @@ export type UpdateCalendarEventInput = {
   // Guests added via the typeahead this session. We merge them onto
   // the existing attendees from Neon (the source of truth for
   // "current attendees on the Google event"); existing guests are
-  // never removed from this path — explicit guest removal is its own
+  // never removed from this path - explicit guest removal is its own
   // future affordance.
   newGuests: NewGuest[];
-  // "all" = single patch with sendUpdates="all" — everyone gets an
+  // "all" = single patch with sendUpdates="all" - everyone gets an
   // email. "new" = two-pass: silent field patch, then a second
   // attendee-only patch with sendUpdates="all" so only freshly added
   // emails get an invite. "none" = single silent patch (sendUpdates
-  // "none") with attendees merged in — useful for tweaking your own
+  // "none") with attendees merged in - useful for tweaking your own
   // event without spamming anyone.
   notifyMode: "all" | "new" | "none";
   // Ace-native reminder toggle from the drawer. When true, we upsert
@@ -67,9 +67,14 @@ export type UpdateCalendarEventInput = {
   // verbatim to CalendarEvent.typeOverride; readers prefer this over
   // the title-based deriveType heuristic when set.
   type: CalendarEventType;
+  // IANA timezone the recruiter picked in the drawer. startISO/endISO
+  // already carry the resolved absolute instant; this rides along so
+  // Google displays the event in the chosen zone. Defaults to ET.
+  timeZone?: string;
 };
 
 const REMINDER_LEAD_MS = 15 * 60 * 1000;
+const DEFAULT_TIMEZONE = "America/New_York";
 
 async function loadSelfAndRow(eventId: string) {
   const session = await getServerSession(authOptions);
@@ -101,6 +106,7 @@ export async function updateCalendarEventAction(
     throw new Error("End must be after start");
   }
   const durationMin = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60_000));
+  const tz = input.timeZone || DEFAULT_TIMEZONE;
 
   const existingAttendees: AttendeeJson[] =
     (row.attendees as AttendeeJson[] | null) ?? [];
@@ -117,7 +123,7 @@ export async function updateCalendarEventAction(
     ...dedupedNew.map((g) => ({ email: g.email, displayName: g.name })),
   ];
 
-  // Outgoing payload — Google rejects unexpected fields, so strip to
+  // Outgoing payload - Google rejects unexpected fields, so strip to
   // the ones the API accepts on PATCH.
   const apiAttendees = mergedAttendees
     .filter((a): a is AttendeeJson & { email: string } => Boolean(a.email))
@@ -131,13 +137,14 @@ export async function updateCalendarEventAction(
       sendUpdates: "all",
       startISO: input.startISO,
       durationMin,
+      timeZone: tz,
       summary: input.title,
       description: input.notes ?? "",
       location: input.location,
       attendees: apiAttendees,
     });
   } else if (input.notifyMode === "new") {
-    // Pass 1: silent field patch — existing guests see the event
+    // Pass 1: silent field patch - existing guests see the event
     // update but don't get an email.
     await patchCalendarEventDetails({
       userId,
@@ -146,6 +153,7 @@ export async function updateCalendarEventAction(
       sendUpdates: "none",
       startISO: input.startISO,
       durationMin,
+      timeZone: tz,
       summary: input.title,
       description: input.notes ?? "",
       location: input.location,
@@ -165,7 +173,7 @@ export async function updateCalendarEventAction(
   } else {
     // "none": one silent patch with everything (fields + merged
     // attendees). New guests get added to the Google event but no
-    // emails go out — Andrew can edit his own copy without spamming.
+    // emails go out - Andrew can edit his own copy without spamming.
     await patchCalendarEventDetails({
       userId,
       eventId: row.googleEventId,
@@ -173,6 +181,7 @@ export async function updateCalendarEventAction(
       sendUpdates: "none",
       startISO: input.startISO,
       durationMin,
+      timeZone: tz,
       summary: input.title,
       description: input.notes ?? "",
       location: input.location,
@@ -258,7 +267,7 @@ export async function updateCalendarEventAction(
 
   revalidatePath("/calendar");
   // Dashboard's "This Week" widget renders the same events and reads
-  // reminder linkage server-side, so it needs invalidation too — otherwise
+  // reminder linkage server-side, so it needs invalidation too - otherwise
   // a save from the dashboard tile lands in Neon but the reopened drawer
   // keeps showing the pre-save type / reminder state.
   revalidatePath("/dashboard");
@@ -273,7 +282,7 @@ export type CreateMeetingType =
 
 export type CreateCalendarEventInput = {
   title: string;
-  // Required when allDay is true. YYYY-MM-DD — the server builds a
+  // Required when allDay is true. YYYY-MM-DD - the server builds a
   // midnight-to-midnight ET range from it.
   date: string;
   // For timed events the client (browser, always in ET for our
@@ -292,7 +301,7 @@ export type CreateCalendarEventInput = {
   clientId: string | null;
   // Free-text email addresses entered as chips in the modal's TO /
   // CC / BCC fields. Google Calendar's attendees array does NOT
-  // distinguish TO/CC/BCC — every entry is just an attendee — so
+  // distinguish TO/CC/BCC - every entry is just an attendee - so
   // the three lists are flattened into one attendees payload here.
   // We preserve the TO/CC/BCC split in the activity log metadata for
   // audit, but the recipients see only "you're invited," not which
@@ -300,7 +309,7 @@ export type CreateCalendarEventInput = {
   // in the Google UI; if true blind-cc is ever needed it would have
   // to be a separate per-recipient send-as-organizer flow.
   // When any recipient is present we flip sendUpdates so Google
-  // actually mails the invite — otherwise the attendees row lands
+  // actually mails the invite - otherwise the attendees row lands
   // silently and nobody sees it.
   to: string[];
   cc: string[];
@@ -311,6 +320,10 @@ export type CreateCalendarEventInput = {
   // mis-derived to "other" just because it has no candidate/client
   // attached.
   type?: CalendarEventType;
+  // IANA timezone the recruiter picked. startISO/endISO already carry
+  // the resolved instant; this rides along so Google displays the
+  // event in the chosen zone. Defaults to ET.
+  timeZone?: string;
 };
 
 export type CreateCalendarEventResult =
@@ -318,10 +331,9 @@ export type CreateCalendarEventResult =
   | { ok: false; error: string };
 
 // All-day events render in Google as a single date range with no
-// timezone — start/end use the YYYY-MM-DD form. For Ace mirror rows
+// timezone - start/end use the YYYY-MM-DD form. For Ace mirror rows
 // we still store concrete Date objects (midnight to midnight ET) so
 // the grid math reuses the same code path as timed events.
-const ET_TIMEZONE = "America/New_York";
 
 function buildStartEndForDay(date: string): { startISO: string; endISO: string; durationMin: number; startDate: Date; endDate: Date } {
   // YYYY-MM-DD → assume midnight ET → 24h block
@@ -332,7 +344,7 @@ function buildStartEndForDay(date: string): { startISO: string; endISO: string; 
     throw new Error("Invalid date");
   }
   // 12:00 UTC keeps us inside the same calendar day for ET regardless
-  // of DST — the grid only reads startTime.getDate() / .getMonth() /
+  // of DST - the grid only reads startTime.getDate() / .getMonth() /
   // .getFullYear() in local time, and ET is always UTC-4 or UTC-5.
   const startDate = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
   const endDate = new Date(Date.UTC(y, m - 1, d + 1, 12, 0, 0));
@@ -407,7 +419,7 @@ export async function createCalendarEventAction(
       ? buildStartEndForDay(input.date)
       : buildStartEndForTimedISO(input.startISO!, input.endISO!);
 
-    // Teams requires its own connected token at the org level — fail
+    // Teams requires its own connected token at the org level - fail
     // early so the recruiter doesn't see a half-created Google event.
     if (input.meetingType === "teams") {
       const token = await prisma.microsoftToken.findUnique({
@@ -471,7 +483,7 @@ export async function createCalendarEventAction(
       // the email and the recruiter ends up texting them the link.
       sendUpdates: recipientAttendees.length > 0,
       attendees: recipientAttendees.length > 0 ? recipientAttendees : undefined,
-      timeZone: ET_TIMEZONE,
+      timeZone: input.timeZone || DEFAULT_TIMEZONE,
     });
 
     let meetLink: string | null = created.meetLink ?? null;
@@ -614,7 +626,7 @@ export async function quickSearchContacts(
 
   const org = await getCurrentOrg();
 
-  // Two parallel queries — small org-scoped result sets, no need for
+  // Two parallel queries - small org-scoped result sets, no need for
   // a fancier ranking pipeline. We over-fetch each side (LIMIT 8) so
   // a candidate-heavy or contact-heavy match doesn't starve the
   // other category before dedup + final cap.
@@ -641,7 +653,7 @@ export async function quickSearchContacts(
           { name: { contains: q, mode: "insensitive" } },
           { firstName: { contains: q, mode: "insensitive" } },
           { lastName: { contains: q, mode: "insensitive" } },
-          // Postgres String[] `has` is exact-match only — fine for the
+          // Postgres String[] `has` is exact-match only - fine for the
           // "user typed a full email" case; partial-email matches
           // surface via the related client name + contact name.
           { emails: { has: q } },
