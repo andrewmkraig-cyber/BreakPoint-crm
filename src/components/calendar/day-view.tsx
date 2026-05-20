@@ -154,6 +154,40 @@ export function CalendarDayView({
                 : lane === "right"
                   ? { left: "calc(50% + 4px)", right: 24 }
                   : { left: 14, right: 24 };
+            // Half-width lane tiles can't fit the rich header + title +
+            // detail rows without wrapping and clipping, so a collided
+            // tile renders a compact label + title pair instead.
+            if (lane !== "full") {
+              return (
+                <button
+                  key={ev.id}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEventClick(ev);
+                  }}
+                  className={cn(
+                    "absolute cursor-pointer overflow-hidden rounded-lg border px-3 py-1.5 text-left leading-tight transition hover:-translate-y-px hover:shadow-sm",
+                    meta.pillClass,
+                    isSelected &&
+                      "outline outline-2 outline-offset-2 outline-court-brand",
+                  )}
+                  style={{ top, height, ...laneStyle }}
+                >
+                  <div className="truncate text-[10px] font-bold uppercase tracking-[0.1em]">
+                    {meta.label}
+                  </div>
+                  <div className="truncate text-[12.5px] font-semibold text-court-fg">
+                    {ev.title}
+                  </div>
+                  {height >= 58 && (
+                    <div className="truncate text-[10.5px] opacity-70">
+                      {fmtDateRange(ev.startTime, ev.endTime)}
+                    </div>
+                  )}
+                </button>
+              );
+            }
             return (
               <button
                 key={ev.id}
