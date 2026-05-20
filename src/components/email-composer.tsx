@@ -222,6 +222,11 @@ export function EmailComposer({
   const [body, setBody] = useState<string>(stored?.body ?? initial.body);
   const [showRestored, setShowRestored] = useState<boolean>(Boolean(stored));
   const [err, setErr] = useState<string | null>(null);
+  // Send is gated only on a recipient + a subject. Body is optional - a
+  // hand-typed submittal sends without ever clicking Generate, and an
+  // empty body never blocks send. No other condition gates Send.
+  const canSend =
+    (hideRecipientFields || to.trim().length > 0) && subject.trim().length > 0;
   const [isSending, startSend] = useTransition();
   const [isGenerating, startGenerate] = useTransition();
   const [isEditing, startEdit] = useTransition();
@@ -613,10 +618,6 @@ export function EmailComposer({
       setErr("Subject is required.");
       return;
     }
-    if (!draft.body.trim()) {
-      setErr("Body is required.");
-      return;
-    }
     // If the caller provided merge values, resolve any leftover tokens
     // (e.g. ones the user inserted via "Insert Field" without going through
     // resolveTemplate). Fields with no value resolve to empty strings so
@@ -682,9 +683,9 @@ export function EmailComposer({
     // path destroyed half-written submittal drafts with no undo. Dismissal is
     // explicit only: the header X button or the footer Cancel button.
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-ink/40 p-4">
-      <div className="flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl">
+      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl">
 
-        <div className="flex items-start justify-between border-b border-court-border px-5 py-3">
+        <div className="flex shrink-0 items-start justify-between border-b border-court-border px-5 py-3">
           <div>
             <h2 className="font-serif text-lg font-semibold text-court-fg">{title}</h2>
             {subtitle && <p className="mt-0.5 text-xs text-court-fg-muted">{subtitle}</p>}
@@ -709,6 +710,10 @@ export function EmailComposer({
           </div>
         )}
 
+        {/* Scrollable middle: To/Cc/Bcc/Subject + body + attachments scroll
+            here while the header above and the footer below stay pinned, so
+            a long generated submittal never pushes Send off screen. */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="flex flex-col gap-2 px-5 py-3 text-sm">
           {hideRecipientFields ? null : recipientOptions ? (
             <>
@@ -873,7 +878,9 @@ export function EmailComposer({
           />
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-court-border px-5 py-3">
+        </div>
+
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-court-border px-5 py-3">
           <div className="flex flex-wrap items-center gap-2">
             {showTemplatePicker && (
               <div className="relative">
@@ -1018,7 +1025,7 @@ export function EmailComposer({
             <button
               type="button"
               onClick={onSendClick}
-              disabled={isSending || sendDisabled}
+              disabled={isSending || sendDisabled || !canSend}
               title={sendDisabled ? sendDisabledReason : undefined}
               className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
             >

@@ -1,28 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  FileSignature,
   Loader2,
   Send,
-  Sparkles,
   Target,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import {
   applyLocalCandidateToJob,
   generateLocalSubmittal,
   sendLocalSubmittalEmail,
 } from "@/app/candidates/[id]/local-placement-actions";
-import {
-  InlineContactMultiInput,
-  buildCcBccOptions,
-  formatOpenJobOption,
-} from "@/app/candidates/[id]/placement-flows";
+import { formatOpenJobOption } from "@/app/candidates/[id]/placement-flows";
 import {
   LOCAL_PLACEMENT_APPLIED_EVENT,
   type LocalPlacementAppliedDetail,
@@ -279,187 +273,71 @@ function SubmitModal(props: {
   candidateId: string;
   candidateName: string;
   openJobs: LocalOpenJob[];
-  // Pre-selection from per-row Submit button deep-link. When set, the
-  // modal mounts with this job already selected so the recruiter skips
-  // the job-picker step.
+  // The job to submit to. Every Submit entry point (job pill row,
+  // applicants table, pipeline row) deep-links with the job id, so the
+  // composer always opens on a known job - there is no job picker.
   initialJobRfId?: number | null;
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [jobRfId, setJobRfId] = useState<number | null>(props.initialJobRfId ?? null);
-  const [to, setTo] = useState("");
-  const [cc, setCc] = useState("");
-  const [bcc, setBcc] = useState("");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
-  const [isGenerating, startGenerate] = useTransition();
-  const [isSending, startSend] = useTransition();
+  const job =
+    props.initialJobRfId != null
+      ? props.openJobs.find((j) => j.jobRfId === props.initialJobRfId) ?? null
+      : null;
 
-  const selectedJob = useMemo(
-    () => (jobRfId ? props.openJobs.find((j) => j.jobRfId === jobRfId) : null),
-    [jobRfId, props.openJobs],
-  );
+  // Defensive: with no resolvable job there is nothing to compose against.
+  // The live Submit buttons always pass a job, so this only guards the
+  // dead no-job entry point rather than rendering a broken form.
+  if (!job) return null;
 
-  // Picker options rebuild when the selected job changes so the To/Cc
-  // dropdowns show that job's client contacts. Empty list when no job
-  // is selected yet (picker falls through to free-text entry).
-  const pickerOptions = useMemo(
-    () => buildCcBccOptions(selectedJob?.clientContacts ?? []),
-    [selectedJob],
-  );
-
-  useEffect(() => {
-    if (selectedJob && !subject) {
-      setSubject(`${props.candidateName} - ${selectedJob.jobTitle}`);
-    }
-  }, [selectedJob, props.candidateName, subject]);
-
-  function onGenerate() {
-    if (!jobRfId) {
-      toast.error("Pick a job first.");
-      return;
-    }
-    const toastId = toast.loading("Drafting with Claude…");
-    startGenerate(async () => {
-      const job = props.openJobs.find((j) => j.jobRfId === jobRfId);
-      const res = await generateLocalSubmittal({
-        candidateId: props.candidateId,
-        jobRfId: job?.jobCuid ? null : jobRfId,
-        jobId: job?.jobCuid ?? null,
-      });
-      if (!res.ok) {
-        toast.error("Draft failed", { id: toastId, description: res.error });
-        return;
-      }
-      setBody(res.value.writeup);
-      toast.success("Draft ready — review and edit before sending.", { id: toastId });
-    });
-  }
-
-  function parseList(raw: string): string[] {
-    return raw.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
-  }
-
-  function onSend() {
-    if (!jobRfId || !selectedJob) return;
-    const toList = parseList(to);
-    const ccList = parseList(cc);
-    const bccList = parseList(bcc);
-    if (toList.length === 0) {
-      toast.error("At least one recipient is required.");
-      return;
-    }
-    const toastId = toast.loading("Sending submittal…");
-    startSend(async () => {
-      const res = await sendLocalSubmittalEmail({
-        candidateId: props.candidateId,
-        jobRfId: selectedJob.jobCuid ? null : selectedJob.jobRfId,
-        jobId: selectedJob.jobCuid ?? null,
-        clientRfId: selectedJob.clientCuid ? null : selectedJob.clientRfId,
-        clientId: selectedJob.clientCuid ?? null,
-        to: toList,
-        cc: ccList,
-        bcc: bccList,
-        subject: subject.trim(),
-        bodyText: body.trim(),
-      });
-      if (!res.ok) {
-        toast.error("Send failed", { id: toastId, description: res.error });
-        return;
-      }
-      toast.success(`Submitted ${props.candidateName} to ${selectedJob.jobTitle}`, { id: toastId });
-      router.refresh();
-      props.onClose();
-    });
-  }
+  const subject = `Candidate Submittal - ${props.candidateName} | ${job.jobTitle}`;
+  const contactOptions = (job.clientContacts ?? []).map((c) => ({
+    id: String(c.id),
+    name: c.name,
+    email: c.email,
+  }));
 
   return (
-    <ModalShell
-      title="Submit to Job"
+    <EmailComposer
+      title="Submittal email"
+      subtitle={`${props.candidateName} → ${job.jobTitle}${job.clientName ? ` · ${job.clientName}` : ""}`}
+      draftKey={`local-submittal-${props.candidateId}-${job.jobRfId}`}
+      initial={{ to: [], cc: [], bcc: [], subject, body: "" }}
+      recipientOptions={contactOptions.length > 0 ? contactOptions : undefined}
       onClose={props.onClose}
-      footer={
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={props.onClose}
-            className="rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted hover:text-court-fg"
-          >
-            Cancel
-          </button>
-          {/* Enabled as soon as To + Subject are filled. The recruiter can
-              type or paste their own body and send without ever clicking
-              Generate with Claude; an empty body no longer blocks send. */}
-          <Button
-            type="button"
-            size="sm"
-            onClick={onSend}
-            disabled={isSending || !subject.trim() || !to.trim()}
-          >
-            {isSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileSignature className="h-3 w-3" />}
-            Send Submittal
-          </Button>
-        </div>
-      }
-    >
-      <JobPicker openJobs={props.openJobs} value={jobRfId} onChange={setJobRfId} />
-      <button
-        type="button"
-        onClick={onGenerate}
-        disabled={!jobRfId || isGenerating}
-        className={CLAUDE_PILL_CLASS}
-      >
-        {isGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-        Generate with Claude
-      </button>
-
-      <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
-          To · client contacts
-        </span>
-        <InlineContactMultiInput
-          value={to}
-          onChange={setTo}
-          options={pickerOptions}
-          placeholder={
-            selectedJob
-              ? "Pick a client contact or type email…"
-              : "Pick a job first to see client contacts"
-          }
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
-          Cc (optional) · client contacts
-        </span>
-        <InlineContactMultiInput
-          value={cc}
-          onChange={setCc}
-          options={pickerOptions}
-          placeholder="Pick a client contact or type email…"
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
-          Bcc (optional)
-        </span>
-        <InlineContactMultiInput
-          value={bcc}
-          onChange={setBcc}
-          options={pickerOptions}
-          placeholder="Pick a contact or type email…"
-        />
-      </label>
-      <Field label="Subject" value={subject} onChange={setSubject} />
-      <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Body</span>
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          rows={14}
-          className="mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 font-mono text-xs leading-relaxed text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-        />
-      </label>
-    </ModalShell>
+      sendLabel="Send Submittal"
+      sendingLabel="Sending..."
+      helperText="Pick a client contact, then Generate with Claude or write the submittal yourself."
+      showTemplatePicker
+      templateFilter={(t) => t.audience !== "candidate"}
+      onGenerate={async () => {
+        const res = await generateLocalSubmittal({
+          candidateId: props.candidateId,
+          jobRfId: job.jobCuid ? null : job.jobRfId,
+          jobId: job.jobCuid ?? null,
+        });
+        if (!res.ok) throw new Error(res.error);
+        return res.value.writeup;
+      }}
+      onSend={async (draft: EmailDraft) => {
+        const res = await sendLocalSubmittalEmail({
+          candidateId: props.candidateId,
+          jobRfId: job.jobCuid ? null : job.jobRfId,
+          jobId: job.jobCuid ?? null,
+          clientRfId: job.clientCuid ? null : job.clientRfId,
+          clientId: job.clientCuid ?? null,
+          to: draft.to,
+          cc: draft.cc,
+          bcc: draft.bcc,
+          subject: draft.subject,
+          bodyText: draft.body,
+        });
+        if (!res.ok) throw new Error(res.error);
+        toast.success(`Submitted ${props.candidateName} to ${job.jobTitle}`);
+        router.refresh();
+        props.onClose();
+      }}
+    />
   );
 }
 
@@ -532,30 +410,3 @@ function JobPicker({
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <label className="block text-sm">
-      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
-      <input
-        type="text"
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className={cn(
-          "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
-          "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-        )}
-      />
-    </label>
-  );
-}
