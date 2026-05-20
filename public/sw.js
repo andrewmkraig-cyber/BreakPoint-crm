@@ -1,6 +1,6 @@
 // Ace PWA service worker. Bump CACHE_NAME on any logic change so
 // the activate handler purges the previous shell.
-const CACHE_NAME = "ace-shell-v3";
+const CACHE_NAME = "ace-shell-v4";
 const PRECACHE_URLS = ["/", "/offline"];
 
 self.addEventListener("install", (event) => {
@@ -80,17 +80,19 @@ async function networkFirst(request, { fallback }) {
 }
 
 // Push handler. Payload shape comes from sendPushToUser /
-// sendPushToOrg in src/lib/web-push.ts — always JSON with at least
+// sendPushToOrg in src/lib/web-push.ts - always JSON with at least
 // title + body, optionally url and tag. Tag dedupes: subsequent
 // pushes with the same tag replace the previous notification rather
 // than stacking (e.g. 5 texts in one thread => one notification).
 //
-// Visibility short-circuit: if any same-origin Ace window is open AND
-// currently visible, suppress the system notification — the in-app
-// toast (mail-context, reminder-toast-provider, etc.) already fired
-// on that surface and a duplicate OS notification would just be
-// noise. includeUncontrolled covers windows that opened before this
-// SW activated.
+// Focus short-circuit: only suppress the system notification when a
+// same-origin Ace window is BOTH focused and visible. That is the one
+// case the in-app toast (mail-context, reminder-toast-provider, etc.)
+// already covers, so an OS notification would just duplicate it. A
+// window that is merely visible but not focused (desktop Ace sitting
+// in the background while another app is up) still gets the push, as
+// does any mobile PWA whose window is backgrounded. includeUncontrolled
+// covers windows that opened before this SW activated.
 self.addEventListener("push", (event) => {
   if (!event.data) return;
   const data = event.data.json();
@@ -98,12 +100,13 @@ self.addEventListener("push", (event) => {
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then(async (clients) => {
-        const aceOpen = clients.some(
+        const aceFocused = clients.some(
           (c) =>
             c.url.includes(self.location.origin) &&
+            c.focused &&
             c.visibilityState === "visible",
         );
-        if (!aceOpen) {
+        if (!aceFocused) {
           await self.registration.showNotification(data.title, {
             body: data.body,
             icon: "/icons/icon-192.png",
@@ -114,7 +117,7 @@ self.addEventListener("push", (event) => {
         }
         // Update badge count via badging API if supported. When Ace is
         // closed there's no client to call setAppBadge, so the SW does
-        // it from here — otherwise the home-screen dot only appears
+        // it from here - otherwise the home-screen dot only appears
         // after the user opens Ace and the 30s poll fires.
         //
         // Payload contract (see src/lib/web-push.ts + unread-counts.ts):
@@ -125,7 +128,7 @@ self.addEventListener("push", (event) => {
         //   badgeCount null / missing → leave the badge ALONE. Means
         //                     the sender couldn't compute the total
         //                     (e.g. Gmail unreachable when a text push
-        //                     fires) — clobbering with a partial count
+        //                     fires) - clobbering with a partial count
         //                     would regress an already-correct badge.
         //
         // Awaited inside the outer waitUntil so the SW isn't killed
@@ -159,7 +162,7 @@ self.addEventListener("push", (event) => {
 // but other unread mail/text may still exist. Once Ace is focused or
 // opened, the PUSH_RECEIVED postMessage triggers mail-tab-title-sync's
 // real-count reconciliation, which clears the badge only if the true
-// unread total is 0. Same goes for notificationclose — banner auto-
+// unread total is 0. Same goes for notificationclose - banner auto-
 // dismiss used to clear the badge here, which caused the flash-and-
 // disappear bug, so the close handler is gone entirely.
 self.addEventListener("notificationclick", (event) => {
@@ -179,7 +182,7 @@ self.addEventListener("notificationclick", (event) => {
         existing.postMessage({ type: "PUSH_RECEIVED" });
         return;
       }
-      // No window open — opening one mounts MailProvider + PhoneProvider
+      // No window open - opening one mounts MailProvider + PhoneProvider
       // which auto-poll and reconcile the badge on their own.
       await self.clients.openWindow(url);
     }),
