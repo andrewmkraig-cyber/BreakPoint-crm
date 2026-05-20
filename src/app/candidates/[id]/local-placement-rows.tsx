@@ -448,7 +448,8 @@ function LocalJobActionRow({
               className="inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
               title="Open submittal composer"
             >
-              <Send className="h-3 w-3" /> Submit
+              <Send className="h-3 w-3" />
+              <span className="hidden sm:inline">Submit</span>
             </Link>
           )}
           {normalizedStage === "interviewing" && nextInterview && (
@@ -459,7 +460,8 @@ function LocalJobActionRow({
               onClick={() => onEditInterview(nextInterview)}
               title="Edit the upcoming interview"
             >
-              <CalendarClock className="h-3 w-3" /> Edit Interview
+              <CalendarClock className="h-3 w-3" />
+              <span className="hidden sm:inline">Edit Interview</span>
             </Button>
           )}
           {canSchedule && (
@@ -468,8 +470,10 @@ function LocalJobActionRow({
               size="sm"
               variant="schedule"
               onClick={onSchedule}
+              title="Schedule interview"
             >
-              <CalendarClock className="h-3 w-3" /> Schedule Interview
+              <CalendarClock className="h-3 w-3" />
+              <span className="hidden sm:inline">Schedule Interview</span>
             </Button>
           )}
           {canClientInvite && (
@@ -480,7 +484,8 @@ function LocalJobActionRow({
               onClick={onClientInvite}
               title="Log an interview the client is scheduling themselves — adds to your calendar only"
             >
-              <CalendarPlus className="h-3 w-3" /> Client Sending Invite
+              <CalendarPlus className="h-3 w-3" />
+              <span className="hidden sm:inline">Client Sending Invite</span>
             </Button>
           )}
           {canReject && (
@@ -493,7 +498,7 @@ function LocalJobActionRow({
               title="Reject this candidate for this job"
             >
               {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
-              Reject
+              <span className="hidden sm:inline">Reject</span>
             </Button>
           )}
           {canReapply && (
@@ -506,7 +511,7 @@ function LocalJobActionRow({
               title="Reapply this candidate — deletes the disqualified placement row"
             >
               {isReapplying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-              Reapply
+              <span className="hidden sm:inline">Reapply</span>
             </Button>
           )}
           {/* Faint X on the far right of the pill. Optimistic apply rows
