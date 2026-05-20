@@ -14,7 +14,9 @@ SMS notification toast View button + centered popup.
 - **View now opens a centered popup, not a page jump.** The inbound-text toast's three actions are Reply (inline quick-reply), View, and X. View dispatches a new `PHONE_VIEW_POPUP_EVENT`, dismisses the toast, and a global host (`TextNotificationPopup`, mounted in `TextingProvider`) renders a centered popup for that one message. Call toasts (and texts with no matched candidate) keep the original profile jump.
 - **Popup actions.** Shows the message body + sender name/number, with X (close, thread stays unread), Mark as Read (clears the unread badge via `markThreadRead`, closes), and Reply (expands an inline input + Send inside the popup). Send routes through the shared `sendSmsReply` path, which marks the thread read and broadcasts `PHONE_THREAD_READ_EVENT` + `PHONE_SMS_SENT_EVENT`, then closes the popup.
 - **Send path factored.** Extracted `sendSmsReply` + `markThreadReadAndBroadcast` helpers in `text-notification-toast.tsx` so the toast quick-reply and the popup share one outbound-SMS + mark-read path instead of duplicating the fetch.
-- Files: `src/components/text-notification-toast.tsx`, `src/lib/texting-context.tsx`.
+- **Reply ungated from candidate match.** The toast Reply button now shows for every inbound text (`props.mode === "text"`), not just texts from a matched candidate/client. The reply flow is candidateId-optional: unmatched sends route by `fromNumber` and mark read via the `unk:<digits>` thread key. The Settings → Preferences theme-preview toast (`id` prefixed `sample-`) renders Reply for fidelity but never hits `/api/sms`.
+- **Auto-mark-on-open in /phone.** Clicking a thread in `phone-view.tsx` now auto-marks it read after the detail loads — same path as the manual "Mark as read" button (`markThreadRead` → local `hasUnread` flip → `phoneCtx.refreshUnread()`), guarded by `autoMarkedRef` so a post-send refresh doesn't re-fire. The manual button is unchanged.
+- Files: `src/components/text-notification-toast.tsx`, `src/lib/texting-context.tsx`, `src/app/phone/phone-view.tsx`.
 
 ## What Shipped in Ace 57.0 (2026-05-20)
 

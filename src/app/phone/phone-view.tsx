@@ -133,6 +133,11 @@ export function PhoneView() {
   // newly-saved outbound row appears in the thread without a manual
   // refresh.
   const [detailRefresh, setDetailRefresh] = useState(0);
+  // Tracks the last thread id auto-marked-read on open so a post-send
+  // detailRefresh re-run of the detail-load effect doesn't re-fire the
+  // mark-read for a thread that's already cleared. Reset implicitly by
+  // selecting a different thread (id differs from the ref).
+  const autoMarkedRef = useRef<string | null>(null);
   // Phone Tab Phase 2: profile-jump pill in the thread header. Resolved
   // async after the detail loads so the thread itself isn't blocked on
   // the lookup.
@@ -271,9 +276,28 @@ export function PhoneView() {
               }
             })();
           }
-          // No auto-mark-on-open: clearing the unread badge is a manual
-          // action via the "Mark as read" button in the thread header,
-          // so opening a thread to glance at it doesn't dismiss it.
+          // Auto-mark-on-open: opening a thread clears its unread state
+          // the same way the manual "Mark as read" button does
+          // (markThreadRead → local hasUnread flip → sidebar badge
+          // refresh). Guarded by autoMarkedRef so a post-send
+          // detailRefresh re-run of this effect doesn't re-fire it for a
+          // thread that's already been cleared on this open.
+          if (autoMarkedRef.current !== selectedId) {
+            autoMarkedRef.current = selectedId;
+            void (async () => {
+              try {
+                await markThreadRead(selectedId);
+                setThreads((prev) =>
+                  prev.map((t) =>
+                    t.id === selectedId ? { ...t, hasUnread: false } : t,
+                  ),
+                );
+                await phoneCtx.refreshUnread();
+              } catch {
+                // Silent: badge will catch up on next 30s poll.
+              }
+            })();
+          }
         }
       } catch (e) {
         if ((e as { name?: string }).name === "AbortError") return;

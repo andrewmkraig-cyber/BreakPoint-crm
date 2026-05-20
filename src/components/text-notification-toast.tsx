@@ -24,7 +24,10 @@ import { markThreadRead } from "@/app/phone/actions";
 
 export type InboundTextEvent = {
   id: string;
-  candidateId: string;
+  // null when the inbound number isn't matched to a Candidate/Client in
+  // Ace. Reply + send still work (routed by fromNumber); mark-read uses
+  // the unknown-number thread key.
+  candidateId: string | null;
   candidateName: string;
   fromNumber: string;
   body: string;
@@ -33,7 +36,7 @@ export type InboundTextEvent = {
 
 export type InboundCallEvent = {
   id: string;
-  candidateId: string;
+  candidateId: string | null;
   candidateName: string;
   fromNumber: string;
   duration: number | null;
@@ -47,7 +50,7 @@ export type InboundCallEvent = {
 // for the next refetch.
 export const PHONE_THREAD_READ_EVENT = "ace:phone-thread-read";
 
-export type PhoneThreadReadEventDetail = { candidateId: string };
+export type PhoneThreadReadEventDetail = { candidateId: string | null };
 
 // Fired after a successful outbound SMS write to /api/sms. Anyone
 // rendering a thread for the affected candidate (TextingExchanges on
@@ -68,21 +71,28 @@ export const PHONE_VIEW_POPUP_EVENT = "ace:phone-view-popup";
 
 export type PhoneViewPopupEventDetail = InboundTextEvent;
 
-// Marks a candidate's inbound SMS thread read (best-effort) and
-// broadcasts PHONE_THREAD_READ_EVENT so the sidebar Phone badge,
-// the /phone thread list, and any open thread pane clear the unread
-// state at once instead of waiting on their next poll. Uses the same
-// markThreadRead server action the phone/Quo thread system uses
-// everywhere else.
-async function markThreadReadAndBroadcast(candidateId: string): Promise<void> {
+// Marks an inbound SMS thread read (best-effort) and broadcasts
+// PHONE_THREAD_READ_EVENT so the sidebar Phone badge, the /phone thread
+// list, and any open thread pane clear the unread state at once instead
+// of waiting on their next poll. Uses the same markThreadRead server
+// action the phone/Quo thread system uses everywhere else: a matched
+// candidate marks by id, an unmatched number marks by its unknown-
+// number thread key (unk:<10-digit tail>).
+async function markThreadReadAndBroadcast(args: {
+  candidateId: string | null;
+  toNumber: string;
+}): Promise<void> {
+  const threadKey = args.candidateId
+    ? args.candidateId
+    : `unk:${args.toNumber.replace(/\D/g, "").slice(-10)}`;
   try {
-    await markThreadRead(candidateId);
+    await markThreadRead(threadKey);
   } catch {
     // Best-effort — the badge still clears on the next poll.
   }
   window.dispatchEvent(
     new CustomEvent<PhoneThreadReadEventDetail>(PHONE_THREAD_READ_EVENT, {
-      detail: { candidateId },
+      detail: { candidateId: args.candidateId },
     }),
   );
 }
@@ -91,8 +101,10 @@ async function markThreadReadAndBroadcast(candidateId: string): Promise<void> {
 // and the View popup. POSTs to /api/sms, then on success marks the
 // thread read (clearing unread badges) and broadcasts PHONE_SMS_SENT
 // so any open thread re-fetches and shows the new outbound bubble.
+// candidateId is null when the sender isn't matched in Ace — the send
+// routes by toNumber and /api/sms saves the row with candidateId=null.
 async function sendSmsReply(args: {
-  candidateId: string;
+  candidateId: string | null;
   toNumber: string;
   body: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -114,7 +126,10 @@ async function sendSmsReply(args: {
       const detail = json?.providerError ? ` — ${json.providerError}` : "";
       return { ok: false, error: `Saved, but Quo reported failure${detail}` };
     }
-    await markThreadReadAndBroadcast(args.candidateId);
+    await markThreadReadAndBroadcast({
+      candidateId: args.candidateId,
+      toNumber: args.toNumber,
+    });
     window.dispatchEvent(
       new CustomEvent<PhoneSmsSentEventDetail>(PHONE_SMS_SENT_EVENT, {
         detail: { candidateId: args.candidateId },
@@ -148,6 +163,10 @@ function QuoToast(props: QuoToastProps) {
   const router = useRouter();
   const candidateId = props.event.candidateId;
   const candidateName = props.event.candidateName || props.event.fromNumber;
+  // The Settings → Preferences theme preview fires a fake toast (id
+  // prefixed "sample-", a placeholder fromNumber). Reply still renders
+  // so the preview looks real, but Send must never hit /api/sms.
+  const isSample = props.event.id.startsWith("sample-");
 
   const [replying, setReplying] = useState(false);
   const [body, setBody] = useState("");
@@ -178,13 +197,19 @@ function QuoToast(props: QuoToastProps) {
   }
 
   function onStartReply() {
-    if (!candidateId) return; // sample toasts have no candidateId — Reply is a no-op
+    // Reply is available for every inbound text — matched candidate or
+    // not. No candidateId gate here.
     setReplying(true);
     setSendError(null);
   }
 
   async function onSendReply() {
-    if (!candidateId || !body.trim() || sending) return;
+    if (!body.trim() || sending) return;
+    // Preview toast: simulate the send without touching the network.
+    if (isSample) {
+      toast.dismiss(props.toastId);
+      return;
+    }
     setSending(true);
     setSendError(null);
     const result = await sendSmsReply({
@@ -307,7 +332,7 @@ function QuoToast(props: QuoToastProps) {
           </>
         ) : (
           <>
-            {props.mode === "text" && candidateId && (
+            {props.mode === "text" && (
               <ActionChip
                 theme={theme}
                 onClick={onStartReply}
@@ -406,7 +431,10 @@ function TextPopupCard({
   async function onMarkRead() {
     if (!candidateId || busy) return;
     setMarking(true);
-    await markThreadReadAndBroadcast(candidateId);
+    await markThreadReadAndBroadcast({
+      candidateId,
+      toNumber: event.fromNumber,
+    });
     setMarking(false);
     onClose();
   }
