@@ -145,49 +145,49 @@ function NewMailToast({
   }
 
   return (
-    <div className="relative flex w-[470px] max-w-[94vw] items-center gap-4 rounded-2xl border border-court-brand/70 bg-court-brand-tint px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
+    <div className="relative flex w-[314px] max-w-[94vw] items-center gap-2.5 rounded-xl border border-court-brand/70 bg-court-brand-tint px-3 py-2 shadow-[0_8px_22px_rgba(0,0,0,0.08)]">
       {/* Left icon: white rounded square, matching the SMS toast, with
           the Mail glyph in place of the "text" label box. */}
-      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-court-surface shadow-sm">
-        <MailIcon className="h-6 w-6 text-court-brand-dark" />
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-court-surface shadow-sm">
+        <MailIcon className="h-4 w-4 text-court-brand-dark" />
       </div>
 
       {/* Center column: sender + subject preview, then a bottom-right
           action row (matches the notification mockup). */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="truncate pr-8 text-[17px] font-semibold leading-tight tracking-[-0.02em] text-court-fg">
+        <div className="truncate pr-5 text-[12px] font-semibold leading-tight tracking-[-0.02em] text-court-fg">
           {thread.fromName || thread.fromEmail || "(unknown sender)"}
         </div>
-        <div className="mt-0.5 truncate text-[14px] font-medium text-court-fg-muted">
+        <div className="mt-0.5 truncate text-[10px] font-medium text-court-fg-muted">
           {truncate(thread.subject || "(no subject)", 80)}
         </div>
 
         {/* Action row: Reply opens the composer focused, View opens the
             thread read-only, Mark as Read clears it. Same white card +
             gray border + ink text look across all three. */}
-        <div className="mt-2 flex items-center justify-end gap-2">
+        <div className="mt-1.5 flex items-center justify-end gap-1.5">
           <button
             type="button"
             onClick={() => openThread("reply")}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+            className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
           >
-            <Reply className="h-3.5 w-3.5" />
+            <Reply className="h-2.5 w-2.5" />
             Reply
           </button>
           <button
             type="button"
             onClick={() => openThread()}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+            className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
           >
-            <Eye className="h-3.5 w-3.5" />
+            <Eye className="h-2.5 w-2.5" />
             View
           </button>
           <button
             type="button"
             onClick={onMarkRead}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+            className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
           >
-            <CheckCheck className="h-3.5 w-3.5" />
+            <CheckCheck className="h-2.5 w-2.5" />
             Mark as Read
           </button>
         </div>
@@ -198,9 +198,9 @@ function NewMailToast({
         type="button"
         onClick={() => toast.dismiss(toastId)}
         aria-label="Dismiss"
-        className="absolute right-3 top-3 inline-flex h-6 w-6 items-center justify-center rounded-xl border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:text-court-fg"
+        className="absolute right-2 top-2 inline-flex h-4 w-4 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:text-court-fg"
       >
-        <X className="h-3 w-3" />
+        <X className="h-2.5 w-2.5" />
       </button>
     </div>
   );

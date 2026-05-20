@@ -239,15 +239,15 @@ function QuoToast(props: QuoToastProps) {
   }
 
   return (
-    <div className="relative flex w-[470px] max-w-[94vw] items-center gap-4 rounded-2xl border border-court-brand/70 bg-court-brand-tint px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
+    <div className="relative flex w-[314px] max-w-[94vw] items-center gap-2.5 rounded-xl border border-court-brand/70 bg-court-brand-tint px-3 py-2 shadow-[0_8px_22px_rgba(0,0,0,0.08)]">
       {/* Left icon: white rounded square. Text mode shows a MessageSquare
           glyph in green (matching the card's green border); call mode
           keeps the phone glyph inside the same square. */}
-      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-court-surface shadow-sm">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-court-surface shadow-sm">
         {props.mode === "text" ? (
-          <MessageSquare className="h-6 w-6 text-court-brand" />
+          <MessageSquare className="h-4 w-4 text-court-brand" />
         ) : (
-          <Phone className="h-6 w-6 text-court-brand-dark" />
+          <Phone className="h-4 w-4 text-court-brand-dark" />
         )}
       </div>
 
@@ -256,11 +256,11 @@ function QuoToast(props: QuoToastProps) {
           quick-reply input once Reply is clicked, then a bottom-right
           action row (matches the notification mockup). */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="pr-8 text-[17px] font-semibold leading-tight tracking-[-0.02em] text-court-fg">
+        <div className="pr-5 text-[12px] font-semibold leading-tight tracking-[-0.02em] text-court-fg">
           {candidateName}
         </div>
         {replying ? (
-          <div className="mt-1.5">
+          <div className="mt-1">
             <input
               autoFocus
               type="text"
@@ -276,14 +276,14 @@ function QuoToast(props: QuoToastProps) {
               }}
               placeholder="Quick reply…"
               disabled={sending}
-              className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-[13px] text-court-fg outline-none placeholder:text-court-fg-muted/60 focus:border-court-brand"
+              className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-[10px] text-court-fg outline-none placeholder:text-court-fg-muted/60 focus:border-court-brand"
             />
             {sendError && (
-              <div className="mt-1 text-[12px] text-red-600">{sendError}</div>
+              <div className="mt-1 text-[9px] text-red-600">{sendError}</div>
             )}
           </div>
         ) : (
-          <div className="mt-0.5 truncate text-[14px] font-medium text-court-fg-muted">
+          <div className="mt-0.5 truncate text-[10px] font-medium text-court-fg-muted">
             {preview}
           </div>
         )}
@@ -292,26 +292,26 @@ function QuoToast(props: QuoToastProps) {
             (text only) + View + Mark as Read (text only). Replying: Send +
             Cancel. Reply / View / Mark as Read / Cancel share the white
             card + gray border + ink text look; Send is the green primary. */}
-        <div className="mt-2 flex items-center justify-end gap-2">
+        <div className="mt-1.5 flex items-center justify-end gap-1.5">
           {replying ? (
             <>
               <button
                 type="button"
                 onClick={onSendReply}
                 disabled={sending || !body.trim()}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-court-brand bg-court-brand px-3 py-1.5 text-[13px] font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:opacity-60"
+                className="inline-flex items-center gap-1 rounded-lg border border-court-brand bg-court-brand px-2 py-1 text-[10px] font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:opacity-60"
               >
                 {sending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
                 ) : (
-                  <Send className="h-3.5 w-3.5" />
+                  <Send className="h-2.5 w-2.5" />
                 )}
                 Send
               </button>
               <button
                 type="button"
                 onClick={() => setReplying(false)}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+                className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
               >
                 Cancel
               </button>
@@ -322,27 +322,27 @@ function QuoToast(props: QuoToastProps) {
                 <button
                   type="button"
                   onClick={onStartReply}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+                  className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
                 >
-                  <Reply className="h-3.5 w-3.5" />
+                  <Reply className="h-2.5 w-2.5" />
                   Reply
                 </button>
               )}
               <button
                 type="button"
                 onClick={onView}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+                className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
               >
-                <Eye className="h-3.5 w-3.5" />
+                <Eye className="h-2.5 w-2.5" />
                 View
               </button>
               {props.mode === "text" && (
                 <button
                   type="button"
                   onClick={onMarkRead}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+                  className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
                 >
-                  <CheckCheck className="h-3.5 w-3.5" />
+                  <CheckCheck className="h-2.5 w-2.5" />
                   Mark as Read
                 </button>
               )}
@@ -356,9 +356,9 @@ function QuoToast(props: QuoToastProps) {
         type="button"
         onClick={() => toast.dismiss(props.toastId)}
         aria-label="Dismiss"
-        className="absolute right-3 top-3 inline-flex h-6 w-6 items-center justify-center rounded-xl border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:text-court-fg"
+        className="absolute right-2 top-2 inline-flex h-4 w-4 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:text-court-fg"
       >
-        <X className="h-3 w-3" />
+        <X className="h-2.5 w-2.5" />
       </button>
     </div>
   );

@@ -16,6 +16,7 @@ Notification toast polish: SMS + email toasts redesigned to the shared mockup la
 - **Mark as Read on both toasts.** SMS Mark as Read runs the same `markThreadReadAndBroadcast` path the View popup uses (clears the sidebar Phone badge + /phone list), then closes. Email Mark as Read POSTs to `/api/mail/threads/[id]/read` and optimistically clears the badge via `useMailContext().markThreadRead`, then closes. Sample preview toasts (`id` prefixed `sample-`) just close.
 - **Email toast Reply opens the composer focused.** Reply opens the floating thread straight into the reply editor with the body focused, no read-only preview step. `FloatingThreadOpenOptions` gained a `composerMode` flag; `open()` stores it as `initialComposerMode`, and `FloatingThreadWindow` seeds its `composerMode` from it on open, so the existing `autoFocusBody` path drops the cursor in the reply body.
 - **Settings "Try it" Call test removed.** The phone notification-style picker's Try-it row shows Text only; the Call test button, `fireSampleCallToast`, and the now-unused `renderNewCallToast` import are gone.
+- **Compact sizing.** Both toasts are about 33% smaller (470px to 314px wide, with icon, text, padding, and the X scaled to match) for a more discreet footprint while keeping the same proportions.
 - Files: `src/components/text-notification-toast.tsx`, `src/components/mail-notification-toast.tsx`, `src/lib/floating-thread-context.tsx`, `src/components/mail/floating-thread-window.tsx`, `src/app/settings/preferences-view.tsx`.
 
 ## What Shipped in Ace 58.0 (2026-05-20)
