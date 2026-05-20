@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { DashboardAutoRefresh } from "@/app/dashboard/auto-refresh";
 import { FinancialStrip } from "@/app/dashboard/financial-strip";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { ThisWeekWidget } from "@/app/dashboard/this-week-widget";
@@ -107,6 +108,7 @@ export async function MyDashboard({
 
   return (
     <div className="flex w-full flex-col gap-6">
+      <DashboardAutoRefresh />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           {activityEyebrow}

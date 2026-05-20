@@ -77,6 +77,13 @@ const nextConfig = {
       // Allow up to 20MB uploads for client agreement PDFs. Default is 1MB.
       bodySizeLimit: "20mb",
     },
+    // Next 14.2 keeps soft-navigated dynamic pages in the client Router
+    // Cache for 30s, so data created on one page (e.g. a reminder on
+    // /calendar) wouldn't show on /dashboard until a hard reload. Zero
+    // means every soft navigation refetches the dynamic route fresh.
+    staleTimes: {
+      dynamic: 0,
+    },
     // mammoth pulls in dynamic requires that Next's bundler mangles; keep it
     // external so `require("mammoth")` resolves at runtime on the server.
     serverComponentsExternalPackages: ["mammoth", "pdf-parse"],
