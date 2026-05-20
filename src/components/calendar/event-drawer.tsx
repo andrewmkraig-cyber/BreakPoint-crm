@@ -57,18 +57,15 @@ const MEETING_TYPE_OPTS: Array<{ value: CreateMeetingType; label: string }> = [
 ];
 
 // IANA zones the recruiter can pick from. Default is Eastern since the
-// rest of the calendar surface assumes ET; the rest cover where
-// candidates and clients actually sit. Labels carry the common
-// abbreviation so "PST" / "CST" map without the recruiter knowing the
-// IANA name.
+// rest of the calendar surface assumes ET; the four continental US
+// zones cover where candidates and clients actually sit. Labels carry
+// the common abbreviation so "PST" / "CST" map without the recruiter
+// knowing the IANA name.
 const TIMEZONE_OPTS: Array<{ value: string; label: string }> = [
   { value: "America/New_York", label: "Eastern (ET)" },
   { value: "America/Chicago", label: "Central (CT)" },
   { value: "America/Denver", label: "Mountain (MT)" },
-  { value: "America/Phoenix", label: "Arizona (MST)" },
   { value: "America/Los_Angeles", label: "Pacific (PT)" },
-  { value: "America/Anchorage", label: "Alaska (AKT)" },
-  { value: "Pacific/Honolulu", label: "Hawaii (HT)" },
 ];
 
 const DEFAULT_TIMEZONE = "America/New_York";
