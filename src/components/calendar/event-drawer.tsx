@@ -24,6 +24,8 @@ import {
   updateCalendarEventAction,
   type CreateMeetingType,
 } from "@/app/calendar/event-actions";
+import { createReminder } from "@/app/calendar/reminder-actions";
+import { LeadTimePicker } from "@/components/calendar/lead-time-picker";
 import { GoogleGlyph } from "@/components/calendar/left-rail";
 import { TimeSelect } from "@/components/calendar/time-select";
 import { Button } from "@/components/ui/button";
@@ -265,6 +267,10 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
   // before every new event unless they explicitly opt out. Edit mode
   // mirrors whatever the linked AceReminder row already has.
   const [reminderOn, setReminderOn] = useState(event?.reminderEnabled ?? true);
+  // Stackable notification leads for create-mode reminders (Ace-native
+  // path). Mirrors the reminders panel: default a single 15-min lead,
+  // up to three. Only read when type === "reminder" on create.
+  const [leads, setLeads] = useState<number[]>([15]);
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -367,6 +373,8 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
       // everything else opens with Google Meet pre-picked since most
       // recruiter calls are video.
       setMeetingType(initialType === "reminder" ? "none" : "google_meet");
+      // Reminders open with the standard single 15-min lead.
+      setLeads([15]);
     }
     setNewGuests([]);
     setError(null);
@@ -482,6 +490,23 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
     setCreating(true);
     setError(null);
     try {
+      // Reminders are Ace-native (toast-only, never pushed to Google),
+      // so they write an AceReminder row directly instead of a Google
+      // CalendarEvent. That row is what the Upcoming panel, the grid
+      // pseudo-events, and the toast provider all read - a CalendarEvent
+      // would never surface in the panel. The stacked NOTIFY leads ride
+      // along so a FAB reminder matches a panel-created one.
+      if (isReminder) {
+        const when = zonedToInstant(date, startTime, timeZone);
+        if (Number.isNaN(when.getTime())) {
+          throw new Error("Invalid date or time.");
+        }
+        await createReminder(title.trim(), when.toISOString(), leads);
+        toast.success("Reminder created");
+        router.refresh();
+        onClose();
+        return;
+      }
       // Resolve the wall-clock in the recruiter-picked timezone into an
       // absolute instant, then hand the server toISOString(). Doing the
       // zone math here keeps the same startISO / endISO contract as
@@ -882,41 +907,56 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
             )}
           </div>
 
-          {/* Ace reminder toggle */}
-          <div className="flex items-start gap-3 rounded-xl border border-court-border bg-court-surface p-3">
-            <div className="grid h-9 w-9 place-items-center rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
-              <Bell className="h-4 w-4" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <div className="text-[13px] font-semibold text-court-fg">
-                  Ace reminder
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={reminderOn}
-                  onClick={() => setReminderOn((v) => !v)}
-                  className={cn(
-                    "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
-                    reminderOn ? "bg-brand" : "bg-court-fg-muted/40",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
-                      reminderOn ? "translate-x-5" : "translate-x-0.5",
-                    )}
-                  />
-                </button>
-              </div>
-              <div className="mt-0.5 text-[11.5px] text-court-fg-muted">
-                Fires as a toast inside Ace, 15 min before the event start.{" "}
+          {/* Create-mode reminders configure their own toast schedule via
+              the shared stackable lead picker (same UI as the reminders
+              panel). Every other case keeps the single on/off toggle that
+              attaches a 15-min reminder to a Google event. */}
+          {mode === "create" && isReminder ? (
+            <div>
+              <FieldLabel>Notify</FieldLabel>
+              <LeadTimePicker leads={leads} onChange={setLeads} />
+              <div className="mt-1.5 text-[11.5px] text-court-fg-muted">
+                Fires as a toast inside Ace.{" "}
                 <span className="font-semibold text-court-brand-dark">Not synced</span>{" "}
                 to Google.
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-start gap-3 rounded-xl border border-court-border bg-court-surface p-3">
+              <div className="grid h-9 w-9 place-items-center rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+                <Bell className="h-4 w-4" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <div className="text-[13px] font-semibold text-court-fg">
+                    Ace reminder
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={reminderOn}
+                    onClick={() => setReminderOn((v) => !v)}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
+                      reminderOn ? "bg-brand" : "bg-court-fg-muted/40",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
+                        reminderOn ? "translate-x-5" : "translate-x-0.5",
+                      )}
+                    />
+                  </button>
+                </div>
+                <div className="mt-0.5 text-[11.5px] text-court-fg-muted">
+                  Fires as a toast inside Ace, 15 min before the event start.{" "}
+                  <span className="font-semibold text-court-brand-dark">Not synced</span>{" "}
+                  to Google.
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Google footer */}
           <div className="flex items-center gap-2 text-[11px] text-court-fg-muted">

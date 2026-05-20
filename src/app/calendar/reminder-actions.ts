@@ -61,6 +61,7 @@ export async function createReminder(
   });
 
   revalidatePath("/calendar");
+  revalidatePath("/dashboard");
   return { ok: true, id: row.id };
 }
 

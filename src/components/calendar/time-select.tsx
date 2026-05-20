@@ -83,10 +83,10 @@ export function TimeSelect({
         type="button"
         aria-label={ariaLabel}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-left text-[13.5px] text-court-fg outline-none focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
+        className="flex h-[38px] w-full items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2.5 text-left text-[13.5px] text-court-fg outline-none focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
       >
         <Clock className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
-        <span className="flex-1">{formatTimeLabel(value)}</span>
+        <span className="flex-1 whitespace-nowrap">{formatTimeLabel(value)}</span>
       </button>
       {open && (
         <ul

@@ -3,6 +3,7 @@
 import { Bell, Clock, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { LeadTimePicker, leadsSummary } from "@/components/calendar/lead-time-picker";
 import { TimeSelect } from "@/components/calendar/time-select";
 import type { CalendarReminder } from "@/lib/calendar/types";
 import { cn } from "@/lib/utils";
@@ -22,29 +23,6 @@ type Props = {
   ) => Promise<void>;
   onDelete: (id: string) => void;
 };
-
-// Notification leads the editor offers, soonest-window first. 0 is not
-// offered in the panel (reserved for event/interview-linked rows).
-const LEAD_PRESETS: Array<{ value: number; label: string }> = [
-  { value: 15, label: "15 min before" },
-  { value: 30, label: "30 min before" },
-  { value: 60, label: "1 hr before" },
-  { value: 120, label: "2 hr before" },
-  { value: 1440, label: "1 day before" },
-];
-
-function leadLabel(value: number): string {
-  return LEAD_PRESETS.find((p) => p.value === value)?.label ?? `${value} min before`;
-}
-
-function leadsSummary(leads: number[]): string {
-  if (leads.length === 0) return "No notifications";
-  return leads
-    .slice()
-    .sort((a, b) => b - a)
-    .map((l) => leadLabel(l).replace(" before", ""))
-    .join(" · ") + " before";
-}
 
 export function CalendarRemindersPanel({
   reminders,
@@ -161,12 +139,15 @@ function ReminderRow({
         </div>
         <div
           className={cn(
-            "mt-1 flex items-center gap-1.5 text-[11px]",
+            "mt-1 text-[11px]",
             r.urgent ? "text-amber-700 dark:text-amber-200" : "text-court-fg-muted",
           )}
         >
-          <Clock className="h-3 w-3" /> {r.when} <span>·</span>
-          <span>{r.abs}</span>
+          <div className="flex items-center gap-1 whitespace-nowrap">
+            <Clock className="h-3 w-3 shrink-0" />
+            <span>{r.when}</span>
+          </div>
+          <div className="mt-0.5 whitespace-nowrap pl-4">{r.abs}</div>
         </div>
         <div className="mt-0.5 text-[10.5px] text-court-fg-muted">
           {leadsSummary(r.notifyLeadsMin)}
@@ -219,13 +200,6 @@ function ReminderForm({
   );
   const [submitting, setSubmitting] = useState(false);
 
-  const sortedLeads = useMemo(
-    () => leads.slice().sort((a, b) => b - a),
-    [leads],
-  );
-  const available = LEAD_PRESETS.filter((p) => !leads.includes(p.value));
-  const canAdd = leads.length < 3 && available.length > 0;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = title.trim();
@@ -270,39 +244,7 @@ function ReminderForm({
         <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
           Notify
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {sortedLeads.map((l) => (
-            <span
-              key={l}
-              className="inline-flex items-center gap-1 rounded-full border border-court-brand/40 bg-court-brand-tint/50 px-2 py-0.5 text-[11px] font-semibold text-court-brand-dark"
-            >
-              {leadLabel(l)}
-              <button
-                type="button"
-                aria-label={`Remove ${leadLabel(l)}`}
-                onClick={() => setLeads((prev) => prev.filter((x) => x !== l))}
-                className="text-court-brand-dark/70 hover:text-court-brand-dark"
-              >
-                <X className="h-2.5 w-2.5" />
-              </button>
-            </span>
-          ))}
-        </div>
-        {canAdd && (
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {available.map((p) => (
-              <button
-                key={p.value}
-                type="button"
-                onClick={() => setLeads((prev) => [...prev, p.value])}
-                className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-2 py-0.5 text-[11px] font-medium text-court-fg-muted transition hover:border-court-brand/40 hover:text-court-brand-dark"
-              >
-                <Plus className="h-2.5 w-2.5" />
-                {p.label}
-              </button>
-            ))}
-          </div>
-        )}
+        <LeadTimePicker leads={leads} onChange={setLeads} />
       </div>
 
       <div className="flex items-center justify-end gap-2 pt-1">
