@@ -45,6 +45,24 @@ import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
 import { StageBadge } from "@/components/stage-badge";
 import type { PipelineBucket } from "@/lib/rf-payload-shapes";
 
+// Fired by the Apply-to-Job modal (LocalCandidateActions) the moment a
+// placement write resolves. LocalPlacementRows listens and optimistically
+// prepends an "applied" row so the job pill appears immediately, the same
+// way Reject flips an existing row's pill from local state without a manual
+// reload. The useEffect that mirrors the `jobs` prop reconciles the
+// optimistic row with server truth once router.refresh() lands.
+export const LOCAL_PLACEMENT_APPLIED_EVENT = "ace:local-placement-applied";
+
+export type LocalPlacementAppliedDetail = {
+  candidateId: string;
+  jobRfId: number;
+  jobTitle: string;
+  jobLocation: string;
+  clientRfId: number;
+  clientName: string;
+  clientContacts: { id: number; name: string; title: string; email: string }[];
+};
+
 export type LocalInterview = {
   id: string;
   scheduledAt: string;
@@ -134,6 +152,44 @@ export function LocalPlacementRows({
   useEffect(() => {
     setJobsState(jobs);
   }, [jobs]);
+
+  // Optimistic apply: the Apply-to-Job modal dispatches
+  // LOCAL_PLACEMENT_APPLIED_EVENT the instant its write resolves. Prepend
+  // an Applied row immediately so the job pill shows without waiting on the
+  // RSC refetch (which races the DB commit). The jobs-prop sync effect
+  // above replaces it with the canonical server row once router.refresh()
+  // lands. Same local-state update the Reject pill relies on.
+  useEffect(() => {
+    function onApplied(e: Event) {
+      const detail = (e as CustomEvent<LocalPlacementAppliedDetail>).detail;
+      if (!detail || detail.candidateId !== candidateId) return;
+      setJobsState((prev) => {
+        if (prev.some((j) => j.jobRfId === detail.jobRfId)) return prev;
+        const optimistic: LocalJobRow = {
+          placementId: `local-applied-${detail.jobRfId}`,
+          jobRfId: detail.jobRfId,
+          jobTitle: detail.jobTitle,
+          jobLocation: detail.jobLocation,
+          jobDescription: "",
+          jobSalaryRange: "",
+          clientRfId: detail.clientRfId,
+          clientName: detail.clientName,
+          clientWebsite: "",
+          clientLinkedIn: "",
+          clientContacts: detail.clientContacts,
+          stage: "applied",
+          interviews: [],
+        };
+        return [...prev, optimistic];
+      });
+    }
+    window.addEventListener(LOCAL_PLACEMENT_APPLIED_EVENT, onApplied);
+    return () => window.removeEventListener(LOCAL_PLACEMENT_APPLIED_EVENT, onApplied);
+  }, [candidateId]);
+
+  // Mounted even with zero placements so the apply listener above is live
+  // for the candidate's first apply. Render nothing until there's a row.
+  if (jobsState.length === 0) return null;
 
   return (
     <>

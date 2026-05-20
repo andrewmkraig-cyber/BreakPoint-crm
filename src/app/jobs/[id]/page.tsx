@@ -504,7 +504,7 @@ export default async function JobDetailPage({
             rows={promoteRows}
           />
         ) : tab === "game-plan" ? (
-          <AiWorkspace entityType="job" entityId={jobRow.id} />
+          <AiWorkspace entityType="job" entityId={jobRow.id} bottomGapRem={30} />
         ) : tab === "activity" ? (
           <div className="space-y-6">
             <EntityNotesSection entityType="job" entityId={jobRow.id} />

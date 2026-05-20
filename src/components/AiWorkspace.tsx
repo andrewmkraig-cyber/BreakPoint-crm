@@ -28,6 +28,13 @@ export type AiWorkspaceProps = {
   // bubble's clean HTML as the body. Lets the recruiter ship a Game
   // Plan response straight out of Ace without copy / paste.
   recipientEmail?: string | null;
+  // Viewport height (in rem) reserved below the card. The card is
+  // height: calc(100dvh - bottomGapRem). Pages with a taller header
+  // (client / job carry the 5 KPI stat tiles) pass a larger value so
+  // the composer ends above the fixed bottom-right Delete button
+  // instead of overlapping it. Defaults to 22rem (the candidate-page
+  // chrome budget the height was originally tuned to).
+  bottomGapRem?: number;
 };
 
 type Message = {
@@ -39,7 +46,7 @@ type Message = {
 
 const TEMP_ID_PREFIX = "local-";
 
-export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiWorkspaceProps) {
+export function AiWorkspace({ entityType, entityId, title, recipientEmail, bottomGapRem = 22 }: AiWorkspaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -178,16 +185,17 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
     // the bottom of the card. `sticky top-4` keeps the card pinned
     // while the parent page scrolls behind it.
     //
-    // Height = 100dvh − 20rem (320px). `dvh` (dynamic viewport
-    // height) tracks the actually-visible viewport on mobile when
-    // the URL bar collapses, so the composer doesn't fall off the
-    // bottom there. The 20rem chrome accounts for the most-cramped
-    // surface (/candidates/[id]: topbar ~80px + identity header
-    // ~80px + tabs ~40px + action row ~50px + outer padding ~70px).
-    // `min-h-[360px]` is a floor for very small viewports so the
-    // card doesn't collapse below usable size; on those screens the
-    // composer may sit a hair below the fold but the layout stays
-    // coherent.
+    // Height = 100dvh − bottomGapRem (default 22rem). `dvh` (dynamic
+    // viewport height) tracks the actually-visible viewport on mobile
+    // when the URL bar collapses, so the composer doesn't fall off the
+    // bottom there. bottomGapRem reserves the page chrome above plus a
+    // clearance below for the fixed bottom-right Delete button; client
+    // and job pages pass a larger value because their KPI stat row
+    // makes the header taller than the candidate page this was first
+    // tuned against. `min-h-[360px]` is a floor for very small
+    // viewports so the card doesn't collapse below usable size; on
+    // those screens the composer may sit a hair below the fold but the
+    // layout stays coherent.
     //
     // Why a single `h-` instead of the prior `min-h` + `max-h`
     // pair: a min/max range produced an indeterminate intrinsic
@@ -197,7 +205,8 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
     // the flex math deterministic.
     <div
       ref={cardRef}
-      className="sticky top-4 flex h-[calc(100dvh-22rem)] min-h-[360px] flex-col overflow-hidden rounded-xl border border-court-border bg-white shadow-sm dark:bg-court-surface"
+      style={{ height: `calc(100dvh - ${bottomGapRem}rem)` }}
+      className="sticky top-4 flex min-h-[360px] flex-col overflow-hidden rounded-xl border border-court-border bg-white shadow-sm dark:bg-court-surface"
     >
       <div className="flex shrink-0 items-center justify-between border-b border-court-border px-5 py-3">
         <h2 className="font-serif text-base font-semibold text-court-fg">
@@ -352,10 +361,14 @@ function MessageBubble({
       <div
         onCopy={onCopy}
         className={cn(
-          "relative max-w-[75%] break-words rounded-2xl px-3 py-2 text-sm shadow-sm",
+          // Bubble recipe copied verbatim from phone-view.tsx so the Game
+          // Plan chat reads identically to the SMS thread: user = outbound
+          // (right, solid brand green, white), Claude = inbound (left,
+          // court-fg/10, court-fg).
+          "relative max-w-[75%] break-words rounded-2xl px-4 py-2.5 font-sans text-sm shadow-sm",
           isUser
-            ? "bg-brand text-white"
-            : "bg-gray-50 text-court-fg dark:bg-court-surface-subtle",
+            ? "rounded-br-sm bg-court-brand text-white"
+            : "rounded-bl-sm bg-court-fg/10 text-court-fg",
           // Extra bottom padding on assistant bubbles so the Copy button at
           // absolute bottom-right doesn't overlap the last line of text.
           showCopy && "pb-7",
@@ -389,7 +402,7 @@ function MessageBubble({
           />
         </div>
       )}
-      <div className="mt-1 text-[10px] text-court-fg-muted">
+      <div className="mt-1 text-xs text-court-fg-muted">
         {formatTimestamp(message.createdAt)}
       </div>
     </li>

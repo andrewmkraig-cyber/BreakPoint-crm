@@ -23,6 +23,10 @@ import {
   buildCcBccOptions,
   formatOpenJobOption,
 } from "@/app/candidates/[id]/placement-flows";
+import {
+  LOCAL_PLACEMENT_APPLIED_EVENT,
+  type LocalPlacementAppliedDetail,
+} from "@/app/candidates/[id]/local-placement-rows";
 
 // Contact shape the Submit modal's To/Cc pickers draw from. Same tuple
 // layout placement-flows / local-placement-rows already use for the
@@ -210,11 +214,32 @@ function ApplyModal(props: {
       }
       toast.success(`Applied ${props.candidateName} to ${job.jobTitle}`, { id: toastId });
       props.onClose();
+      // Optimistic pill: tell LocalPlacementRows to drop in an Applied row
+      // immediately so the job pill shows without a reload. Mirrors how the
+      // Reject action updates its pill from local state. The 500 ms RSC
+      // refetch below reconciles the optimistic row with server truth (and
+      // refreshes pipeline / applicants / jobs) once the write commits.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent<LocalPlacementAppliedDetail>(LOCAL_PLACEMENT_APPLIED_EVENT, {
+            detail: {
+              candidateId: props.candidateId,
+              jobRfId: job.jobRfId,
+              jobTitle: job.jobTitle,
+              jobLocation: job.jobLocation ?? "",
+              clientRfId: job.clientRfId,
+              clientName: job.clientName,
+              clientContacts: job.clientContacts ?? [],
+            },
+          }),
+        );
+      }
       // Delay the RSC refetch by 500 ms so the Postgres insert (and any
       // read-replica replication) commits before LocalPlacementRows
       // re-reads. Immediate router.refresh() raced the commit — the
       // refreshed jobs prop arrived without the new placement and the
-      // pill flickered out the moment the refresh landed.
+      // pill flickered out the moment the refresh landed. The optimistic
+      // row above covers the gap so the pill never disappears.
       setTimeout(() => router.refresh(), 500);
     });
   }

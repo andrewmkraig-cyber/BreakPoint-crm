@@ -1246,9 +1246,14 @@ export function ClaudePanel() {
                 >
                   <div
                     className={
+                      // Bubble recipe copied verbatim from phone-view.tsx so
+                      // the Claude panel reads identically to the SMS thread:
+                      // user = outbound (solid brand green, white), Claude =
+                      // inbound (court-fg/10, court-fg). max-w-[85%] stays
+                      // because the floating panel is narrower than the page.
                       (isUser
-                        ? "ml-auto max-w-[85%] rounded-2xl bg-court-brand px-3 py-2 text-sm text-white"
-                        : "relative mr-auto max-w-[85%] rounded-2xl bg-court-surface-subtle px-3 py-2 text-sm text-court-fg") +
+                        ? "ml-auto max-w-[85%] rounded-2xl rounded-br-sm bg-court-brand px-4 py-2.5 font-sans text-sm text-white shadow-sm"
+                        : "relative mr-auto max-w-[85%] rounded-2xl rounded-bl-sm bg-court-fg/10 px-4 py-2.5 font-sans text-sm text-court-fg shadow-sm") +
                       (showActions ? " pb-7" : "")
                     }
                   >

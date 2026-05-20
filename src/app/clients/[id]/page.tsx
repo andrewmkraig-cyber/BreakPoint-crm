@@ -506,7 +506,7 @@ export default async function ClientDetailPage({
               }}
             />
           </div>
-          <AiWorkspace entityType="client" entityId={String(legacyRfId)} />
+          <AiWorkspace entityType="client" entityId={String(legacyRfId)} bottomGapRem={30} />
         </div>
       ) : tab === "notes" ? (
         <section className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">

@@ -212,15 +212,18 @@ export function TextingExchanges(props: TextingExchangesProps) {
                       </button>
                       <div
                         className={cn(
-                          // font-sans pins the bubble to Inter even
-                          // when the page-level inheritance chain
-                          // hiccups (iOS Safari can drop the next/font
+                          // Bubble recipe copied verbatim from phone-view.tsx
+                          // so this thread matches the SMS thread exactly:
+                          // outbound = solid brand green + white, inbound =
+                          // court-fg/10 + court-fg. font-sans pins the bubble
+                          // to Inter even when the page-level inheritance
+                          // chain hiccups (iOS Safari can drop the next/font
                           // CSS var on first paint, falling through to
                           // system-ui which reads as a different font).
-                          "rounded-2xl px-3 py-2 font-sans text-sm break-words shadow-sm",
+                          "rounded-2xl px-4 py-2.5 font-sans text-sm break-words shadow-sm",
                           outbound
-                            ? "bg-court-brand-tint text-court-brand"
-                            : "bg-court-surface-subtle text-court-fg",
+                            ? "rounded-br-sm bg-court-brand text-white"
+                            : "rounded-bl-sm bg-court-fg/10 text-court-fg",
                           m.status === "failed" && outbound && "bg-red-500 text-white",
                         )}
                       >
@@ -244,7 +247,7 @@ export function TextingExchanges(props: TextingExchangesProps) {
                         )}
                       </div>
                     </div>
-                    <div className="mt-1 text-[10px] text-court-fg-muted">
+                    <div className="mt-1 text-xs text-court-fg-muted">
                       {formatTs(m.createdAt)}
                       {m.status === "failed" && outbound && (
                         <span className="ml-1 font-semibold text-red-700">· failed</span>

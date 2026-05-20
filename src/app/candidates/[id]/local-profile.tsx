@@ -522,20 +522,21 @@ export async function LocalCandidateProfile({
               moved to the right rail so it's not duplicated against the
               resume header. */}
           <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-            {jobRows.length > 0 && (
-              <LocalPlacementRows
-                candidateId={candidate.id}
-                candidateName={fullName}
-                candidateEmail={candidate.email}
-                candidatePhone={candidate.phone}
-                candidateLocation={candidate.location}
-                candidateCurrentTitle={candidate.currentDesignation}
-                candidateCurrentEmployer={candidate.currentOrganization}
-                recruiter={recruiter}
-                jobs={jobRows}
-                aceTeam={aceTeam}
-              />
-            )}
+            {/* Always mounted: LocalPlacementRows renders null when there
+                are no placements but keeps its apply-event listener live so
+                the first Apply-to-Job shows its pill without a reload. */}
+            <LocalPlacementRows
+              candidateId={candidate.id}
+              candidateName={fullName}
+              candidateEmail={candidate.email}
+              candidatePhone={candidate.phone}
+              candidateLocation={candidate.location}
+              candidateCurrentTitle={candidate.currentDesignation}
+              candidateCurrentEmployer={candidate.currentOrganization}
+              recruiter={recruiter}
+              jobs={jobRows}
+              aceTeam={aceTeam}
+            />
             <UnderlineTabs tab={tab} candidateId={candidate.id} embed />
             <div className="flex flex-wrap items-center gap-2">
               <Link
@@ -563,6 +564,7 @@ export async function LocalCandidateProfile({
                 entityType="candidate"
                 entityId={candidate.id}
                 recipientEmail={candidate.email ?? null}
+                bottomGapRem={26}
               />
             ) : tab === "notes" ? (
               <LocalNotesTab candidateId={candidate.id} />
@@ -629,26 +631,26 @@ export async function LocalCandidateProfile({
         openJobs={openJobs}
         hideButtons
       />
-      {/* Pipeline section only renders when there are placements.
-          Header was removed — the row card already shows the job +
-          stage chip, and the redundant "Pipeline · N" label above
-          was just visual noise. */}
-      {jobRows.length > 0 && (
-        <section id="pipeline">
-          <LocalPlacementRows
-            candidateId={candidate.id}
-            candidateName={fullName}
-            candidateEmail={candidate.email}
-            candidatePhone={candidate.phone}
-            candidateLocation={candidate.location}
-            candidateCurrentTitle={candidate.currentDesignation}
-            candidateCurrentEmployer={candidate.currentOrganization}
-            recruiter={recruiter}
-            jobs={jobRows}
-            aceTeam={aceTeam}
-          />
-        </section>
-      )}
+      {/* Pipeline section. LocalPlacementRows renders null when there are
+          no placements, so the section is empty until the candidate is
+          applied/submitted to a job. It stays mounted regardless so its
+          apply-event listener is live and the first Apply-to-Job shows its
+          pill immediately. Header was removed - the row card already shows
+          the job + stage chip. */}
+      <section id="pipeline">
+        <LocalPlacementRows
+          candidateId={candidate.id}
+          candidateName={fullName}
+          candidateEmail={candidate.email}
+          candidatePhone={candidate.phone}
+          candidateLocation={candidate.location}
+          candidateCurrentTitle={candidate.currentDesignation}
+          candidateCurrentEmployer={candidate.currentOrganization}
+          recruiter={recruiter}
+          jobs={jobRows}
+          aceTeam={aceTeam}
+        />
+      </section>
 
       {/* Two-column layout. Left column is the working surface — the
           Profile/Game Plan/Notes tab strip, then the action row, then
@@ -693,6 +695,7 @@ export async function LocalCandidateProfile({
               entityType="candidate"
               entityId={candidate.id}
               recipientEmail={candidate.email ?? null}
+              bottomGapRem={26}
             />
           ) : tab === "notes" ? (
             <LocalNotesTab candidateId={candidate.id} />

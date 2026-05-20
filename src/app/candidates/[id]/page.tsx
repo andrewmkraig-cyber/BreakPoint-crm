@@ -657,6 +657,7 @@ export default async function CandidateProfilePage({
                 entityType="candidate"
                 entityId={String(id)}
                 recipientEmail={candidate.email ?? null}
+                bottomGapRem={26}
               />
             ) : tab === "notes" ? (
               <CandidateNotesTab candidateId={candidate.id} />
@@ -791,6 +792,7 @@ export default async function CandidateProfilePage({
               entityType="candidate"
               entityId={String(id)}
               recipientEmail={candidate.email ?? null}
+              bottomGapRem={26}
             />
           ) : tab === "notes" ? (
             <CandidateNotesTab candidateId={candidate.id} />
