@@ -1,31 +1,23 @@
 # Ace Roadmap
-Last updated: 2026-05-19 · Ace 56.0
+Last updated: 2026-05-20 · Ace 57.0
 
 ## Active Build Sequence
 
-### Session 56.0 Status
-Polish-queue + new-item disposition as of Ace 56.0:
-- DONE this session: 22, 24, 25, 26, 30, 37, 40, 41, 42, 44, font-weight reconciliation, PWA nav rebuild, email popup Mark as Read, texting visual polish, Ace Assistant mobile fix
-- IN PROGRESS: 36 (calendar auto-sync after scheduling — prompt sent, awaiting browser confirm)
-- BACKLOG: 28, 31, 32, 33, 34, 35, 38, 39, 43, 45, 1, 13
+### Session 57.0 Status
+Reminder-system + calendar-drawer + dashboard-widget session as of Ace 57.0:
+- DONE this session: full reminder system (grid + widget render, edit/delete, stacked lead notifications, FAB writes AceReminder, ET times), calendar drawer overhaul (interactive timezone + four US zones, quarter-hour pickers, duration pills, persist type + reminder state), dashboard This Week widget (FAB reminders, reminder/event lane split, freshness fix, up to 5/day), 36 (calendar auto-sync verified), 34 (bulk reject from Lists), 35 (interview auto-reminder), 33 (Templates + Triggers unified), 38 (Teams OAuth expiry + connector polish)
+- DEFERRED (revisit after the sequence below): 28 (ToolExpense edit UI), 39 (calendar invite unknown-sender warning), 13 (date format refactor), 1 (PageWrapper / SectionCard chrome), 32 (BCC Austin clean fix)
 
-### Next Up (Ace 57.0)
-Ace 56.0 closed 10+ polish-queue items and the font-weight / PWA-nav / email-popup / texting / mobile-fix backlog. Ace 57.0 opens by finishing Item 36 (calendar auto-sync), then works through the priority order below.
+### Next Up (Ace 58.0)
+Ace 57.0 closed the reminder system, the calendar drawer overhaul, the dashboard This Week widget, and items 33 / 34 / 35 / 36 / 38. Ace 58.0 opens by verifying the SMS toast View button fix, then runs Batch 2. Priority order:
 
-1. **Item 36 — Calendar auto-sync after scheduling** *(IN PROGRESS — finish first).* `triggerCalendarSync(router)` helper extracted from `calendar-view.tsx` into `src/lib/calendar/trigger-sync.ts`; wired into all 4 schedule + 1 reschedule callsites and the `CalendarEventDrawer` create + edit handlers. Verify in browser: a freshly scheduled interview should appear in the local CalendarEvent mirror without clicking Sync.
-2. **Item 34 — Bulk reject from Lists.** Saved Candidate Lists support bulk email but not bulk reject. Add the action so a recruiter can disqualify everyone on a list in one pass.
-3. **Item 35 — Interview auto-reminder on scheduling.** Auto-create an `AceReminder` row when an interview is scheduled so the recruiter gets the site-wide amber reminder toast ahead of the interview.
-4. **Item 33 — Templates + Triggers unified Settings page.** Currently two separate panels even though every Trigger row references a Template. Unify so a recruiter editing a template can see which trigger uses it without tab-hopping.
-5. **Item 28 — Admin edit UI for ToolExpense rows.** `updateToolExpense` server action already exists; only `createToolExpense` has a UI path. Add a pencil affordance on each ToolExpense-backed row in `SubscriptionsList` that opens an edit dialog mirroring the "+ New expense" form, pre-filled with current values.
-6. **Item 39 — Calendar invite unknown sender warning.** Surface an amber warning on calendar events whose organizer isn't a known team/client/candidate so phishing or misdirected invites can't sneak in unflagged.
-7. **Item 38 — Microsoft Teams OAuth token expired.** Refresh-token flow currently fails silently in places; surface the expiry as a connector banner with a re-auth CTA.
-8. **Item 43 — Bulk email Phase 2.** Scheduled-send time picker + 30–60 sec throttle + 5-domain rotation sharing the BD warmed pool. (Ace 51 shipped Phase 1 — synchronous bulk send.)
-9. **Item 13 — Date format refactor.** Reclassified from a mechanical sweep to a refactor. Introduce shared date-format helpers and route callsites through them; do not grep/replace literals.
-10. **Item 1 — PageWrapper / SectionCard shared chrome.** Extract shared page chrome primitives before any further per-page visual sweeps. Required reading: Visual Work Rules in ACE_RULES.md (Ace 53.0).
-11. **Item 32 — BCC Austin clean fix.** Bulk and individual mail send paths hardcode Austin's email into BCC for every send. Replace with a per-user setting (or remove entirely for non-bulk sends).
-12. **Item 31 + 45 — Full button/color audit.** Partially absorbed in 55.0 + 56.0; still owes a full sweep. Scan every `.tsx` under `src/` for: `rounded-full` on `<button>` elements or `Button` instances; hardcoded color literals (`bg-emerald-*`, `bg-green-*`, `text-white`, hex codes) on buttons; `<button>` elements that bypass `src/components/ui/button.tsx`. Report findings by file with line numbers before changing anything.
-13. **QB — QuickBooks standalone page.** New route at `/finances/quickbooks`, isolated from the existing Finances page. Detailed spec lives below under Queued Specs — Not Yet Prompted.
-14. **MULTI-USER — Multi-user login + permissions model.** Detailed spec lives below under Queued Specs — Not Yet Prompted.
+1. **SMS toast View button fix.** The View button on the SMS notification toast does not route correctly. Verify the fix landed and the button opens the right thread.
+2. **Batch 2 - chat bubbles / Game Plan / apply pill / job pill / reminder drawer.** Bundled polish pass across these five surfaces.
+3. **Batch 3 - submittal modal.** Submittal modal polish pass.
+4. **Item 43 - Bulk email Phase 2.** Scheduled-send time picker + 30-60 sec throttle + 5-domain rotation sharing the BD warmed pool. (Ace 51 shipped Phase 1 - synchronous bulk send.)
+5. **MULTI-USER - Multi-user login + permissions.** Per-user auth + role + permission model, plus per-user settings for timezone and weather location. Detailed spec lives below under Queued Specs - Not Yet Prompted.
+6. **QB - QuickBooks standalone page.** New route at `/finances/quickbooks`, isolated from the existing Finances page. Detailed spec lives below under Queued Specs - Not Yet Prompted.
+7. **Item 31 + 45 - Full button/color audit.** Partially absorbed in 55.0 + 56.0; still owes a full sweep. Scan every `.tsx` under `src/` for: `rounded-full` on `<button>` elements or `Button` instances; hardcoded color literals (`bg-emerald-*`, `bg-green-*`, `text-white`, hex codes) on buttons; `<button>` elements that bypass `src/components/ui/button.tsx`. Report findings by file with line numbers before changing anything.
 
 ## Branch Status
 - **`design/phase-1`** — local-only branch with Cursor UI redesign Phases 1-2 not yet merged to `main`. Carries `86d3e31` (Phase 1 design system foundation), `38f119c` (Phase 2a card shells on dashboard/placements/finances), `d7f5437` (Phase 2b TableRow + TableCell on list views), `c0fb973` (Phase 2c sidebar polish + list table chrome). Review pending; `main` is the source of truth for shipped state until this lands.
@@ -72,7 +64,7 @@ Build soon, lower priority than the active sequence above.
 Slotted in the Active Build Sequence but each needs a session-opening prompt before implementation. Full specs to be added next session; one-line stubs below for handoff.
 
 - **QB — QuickBooks standalone page** (`/finances/quickbooks`). Isolated from the existing Finances page so the QuickBooks-sourced view (income / expenses / aging / P&L) doesn't mingle with the Mercury-driven Finances surface. Lives behind the existing OPS sidebar entry next to Finances.
-- **MULTI-USER — Multi-user login + permissions model.** Replaces the current single-user assumption (Andrew + Austin via shared sessions) with a real per-user auth + role + permission model. Scope includes: invite flow in Settings (reuses `OrganizationMembership`); role chip (Owner / Recruiter / Read-only); per-row visibility rules where they matter; revoke + suspend. Detailed spec to be captured next session.
+- **MULTI-USER - Multi-user login + permissions model.** Replaces the current single-user assumption (Andrew + Austin via shared sessions) with a real per-user auth + role + permission model. Scope includes: invite flow in Settings (reuses `OrganizationMembership`); role chip (Owner / Recruiter / Read-only); per-row visibility rules where they matter; revoke + suspend; and per-user preference settings for timezone and weather location (so the dashboard clock/weather and calendar default zone follow each user, not a shared default). Detailed spec to be captured next session.
 
 ## Cleanup
 Do alongside other work.
@@ -116,6 +108,10 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 57.0 Reminder system + calendar drawer overhaul + dashboard This Week widget (May 20, 2026)
+
+Shipped the Ace-native reminder system end to end (calendar grid + dashboard widget render, panel edit/delete, stacked lead-time toasts, FAB writes AceReminder rows, ET times), overhauled the calendar create/edit drawer (interactive timezone limited to the four continental US zones, quarter-hour time pickers, duration pills, persisted event type + reminder toggle state), and built the dashboard This Week widget (FAB reminders surface, reminder/event time-slot collisions split into left/right lanes on week + day grids, compact day-view lane tiles, dashboard freshness via router-cache staleTime 0 + focus auto-refresh, up to 5 events per day before "+N more"). Closed items: 36 (calendar auto-sync verified), 34 (bulk reject from Lists), 35 (interview auto-reminder on scheduling), 33 (Templates + Triggers unified Settings page), 38 (Microsoft Teams OAuth expiry surfaced + connector status pills + focus-aware push suppression). Full detail in ACE_STATE.md under What Shipped in Ace 57.0.
 
 ## Completed - Ace 56.0 Polish queue close-out + outbound em-dash scrub + AI Workspace prose fix (May 19, 2026)
 

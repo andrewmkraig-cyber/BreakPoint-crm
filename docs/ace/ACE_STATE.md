@@ -1,10 +1,39 @@
 # ACE_STATE.md
-Last updated: 2026-05-19 · Ace 56.0
+Last updated: 2026-05-20 · Ace 57.0
 
 ## Current Status
-Current Version: Ace 56.0
-Last Shipped: 2026-05-19
+Current Version: Ace 57.0
+Last Shipped: 2026-05-20
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 57.0 (2026-05-20)
+
+Ace-native reminder system end to end, a calendar create/edit drawer overhaul, the dashboard This Week widget, and connector + lists + settings closeouts. Closed items 36, 34, 35, 33, 38.
+
+### Reminders - full system
+- **Full reminder system.** Standalone AceReminder rows render as reminder-type pseudo-events on the calendar grid and the dashboard This Week widget. Edit + delete from the reminders panel. Stacked lead-time notifications (notify 15 / 30 / 60 / 120 / 1440 min ahead) fire as site-wide amber toasts.
+- **FAB reminders write AceReminder rows.** The global FAB "New Reminder" writes an Ace-native AceReminder (toast-only, never pushed to Google) instead of a Google CalendarEvent, so it surfaces in the panel + grid + toast. Shared NOTIFY lead-time picker between the panel and the FAB so a FAB reminder matches a panel-created one.
+- **Reminder times in ET.** Reminder times display in Eastern; the Upcoming panel row + time layout was restructured.
+- **Item 35 - Interview auto-reminder on scheduling.** Scheduling an interview auto-creates an AceReminder so the recruiter gets the amber toast ahead of the interview.
+
+### Calendar create/edit drawer
+- **Interactive timezone selector + single-time reminders** in the drawer. Timezone picker limited to the four continental US zones.
+- **Quarter-hour time pickers + duration pills.** Drawer persists the event type and loads the reminder toggle to its current state when an event is reopened. Live Spotify status added alongside the picker work.
+- **Item 36 - Calendar auto-sync after scheduling (verified).** `triggerCalendarSync` fires after all schedule + reschedule callsites and the drawer create + edit handlers, so a freshly scheduled event appears in the local CalendarEvent mirror without clicking Sync.
+
+### Dashboard This Week widget + calendar grid collisions
+- **Widget shows FAB-created reminders;** reminders and calendar events that share a time slot now split into left/right lanes on the week + day grids instead of overlapping. Day-view lane tiles render a compact label + title so the header no longer wraps and clips.
+- **Dashboard freshness.** Router-cache dynamic staleTime set to 0 plus a dashboard auto-refresh on tab focus/visibility, so a reminder created on the calendar or via the FAB shows on the widget without a manual reload.
+- **Up to 5 events per day** on the This Week widget before "+N more" (was 2) so a busy day's reminders are not buried.
+
+### Lists + interviews
+- **Item 34 - Bulk reject from Lists.** Saved Candidate Lists selection toolbar now offers Remove from List / Reject All so a recruiter can clear a list in one pass.
+
+### Settings - Templates + Triggers
+- **Item 33 - Templates + Triggers unified.** The two panels are now one Settings page; the Trigger override dropdown shows every active template.
+
+### Connectors - Microsoft Teams
+- **Item 38 - Teams OAuth expiry surfaced.** Connector now validates token health (not just row existence), classifies Teams meeting permission errors correctly, shows clean error copy, and logs granted OAuth scopes on reconnect. Connector status pills made consistent and push suppression made focus-aware.
 
 ## What Shipped in Ace 56.0 (2026-05-19)
 
@@ -48,28 +77,14 @@ Polish queue close-out session covering the next slice of the backlog: StageAgeP
 ### In progress
 - **Item 36 — Calendar auto-sync after scheduling.** Helper `triggerCalendarSync(router)` extracted from the Sync button at `calendar-view.tsx` to `src/lib/calendar/trigger-sync.ts`. Wired into all 4 schedule + 1 reschedule callsites in `local-placement-rows.tsx` + `placement-flows.tsx`, plus the `CalendarEventDrawer` create + edit handlers. Prompt sent; Andrew's browser verification pending so it carries into Ace 57.0 as the first item.
 
-## Known Issues Carrying Into Ace 57.0
-- **Button styles inconsistent across app.** Submit was unified in Ace 54.0 and PipelinePill / Stat / Scoreboard subtext landed in 55.0, but the full button + color sweep is still outstanding. `rounded-full` still appears on some `<button>` elements, hardcoded color literals remain on others, and some buttons bypass the shared `Button` component entirely.
-- **BCC hardcoded to Austin.** Bulk and individual email send paths hardcode Austin's address into the BCC field for every send. Should be a per-user setting or removed entirely for non-bulk sends.
-- **Templates + Triggers unified Settings page.** Settings currently exposes Templates and Triggers as two separate panels even though every Trigger row references a Template.
-- **Reminders leg not contributing to PWA badge.** Intentional for now — `ReminderToastProvider` fires toast-only. Revisit when the badge story needs the third leg.
+## Known Issues Carrying Into Ace 58.0
+- **Button styles inconsistent across app.** Submit was unified in Ace 54.0 and PipelinePill / Stat / Scoreboard subtext landed in 55.0, but the full button + color sweep is still outstanding (item 31 + 45). `rounded-full` still appears on some `<button>` elements, hardcoded color literals remain on others, and some buttons bypass the shared `Button` component entirely.
+- **BCC hardcoded to Austin.** Bulk and individual email send paths hardcode Austin's address into the BCC field for every send. Should be a per-user setting or removed entirely for non-bulk sends (item 32).
+- **Reminders leg not contributing to PWA badge.** Intentional for now - `ReminderToastProvider` fires toast-only. Revisit when the badge story needs the third leg.
 - **Stale `unreadCount:0` field in `src/app/api/phone/threads/route.ts:251`.** No consumer reads it; safe to remove on the next pass through that file. Future cleanup only.
 
 ## Next Task
-Open Ace 57.0 by finishing **Item 36 — Calendar auto-sync after scheduling** (prompt is sent; verify the auto-sync fires correctly after schedule + reschedule + drawer save). After 36 confirms, work through this priority order:
-1. Item 34 — Bulk reject from Lists
-2. Item 35 — Interview auto-reminder on scheduling
-3. Item 33 — Templates + Triggers unified page
-4. Item 28 — Admin edit UI for ToolExpense rows
-5. Item 39 — Calendar invite unknown sender warning
-6. Item 38 — Microsoft Teams OAuth token expired
-7. Item 43 — Bulk email Phase 2
-8. Item 13 — Date format refactor
-9. Item 1 — PageWrapper / SectionCard shared chrome
-10. Item 32 — BCC Austin clean fix
-11. Item 31+45 — Full button/color audit
-12. QB — QuickBooks standalone page (`/finances/quickbooks`, isolated from existing Finances page)
-13. MULTI-USER — Multi-user login + permissions model (full spec lives in ACE_ROADMAP.md under Queued Specs)
+Open Ace 58.0. First verify SMS toast View button fix landed. Then run Batch 2 prompt. Full priority queue lives in ACE_ROADMAP.md under Active Build Sequence.
 
 ## What Shipped in Ace 55.0 (2026-05-18)
 
