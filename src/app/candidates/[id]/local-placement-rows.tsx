@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { reapplyLocalPlacement, rejectLocalPlacement } from "@/app/candidates/[id]/local-placement-actions";
+import { DismissPlacementButton } from "@/app/candidates/[id]/dismiss-placement-button";
 import { toast } from "sonner";
 import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
 import { Button } from "@/components/ui/button";
@@ -128,6 +129,7 @@ export function LocalPlacementRows({
   recruiter,
   jobs,
   aceTeam,
+  className,
 }: {
   candidateId: string;
   candidateName: string;
@@ -139,6 +141,10 @@ export function LocalPlacementRows({
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
   jobs: LocalJobRow[];
   aceTeam: AceTeamContact[];
+  // Extra classes merged onto the pill-strip root. The split-view embed
+  // passes mt-4 so the pills row clears the chrome above it; the full
+  // profile passes nothing.
+  className?: string;
 }) {
   const [scheduleFor, setScheduleFor] = useState<LocalJobRow | null>(null);
   const [clientInviteFor, setClientInviteFor] = useState<LocalJobRow | null>(null);
@@ -193,7 +199,11 @@ export function LocalPlacementRows({
 
   return (
     <>
-      <div className="divide-y divide-court-border rounded-xl border border-court-border/40 bg-court-surface">
+      <div
+        className={`divide-y divide-court-border rounded-xl border border-court-border/40 bg-court-surface${
+          className ? ` ${className}` : ""
+        }`}
+      >
         {jobsState.map((j) => (
           <LocalJobActionRow
             key={j.placementId}
@@ -498,6 +508,13 @@ function LocalJobActionRow({
               {isReapplying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
               Reapply
             </Button>
+          )}
+          {/* Faint X on the far right of the pill. Optimistic apply rows
+              carry a synthetic placementId until router.refresh() lands a
+              real one, so suppress the X there - there's nothing to delete
+              yet. */}
+          {!job.placementId.startsWith("local-applied-") && (
+            <DismissPlacementButton placementId={job.placementId} jobTitle={job.jobTitle} />
           )}
         </div>
       </div>

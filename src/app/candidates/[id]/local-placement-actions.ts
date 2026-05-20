@@ -647,3 +647,56 @@ export async function reapplyLocalPlacement(input: {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to reapply candidate." };
   }
 }
+
+// Dismiss a placement off the candidate profile entirely. Backs the faint
+// X on every job pill (both the Ace-native LocalJobActionRow and the
+// RF-imported JobActionRow renderers). Org-scoped via findFirst so a
+// recruiter on a different org can't delete our rows. Hard delete: the
+// pill disappears, the candidate drops off that job's pipeline, and
+// /applicants stops listing them for it. The button's inline confirm is
+// the only guard against an accidental click.
+export async function dismissPlacementFromProfile(input: {
+  placementId: string;
+}): Promise<Result> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
+  try {
+    const placement = await prisma.placement.findFirst({
+      where: { id: input.placementId, organizationId: org.id },
+      select: {
+        id: true,
+        stage: true,
+        candidateId: true,
+        candidateRfId: true,
+        jobId: true,
+        jobRfId: true,
+        clientId: true,
+        clientRfId: true,
+      },
+    });
+    if (!placement) return { ok: false, error: "Placement not found." };
+    await prisma.placement.delete({ where: { id: input.placementId } });
+    await createActionLog({
+      userId: user.id,
+      actionType: "dismiss_placement_from_profile",
+      subjectType: "candidate",
+      subjectId: placement.candidateId ?? String(placement.candidateRfId ?? ""),
+      metadata: {
+        placementId: input.placementId,
+        jobId: placement.jobId,
+        jobRfId: placement.jobRfId,
+        clientId: placement.clientId,
+        clientRfId: placement.clientRfId,
+        previousStage: placement.stage,
+      },
+    });
+    if (placement.candidateId) revalidatePath(`/candidates/${placement.candidateId}`);
+    if (placement.candidateRfId != null) revalidatePath(`/candidates/${placement.candidateRfId}`);
+    revalidatePath(`/applicants`);
+    revalidatePath(`/pipeline`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to remove placement." };
+  }
+}

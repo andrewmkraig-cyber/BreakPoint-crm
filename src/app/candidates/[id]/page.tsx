@@ -597,28 +597,33 @@ export default async function CandidateProfilePage({
             containerId="resume-document-content"
           />
         )}
-        <PlacementActionsIsland
-          candidateRfId={id}
-          candidateFirstName={extractedName.firstName}
-          candidateLastName={extractedName.lastName}
-          candidateEmail={extractedName.email}
-          candidatePhone={phoneValue}
-          candidateLocation={locationLabel ?? ""}
-          candidateCurrentTitle={c.current_designation ?? ""}
-          candidateCurrentEmployer={c.current_organization ?? ""}
-          recruiter={(() => {
-            const email = session?.user?.email ?? "";
-            const fullName = session?.user?.name ?? "";
-            const firstName = fullName.split(/\s+/)[0] ?? "";
-            const phone = email
-              ? prefs.recruiterPhones[email] ?? prefs.recruiterPhones[email.toLowerCase()] ?? ""
-              : "";
-            return { firstName, fullName, email, phone };
-          })()}
-          jobs={placementJobs}
-          openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)), jobCuidByRfId, clientCuidByRfId })}
-          aceTeam={aceTeam}
-        />
+        {/* Split-view only: mt-4 clears the chrome above the pills and
+            mb-4 opens a gap before the tab strip, matching the spacing the
+            full profile gets from its space-y-6 / pipeline section. */}
+        <div className="mb-4 mt-4">
+          <PlacementActionsIsland
+            candidateRfId={id}
+            candidateFirstName={extractedName.firstName}
+            candidateLastName={extractedName.lastName}
+            candidateEmail={extractedName.email}
+            candidatePhone={phoneValue}
+            candidateLocation={locationLabel ?? ""}
+            candidateCurrentTitle={c.current_designation ?? ""}
+            candidateCurrentEmployer={c.current_organization ?? ""}
+            recruiter={(() => {
+              const email = session?.user?.email ?? "";
+              const fullName = session?.user?.name ?? "";
+              const firstName = fullName.split(/\s+/)[0] ?? "";
+              const phone = email
+                ? prefs.recruiterPhones[email] ?? prefs.recruiterPhones[email.toLowerCase()] ?? ""
+                : "";
+              return { firstName, fullName, email, phone };
+            })()}
+            jobs={placementJobs}
+            openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)), jobCuidByRfId, clientCuidByRfId })}
+            aceTeam={aceTeam}
+          />
+        </div>
         <div className="flex h-[calc(100vh-3rem)] gap-4 md:h-[calc(100vh-4rem)]">
           {/* Left column. Resume sits as high as possible — the action
               row above it is the only thing between the iframe top and
@@ -824,7 +829,12 @@ export default async function CandidateProfilePage({
         </div>
       </div>
 
-      <DeleteCandidateButton candidateId={candidate.id} candidateName={name} />
+      {/* Delete lives inline at the very bottom of the page content and
+          only on the Profile tab - not floating, and never on Game Plan
+          or Notes. */}
+      {tab === "profile" && (
+        <DeleteCandidateButton candidateId={candidate.id} candidateName={name} />
+      )}
     </div>
     </CandidateProfileBoundary>
   );

@@ -536,6 +536,7 @@ export async function LocalCandidateProfile({
               recruiter={recruiter}
               jobs={jobRows}
               aceTeam={aceTeam}
+              className="mt-4"
             />
             <UnderlineTabs tab={tab} candidateId={candidate.id} embed />
             <div className="flex flex-wrap items-center gap-2">
@@ -733,7 +734,12 @@ export async function LocalCandidateProfile({
         </div>
       </div>
 
-      <DeleteCandidateButton candidateId={candidate.id} candidateName={fullName} />
+      {/* Delete lives inline at the very bottom of the page content and
+          only on the Profile tab - not floating, and never on Game Plan
+          or Notes. */}
+      {tab === "profile" && (
+        <DeleteCandidateButton candidateId={candidate.id} candidateName={fullName} />
+      )}
     </div>
   );
 }

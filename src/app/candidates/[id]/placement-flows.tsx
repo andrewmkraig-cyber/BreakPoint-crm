@@ -55,6 +55,7 @@ import {
   type MeetingProvider,
 } from "@/app/candidates/[id]/interview-actions";
 import { createClientContact } from "@/app/candidates/[id]/contact-actions";
+import { DismissPlacementButton } from "@/app/candidates/[id]/dismiss-placement-button";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { DateTime15Picker } from "@/components/datetime-15-picker";
 import { MeetingProviderSelect } from "@/components/meeting-provider-select";
@@ -862,6 +863,13 @@ function JobActionRow({
           />
           {isCancelled && job.placement && (
             <CancelledRowActions placementId={job.placement.id} />
+          )}
+          {/* Faint X on the far right of the pill. Only rows with a real
+              local Placement row can be dismissed; a sourced RF record
+              with no Placement has nothing to delete, so the X is hidden
+              there. */}
+          {job.placement?.id && (
+            <DismissPlacementButton placementId={job.placement.id} jobTitle={job.jobTitle} />
           )}
         </div>
       </div>

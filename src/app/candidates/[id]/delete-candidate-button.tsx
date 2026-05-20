@@ -12,7 +12,7 @@ import { deleteCandidate } from "@/app/candidates/[id]/actions";
 // button using the danger variant; first click swaps the button for a
 // confirm strip with the candidate's name spelled out so the recruiter
 // can't muscle-memory through the destructive action. Cancel restores
-// the trash button — Delete fires the server action and, on success,
+// the trash button - Delete fires the server action and, on success,
 // kicks the caller back to /candidates with a toast. There is
 // intentionally no modal layer: the inline strip keeps the action
 // reversible-feeling without stealing focus from the rest of the page.
@@ -42,18 +42,17 @@ export function DeleteCandidateButton({
   }
 
   if (!confirming) {
-    // Pinned to the viewport's bottom-right corner so it never
-    // competes with active workflows in the middle of the page —
-    // matches DeleteClientButton. An inline footer button strands
-    // itself on short tabs (Email, etc.); fixed positioning sidesteps
-    // that. Only on hover does it pick up the danger color.
+    // Static, inline at the very bottom of the profile content - not
+    // fixed, not floating. The caller only renders this on the Profile
+    // tab, so it never strands itself on short tabs. Right-aligned and
+    // quiet until hover, where it picks up the danger color.
     return (
-      <div className="fixed bottom-3 right-3 z-30">
+      <div className="flex justify-end pt-8">
         <button
           type="button"
           onClick={() => setConfirming(true)}
           aria-label="Delete candidate"
-          className="inline-flex items-center gap-1 rounded-md bg-court-surface/80 px-2 py-1 text-[11px] font-medium text-court-fg-muted/70 backdrop-blur transition hover:bg-red-50 hover:text-red-600"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-court-fg-muted/70 transition hover:bg-red-50 hover:text-red-600"
         >
           <Trash2 className="h-3 w-3" />
           Delete
@@ -63,7 +62,7 @@ export function DeleteCandidateButton({
   }
 
   return (
-    <div className="pt-24">
+    <div className="pt-8">
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
         <span className="font-medium">
           Delete {candidateName}? This cannot be undone.

@@ -557,7 +557,11 @@ export default async function ClientDetailPage({
         </div>
       )}
 
-      <DeleteClientButton clientId={client.id} clientName={displayName} />
+      {/* Delete lives inline at the very bottom of the page content and
+          only on the Overview tab - not floating, never on other tabs. */}
+      {tab === "overview" && (
+        <DeleteClientButton clientId={client.id} clientName={displayName} />
+      )}
     </div>
   );
 }

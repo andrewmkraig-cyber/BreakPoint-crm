@@ -33,21 +33,19 @@ export function DeleteClientButton({
   }
 
   if (!confirming) {
-    // Quiet by default: ghost-style text button pinned to the
-    // viewport's bottom-right corner so it never competes with
-    // active workflows in the middle of the page. Recruiters
-    // rarely delete clients, and on short tabs (Email tab, etc.)
-    // an inline footer button strands itself in the middle of
-    // empty space — fixed positioning sidesteps that. Only on
-    // hover does it pick up the danger color so the destructive
+    // Quiet by default: ghost-style text button rendered static and
+    // inline at the very bottom of the profile content - not fixed, not
+    // floating. The caller only renders this on the Overview tab, so it
+    // never strands itself on short tabs. Right-aligned and quiet until
+    // hover, where it picks up the danger color so the destructive
     // intent is still legible.
     return (
-      <div className="fixed bottom-3 right-3 z-30">
+      <div className="flex justify-end pt-8">
         <button
           type="button"
           onClick={() => setConfirming(true)}
           aria-label="Delete client"
-          className="inline-flex items-center gap-1 rounded-md bg-court-surface/80 px-2 py-1 text-[11px] font-medium text-court-fg-muted/70 backdrop-blur transition hover:bg-red-50 hover:text-red-600"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-court-fg-muted/70 transition hover:bg-red-50 hover:text-red-600"
         >
           <Trash2 className="h-3 w-3" />
           Delete
@@ -57,10 +55,10 @@ export function DeleteClientButton({
   }
 
   return (
-    <div className="pt-24">
+    <div className="pt-8">
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
         <span className="font-medium">
-          Delete {clientName}? This cannot be undone — every job, contact, agreement, benefit file, and pipeline entry tied to this client goes with it.
+          Delete {clientName}? This cannot be undone - every job, contact, agreement, benefit file, and pipeline entry tied to this client goes with it.
         </span>
         <div className="ml-auto flex items-center gap-2">
           <Button
