@@ -329,12 +329,13 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
           // best-effort
         }
       }
+      // createTeamsMeeting only ever throws clean, user-safe messages
+      // (the expired-token copy or a generic retry line) and logs the raw
+      // Graph body server-side, so surface the message as-is. No prefix,
+      // no raw JSON.
       return {
         ok: false,
-        error:
-          e instanceof Error
-            ? `Teams meeting create failed: ${e.message}`
-            : "Teams meeting create failed.",
+        error: e instanceof Error ? e.message : "Couldn't create the Teams meeting.",
       };
     }
   }
