@@ -15,17 +15,29 @@ export function ActionChip({
   label,
   icon,
   primary,
+  accent,
 }: {
   theme: ToastThemeSpec;
   onClick: () => void;
   label: string;
   icon?: React.ReactNode;
   primary?: boolean;
+  // accent renders the shared Submit-button look — light green tint
+  // background, green border, green text — using the exact Court brand
+  // tokens the `primary` variant in src/components/ui/button.tsx uses.
+  // Colors live on the className so inline `style` only owns layout
+  // (inline bg/color/border would otherwise beat the Tailwind classes).
+  accent?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      className={
+        accent
+          ? "border border-court-brand bg-court-brand-tint text-court-brand-dark transition hover:bg-court-brand/25"
+          : undefined
+      }
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -37,11 +49,15 @@ export function ActionChip({
         fontWeight: 600,
         fontFamily: "Inter, sans-serif",
         cursor: "pointer",
-        // Primary keeps a 1px transparent border so the layout stays
-        // identical when toggling primary on/off — no width shift.
-        border: `1px solid ${primary ? "transparent" : theme.actionBorder}`,
-        background: primary ? theme.primaryBg : theme.actionBg,
-        color: primary ? theme.primaryFg : theme.actionFg,
+        ...(accent
+          ? {}
+          : {
+              // Primary keeps a 1px transparent border so the layout stays
+              // identical when toggling primary on/off — no width shift.
+              border: `1px solid ${primary ? "transparent" : theme.actionBorder}`,
+              background: primary ? theme.primaryBg : theme.actionBg,
+              color: primary ? theme.primaryFg : theme.actionFg,
+            }),
       }}
     >
       {icon}

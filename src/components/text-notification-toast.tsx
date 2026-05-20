@@ -337,17 +337,18 @@ function QuoToast(props: QuoToastProps) {
         ) : (
           <>
             {props.mode === "text" && (
-              // No `primary` — Reply renders as the same outlined chip
-              // as View (transparent/neutral bg, themed border + text),
-              // matching its visual weight exactly.
+              // Reply + View share the Submit-button look (light green
+              // tint bg, green border, green text) via `accent`, so the
+              // toast's action row matches outlined actions elsewhere.
               <ActionChip
                 theme={theme}
                 onClick={onStartReply}
                 label="Reply"
                 icon={<Reply size={12} />}
+                accent
               />
             )}
-            <ActionChip theme={theme} onClick={onView} label="View" icon={<Eye size={12} />} />
+            <ActionChip theme={theme} onClick={onView} label="View" icon={<Eye size={12} />} accent />
             <DismissBtn theme={theme} onClick={() => toast.dismiss(props.toastId)} />
           </>
         )}
