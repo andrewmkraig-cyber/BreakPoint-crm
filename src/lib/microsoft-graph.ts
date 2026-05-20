@@ -13,11 +13,18 @@ const GRAPH_ROOT = "https://graph.microsoft.com/v1.0";
 // token that expires mid-request.
 const EXPIRY_SKEW_MS = 5 * 60_000;
 
-// Exact copy surfaced to the recruiter wherever a Teams token has gone
-// bad. The interview scheduler matches the trailing "Reconnect in
+// Shown only when the token is GENUINELY expired (a real reconnect
+// fixes it). The interview scheduler matches the trailing "Reconnect in
 // Settings" substring to render a link, so keep that phrase stable.
 export const TEAMS_TOKEN_EXPIRED_MESSAGE =
   "Microsoft Teams token expired. Reconnect in Settings > Connectors.";
+
+// Shown when the token is valid but Graph refuses to create the meeting
+// (missing OnlineMeetings.ReadWrite consent or no Teams license). This is
+// NOT an expiry, so reconnecting will not help; the recruiter needs an
+// admin fix or should fall back to Google Meet.
+export const TEAMS_NOT_AUTHORIZED_MESSAGE =
+  "Teams meeting creation is not authorized. The Azure app may be missing OnlineMeetings.ReadWrite permission. Contact your admin or use Google Meet instead.";
 
 type GraphTokenRefreshResponse = {
   access_token: string;
@@ -47,17 +54,24 @@ async function markExpired(organizationId: string): Promise<void> {
     .catch(() => {});
 }
 
-// True when a Graph response means the token is no longer usable and the
-// recruiter must reconnect. 401/403 are always auth failures; a 400 only
-// counts when the body names an authentication problem (Graph returns
-// 400 "AuthenticationError" / "InvalidAuthenticationToken" for a token
-// that expired server-side after passing our local expiry check).
-function isGraphAuthError(status: number, body: string): boolean {
-  if (status === 401 || status === 403) return true;
-  if (status === 400) {
-    return /authenticat|invalidauthenticationtoken|token.*(expir|invalid)|invalid_grant/i.test(body);
+// Canonical "is the access token itself still valid" probe. GET /me is
+// the identity endpoint: a 200 means the token is good (even if a
+// specific resource like onlineMeetings is forbidden for permission
+// reasons), and only a 401 means the token is genuinely expired/revoked.
+// Anything else (403, 5xx, network) is "unknown" so we never declare
+// expiry on ambiguous signals.
+async function probeIdentity(accessToken: string): Promise<"alive" | "expired" | "unknown"> {
+  let res: Response;
+  try {
+    res = await fetch(`${GRAPH_ROOT}/me`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+  } catch {
+    return "unknown";
   }
-  return false;
+  if (res.status === 200) return "alive";
+  if (res.status === 401) return "expired";
+  return "unknown";
 }
 
 // Returns a usable Graph access token for the org, or null when the
@@ -178,17 +192,31 @@ export async function createTeamsMeeting(args: {
     // Log the raw Graph body server-side for debugging, but never surface
     // it to the recruiter.
     console.error(`[teams] onlineMeetings create failed (${res.status}): ${text || "no body"}`);
-    // Graph rejects a stale/revoked token with an auth-class error. 401
-    // and 403 are always auth; a 400 "AuthenticationError" (token expired
-    // server-side even though it passed our expiry check) is the case
-    // Andrew hit. Treat all three as "reconnect required": flip the row to
-    // expired and surface only the clean message.
-    if (isGraphAuthError(res.status, text)) {
-      await markExpired(args.organizationId);
-      throw new MicrosoftGraphError(TEAMS_TOKEN_EXPIRED_MESSAGE, res.status);
+
+    // 400 (AuthenticationError "Error authenticating with resource") and
+    // 403 (Forbidden) mean the token authenticated fine but the app or
+    // account is not authorized to create online meetings: missing
+    // OnlineMeetings.ReadWrite consent or no Teams license. This is NOT an
+    // expired token, so do not flag the connection expired.
+    if (res.status === 400 || res.status === 403) {
+      throw new MicrosoftGraphError(TEAMS_NOT_AUTHORIZED_MESSAGE, res.status);
     }
+
+    // A 401 means the bearer token was rejected. Confirm against the
+    // identity endpoint before declaring expiry: only a genuinely dead
+    // token (GET /me also 401) flips the connection to expired. If /me
+    // still works, this is a resource-authorization issue, not expiry.
+    if (res.status === 401) {
+      const identity = await probeIdentity(accessToken);
+      if (identity === "expired") {
+        await markExpired(args.organizationId);
+        throw new MicrosoftGraphError(TEAMS_TOKEN_EXPIRED_MESSAGE, 401);
+      }
+      throw new MicrosoftGraphError(TEAMS_NOT_AUTHORIZED_MESSAGE, 401);
+    }
+
     throw new MicrosoftGraphError(
-      "Couldn't create the Teams meeting. Try again, or reconnect Microsoft in Settings > Connectors.",
+      "Couldn't create the Teams meeting. Try again, or use Google Meet instead.",
       res.status,
     );
   }
@@ -198,6 +226,45 @@ export async function createTeamsMeeting(args: {
     throw new MicrosoftGraphError("Microsoft Graph response missing joinWebUrl.");
   }
   return { joinWebUrl: json.joinWebUrl, meetingId: json.id };
+}
+
+export type MicrosoftHealth = "connected" | "expired" | "disconnected";
+
+// Canonical connection-health check for the Settings connector card.
+// Validity is judged by GET /me and the refresh grant, NOT by whether a
+// specific resource like onlineMeetings is authorized: a token that
+// passes /me but can't create Teams meetings (missing permission) is
+// still CONNECTED. The card only goes amber when the token is genuinely
+// dead.
+export async function checkMicrosoftHealth(organizationId: string): Promise<MicrosoftHealth> {
+  const token = await prisma.microsoftToken.findUnique({
+    where: { organizationId },
+    select: { status: true },
+  });
+  if (!token) return "disconnected";
+  // A prior refresh-grant failure or confirmed /me 401 already flagged the
+  // row; honor it until the recruiter reconnects.
+  if (token.status === "expired") return "expired";
+
+  let accessToken: string | null;
+  try {
+    accessToken = await getMicrosoftToken(organizationId);
+  } catch {
+    // Transient refresh failure (5xx / network): trust the last known
+    // good state rather than nuking a healthy connection on a blip.
+    return "connected";
+  }
+  // getMicrosoftToken returns null only when the refresh grant is dead
+  // (it has already marked the row expired).
+  if (accessToken === null) return "expired";
+
+  const identity = await probeIdentity(accessToken);
+  if (identity === "expired") {
+    await markExpired(organizationId);
+    return "expired";
+  }
+  // "alive" or "unknown" (403/5xx/network): keep the card green.
+  return "connected";
 }
 
 export { MicrosoftGraphError };
