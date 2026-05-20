@@ -180,10 +180,10 @@ function QuoToast(props: QuoToastProps) {
 
   function onView() {
     // Text toast: View hands off to the centered popup (a global host
-    // listens for this event) and closes the toast — no jump to the
-    // candidate / full phone view. Call toasts (and any text without a
-    // matched candidate) keep the original profile jump.
-    if (props.mode === "text" && candidateId) {
+    // listens for this event) and closes the toast — for every inbound
+    // text, matched candidate or not. No jump to the candidate / full
+    // phone view. Call toasts keep the original profile jump.
+    if (props.mode === "text") {
       window.dispatchEvent(
         new CustomEvent<PhoneViewPopupEventDetail>(PHONE_VIEW_POPUP_EVENT, {
           detail: props.event,
@@ -409,7 +409,12 @@ function TextPopupCard({
   onClose: () => void;
 }) {
   const candidateId = event.candidateId;
+  // Falls back to the raw number when the sender isn't a matched
+  // candidate/client in Ace.
   const senderName = event.candidateName || event.fromNumber;
+  // Settings → Preferences theme-preview toast: render the popup for
+  // fidelity but never hit /api/sms or markThreadRead.
+  const isSample = event.id.startsWith("sample-");
 
   const [replying, setReplying] = useState(false);
   const [body, setBody] = useState("");
@@ -429,7 +434,12 @@ function TextPopupCard({
   }, [busy, onClose]);
 
   async function onMarkRead() {
-    if (!candidateId || busy) return;
+    if (busy) return;
+    // Preview toast — just close, no network.
+    if (isSample) {
+      onClose();
+      return;
+    }
     setMarking(true);
     await markThreadReadAndBroadcast({
       candidateId,
@@ -440,7 +450,12 @@ function TextPopupCard({
   }
 
   async function onSend() {
-    if (!candidateId || !body.trim() || sending) return;
+    if (!body.trim() || sending) return;
+    // Preview toast — simulate the send without touching the network.
+    if (isSample) {
+      onClose();
+      return;
+    }
     setSending(true);
     setError(null);
     const result = await sendSmsReply({
@@ -475,9 +490,13 @@ function TextPopupCard({
                 {senderName}
               </span>
             </div>
-            <div className="mt-0.5 truncate text-[11px] text-court-fg-muted">
-              {event.fromNumber}
-            </div>
+            {event.candidateName && (
+              // Only when a name is the title — otherwise the number is
+              // already the title and we'd be showing it twice.
+              <div className="mt-0.5 truncate text-[11px] text-court-fg-muted">
+                {event.fromNumber}
+              </div>
+            )}
           </div>
           <button
             type="button"
