@@ -1,10 +1,21 @@
 # ACE_STATE.md
-Last updated: 2026-05-20 · Ace 59.0
+Last updated: 2026-05-20 · Ace 60.0
 
 ## Current Status
-Current Version: Ace 59.0
+Current Version: Ace 60.0
 Last Shipped: 2026-05-20
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 60.0 (2026-05-20)
+
+Reminder toast brought onto the shared toast design, plus two new notification settings (duration + stack direction) and a Dismiss All control.
+
+### Reminder toast + notification settings
+- **Reminder toast redesign.** `ReminderToast` now renders the same card structure + sizing as the SMS/email toasts (`w-[314px]`, `rounded-xl`, white `h-9` icon square, `text-[12px]`/`[10px]`, scaled bottom-right action row) in an amber palette: `bg-amber-50` card, `border-amber-400`, Bell glyph at `text-amber-500`, with `dark:` variants so dark courts stay legible. Dropped the old theme-driven inline-style chrome + `ActionChip`. The existing Dismiss button + `handleDismiss` (which calls `dismissReminder` then clears the fired-key) are unchanged.
+- **Notification duration setting.** New `SegmentedSetting` under In-app notifications: 5s / 10s / 30s / Until dismissed, default 5s. Saved to `localStorage` (`ace_toast_duration`) and read fresh at render time by all three toast renderers (`renderNewTextToast`, `renderNewCallToast`, `renderNewMailToast`, and the reminder `fire`). Note: reminders now auto-dismiss on the chosen duration instead of always persisting; pick "Until dismissed" for the old persist-forever behavior.
+- **Stack direction setting.** Standard (bottom-right, current) vs Stack up (top-right, newest on top). Sonner has no reverse-order prop, so this is position-based: the `Toaster` `position` switches corners. Saved to `ace_toast_stack_dir`; `providers.tsx` re-reads it live on `TOAST_PREFS_CHANGED_EVENT` so the toggle applies without a reload.
+- **Dismiss All.** New `ToastStackControls` pill (rendered in `providers.tsx`) appears only when 2+ notification toasts are visible and calls `toast.dismiss()` to clear them all. Active count tracked by `registerToast()` (in `src/lib/toast-prefs.ts`), which each notification toast calls on mount and releases on unmount.
+- Files: `src/lib/toast-prefs.ts` (new), `src/components/toast-stack-controls.tsx` (new), `src/components/reminder-toast-provider.tsx`, `src/components/providers.tsx`, `src/components/text-notification-toast.tsx`, `src/components/mail-notification-toast.tsx`, `src/app/settings/preferences-view.tsx`.
 
 ## What Shipped in Ace 59.0 (2026-05-20)
 

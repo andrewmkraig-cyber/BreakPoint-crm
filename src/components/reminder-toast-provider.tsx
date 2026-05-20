@@ -5,8 +5,7 @@ import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import { dismissReminder as dismissReminderAction } from "@/app/calendar/reminder-actions";
-import { ActionChip } from "@/components/_toast-chrome";
-import { getStoredToastTheme, toastBoxShadow } from "@/lib/toast-theme";
+import { getStoredToastDurationMs, registerToast } from "@/lib/toast-prefs";
 
 type DueReminder = {
   // Stable per-lead key (e.g. "<id>:15") so a reminder with multiple
@@ -21,10 +20,10 @@ type DueReminder = {
 // Global reminder watcher. Mounted once in the root layout so the
 // 60-second tick keeps running as the user navigates between pages -
 // the previous design lived inside /calendar and went silent the
-// moment Andrew clicked away. Renders the same toast chrome as the
-// mail/text notifications (border, shadow, ActionChip) so reminders
-// don't feel like a different surface; the only visual difference is
-// the amber tint on the left strip and icon container.
+// moment Andrew clicked away. Renders the same card structure as the
+// mail/text notification toasts (rounded card, white icon square,
+// bottom-right action row) in an amber palette so reminders read as the
+// same surface in a different color.
 export function ReminderToastProvider() {
   const firedKeys = useRef<Set<string>>(new Set());
 
@@ -42,7 +41,9 @@ export function ReminderToastProvider() {
             }}
           />
         ),
-        { duration: Infinity },
+        // Respects the user's Notification duration setting like the SMS
+        // and email toasts (default 5s; "Until dismissed" = Infinity).
+        { duration: getStoredToastDurationMs() },
       );
     };
 
@@ -99,7 +100,9 @@ function ReminderToast({
   toastId: string | number;
   onPersist: () => void;
 }) {
-  const theme = getStoredToastTheme();
+  // Count this toast toward the active-stack total so the Dismiss All
+  // control can appear when two or more are visible.
+  useEffect(() => registerToast(), []);
 
   function handleDismiss() {
     void dismissReminderAction(reminder.id)
@@ -118,91 +121,33 @@ function ReminderToast({
   );
 
   return (
-    <div
-      style={{
-        position: "relative",
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        minWidth: "360px",
-        maxWidth: "420px",
-        padding: "12px 14px",
-        borderRadius: "14px",
-        border: `1px solid ${theme.border}`,
-        background: theme.bg,
-        color: theme.fg,
-        boxShadow: toastBoxShadow(),
-        overflow: "hidden",
-      }}
-    >
-      {theme.leftStrip && (
-        <span
-          aria-hidden="true"
-          className="bg-amber-500 dark:bg-amber-400"
-          style={{
-            position: "absolute",
-            inset: "0 auto 0 0",
-            width: "3px",
-          }}
-        />
-      )}
-      <div
-        className="bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
-        style={{
-          flexShrink: 0,
-          width: 36,
-          height: 36,
-          borderRadius: 10,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Bell size={17} />
+    <div className="relative flex w-[314px] max-w-[94vw] items-center gap-2.5 rounded-xl border border-amber-400 bg-amber-50 px-3 py-2 shadow-[0_8px_22px_rgba(0,0,0,0.08)] dark:border-amber-500/50 dark:bg-amber-950/40">
+      {/* Left icon: white rounded square matching the SMS/email toasts,
+          with an amber Bell glyph. */}
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-court-surface shadow-sm">
+        <Bell className="h-4 w-4 text-amber-500" />
       </div>
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-          <span
-            style={{
-              fontSize: 13.5,
-              fontWeight: 600,
-              color: theme.fg,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {reminder.title}
-          </span>
+
+      {/* Center column: title + "Reminder · time", then a bottom-right
+          action row carrying the existing Dismiss button unchanged. */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="truncate text-[12px] font-semibold leading-tight tracking-[-0.02em] text-court-fg">
+          {reminder.title}
         </div>
-        <div
-          style={{
-            fontSize: 12.5,
-            color: theme.fgMuted,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            marginTop: 2,
-          }}
-        >
+        <div className="mt-0.5 truncate text-[10px] font-medium text-court-fg-muted">
           Reminder · {formattedTime}
         </div>
-      </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          flexShrink: 0,
-          marginLeft: 12,
-        }}
-      >
-        <ActionChip
-          theme={theme}
-          onClick={handleDismiss}
-          label="Dismiss"
-          icon={<Check size={12} />}
-        />
+
+        <div className="mt-1.5 flex items-center justify-end gap-1.5">
+          <button
+            type="button"
+            onClick={handleDismiss}
+            className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+          >
+            <Check className="h-2.5 w-2.5" />
+            Dismiss
+          </button>
+        </div>
       </div>
     </div>
   );

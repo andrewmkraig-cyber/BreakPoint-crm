@@ -16,6 +16,18 @@ import {
   type ToastThemeId,
   type ToastThemeSpec,
 } from "@/lib/toast-theme";
+import {
+  DEFAULT_TOAST_DURATION,
+  DEFAULT_TOAST_STACK_DIR,
+  getStoredToastDurationId,
+  getStoredToastStackDir,
+  setStoredToastDurationId,
+  setStoredToastStackDir,
+  TOAST_DURATION_OPTIONS,
+  TOAST_STACK_DIR_OPTIONS,
+  type ToastDurationId,
+  type ToastStackDir,
+} from "@/lib/toast-prefs";
 import { renderNewMailToast } from "@/components/mail-notification-toast";
 import { renderNewTextToast } from "@/components/text-notification-toast";
 
@@ -30,6 +42,8 @@ export function NotificationPreferencesView() {
   const [mailNotifs, setMailNotifs] = useState(false);
   const [toastTheme, setToastTheme] = useState<ToastThemeId>(DEFAULT_TOAST_THEME);
   const [textToastTheme, setTextToastTheme] = useState<ToastThemeId>(DEFAULT_TOAST_THEME);
+  const [toastDuration, setToastDuration] = useState<ToastDurationId>(DEFAULT_TOAST_DURATION);
+  const [stackDir, setStackDir] = useState<ToastStackDir>(DEFAULT_TOAST_STACK_DIR);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -42,6 +56,8 @@ export function NotificationPreferencesView() {
     if (storedTextTheme && storedTextTheme in TOAST_THEMES) {
       setTextToastTheme(storedTextTheme as ToastThemeId);
     }
+    setToastDuration(getStoredToastDurationId());
+    setStackDir(getStoredToastStackDir());
   }, []);
 
   function onToggleMailNotifs(next: boolean) {
@@ -62,6 +78,14 @@ export function NotificationPreferencesView() {
       window.localStorage.setItem(TEXT_TOAST_THEME_KEY, next);
     }
   }
+  function onPickDuration(next: ToastDurationId) {
+    setToastDuration(next);
+    setStoredToastDurationId(next);
+  }
+  function onPickStackDir(next: ToastStackDir) {
+    setStackDir(next);
+    setStoredToastStackDir(next);
+  }
 
   return (
     <div className="space-y-3">
@@ -70,6 +94,20 @@ export function NotificationPreferencesView() {
         description="Show a popup when new mail, texts, or calls arrive. Off silences all three."
         checked={mailNotifs}
         onChange={onToggleMailNotifs}
+      />
+      <SegmentedSetting
+        label="Notification duration"
+        description="How long a popup stays on screen before it auto-dismisses."
+        value={toastDuration}
+        options={TOAST_DURATION_OPTIONS}
+        onPick={onPickDuration}
+      />
+      <SegmentedSetting
+        label="Notification stack direction"
+        description="Standard anchors popups at the bottom-right. Stack up moves them to the top-right so each new popup sits above the last."
+        value={stackDir}
+        options={TOAST_STACK_DIR_OPTIONS}
+        onPick={onPickStackDir}
       />
       <div className="border-t border-court-border pt-5">
         <div className="text-sm font-semibold text-court-fg">
@@ -269,6 +307,52 @@ function ToggleRow({
         />
       </button>
     </label>
+  );
+}
+
+// Label + description over a segmented pill selector. Used for the
+// notification duration + stack direction settings. Extra fields on an
+// option (e.g. duration's `ms`) are ignored here.
+function SegmentedSetting<T extends string>({
+  label,
+  description,
+  value,
+  options,
+  onPick,
+}: {
+  label: string;
+  description?: string;
+  value: T;
+  options: { id: T; label: string }[];
+  onPick: (id: T) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div>
+        <div className="text-sm font-semibold text-court-fg">{label}</div>
+        {description && (
+          <div className="mt-0.5 text-xs text-court-fg-muted">{description}</div>
+        )}
+      </div>
+      <div className="inline-flex w-fit flex-wrap gap-0.5 rounded-lg border border-court-border bg-court-surface-subtle p-0.5">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            onClick={() => onPick(o.id)}
+            aria-pressed={value === o.id}
+            className={cn(
+              "rounded-md px-3 py-1 text-xs font-medium transition",
+              value === o.id
+                ? "bg-court-surface text-court-fg shadow-sm"
+                : "text-court-fg-muted hover:text-court-fg",
+            )}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

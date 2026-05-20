@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect } from "react";
 import { Mail as MailIcon, Reply, Eye, CheckCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import { useFloatingThread } from "@/lib/floating-thread-context";
 import { useMailContext } from "@/lib/mail-context";
+import { getStoredToastDurationMs, registerToast } from "@/lib/toast-prefs";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import type { UnreadInboxThread } from "@/lib/mail-context";
 
@@ -66,7 +68,7 @@ export const mailToastIdForThread = (threadId: string) => `mail-toast-${threadId
 export function renderNewMailToast(thread: UnreadInboxThread) {
   toast.custom(
     (id) => <NewMailToast thread={thread} toastId={id} />,
-    { id: mailToastIdForThread(thread.id), duration: 8_000 },
+    { id: mailToastIdForThread(thread.id), duration: getStoredToastDurationMs() },
   );
 }
 
@@ -83,6 +85,9 @@ function NewMailToast({
   // Its buttons just close the toast; there's no real thread to open or
   // mark read.
   const isSample = thread.id.startsWith("sample-");
+
+  // Count this toast for the Dismiss All control (clears on unmount).
+  useEffect(() => registerToast(), []);
 
   // Shared open path for View (read-only) and Reply. Reply passes
   // composerMode so the floating window opens straight into the reply

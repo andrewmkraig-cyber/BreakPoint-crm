@@ -1,8 +1,14 @@
 "use client";
 
 import { SessionProvider } from "next-auth/react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Toaster } from "sonner";
+import {
+  getStoredToastStackDir,
+  TOAST_PREFS_CHANGED_EVENT,
+  type ToastStackDir,
+} from "@/lib/toast-prefs";
+import { ToastStackControls } from "@/components/toast-stack-controls";
 import { MinimizedDraftsProvider } from "@/lib/minimized-drafts-context";
 import { ComposerManagerProvider } from "@/lib/composer-manager";
 import { FloatingThreadProvider } from "@/lib/floating-thread-context";
@@ -27,6 +33,23 @@ import { GlobalCalendarDrawer } from "@/components/calendar/global-calendar-draw
 // against the right edge.
 
 export function Providers({ children }: { children: ReactNode }) {
+  // Stack direction drives the Toaster's anchor corner (standard =
+  // bottom-right, stack up = top-right). Read from localStorage on mount
+  // and kept live via the prefs-changed event so the Settings toggle
+  // applies without a reload.
+  const [stackDir, setStackDir] = useState<ToastStackDir>("standard");
+  useEffect(() => {
+    const sync = () => setStackDir(getStoredToastStackDir());
+    sync();
+    window.addEventListener(TOAST_PREFS_CHANGED_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(TOAST_PREFS_CHANGED_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+  const toastPosition = stackDir === "up" ? "top-right" : "bottom-right";
+
   return (
     <SessionProvider>
       <MinimizedDraftsProvider>
@@ -48,7 +71,7 @@ export function Providers({ children }: { children: ReactNode }) {
                         <YouTubePanel />
                         <SpotifyPanel />
                         <Toaster
-                          position="bottom-right"
+                          position={toastPosition}
                           richColors
                           closeButton
                           toastOptions={{
@@ -58,6 +81,7 @@ export function Providers({ children }: { children: ReactNode }) {
                             },
                           }}
                         />
+                        <ToastStackControls stackDir={stackDir} />
                       </SpotifyPanelProvider>
                     </YouTubePanelProvider>
                   </CalendarDrawerProvider>

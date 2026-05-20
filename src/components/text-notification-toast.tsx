@@ -6,6 +6,7 @@ import { MessageSquare, Phone, Reply, Eye, Send, Loader2, X, CheckCheck } from "
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { markThreadRead } from "@/app/phone/actions";
+import { getStoredToastDurationMs, registerToast } from "@/lib/toast-prefs";
 
 // In-app inbound text + inbound call toast. Shares the design
 // language of the email toast (rounded card, soft shadow, themed
@@ -142,14 +143,14 @@ async function sendSmsReply(args: {
 export function renderNewTextToast(event: InboundTextEvent) {
   toast.custom(
     (id) => <QuoToast mode="text" event={event} toastId={id} />,
-    { duration: 8_000 },
+    { duration: getStoredToastDurationMs() },
   );
 }
 
 export function renderNewCallToast(event: InboundCallEvent) {
   toast.custom(
     (id) => <QuoToast mode="call" event={event} toastId={id} />,
-    { duration: 8_000 },
+    { duration: getStoredToastDurationMs() },
   );
 }
 
@@ -170,6 +171,9 @@ function QuoToast(props: QuoToastProps) {
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+
+  // Count this toast for the Dismiss All control (clears on unmount).
+  useEffect(() => registerToast(), []);
 
   const preview =
     props.mode === "text"
