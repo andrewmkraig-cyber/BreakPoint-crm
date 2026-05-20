@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import type { CalendarEvent, CalendarTeamMember } from "@/lib/calendar/types";
 import {
+  computeReminderLanes,
   eventTypeMeta,
   fmtDateRange,
   fmtHour,
@@ -55,6 +56,7 @@ export function CalendarDayView({
       ),
   );
   const isToday = isSameDay(displayDate, today);
+  const lanes = computeReminderLanes(dayEvents);
 
   // Local "now" ticking once a minute so the brand-green current-time
   // line drifts down the column while the page sits open. Initialized
@@ -143,6 +145,15 @@ export function CalendarDayView({
             const extraOwners = allOwners.length - visibleOwners.length;
             const guestCount = ev.guests?.length ?? 0;
             const isSelected = selectedId === ev.id;
+            // Split the column into left/right lanes when a reminder and
+            // event share this slot so neither tile covers the other.
+            const lane = lanes.get(ev.id) ?? "full";
+            const laneStyle =
+              lane === "left"
+                ? { left: 14, right: "calc(50% + 4px)" }
+                : lane === "right"
+                  ? { left: "calc(50% + 4px)", right: 24 }
+                  : { left: 14, right: 24 };
             return (
               <button
                 key={ev.id}
@@ -157,7 +168,7 @@ export function CalendarDayView({
                   isSelected &&
                     "outline outline-2 outline-offset-2 outline-court-brand",
                 )}
-                style={{ top, height, left: 14, right: 24 }}
+                style={{ top, height, ...laneStyle }}
               >
                 <div className="flex items-start gap-3">
                   <div className="flex-1">

@@ -4,7 +4,13 @@ import { Plus } from "lucide-react";
 import { useMemo } from "react";
 
 import type { CalendarEvent, CalendarTeamMember } from "@/lib/calendar/types";
-import { eventTypeMeta, fmtHour, hourToY, SLOT_HEIGHT } from "@/lib/calendar/utils";
+import {
+  computeReminderLanes,
+  eventTypeMeta,
+  fmtHour,
+  hourToY,
+  SLOT_HEIGHT,
+} from "@/lib/calendar/utils";
 import {
   decimalHour,
   getWorkWeekDays,
@@ -119,6 +125,7 @@ export function CalendarWeekView({
           {weekDays.map((d, i) => {
             const isToday = isSameDay(d.fullDate, today);
             const dayEvents = eventsByDay[i];
+            const lanes = computeReminderLanes(dayEvents);
             return (
               <div
                 key={d.key}
@@ -163,6 +170,16 @@ export function CalendarWeekView({
                   // top-right so they don't steal the title row in
                   // 30-minute events.
                   const showTime = height >= 32;
+                  // When a reminder and event share this slot, split the
+                  // column into left/right lanes so neither covers the
+                  // other. Non-colliding tiles keep the full width.
+                  const lane = lanes.get(ev.id) ?? "full";
+                  const laneStyle =
+                    lane === "left"
+                      ? { left: 4, right: "calc(50% + 2px)" }
+                      : lane === "right"
+                        ? { left: "calc(50% + 2px)", right: 4 }
+                        : null;
                   return (
                     <button
                       key={ev.id}
@@ -172,12 +189,13 @@ export function CalendarWeekView({
                         onEventClick(ev);
                       }}
                       className={cn(
-                        "absolute left-1 right-1 cursor-pointer overflow-hidden rounded-md border px-2 py-1 text-left leading-tight transition hover:-translate-y-px hover:shadow-sm",
+                        "absolute cursor-pointer overflow-hidden rounded-md border px-2 py-1 text-left leading-tight transition hover:-translate-y-px hover:shadow-sm",
+                        lane === "full" && "left-1 right-1",
                         meta.pillClass,
                         isSelected &&
                           "outline-2 outline-offset-2 outline outline-court-brand",
                       )}
-                      style={{ top, height }}
+                      style={{ top, height, ...(laneStyle ?? {}) }}
                     >
                       {owners.length > 0 && (
                         <span className="absolute right-1 top-1 flex -space-x-1">

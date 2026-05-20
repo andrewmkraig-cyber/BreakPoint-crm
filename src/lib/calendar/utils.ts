@@ -52,6 +52,45 @@ export type EventTypeMeta = {
   chipClass: string;
 };
 
+// Sub-column placement for an event tile inside a single day column.
+// "full" keeps the whole width; "left" / "right" split the column when
+// a reminder shares a time slot with a real calendar event so neither
+// sits on top of the other.
+export type CalendarLane = "full" | "left" | "right";
+
+type LaneInput = {
+  id: string;
+  type: CalendarEventType;
+  startTime: Date;
+  endTime: Date;
+};
+
+function intervalsOverlap(a: LaneInput, b: LaneInput): boolean {
+  return (
+    a.startTime.getTime() < b.endTime.getTime() &&
+    b.startTime.getTime() < a.endTime.getTime()
+  );
+}
+
+// Reminder/event collisions only - general event/event overlap is left
+// as-is. A reminder that overlaps any real event drops into the right
+// lane; the events it overlaps drop into the left lane. Everything else
+// stays full width.
+export function computeReminderLanes(
+  dayEvents: LaneInput[],
+): Map<string, CalendarLane> {
+  const lanes = new Map<string, CalendarLane>();
+  const reminders = dayEvents.filter((e) => e.type === "reminder");
+  const others = dayEvents.filter((e) => e.type !== "reminder");
+  for (const r of reminders) {
+    lanes.set(r.id, others.some((o) => intervalsOverlap(r, o)) ? "right" : "full");
+  }
+  for (const o of others) {
+    lanes.set(o.id, reminders.some((r) => intervalsOverlap(o, r)) ? "left" : "full");
+  }
+  return lanes;
+}
+
 export function eventTypeMeta(t: CalendarEventType): EventTypeMeta {
   switch (t) {
     case "interview":
