@@ -298,6 +298,10 @@ export type SendLocalSubmittalInput = {
   bcc?: string[];
   subject: string;
   bodyText: string;
+  // When false, suppress the post-submittal candidate confirmation
+  // trigger for this one send. Defaults to firing (undefined / true) so
+  // existing callers keep the auto-confirmation behavior.
+  sendCandidateConfirmation?: boolean;
 };
 
 export type SendLocalSubmittalResult =
@@ -417,29 +421,33 @@ export async function sendLocalSubmittalEmail(
 
     // Auto-fire Candidate Submission Confirmation to the candidate.
     // Mirrors the RF-side createCandidateConfirmationDraft path so
-    // the candidate gets the same "Great News — your profile was
+    // the candidate gets the same "Great News - your profile was
     // submitted" follow-up no matter which candidate type they are.
-    // Awaited (not void) — on Vercel serverless, a floating promise
+    // Awaited (not void) - on Vercel serverless, a floating promise
     // gets cut off when the function returns, so the Gmail send
     // never lands. Worth the ~1s of extra latency to make sure the
     // candidate actually receives the templated follow-up.
-    await fireTriggerAndLog({
-      trigger: CANDIDATE_CONFIRMATION_TRIGGER,
-      ref: {
-        candidateId: input.candidateId,
-        jobRfId,
-        jobId,
-        clientRfId,
-        clientId,
-      },
-      actionType: "candidate_submission_confirmation_email",
-      organizationId: org.id,
-      metadata: {
-        placementId: placement.id,
-        submittalGmailMessageId: sendResult.id,
-        local: true,
-      },
-    });
+    // Suppressed for this send when the "Send candidate confirmation
+    // email" checkbox was unchecked (sendCandidateConfirmation === false).
+    if (input.sendCandidateConfirmation !== false) {
+      await fireTriggerAndLog({
+        trigger: CANDIDATE_CONFIRMATION_TRIGGER,
+        ref: {
+          candidateId: input.candidateId,
+          jobRfId,
+          jobId,
+          clientRfId,
+          clientId,
+        },
+        actionType: "candidate_submission_confirmation_email",
+        organizationId: org.id,
+        metadata: {
+          placementId: placement.id,
+          submittalGmailMessageId: sendResult.id,
+          local: true,
+        },
+      });
+    }
 
     return { ok: true, value: { placementId: placement.id, gmailMessageId: sendResult.id } };
   } catch (e) {

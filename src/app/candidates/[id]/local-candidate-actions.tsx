@@ -310,6 +310,7 @@ function SubmitModal(props: {
       helperText="Pick a client contact, then Generate with Claude or write the submittal yourself."
       showTemplatePicker
       templateFilter={(t) => t.audience !== "candidate"}
+      showCandidateConfirmationToggle
       onGenerate={async () => {
         const res = await generateLocalSubmittal({
           candidateId: props.candidateId,
@@ -331,6 +332,7 @@ function SubmitModal(props: {
           bcc: draft.bcc,
           subject: draft.subject,
           bodyText: draft.body,
+          sendCandidateConfirmation: draft.sendCandidateConfirmation ?? true,
         });
         if (!res.ok) throw new Error(res.error);
         toast.success(`Submitted ${props.candidateName} to ${job.jobTitle}`);

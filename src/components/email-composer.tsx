@@ -31,6 +31,10 @@ export type EmailDraft = {
   // alternative) should read this explicit field; text-mode consumers can
   // continue ignoring it and using `body` as the single string source.
   bodyHtml?: string;
+  // Submittal-only: reflects the "Send candidate confirmation email"
+  // checkbox when the composer is opened with showCandidateConfirmationToggle.
+  // Undefined for composers that don't surface the toggle.
+  sendCandidateConfirmation?: boolean;
 };
 
 export type ResolveTemplateFn = (template: ActiveTemplateSummary) => Promise<{ subject: string; body: string }> | { subject: string; body: string };
@@ -151,6 +155,12 @@ export type EmailComposerProps = {
   // recipient at send time. Opt-in so non-bulk callers (submittal,
   // interview invite) stay unchanged.
   perRecipientCandidateHint?: boolean;
+  // Submittal-only: when true, a "Send candidate confirmation email"
+  // checkbox renders below the body and above the toolbar row (default
+  // checked). Its state flows to onSend via draft.sendCandidateConfirmation
+  // so the caller can suppress the post-send candidate confirmation for
+  // this one send.
+  showCandidateConfirmationToggle?: boolean;
 };
 
 // Composable Gmail-backed editor. Handles To / CC / BCC / Subject / Body
@@ -190,6 +200,7 @@ export function EmailComposer({
   toEditorHtml,
   externalDraft,
   perRecipientCandidateHint = false,
+  showCandidateConfirmationToggle = false,
 }: EmailComposerProps) {
   // Resolve effective Cc / Bcc option pools. Explicit ccOptions/bccOptions
   // win over the legacy combined ccBccOptions. The BCC pool is always
@@ -235,6 +246,10 @@ export function EmailComposer({
   // POSTed alongside the current body so Claude rewrites in place.
   const [customEditOpen, setCustomEditOpen] = useState(false);
   const [customInstruction, setCustomInstruction] = useState("");
+  // "Send candidate confirmation email" checkbox state. Default on so the
+  // post-submittal confirmation fires unless the recruiter opts out for
+  // this send. Only surfaced when showCandidateConfirmationToggle is set.
+  const [sendCandidateConfirmation, setSendCandidateConfirmation] = useState(true);
 
   // Mirror every keystroke into localStorage when a draftKey is set.
   // Cheap (string write) and synchronous so we never race a wipe.
@@ -486,6 +501,7 @@ export function EmailComposer({
       // consistent. Text-mode callers keep `bodyHtml` undefined.
       body,
       ...(richTextBody ? { bodyHtml: body } : {}),
+      ...(showCandidateConfirmationToggle ? { sendCandidateConfirmation } : {}),
     };
   }
 
@@ -876,6 +892,25 @@ export function EmailComposer({
             }}
             isRunning={isEditing}
           />
+        )}
+
+        {showCandidateConfirmationToggle && (
+          <div className="border-t border-court-border px-5 py-3">
+            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/30 px-3 py-2 text-xs">
+              <input
+                type="checkbox"
+                checked={sendCandidateConfirmation}
+                onChange={(e) => setSendCandidateConfirmation(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 rounded border-court-border text-brand focus:ring-brand/30"
+              />
+              <span className="flex-1">
+                <span className="font-semibold text-court-fg">Send candidate confirmation email</span>
+                <span className="block text-court-fg-muted">
+                  Automatically sends the candidate a submission confirmation after this email goes out.
+                </span>
+              </span>
+            </label>
+          </div>
         )}
 
         </div>
