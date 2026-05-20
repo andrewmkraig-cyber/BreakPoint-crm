@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { toast } from "sonner";
 
@@ -146,15 +146,64 @@ function zonedToInstant(date: string, time: string, timeZone: string): Date {
 
 const REMINDER_DEFAULT_LEAD_MS = 15 * 60 * 1000;
 
-// Reminders open pointed at "15 minutes from now" rather than the
-// next quarter hour, so a quick "ping me before I forget" needs no
-// time typing. Seconds zeroed so the native time input shows a clean
-// HH:mm.
+// Reminders open pointed at roughly "15 minutes from now", then snapped
+// up to the next quarter hour so the default lands on a slot the
+// 15-minute picker actually offers.
 function reminderDefaultTime(): Date {
-  const t = new Date(Date.now() + REMINDER_DEFAULT_LEAD_MS);
-  t.setSeconds(0, 0);
-  return t;
+  return roundUpQuarter(new Date(Date.now() + REMINDER_DEFAULT_LEAD_MS));
 }
+
+// The time pickers (STARTS / ENDS / reminder TIME) are custom dropdowns
+// of quarter-hour slots, not native <input type="time">. Native inputs
+// can't restrict entry to 00/15/30/45 nor close themselves on pick, so
+// we render this fixed list of 96 slots instead.
+function timeLabel(h: number, m: number): string {
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  const ampm = h < 12 ? "AM" : "PM";
+  return `${hour12}:${String(m).padStart(2, "0")} ${ampm}`;
+}
+
+const TIME_SLOTS: Array<{ value: string; label: string }> = (() => {
+  const slots: Array<{ value: string; label: string }> = [];
+  for (let h = 0; h < 24; h += 1) {
+    for (const m of [0, 15, 30, 45]) {
+      const value = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      slots.push({ value, label: timeLabel(h, m) });
+    }
+  }
+  return slots;
+})();
+
+// Display a stored "HH:mm" in 12-hour form. Falls back gracefully for an
+// off-grid value (a synced event at 10:07) so editing one doesn't force
+// it onto a quarter-hour until the recruiter picks a new slot.
+function formatTimeLabel(value: string): string {
+  const [hStr, mStr] = (value || "").split(":");
+  const h = Number.parseInt(hStr, 10);
+  const m = Number.parseInt(mStr, 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) return "Select time";
+  return timeLabel(h, m);
+}
+
+function minutesOf(time: string): number {
+  const [h, m] = (time || "").split(":").map((n) => Number.parseInt(n, 10));
+  if (Number.isNaN(h) || Number.isNaN(m)) return Number.NaN;
+  return h * 60 + m;
+}
+
+function timeFromMinutes(total: number): string {
+  const clamped = Math.max(0, Math.min(23 * 60 + 45, total));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+const DURATION_PILLS: Array<{ label: string; minutes: number }> = [
+  { label: "15 min", minutes: 15 },
+  { label: "30 min", minutes: 30 },
+  { label: "45 min", minutes: 45 },
+  { label: "1 hr", minutes: 60 },
+];
 
 // Used by the Location row to show an "open in new tab" affordance
 // whenever the recruiter pastes a video link (Zoom, Teams, Webex,
@@ -379,6 +428,34 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
       setMeetingType((m) => (m === "none" ? "google_meet" : m));
     }
   }
+
+  // Changing STARTS shifts ENDS by the same delta so the meeting keeps
+  // its current length. Reminders have no end field, so just set it.
+  function handleStartChange(next: string) {
+    if (isReminder) {
+      setStartTime(next);
+      return;
+    }
+    const prevStart = minutesOf(startTime);
+    const prevEnd = minutesOf(endTime);
+    const duration =
+      Number.isNaN(prevStart) || Number.isNaN(prevEnd) || prevEnd <= prevStart
+        ? 60
+        : prevEnd - prevStart;
+    setStartTime(next);
+    setEndTime(timeFromMinutes(minutesOf(next) + duration));
+  }
+
+  // Duration pill sets ENDS to STARTS + the chosen length.
+  function applyDuration(durationMin: number) {
+    setEndTime(timeFromMinutes(minutesOf(startTime) + durationMin));
+  }
+
+  const currentDurationMin = (() => {
+    const s = minutesOf(startTime);
+    const e = minutesOf(endTime);
+    return Number.isNaN(s) || Number.isNaN(e) || e <= s ? null : e - s;
+  })();
 
   const canSave =
     mode === "edit" &&
@@ -649,46 +726,63 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
             {!allDay && isReminder && (
               <div>
                 <FieldLabel>Time</FieldLabel>
-                <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
-                  <Clock className="h-3.5 w-3.5 text-court-fg-muted" />
-                  <input
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none"
-                  />
-                </div>
+                <TimeSelect
+                  value={startTime}
+                  onChange={setStartTime}
+                  ariaLabel="Reminder time"
+                />
               </div>
             )}
             {!allDay && !isReminder && (
               <>
                 <div>
                   <FieldLabel>Starts</FieldLabel>
-                  <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
-                    <Clock className="h-3.5 w-3.5 text-court-fg-muted" />
-                    <input
-                      type="time"
-                      value={startTime}
-                      onChange={(e) => setStartTime(e.target.value)}
-                      className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none"
-                    />
-                  </div>
+                  <TimeSelect
+                    value={startTime}
+                    onChange={handleStartChange}
+                    ariaLabel="Start time"
+                  />
                 </div>
                 <div>
                   <FieldLabel>Ends</FieldLabel>
-                  <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
-                    <Clock className="h-3.5 w-3.5 text-court-fg-muted" />
-                    <input
-                      type="time"
-                      value={endTime}
-                      onChange={(e) => setEndTime(e.target.value)}
-                      className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none"
-                    />
-                  </div>
+                  <TimeSelect
+                    value={endTime}
+                    onChange={setEndTime}
+                    ariaLabel="End time"
+                  />
                 </div>
               </>
             )}
           </div>
+
+          {/* Duration pills (timed events only). Clicking sets ENDS to
+              STARTS + the chosen length; the active pill reflects the
+              current span. */}
+          {!allDay && !isReminder && (
+            <div>
+              <FieldLabel>Duration</FieldLabel>
+              <div className="flex flex-wrap gap-2">
+                {DURATION_PILLS.map((d) => {
+                  const active = currentDurationMin === d.minutes;
+                  return (
+                    <button
+                      key={d.minutes}
+                      type="button"
+                      onClick={() => applyDuration(d.minutes)}
+                      className={cn(
+                        "rounded-full border px-3 py-1 text-xs font-semibold transition",
+                        active
+                          ? "border-court-brand bg-court-brand-tint text-court-brand-dark"
+                          : "border-court-border bg-court-surface text-court-fg hover:border-court-brand/40",
+                      )}
+                    >
+                      {d.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* All-day + meeting type (create only). All-day is a
               create-time choice - Google's PATCH path the edit
@@ -1134,6 +1228,93 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
       {children}
+    </div>
+  );
+}
+
+// Quarter-hour time picker. Renders a button styled like the other
+// field inputs; clicking opens a scrollable dropdown of TIME_SLOTS and
+// picking one commits the value and closes the menu immediately (no
+// click-outside needed). Closes on outside click or Escape too.
+function TimeSelect({
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  ariaLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const sel = listRef.current.querySelector<HTMLElement>(
+      '[data-selected="true"]',
+    );
+    sel?.scrollIntoView({ block: "center" });
+  }, [open]);
+
+  return (
+    <div ref={boxRef} className="relative">
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-left text-[13.5px] text-court-fg outline-none focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
+      >
+        <Clock className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
+        <span className="flex-1">{formatTimeLabel(value)}</span>
+      </button>
+      {open && (
+        <ul
+          ref={listRef}
+          className="absolute left-0 right-0 top-[42px] z-30 max-h-[220px] overflow-auto rounded-md border border-court-border bg-court-surface py-1 shadow-lg"
+        >
+          {TIME_SLOTS.map((slot) => {
+            const selected = slot.value === value;
+            return (
+              <li key={slot.value} data-selected={selected}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(slot.value);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "block w-full px-3 py-1.5 text-left text-[13px]",
+                    selected
+                      ? "bg-court-brand-tint/60 font-semibold text-court-brand-dark"
+                      : "text-court-fg hover:bg-court-surface-subtle",
+                  )}
+                >
+                  {slot.label}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

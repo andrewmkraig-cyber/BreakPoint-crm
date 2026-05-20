@@ -339,16 +339,35 @@ function formatExpiry(iso: string): string {
 }
 
 // Spotify connector lives client-side because its session is cookie-
-// only (no Neon row, no Google/Quo-style server health check). The
-// Disconnect button hits DELETE /api/auth/spotify which expires the
-// access / refresh / expires-at cookies; the floating panel's next
-// /api/spotify/token call then returns 401 and renders the
-// Connect-Spotify CTA. Anchor the row visually like the other
-// ConnectorRow entries - same surface, dot, label - without piping a
-// real status check up through getAllConnectorStatuses since this
-// row's value is mostly the disconnect action.
+// only (no Neon row, no Google/Quo-style server health check). Status
+// comes from GET /api/auth/spotify/status, which validates the cookied
+// refresh token and returns only { connected }. Disconnect hits DELETE
+// /api/auth/spotify which expires the access / refresh / expires-at
+// cookies; reconnect happens from the floating Spotify panel, so this
+// row offers no Connect button when disconnected.
 function SpotifyConnectorRow() {
+  const [loading, setLoading] = useState(true);
+  const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/spotify/status");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = (await res.json()) as { connected: boolean };
+        if (!cancelled) setConnected(Boolean(json.connected));
+      } catch {
+        if (!cancelled) setConnected(false);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function disconnect() {
     if (busy) return;
@@ -359,6 +378,7 @@ function SpotifyConnectorRow() {
         const text = await res.text().catch(() => "");
         throw new Error(text || `HTTP ${res.status}`);
       }
+      setConnected(false);
       toast.success("Spotify disconnected", {
         description:
           "Open the floating Spotify panel to reconnect when you're ready.",
@@ -372,33 +392,44 @@ function SpotifyConnectorRow() {
     }
   }
 
+  const detail = loading
+    ? "Checking connection..."
+    : connected
+      ? "Floating Spotify panel session. Disconnecting clears the access + refresh tokens; reconnect from the panel itself."
+      : "Not connected. Open the floating Spotify panel to connect.";
+
   return (
     <div className="flex items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <Music className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
           <span className="text-sm font-semibold text-court-fg">Spotify</span>
-          <StateLabel state="connected" />
+          {!loading && (
+            <StateLabel state={connected ? "connected" : "disconnected"} />
+          )}
         </div>
         <div className="mt-1 truncate text-xs text-court-fg-muted">
-          Floating Spotify panel session. Disconnecting clears the
-          access + refresh tokens; reconnect from the panel itself.
+          {detail}
         </div>
       </div>
       <div className="shrink-0">
-        <button
-          type="button"
-          onClick={() => void disconnect()}
-          disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:opacity-60"
-        >
-          {busy ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3 w-3" />
-          )}
-          Disconnect Spotify
-        </button>
+        {loading ? (
+          <Loader2 className="h-4 w-4 animate-spin text-court-fg-muted" />
+        ) : connected ? (
+          <button
+            type="button"
+            onClick={() => void disconnect()}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:opacity-60"
+          >
+            {busy ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3 w-3" />
+            )}
+            Disconnect Spotify
+          </button>
+        ) : null}
       </div>
     </div>
   );
