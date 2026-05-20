@@ -17,6 +17,31 @@ Reminder toast brought onto the shared toast design, plus two new notification s
 - **Dismiss All.** New `ToastStackControls` pill (rendered in `providers.tsx`) appears only when 2+ notification toasts are visible and calls `toast.dismiss()` to clear them all. Active count tracked by `registerToast()` (in `src/lib/toast-prefs.ts`), which each notification toast calls on mount and releases on unmount.
 - Files: `src/lib/toast-prefs.ts` (new), `src/components/toast-stack-controls.tsx` (new), `src/components/reminder-toast-provider.tsx`, `src/components/providers.tsx`, `src/components/text-notification-toast.tsx`, `src/components/mail-notification-toast.tsx`, `src/app/settings/preferences-view.tsx`.
 
+### Batch 2 Prompt 1 - chat bubbles / Game Plan / apply pill (`14e2814`)
+- **Chat bubble unification** across AiWorkspace, ClaudePanel, and TextingExchanges to the shared phone-view bubble treatment.
+- **Delete overlap fix** on the Game Plan pages (Delete no longer overlaps content).
+- **Apply to Job optimistic pill** - applying to a job shows the job pill immediately instead of waiting on a refresh.
+
+### Batch 2 Prompt 2 - job pill spacing / dismissible pills / delete button (`4155f68`)
+- **Job pill spacing on split-view.** Top margin added to the job pills row in the candidates split-view (both render paths) so the pills clear the chrome above; full profile unchanged.
+- **Dismissible job pills.** Every job pill (split-view + full profile, all pipeline stages, both render paths) now has a faint X on the far right with a two-step inline confirm. New org-scoped `dismissPlacementFromProfile` action deletes the placement.
+- **Delete button moved.** Delete on candidate + client profiles is now static and inline at the very bottom of the page content, Profile/Overview tab only - no longer fixed/floating.
+- Files: `local-placement-rows.tsx`, `placement-flows.tsx`, `local-placement-actions.ts`, `dismiss-placement-button.tsx` (new), `local-profile.tsx`, `candidates/[id]/page.tsx`, `delete-candidate-button.tsx`, `clients/[id]/delete-client-button.tsx`, `clients/[id]/page.tsx`.
+
+### Batch 3 - submittal modal fix (`0251e9d`)
+- **Send always enabled.** Send Submittal in the Ace-native Submit to Job modal is no longer gated on a generated/typed body - it is disabled only when To or Subject is empty, so the recruiter can type or paste their own body and send without running Generate with Claude.
+- **Max-height + sticky footer.** `ModalShell` is now header / scrollable content / pinned footer, capped at viewport height, so a long generated submittal scrolls inside the content area instead of pushing Cancel / Send Submittal off screen. Also fixed an em dash in the auto-filled submittal subject.
+- File: `src/app/candidates/[id]/local-candidate-actions.tsx`. Note: the imported-candidate path uses the shared `email-composer.tsx` ("Submittal email"), which already enables Send immediately, so it was left unchanged. Pending Andrew's browser verification.
+
+### Legacy render path retirement - Phase 0 audit (read-only, complete) (`8876af2`)
+Scoping audit for retiring the legacy (rfId-keyed) candidate profile render path so every candidate renders through `LocalCandidateProfile` (Neon-only). Read-only, no writes. Scripts: `scripts/audit-legacy-candidates.ts`, `scripts/spotcheck-rawjobs-candidates.ts`. Numbers:
+- **Candidates:** 726 total - 692 legacy (rfId set, 95%), 34 native (cuid). New candidates are created without an rfId, so the legacy path is frozen, not growing.
+- **Display data:** already in Neon - only 1 legacy candidate has a field missing from Neon columns (a single LinkedIn URL).
+- **Placement (pill) reachability across the 692 legacy candidates:** 19 survive (placements keyed by cuid); **10 would lose pills** (placements keyed only by rfId, candidateId null - BLOCKER, includes Billy Overton rfId 848); 594 show pills only from the imported `raw.jobs[]` list with no Neon placement (580 Sourced / 14 Disqualified); 69 have no placements.
+- **Placement keying:** 59 placements total - 45 keyed by cuid, 14 with candidateId null.
+- **Late-stage exposure:** only 2 legacy candidates in offer/hired/pending/cancelled (stages the native pill renderer does not yet fully support).
+- **Phase 1 scope (deferred):** backfill candidateId onto the 14 null-cuid placement rows, create 594 Placement rows from raw.jobs[] (stage sourced/rejected), backfill the 1 LinkedIn URL, then atomic cutover. `placement-flows.tsx` + `placement-actions.ts` are shared with Applicants / Jobs / bulk and must NOT be deleted; only the page.tsx profile branch retires.
+
 ## What Shipped in Ace 59.0 (2026-05-20)
 
 Notification toast polish: SMS + email toasts redesigned to the shared mockup layout (Reply / View / Mark as Read), and the Settings phone "Try it" Call test removed.
@@ -113,14 +138,18 @@ Polish queue close-out session covering the next slice of the backlog: StageAgeP
 ### In progress
 - **Item 36 — Calendar auto-sync after scheduling.** Helper `triggerCalendarSync(router)` extracted from the Sync button at `calendar-view.tsx` to `src/lib/calendar/trigger-sync.ts`. Wired into all 4 schedule + 1 reschedule callsites in `local-placement-rows.tsx` + `placement-flows.tsx`, plus the `CalendarEventDrawer` create + edit handlers. Prompt sent; Andrew's browser verification pending so it carries into Ace 57.0 as the first item.
 
-## Known Issues Carrying Into Ace 58.0
+## Known Issues Carrying Into Ace 61.0
+- **Legacy render path retirement - Phase 1+ pending.** Phase 0 audit complete (numbers under What Shipped in Ace 60.0). Phase 1 backfill (candidateId on 14 placement rows, 594 Placement rows from raw.jobs[], 1 LinkedIn URL) then atomic cutover is deferred to a later version.
+- **Delete button missing from the split-view candidate profile.** Batch 2 Prompt 2 put Delete inline at the bottom of the Profile tab on the full candidate profile + the client Overview tab, but the split-view embed branch renders no Delete at all. Restore an inline Delete in the embed.
+- **Apply / Keep / Reject real-time stage pill not updating.** After an Apply / Keep / Reject action the job pill stays on "Sourced" instead of reflecting the new stage; needs a real-time pill refresh.
+- **Add Note button still on candidate profiles.** Needs removal from the candidate profile action row.
 - **Button styles inconsistent across app.** Submit was unified in Ace 54.0 and PipelinePill / Stat / Scoreboard subtext landed in 55.0, but the full button + color sweep is still outstanding (item 31 + 45). `rounded-full` still appears on some `<button>` elements, hardcoded color literals remain on others, and some buttons bypass the shared `Button` component entirely.
 - **BCC hardcoded to Austin.** Bulk and individual email send paths hardcode Austin's address into the BCC field for every send. Should be a per-user setting or removed entirely for non-bulk sends (item 32).
 - **Reminders leg not contributing to PWA badge.** Intentional for now - `ReminderToastProvider` fires toast-only. Revisit when the badge story needs the third leg.
 - **Stale `unreadCount:0` field in `src/app/api/phone/threads/route.ts:251`.** No consumer reads it; safe to remove on the next pass through that file. Future cleanup only.
 
 ## Next Task
-SMS toast View button + centered popup shipped (build clean). Andrew's browser verification pending. Then run Batch 2 prompt. Full priority queue lives in ACE_ROADMAP.md under Active Build Sequence.
+Submittal modal fix (Send always enabled + max-height sticky footer) shipped this session (commit `0251e9d`), pending Andrew's browser verification. Next: legacy render path Phase 1+ (backfill candidateId on 14 rows, create 594 Placement rows from raw.jobs[], backfill 1 LinkedIn URL, then atomic cutover) based on the Phase 0 audit above. Plus the carried known issues - restore the split-view profile Delete, fix the Apply / Keep / Reject stage pill stuck on Sourced, and remove the Add Note button from candidate profiles. Full priority queue lives in ACE_ROADMAP.md under Active Build Sequence.
 
 ## What Shipped in Ace 55.0 (2026-05-18)
 
