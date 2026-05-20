@@ -1,10 +1,20 @@
 # ACE_STATE.md
-Last updated: 2026-05-20 · Ace 57.0
+Last updated: 2026-05-20 · Ace 58.0
 
 ## Current Status
-Current Version: Ace 57.0
+Current Version: Ace 58.0
 Last Shipped: 2026-05-20
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 58.0 (2026-05-20)
+
+SMS notification toast View button + centered popup.
+
+### SMS toast View popup
+- **View now opens a centered popup, not a page jump.** The inbound-text toast's three actions are Reply (inline quick-reply), View, and X. View dispatches a new `PHONE_VIEW_POPUP_EVENT`, dismisses the toast, and a global host (`TextNotificationPopup`, mounted in `TextingProvider`) renders a centered popup for that one message. Call toasts (and texts with no matched candidate) keep the original profile jump.
+- **Popup actions.** Shows the message body + sender name/number, with X (close, thread stays unread), Mark as Read (clears the unread badge via `markThreadRead`, closes), and Reply (expands an inline input + Send inside the popup). Send routes through the shared `sendSmsReply` path, which marks the thread read and broadcasts `PHONE_THREAD_READ_EVENT` + `PHONE_SMS_SENT_EVENT`, then closes the popup.
+- **Send path factored.** Extracted `sendSmsReply` + `markThreadReadAndBroadcast` helpers in `text-notification-toast.tsx` so the toast quick-reply and the popup share one outbound-SMS + mark-read path instead of duplicating the fetch.
+- Files: `src/components/text-notification-toast.tsx`, `src/lib/texting-context.tsx`.
 
 ## What Shipped in Ace 57.0 (2026-05-20)
 
@@ -84,7 +94,7 @@ Polish queue close-out session covering the next slice of the backlog: StageAgeP
 - **Stale `unreadCount:0` field in `src/app/api/phone/threads/route.ts:251`.** No consumer reads it; safe to remove on the next pass through that file. Future cleanup only.
 
 ## Next Task
-Open Ace 58.0. First verify SMS toast View button fix landed. Then run Batch 2 prompt. Full priority queue lives in ACE_ROADMAP.md under Active Build Sequence.
+SMS toast View button + centered popup shipped (build clean). Andrew's browser verification pending. Then run Batch 2 prompt. Full priority queue lives in ACE_ROADMAP.md under Active Build Sequence.
 
 ## What Shipped in Ace 55.0 (2026-05-18)
 

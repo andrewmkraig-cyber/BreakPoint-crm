@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-20 · Ace 57.0
+Last updated: 2026-05-20 · Ace 58.0
 
 ## Active Build Sequence
 
@@ -11,7 +11,7 @@ Reminder-system + calendar-drawer + dashboard-widget session as of Ace 57.0:
 ### Next Up (Ace 58.0)
 Ace 57.0 closed the reminder system, the calendar drawer overhaul, the dashboard This Week widget, and items 33 / 34 / 35 / 36 / 38. Ace 58.0 opens by verifying the SMS toast View button fix, then runs Batch 2. Priority order:
 
-1. **SMS toast View button fix.** The View button on the SMS notification toast does not route correctly. Verify the fix landed and the button opens the right thread.
+1. ~~**SMS toast View button fix.**~~ DONE (Ace 58.0). View no longer routes to a page — it opens a centered popup (message body + sender, X / Mark as Read / inline Reply+Send), sharing the toast's `sendSmsReply` + `markThreadRead` path. Awaiting Andrew's browser verification.
 2. **Batch 2 - chat bubbles / Game Plan / apply pill / job pill / reminder drawer.** Bundled polish pass across these five surfaces.
 3. **Batch 3 - submittal modal.** Submittal modal polish pass.
 4. **Item 43 - Bulk email Phase 2.** Scheduled-send time picker + 30-60 sec throttle + 5-domain rotation sharing the BD warmed pool. (Ace 51 shipped Phase 1 - synchronous bulk send.)

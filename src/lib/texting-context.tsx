@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import {
   renderNewTextToast,
   renderNewCallToast,
+  TextNotificationPopup,
   type InboundTextEvent,
   type InboundCallEvent,
 } from "@/components/text-notification-toast";
@@ -89,5 +90,11 @@ export function TextingProvider({ children }: { children: ReactNode }) {
     if (enabled && anyFresh) playSmsSound();
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      {/* Global host for the toast View popup — survives toast dismissal. */}
+      <TextNotificationPopup />
+    </>
+  );
 }
