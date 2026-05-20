@@ -81,9 +81,16 @@ function formatRelative(target: Date, base: Date): string {
   return diffMs >= 0 ? `in ${days}d` : `${days}d ago`;
 }
 
+// Reminders are Ace-native and always read in Eastern. This formatter
+// runs server-side (Vercel is UTC), so it MUST pin timeZone to ET -
+// otherwise a 12:00 PM ET reminder (stored 16:00Z) renders as 4:00 PM.
+// Mirrors the ET assumption baked into CalendarEventDrawer's zonedToInstant.
 function formatAbsolute(target: Date): string {
-  return target.toLocaleString(undefined, {
-    weekday: "short",
+  return target.toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
     hour: "numeric",
     minute: "2-digit",
   });

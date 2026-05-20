@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Clock, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Bell, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { LeadTimePicker, leadsSummary } from "@/components/calendar/lead-time-picker";
@@ -123,55 +123,61 @@ function ReminderRow({
   const r = reminder;
   return (
     <li className="flex items-start gap-3 border-b border-court-border-soft px-5 py-4 last:border-b-0">
+      {/* Green bell avatar - reminder type indicator (far left). */}
       <div
         className={cn(
-          "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg",
+          "mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full",
           r.urgent
             ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
             : "bg-court-brand-tint text-court-brand-dark",
         )}
       >
-        <Bell className="h-3 w-3" />
+        <Bell className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[12.5px] font-semibold leading-snug text-court-fg">
-          {r.title}
-        </div>
-        <div
-          className={cn(
-            "mt-1 text-[11px]",
-            r.urgent ? "text-amber-700 dark:text-amber-200" : "text-court-fg-muted",
-          )}
-        >
-          <div className="flex items-center gap-1 whitespace-nowrap">
-            <Clock className="h-3 w-3 shrink-0" />
-            <span>{r.when}</span>
+        {/* Line 1: title + (countdown · edit · delete) pinned top-right. */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-snug text-court-fg">
+            {r.title}
           </div>
-          <div className="mt-0.5 whitespace-nowrap pl-4">{r.abs}</div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span
+              className={cn(
+                "whitespace-nowrap text-[11px] font-medium",
+                r.urgent
+                  ? "text-amber-700 dark:text-amber-200"
+                  : "text-court-fg-muted",
+              )}
+            >
+              {r.when}
+            </span>
+            <button
+              type="button"
+              aria-label="Edit reminder"
+              title="Edit"
+              onClick={onEdit}
+              className="grid h-7 w-7 place-items-center rounded-full border border-court-border bg-court-surface text-court-fg-muted hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              aria-label="Delete reminder"
+              title="Delete"
+              onClick={onDelete}
+              className="grid h-7 w-7 place-items-center rounded-full border border-court-border bg-court-surface text-court-fg-muted hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
         </div>
-        <div className="mt-0.5 text-[10.5px] text-court-fg-muted">
-          {leadsSummary(r.notifyLeadsMin)}
+        {/* Line 2: bell + notification lead times. */}
+        <div className="mt-1 flex items-center gap-1.5 text-[11px] text-court-fg-muted">
+          <Bell className="h-3 w-3 shrink-0" />
+          <span>{leadsSummary(r.notifyLeadsMin)}</span>
         </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <button
-          type="button"
-          aria-label="Edit reminder"
-          title="Edit"
-          onClick={onEdit}
-          className="grid h-7 w-7 place-items-center rounded-full border border-court-border bg-court-surface text-court-fg-muted hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark"
-        >
-          <Pencil className="h-3 w-3" />
-        </button>
-        <button
-          type="button"
-          aria-label="Delete reminder"
-          title="Delete"
-          onClick={onDelete}
-          className="grid h-7 w-7 place-items-center rounded-full border border-court-border bg-court-surface text-court-fg-muted hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
+        {/* Line 3: full date/time, e.g. "Wednesday, May 20 at 12:00 PM". */}
+        <div className="mt-0.5 text-[11px] text-court-fg-muted">{r.abs}</div>
       </div>
     </li>
   );
