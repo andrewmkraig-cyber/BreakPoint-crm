@@ -41,19 +41,26 @@ export type CalendarEvent = {
   // True when an undismissed AceReminder is linked to this event.
   // Drives the "Ace reminder" toggle in the drawer.
   reminderEnabled?: boolean;
+  // Set when this block is a standalone Ace reminder rendered on the
+  // grid/widget as a pseudo-event (not a real Google CalendarEvent).
+  // Clicking it opens the reminders panel editor, not the Google drawer.
+  aceReminderId?: string;
 };
 
 export type CalendarReminder = {
   id: string;
   title: string;
   // Authoritative time the reminder is due. The Date itself is the
-  // source of truth for "has it passed?" — `when`/`abs` are rendered
+  // source of truth for "has it passed?" - `when`/`abs` are rendered
   // labels that fall behind real time but never drive logic.
   reminderAt: Date;
   when: string;
   abs: string;
   source: string;
   urgent?: boolean;
+  // Minutes-before-anchor notification leads (e.g. [15] or [15, 60]).
+  // Edited in the reminders panel; default standard is a single 15.
+  notifyLeadsMin: number[];
 };
 
 export type CalendarTeamMember = {

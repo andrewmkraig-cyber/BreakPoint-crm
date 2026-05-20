@@ -2,6 +2,7 @@
 
 import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { CalendarEventDrawer } from "@/components/calendar/event-drawer";
@@ -12,7 +13,7 @@ import { cn } from "@/lib/utils";
 // All formatting (timeLabel, weekdayShort, etc.) happens server-side
 // and is passed down as plain strings so SSR + hydration agree
 // byte-for-byte. The client component owns drawer state and click
-// handlers — every chip and row dispatches openEvent(id) which looks
+// handlers - every chip and row dispatches openEvent(id) which looks
 // up the matching CalendarEvent and opens the same drawer used on
 // /calendar in edit mode.
 
@@ -104,6 +105,7 @@ export function ThisWeekWidgetClient({
   countWeek,
   nextInLabel,
 }: Props) {
+  const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selected, setSelected] = useState<CalendarEvent | null>(null);
 
@@ -116,6 +118,12 @@ export function ThisWeekWidgetClient({
   const openEvent = (id: string) => {
     const ev = eventsById.get(id);
     if (!ev) return;
+    // Reminders aren't real Google events; send the user to the calendar
+    // where the reminders panel can edit them.
+    if (ev.aceReminderId) {
+      router.push("/calendar");
+      return;
+    }
     setSelected(ev);
     setDrawerOpen(true);
   };
@@ -147,7 +155,7 @@ export function ThisWeekWidgetClient({
         </Link>
       </div>
 
-      {/* 5-day strip — each day is its own bordered tile, events stack
+      {/* 5-day strip - each day is its own bordered tile, events stack
           INSIDE the tile so nothing clips at the Friday edge or smushes
           against the Thursday divider. Today gets a sage-tinted tile
           plus a brand-colored day number so the eye lands on it first. */}
@@ -230,7 +238,7 @@ export function ThisWeekWidgetClient({
         })}
       </div>
 
-      {/* Up next today — rich row: time + duration block, color strip,
+      {/* Up next today - rich row: time + duration block, color strip,
           name + meta, type chip. Same layout pattern as Later this week
           so the two sections read as one continuous schedule. */}
       <div className="mt-5">
@@ -264,7 +272,7 @@ export function ThisWeekWidgetClient({
         )}
       </div>
 
-      {/* Later this week — same rich-row component, time block reads
+      {/* Later this week - same rich-row component, time block reads
           dayAbbr (top) + clock label (bottom) so the eye can scan by
           weekday in this section. */}
       <div className="mt-4">

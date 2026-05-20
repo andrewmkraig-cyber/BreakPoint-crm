@@ -146,7 +146,11 @@ export function CalendarWeekView({
                   const start = decimalHour(ev.startTime);
                   const end = decimalHour(ev.endTime);
                   const top = hourToY(start);
-                  const height = hourToY(end) - hourToY(start) - 2;
+                  const rawHeight = hourToY(end) - hourToY(start) - 2;
+                  // Reminders are short (often 15 min); floor their
+                  // height so the title stays readable instead of a sliver.
+                  const height =
+                    ev.type === "reminder" ? Math.max(rawHeight, 30) : rawHeight;
                   const owners = teamMode
                     ? ev.ownerKeys
                         .map((k) => teamMembers.find((m) => m.id === k))

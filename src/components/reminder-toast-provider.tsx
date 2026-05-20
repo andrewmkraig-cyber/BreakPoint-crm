@@ -9,20 +9,24 @@ import { ActionChip } from "@/components/_toast-chrome";
 import { getStoredToastTheme, toastBoxShadow } from "@/lib/toast-theme";
 
 type DueReminder = {
+  // Stable per-lead key (e.g. "<id>:15") so a reminder with multiple
+  // notification leads fires once per lead instead of being deduped to
+  // a single toast by id.
+  key: string;
   id: string;
   title: string;
   reminderAt: string;
 };
 
 // Global reminder watcher. Mounted once in the root layout so the
-// 60-second tick keeps running as the user navigates between pages —
+// 60-second tick keeps running as the user navigates between pages -
 // the previous design lived inside /calendar and went silent the
 // moment Andrew clicked away. Renders the same toast chrome as the
 // mail/text notifications (border, shadow, ActionChip) so reminders
 // don't feel like a different surface; the only visual difference is
 // the amber tint on the left strip and icon container.
 export function ReminderToastProvider() {
-  const firedIds = useRef<Set<string>>(new Set());
+  const firedKeys = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -34,7 +38,7 @@ export function ReminderToastProvider() {
             reminder={r}
             toastId={id}
             onPersist={() => {
-              firedIds.current.delete(r.id);
+              firedKeys.current.delete(r.key);
             }}
           />
         ),
@@ -48,8 +52,8 @@ export function ReminderToastProvider() {
         if (!res.ok || cancelled) return;
         const body = (await res.json()) as { reminders: DueReminder[] };
         for (const r of body.reminders) {
-          if (firedIds.current.has(r.id)) continue;
-          firedIds.current.add(r.id);
+          if (firedKeys.current.has(r.key)) continue;
+          firedKeys.current.add(r.key);
           fire(r);
           // Mirror the toast as a push to every subscribed device on
           // this account. Relayed through /api/push/fire because
@@ -66,7 +70,7 @@ export function ReminderToastProvider() {
                 { hour: "numeric", minute: "2-digit" },
               )}`,
               url: "/calendar",
-              tag: `reminder-${r.id}`,
+              tag: `reminder-${r.key}`,
             }),
           }).catch(() => {});
         }

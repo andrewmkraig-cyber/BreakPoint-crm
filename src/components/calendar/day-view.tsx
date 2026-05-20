@@ -129,7 +129,10 @@ export function CalendarDayView({
             const start = decimalHour(ev.startTime);
             const end = decimalHour(ev.endTime);
             const top = (start - START_HOUR) * SLOT;
-            const height = (end - start) * SLOT - 4;
+            const rawHeight = (end - start) * SLOT - 4;
+            // Floor reminder height so a 15-min reminder stays readable.
+            const height =
+              ev.type === "reminder" ? Math.max(rawHeight, 30) : rawHeight;
             const allOwners = teamMode
               ? ev.ownerKeys
                   .map((k) => teamMembers.find((m) => m.id === k))

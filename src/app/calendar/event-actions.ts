@@ -241,6 +241,9 @@ export async function updateCalendarEventAction(
           title: input.title,
           reminderAt,
           calendarEventId: row.id,
+          // reminderAt is already start - 15 min, so fire exactly at it.
+          notifyLeadsMin: [0],
+          notifiedLeadsMin: [],
         },
       });
     } else {
@@ -251,6 +254,7 @@ export async function updateCalendarEventAction(
           title: input.title,
           reminderAt,
           calendarEventId: row.id,
+          notifyLeadsMin: [0],
         },
       });
     }

@@ -19,7 +19,7 @@ const ZONE = "America/New_York";
 
 type AttendeeJson = { displayName?: string; email?: string };
 
-// Same derivation rule the Calendar page uses — the schema does not
+// Same derivation rule the Calendar page uses - the schema does not
 // carry an event type, so we infer from title + calendar name.
 function deriveType(title: string, calendarName: string): CalendarEventType {
   const t = title.toLowerCase();
@@ -39,7 +39,7 @@ function deriveType(title: string, calendarName: string): CalendarEventType {
 }
 
 function formatYMD(d: Date): string {
-  // YYYY-MM-DD in ET — used to bucket events by day. formatToParts
+  // YYYY-MM-DD in ET - used to bucket events by day. formatToParts
   // avoids depending on en-US's default M/D/Y string ordering.
   const fmt = new Intl.DateTimeFormat("en-US", {
     timeZone: ZONE,
@@ -126,10 +126,10 @@ export async function ThisWeekWidget({
 }) {
   const now = new Date();
   const { start: weekStart } = getEasternWeekBounds(now);
-  // Saturday 00:00 ET — exclusive end of the Mon-Fri window.
+  // Saturday 00:00 ET - exclusive end of the Mon-Fri window.
   const weekEnd = new Date(weekStart.getTime() + 5 * 24 * 60 * 60 * 1000);
 
-  const [rowsAll, eventLinkedReminders] = await Promise.all([
+  const [rowsAll, eventLinkedReminders, standaloneReminders] = await Promise.all([
     prisma.calendarEvent.findMany({
       where: {
         organizationId: orgId,
@@ -149,6 +149,19 @@ export async function ThisWeekWidget({
       },
       select: { calendarEventId: true },
     }),
+    // Standalone panel reminders this week, rendered on the widget as
+    // reminder-type pseudo-events alongside calendar events.
+    prisma.aceReminder.findMany({
+      where: {
+        organizationId: orgId,
+        dismissed: false,
+        calendarEventId: null,
+        interviewId: null,
+        reminderAt: { gte: weekStart, lt: weekEnd },
+      },
+      orderBy: { reminderAt: "asc" },
+      select: { id: true, title: true, reminderAt: true },
+    }),
   ]);
   const eventsWithReminders = new Set(
     eventLinkedReminders
@@ -156,7 +169,7 @@ export async function ThisWeekWidget({
       .filter((id): id is string => id != null),
   );
 
-  // Clubhouse widget is Andrew's view — strip any row whose owner key
+  // Clubhouse widget is Andrew's view - strip any row whose owner key
   // resolves to anything other than "ak". Austin's events stay on
   // /calendar (team view) but never appear on this dashboard tile.
   const rows = rowsAll.filter(
@@ -168,7 +181,7 @@ export async function ThisWeekWidget({
   );
 
   // Full CalendarEvent objects in the same shape the /calendar page
-  // produces — passed through to the drawer when a chip or row is
+  // produces - passed through to the drawer when a chip or row is
   // clicked. Andrew-only here, so no need to dedupe googleEventId
   // across calendars.
   const events: CalendarEvent[] = rows.map((row) => {
@@ -200,6 +213,23 @@ export async function ThisWeekWidget({
       reminderEnabled: eventsWithReminders.has(row.id),
     };
   });
+
+  // Standalone reminders as reminder-type pseudo-events. 30-min visual
+  // block; aceReminderId tells the client to deep-link to /calendar
+  // (where they're edited) instead of opening the event drawer.
+  for (const r of standaloneReminders) {
+    events.push({
+      id: `reminder-${r.id}`,
+      title: r.title,
+      startTime: r.reminderAt,
+      endTime: new Date(r.reminderAt.getTime() + 30 * 60 * 1000),
+      allDay: false,
+      type: "reminder",
+      ownerKeys: ["ak"],
+      aceReminderId: r.id,
+    });
+  }
+  events.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 
   const todayKey = formatYMD(now);
 

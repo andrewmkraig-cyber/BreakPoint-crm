@@ -1932,7 +1932,19 @@ model AceReminder {
   organizationId String
   userId         String
   title          String
+  // The reminder's anchor time. For standalone panel reminders this is
+  // when the reminder is "about" and what shows on the calendar;
+  // notifications fire at reminderAt minus each lead in notifyLeadsMin.
+  // Event/interview-linked rows store the exact fire time here and use
+  // notifyLeadsMin [0] so they keep firing at that instant.
   reminderAt     DateTime
+  // Minutes-before-anchor at which to notify. Default is a single
+  // 15-minute lead; the panel editor lets a recruiter stack a second
+  // or third lead (e.g. [15, 60, 1440]).
+  notifyLeadsMin   Int[]      @default([15])
+  // Leads from notifyLeadsMin that have already fired, so each lead
+  // pops once and survives a reload. Reset when time or leads change.
+  notifiedLeadsMin Int[]      @default([])
   dismissed      Boolean      @default(false)
   // Optional link to the CalendarEvent that minted this reminder via
   // the drawer's "Ace reminder" toggle. Lets us upsert / delete the

@@ -114,16 +114,25 @@ export default async function CalendarPage() {
       include: { user: { select: { id: true, name: true, email: true } } },
       orderBy: { joinedAt: "asc" },
     }),
+    // Standalone panel reminders only (event/interview-linked rows
+    // already render as their own events). Pulled across the same
+    // window as events so they can render on the grid; the panel slices
+    // out the upcoming ones below.
     prisma.aceReminder.findMany({
       where: {
         organizationId: org.id,
         dismissed: false,
-        reminderAt: { gte: now },
+        calendarEventId: null,
+        interviewId: null,
+        reminderAt: {
+          gte: new Date(now.getTime() - windowMs),
+          lte: new Date(now.getTime() + windowMs),
+        },
       },
       orderBy: { reminderAt: "asc" },
-      take: 10,
+      select: { id: true, title: true, reminderAt: true, notifyLeadsMin: true },
     }),
-    // Event-linked reminders — used to set the drawer's "Ace
+    // Event-linked reminders - used to set the drawer's "Ace
     // reminder" toggle to its current state when the user reopens
     // the event. Only undismissed rows count (a dismissed reminder
     // means the toggle is effectively off again).
@@ -144,7 +153,7 @@ export default async function CalendarPage() {
   );
 
   // Team-member id is the normalized owner key ("ak", "austin",
-  // …) — NOT the user.id cuid. Both this list and event.ownerId run
+  // …) - NOT the user.id cuid. Both this list and event.ownerId run
   // through the same helper so the left-rail toggle and the event
   // filter agree on what "Austin" means.
   const teamMembers: CalendarTeamMember[] = memberships.map((m) => ({
@@ -165,7 +174,7 @@ export default async function CalendarPage() {
 
   // Merge rows that share googleEventId across calendars (e.g. a
   // meeting that lives on both Andrew's and Austin's calendars).
-  // Keep the row whose ownerKey is self if present — that's the copy
+  // Keep the row whose ownerKey is self if present - that's the copy
   // Andrew can actually patch in Google. Other rows in the group
   // just contribute their ownerKey so the avatar stack + both
   // team-toggles know to claim the merged event.
@@ -206,7 +215,7 @@ export default async function CalendarPage() {
           .filter((s) => s.length > 0)
       : undefined;
     // Sort keys deterministically so the avatar stack is stable
-    // across renders. Self first, then alpha — matches how the rail
+    // across renders. Self first, then alpha - matches how the rail
     // lists members.
     const ownerKeys = Array.from(keys).sort((a, b) => {
       if (selfKey) {
@@ -215,7 +224,7 @@ export default async function CalendarPage() {
       }
       return a.localeCompare(b);
     });
-    // Check every row in the dedup group — a reminder might be linked
+    // Check every row in the dedup group - a reminder might be linked
     // to either Andrew's copy or Austin's copy of the same event.
     const reminderEnabled = groupRows.some((r) => eventsWithReminders.has(r.id));
     // Recruiter-chosen type wins over the title-based heuristic. The
@@ -246,6 +255,22 @@ export default async function CalendarPage() {
     };
   });
 
+  // Standalone reminders rendered on the grid as reminder-type pseudo-
+  // events. A 30-min visual block keeps the title readable instead of a
+  // hairline sliver. aceReminderId marks them so a click opens the
+  // reminders panel editor rather than the Google event drawer.
+  const reminderEvents: CalendarEvent[] = reminderRows.map((r) => ({
+    id: `reminder-${r.id}`,
+    title: r.title,
+    startTime: r.reminderAt,
+    endTime: new Date(r.reminderAt.getTime() + 30 * 60 * 1000),
+    allDay: false,
+    type: "reminder",
+    ownerKeys: [],
+    aceReminderId: r.id,
+  }));
+  const allEvents = [...events, ...reminderEvents];
+
   const latestSyncedAt = rows.reduce<Date | null>((acc, row) => {
     if (!acc || row.syncedAt > acc) return row.syncedAt;
     return acc;
@@ -256,20 +281,24 @@ export default async function CalendarPage() {
   // client re-derives it on its own polling tick if needed. `urgent`
   // is true for anything due within the next 30 minutes so the panel
   // can tint it amber.
-  const reminders: CalendarReminder[] = reminderRows.map((r) => ({
-    id: r.id,
-    title: r.title,
-    reminderAt: r.reminderAt,
-    when: formatRelative(r.reminderAt, now),
-    abs: formatAbsolute(r.reminderAt),
-    source: "Ace",
-    urgent: r.reminderAt.getTime() - now.getTime() <= 30 * 60 * 1000,
-  }));
+  const reminders: CalendarReminder[] = reminderRows
+    .filter((r) => r.reminderAt.getTime() >= now.getTime())
+    .slice(0, 10)
+    .map((r) => ({
+      id: r.id,
+      title: r.title,
+      reminderAt: r.reminderAt,
+      when: formatRelative(r.reminderAt, now),
+      abs: formatAbsolute(r.reminderAt),
+      source: "Ace",
+      urgent: r.reminderAt.getTime() - now.getTime() <= 30 * 60 * 1000,
+      notifyLeadsMin: r.notifyLeadsMin,
+    }));
 
   return (
     <CalendarView
       initialDate={now}
-      events={events}
+      events={allEvents}
       latestSyncedAt={latestSyncedAt}
       teamMembers={teamMembers}
       reminders={reminders}

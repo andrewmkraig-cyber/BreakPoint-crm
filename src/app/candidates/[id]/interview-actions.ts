@@ -1105,7 +1105,7 @@ export async function upsertInterviewReminder(interviewId: string): Promise<void
     if (existing) {
       await prisma.aceReminder.update({
         where: { id: existing.id },
-        data: { title, reminderAt },
+        data: { title, reminderAt, notifyLeadsMin: [0], notifiedLeadsMin: [] },
       });
     } else {
       await prisma.aceReminder.create({
@@ -1115,6 +1115,8 @@ export async function upsertInterviewReminder(interviewId: string): Promise<void
           title,
           reminderAt,
           interviewId,
+          // reminderAt is already the exact fire time, so no lead.
+          notifyLeadsMin: [0],
         },
       });
     }

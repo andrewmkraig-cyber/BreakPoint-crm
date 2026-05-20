@@ -29,7 +29,11 @@ import {
   getStartOfMonth,
 } from "@/lib/calendar/week";
 
-import { createReminder, dismissReminder as dismissReminderAction } from "./reminder-actions";
+import {
+  createReminder,
+  deleteReminder as deleteReminderAction,
+  updateReminder as updateReminderAction,
+} from "./reminder-actions";
 
 // Persist the recruiter's "show / hide" choices for each teammate
 // across navigation. Without this, hiddenMembers reset to its
@@ -52,14 +56,14 @@ function readHiddenMembersFromStorage(
       return new Set(parsed);
     }
   } catch {
-    // Malformed JSON — fall through to the default.
+    // Malformed JSON - fall through to the default.
   }
   return defaultHidden;
 }
 
 // Calendar surface owner. Holds view / scope / drawer / toast state and
 // passes the right slices to each child. `initialDate` comes from the
-// page server component so SSR and CSR agree on "today" — without that
+// page server component so SSR and CSR agree on "today" - without that
 // hand-off, useState(() => new Date()) would resolve at different
 // instants on the two sides and risk hydration mismatches.
 
@@ -82,7 +86,7 @@ export function CalendarView({
   const [view, setView] = useState<CalendarView>("week");
   // hiddenMembers is the single source of truth for which member's
   // events are showing. The top "My Calendar / Team" tabs and the
-  // left-rail checkboxes both mutate this same Set — clicking either
+  // left-rail checkboxes both mutate this same Set - clicking either
   // surface has a visible effect every time. Default (no stored
   // preference yet): hide everyone who isn't self, which makes the
   // initial page load read as "My Calendar" without needing a
@@ -103,7 +107,7 @@ export function CalendarView({
   // Master-tab state is derived, not stored. "me" only when every
   // non-self member is hidden AND self is visible; "team" only when
   // no one is hidden. Any in-between rail configuration is a "mixed"
-  // state where neither master tab claims to be active — the strip
+  // state where neither master tab claims to be active - the strip
   // renders both tabs as inactive so the UI never lies about which
   // mode you're in.
   const selfKey = teamMembers.find((m) => m.self)?.id ?? null;
@@ -151,7 +155,7 @@ export function CalendarView({
     [currentDate],
   );
 
-  // /calendar's local drawer is edit-only now — create flows go
+  // /calendar's local drawer is edit-only now - create flows go
   // through the global drawer mounted in providers so the FAB can
   // pop the same form as an overlay on any other page.
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -160,7 +164,7 @@ export function CalendarView({
 
   // Upcoming-reminders list shown in the right-rail panel. Past-due
   // toasts are owned by the global ReminderToastProvider mounted in the
-  // root layout — keeping them there means a reminder fires even when
+  // root layout - keeping them there means a reminder fires even when
   // the recruiter has navigated away from /calendar.
   const [reminders, setReminders] = useState(initialReminders);
 
@@ -172,13 +176,13 @@ export function CalendarView({
   }, [initialReminders]);
 
   // teamMode drives owner-avatar visibility on event tiles. We show
-  // avatars whenever the rail isn't strictly in "Me" mode — so a
+  // avatars whenever the rail isn't strictly in "Me" mode - so a
   // mixed-state rail (Andrew + half the team) still surfaces who owns
   // each event.
   const teamMode = scope !== "me";
 
-  // Create entries — subheader "+ New event" button, grid slot
-  // clicks — open the global drawer. The TopBar dispatch and the
+  // Create entries - subheader "+ New event" button, grid slot
+  // clicks - open the global drawer. The TopBar dispatch and the
   // ComposeFAB "New Event/Reminder" entries don't pass through here
   // anymore; GlobalCalendarDrawer in providers owns those listeners
   // so they fire from any page including /calendar.
@@ -189,7 +193,17 @@ export function CalendarView({
   ) => {
     calendarDrawer.open({ prefill: { date, hour, minute } });
   };
+  // A reminder pseudo-event carries aceReminderId. Clicking one opens
+  // the reminders panel editor for that reminder instead of the Google
+  // event drawer (which only knows how to edit real CalendarEvents).
+  const [editingReminderId, setEditingReminderId] = useState<string | null>(
+    null,
+  );
   const openEdit = (ev: CalendarEvent) => {
+    if (ev.aceReminderId) {
+      setEditingReminderId(ev.aceReminderId);
+      return;
+    }
     setSelectedEvent(ev);
     setDrawerOpen(true);
   };
@@ -203,15 +217,17 @@ export function CalendarView({
       return next;
     });
 
-  // Panel dismiss optimistically drops the row, persists the dismiss
-  // server-side, then refreshes so any other surface reading AceReminder
-  // (including the global toast provider's next poll) sees the change.
-  const persistDismiss = useCallback(
+  // Delete optimistically drops the row, removes it server-side, then
+  // refreshes so every surface reading AceReminder (grid pseudo-events,
+  // dashboard widget, toast poll) drops it too.
+  const handleDeleteReminder = useCallback(
     async (id: string) => {
+      setReminders((prev) => prev.filter((r) => r.id !== id));
+      setEditingReminderId((cur) => (cur === id ? null : cur));
       try {
-        await dismissReminderAction(id);
+        await deleteReminderAction(id);
       } catch (err) {
-        console.error("dismissReminder failed", err);
+        console.error("deleteReminder failed", err);
       } finally {
         router.refresh();
       }
@@ -219,17 +235,10 @@ export function CalendarView({
     [router],
   );
 
-  const dismissReminder = (id: string) => {
-    setReminders((prev) => prev.filter((r) => r.id !== id));
-    void persistDismiss(id);
-  };
-  const snoozeReminder = (id: string) =>
-    setReminders((prev) => prev.filter((r) => r.id !== id));
-
   const handleCreateReminder = useCallback(
-    async (title: string, reminderAt: Date) => {
+    async (title: string, reminderAt: Date, notifyLeadsMin: number[]) => {
       try {
-        await createReminder(title, reminderAt.toISOString());
+        await createReminder(title, reminderAt.toISOString(), notifyLeadsMin);
         router.refresh();
       } catch (err) {
         console.error("createReminder failed", err);
@@ -239,7 +248,31 @@ export function CalendarView({
     [router],
   );
 
-  // Events flow straight to the grid views — they all filter on
+  const handleUpdateReminder = useCallback(
+    async (
+      id: string,
+      title: string,
+      reminderAt: Date,
+      notifyLeadsMin: number[],
+    ) => {
+      try {
+        await updateReminderAction(
+          id,
+          title,
+          reminderAt.toISOString(),
+          notifyLeadsMin,
+        );
+        setEditingReminderId(null);
+        router.refresh();
+      } catch (err) {
+        console.error("updateReminder failed", err);
+        throw err;
+      }
+    },
+    [router],
+  );
+
+  // Events flow straight to the grid views - they all filter on
   // hiddenMembers themselves, so no parent-level scope filter is
   // needed. The grids hide an event only when EVERY owner key is
   // hidden, so an event Andrew + Austin both own stays visible until
@@ -336,9 +369,11 @@ export function CalendarView({
         <aside className="hidden w-[280px] shrink-0 lg:block">
           <CalendarRemindersPanel
             reminders={reminders}
-            onDismiss={dismissReminder}
-            onSnooze={snoozeReminder}
+            editingId={editingReminderId}
+            onEdit={setEditingReminderId}
             onCreate={handleCreateReminder}
+            onUpdate={handleUpdateReminder}
+            onDelete={handleDeleteReminder}
           />
         </aside>
       </div>
@@ -384,7 +419,7 @@ function CalSubheader({
 }: {
   view: CalendarView;
   // Null when the rail is in a mixed state (some teammates hidden,
-  // some shown) — neither master tab should appear active in that case.
+  // some shown) - neither master tab should appear active in that case.
   scope: CalendarScope | null;
   currentDate: Date;
   currentWeekStart: Date;
@@ -471,7 +506,7 @@ function CalSubheader({
         </button>
         {/* Passing an empty string here when scope is null means
             neither tab id matches, so both render in the inactive
-            style — exactly the "mixed rail" appearance we want. */}
+            style - exactly the "mixed rail" appearance we want. */}
         <TabStrip<CalendarScope>
           ariaLabel="Calendar scope"
           activeId={(scope ?? "") as CalendarScope}
