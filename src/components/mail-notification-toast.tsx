@@ -1,10 +1,8 @@
 "use client";
 
-import { Mail as MailIcon, Eye } from "lucide-react";
+import { Mail as MailIcon, Eye, X } from "lucide-react";
 import { toast } from "sonner";
 import { useFloatingThread } from "@/lib/floating-thread-context";
-import { getStoredToastTheme, toastBoxShadow } from "@/lib/toast-theme";
-import { ActionChip, DismissBtn } from "@/components/_toast-chrome";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import type { UnreadInboxThread } from "@/lib/mail-context";
 
@@ -113,66 +111,45 @@ function NewMailToast({
     }
   }
 
-  const theme = getStoredToastTheme();
   return (
-    <div
-      style={{
-        position: "relative",
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        minWidth: "360px",
-        maxWidth: "420px",
-        padding: "12px 14px",
-        borderRadius: "14px",
-        border: `1px solid ${theme.border}`,
-        background: theme.bg,
-        color: theme.fg,
-        boxShadow: toastBoxShadow(),
-        overflow: "hidden",
-      }}
-    >
-      {theme.leftStrip && (
-        <span
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            inset: "0 auto 0 0",
-            width: "3px",
-            background: theme.accent,
-          }}
-        />
-      )}
-      <div
-        style={{
-          flexShrink: 0,
-          width: 36,
-          height: 36,
-          borderRadius: 10,
-          background: theme.iconBg,
-          color: theme.iconFg,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
+    <div className="relative flex w-[470px] max-w-[94vw] items-center gap-4 rounded-2xl border border-court-brand/70 bg-court-brand-tint px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
+      {/* Left icon: white rounded square, matching the SMS toast, with
+          the Mail glyph in place of the "text" label box. */}
+      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-court-surface shadow-sm">
+        <MailIcon className="h-6 w-6 text-court-brand-dark" />
+      </div>
+
+      {/* Center: sender + subject preview. */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="truncate text-[17px] font-semibold leading-tight tracking-[-0.02em] text-court-fg">
+          {thread.fromName || thread.fromEmail || "(unknown sender)"}
+        </div>
+        <div className="mt-0.5 truncate text-[14px] font-medium text-court-fg-muted">
+          {truncate(thread.subject || "(no subject)", 80)}
+        </div>
+      </div>
+
+      {/* Right action: View opens the floating thread. */}
+      <div className="flex shrink-0 items-center gap-2 self-end pr-8">
+        <button
+          type="button"
+          onClick={onView}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+        >
+          <Eye className="h-3.5 w-3.5" />
+          View
+        </button>
+      </div>
+
+      {/* X close: absolute top-right, white card + gray border. */}
+      <button
+        type="button"
+        onClick={() => toast.dismiss(toastId)}
+        aria-label="Dismiss"
+        className="absolute right-3 top-3 inline-flex h-6 w-6 items-center justify-center rounded-xl border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:text-court-fg"
       >
-        <MailIcon size={17} />
-      </div>
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-          <span style={{ fontSize: 13.5, fontWeight: 600, color: theme.fg, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {thread.fromName || thread.fromEmail || "(unknown sender)"}
-          </span>
-          <span style={{ fontSize: 11, color: theme.fgMuted, flexShrink: 0 }}>· Email</span>
-        </div>
-        <div style={{ fontSize: 12.5, color: theme.fgMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
-          {truncate(thread.subject || "(no subject)", 60)}
-        </div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: 12 }}>
-        <ActionChip theme={theme} onClick={onView} label="View" icon={<Eye size={12} />} />
-        <DismissBtn theme={theme} onClick={() => toast.dismiss(toastId)} />
-      </div>
+        <X className="h-3 w-3" />
+      </button>
     </div>
   );
 }

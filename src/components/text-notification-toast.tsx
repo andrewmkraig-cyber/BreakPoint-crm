@@ -4,8 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MessageSquare, Phone, Reply, Eye, Send, Loader2, X, CheckCheck } from "lucide-react";
 import { toast } from "sonner";
-import { getStoredTextToastTheme, toastBoxShadow } from "@/lib/toast-theme";
-import { ActionChip, DismissBtn } from "@/components/_toast-chrome";
 import { Button } from "@/components/ui/button";
 import { markThreadRead } from "@/app/phone/actions";
 
@@ -173,10 +171,10 @@ function QuoToast(props: QuoToastProps) {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
-  const subtitle =
+  const preview =
     props.mode === "text"
-      ? truncate(props.event.body || "(no message)", 60).toUpperCase()
-      : truncate(callSubtitle(props.event), 60);
+      ? truncate(props.event.body || "(no message)", 80)
+      : callSubtitle(props.event);
 
   function onView() {
     // Text toast: View hands off to the centered popup (a global host
@@ -225,67 +223,35 @@ function QuoToast(props: QuoToastProps) {
     toast.dismiss(props.toastId);
   }
 
-  const theme = getStoredTextToastTheme();
-  const Icon = props.mode === "text" ? MessageSquare : Phone;
   return (
     <div
-      style={{
-        position: "relative",
-        display: "flex",
-        alignItems: replying ? "flex-start" : "center",
-        gap: "12px",
-        minWidth: "360px",
-        maxWidth: "460px",
-        padding: "12px 14px",
-        borderRadius: "14px",
-        border: `1px solid ${theme.border}`,
-        background: theme.bg,
-        color: theme.fg,
-        boxShadow: toastBoxShadow(),
-        overflow: "hidden",
-      }}
+      className={
+        "relative flex w-[470px] max-w-[94vw] gap-4 rounded-2xl border border-court-brand/70 bg-court-brand-tint px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.08)] " +
+        (replying ? "items-start" : "items-center")
+      }
     >
-      {theme.leftStrip && (
-        <span
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            inset: "0 auto 0 0",
-            width: "3px",
-            background: theme.accent,
-          }}
-        />
-      )}
-      <div
-        style={{
-          flexShrink: 0,
-          width: 36,
-          height: 36,
-          borderRadius: 10,
-          background: theme.iconBg,
-          color: theme.iconFg,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Icon size={17} />
+      {/* Left icon: white rounded square. Text mode shows the lowercase
+          "text" label box (green border + green text); call mode keeps
+          the phone glyph inside the same square. */}
+      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-court-surface shadow-sm">
+        {props.mode === "text" ? (
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl border-[2.5px] border-court-brand text-[11px] font-bold lowercase tracking-tight text-court-brand-dark">
+            text
+          </div>
+        ) : (
+          <Phone className="h-6 w-6 text-court-brand-dark" />
+        )}
       </div>
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-          {/* Sender name OR (for unmatched numbers) the full phone
-              number — never truncated. wordBreak lets an unusually long
-              value wrap to a second line instead of clipping; a normal
-              formatted number stays on one line within the wider card. */}
-          <span style={{ fontSize: 13.5, fontWeight: 600, color: theme.fg, wordBreak: "break-word" }}>
-            {candidateName}
-          </span>
-          <span style={{ fontSize: 11, color: theme.fgMuted, flexShrink: 0 }}>
-            · {props.mode === "text" ? "Text" : "Call"}
-          </span>
+
+      {/* Center: sender (name, or the full number for unmatched senders,
+          never truncated) with the preview below, or the inline quick-
+          reply input once Reply is clicked. */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="text-[17px] font-semibold leading-tight tracking-[-0.02em] text-court-fg">
+          {candidateName}
         </div>
         {replying ? (
-          <div style={{ marginTop: 6 }}>
+          <div className="mt-1.5">
             <input
               autoFocus
               type="text"
@@ -301,58 +267,79 @@ function QuoToast(props: QuoToastProps) {
               }}
               placeholder="Quick reply…"
               disabled={sending}
-              style={{
-                width: "100%",
-                fontSize: 12.5,
-                padding: "6px 8px",
-                borderRadius: 6,
-                border: `1px solid ${theme.actionBorder}`,
-                background: theme.actionBg,
-                color: theme.actionFg,
-                outline: "none",
-              }}
+              className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-[13px] text-court-fg outline-none placeholder:text-court-fg-muted/60 focus:border-court-brand"
             />
             {sendError && (
-              <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>{sendError}</div>
+              <div className="mt-1 text-[12px] text-red-600">{sendError}</div>
             )}
           </div>
         ) : (
-          <div style={{ fontSize: 12.5, color: theme.fgMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
-            {subtitle}
+          <div className="mt-0.5 truncate text-[14px] font-medium text-court-fg-muted">
+            {preview}
           </div>
         )}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: 12 }}>
+
+      {/* Right actions. Default: Reply (text only) + View. Replying:
+          Send + Cancel. Reply / View / Cancel share the white card +
+          gray border + ink text look; Send is the green primary. */}
+      <div className="flex shrink-0 items-center gap-2 self-end pr-8">
         {replying ? (
           <>
-            <ActionChip
-              theme={theme}
+            <button
+              type="button"
               onClick={onSendReply}
-              label="Send"
-              icon={sending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-              primary
-            />
-            <DismissBtn theme={theme} onClick={() => setReplying(false)} />
+              disabled={sending || !body.trim()}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-court-brand bg-court-brand px-3 py-1.5 text-[13px] font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:opacity-60"
+            >
+              {sending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Send className="h-3.5 w-3.5" />
+              )}
+              Send
+            </button>
+            <button
+              type="button"
+              onClick={() => setReplying(false)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+            >
+              Cancel
+            </button>
           </>
         ) : (
           <>
             {props.mode === "text" && (
-              // Reply + View share the Submit-button look (light green
-              // tint bg, green border, green text) via `accent`, so the
-              // toast's action row matches outlined actions elsewhere.
-              <ActionChip
-                theme={theme}
+              <button
+                type="button"
                 onClick={onStartReply}
-                label="Reply"
-                icon={<Reply size={12} />}
-                accent
-              />
+                className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+              >
+                <Reply className="h-3.5 w-3.5" />
+                Reply
+              </button>
             )}
-            <ActionChip theme={theme} onClick={onView} label="View" icon={<Eye size={12} />} accent />
-            <DismissBtn theme={theme} onClick={() => toast.dismiss(props.toastId)} />
+            <button
+              type="button"
+              onClick={onView}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-court-border bg-court-surface px-3 py-1.5 text-[13px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+            >
+              <Eye className="h-3.5 w-3.5" />
+              View
+            </button>
           </>
         )}
       </div>
+
+      {/* X close: absolute top-right, white card + gray border. */}
+      <button
+        type="button"
+        onClick={() => toast.dismiss(props.toastId)}
+        aria-label="Dismiss"
+        className="absolute right-3 top-3 inline-flex h-6 w-6 items-center justify-center rounded-xl border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:text-court-fg"
+      >
+        <X className="h-3 w-3" />
+      </button>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, Mail, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { setAutoSendCandidateConfirmation, setMyEmailSignature, setMyRecruiterPhone } from "@/app/settings/preferences-actions";
@@ -336,10 +336,11 @@ function NotifStyleCard({
             justifyContent: "center",
           }}
         >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="5" width="20" height="14" rx="2.5" />
-            <path d="m3 7 9 6 9-6" />
-          </svg>
+          {kind === "email" ? (
+            <Mail size={11} strokeWidth={2.4} />
+          ) : (
+            <MessageSquare size={11} strokeWidth={2.4} />
+          )}
         </span>
         <span style={{ minWidth: 0, flex: 1 }}>
           <span style={{ display: "block", fontSize: 9.5, fontWeight: 600, color: spec.fg, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
