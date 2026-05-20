@@ -265,7 +265,7 @@ export function NewsFeed() {
                     aria-busy={tabLoading}
                     onClick={() => setActive(t.key)}
                     className={
-                      "inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[13px] font-medium transition-colors " +
+                      "inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-[12px] font-medium transition-colors " +
                       (selected
                         ? "bg-court-accent-tint text-court-accent-dark"
                         : "text-court-fg-muted hover:bg-court-surface-subtle")
