@@ -235,7 +235,7 @@ function QuoToast(props: QuoToastProps) {
         alignItems: replying ? "flex-start" : "center",
         gap: "12px",
         minWidth: "360px",
-        maxWidth: "420px",
+        maxWidth: "460px",
         padding: "12px 14px",
         borderRadius: "14px",
         border: `1px solid ${theme.border}`,
@@ -273,7 +273,11 @@ function QuoToast(props: QuoToastProps) {
       </div>
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-          <span style={{ fontSize: 13.5, fontWeight: 600, color: theme.fg, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {/* Sender name OR (for unmatched numbers) the full phone
+              number — never truncated. wordBreak lets an unusually long
+              value wrap to a second line instead of clipping; a normal
+              formatted number stays on one line within the wider card. */}
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: theme.fg, wordBreak: "break-word" }}>
             {candidateName}
           </span>
           <span style={{ fontSize: 11, color: theme.fgMuted, flexShrink: 0 }}>
@@ -333,12 +337,14 @@ function QuoToast(props: QuoToastProps) {
         ) : (
           <>
             {props.mode === "text" && (
+              // No `primary` — Reply renders as the same outlined chip
+              // as View (transparent/neutral bg, themed border + text),
+              // matching its visual weight exactly.
               <ActionChip
                 theme={theme}
                 onClick={onStartReply}
                 label="Reply"
                 icon={<Reply size={12} />}
-                primary
               />
             )}
             <ActionChip theme={theme} onClick={onView} label="View" icon={<Eye size={12} />} />
