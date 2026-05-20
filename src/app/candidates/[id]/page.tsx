@@ -674,6 +674,15 @@ export default async function CandidateProfilePage({
                 tokens={highlightTokens}
               />
             )}
+            {/* Delete sits at the very bottom of the left column, Profile
+                tab only - same component and placement as the full
+                profile, restored to the split-view embed branch. */}
+            {tab === "profile" && (
+              <DeleteCandidateButton
+                candidateId={candidate.id}
+                candidateName={name}
+              />
+            )}
           </div>
           {/* Right rail. CompactOverview as a single tight summary box,
               then skills, then the call/email/text activity card. The
