@@ -310,7 +310,7 @@ function SubmitModal(props: {
 
   useEffect(() => {
     if (selectedJob && !subject) {
-      setSubject(`${props.candidateName} — ${selectedJob.jobTitle}`);
+      setSubject(`${props.candidateName} - ${selectedJob.jobTitle}`);
     }
   }, [selectedJob, props.candidateName, subject]);
 
@@ -374,7 +374,33 @@ function SubmitModal(props: {
   }
 
   return (
-    <ModalShell title="Submit to Job" onClose={props.onClose}>
+    <ModalShell
+      title="Submit to Job"
+      onClose={props.onClose}
+      footer={
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={props.onClose}
+            className="rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted hover:text-court-fg"
+          >
+            Cancel
+          </button>
+          {/* Enabled as soon as To + Subject are filled. The recruiter can
+              type or paste their own body and send without ever clicking
+              Generate with Claude; an empty body no longer blocks send. */}
+          <Button
+            type="button"
+            size="sm"
+            onClick={onSend}
+            disabled={isSending || !subject.trim() || !to.trim()}
+          >
+            {isSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileSignature className="h-3 w-3" />}
+            Send Submittal
+          </Button>
+        </div>
+      }
+    >
       <JobPicker openJobs={props.openJobs} value={jobRfId} onChange={setJobRfId} />
       <button
         type="button"
@@ -433,42 +459,43 @@ function SubmitModal(props: {
           className="mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 font-mono text-xs leading-relaxed text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         />
       </label>
-
-      <div className="flex justify-end gap-2 pt-2">
-        <button
-          type="button"
-          onClick={props.onClose}
-          className="rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted hover:text-court-fg"
-        >
-          Cancel
-        </button>
-        <Button
-          type="button"
-          size="sm"
-          onClick={onSend}
-          disabled={isSending || !jobRfId || !body.trim() || !subject.trim() || !to.trim()}
-        >
-          {isSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileSignature className="h-3 w-3" />}
-          Send Submittal
-        </Button>
-      </div>
     </ModalShell>
   );
 }
 
 // ---- Shared UI ----
 
-function ModalShell({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+function ModalShell({
+  title,
+  children,
+  footer,
+  onClose,
+}: {
+  title: string;
+  children: React.ReactNode;
+  // Optional pinned footer. When provided, it stays fixed at the bottom of
+  // the panel while the content area between header and footer scrolls -
+  // so a long generated submittal can never push Send Submittal off
+  // screen. Callers without a footer keep their buttons inside children.
+  footer?: React.ReactNode;
+  onClose: () => void;
+}) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
-      <div className="w-full max-w-2xl space-y-3 rounded-xl border border-court-border bg-court-surface p-5 shadow-xl">
-        <div className="flex items-center justify-between">
+      {/* Capped to the viewport (backdrop has 1rem padding each side) and
+          laid out as header / scroll area / footer so the footer never
+          scrolls out of reach. */}
+      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-court-border px-5 py-3">
           <h3 className="font-serif text-lg font-semibold text-court-fg">{title}</h3>
           <button type="button" onClick={onClose} className="text-court-fg-muted hover:text-court-fg">
             <X className="h-4 w-4" />
           </button>
         </div>
-        {children}
+        <div className="flex-1 space-y-3 overflow-y-auto p-5">{children}</div>
+        {footer && (
+          <div className="shrink-0 border-t border-court-border px-5 py-3">{footer}</div>
+        )}
       </div>
     </div>
   );
