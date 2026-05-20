@@ -4,7 +4,7 @@ import { MICROSOFT_STATE_COOKIE } from "@/app/api/auth/microsoft/route";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 
-// Microsoft Graph OAuth — step 2. Microsoft redirects here after the
+// Microsoft Graph OAuth - step 2. Microsoft redirects here after the
 // recruiter approves the scopes. We verify the state cookie (CSRF),
 // exchange the authorization code for an access + refresh token pair,
 // upsert the token row into Neon scoped to the current org, and bounce
@@ -30,9 +30,13 @@ type TokenResponse = {
   refresh_token?: string;
   expires_in: number;
   id_token?: string;
+  // Space-delimited list of scopes Microsoft actually granted. May
+  // differ from what we requested when the Azure app registration is
+  // missing admin consent for a permission.
+  scope?: string;
 };
 
-// id_token is a JWT — we only need the email claim, so a lightweight
+// id_token is a JWT - we only need the email claim, so a lightweight
 // base64url decode of the payload is sufficient. No signature
 // verification needed: the token came directly from Microsoft's HTTPS
 // token endpoint over the back-channel exchange we just made.
@@ -98,10 +102,18 @@ export async function GET(req: NextRequest) {
     return settingsRedirect(req, "token_exchange_failed");
   }
 
+  // TEMPORARY (safe) diagnostic: logs ONLY the granted scope string so a
+  // reconnect can confirm OnlineMeetings.ReadWrite came back. Never logs
+  // the access or refresh token. Remove once the scope is verified.
+  console.log(
+    "[microsoft-callback] granted scopes:",
+    tokens.scope ?? "(no scope field returned)",
+  );
+
   if (!tokens.refresh_token) {
     // offline_access scope was requested, so refresh_token should be
     // present. If not, we can't keep the connection alive past the
-    // initial hour — fail loudly rather than save a token that will
+    // initial hour - fail loudly rather than save a token that will
     // silently rot.
     return settingsRedirect(req, "no_refresh_token");
   }
