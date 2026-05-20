@@ -251,7 +251,7 @@ export function NewsFeed() {
             <div
               role="tablist"
               aria-label="Briefing topics"
-              className="inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-1 shadow-sm"
+              className="inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-0.5 shadow-sm"
             >
               {TABS.map((t) => {
                 const selected = t.key === active;
@@ -265,7 +265,7 @@ export function NewsFeed() {
                     aria-busy={tabLoading}
                     onClick={() => setActive(t.key)}
                     className={
-                      "inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-[12px] font-medium transition-colors " +
+                      "inline-flex items-center gap-0.5 whitespace-nowrap rounded-md px-1.5 py-1 text-[12px] font-medium transition-colors " +
                       (selected
                         ? "bg-court-accent-tint text-court-accent-dark"
                         : "text-court-fg-muted hover:bg-court-surface-subtle")
