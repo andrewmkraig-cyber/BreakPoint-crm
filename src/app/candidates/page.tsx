@@ -46,7 +46,6 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { Button, ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
-import { TabStrip } from "@/components/ui/tab-strip";
 import { cn } from "@/lib/utils";
 import { flattenBooleanQuery } from "@/lib/search/boolean-query";
 
@@ -684,7 +683,6 @@ export default function CandidatesPage() {
   // permanent left rail and ignores this flag.
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [sidebarFilter, setSidebarFilter] = useState("");
-  const [sidebarTab, setSidebarTab] = useState<"all" | "submitted">("all");
   // Column-sort state. Click cycles: idle → desc → asc → cleared. Null
   // means "follow the API's default ordering" (Recent activity).
   const [sort, setSort] = useState<SortState>(null);
@@ -1470,7 +1468,7 @@ export default function CandidatesPage() {
                 whether or not the candidate-search rail is collapsed. */}
             <div className="border-b border-b-court-border/60 border-t border-t-court-border/30 px-3.5 py-3">
               <h3 className="mb-2 text-sm font-bold text-court-fg">
-                Search results
+                Search results: {sidebarRows.length}
               </h3>
               <div className="relative">
                 <Search
@@ -1488,23 +1486,7 @@ export default function CandidatesPage() {
               </div>
             </div>
 
-            {/* Tabs row. Submitted is presentation-only until the row
-                payload exposes per-candidate stage data — it shows the
-                count but doesn't filter the list. */}
-            <div className="border-b border-court-border/60 bg-court-surface px-3 py-2">
-              <TabStrip<"all" | "submitted">
-                ariaLabel="Candidate scope"
-                activeId={sidebarTab}
-                onChange={setSidebarTab}
-                fullWidth
-                items={[
-                  { id: "all", label: "All", count: sidebarRows.length },
-                  { id: "submitted", label: "Submitted", count: 0 },
-                ]}
-              />
-            </div>
-
-            {/* Scrollable list — sticky group headers, two-line rows */}
+            {/* Scrollable list — flat, two-line rows */}
             <div className="flex-1 overflow-y-auto">
               {(
                 [
@@ -1517,9 +1499,6 @@ export default function CandidatesPage() {
                 if (list.length === 0) return null;
                 return (
                   <div key={group.key}>
-                    <div className="sticky top-0 z-10 border-b border-court-border/60 bg-court-surface-subtle px-3.5 pb-1.5 pt-2.5 text-[10px] font-extrabold uppercase tracking-[0.14em] text-court-fg-muted/80">
-                      {group.label}
-                    </div>
                     {list.map((c) => {
                       const active = c.id === selectedId;
                       const subtitle = joinDot([c.title, c.employer, c.location]);
