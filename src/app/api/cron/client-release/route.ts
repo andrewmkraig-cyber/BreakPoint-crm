@@ -14,6 +14,12 @@ import { logActivity } from "@/lib/activity";
 // Client activity is logged under either the Client cuid (Ace-native)
 // or the stringified legacyRfId (back-compat), so both forms are
 // considered when finding the most-recent entry.
+//
+// Grace floor: a client is only eligible once it is at least
+// RELEASE_AFTER_DAYS old (by Client.createdAt). Without this, a freshly
+// imported or newly created client with no logged activity would be
+// released on the very first run. In effect the inactivity clock only
+// starts once the client has existed for the full window.
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -47,10 +53,17 @@ export async function GET(req: NextRequest) {
 
   const cutoff = new Date(Date.now() - RELEASE_AFTER_DAYS * 24 * 60 * 60 * 1000);
 
-  // Every owned client in the tenant (Rule 8: org-scoped).
+  // Every owned client in the tenant (Rule 8: org-scoped) that is also
+  // past the grace floor: createdAt older than the cutoff means the
+  // client has existed for at least RELEASE_AFTER_DAYS, so clients
+  // younger than the window are excluded here and never auto-released.
   const owned = await prisma.client.findMany({
-    where: { organizationId, ownerId: { not: null } },
-    select: { id: true, legacyRfId: true, name: true, ownerId: true },
+    where: {
+      organizationId,
+      ownerId: { not: null },
+      createdAt: { lt: cutoff },
+    },
+    select: { id: true, legacyRfId: true, name: true, ownerId: true, createdAt: true },
   });
 
   if (owned.length === 0) {
