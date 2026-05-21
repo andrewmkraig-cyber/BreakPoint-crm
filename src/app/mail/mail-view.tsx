@@ -2207,7 +2207,7 @@ export function ThreadDetail({
                 ) : (
                   <FolderInput className="h-3 w-3" />
                 )}
-                Move To
+                Move
               </>
             }
           />
