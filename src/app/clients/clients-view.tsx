@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LayoutGrid, List, Search } from "lucide-react";
+import { ChevronDown, LayoutGrid, List, Search } from "lucide-react";
 import { ClientLogo } from "@/components/clients/client-logo";
 import { PipelinePill } from "@/components/clients/pipeline-pill";
 import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
@@ -42,6 +42,7 @@ export type ClientCard = {
   // Per-user ownership. ownedByMe drives the "Mine" filter; ownerName
   // labels the "Owned by" badge shown in the "All clients" view.
   ownedByMe: boolean;
+  ownerId: string | null;
   ownerName: string | null;
 };
 
@@ -109,33 +110,34 @@ function ShieldCheck() {
   );
 }
 
-function OwnerScopeToggle({
+type OwnerScope = "mine" | "theirs" | "all";
+
+// Soft-green native dropdown matching the active-tab styling (court-brand
+// outline + faint tint + brand text, no hard fill). "Theirs" only renders
+// when there is another user in the org to attribute clients to.
+function OwnerScopeSelect({
   scope,
   onChange,
+  otherName,
 }: {
-  scope: "mine" | "all";
-  onChange: (s: "mine" | "all") => void;
+  scope: OwnerScope;
+  onChange: (s: OwnerScope) => void;
+  otherName: string | null;
 }) {
+  const otherFirst = otherName?.trim().split(/\s+/)[0] ?? null;
   return (
-    <div className="inline-flex shrink-0 items-center rounded-full border border-court-border bg-court-surface p-0.5">
-      {([
-        { k: "mine" as const, label: "Mine" },
-        { k: "all" as const, label: "All clients" },
-      ]).map(({ k, label }) => (
-        <button
-          key={k}
-          type="button"
-          onClick={() => onChange(k)}
-          className={
-            "rounded-full px-3 py-1 text-xs font-medium transition " +
-            (scope === k
-              ? "bg-brand text-white"
-              : "text-court-fg-muted hover:text-court-fg")
-          }
-        >
-          {label}
-        </button>
-      ))}
+    <div className="relative shrink-0">
+      <select
+        value={scope}
+        onChange={(e) => onChange(e.target.value as OwnerScope)}
+        aria-label="Filter clients by owner"
+        className="h-10 appearance-none rounded-md border border-court-brand/40 bg-court-brand/5 pl-3 pr-9 text-sm font-medium text-court-brand transition hover:bg-court-brand/10 focus:border-court-brand focus:outline-none focus:ring-2 focus:ring-court-brand/20"
+      >
+        <option value="mine">My Clients</option>
+        {otherFirst && <option value="theirs">{otherFirst}&apos;s Clients</option>}
+        <option value="all">All</option>
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-court-brand" />
     </div>
   );
 }
@@ -303,6 +305,8 @@ export function ClientsView({
   initialView = "grid",
   verifiedCount = 0,
   error = null,
+  otherUserId = null,
+  otherUserName = null,
 }: {
   activeCards: ClientCard[];
   inactiveCards: ClientCard[];
@@ -310,6 +314,8 @@ export function ClientsView({
   initialView?: ViewKind;
   verifiedCount?: number;
   error?: string | null;
+  otherUserId?: string | null;
+  otherUserName?: string | null;
 }) {
   const [tab, setTab] = useState<"active" | "quiet" | "inactive">("active");
   const [query, setQuery] = useState("");
@@ -317,10 +323,14 @@ export function ClientsView({
   // Owner scope: default to the signed-in user's own clients. "All"
   // reveals everyone's (each non-owned card shows an "Owned by" badge),
   // which doubles as the conflict-check lookup.
-  const [ownerScope, setOwnerScope] = useState<"mine" | "all">("mine");
+  const [ownerScope, setOwnerScope] = useState<OwnerScope>("mine");
 
-  const byScope = (list: ClientCard[]) =>
-    ownerScope === "mine" ? list.filter((c) => c.ownedByMe) : list;
+  const byScope = (list: ClientCard[]) => {
+    if (ownerScope === "mine") return list.filter((c) => c.ownedByMe);
+    if (ownerScope === "theirs")
+      return list.filter((c) => !c.ownedByMe && c.ownerId === otherUserId);
+    return list;
+  };
   const visibleActive = byScope(activeCards);
   const visibleQuiet = byScope(quietCards);
   const visibleInactive = byScope(inactiveCards);
@@ -375,7 +385,7 @@ export function ClientsView({
           />
         </div>
 
-        <OwnerScopeToggle scope={ownerScope} onChange={setOwnerScope} />
+        <OwnerScopeSelect scope={ownerScope} onChange={setOwnerScope} otherName={otherUserName} />
         <ViewToggle view={view} onChange={setView} />
       </div>
 

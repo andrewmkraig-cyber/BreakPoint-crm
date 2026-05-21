@@ -25,6 +25,8 @@ export default async function ClientsPage({
 
   let all: ClientCard[] = [];
   let error: string | null = null;
+  let otherUserId: string | null = null;
+  let otherUserName: string | null = null;
 
   try {
     const [clients, candidates, org, currentUserId] = await Promise.all([
@@ -33,6 +35,17 @@ export default async function ClientsPage({
       getCurrentOrg(),
       getCurrentUserId(),
     ]);
+
+    // The "other" org member, for the "<Name>'s Clients" dropdown option.
+    // Internal two-person org, so the first member that isn't the signed-in
+    // user is the counterpart; null when there is no one else.
+    const members = await prisma.organizationMembership.findMany({
+      where: { organizationId: org.id },
+      select: { user: { select: { id: true, name: true } } },
+    });
+    const other = members.map((m) => m.user).find((u) => u.id !== currentUserId) ?? null;
+    otherUserId = other?.id ?? null;
+    otherUserName = other?.name ?? null;
     // Pipeline counts read from Neon Placement.stage (canonical post-
     // Phase-5), one groupBy across the whole tenant rather than walking
     // every candidate's RF jobs[] array. Filters out null clientId
@@ -153,6 +166,7 @@ export default async function ClientsPage({
         lastActivityAtIso: lastActivityAt?.toISOString() ?? null,
         daysSinceLastActivity,
         ownedByMe: c.ownerId != null && c.ownerId === currentUserId,
+        ownerId: c.ownerId,
         ownerName: c.ownerName,
       };
     });
@@ -202,6 +216,8 @@ export default async function ClientsPage({
       initialView={initialView}
       verifiedCount={verifiedCount}
       error={error}
+      otherUserId={otherUserId}
+      otherUserName={otherUserName}
     />
   );
 }
