@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-05-18 · Ace 54.0
+Last updated: 2026-05-20 · Ace 61.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -302,3 +302,15 @@ Full token coverage on every page — no holdouts. Token names follow the same `
 - **Resume always on the left**. The PDF anchor is fixed-position; pipeline tabs / overview / activity feed scroll independently on the right.
 - **Action row above the resume on the left**. Submit / Apply / Keep / Reject / Reapply sit above the resume, not above the tabs.
 - **Contextual content on the right**. Overview, applied jobs, activity, notes — everything that's not the resume or the action row.
+
+## Sign-in Surface (added Ace 61.0)
+- **Dark luxury login.** `/sign-in` is a dark recruiter-network screen, distinct from the in-app Court Mode surfaces: near-black canvas, a stippled world map with the Solon, OH HQ marker and connection arcs reaching out to the markets, a glassy auth card floating over a soft green glow, and a single pulsing brand-green status dot top-left.
+- **What it does NOT carry.** No top-bar stats strip (no "14 Markets / 1,247 Candidates / clock") and no "BreakPoint - Global Desk" eyebrow. Keep it to the map, the card, the bottom bar, the pulsing dot, and the HQ label. Colors here come from Court Mode tokens; the only fixed hexes are the Google "G" brand asset.
+
+## Auto Night Mode (added Ace 61.0)
+- **Day/night auto-flip for Court Mode.** A Settings > Appearance toggle that, when on, flips the active surface to its dark variant at 7:00 PM ET and back to light at 7:00 AM ET on a 1-minute client interval (no cron). It only drives the Light / Dark axis; the chosen surface (Hard / Clay / Grass / Night) is untouched.
+- **Persistence split.** The toggle saves to `UserProfile.autoNightMode` so the preference follows the user across devices; the surface + theme themselves stay in localStorage as before. A manual Light / Dark switch made inside a window wins until the next 7am / 7pm boundary.
+- **ET via Intl.** Eastern time is computed with `Intl.DateTimeFormat` keyed to `America/New_York`, so DST is automatic. This mirrors the calendar reminder-mode decision below: ET is hard-coded for now, to be replaced by a per-user timezone preference when MULTI-USER ships.
+
+## Calendar Reminder-Mode Drawer (added Ace 61.0)
+- **Reminder mode hides event-only fields.** When `CalendarEventDrawer` is in reminder mode it hides Guests, Location, Meeting type, All day, and Timezone - a reminder is a personal time-anchored nudge, not a meeting. Time is hard-coded to ET with a code comment to pull the per-user timezone once MULTI-USER ships.

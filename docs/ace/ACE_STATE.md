@@ -1,10 +1,39 @@
 # ACE_STATE.md
-Last updated: 2026-05-20 · Ace 60.0
+Last updated: 2026-05-20 · Ace 61.0
 
 ## Current Status
-Current Version: Ace 60.0
+Current Version: Ace 61.0
 Last Shipped: 2026-05-20
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 61.0 (2026-05-20)
+
+Profile + pipeline regression close-out, the calendar reminder-mode drawer, scheduled send across every email surface, the dark login redesign, the PWA badge auto-fire fix, and the Auto Night Mode setting.
+
+### Candidate profile + pipeline fixes
+- **Split-view Delete restored.** The candidates split-view embed branch rendered no Delete control (Batch 2 Prompt 2 only placed it on the full profile + client Overview). An inline Delete is back on the split-view profile. Closes the carried regression.
+- **Real-time stage pill after Apply / Keep / Reject.** The job pill now updates to the new stage immediately via optimistic state that holds until the server confirms, instead of staying on "Sourced." Also fixes the follow-on regression where the pill flashed then disappeared right after Apply.
+- **Add Note button removed everywhere.** Pulled from all four candidate profile locations (no Add Note on any candidate surface).
+- **Stage button visibility aligned to spec** in `pipeline-row-actions.tsx` so each pipeline stage shows the correct action button set.
+- **Favicon / browser-tab unread counter** was already correct; verified, no change needed.
+
+### Phone + calendar
+- **Phone thread auto-scrolls to the bottom on open** so the newest message is visible without scrolling.
+- **CalendarEventDrawer reminder mode.** When the drawer is in reminder mode it hides Guests, Location, Meeting type, All day, and Timezone (reminder-only fields). Time is hard-coded to ET for now, with a code comment to pull the per-user timezone once multi-user ships.
+
+### Scheduled send (Send Later)
+- **Send Later on every email surface.** Date / time / timezone picker on the composer; scheduled emails persist to a new `ScheduledEmail` table in Neon; a per-minute Vercel cron fires due sends; a failure toast with a Retry action surfaces sends Gmail rejected.
+
+### Login redesign
+- **Dark luxury sign-in.** Reworked `/sign-in` into a dark recruiter-network screen: world map with the Solon, OH HQ marker and connection arcs, glassy auth card, pulsing status dot. The top-bar stats strip ("14 Markets / 1,247 Candidates / clock") and the "BreakPoint - Global Desk" eyebrow were removed; map, card, bottom bar, and HQ label stay.
+
+### PWA badge auto-fire fix (`2d0081e`)
+- **Null badgeCount bug fixed.** `getUnreadCountsForOrg` in `src/lib/unread-counts.ts` returned `badgeCount: null` whenever the webhook's live Gmail unread lookup came back null, and `sw.js` maps a null badge to "leave it alone" - so new SMS / email frequently never moved the PWA app-icon badge while Ace was closed. It now always returns a numeric `badgeCount = (mailUnread ?? 0) + phoneUnread`, so every Quo SMS, Gmail push, and client-relayed push carries the real combined total (unread email threads + unread SMS conversations). Service worker cache bumped `v4 -> v5` to force stale installs onto the current SW.
+- Files: `src/lib/unread-counts.ts`, `public/sw.js`.
+
+### Auto Night Mode (`0dd1e41`)
+- **Auto Night Mode toggle** in Settings > Appearance. When on, the client flips the active Court Mode surface to its dark variant at 7:00 PM ET and back to light at 7:00 AM ET on a 1-minute interval (no cron). State saves to `UserProfile.autoNightMode` (not localStorage) so it follows the user across devices; the chosen surface/theme stay in localStorage. A manual Light / Dark switch made inside a window is respected until the next 7am / 7pm boundary (tracked by a per-window key). ET is computed via `Intl` with the `America/New_York` zone so DST is automatic. Additive `autoNightMode` column applied to the DB via `prisma db push`.
+- Files: `prisma/schema.prisma`, `src/lib/court-mode.tsx`, `src/app/settings/court-mode-view.tsx`, `src/app/settings/appearance-actions.ts` (new), `src/app/layout.tsx`.
 
 ## What Shipped in Ace 60.0 (2026-05-20)
 
@@ -138,18 +167,24 @@ Polish queue close-out session covering the next slice of the backlog: StageAgeP
 ### In progress
 - **Item 36 — Calendar auto-sync after scheduling.** Helper `triggerCalendarSync(router)` extracted from the Sync button at `calendar-view.tsx` to `src/lib/calendar/trigger-sync.ts`. Wired into all 4 schedule + 1 reschedule callsites in `local-placement-rows.tsx` + `placement-flows.tsx`, plus the `CalendarEventDrawer` create + edit handlers. Prompt sent; Andrew's browser verification pending so it carries into Ace 57.0 as the first item.
 
-## Known Issues Carrying Into Ace 61.0
+## Known Issues Carrying Into Ace 62.0
 - **Legacy render path retirement - Phase 1+ pending.** Phase 0 audit complete (numbers under What Shipped in Ace 60.0). Phase 1 backfill (candidateId on 14 placement rows, 594 Placement rows from raw.jobs[], 1 LinkedIn URL) then atomic cutover is deferred to a later version.
-- **Delete button missing from the split-view candidate profile.** Batch 2 Prompt 2 put Delete inline at the bottom of the Profile tab on the full candidate profile + the client Overview tab, but the split-view embed branch renders no Delete at all. Restore an inline Delete in the embed.
-- **Apply / Keep / Reject real-time stage pill not updating.** After an Apply / Keep / Reject action the job pill stays on "Sourced" instead of reflecting the new stage; needs a real-time pill refresh.
-- **Add Note button still on candidate profiles.** Needs removal from the candidate profile action row.
+- **Scheduled send + PWA badge + Auto Night Mode awaiting browser verification.** All three shipped in Ace 61.0; Andrew verifies live next session (a scheduled email actually firing on the per-minute cron, the app-icon badge moving on a fresh SMS / email with Ace closed, and the 7pm / 7am ET theme flip).
 - **Button styles inconsistent across app.** Submit was unified in Ace 54.0 and PipelinePill / Stat / Scoreboard subtext landed in 55.0, but the full button + color sweep is still outstanding (item 31 + 45). `rounded-full` still appears on some `<button>` elements, hardcoded color literals remain on others, and some buttons bypass the shared `Button` component entirely.
 - **BCC hardcoded to Austin.** Bulk and individual email send paths hardcode Austin's address into the BCC field for every send. Should be a per-user setting or removed entirely for non-bulk sends (item 32).
 - **Reminders leg not contributing to PWA badge.** Intentional for now - `ReminderToastProvider` fires toast-only. Revisit when the badge story needs the third leg.
 - **Stale `unreadCount:0` field in `src/app/api/phone/threads/route.ts:251`.** No consumer reads it; safe to remove on the next pass through that file. Future cleanup only.
 
 ## Next Task
-Submittal modal fix (Send always enabled + max-height sticky footer) shipped this session (commit `0251e9d`), pending Andrew's browser verification. Next: legacy render path Phase 1+ (backfill candidateId on 14 rows, create 594 Placement rows from raw.jobs[], backfill 1 LinkedIn URL, then atomic cutover) based on the Phase 0 audit above. Plus the carried known issues - restore the split-view profile Delete, fix the Apply / Keep / Reject stage pill stuck on Sourced, and remove the Add Note button from candidate profiles. Full priority queue lives in ACE_ROADMAP.md under Active Build Sequence.
+Ace 62.0 opens with verification of what shipped in 61.0, then the next build batch. Order for tomorrow:
+1. **Verify scheduled send fired.** Confirm a Send Later email actually went out on the per-minute Vercel cron (ScheduledEmail row flips SCHEDULED -> SENT, sentMessageId set), and the failure-toast Retry path works.
+2. **Verify PWA badge + Auto Night Mode.** App-icon badge moves on a fresh SMS / email with Ace closed (after the v5 service worker takes on each device); Auto Night Mode flips dark at 7:00 PM ET and light at 7:00 AM ET and persists across devices.
+3. **Quo setup wizard.** Guided Settings flow to connect Quo, configure the webhook URL, verify inbound SMS / call routing, and confirm transcription is live. (Promoted from Non-Urgent.)
+4. **Legacy render path retirement - Phase 1+.** Backfill candidateId on the 14 null-cuid placement rows, create 594 Placement rows from raw.jobs[], backfill the 1 LinkedIn URL, then atomic cutover. `placement-flows.tsx` / `placement-actions.ts` are shared and stay; only the page.tsx profile branch retires.
+5. **Button / color audit (item 31 + 45).** Full sweep: scan every `.tsx` under `src/` for `rounded-full` on `<button>` / `Button`, hardcoded color literals on buttons, and `<button>` elements bypassing the shared `Button` component. Report findings by file with line numbers before changing anything.
+6. **QuickBooks standalone page.** New route at `/finances/quickbooks`, isolated from the existing Mercury-driven Finances page (income / expenses / aging / P&L). Spec under Queued Specs in ACE_ROADMAP.md.
+
+Full priority queue lives in ACE_ROADMAP.md under Active Build Sequence.
 
 ## What Shipped in Ace 55.0 (2026-05-18)
 

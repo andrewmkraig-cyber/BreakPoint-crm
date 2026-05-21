@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-20 · Ace 60.0
+Last updated: 2026-05-20 · Ace 61.0
 
 ## Active Build Sequence
 
@@ -14,18 +14,20 @@ Toast/notification work (DONE Ace 60.0): reminder toast redesigned onto the shar
 ### Session 59.0 Status
 Notification toast polish (DONE Ace 59.0): SMS toast `MessageSquare` icon, action buttons moved to a bottom row on both the SMS + email toasts to match the mockup, Mark as Read added to both (SMS via `markThreadReadAndBroadcast`, email via the `/read` route + `markThreadRead`), email toast Reply opens the floating thread straight into the focused reply composer (new `composerMode` open option), and the Settings phone "Try it" Call test removed. Awaiting Andrew's browser verification.
 
-### Next Up (after Ace 60.0)
-Ace 58.0-60.0 shipped the notification-toast rebuild (SMS View popup, SMS + email toast redesign, reminder toast + duration / stack-direction settings + Dismiss All), Batch 2 (Prompt 1 + Prompt 2), Batch 3 (submittal modal), and the legacy-render Phase 0 audit. Remaining priority order:
+### Session 61.0 Status
+Profile / pipeline regression close-out + features (DONE Ace 61.0): split-view candidate Delete restored; Apply / Keep / Reject real-time stage pill (optimistic, holds until server confirm) + the flash-then-disappear follow-on fixed; Add Note button removed from all four candidate profile locations; stage button visibility aligned to spec in `pipeline-row-actions.tsx`; phone thread auto-scroll to bottom on open; CalendarEventDrawer reminder mode (hides Guests / Location / Meeting type / All day / Timezone, ET hard-coded with a comment to pull per-user tz when multi-user ships); scheduled send (Send Later) on every email surface (`ScheduledEmail` table + per-minute Vercel cron + Retry toast); dark luxury login redesign; PWA badge auto-fire fix (`2d0081e`, null badgeCount in `unread-counts.ts`, sw.js cache `v5`); Auto Night Mode (`0dd1e41`, `UserProfile.autoNightMode`, 7pm/7am ET flip). Favicon / tab counter verified already correct. Awaiting Andrew's browser verification of scheduled send, the PWA badge, and Auto Night Mode.
 
-1. ~~**SMS toast View button fix.**~~ DONE (Ace 58.0). View no longer routes to a page - it opens a centered popup (message body + sender, X / Mark as Read / inline Reply+Send), sharing the toast's `sendSmsReply` + `markThreadRead` path. Awaiting Andrew's browser verification.
-2. ~~**Batch 2 - chat bubbles / Game Plan / apply pill / job pill.**~~ DONE. Prompt 1 (`14e2814`): chat bubble unification across AiWorkspace / ClaudePanel / TextingExchanges, Game Plan delete-overlap fix, apply-to-job optimistic pill. Prompt 2 (`4155f68`): job pill spacing on split-view, dismissible job pill X (`dismissPlacementFromProfile`), Delete moved inline to the bottom of the Profile/Overview tab on candidate + client profiles. Awaiting Andrew's browser verification.
-3. ~~**Batch 3 - submittal modal.**~~ DONE (`0251e9d`). Send Submittal enabled on To + Subject only (no Generate required); ModalShell capped to viewport with a pinned footer so the generated draft scrolls instead of pushing Send off screen. Awaiting Andrew's browser verification.
+### Next Up (after Ace 61.0)
+Tomorrow's order:
+
+1. **Verify scheduled send fired.** Confirm a Send Later email went out on the per-minute cron (ScheduledEmail SCHEDULED -> SENT, sentMessageId set) and the failure-toast Retry path works.
+2. **Verify PWA badge + Auto Night Mode.** Badge moves on a fresh SMS / email with Ace closed (after the v5 SW takes on each device); Auto Night Mode flips dark at 7:00 PM ET / light at 7:00 AM ET and persists across devices.
+3. **Quo setup wizard.** Guided Settings flow to connect Quo, configure the webhook URL, verify inbound SMS / call routing, confirm transcription is live. (Promoted from Non-Urgent.)
 4. **Legacy render path retirement - Phase 1+.** Phase 0 audit done (`8876af2`, read-only): 726 candidates, 692 legacy / 34 native; 10 candidates lose pills (rfId-only placements, incl. 848) + 594 show pills only from raw.jobs[] (580 Sourced / 14 Disqualified). Phase 1: backfill candidateId on 14 placement rows, create 594 Placement rows from raw.jobs[], backfill 1 LinkedIn URL, then atomic cutover. `placement-flows.tsx` / `placement-actions.ts` are shared and stay; only the page.tsx profile branch retires.
-5. **Profile follow-ups (from Batch 2 close).** Restore an inline Delete in the split-view candidate profile (embed branch currently renders none); fix the Apply / Keep / Reject real-time stage pill (stays "Sourced" after the action); remove the Add Note button from candidate profiles.
-6. **Item 43 - Bulk email Phase 2.** Scheduled-send time picker + 30-60 sec throttle + 5-domain rotation sharing the BD warmed pool. (Ace 51 shipped Phase 1 - synchronous bulk send.)
-7. **MULTI-USER - Multi-user login + permissions.** Per-user auth + role + permission model, plus per-user settings for timezone and weather location. Detailed spec lives below under Queued Specs - Not Yet Prompted.
-8. **QB - QuickBooks standalone page.** New route at `/finances/quickbooks`, isolated from the existing Finances page. Detailed spec lives below under Queued Specs - Not Yet Prompted.
-9. **Item 31 + 45 - Full button/color audit.** Partially absorbed in 55.0 + 56.0; still owes a full sweep. Scan every `.tsx` under `src/` for: `rounded-full` on `<button>` elements or `Button` instances; hardcoded color literals (`bg-emerald-*`, `bg-green-*`, `text-white`, hex codes) on buttons; `<button>` elements that bypass `src/components/ui/button.tsx`. Report findings by file with line numbers before changing anything.
+5. **Item 31 + 45 - Full button/color audit.** Partially absorbed in 55.0 + 56.0; still owes a full sweep. Scan every `.tsx` under `src/` for: `rounded-full` on `<button>` elements or `Button` instances; hardcoded color literals (`bg-emerald-*`, `bg-green-*`, `text-white`, hex codes) on buttons; `<button>` elements that bypass `src/components/ui/button.tsx`. Report findings by file with line numbers before changing anything.
+6. **QB - QuickBooks standalone page.** New route at `/finances/quickbooks`, isolated from the existing Mercury-driven Finances page. Detailed spec below under Queued Specs - Not Yet Prompted.
+
+Carried, lower in the queue: Item 43 (Bulk email Phase 2 - scheduled-send time picker + 30-60 sec throttle + 5-domain rotation sharing the BD warmed pool; Ace 51 shipped Phase 1 synchronous bulk send) and MULTI-USER (per-user auth + role + permission model, plus per-user timezone / weather location; spec under Queued Specs - Not Yet Prompted).
 
 ## Branch Status
 - **`design/phase-1`** — local-only branch with Cursor UI redesign Phases 1-2 not yet merged to `main`. Carries `86d3e31` (Phase 1 design system foundation), `38f119c` (Phase 2a card shells on dashboard/placements/finances), `d7f5437` (Phase 2b TableRow + TableCell on list views), `c0fb973` (Phase 2c sidebar polish + list table chrome). Review pending; `main` is the source of truth for shipped state until this lands.
@@ -50,7 +52,7 @@ Build soon, lower priority than the active sequence above.
 - **Reminders badge leg wiring** — `ReminderToastProvider` currently fires toast-only and does not bump the PWA badge. Intentional for now (toasts are sufficient signal); revisit when the badge story needs the third leg alongside Gmail + Quo.
 - **APRO / job order worksheet** — structured intake form.
 - **Invite flow in Settings** — reuses OrganizationMembership; invite + role chip + revoke.
-- **Quo setup wizard** (future) — guided Settings flow to connect Quo, configure webhook URL, verify inbound SMS/call routing, confirm transcription is live.
+- **Quo setup wizard** - PROMOTED to the Active Build Sequence (item 3, after Ace 61.0). Guided Settings flow to connect Quo, configure webhook URL, verify inbound SMS/call routing, confirm transcription is live.
 - **LinkedIn import via RapidAPI** (future) — backfill candidate profiles from a LinkedIn URL via a RapidAPI scraper provider. Lands once the Apollo enrichment path stabilizes and we know what fields actually need to come from LinkedIn vs Apollo.
 - **Slack sidebar panel**.
 - **DocuSign auto-import** — ~2-3 hr via DocuSign Connect webhook.
@@ -116,6 +118,10 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 61.0 Profile/pipeline regression close-out + scheduled send + login redesign + PWA badge fix + Auto Night Mode (May 20, 2026)
+
+Closed the carried profile/pipeline regressions and shipped four features. Fixes: split-view candidate Delete restored; Apply / Keep / Reject real-time stage pill (optimistic, holds until server confirm) plus the flash-then-disappear follow-on; Add Note removed from all four candidate profile spots; stage button visibility aligned to spec in `pipeline-row-actions.tsx`; phone thread auto-scroll to bottom on open; CalendarEventDrawer reminder mode (hides Guests / Location / Meeting type / All day / Timezone, ET hard-coded with a comment to pull per-user tz once multi-user ships). Favicon / tab counter verified already correct. Features: scheduled send (Send Later) on every email surface (`ScheduledEmail` table in Neon, per-minute Vercel cron, failure toast with Retry); dark luxury login redesign (world map, Solon OH HQ, stats + Global Desk eyebrow removed); PWA badge auto-fire fix (`2d0081e` - numeric `badgeCount` in `unread-counts.ts`, sw.js cache `v4 -> v5`); Auto Night Mode (`0dd1e41` - `UserProfile.autoNightMode`, dark at 7:00 PM ET / light at 7:00 AM ET, profile-saved). Full detail in ACE_STATE.md under What Shipped in Ace 61.0. (Ace 58.0-60.0 detail also lives in ACE_STATE.md - SMS View popup, SMS + email toast redesign, reminder toast + duration / stack-direction settings + Dismiss All, plus the legacy-render Phase 0 audit.)
 
 ## Completed - Ace 57.0 Reminder system + calendar drawer overhaul + dashboard This Week widget (May 20, 2026)
 
