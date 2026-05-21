@@ -150,10 +150,13 @@ export function LocalPlacementRows({
   const [clientInviteFor, setClientInviteFor] = useState<LocalJobRow | null>(null);
   const [rescheduleFor, setRescheduleFor] = useState<LocalInterview | null>(null);
   const [inviteFlow, setInviteFlow] = useState<LocalInviteFlow | null>(null);
+  const router = useRouter();
 
-  // Mirror the jobs prop into local state. Reapply / Reject now drive
-  // through router.refresh() so the row updates server-side; jobsState
-  // stays in lockstep with the latest `jobs` prop via the effect below.
+  // Mirror the jobs prop into local state. Reject flips its row's stage in
+  // jobsState optimistically (see handleStageChanged) so the pill updates
+  // without a reload; Reapply still drives through router.refresh(). Either
+  // way jobsState stays in lockstep with the latest `jobs` prop via the
+  // effect below once the reconciling refresh lands.
   const [jobsState, setJobsState] = useState<LocalJobRow[]>(jobs);
   useEffect(() => {
     setJobsState(jobs);
@@ -193,6 +196,19 @@ export function LocalPlacementRows({
     return () => window.removeEventListener(LOCAL_PLACEMENT_APPLIED_EVENT, onApplied);
   }, [candidateId]);
 
+  // Optimistic stage flip for the per-row Reject action. The row pill reads
+  // job.stage from jobsState, so mutating it here updates the pill the
+  // instant the server action resolves. The delayed router.refresh
+  // reconciles external surfaces (applicants, pipeline) after the write and
+  // any read-replica lag settle; delaying it past the replication window
+  // keeps the jobs<-prop effect from clobbering the optimistic stage.
+  function handleStageChanged(placementId: string, stage: string) {
+    setJobsState((prev) =>
+      prev.map((j) => (j.placementId === placementId ? { ...j, stage } : j)),
+    );
+    setTimeout(() => router.refresh(), 500);
+  }
+
   // Mounted even with zero placements so the apply listener above is live
   // for the candidate's first apply. Render nothing until there's a row.
   if (jobsState.length === 0) return null;
@@ -213,6 +229,7 @@ export function LocalPlacementRows({
             onSchedule={() => setScheduleFor(j)}
             onClientInvite={() => setClientInviteFor(j)}
             onEditInterview={(iv) => setRescheduleFor(iv)}
+            onStageChange={handleStageChanged}
           />
         ))}
       </div>
@@ -318,6 +335,7 @@ function LocalJobActionRow({
   onSchedule,
   onClientInvite,
   onEditInterview,
+  onStageChange,
 }: {
   candidateId: string;
   candidateName: string;
@@ -325,6 +343,7 @@ function LocalJobActionRow({
   onSchedule: () => void;
   onClientInvite: () => void;
   onEditInterview: (interview: LocalInterview) => void;
+  onStageChange: (placementId: string, stage: string) => void;
 }) {
   const router = useRouter();
   const [isRejecting, startRejecting] = useTransition();
@@ -411,7 +430,7 @@ function LocalJobActionRow({
           sendRejectionEmail ? "Rejected — email sent" : "Rejected",
         );
         setRejectOpen(false);
-        router.refresh();
+        onStageChange(job.placementId, "rejected");
         resolve();
       });
     });

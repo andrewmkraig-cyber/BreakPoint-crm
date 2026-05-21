@@ -234,6 +234,43 @@ type Bucket = PipelineBucket;
 
 export type AceTeamContact = { id: string; name: string; email: string };
 
+// Minimal placement seed for an optimistic stage flip on a row that had no
+// local Placement yet (a sourced RF record that Apply / Keep just engaged).
+// id stays empty so the row's Dismiss X stays hidden until the real
+// placement id arrives on the next router.refresh. Every other field is
+// null/false to satisfy the full PlacementSnapshot shape.
+function seedOptimisticPlacement(stage: string): PlacementSnapshot {
+  return {
+    id: "",
+    stage: stage as PlacementSnapshot["stage"],
+    cancelledAt: null,
+    cancellationReason: null,
+    cancellationDetail: null,
+    rejectedAt: null,
+    syncedToRf: false,
+    offerSalary: null,
+    offerCurrency: null,
+    offerTitle: null,
+    offerStartDate: null,
+    offerNotes: null,
+    acceptedSalary: null,
+    acceptedCurrency: null,
+    feePercentage: null,
+    feeTotal: null,
+    minFee: null,
+    guaranteePeriodDays: null,
+    billingContactName: null,
+    billingContactEmail: null,
+    billingContacts: null,
+    hiringManagerName: null,
+    hiringManagerEmail: null,
+    expectedStartDate: null,
+    placementNotes: null,
+    startConfirmedAt: null,
+    candidateSource: null,
+  };
+}
+
 export function PlacementActions({
   candidateRfId,
   candidateFirstName,
@@ -311,6 +348,30 @@ export function PlacementActions({
   // a refresh would re-surface it at the "sourced" fallback stage.
   function handlePlacementRemoved(placementId: string) {
     setJobsState((prev) => prev.filter((j) => j.placement?.id !== placementId));
+  }
+
+  // Optimistic stage flip for the per-row Apply / Keep / Reject actions.
+  // The pill (and the row's action set) read job.placement.stage, so
+  // mutating it in local state updates the pill the instant the server
+  // action resolves. A sourced row has no Placement yet — seed a minimal
+  // one so the pill can move off "sourced". The delayed router.refresh
+  // reconciles external surfaces (pipeline, applicants, jobs) after the
+  // write and any read-replica lag settle; delaying it past the
+  // replication window keeps the jobs<-prop effect from clobbering the
+  // optimistic stage back to its old value. Mirrors handleApplied.
+  function handleStageChanged(jobRfId: number, stage: string) {
+    setJobsState((prev) =>
+      prev.map((j) => {
+        if (j.jobRfId !== jobRfId) return j;
+        return {
+          ...j,
+          placement: j.placement
+            ? { ...j.placement, stage: stage as PlacementSnapshot["stage"] }
+            : seedOptimisticPlacement(stage),
+        };
+      }),
+    );
+    setTimeout(() => router.refresh(), 500);
   }
 
   function handleApplied(opt: OpenJobOption, placementId: string) {
@@ -564,6 +625,7 @@ export function PlacementActions({
               onCancel={() => setCancelFor(j)}
               onEditInterview={(interview) => setRescheduleFor({ interview, job: j })}
               onPlacementRemoved={handlePlacementRemoved}
+              onStageChange={handleStageChanged}
             />
           ))}
         </div>
@@ -714,6 +776,7 @@ export function PlacementActions({
           candidateFullName={[candidateFirstName, candidateLastName].filter(Boolean).join(" ")}
           job={rejectFor}
           onClose={() => setRejectFor(null)}
+          onStageChange={handleStageChanged}
         />
       )}
       {unrejectFor && (
@@ -769,6 +832,7 @@ function JobActionRow({
   onCancel,
   onEditInterview,
   onPlacementRemoved,
+  onStageChange,
 }: {
   job: PlacementContextJob;
   candidateRfId: number;
@@ -782,6 +846,7 @@ function JobActionRow({
   onCancel: () => void;
   onEditInterview: (interview: InterviewSummary) => void;
   onPlacementRemoved?: (placementId: string) => void;
+  onStageChange?: (jobRfId: number, stage: string) => void;
 }) {
   // Local Neon Placement.stage is the single source of truth for which
   // action buttons render. If there's no local Placement yet, treat the
@@ -854,6 +919,7 @@ function JobActionRow({
             onCancelPlacement={onCancel}
             onRejectDialog={onReject}
             onPlacementRemoved={onPlacementRemoved}
+            onStageChange={onStageChange}
             nextInterview={
               nextInterview
                 ? { id: nextInterview.id, scheduledAt: nextInterview.scheduledAt, type: nextInterview.type }
@@ -2446,13 +2512,18 @@ function RejectDialog({
   candidateFullName,
   job,
   onClose,
+  onStageChange,
 }: {
   candidateRfId: number;
   candidateFullName: string;
   job: PlacementContextJob;
   onClose: () => void;
+  // Flip the row pill to Rejected the instant the server action resolves.
+  // The parent owns the reconciling router.refresh, so this dialog no
+  // longer calls it directly (an immediate refresh raced the write and
+  // left the pill on its old stage until reload).
+  onStageChange: (jobRfId: number, stage: string) => void;
 }) {
-  const router = useRouter();
   const [reason, setReason] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
@@ -2483,8 +2554,8 @@ function RejectDialog({
 
       if (!sendEmail) {
         toast.success("Rejection recorded", { description: "No email sent." });
+        onStageChange(job.jobRfId, "rejected");
         onClose();
-        router.refresh();
         return;
       }
 
@@ -2526,8 +2597,8 @@ function RejectDialog({
         });
       }
 
+      onStageChange(job.jobRfId, "rejected");
       onClose();
-      router.refresh();
     });
   }
 

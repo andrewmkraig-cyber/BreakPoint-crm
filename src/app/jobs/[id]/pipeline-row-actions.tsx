@@ -98,6 +98,15 @@ export type PipelineRowActionsProps = {
   // row only resets it to the "sourced" fallback — the row stayed
   // visible after Reapply, which read as "click did nothing".
   onPlacementRemoved?: (placementId: string) => void;
+  // Optimistic stage flip for the lightweight actions (Apply / Keep) when
+  // this row renders on the candidate profile. When provided, runLight
+  // hands the new stage to the parent the instant the server action
+  // resolves so the job pill updates without waiting on router.refresh()
+  // (which races the write + read-replica lag and leaves the pill on its
+  // old stage until a manual reload). The parent owns the follow-up
+  // refresh; when this is omitted (Job page) runLight falls back to
+  // router.refresh() exactly as before.
+  onStageChange?: (jobRfId: number, stage: string) => void;
 };
 
 export function PipelineRowActions(props: PipelineRowActionsProps) {
@@ -115,7 +124,11 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
   // again.
   const stage = props.stage.trim().toLowerCase();
 
-  function runLight(label: string, fn: () => Promise<{ ok: boolean; error?: string }>) {
+  function runLight(
+    label: string,
+    fn: () => Promise<{ ok: boolean; error?: string }>,
+    optimisticStage?: string,
+  ) {
     startTransition(async () => {
       const result = await fn();
       if (!result.ok) {
@@ -123,30 +136,43 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
         return;
       }
       toast.success(label);
-      router.refresh();
+      if (optimisticStage != null && props.onStageChange) {
+        // Profile path: flip the pill instantly via the parent's local
+        // state. The parent schedules its own reconciling refresh, so we
+        // skip router.refresh() here to avoid a refresh racing the write.
+        props.onStageChange(props.jobRfId, optimisticStage);
+      } else {
+        router.refresh();
+      }
     });
   }
 
   function onApply() {
-    runLight(`Applied ${props.candidateName}`, () =>
-      applyCandidateToJob({
-        candidateRfId: props.candidateRfId,
-        jobRfId: props.jobRfId,
-        clientRfId: props.clientRfId,
-        jobTitle: props.jobTitle,
-        clientName: props.clientName,
-      }),
+    runLight(
+      `Applied ${props.candidateName}`,
+      () =>
+        applyCandidateToJob({
+          candidateRfId: props.candidateRfId,
+          jobRfId: props.jobRfId,
+          clientRfId: props.clientRfId,
+          jobTitle: props.jobTitle,
+          clientName: props.clientName,
+        }),
+      "applied",
     );
   }
 
 
   function onKeep() {
-    runLight(`Kept ${props.candidateName}`, () =>
-      keepCandidate({
-        candidateRfId: props.candidateRfId,
-        jobRfId: props.jobRfId,
-        clientRfId: props.clientRfId,
-      }),
+    runLight(
+      `Kept ${props.candidateName}`,
+      () =>
+        keepCandidate({
+          candidateRfId: props.candidateRfId,
+          jobRfId: props.jobRfId,
+          clientRfId: props.clientRfId,
+        }),
+      "kept",
     );
   }
 

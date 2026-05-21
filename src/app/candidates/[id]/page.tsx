@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { NotebookPen, Send, Target } from "lucide-react";
+import { Send, Target } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { formatLocation } from "@/lib/utils";
 import { extractCandidateFields } from "@/lib/candidate-fields";
@@ -645,12 +645,6 @@ export default async function CandidateProfilePage({
                 <Target className="h-3 w-3" /> Apply to Job
               </Link>
               <KeepCandidateButton candidateId={candidate.id} isKept={isKept} />
-              <Link
-                href={`/candidates/${id}?embed=true&tab=notes`}
-                className={ADD_NOTE_LINK_CLASS}
-              >
-                <NotebookPen className="h-3 w-3" /> Add Note
-              </Link>
               <AddToListButton
               candidateId={candidate.id}
               candidateName={name}
@@ -789,12 +783,6 @@ export default async function CandidateProfilePage({
               <Target className="h-3 w-3" /> Apply to Job
             </Link>
             <KeepCandidateButton candidateId={candidate.id} isKept={isKept} />
-            <Link
-              href={`/candidates/${id}?tab=notes`}
-              className={ADD_NOTE_LINK_CLASS}
-            >
-              <NotebookPen className="h-3 w-3" /> Add Note
-            </Link>
             <AddToListButton
               candidateId={candidate.id}
               candidateName={name}
@@ -873,9 +861,6 @@ const SUBMIT_LINK_CLASS =
 // to the matching <Button> without nesting a <button> inside an <a>.
 const APPLY_LINK_CLASS =
   "inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60";
-
-const ADD_NOTE_LINK_CLASS =
-  "inline-flex items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 dark:hover:bg-slate-800";
 
 function UnderlineTabs({
   tab,
