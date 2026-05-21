@@ -642,20 +642,20 @@ function BucketItem({
         type="button"
         onClick={onClick}
         className={
-          "flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left transition " +
+          "flex min-h-9 w-full items-center gap-2 rounded-md border px-3 py-1.5 text-left transition " +
           (active
-            ? "bg-[#EAF4E4] text-[#3F7030]"
-            : "text-court-fg hover:bg-slate-50")
+            ? "border-court-brand bg-transparent font-semibold text-court-brand"
+            : "border-transparent font-medium text-court-fg hover:bg-court-surface-subtle")
         }
       >
-        <span className="shrink-0 text-court-fg-muted">{icon}</span>
+        <span className="shrink-0">{icon}</span>
         <span className="flex-1 truncate">{label}</span>
         {count > 0 && (
           <span
             className={
               "inline-flex min-w-[20px] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold " +
               (active
-                ? "bg-white text-[#3F7030]"
+                ? "bg-court-brand-tint text-court-brand-dark"
                 : "bg-court-surface-subtle text-court-fg-muted")
             }
           >
