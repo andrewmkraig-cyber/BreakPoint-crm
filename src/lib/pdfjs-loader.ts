@@ -72,11 +72,39 @@ type PdfJsLib = {
 
 let cachedLib: Promise<PdfJsLib> | null = null;
 
+// pdfjs-dist 5.6 calls Map.prototype.getOrInsertComputed natively (no
+// polyfill of its own). That method is a very recent TC39 proposal that
+// desktop Chrome ships but Safari — including iOS Safari — does not yet,
+// so PDF rendering blew up there with "getOrInsertComputed is not a
+// function" while working fine on desktop. Install a tiny spec-shaped
+// polyfill on the main thread before pdfjs runs. The worker thread has
+// its own global scope and is patched separately by pdf.worker.shim.mjs.
+function installMapGetOrInsertPolyfill(): void {
+  if (typeof Map === "undefined") return;
+  const proto = Map.prototype as unknown as {
+    getOrInsertComputed?: (key: unknown, cb: (key: unknown) => unknown) => unknown;
+  };
+  if (typeof proto.getOrInsertComputed === "function") return;
+  Object.defineProperty(Map.prototype, "getOrInsertComputed", {
+    value(this: Map<unknown, unknown>, key: unknown, callbackfn: (key: unknown) => unknown) {
+      if (this.has(key)) return this.get(key);
+      const value = callbackfn(key);
+      this.set(key, value);
+      return value;
+    },
+    writable: true,
+    configurable: true,
+    enumerable: false,
+  });
+}
+
 async function importAndConfigure(): Promise<PdfJsLib> {
+  installMapGetOrInsertPolyfill();
   const lib = (await import("pdfjs-dist/build/pdf.mjs")) as unknown as PdfJsLib;
-  // Set workerSrc to our self-hosted, same-origin worker. CSP script-src
-  // covers 'self', so the browser is allowed to spawn the worker.
-  lib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
+  // Point at the shim worker, which installs the same Map polyfill in the
+  // worker scope and then loads the real self-hosted worker. CSP
+  // script-src covers 'self', so the browser is allowed to spawn it.
+  lib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.shim.mjs";
   return lib;
 }
 

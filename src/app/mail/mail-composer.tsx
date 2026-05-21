@@ -1838,7 +1838,10 @@ export function MailComposer({
 
         <div
           className={cn(
-            "flex shrink-0 items-center justify-between border-t border-court-border/50 bg-court-surface-subtle/40 py-2 pl-3",
+            // flex-wrap so the action buttons drop to a second line on
+            // narrow (mobile) widths instead of overflowing the fixed
+            // card width and clipping Send off the right edge.
+            "flex shrink-0 flex-wrap items-center justify-between gap-y-2 border-t border-court-border/50 bg-court-surface-subtle/40 py-2 pl-3",
             // In popped-out (modal) mode the resize handle sits in the
             // bottom-right corner. Bump right padding so Send doesn't
             // crowd up against the diagonal indicator.
@@ -1869,9 +1872,12 @@ export function MailComposer({
           >
             <Paperclip className="h-3 w-3" /> Attach
           </button>
-          <span className="text-[11px] text-court-fg-muted">or drag files onto the body.</span>
+          {/* Drag-to-attach hint is desktop-only — you can't drag files
+              onto the body on touch, and it's the widest element crowding
+              the footer on phones. */}
+          <span className="hidden text-[11px] text-court-fg-muted sm:inline">or drag files onto the body.</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {/* Save Draft + Delete render in BOTH inline and modal modes
               so the recruiter can stash an in-progress reply without
               having to pop the composer out into a floating window

@@ -1145,7 +1145,7 @@ export default function CandidatesPage() {
           " md:contents"
         }
       >
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-court-border bg-court-surface px-4 py-3 md:hidden">
+        <div className="flex shrink-0 items-center justify-between border-b border-court-border bg-court-surface px-4 py-3 md:hidden">
           <h2 className="text-base font-semibold text-court-fg">Filters</h2>
           <button
             type="button"
@@ -1158,11 +1158,13 @@ export default function CandidatesPage() {
         </div>
       <aside
         className={
-          "flex shrink-0 flex-col transition-[width,border] duration-200 " +
-          // Mobile (inside sheet): full-width, scrolls inside the
-          // sheet's flex column. md+ keeps the original fixed-width
-          // permanent rail with overflow-hidden + internal scrollers.
-          "w-full flex-1 overflow-y-auto md:flex-none md:overflow-hidden " +
+          "flex flex-col transition-[width,border] duration-200 " +
+          // Mobile (inside sheet): fills the sheet's flex column between
+          // the fixed Filters header and Apply/Reset footer. min-h-0 +
+          // overflow-hidden makes the inner body the single scroll region
+          // (a second scroller here was clipping the top Boolean field).
+          // md+ keeps the original fixed-width permanent rail.
+          "w-full flex-1 min-h-0 overflow-hidden md:flex-none md:overflow-hidden " +
           (selectedId
             ? "md:w-0 md:min-w-0 md:border-r-0"
             : "md:w-[220px] md:min-w-[220px] md:border-r md:border-court-border")
@@ -1170,8 +1172,11 @@ export default function CandidatesPage() {
       >
         {/* Header block — title + Reset. Faint top border separates
             the sidebar from the global topbar chrome; no bottom border
-            so the section blocks below flow together as one panel. */}
-        <div className="flex items-center justify-between border-t border-court-border/30 px-[18px] py-2">
+            so the section blocks below flow together as one panel.
+            Hidden on mobile: the full-screen sheet supplies its own
+            "Filters" header + footer Reset, so this row would be a
+            redundant second header that collided with the first. */}
+        <div className="hidden items-center justify-between border-t border-court-border/30 px-[18px] py-2 md:flex">
           <h2 className="text-sm font-semibold text-court-fg">
             Search Candidates
           </h2>
@@ -1185,8 +1190,10 @@ export default function CandidatesPage() {
           </button>
         </div>
 
-        {/* Scrollable body — five sections */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Scrollable body — five sections. min-h-0 lets this shrink
+            inside the flex column so it actually scrolls instead of
+            pushing the Boolean field up under the header. */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {/* Identity */}
           <section className="px-[18px] py-1.5">
             <SectionTitle>Identity</SectionTitle>
@@ -1372,7 +1379,7 @@ export default function CandidatesPage() {
             button would be redundant; Save is the only durable
             affordance here. bg-court-surface so the footer re-skins
             across Court Modes instead of holding a hardcoded white. */}
-        <div className="border-t border-court-border bg-court-surface px-3 py-2">
+        <div className="shrink-0 border-t border-court-border bg-court-surface px-3 py-2">
           <Button
             type="button"
             variant="primary"
@@ -1386,7 +1393,7 @@ export default function CandidatesPage() {
           </Button>
         </div>
       </aside>
-        <div className="sticky bottom-0 z-10 flex gap-2 border-t border-court-border bg-court-surface p-4 md:hidden">
+        <div className="flex shrink-0 gap-2 border-t border-court-border bg-court-surface p-4 md:hidden">
           <button
             type="button"
             onClick={() => {
