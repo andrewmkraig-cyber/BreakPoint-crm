@@ -162,6 +162,37 @@ export default async function ClientDetailPage({
   const canWrite = isOwner;
   const ownerFirstName = ownerUser?.name?.trim().split(/\s+/)[0] ?? null;
 
+  // Last-activity readout for the view-only banner (Step 5) so the staleness
+  // that drives the 60-day auto-release is visible. Only queried for the
+  // non-owner view; client activity is logged under the cuid or the
+  // stringified legacyRfId, so both targetId forms are considered.
+  let lastActivityAt: Date | null = null;
+  if (!isOwner && !isUnowned) {
+    const activityTargetIds = [
+      client.id,
+      ...(client.legacyRfId != null ? [String(client.legacyRfId)] : []),
+    ];
+    const latest = await prisma.activityLog.findFirst({
+      where: {
+        organizationId: client.organizationId,
+        targetType: "client",
+        targetId: { in: activityTargetIds },
+      },
+      orderBy: { timestamp: "desc" },
+      select: { timestamp: true },
+    });
+    lastActivityAt = latest?.timestamp ?? null;
+  }
+  const lastActivityLine = !isOwner && !isUnowned
+    ? lastActivityAt
+      ? `Last activity ${lastActivityAt.toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })} - ${Math.floor((Date.now() - lastActivityAt.getTime()) / 86_400_000)} days ago`
+      : "No recorded activity yet"
+    : null;
+
   const location = (client.location as LocationJson) ?? null;
   const displayName = client.name || "(unnamed)";
 
@@ -322,9 +353,14 @@ export default async function ClientDetailPage({
       </Link>
 
       {!isOwner && !isUnowned && (
-        <div className="flex items-center gap-1.5 rounded-md bg-court-surface-subtle px-3 py-1.5 text-xs text-court-fg-muted">
-          <Eye className="h-3 w-3" />
-          Owned by {ownerFirstName ?? "another user"} - view only.
+        <div className="rounded-md bg-court-surface-subtle px-3 py-1.5 text-xs text-court-fg-muted">
+          <div className="flex items-center gap-1.5">
+            <Eye className="h-3 w-3" />
+            Owned by {ownerFirstName ?? "another user"} - view only.
+          </div>
+          <div className="mt-0.5 pl-[1.125rem] text-[11px] text-court-fg-muted/80">
+            {lastActivityLine}
+          </div>
         </div>
       )}
 

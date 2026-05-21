@@ -258,6 +258,11 @@ function describeAction(actionType: string, meta: Record<string, unknown> | null
     }
     case "job_description_generated":
       return `Job description generated${jobTitle ? ` for ${jobTitle}` : ""}`;
+    case "client_released":
+      // Written by the client-release cron (Step 5). The exact wording
+      // is stashed in metadata so the renderer stays in lockstep with
+      // the cron; the constant is a safety fallback.
+      return readString(meta, "message") ?? "Client released to available - no activity in 60 days.";
     default:
       return titleize(actionType);
   }
