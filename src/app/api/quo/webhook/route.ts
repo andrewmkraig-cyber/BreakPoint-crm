@@ -71,20 +71,27 @@ export async function POST(req: NextRequest) {
       // hide real activity (e.g. inbound texts from a client contact who
       // hasn't been added to the CRM yet).
       const orgId = candidate?.organizationId ?? clientMatch?.organizationId ?? (await defaultOrgId())
-      await prisma.smsMessage.create({
-        data: {
-          candidateId: candidate?.id ?? null,
-          clientId: clientMatch?.clientId ?? null,
-          organizationId: orgId,
-          direction: 'inbound',
-          body: content ?? '',
-          fromNumber,
-          toNumber: toNumber ?? '',
-          status: 'received',
-          krispcallId: pickStr(body, ['data.object.id', 'id']),
-          mediaUrl,
-        },
-      })
+      // Persist the inbound row, but never let a DB failure here kill the
+      // whole request before the push fires. Log it and fall through so the
+      // recruiter still gets the notification even when the write fails.
+      try {
+        await prisma.smsMessage.create({
+          data: {
+            candidateId: candidate?.id ?? null,
+            clientId: clientMatch?.clientId ?? null,
+            organizationId: orgId,
+            direction: 'inbound',
+            body: content ?? '',
+            fromNumber,
+            toNumber: toNumber ?? '',
+            status: 'received',
+            krispcallId: pickStr(body, ['data.object.id', 'id']),
+            mediaUrl,
+          },
+        })
+      } catch (err) {
+        console.error('[quo/webhook] smsMessage.create failed, continuing to push', err)
+      }
       // Push notification — best-effort. Tag scopes by candidate id (so
       // multiple texts in one thread collapse to one notification) or
       // by the bare digits of the from-number when the sender isn't
@@ -110,7 +117,15 @@ export async function POST(req: NextRequest) {
         const dest = candidate
           ? `/phone?candidateId=${candidate.id}`
           : `/phone?from=${encodeURIComponent(fromNumber)}`
-        const counts = await getUnreadCountsForOrg(orgId)
+        // Never let an unread-count failure kill the push. Fall back to a
+        // badge of 1 (one new item) so the notification still fires.
+        let counts
+        try {
+          counts = await getUnreadCountsForOrg(orgId)
+        } catch (err) {
+          console.error('[quo/webhook] getUnreadCountsForOrg failed, using fallback counts', err)
+          counts = { mailUnread: null, phoneUnread: 0, badgeCount: 1 }
+        }
         const payload = {
           title: `New text from ${senderName}`,
           body: (content ?? '').slice(0, 100),
@@ -126,6 +141,13 @@ export async function POST(req: NextRequest) {
           // Shared line: no owner to route to, fan out across the org.
           await sendPushToOrg(orgId, payload)
         }
+      } else {
+        // Exit F diagnostic. If this fires, the inbound row resolved no org
+        // (no candidate match, no client match, and defaultOrgId() returned
+        // null), so the push was skipped. Surfaces an otherwise silent drop.
+        console.error('[quo/webhook] inbound message: orgId null, push skipped', {
+          fromNumber,
+        })
       }
     }
   }
