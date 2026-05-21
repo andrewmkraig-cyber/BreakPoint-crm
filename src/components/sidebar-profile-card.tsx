@@ -22,7 +22,7 @@ const DEFAULT_CONTACT: Contact = {
   email: "andrew@breakpointtalent.com",
   phone: "216-340-9511",
   linkedin: "https://www.linkedin.com/in/andrewkraig/",
-  accessLabel: "Ace Creator Access",
+  accessLabel: "Ace Creator",
 };
 
 const CONTACTS: Record<string, Contact> = {
@@ -31,7 +31,7 @@ const CONTACTS: Record<string, Contact> = {
     email: "austin@breakpointtalent.com",
     phone: "(614) 582-4970",
     linkedin: "https://www.linkedin.com/in/austinbarnard/",
-    accessLabel: "Ace Founder Access",
+    accessLabel: "Ace Founder",
   },
 };
 
@@ -78,8 +78,8 @@ export function SidebarProfileCard() {
   return (
     <div ref={wrapperRef} className="relative">
       {/* One compact card: avatar / name / phone / chevron on top, a
-          full-width ACE CREATOR badge below. The border lives on this
-          wrapper so the badge sits inside the same card outline. */}
+          content-width status pill below. The border lives on this
+          wrapper so the pill sits inside the same card outline. */}
       <div className="rounded-xl border border-court-sidebar-border p-2">
       <button
         type="button"
@@ -130,12 +130,12 @@ export function SidebarProfileCard() {
           className="h-4 w-4 shrink-0 self-center text-court-sidebar-fg-dim"
         />
       </button>
-        {/* Slim, full-width status badge. rounded-full is allowed here
-            (status pill, per the button standard). Blue outline + text on
-            a faint blue tint - a fixed Tailwind palette accent, the same
-            convention the nav icons use (no raw hex, consistent in every
-            theme). */}
-        <span className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-full border border-blue-400/40 bg-blue-400/10 px-3 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.14em] text-blue-400">
+        {/* Slim status pill, sized to its content (no full-width stretch).
+            rounded-full is allowed here (status pill, per the button
+            standard). Blue outline + text on a faint blue tint - a fixed
+            Tailwind palette accent, the same convention the nav icons use
+            (no raw hex, consistent in every theme). */}
+        <span className="mt-1.5 flex w-fit items-center gap-1.5 rounded-full border border-blue-400/40 bg-blue-400/10 px-3 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.14em] text-blue-400">
           <Crown aria-hidden="true" className="h-3 w-3 shrink-0" />
           {profile.accessLabel}
         </span>
