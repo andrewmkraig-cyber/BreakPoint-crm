@@ -12,8 +12,14 @@ import {
 import { getClientsForOrg } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { getCurrentUserId } from "@/lib/auth/getCurrentUserId";
 
 export const dynamic = "force-dynamic";
+
+// Owner scope for the Mine / <Name>'s / All filter (Step 4). Mirrors the
+// /clients OwnerScopeSelect: default is the signed-in user's own book,
+// scoped by the parent client's owner. Jobs themselves carry no owner.
+type OwnerScope = "mine" | "theirs" | "all";
 
 type SortKey =
   | "client"
@@ -47,11 +53,15 @@ export default async function JobsPage({
     sort?: string;
     dir?: "asc" | "desc";
     page?: string;
+    owner?: string;
   };
 }) {
   const rawTab = searchParams?.tab;
   const tab: JobLifecycle =
     rawTab === "private" || rawTab === "inactive" ? rawTab : "active";
+  const rawOwner = searchParams?.owner;
+  const owner: OwnerScope =
+    rawOwner === "theirs" || rawOwner === "all" ? rawOwner : "mine";
   const q = (searchParams?.q ?? "").trim();
   const rawSort = (searchParams?.sort ?? "lastEdited") as SortKey;
   const sort: SortKey = (SORT_KEYS as string[]).includes(rawSort) ? rawSort : "lastEdited";
@@ -64,11 +74,12 @@ export default async function JobsPage({
   let privateCount = 0;
   let inactiveCount = 0;
   let error: string | null = null;
+  let otherUserName: string | null = null;
 
   try {
     // Phase 2: Jobs list reads from Neon via the broadened shim —
     // includes both RF-imported and Ace-native Jobs in one iteration.
-    const [jobs, candidates, clients, lastTouchedByCuid] = await Promise.all([
+    const [jobs, candidates, clients, lastTouchedByCuid, org, currentUserId] = await Promise.all([
       getRfJobsForOrg(),
       getRfCandidatesForOrg(),
       getClientsForOrg(),
@@ -78,7 +89,31 @@ export default async function JobsPage({
       // a stale date. Computed here (page-only) so other getRfJobsForOrg
       // callers don't pay for the joins.
       buildLastTouchedByJobCuid(),
+      getCurrentOrg(),
+      getCurrentUserId(),
     ]);
+
+    // The "other" org member, for the "<Name>'s Jobs" option. Same
+    // two-person-org assumption as /clients: the first member who isn't
+    // the signed-in user is the counterpart; null when there is no one.
+    const members = await prisma.organizationMembership.findMany({
+      where: { organizationId: org.id },
+      select: { user: { select: { id: true, name: true } } },
+    });
+    const other = members.map((m) => m.user).find((u) => u.id !== currentUserId) ?? null;
+    const otherUserId = other?.id ?? null;
+    otherUserName = other?.name ?? null;
+
+    // Map each job's numeric companyId back to its client's owner. Built
+    // the same way as verifiedByCompanyId below: RF clients key on
+    // legacyRfId, Ace-native clients key on the synthetic djb2 of cuid
+    // (the same hash the jobs shim mints for companyId).
+    const ownerByCompanyId = new Map<number, string | null>();
+    for (const c of clients) {
+      const key = c.legacyRfId != null ? c.legacyRfId : syntheticIdFromCuid(c.id);
+      ownerByCompanyId.set(key, c.ownerId);
+    }
+
     const counts = buildJobCounts(candidates);
     // Map companyId (the numeric reference each JobRow already carries)
     // back to the client's verified flag. Two key paths so both RF-
@@ -93,7 +128,7 @@ export default async function JobsPage({
         verifiedByCompanyId.set(syntheticIdFromCuid(c.id), c.isVerified);
       }
     }
-    const all: JobRow[] = jobs.map((raw) => {
+    const all: (JobRow & { clientOwnerId: string | null })[] = jobs.map((raw) => {
       const j = normalizeJob(raw);
       const c = counts.get(j.id) ?? emptyJobCounts();
       // Lifecycle pulls from the shim's `_lifecycle` carry-along (set
@@ -132,14 +167,26 @@ export default async function JobsPage({
         hiredCount: c.hired,
         clientIsVerified:
           j.companyId != null ? verifiedByCompanyId.get(j.companyId) ?? false : false,
+        clientOwnerId:
+          j.companyId != null ? ownerByCompanyId.get(j.companyId) ?? null : null,
       };
     });
-    for (const r of all) {
+
+    // Owner scope filter (Step 4). Applied before the lifecycle counts so
+    // the Active/Private/Inactive tab badges reflect the current scope,
+    // and before pagination so page slices stay correct. "all" is a
+    // no-op; "mine"/"theirs" match the parent client's owner.
+    const scoped = all.filter((r) => {
+      if (owner === "all") return true;
+      if (owner === "theirs") return otherUserId != null && r.clientOwnerId === otherUserId;
+      return currentUserId != null && r.clientOwnerId === currentUserId;
+    });
+    for (const r of scoped) {
       if (r.lifecycle === "active") activeCount++;
       else if (r.lifecycle === "private") privateCount++;
       else inactiveCount++;
     }
-    rows = all.filter((r) => r.lifecycle === tab);
+    rows = scoped.filter((r) => r.lifecycle === tab);
 
     if (q) {
       const needle = q.toLowerCase();
@@ -176,6 +223,8 @@ export default async function JobsPage({
         activeCount={activeCount}
         privateCount={privateCount}
         inactiveCount={inactiveCount}
+        owner={owner}
+        otherUserName={otherUserName}
         error={error}
       />
     </div>

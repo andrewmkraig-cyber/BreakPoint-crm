@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition, type FormEvent } from "react";
-import { Search, Loader2, MapPin } from "lucide-react";
+import { Search, Loader2, MapPin, ChevronDown } from "lucide-react";
 import { Pagination } from "@/components/pagination";
 import { SortableHeader, type SortDirection } from "@/components/sortable-header";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,8 @@ import {
 import { TabStrip } from "@/components/ui/tab-strip";
 
 export type JobLifecycle = "active" | "private" | "inactive";
+
+export type OwnerScope = "mine" | "theirs" | "all";
 
 export type JobRow = {
   id: number;
@@ -82,11 +84,13 @@ type JobsViewProps = {
   activeCount: number;
   privateCount: number;
   inactiveCount: number;
+  owner: OwnerScope;
+  otherUserName: string | null;
   error: string | null;
 };
 
 export function JobsView(props: JobsViewProps) {
-  const { rows, total, page, pageSize, totalPages, tab, q, sort, dir, activeCount, privateCount, inactiveCount, error } = props;
+  const { rows, total, page, pageSize, totalPages, tab, q, sort, dir, activeCount, privateCount, inactiveCount, owner, otherUserName, error } = props;
   const router = useRouter();
   const params = useSearchParams();
   const [query, setQuery] = useState(q);
@@ -123,13 +127,26 @@ export function JobsView(props: JobsViewProps) {
 
   return (
     <div className="space-y-4">
-      <Tabs
-        tab={tab}
-        activeCount={activeCount}
-        privateCount={privateCount}
-        inactiveCount={inactiveCount}
-        buildHref={buildHref}
-      />
+      <div className="flex flex-wrap items-center gap-3">
+        <Tabs
+          tab={tab}
+          activeCount={activeCount}
+          privateCount={privateCount}
+          inactiveCount={inactiveCount}
+          buildHref={buildHref}
+        />
+        <div className="md:ml-auto">
+          <OwnerScopeSelect
+            scope={owner}
+            otherName={otherUserName}
+            onChange={(s) => {
+              startTransition(() => {
+                router.push(buildHref({ owner: s, page: 1 }));
+              });
+            }}
+          />
+        </div>
+      </div>
 
       <form
         onSubmit={onSubmitSearch}
@@ -251,6 +268,37 @@ export function JobsView(props: JobsViewProps) {
           label="jobs"
         />
       </div>
+    </div>
+  );
+}
+
+// Soft-green native dropdown matching the /clients OwnerScopeSelect
+// styling (court-brand outline + faint tint + brand text). "Theirs" only
+// renders when there is another user in the org. Navigates via the
+// `owner` URL param so the server filter runs before pagination.
+function OwnerScopeSelect({
+  scope,
+  onChange,
+  otherName,
+}: {
+  scope: OwnerScope;
+  onChange: (s: OwnerScope) => void;
+  otherName: string | null;
+}) {
+  const otherFirst = otherName?.trim().split(/\s+/)[0] ?? null;
+  return (
+    <div className="relative shrink-0">
+      <select
+        value={scope}
+        onChange={(e) => onChange(e.target.value as OwnerScope)}
+        aria-label="Filter jobs by owner"
+        className="appearance-none rounded-md border border-court-brand/40 bg-court-brand/5 py-1.5 pl-3 pr-9 text-sm font-medium text-court-brand transition hover:bg-court-brand/10 focus:border-court-brand focus:outline-none focus:ring-2 focus:ring-court-brand/20"
+      >
+        <option value="mine">My Jobs</option>
+        {otherFirst && <option value="theirs">{otherFirst}&apos;s Jobs</option>}
+        <option value="all">All</option>
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-court-brand" />
     </div>
   );
 }

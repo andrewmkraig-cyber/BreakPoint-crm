@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { PipelineView, type NextInterview, type PipelineRow, type PlacementDetails } from "@/app/pipeline/pipeline-view";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { getCurrentUserId } from "@/lib/auth/getCurrentUserId";
 import {
   flattenPipeline,
   PIPELINE_LABELS,
@@ -10,6 +11,7 @@ import {
   type PipelineBucket,
 } from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg } from "@/lib/candidates";
+import { getClientsForOrg } from "@/lib/clients";
 import { getPlacementsForOrg } from "@/lib/placements";
 import { getInterviewsForOrg } from "@/lib/interviews";
 
@@ -18,12 +20,16 @@ export const dynamic = "force-dynamic";
 type Stage = keyof typeof PIPELINE_LABELS;
 const STAGES: Stage[] = ["submitted", "interviewing", "offer", "pending_start", "hired"];
 
+// Owner scope for the Mine / <Name>'s / All filter (Step 4). Default is
+// the signed-in user's own book, scoped by the parent client's owner.
+type OwnerScope = "mine" | "theirs" | "all";
+
 const PAGE_SIZE = 25;
 
 export default async function PipelinePage({
   searchParams,
 }: {
-  searchParams?: { stage?: string; q?: string; page?: string; clientId?: string; jobId?: string };
+  searchParams?: { stage?: string; q?: string; page?: string; clientId?: string; jobId?: string; owner?: string };
 }) {
   const stage: Stage = (STAGES as string[]).includes(searchParams?.stage ?? "")
     ? (searchParams!.stage as Stage)
@@ -45,7 +51,20 @@ export default async function PipelinePage({
   const pageParam = parseInt(searchParams?.page ?? "1", 10);
   const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
 
+  // Owner scope (Step 4). Default to the signed-in user's own book.
+  // Exception: when the page is deep-linked from a client/job stat pill
+  // (clientId/jobId set) and no explicit owner is chosen, default to
+  // "all" so drilling into a client you don't own still shows its rows.
+  const rawOwner = searchParams?.owner;
+  const ownerExplicit = rawOwner === "mine" || rawOwner === "theirs" || rawOwner === "all";
+  const owner: OwnerScope = ownerExplicit
+    ? (rawOwner as OwnerScope)
+    : clientFilter || jobFilter !== null
+      ? "all"
+      : "mine";
+
   let rows: PipelineRow[] = [];
+  let otherUserName: string | null = null;
   const counts: Record<Stage, number> = {
     submitted: 0,
     interviewing: 0,
@@ -60,14 +79,36 @@ export default async function PipelinePage({
     // scoped helpers. The pipeline view is global to the signed-in org
     // (no per-candidate filter) so the helpers are called with just the
     // filters this page cares about.
-    const [candidates, placements, interviews] = await Promise.all([
+    const [candidates, placements, interviews, clients, org, currentUserId] = await Promise.all([
       getRfCandidatesForOrg(),
       getPlacementsForOrg(),
       getInterviewsForOrg({
         statuses: ["scheduled"],
         scheduledAfter: new Date(),
       }),
+      getClientsForOrg(),
+      getCurrentOrg(),
+      getCurrentUserId(),
     ]);
+
+    // Owner lookups (Step 4). Neon placement rows resolve their owner by
+    // Placement.clientId (cuid); legacy RF-flat rows have no clientId so
+    // they fall back to a clientName match. The "other" org member powers
+    // the "<Name>'s Pipeline" option (same two-person-org assumption as
+    // /clients).
+    const members = await prisma.organizationMembership.findMany({
+      where: { organizationId: org.id },
+      select: { user: { select: { id: true, name: true } } },
+    });
+    const other = members.map((m) => m.user).find((u) => u.id !== currentUserId) ?? null;
+    const otherUserId = other?.id ?? null;
+    otherUserName = other?.name ?? null;
+    const ownerByClientId = new Map<string, string | null>();
+    const ownerByClientNameLower = new Map<string, string | null>();
+    for (const c of clients) {
+      ownerByClientId.set(c.id, c.ownerId);
+      if (c.name) ownerByClientNameLower.set(c.name.toLowerCase(), c.ownerId);
+    }
 
     // (candidateRfId, jobRfId) -> earliest upcoming interview
     const nextByKey = new Map<string, NextInterview>();
@@ -169,7 +210,7 @@ export default async function PipelinePage({
 
     // Local placements win over RF's stage_name because Ace drove the move.
     const seen = new Set<string>();
-    const allRows: PipelineRow[] = [];
+    const allRows: (PipelineRow & { clientOwnerId: string | null })[] = [];
 
     for (const p of placements) {
       // Cancelled placements are excluded from the pipeline view entirely.
@@ -184,7 +225,6 @@ export default async function PipelinePage({
       seen.add(key);
       const stageName = p.stage as Stage;
       if (!(stageName in counts)) continue;
-      counts[stageName] += 1;
 
       // Pick the identity fields — numeric RF for imported, cuid for
       // Ace-native. Ace-native rows can't match flat-pipeline entries
@@ -208,6 +248,13 @@ export default async function PipelinePage({
       const candidateTitle = isRfCandidate ? rfEntry?.candidateTitle ?? "" : aceCandidate?.currentDesignation ?? "";
       const jobTitle = isRfJob ? rfEntry?.jobTitle ?? "" : aceJob?.title ?? "";
       const clientName = isRfJob ? rfEntry?.clientName ?? "" : aceJob?.client?.name ?? "";
+      // Owner of this row's client: prefer the Placement.clientId cuid
+      // join, fall back to a clientName match for rows missing clientId.
+      const clientOwnerId = p.clientId
+        ? ownerByClientId.get(p.clientId) ?? null
+        : clientName
+          ? ownerByClientNameLower.get(clientName.toLowerCase()) ?? null
+          : null;
 
       allRows.push({
         candidateId,
@@ -230,6 +277,7 @@ export default async function PipelinePage({
         nextInterview: isRfCandidate && isRfJob
           ? nextByKey.get(`${p.candidateRfId}:${p.jobRfId}`) ?? null
           : null,
+        clientOwnerId,
       });
     }
 
@@ -244,7 +292,6 @@ export default async function PipelinePage({
       // flat entries are always RF numeric on both sides.
       const key = `rf:${r.candidateId}|rf:${r.jobId}`;
       if (seen.has(key)) continue;
-      counts[r.bucket] += 1;
       allRows.push({
         candidateId: r.candidateId,
         candidateName: r.candidateName,
@@ -260,10 +307,25 @@ export default async function PipelinePage({
         placementId: null,
         placement: null,
         nextInterview: nextByKey.get(`${r.candidateId}:${r.jobId}`) ?? null,
+        // RF-flat rows carry no clientId; resolve owner by client name.
+        clientOwnerId: r.clientName
+          ? ownerByClientNameLower.get(r.clientName.toLowerCase()) ?? null
+          : null,
       });
     }
 
-    rows = allRows.filter((r) => r.bucket === stage);
+    // Owner scope filter (Step 4). Applied before the stage counts so the
+    // stage tab badges reflect the current scope, and before pagination.
+    const scopedRows = allRows.filter((r) => {
+      if (owner === "all") return true;
+      if (owner === "theirs") return otherUserId != null && r.clientOwnerId === otherUserId;
+      return currentUserId != null && r.clientOwnerId === currentUserId;
+    });
+    for (const r of scopedRows) {
+      if (r.bucket in counts) counts[r.bucket] += 1;
+    }
+
+    rows = scopedRows.filter((r) => r.bucket === stage);
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to fetch pipeline";
   }
@@ -337,6 +399,8 @@ export default async function PipelinePage({
         stage={stage}
         q={q}
         counts={counts}
+        owner={owner}
+        otherUserName={otherUserName}
         error={error}
       />
     </div>

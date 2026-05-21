@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
-import { Bookmark, CalendarClock, DollarSign, Handshake, Loader2, Search, UserX, X } from "lucide-react";
+import { Bookmark, CalendarClock, ChevronDown, DollarSign, Handshake, Loader2, Search, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { Pagination } from "@/components/pagination";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
@@ -28,6 +28,8 @@ import {
 } from "@/app/pipeline/placement-edit-drawer";
 
 type Stage = keyof typeof PIPELINE_LABELS;
+
+export type OwnerScope = "mine" | "theirs" | "all";
 
 export type PlacementDetails = {
   id: string;
@@ -91,6 +93,8 @@ type PipelineViewProps = {
   stage: Stage;
   q: string;
   counts: Record<Stage, number>;
+  owner: OwnerScope;
+  otherUserName: string | null;
   error: string | null;
 };
 
@@ -105,7 +109,38 @@ function isRejectableStage(s: Stage): boolean {
   return (REJECTABLE_STAGES as readonly Stage[]).includes(s);
 }
 
-export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q, counts, error }: PipelineViewProps) {
+// Soft-green native dropdown matching the /clients OwnerScopeSelect
+// styling. "Theirs" only renders when there is another user in the org.
+// Navigates via the `owner` URL param so the server filter runs before
+// pagination.
+function OwnerScopeSelect({
+  scope,
+  onChange,
+  otherName,
+}: {
+  scope: OwnerScope;
+  onChange: (s: OwnerScope) => void;
+  otherName: string | null;
+}) {
+  const otherFirst = otherName?.trim().split(/\s+/)[0] ?? null;
+  return (
+    <div className="relative shrink-0">
+      <select
+        value={scope}
+        onChange={(e) => onChange(e.target.value as OwnerScope)}
+        aria-label="Filter pipeline by owner"
+        className="appearance-none rounded-md border border-court-brand/40 bg-court-brand/5 py-1.5 pl-3 pr-9 text-sm font-medium text-court-brand transition hover:bg-court-brand/10 focus:border-court-brand focus:outline-none focus:ring-2 focus:ring-court-brand/20"
+      >
+        <option value="mine">My Pipeline</option>
+        {otherFirst && <option value="theirs">{otherFirst}&apos;s Pipeline</option>}
+        <option value="all">All</option>
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-court-brand" />
+    </div>
+  );
+}
+
+export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q, counts, owner, otherUserName, error }: PipelineViewProps) {
   const router = useRouter();
   const params = useSearchParams();
   const [query, setQuery] = useState(q);
@@ -259,6 +294,17 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
     <div className="space-y-4">
       <div className="flex flex-col items-start gap-3 md:flex-row md:items-center">
         <StageTabs stage={stage} counts={counts} buildHref={buildHref} />
+        <div className="md:ml-auto">
+          <OwnerScopeSelect
+            scope={owner}
+            otherName={otherUserName}
+            onChange={(s) => {
+              startTransition(() => {
+                router.push(buildHref({ owner: s, page: 1 }));
+              });
+            }}
+          />
+        </div>
       </div>
 
       <form
