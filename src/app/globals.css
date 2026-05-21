@@ -408,3 +408,15 @@ html[data-surface='night'][data-theme='dark'],
 html[data-theme='dark'] .placements-map-tiles .leaflet-tile-pane {
   filter: brightness(0.85) contrast(1.1);
 }
+
+/* Confine Leaflet's internal z-index ladder (panes 200-700, controls up
+   to 1000) inside the map container's own stacking context. Without
+   this, those high values escape to the page root and the map paints on
+   top of the mobile nav drawer (z-40/z-50) when you scroll to it and
+   open the menu — the "sticky map" bug. position:relative + z-index:0
+   caps the whole subtree at the container's level (0), well below the
+   drawer. */
+.placements-map-tiles .leaflet-container {
+  position: relative;
+  z-index: 0;
+}

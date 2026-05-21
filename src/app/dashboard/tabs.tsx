@@ -1,37 +1,18 @@
-import { TabStrip } from "@/components/ui/tab-strip";
-
 export type DashboardTab = "dashboard" | "scoreboard" | "placements";
 
+// Display labels for each dashboard view. The section nav itself lives in
+// the left sidebar (Clubhouse / Metrics / Placements); these labels are
+// still used by the top bar to title the page for a given ?tab= value.
+// The "scoreboard" key keeps its URL param but reads "Metrics" to match
+// the sidebar's renamed entry.
 export const DASHBOARD_TAB_LABELS: Record<DashboardTab, string> = {
   dashboard: "Clubhouse",
-  scoreboard: "Scoreboard",
+  scoreboard: "Metrics",
   placements: "Placements",
 };
-
-const TAB_ORDER: DashboardTab[] = ["dashboard", "scoreboard", "placements"];
 
 export function resolveDashboardTab(raw: string | undefined | null): DashboardTab {
   if (raw === "scoreboard") return raw;
   if (raw === "placements") return raw;
   return "dashboard";
-}
-
-type Props = {
-  active: DashboardTab;
-  counts?: Partial<Record<DashboardTab, number>>;
-};
-
-export function DashboardTabs({ active, counts }: Props) {
-  return (
-    <TabStrip<DashboardTab>
-      ariaLabel="Dashboard sections"
-      activeId={active}
-      items={TAB_ORDER.map((tab) => ({
-        id: tab,
-        label: DASHBOARD_TAB_LABELS[tab],
-        count: counts?.[tab],
-        href: tab === "dashboard" ? "/dashboard" : `/dashboard?tab=${tab}`,
-      }))}
-    />
-  );
 }

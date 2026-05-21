@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { DashboardTabs, resolveDashboardTab } from "@/app/dashboard/tabs";
+import { resolveDashboardTab } from "@/app/dashboard/tabs";
 import { MyDashboard } from "@/app/dashboard/my-dashboard";
 import { Scoreboard } from "@/app/dashboard/scoreboard";
 import { PlacementsTab, resolvePlacementsPeriod } from "@/app/dashboard/placements-tab";
@@ -42,7 +42,10 @@ export default async function DashboardPage({
 
   return (
     <div className="flex w-full flex-col gap-6">
-      <DashboardTabs active={active} />
+      {/* Section nav (Clubhouse / Metrics / Placements) lives in the left
+          sidebar now, so no in-page tab strip here — each view owns its
+          own header. The ?tab= param the sidebar links to still drives
+          which view renders below. */}
       {active === "dashboard" && <MyDashboard period={clubhousePeriod} />}
       {active === "scoreboard" && <Scoreboard period={scoreboardPeriod} />}
       {active === "placements" && <PlacementsTab period={placementsPeriod} />}
