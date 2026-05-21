@@ -54,18 +54,30 @@ async function dispatch(
   await Promise.all(
     subs.map(async (sub) => {
       try {
-        await webpush.sendNotification(
+        const result = await webpush.sendNotification(
           {
             endpoint: sub.endpoint,
             keys: { p256dh: sub.p256dh, auth: sub.auth },
           },
           body,
         );
+        // TEMP DIAG (remove after push debugging): exact status the push
+        // service returned on a successful send + which endpoint.
+        console.error("[web-push][diag] send ok", {
+          status: result.statusCode,
+          endpoint: sub.endpoint.slice(0, 40),
+        });
       } catch (err) {
         const status =
           err && typeof err === "object" && "statusCode" in err
             ? (err as { statusCode?: number }).statusCode
             : undefined;
+        // TEMP DIAG (remove after push debugging): log every failure
+        // status, including the 404/410 we prune on, with the endpoint.
+        console.error("[web-push][diag] send failed", {
+          status,
+          endpoint: sub.endpoint.slice(0, 40),
+        });
         // 404 + 410 from the push service mean the endpoint is dead
         // (uninstalled PWA, user revoked, browser cleared state).
         // Purge so we don't keep hammering it on every trigger.
@@ -90,10 +102,21 @@ export async function sendPushToUser(
   payload: PushPayload,
 ): Promise<void> {
   try {
-    if (!ensureVapid()) return;
+    const vapidOk = ensureVapid();
+    // TEMP DIAG (remove after push debugging): did VAPID config resolve?
+    console.error("[web-push][diag] sendPushToUser", {
+      vapidOk,
+      userId,
+      organizationId,
+    });
+    if (!vapidOk) return;
     const subs = await prisma.pushSubscription.findMany({
       where: { userId, organizationId },
       select: { id: true, endpoint: true, p256dh: true, auth: true },
+    });
+    // TEMP DIAG (remove after push debugging): how many devices matched.
+    console.error("[web-push][diag] sendPushToUser subs", {
+      count: subs.length,
     });
     await dispatch(subs, payload);
   } catch (err) {
@@ -110,10 +133,20 @@ export async function sendPushToOrg(
   payload: PushPayload,
 ): Promise<void> {
   try {
-    if (!ensureVapid()) return;
+    const vapidOk = ensureVapid();
+    // TEMP DIAG (remove after push debugging): did VAPID config resolve?
+    console.error("[web-push][diag] sendPushToOrg", {
+      vapidOk,
+      organizationId,
+    });
+    if (!vapidOk) return;
     const subs = await prisma.pushSubscription.findMany({
       where: { organizationId },
       select: { id: true, endpoint: true, p256dh: true, auth: true },
+    });
+    // TEMP DIAG (remove after push debugging): how many devices matched.
+    console.error("[web-push][diag] sendPushToOrg subs", {
+      count: subs.length,
     });
     await dispatch(subs, payload);
   } catch (err) {
