@@ -7,7 +7,6 @@ import {
   Bookmark,
   CalendarClock,
   CheckCircle2,
-  CornerUpLeft,
   DollarSign,
   Edit3,
   Handshake,
@@ -23,8 +22,6 @@ import {
   applyCandidateToJob,
   deletePlacement,
   keepCandidate,
-  moveToApplied,
-  moveToKept,
   rejectCandidateJob,
   unrejectCandidateJob,
 } from "@/app/candidates/[id]/placement-actions";
@@ -251,55 +248,16 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
     });
   }
 
-  // Stage reversions: pull a Submitted candidate back to Kept, or
-  // promote a Kept candidate to Applied. Both are local-only; the
-  // server action stamps an ActionLog entry with the from/to so the
-  // activity feed can present "Reverted from Submitted to Kept by
-  // {user} at {when}" without inventing the metadata client-side.
-  function onMoveToKept() {
-    runLight("Moved back to Kept", () =>
-      moveToKept({
-        candidateRfId: props.candidateRfId,
-        jobRfId: props.jobRfId,
-        clientRfId: props.clientRfId,
-        // Server action signature accepts a PipelineBucket today; cast the
-        // local stage string at the boundary so this component stays free
-        // of the RF-derived bucket type. The server writes an ActionLog
-        // row with the raw string either way.
-        previousStage: props.stage as Parameters<typeof moveToKept>[0]["previousStage"],
-      }),
-    );
-  }
-  function onMoveToApplied() {
-    runLight("Moved back to Applied", () =>
-      moveToApplied({
-        candidateRfId: props.candidateRfId,
-        jobRfId: props.jobRfId,
-        clientRfId: props.clientRfId,
-        previousStage: props.stage as Parameters<typeof moveToApplied>[0]["previousStage"],
-      }),
-    );
-  }
-
   switch (stage) {
     case "sourced":
-      // Submit is now also the primary action on Sourced so recruiters
-      // can skip straight to the submittal composer without going
-      // through Apply first. Apply stays as a secondary action for
-      // when they just want to track the application without sending
-      // a submittal yet.
+      // Sourced is the unengaged default. Apply to Job tracks the
+      // application and Keep saves the candidate for later. Heavier
+      // actions (Submit, Reject) only surface once the candidate is
+      // actually moving through the pipeline.
       return (
         <ActionRow disabled={isPending}>
-          <NavButton
-            icon={Send}
-            label="Submit"
-            tone="primary"
-            href={`${profileHref}?compose=submittal&jobId=${props.jobRfId}`}
-            title="Open submittal composer"
-          />
-          <ActionButton icon={Plus} label="Apply" tone="apply" onClick={onApply} />
+          <ActionButton icon={Plus} label="Apply to Job" tone="apply" onClick={onApply} />
           <ActionButton icon={Bookmark} label="Keep" tone="keep" onClick={onKeep} />
-          <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
       );
     case "applied":
@@ -309,10 +267,8 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
       // when the recruiter hits Send in the composer; the inline-action
       // path here used to write the move directly without showing the
       // email, which was the bug the deep-link fix is correcting.
-      // Schedule Interview is exposed at applied so recruiters can skip
-      // straight to scheduling when the client has already greenlit a
-      // call. Keep was retired from this row in favor of the candidate-
-      // level Keep button on the profile resume action bar.
+      // Keep saves the candidate for later without advancing; Reject
+      // drops them. Interview scheduling waits until Submitted.
       return (
         <ActionRow disabled={isPending}>
           <NavButton
@@ -322,22 +278,13 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
             href={`${profileHref}?compose=submittal&jobId=${props.jobRfId}`}
             title="Open submittal composer"
           />
-          <DialogOrNav
-            icon={CalendarClock}
-            label="Schedule Interview"
-            title="Schedule Interview"
-            tone="schedule"
-            onClick={props.onSchedule}
-            href={profileHref}
-          />
+          <ActionButton icon={Bookmark} label="Keep" tone="keep" onClick={onKeep} />
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
       );
     case "kept":
-      // Submit (deep-link composer) / Move to Applied (revert) / Reject.
-      // Move to Applied is the canonical promotion path out of Kept —
-      // recruiter wants to re-engage the candidate without surfacing
-      // the submittal composer yet.
+      // Submit (deep-link composer) / Reject. Submit is the promotion
+      // path out of Kept; Reject drops the candidate.
       return (
         <ActionRow disabled={isPending}>
           <NavButton
@@ -346,21 +293,13 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
             tone="primary"
             href={`${profileHref}?compose=submittal&jobId=${props.jobRfId}`}
             title="Open submittal composer"
-          />
-          <ActionButton
-            icon={CornerUpLeft}
-            label="Move to Applied"
-            title="Revert this Kept candidate back to Applied"
-            onClick={onMoveToApplied}
           />
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
       );
     case "submitted":
-      // Schedule Interview / Move to Kept / Reject. Move to Kept lets
-      // the recruiter pull a candidate back out of Submitted (e.g.
-      // before the client sees the submittal, or after silence to re-
-      // nurture for a different role) without rejecting them.
+      // Schedule Interview / Reject. The candidate is in front of the
+      // client now; the recruiter either books the call or drops them.
       return (
         <ActionRow disabled={isPending}>
           <DialogOrNav
@@ -371,37 +310,13 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
             onClick={props.onSchedule}
             href={profileHref}
           />
-          <ActionButton
-            icon={CornerUpLeft}
-            label="Move to Kept"
-            tone="keep"
-            title="Pull this candidate back to Kept"
-            onClick={onMoveToKept}
-          />
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
       );
     case "interviewing": {
-      // Edit Interview (when an upcoming interview is on file) /
-      // Schedule Interview (next round) / Offer / Reject. Edit
-      // Interview matches the /pipeline page's affordance and the
-      // candidate-profile job strip so the same gesture is available
-      // on every interviewing-stage surface.
-      const editInterviewHref = props.nextInterview
-        ? `${profileHref}?edit=interview&interviewId=${encodeURIComponent(props.nextInterview.id)}`
-        : profileHref;
+      // Schedule Interview (next round) / Offer / Reject.
       return (
         <ActionRow disabled={isPending}>
-          {props.nextInterview && (
-            <DialogOrNav
-              icon={Edit3}
-              label="Edit Interview"
-              title="Edit the upcoming interview"
-              tone="default"
-              onClick={props.onEditInterview}
-              href={editInterviewHref}
-            />
-          )}
           <DialogOrNav
             icon={CalendarClock}
             label="Schedule Interview"
@@ -435,7 +350,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
           />
           <DialogOrNav
             icon={Handshake}
-            label="Placement"
+            label="Make Placement"
             title="Record placement"
             tone="primary"
             onClick={props.onPlacement}
@@ -464,7 +379,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
           />
           <DialogOrNav
             icon={CheckCircle2}
-            label="Confirm"
+            label="Confirm Start"
             title="Confirm start"
             tone="primary"
             onClick={props.onConfirmStart}
@@ -473,9 +388,19 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
         </ActionRow>
       );
     case "hired":
+      // Placed and started. The only row action is Edit Placement so
+      // the recruiter can correct fee, dates, or billing contacts after
+      // the fact; it opens the same dialog Pending Start uses.
       return (
-        <ActionRow disabled={false}>
-          <NavButton icon={CheckCircle2} label="View" href={profileHref} title="Open candidate profile" />
+        <ActionRow disabled={isPending}>
+          <DialogOrNav
+            icon={Edit3}
+            label="Edit Placement"
+            title="Edit placement details"
+            tone="default"
+            onClick={props.onPlacement}
+            href={profileHref}
+          />
         </ActionRow>
       );
     case "rejected":
