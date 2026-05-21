@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'node:crypto'
 import { prisma } from '@/lib/prisma'
 import { matchClientByPhone } from '@/lib/quo-contact-match'
-import { sendPushToOrg, sendPushToUser } from '@/lib/web-push'
-import { getUnreadCountsForOrg } from '@/lib/unread-counts'
+import { sendPushToOrg, sendPushToUser, type PushPayload } from '@/lib/web-push'
+import { getUnreadCountsForOrg, type UnreadCounts } from '@/lib/unread-counts'
 import { pickPhone, redactPhone } from '@/lib/quo-phone'
 
 // Quo (formerly KrispCall / OpenPhone) inbound webhook.
@@ -132,24 +132,42 @@ export async function POST(req: NextRequest) {
         const dest = candidate
           ? `/phone?candidateId=${candidate.id}`
           : `/phone?from=${encodeURIComponent(fromNumber)}`
-        // Never let an unread-count failure kill the push. Fall back to a
-        // badge of 1 (one new item) so the notification still fires.
-        let counts
+        // Never let an unread-count failure kill the push. On failure we
+        // OMIT the badge fields entirely instead of guessing a badge of 1 -
+        // sw.js maps a missing badgeCount to "leave the app badge alone", so
+        // a transient count hiccup can no longer clobber a higher real
+        // badge. Guessing 1 here was the "2 dropped to 1 on a new push" bug.
+        let counts: UnreadCounts | null = null
         try {
           counts = await getUnreadCountsForOrg(orgId)
         } catch (err) {
-          console.error('[quo/webhook] getUnreadCountsForOrg failed, using fallback counts', err)
-          counts = { mailUnread: null, phoneUnread: 0, badgeCount: 1 }
+          console.error('[quo/webhook] getUnreadCountsForOrg failed (sms), omitting badge so the SW leaves it alone', err)
         }
-        const payload = {
+        const payload: PushPayload = {
           title: `New text from ${senderName}`,
           body: (content ?? '').slice(0, 100),
           url: dest,
           tag: `sms-${tagKey}`,
-          mailUnread: counts.mailUnread,
-          phoneUnread: counts.phoneUnread,
-          badgeCount: counts.badgeCount,
+          // Badge fields ride along only when we have a real count.
+          ...(counts
+            ? {
+                mailUnread: counts.mailUnread,
+                phoneUnread: counts.phoneUnread,
+                badgeCount: counts.badgeCount,
+              }
+            : {}),
         }
+        // TEMP DIAG (remove after badge debugging): exact badge values and
+        // whether they came from the fallback path, per push source. No
+        // message body, no full phone number.
+        console.log('[quo/webhook][badge-diag]', {
+          source: 'quo-sms',
+          mailUnread: counts?.mailUnread ?? null,
+          phoneUnread: counts?.phoneUnread ?? null,
+          badgeCount: counts?.badgeCount ?? null,
+          fromFallback: counts === null,
+          routedTo: candidate?.createdById ? 'user' : 'org',
+        })
         if (candidate?.createdById) {
           await sendPushToUser(candidate.createdById, orgId, payload)
         } else {
@@ -403,18 +421,39 @@ export async function POST(req: NextRequest) {
                 .trim()
             : '') || fromNumber || 'Unknown'
         const isMissed = !duration || duration <= 3
-        const counts = await getUnreadCountsForOrg(orgId)
-        const payload = {
+        // Same safety contract as the SMS branch: a count failure must not
+        // kill the notification, and we omit the badge fields rather than
+        // guessing so a hiccup can't clobber a higher real badge.
+        let counts: UnreadCounts | null = null
+        try {
+          counts = await getUnreadCountsForOrg(orgId)
+        } catch (err) {
+          console.error('[quo/webhook] getUnreadCountsForOrg failed (call), omitting badge so the SW leaves it alone', err)
+        }
+        const payload: PushPayload = {
           title: isMissed ? 'Missed call' : 'Call ended',
           body: duration
             ? `${callerName} · ${formatMmss(duration)}`
             : callerName,
           url: `/phone?call=${callLogRow.id}`,
           tag: `call-${callLogRow.id}`,
-          mailUnread: counts.mailUnread,
-          phoneUnread: counts.phoneUnread,
-          badgeCount: counts.badgeCount,
+          ...(counts
+            ? {
+                mailUnread: counts.mailUnread,
+                phoneUnread: counts.phoneUnread,
+                badgeCount: counts.badgeCount,
+              }
+            : {}),
         }
+        // TEMP DIAG (remove after badge debugging): see SMS branch note.
+        console.log('[quo/webhook][badge-diag]', {
+          source: 'quo-call',
+          mailUnread: counts?.mailUnread ?? null,
+          phoneUnread: counts?.phoneUnread ?? null,
+          badgeCount: counts?.badgeCount ?? null,
+          fromFallback: counts === null,
+          routedTo: candidate?.createdById ? 'user' : 'org',
+        })
         if (candidate?.createdById) {
           await sendPushToUser(candidate.createdById, orgId, payload)
         } else {

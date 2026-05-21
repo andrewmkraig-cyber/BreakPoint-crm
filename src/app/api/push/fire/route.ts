@@ -55,6 +55,16 @@ export async function POST(req: NextRequest) {
   const org = await getCurrentOrg();
   const counts = await getUnreadCountsForOrg(org.id);
 
+  // TEMP DIAG (remove after badge debugging): exact badge values per push
+  // source. This client-relayed path always sends a real count.
+  console.log("[push/fire][badge-diag]", {
+    source: "push-fire",
+    mailUnread: counts.mailUnread,
+    phoneUnread: counts.phoneUnread,
+    badgeCount: counts.badgeCount,
+    fromFallback: false,
+  });
+
   await sendPushToUser(user.id, org.id, {
     title: body.title,
     body: body.body,
