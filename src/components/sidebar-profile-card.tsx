@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { signOut } from "next-auth/react";
-import { Copy, ExternalLink, Globe, LogOut, Mail, Phone } from "lucide-react";
+import { ChevronRight, Copy, Crown, ExternalLink, Globe, LogOut, Mail, Phone } from "lucide-react";
 import { toast } from "sonner";
 
 const PROFILE = {
@@ -55,7 +55,7 @@ export function SidebarProfileCard() {
         onClick={() => setOpen((v) => !v)}
         aria-label="Open profile contact card"
         aria-expanded={open}
-        className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition hover:bg-[var(--court-sidebar-active-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50"
+        className="flex w-full items-center gap-2.5 rounded-lg border border-court-sidebar-border px-2.5 py-2 text-left transition hover:bg-[var(--court-sidebar-active-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50"
       >
         {imageUrl ? (
           <Image
@@ -93,7 +93,17 @@ export function SidebarProfileCard() {
           >
             {PROFILE.phone}
           </span>
+          {/* Slim status pill. Brand green text + faint brand tint bg,
+              theme-aware via court-brand tokens (no hardcoded color). */}
+          <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-court-brand/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-court-brand">
+            <Crown aria-hidden="true" className="h-3 w-3" />
+            Ace Creator
+          </span>
         </div>
+        <ChevronRight
+          aria-hidden="true"
+          className="h-4 w-4 shrink-0 self-center text-court-sidebar-fg-dim"
+        />
       </button>
 
       {open && (
