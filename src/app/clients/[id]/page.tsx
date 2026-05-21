@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ShieldCheck, Briefcase } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Briefcase, Eye } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { getCurrentUserId } from "@/lib/auth/getCurrentUserId";
+import { ClaimClientButton } from "@/app/clients/[id]/claim-client-button";
 import {
   canonicalStage,
   emptyJobCounts,
@@ -70,7 +72,7 @@ export default async function ClientDetailPage({
   // Agreements / benefits are keyed by the legacy numeric id (Phase 5
   // drop). Ace-native Clients without a legacyRfId have no agreements
   // or benefits yet; skip the query rather than fetching with a sentinel.
-  const [contacts, agreements, benefits, benefitsFiles] = await Promise.all([
+  const [contacts, agreements, benefits, benefitsFiles, currentUserId, ownerUser] = await Promise.all([
     legacyRfId != null
       ? prisma.contact.findMany({
           where: { OR: [{ clientId: client.id }, { client: { legacyRfId } }] },
@@ -146,7 +148,19 @@ export default async function ClientDetailPage({
           },
         })
       : Promise.resolve([] as Array<never>),
+    getCurrentUserId(),
+    client.ownerId
+      ? prisma.user.findUnique({ where: { id: client.ownerId }, select: { name: true } })
+      : Promise.resolve(null),
   ]);
+
+  // Per-user ownership gate (Step 3). Only the owner can write; an
+  // unclaimed client (ownerId null) is read-only until claimed. Everyone
+  // in the org can still read every client.
+  const isOwner = client.ownerId != null && client.ownerId === currentUserId;
+  const isUnowned = client.ownerId == null;
+  const canWrite = isOwner;
+  const ownerFirstName = ownerUser?.name?.trim().split(/\s+/)[0] ?? null;
 
   const location = (client.location as LocationJson) ?? null;
   const displayName = client.name || "(unnamed)";
@@ -307,6 +321,20 @@ export default async function ClientDetailPage({
         <ArrowLeft className="h-3 w-3" /> Back to clients
       </Link>
 
+      {!isOwner && !isUnowned && (
+        <div className="flex items-center gap-1.5 rounded-md bg-court-surface-subtle px-3 py-1.5 text-xs text-court-fg-muted">
+          <Eye className="h-3 w-3" />
+          Owned by {ownerFirstName ?? "another user"} - view only.
+        </div>
+      )}
+
+      {isUnowned && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md bg-court-surface-subtle px-3 py-1.5 text-xs text-court-fg-muted">
+          <span>Available - this client has no owner yet.</span>
+          <ClaimClientButton clientCuid={client.id} />
+        </div>
+      )}
+
       <PageHeader
         title={displayName}
         leading={<ClientLogo name={displayName} domain={client.domain} size={40} />}
@@ -342,6 +370,7 @@ export default async function ClientDetailPage({
             clientCuid={client.id}
             initial={companyInitial}
             agreementFile={agreementFileForCard}
+            canWrite={canWrite}
           />
 
           <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm lg:col-span-3">
@@ -445,6 +474,7 @@ export default async function ClientDetailPage({
         <ContactsTab
           clientCuid={client.id}
           clientName={displayName}
+          canWrite={canWrite}
           initialContacts={contacts.map((c) => ({
             id: c.id,
             legacyRfId: c.legacyRfId,
@@ -467,6 +497,7 @@ export default async function ClientDetailPage({
       ) : tab === "agreements" && legacyRfId != null ? (
         <AgreementsTab
           clientId={legacyRfId}
+          canWrite={canWrite}
           items={agreements.map((a) => ({
             id: a.id,
             filename: a.filename,
@@ -481,6 +512,7 @@ export default async function ClientDetailPage({
       ) : tab === "benefits" && legacyRfId != null ? (
         <BenefitsTab
           clientId={legacyRfId}
+          canWrite={canWrite}
           initial={{
             body: benefits?.body ?? "",
             updatedAt: benefits?.updatedAt?.toISOString() ?? null,
@@ -517,7 +549,7 @@ export default async function ClientDetailPage({
             </p>
           </header>
           <div className="space-y-4 p-5">
-            <AddClientNote clientId={client.id} />
+            {canWrite && <AddClientNote clientId={client.id} />}
             {client.notes ? (
               <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-court-fg">
                 {client.notes}
@@ -559,7 +591,7 @@ export default async function ClientDetailPage({
 
       {/* Delete lives inline at the very bottom of the page content and
           only on the Overview tab - not floating, never on other tabs. */}
-      {tab === "overview" && (
+      {tab === "overview" && canWrite && (
         <DeleteClientButton clientId={client.id} clientName={displayName} />
       )}
     </div>

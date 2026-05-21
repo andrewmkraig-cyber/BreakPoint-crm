@@ -51,10 +51,14 @@ export function EditableCompany({
   clientCuid,
   initial,
   agreementFile,
+  canWrite = true,
 }: {
   clientCuid: string;
   initial: CompanyState;
   agreementFile?: { filename: string; link: string } | null;
+  // When false (viewing a client you don't own) the Edit affordance is
+  // hidden, so the card renders as a read-only company summary.
+  canWrite?: boolean;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -104,7 +108,7 @@ export function EditableCompany({
         <h2 className="font-serif text-base font-semibold text-court-fg">
           Company &amp; Fee Agreement
         </h2>
-        {!editing && (
+        {!editing && canWrite && (
           <button
             type="button"
             onClick={() => setEditing(true)}

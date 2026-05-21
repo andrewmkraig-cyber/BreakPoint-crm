@@ -411,6 +411,41 @@ export async function updateClientCompany(input: UpdateClientInput): Promise<Act
   }
 }
 
+// ---- Ownership (per-user client claim) ----
+//
+// Claims an unowned client for the signed-in user. Used by the
+// "Available - Claim this client" banner on the detail page. Org-scoped
+// (Architecture rule #8) and refuses to overwrite an existing owner, so
+// two recruiters racing on the same available client can't clobber each
+// other - the second one gets "already owned" and re-renders read-only.
+export async function claimClient(clientCuid: string): Promise<ActionResult> {
+  const user = await requireUserId();
+  if (!user) return { ok: false, error: "Not signed in." };
+  if (!clientCuid) return { ok: false, error: "Missing client id." };
+
+  try {
+    const org = await getCurrentOrg();
+    const existing = await prisma.client.findFirst({
+      where: { id: clientCuid, organizationId: org.id },
+      select: { id: true, legacyRfId: true, ownerId: true },
+    });
+    if (!existing) return { ok: false, error: "Client not found." };
+    if (existing.ownerId) return { ok: false, error: "This client is already owned." };
+
+    await prisma.client.update({
+      where: { id: existing.id },
+      data: { ownerId: user.id },
+    });
+
+    const slug = existing.legacyRfId != null ? String(existing.legacyRfId) : existing.id;
+    revalidatePath(`/clients/${slug}`);
+    revalidatePath(`/clients`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to claim client." };
+  }
+}
+
 // Hard-delete a client and every row that references it. Mirrors
 // deleteCandidate's strategy: explicit cascade rather than relying on
 // schema-level onDelete alone, because Job and Contact use SetNull

@@ -28,10 +28,14 @@ export function ContactsTab({
   clientCuid,
   clientName,
   initialContacts,
+  canWrite = true,
 }: {
   clientCuid: string;
   clientName: string;
   initialContacts: ContactRow[];
+  // When false (client you don't own) the add form and row-click editor
+  // are suppressed; contacts stay readable with their email/phone links.
+  canWrite?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -74,18 +78,20 @@ export function ContactsTab({
             ? "No contacts on file yet."
             : `${rows.length} ${rows.length === 1 ? "contact" : "contacts"} on file`}
         </div>
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => {
-            setOpen((v) => !v);
-            setError(null);
-            setSuccess(null);
-          }}
-        >
-          {open ? <X className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
-          {open ? "Close" : "Add contact"}
-        </Button>
+        {canWrite && (
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => {
+              setOpen((v) => !v);
+              setError(null);
+              setSuccess(null);
+            }}
+          >
+            {open ? <X className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+            {open ? "Close" : "Add contact"}
+          </Button>
+        )}
       </div>
 
       {success && (
@@ -153,8 +159,11 @@ export function ContactsTab({
               rows.map((c) => (
                 <tr
                   key={c.id}
-                  onClick={() => setEditing(c)}
-                  className="cursor-pointer transition hover:bg-brand-tint/40"
+                  onClick={canWrite ? () => setEditing(c) : undefined}
+                  className={cn(
+                    "transition",
+                    canWrite ? "cursor-pointer hover:bg-brand-tint/40" : "",
+                  )}
                 >
                   <td className="px-5 py-3 align-top">
                     <div className="flex items-center gap-2">

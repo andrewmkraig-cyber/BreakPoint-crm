@@ -25,6 +25,11 @@ type Props = {
   onFiles: (files: File[]) => void;
   onDelete?: (id: string, name: string) => void;
   emptyHint?: string;
+  // Read-only mode: hides the upload drop area and per-file delete
+  // buttons, leaving only the downloadable file list. Used when viewing
+  // a record you don't own. Defaults to false so existing callers are
+  // unaffected.
+  readOnly?: boolean;
 };
 
 export function DocumentDropzone({
@@ -37,6 +42,7 @@ export function DocumentDropzone({
   onFiles,
   onDelete,
   emptyHint,
+  readOnly = false,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -66,6 +72,7 @@ export function DocumentDropzone({
         </div>
       )}
 
+      {!readOnly && (
       <label
         htmlFor={inputId}
         onDragOver={(e) => {
@@ -103,6 +110,7 @@ export function DocumentDropzone({
           className="hidden"
         />
       </label>
+      )}
 
       {files.length > 0 && (
         <ul className="divide-y divide-court-border rounded-lg border border-court-border bg-court-surface">
@@ -125,7 +133,7 @@ export function DocumentDropzone({
                     {new Date(f.uploadedAt).toLocaleDateString()}
                   </span>
                 )}
-                {onDelete && (
+                {onDelete && !readOnly && (
                   <button
                     type="button"
                     onClick={() => {

@@ -36,14 +36,19 @@ export function BenefitsTab({
   clientId,
   initial,
   files,
+  canWrite = true,
 }: {
   clientId: number;
   initial: BenefitsState;
   files: BenefitsFile[];
+  // When false (client you don't own) uploads, deletes, the Generate
+  // Summary / Edit buttons, and the textarea are suppressed. The summary
+  // body and existing files stay readable / downloadable.
+  canWrite?: boolean;
 }) {
   return (
     <ClientErrorBoundary>
-      <BenefitsTabInner clientId={clientId} initial={initial} files={files} />
+      <BenefitsTabInner clientId={clientId} initial={initial} files={files} canWrite={canWrite} />
     </ClientErrorBoundary>
   );
 }
@@ -52,13 +57,18 @@ function BenefitsTabInner({
   clientId,
   initial,
   files,
+  canWrite,
 }: {
   clientId: number;
   initial: BenefitsState;
   files: BenefitsFile[];
+  canWrite: boolean;
 }) {
   const router = useRouter();
-  const [editing, setEditing] = useState<boolean>(!initial.body);
+  // Read-only viewers never enter edit mode, even when the body is empty
+  // (the owner's default-to-edit-on-empty behavior would otherwise expose
+  // an editable textarea on a client they can't write to).
+  const [editing, setEditing] = useState<boolean>(canWrite ? !initial.body : false);
   const [draft, setDraft] = useState<string>(initial.body);
   const [saved, setSaved] = useState<BenefitsState>(initial);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -196,39 +206,44 @@ function BenefitsTabInner({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
-        <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
-          <div>
-            <h2 className="font-serif text-lg font-semibold text-court-fg">Benefits documents</h2>
-            <p className="text-xs text-court-fg-muted">
-              Drop PDFs, Word docs, or plain-text carrier packets here. Files are private to Ace.
-            </p>
+      {(canWrite || files.length > 0) && (
+        <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
+          <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
+            <div>
+              <h2 className="font-serif text-lg font-semibold text-court-fg">Benefits documents</h2>
+              <p className="text-xs text-court-fg-muted">
+                {canWrite
+                  ? "Drop PDFs, Word docs, or plain-text carrier packets here. Files are private to Ace."
+                  : "Uploaded carrier packets. View only."}
+              </p>
+            </div>
+          </div>
+          <div className="p-5">
+            <DocumentDropzone
+              isBusy={isUploading}
+              readOnly={!canWrite}
+              onFiles={onFiles}
+              onDelete={onDeleteFile}
+              emptyHint="PDF, DOC/DOCX, or TXT up to 20MB"
+              files={files.map((f) => ({
+                id: f.id,
+                filename: f.filename,
+                mimeType: f.mimeType,
+                sizeBytes: f.sizeBytes,
+                uploadedAt: f.uploadedAt,
+                uploadedByName: f.uploadedByName,
+                downloadHref: `/api/client-benefits-files/${f.id}`,
+              }))}
+            />
+            {canWrite && uploadError && (
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{uploadError}</div>
+            )}
+            {canWrite && uploadSuccess && !uploadError && (
+              <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{uploadSuccess}</div>
+            )}
           </div>
         </div>
-        <div className="p-5">
-          <DocumentDropzone
-            isBusy={isUploading}
-            onFiles={onFiles}
-            onDelete={onDeleteFile}
-            emptyHint="PDF, DOC/DOCX, or TXT up to 20MB"
-            files={files.map((f) => ({
-              id: f.id,
-              filename: f.filename,
-              mimeType: f.mimeType,
-              sizeBytes: f.sizeBytes,
-              uploadedAt: f.uploadedAt,
-              uploadedByName: f.uploadedByName,
-              downloadHref: `/api/client-benefits-files/${f.id}`,
-            }))}
-          />
-          {uploadError && (
-            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{uploadError}</div>
-          )}
-          {uploadSuccess && !uploadError && (
-            <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{uploadSuccess}</div>
-          )}
-        </div>
-      </div>
+      )}
 
       <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
         <div className="flex flex-col items-start justify-between gap-3 border-b border-court-border px-5 py-3 md:flex-row md:items-center">
@@ -238,26 +253,28 @@ function BenefitsTabInner({
               Paste raw notes or generate a clean summary with Claude from uploaded docs + pasted text.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={onSummarize}
-              disabled={isSummarizing}
-              className={CLAUDE_PILL_CLASS}
-            >
-              {isSummarizing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-              Generate Summary
-            </button>
-            {!editing && (
+          {canWrite && (
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => setEditing(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
+                onClick={onSummarize}
+                disabled={isSummarizing}
+                className={CLAUDE_PILL_CLASS}
               >
-                <Pencil className="h-3 w-3" /> Edit
+                {isSummarizing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                Generate Summary
               </button>
-            )}
-          </div>
+              {!editing && (
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
+                >
+                  <Pencil className="h-3 w-3" /> Edit
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="p-5">
@@ -315,7 +332,9 @@ function BenefitsTabInner({
             </>
           ) : (
             <div className="py-8 text-center text-sm text-court-fg-muted">
-              No benefits summary yet. Upload a PDF and click Summarize with Claude, or edit to paste your own notes.
+              {canWrite
+                ? "No benefits summary yet. Upload a PDF and click Summarize with Claude, or edit to paste your own notes."
+                : "No benefits summary yet."}
             </div>
           )}
         </div>

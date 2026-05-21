@@ -31,7 +31,17 @@ export type AgreementRow = {
   summaryUpdatedAt: string | null;
 };
 
-export function AgreementsTab({ clientId, items }: { clientId: number; items: AgreementRow[] }) {
+export function AgreementsTab({
+  clientId,
+  items,
+  canWrite = true,
+}: {
+  clientId: number;
+  items: AgreementRow[];
+  // When false (client you don't own) the upload card plus the per-item
+  // summarize and delete buttons are hidden. Files stay downloadable.
+  canWrite?: boolean;
+}) {
   const router = useRouter();
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
@@ -89,27 +99,29 @@ export function AgreementsTab({ clientId, items }: { clientId: number; items: Ag
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
-        <div className="border-b border-court-border px-5 py-3">
-          <h3 className="font-serif text-base font-semibold text-court-fg">Upload agreement</h3>
-          <p className="text-xs text-court-fg-muted">
-            PDFs or Word documents, up to 20MB. Stored privately in Ace. DocuSign auto-import will come later.
-          </p>
+      {canWrite && (
+        <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
+          <div className="border-b border-court-border px-5 py-3">
+            <h3 className="font-serif text-base font-semibold text-court-fg">Upload agreement</h3>
+            <p className="text-xs text-court-fg-muted">
+              PDFs or Word documents, up to 20MB. Stored privately in Ace. DocuSign auto-import will come later.
+            </p>
+          </div>
+          <div className="p-5">
+            <DocumentDropzone
+              accept="application/pdf,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              multiple={false}
+              isBusy={isUploading}
+              onFiles={onFiles}
+              emptyHint="PDF or DOC/DOCX up to 20MB"
+            />
+            {uploadError && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{uploadError}</div>}
+            {uploadSuccess && !uploadError && (
+              <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{uploadSuccess}</div>
+            )}
+          </div>
         </div>
-        <div className="p-5">
-          <DocumentDropzone
-            accept="application/pdf,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            multiple={false}
-            isBusy={isUploading}
-            onFiles={onFiles}
-            emptyHint="PDF or DOC/DOCX up to 20MB"
-          />
-          {uploadError && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{uploadError}</div>}
-          {uploadSuccess && !uploadError && (
-            <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{uploadSuccess}</div>
-          )}
-        </div>
-      </div>
+      )}
 
       <div className="overflow-hidden rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
         <div className="border-b border-court-border px-5 py-3 text-sm font-semibold text-court-fg">Uploaded agreements</div>
@@ -118,7 +130,7 @@ export function AgreementsTab({ clientId, items }: { clientId: number; items: Ag
         ) : (
           <ul className="divide-y divide-border">
             {items.map((a) => (
-              <AgreementItem key={a.id} agreement={a} onDelete={onDelete} />
+              <AgreementItem key={a.id} agreement={a} onDelete={onDelete} canWrite={canWrite} />
             ))}
           </ul>
         )}
@@ -130,9 +142,11 @@ export function AgreementsTab({ clientId, items }: { clientId: number; items: Ag
 function AgreementItem({
   agreement,
   onDelete,
+  canWrite = true,
 }: {
   agreement: AgreementRow;
   onDelete: (id: string, name: string) => void;
+  canWrite?: boolean;
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState<boolean>(Boolean(agreement.summary));
@@ -191,16 +205,18 @@ function AgreementItem({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void onSummarize()}
-            disabled={isPending || !isPdf}
-            title={!isPdf ? "Only PDF agreements can be summarized right now." : undefined}
-            className={CLAUDE_PILL_CLASS}
-          >
-            {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-            {isPending ? "Summarizing…" : summary ? "Re-summarize" : "Summarize Terms"}
-          </button>
+          {canWrite && (
+            <button
+              type="button"
+              onClick={() => void onSummarize()}
+              disabled={isPending || !isPdf}
+              title={!isPdf ? "Only PDF agreements can be summarized right now." : undefined}
+              className={CLAUDE_PILL_CLASS}
+            >
+              {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+              {isPending ? "Summarizing…" : summary ? "Re-summarize" : "Summarize Terms"}
+            </button>
+          )}
           {summary && (
             <button
               type="button"
@@ -217,13 +233,15 @@ function AgreementItem({
           >
             Download
           </Link>
-          <button
-            type="button"
-            onClick={() => onDelete(agreement.id, agreement.filename)}
-            className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 grass:hover:bg-red-900/30"
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
+          {canWrite && (
+            <button
+              type="button"
+              onClick={() => onDelete(agreement.id, agreement.filename)}
+              className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 grass:hover:bg-red-900/30"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
         </div>
       </div>
 
