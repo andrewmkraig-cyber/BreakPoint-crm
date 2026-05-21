@@ -931,22 +931,27 @@ export function MailView({
       `}</style>
       <aside className="flex flex-col overflow-hidden border border-court-border bg-court-surface lg:border-0 lg:bg-transparent">
         <nav className="flex-1 overflow-y-auto p-2 text-sm">
-          {/* Inbox entry — the visual anchor of the sidebar but
-              proportioned to match the Sent / Drafts / label rows
-              below it. Earlier this was a chunky border-2/py-4 card
-              that dwarfed the rest of the sidebar; user feedback was
-              "too thick." Now it's a normal-height nav row with a
-              subtle green tint so it still reads as the default
-              destination without towering over its siblings. */}
+          {/* Inbox entry - the default destination (selectedLabel
+              null). Uses the canonical TabStrip active style
+              (rounded-md, court-brand border + text, transparent bg)
+              so it reads identically to every other active tab and
+              skins correctly in dark mode. When a label is selected
+              it drops to the neutral inactive row style, matching its
+              Sent / Drafts siblings below. */}
           <button
             type="button"
             onClick={() => setSelectedLabel(null)}
-            className="flex min-h-9 w-full items-center gap-2 rounded-lg border border-[#5A9642]/40 bg-[#EAF4E4] px-3 py-1.5 text-left transition hover:border-[#5A9642]"
+            className={
+              "flex min-h-9 w-full items-center gap-2 rounded-md border px-3 py-1.5 text-left transition " +
+              (!selectedLabel
+                ? "border-court-brand bg-transparent font-semibold text-court-brand"
+                : "border-transparent font-medium text-court-fg hover:bg-court-surface-subtle")
+            }
           >
-            <MailIcon className="h-4 w-4 shrink-0 text-[#5A9642]" />
-            <span className="flex-1 text-sm font-semibold text-[#3F7030]">Inbox</span>
+            <MailIcon className="h-4 w-4 shrink-0" />
+            <span className="flex-1 text-sm">Inbox</span>
             {unreadCount > 0 && (
-              <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-white px-1.5 py-0.5 text-[11px] font-bold text-[#3F7030]">
+              <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-court-brand-tint px-1.5 py-0.5 text-[11px] font-bold text-court-brand-dark">
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
@@ -978,10 +983,10 @@ export function MailView({
                 type="button"
                 onClick={() => setSelectedLabel({ id: "SENT", name: "Sent" })}
                 className={
-                  "flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition " +
+                  "flex min-h-9 w-full items-center gap-2 rounded-md border px-3 py-1.5 text-left transition " +
                   (selectedLabel?.id === "SENT"
-                    ? "bg-[#EAF4E4] text-[#3F7030]"
-                    : "text-court-fg hover:bg-slate-50")
+                    ? "border-court-brand bg-transparent font-semibold text-court-brand"
+                    : "border-transparent text-court-fg hover:bg-court-surface-subtle")
                 }
               >
                 <Send className="h-4 w-4 shrink-0" />
@@ -993,10 +998,10 @@ export function MailView({
                 type="button"
                 onClick={() => setSelectedLabel({ id: "DRAFT", name: "Drafts" })}
                 className={
-                  "flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition " +
+                  "flex min-h-9 w-full items-center gap-2 rounded-md border px-3 py-1.5 text-left transition " +
                   (selectedLabel?.id === "DRAFT"
-                    ? "bg-[#EAF4E4] text-[#3F7030]"
-                    : "text-court-fg hover:bg-slate-50")
+                    ? "border-court-brand bg-transparent font-semibold text-court-brand"
+                    : "border-transparent text-court-fg hover:bg-court-surface-subtle")
                 }
               >
                 <FileText className="h-4 w-4 shrink-0" />
@@ -2698,9 +2703,9 @@ function LabelTreeNode({
             }}
             disabled={node.id === null}
             className={
-              "flex h-9 flex-1 items-center truncate rounded-lg pl-1 pr-1 text-left text-[13px] font-medium transition " +
+              "flex h-9 flex-1 items-center truncate rounded-md border pl-1 pr-1 text-left text-[13px] font-medium transition " +
               (active
-                ? "bg-[#EAF4E4] font-semibold text-[#3F7030]"
+                ? "border-court-brand bg-transparent font-semibold text-court-brand"
                 : node.id === null
                   ? // Synthetic parent (no real Gmail label at this
                     // path — exists only because a child label nests
@@ -2709,8 +2714,8 @@ function LabelTreeNode({
                     // + color as real labels so the tree reads
                     // uniformly; just drop hover + cursor since
                     // there's no id to filter the inbox by.
-                    "cursor-default text-court-fg"
-                  : "text-court-fg hover:bg-slate-50")
+                    "cursor-default border-transparent text-court-fg"
+                  : "border-transparent text-court-fg hover:bg-court-surface-subtle")
             }
             title={node.name}
           >

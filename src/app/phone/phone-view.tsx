@@ -732,7 +732,7 @@ function ThreadRow({
               Candidate
             </span>
           ) : (
-            <span className="rounded-sm bg-amber-50 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-700">
+            <span className="rounded-sm border border-court-border bg-court-surface-subtle px-1 py-0.5 text-[10px] font-medium uppercase tracking-wider text-court-fg-muted">
               Unknown
             </span>
           )}
@@ -1047,7 +1047,7 @@ function ThreadDetailPane({
               className={
                 "rounded-sm px-1 py-0.5 text-[10px] uppercase tracking-wider " +
                 (detail.contact.kind === "unknown"
-                  ? "bg-amber-50 font-medium text-amber-700"
+                  ? "border border-court-border bg-court-surface-subtle font-medium text-court-fg-muted"
                   : "bg-court-surface-subtle")
               }
             >

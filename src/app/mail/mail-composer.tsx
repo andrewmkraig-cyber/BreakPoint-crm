@@ -1803,7 +1803,7 @@ export function MailComposer({
                 type="button"
                 onClick={onGenerate}
                 disabled={aiBusy || !aiPrompt.trim()}
-                className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+                className={CLAUDE_PILL_CLASS}
                 data-includes-subject={aiIncludeSubject ? "1" : "0"}
               >
                 {aiBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
