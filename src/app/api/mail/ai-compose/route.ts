@@ -314,7 +314,35 @@ function toSafeHtml(raw: string): string {
       .map((p) => `<p>${escapeHtml(p.trim()).replace(/\n/g, "<br/>")}</p>`)
       .join("");
   }
-  return s;
+  // Claude is asked for HTML but routinely leaves inline markdown in the
+  // body - **text** for bold headers, [text](url) for links. Those
+  // survive as literal characters in the composer and the sent email,
+  // so recipients see the raw syntax. Convert just those two constructs
+  // here, the single chokepoint every generated body flows through.
+  // Scoped to bold + links on purpose: a body with no markdown syntax
+  // is returned byte-for-byte unchanged, so plain-prose generations
+  // render exactly as they did before.
+  return convertInlineMarkdown(s);
+}
+
+// Minimal, deliberately narrow markdown-to-HTML pass. We avoid a full
+// markdown parse (marked is available) because full parsing would
+// autolink bare URLs and reflow paragraph whitespace, changing
+// non-markdown output. This only touches the two constructs Claude
+// actually leaks, and is a no-op when neither pattern is present.
+function convertInlineMarkdown(html: string): string {
+  return (
+    html
+      // **bold** -> <strong>bold</strong> (non-greedy, single line)
+      .replace(/\*\*([^*\n]+?)\*\*/g, "<strong>$1</strong>")
+      // [text](url) -> <a href="url">text</a>. Restrict to http(s) and
+      // mailto so a stray javascript:/data: URL can't ride through into
+      // the composer or the outbound message.
+      .replace(
+        /\[([^\]\n]+?)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,
+        '<a href="$2">$1</a>',
+      )
+  );
 }
 
 function escapeHtml(s: string): string {
