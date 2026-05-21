@@ -62,7 +62,6 @@ const ARC_TARGETS = [
 export default function SignInPage() {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const netRef = useRef<SVGGElement | null>(null);
-  const clockRef = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -181,21 +180,7 @@ export default function SignInPage() {
 
     net.appendChild(frag);
 
-    // Live desk clock, fixed to Eastern (the HQ market).
-    const fmt = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/New_York",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-    const tick = () => {
-      if (clockRef.current) clockRef.current.textContent = `${fmt.format(new Date())} ET`;
-    };
-    tick();
-    const id = window.setInterval(tick, 30_000);
-
     return () => {
-      window.clearInterval(id);
       while (net.firstChild) net.removeChild(net.firstChild);
     };
   }, []);
@@ -237,23 +222,11 @@ export default function SignInPage() {
       />
 
       {/* Top bar */}
-      <div className="absolute left-5 right-5 top-9 z-[4] flex items-center justify-between md:left-12 md:right-12">
-        <div className="flex items-center gap-3">
-          <span className="relative flex h-2 w-2" aria-hidden>
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-court-brand opacity-60" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-court-brand shadow-[0_0_16px_rgb(var(--court-brand)/0.7)]" />
-          </span>
-          <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-court-brand">
-            BreakPoint · Global Desk
-          </span>
-        </div>
-        <div className="hidden items-center gap-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-court-fg-dim sm:flex">
-          <span>14 Markets</span>
-          <span className="opacity-40">·</span>
-          <span>1,247 Candidates</span>
-          <span className="opacity-40">·</span>
-          <span ref={clockRef}>09:47 ET</span>
-        </div>
+      <div className="absolute left-5 right-5 top-9 z-[4] flex items-center md:left-12 md:right-12">
+        <span className="relative flex h-2 w-2" aria-hidden>
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-court-brand opacity-60" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-court-brand shadow-[0_0_16px_rgb(var(--court-brand)/0.7)]" />
+        </span>
       </div>
 
       {/* Card */}
