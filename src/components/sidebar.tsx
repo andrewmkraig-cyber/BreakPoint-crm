@@ -212,7 +212,7 @@ function NavLink({
         // background but below the icon/label without escaping the row.
         "relative isolate flex h-9 items-center gap-2.5 rounded-md pl-3 pr-2 text-[13px] font-medium transition-colors [@media(max-height:720px)]:h-8 [@media(max-height:640px)]:h-7 [@media(max-height:640px)]:text-[12.5px]",
         active
-          ? "bg-court-surface-subtle text-court-sidebar-active-fg"
+          ? "bg-[var(--court-sidebar-active-bg)] text-court-sidebar-active-fg"
           : "text-court-sidebar-fg-muted hover:bg-[var(--court-sidebar-active-bg)] hover:text-court-sidebar-fg",
       )}
     >
