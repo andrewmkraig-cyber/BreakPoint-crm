@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { useMailContext } from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
 
@@ -30,6 +31,11 @@ const BADGE_REGISTERED_KEY = "ace_badge_registered_v1";
 export function MailTabTitleSync() {
   const { unreadCount: mailUnread } = useMailContext();
   const { unreadCount: phoneUnread } = usePhoneContext();
+  // Route changes restamp document.title from the new page's Next
+  // metadata, wiping the count we set here. Tracking pathname as a dep
+  // re-applies the title after every navigation so "(5)" survives a tab
+  // click instead of vanishing until the next poll or hard refresh.
+  const pathname = usePathname();
   // One-time registration on mount. macOS won't surface the installed
   // PWA in System Settings → Notifications until the page has
   // exercised the Badging API at least once — but firing setAppBadge(0)
@@ -103,6 +109,6 @@ export function MailTabTitleSync() {
     } else if (total === 0 && typeof nav.clearAppBadge === "function") {
       void nav.clearAppBadge().catch(() => {});
     }
-  }, [mailUnread, phoneUnread]);
+  }, [mailUnread, phoneUnread, pathname]);
   return null;
 }

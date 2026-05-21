@@ -7,6 +7,7 @@ import {
 } from "@/lib/gmail";
 import { sendPushToOrg } from "@/lib/web-push";
 import { getUnreadCountsForOrg } from "@/lib/unread-counts";
+import { badgePayloadFields } from "@/lib/badge-math";
 
 export const dynamic = "force-dynamic";
 
@@ -210,14 +211,21 @@ export async function POST(req: NextRequest) {
       const counts = await getUnreadCountsForOrg(organizationId, {
         extraUnreadMailThreadIds: Array.from(newUnreadInboxThreads),
       });
+      // TEMP DIAG (keep until badge reliability confirmed in prod).
+      console.log("[push][badge-diag]", {
+        source: "gmail-webhook",
+        mailUnread: counts.mailUnread,
+        phoneUnread: counts.phoneUnread,
+        badgeCount: counts.badgeCount,
+        mailReliable: counts.mailReliable,
+        badgeOmitted: counts.badgeCount === null,
+      });
       await sendPushToOrg(organizationId, {
         title: "New Email",
         body: "You have a new message in Ace",
         url: "/mail",
         tag: "gmail-push",
-        mailUnread: counts.mailUnread,
-        phoneUnread: counts.phoneUnread,
-        badgeCount: counts.badgeCount,
+        ...badgePayloadFields(counts),
       });
     }
   } catch (err) {

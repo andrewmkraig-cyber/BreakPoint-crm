@@ -223,32 +223,34 @@ export async function GET(req: NextRequest) {
   const threads = limit ? allThreads.slice(0, limit) : allThreads;
 
   // Bucket counts feed the left-rail badges. Per spec, badges show
-  // UNREAD-only counts — not totals. Until SmsMessage carries an
-  // explicit read/unread field, every bucket count is 0 and the
-  // client hides the badge entirely (BucketItem renders nothing
-  // when count <= 0). When read tracking ships, swap each bucket's
-  // value for the count of threads in that bucket whose latest
-  // inbound SMS has readAt === null. Calls deliberately do NOT
-  // contribute — only unread inbound texts count toward the badge.
-  // The bucket FILTERING in PhoneView still works on the threads
-  // array directly, so swapping these counts to unread-only doesn't
-  // break clicking through to "Texts" / "Calls" / etc.
+  // UNREAD-only counts — not totals. Now that SmsMessage.isRead drives
+  // each thread's hasUnread flag, compute the counts from it instead of
+  // returning 0. Calls deliberately do NOT contribute — only unread
+  // inbound texts flip hasUnread. Computed over the FULL set (allThreads)
+  // not the limited slice so the badge reflects the whole inbox.
+  // BucketItem still hides any badge whose count is <= 0, and the bucket
+  // FILTERING in PhoneView works on the threads array directly, so this
+  // doesn't break clicking through to "Texts" / "Candidates" / etc.
+  const unreadThreads = allThreads.filter((t) => t.hasUnread);
   const buckets: BucketCounts = {
-    all: 0,
-    texts: 0,
+    all: unreadThreads.length,
+    texts: unreadThreads.length,
     calls: 0,
     missed: 0,
     voicemails: 0,
-    candidates: 0,
+    candidates: unreadThreads.filter((t) => t.kind === "candidate").length,
+    // This endpoint only models candidate + unknown threads (no client
+    // kind yet), so the clients bucket stays 0 here.
     clients: 0,
-    unknown: 0,
-    needsReply: 0,
+    unknown: unreadThreads.filter((t) => t.kind === "unknown").length,
+    needsReply: unreadThreads.length,
   };
 
-  // unreadCount is the source the sidebar Phone-tab badge reads. Held
-  // at 0 until SmsMessage carries an explicit read/unread field —
-  // calls do NOT count toward unread per the Phone-tab spec.
-  const unreadCount = 0;
+  // unreadCount mirrors the unread-thread total. The sidebar Phone-tab
+  // badge does NOT read this (it uses the lighter /api/phone/unread-count
+  // via PhoneContext); we compute it here only so this endpoint stops
+  // reporting a stale 0.
+  const unreadCount = unreadThreads.length;
 
   return NextResponse.json({ threads, bucketCounts: buckets, unreadCount });
 }

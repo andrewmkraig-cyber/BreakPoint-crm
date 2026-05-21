@@ -1032,10 +1032,22 @@ export async function getUnreadMailCount(userId: string): Promise<number> {
 // email even before Gmail's is:unread search index catches up to it.
 // Capped so a huge unread pile never makes the webhook page forever -
 // the app-icon badge only needs to be right in the low double digits.
-export async function getUnreadInboxThreadIds(
+//
+// STRICT variant: distinguishes "Gmail returned zero unread" from
+// "Gmail lookup failed". The lossy getUnreadInboxThreadIds below collapses
+// both to [], which is unsafe for badge math - a failed lookup then reads
+// as an empty inbox, zeroes the mail portion, and lets a new SMS knock the
+// app badge down to 1. Returns { ok: false } on any token-refresh throw,
+// non-2xx response, or network error so callers can omit the badge rather
+// than guess 0.
+export type UnreadThreadIdsResult =
+  | { ok: true; ids: string[] }
+  | { ok: false };
+
+export async function getUnreadInboxThreadIdsStrict(
   userId: string,
   opts: { cap?: number } = {},
-): Promise<string[]> {
+): Promise<UnreadThreadIdsResult> {
   const cap = opts.cap ?? 100;
   try {
     const accessToken = await getFreshAccessToken(userId);
@@ -1055,15 +1067,28 @@ export async function getUnreadInboxThreadIds(
         headers: { Authorization: `Bearer ${accessToken}` },
         cache: "no-store",
       });
-      if (!res.ok) break;
+      // A non-2xx means the unread total is unprovable. Bail to ok:false
+      // rather than returning a short/empty list the caller would read as 0.
+      if (!res.ok) return { ok: false };
       const body = (await res.json()) as GmailListThreadsResponse;
       for (const t of body.threads ?? []) ids.push(t.id);
       pageToken = body.nextPageToken;
     } while (pageToken && ids.length < cap);
-    return ids;
+    return { ok: true, ids };
   } catch {
-    return [];
+    return { ok: false };
   }
+}
+
+// Lossy wrapper kept for any caller that only needs a best-effort list and
+// treats failure the same as empty. Badge math must use the strict variant
+// above so a Gmail failure is never mistaken for an empty inbox.
+export async function getUnreadInboxThreadIds(
+  userId: string,
+  opts: { cap?: number } = {},
+): Promise<string[]> {
+  const res = await getUnreadInboxThreadIdsStrict(userId, opts);
+  return res.ok ? res.ids : [];
 }
 
 // ---- Mail Tab labels (Phase 6.x: Move To dropdown) ----

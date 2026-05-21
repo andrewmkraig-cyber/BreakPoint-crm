@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { sendPushToUser, type PushPayload } from "@/lib/web-push";
 import { getUnreadCountsForOrg } from "@/lib/unread-counts";
+import { badgePayloadFields } from "@/lib/badge-math";
 
 export const dynamic = "force-dynamic";
 
@@ -55,14 +56,22 @@ export async function POST(req: NextRequest) {
   const org = await getCurrentOrg();
   const counts = await getUnreadCountsForOrg(org.id);
 
+  // TEMP DIAG (keep until badge reliability confirmed in prod).
+  console.log("[push][badge-diag]", {
+    source: "push-fire",
+    mailUnread: counts.mailUnread,
+    phoneUnread: counts.phoneUnread,
+    badgeCount: counts.badgeCount,
+    mailReliable: counts.mailReliable,
+    badgeOmitted: counts.badgeCount === null,
+  });
+
   await sendPushToUser(user.id, org.id, {
     title: body.title,
     body: body.body,
     url: body.url,
     tag: body.tag,
-    mailUnread: counts.mailUnread,
-    phoneUnread: counts.phoneUnread,
-    badgeCount: counts.badgeCount,
+    ...badgePayloadFields(counts),
   });
 
   return NextResponse.json({ ok: true });

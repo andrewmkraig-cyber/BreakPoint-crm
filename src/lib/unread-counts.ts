@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { getUnreadInboxThreadIds } from "@/lib/gmail";
+import { getUnreadInboxThreadIdsStrict } from "@/lib/gmail";
+import { computeBadgeCount } from "@/lib/badge-math";
 
 // Shared snapshot of "what should the PWA app-icon badge read right now"
 // for a given org. Three callers stuff this into the push payload so
@@ -9,30 +10,30 @@ import { getUnreadInboxThreadIds } from "@/lib/gmail";
 //   - src/app/api/quo/webhook/route.ts (sms + missed call)
 //   - src/app/api/push/fire/route.ts (client-relayed pushes)
 //
-// Best-effort: any sub-query that throws degrades to null/0 rather
-// than blocking the push. The client-side mail-tab-title-sync poll
-// reconciles the real total once the user opens Ace.
+// Reliability is the whole point: a count we cannot PROVE (Gmail
+// unreachable, no resolvable user, local SMS query failing) surfaces as
+// null - never 0 - so the push omits badgeCount and sw.js leaves the
+// existing app badge untouched. Coercing an unavailable Gmail count to 0
+// was what let a new SMS knock the badge from 4 down to 1.
 
 export type UnreadCounts = {
-  // null when no Gmail watch is reachable for the org — distinct from
-  // 0 so the SW can choose to leave the badge alone instead of
-  // clearing it.
+  // null when the Gmail unread count could not be proven for the org (no
+  // reachable watch/user, or the Gmail API call failed) - distinct from 0
+  // so the badge is omitted instead of cleared.
   mailUnread: number | null;
-  phoneUnread: number;
-  // Always numeric: mailUnread + phoneUnread, treating an unreachable
-  // mail count as 0. Earlier this went null whenever mailUnread was
-  // null, and sw.js maps a null badgeCount to "leave the badge alone" -
-  // which silently dropped every SMS/email badge update whenever the
-  // webhook's live Gmail lookup hiccupped. The push must always carry a
-  // real number so the app-icon badge fires even when Ace is closed;
-  // the 15s client poll reconciles the mail portion the moment Ace
-  // reopens if it was briefly unavailable here.
-  badgeCount: number;
+  // null when the local SMS unread query failed - same reasoning.
+  phoneUnread: number | null;
+  // mailUnread + phoneUnread, but ONLY when both are reliable; null
+  // otherwise. A null badgeCount is omitted from the push payload, which
+  // sw.js maps to "leave the app badge alone".
+  badgeCount: number | null;
+  // Diagnostics only: was the Gmail unread count proven this call.
+  mailReliable: boolean;
 };
 
-// Distinct unread *conversations*, not message rows — mirrors the
-// grouping in /api/phone/unread-count/route.ts so the value adds
-// cleanly to the mail thread count.
+// Distinct unread *conversations*, not message rows - mirrors the
+// grouping in /api/phone/unread-count/route.ts so the value adds cleanly
+// to the mail thread count.
 async function getPhoneUnreadForOrg(organizationId: string): Promise<number> {
   const rows = await prisma.smsMessage.findMany({
     where: { organizationId, direction: "inbound", isRead: false },
@@ -45,15 +46,16 @@ async function getPhoneUnreadForOrg(organizationId: string): Promise<number> {
 
 // Gmail unread is per-account, not per-org. Ace is single-tenant in
 // practice so we union the unread INBOX thread IDs across every active
-// GmailPushWatch in the org — in the typical case that's just Andrew.
+// GmailPushWatch in the org - in the typical case that's just Andrew.
 // `extraUnreadThreadIds` lets the Gmail push webhook fold in a thread it
 // just saw arrive: Gmail's is:unread search index lags a few seconds
 // behind a brand-new message, so without this the badge undercounts the
-// very email the push fired for. Unioning real thread IDs (rather than
-// adding estimates) keeps the count exact whether or not the index has
-// caught up. Returns null only when no watch resolves to a user we can
-// mint a token for AND the caller had nothing to add, so the SW can
-// leave the mail portion alone rather than clearing it.
+// very email the push fired for.
+//
+// Returns null - meaning "mail unread is unprovable, omit the badge" -
+// when there is no resolvable Gmail user OR any user's Gmail lookup
+// fails. It must NEVER return 0 for a failed lookup; 0 is reserved for a
+// successful lookup that found an empty inbox.
 async function getMailUnreadForOrg(
   organizationId: string,
   extraUnreadThreadIds: string[] = [],
@@ -70,14 +72,15 @@ async function getMailUnreadForOrg(
         select: { id: true },
       })
     : [];
-  if (users.length === 0) {
-    return unread.size > 0 ? unread.size : null;
-  }
+  // No reachable Gmail user means the true mail unread total is unknown,
+  // even if `extra` carried a freshly-arrived thread id. Unprovable -> null.
+  if (users.length === 0) return null;
   for (const u of users) {
-    // getUnreadInboxThreadIds swallows its own errors and returns [] so
-    // a failed token refresh for one user just contributes nothing.
-    const ids = await getUnreadInboxThreadIds(u.id, { cap: 100 });
-    for (const id of ids) unread.add(id);
+    const res = await getUnreadInboxThreadIdsStrict(u.id, { cap: 100 });
+    // Any failed lookup makes the combined count unprovable. Bail to null
+    // so the caller omits the badge instead of undercounting it.
+    if (!res.ok) return null;
+    for (const id of res.ids) unread.add(id);
   }
   return unread.size;
 }
@@ -87,7 +90,9 @@ export async function getUnreadCountsForOrg(
   opts: { extraUnreadMailThreadIds?: string[] } = {},
 ): Promise<UnreadCounts> {
   const [phoneUnread, mailUnread] = await Promise.all([
-    getPhoneUnreadForOrg(organizationId).catch(() => 0),
+    // A thrown local query degrades to null (unprovable), NOT 0, so a DB
+    // hiccup can't silently drop the phone portion of the badge.
+    getPhoneUnreadForOrg(organizationId).catch(() => null),
     getMailUnreadForOrg(
       organizationId,
       opts.extraUnreadMailThreadIds ?? [],
@@ -96,12 +101,7 @@ export async function getUnreadCountsForOrg(
   return {
     mailUnread,
     phoneUnread,
-    // Always a real number so the SW can call setAppBadge on every push.
-    // mailUnread is coalesced to 0 only when Gmail was genuinely
-    // unreachable for this org at trigger time; that is rare and the
-    // client poll corrects the total seconds after Ace reopens. The
-    // mailUnread / phoneUnread fields above ride along untouched for
-    // debugging which surface moved.
-    badgeCount: (mailUnread ?? 0) + phoneUnread,
+    badgeCount: computeBadgeCount({ mailUnread, phoneUnread }),
+    mailReliable: mailUnread !== null,
   };
 }

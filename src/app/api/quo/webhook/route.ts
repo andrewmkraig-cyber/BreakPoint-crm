@@ -3,7 +3,8 @@ import crypto from 'node:crypto'
 import { prisma } from '@/lib/prisma'
 import { matchClientByPhone } from '@/lib/quo-contact-match'
 import { sendPushToOrg, sendPushToUser, type PushPayload } from '@/lib/web-push'
-import { getUnreadCountsForOrg, type UnreadCounts } from '@/lib/unread-counts'
+import { getUnreadCountsForOrg } from '@/lib/unread-counts'
+import { badgePayloadFields } from '@/lib/badge-math'
 import { pickPhone, redactPhone } from '@/lib/quo-phone'
 
 // Quo (formerly KrispCall / OpenPhone) inbound webhook.
@@ -132,30 +133,28 @@ export async function POST(req: NextRequest) {
         const dest = candidate
           ? `/phone?candidateId=${candidate.id}`
           : `/phone?from=${encodeURIComponent(fromNumber)}`
-        // Never let an unread-count failure kill the push. On failure we
-        // OMIT the badge fields entirely instead of guessing a badge of 1 -
-        // sw.js maps a missing badgeCount to "leave the app badge alone", so
-        // a transient count hiccup can no longer clobber a higher real
-        // badge. Guessing 1 here was the "2 dropped to 1 on a new push" bug.
-        let counts: UnreadCounts | null = null
-        try {
-          counts = await getUnreadCountsForOrg(orgId)
-        } catch (err) {
-          console.error('[quo/webhook] getUnreadCountsForOrg failed (sms), omitting badge so the SW leaves it alone', err)
-        }
+        // getUnreadCountsForOrg degrades any unprovable count to null
+        // internally (never throws). badgePayloadFields then omits the
+        // badge fields whenever badgeCount is null, so a transient Gmail
+        // or DB hiccup leaves the existing app badge alone instead of
+        // clobbering it - this is what stops a new text knocking it to 1.
+        const counts = await getUnreadCountsForOrg(orgId)
+        // TEMP DIAG (keep until badge reliability confirmed in prod): no
+        // body / full number / token logged.
+        console.log('[push][badge-diag]', {
+          source: 'quo-sms',
+          mailUnread: counts.mailUnread,
+          phoneUnread: counts.phoneUnread,
+          badgeCount: counts.badgeCount,
+          mailReliable: counts.mailReliable,
+          badgeOmitted: counts.badgeCount === null,
+        })
         const payload: PushPayload = {
           title: `New text from ${senderName}`,
           body: (content ?? '').slice(0, 100),
           url: dest,
           tag: `sms-${tagKey}`,
-          // Badge fields ride along only when we have a real count.
-          ...(counts
-            ? {
-                mailUnread: counts.mailUnread,
-                phoneUnread: counts.phoneUnread,
-                badgeCount: counts.badgeCount,
-              }
-            : {}),
+          ...badgePayloadFields(counts),
         }
         if (candidate?.createdById) {
           await sendPushToUser(candidate.createdById, orgId, payload)
@@ -410,15 +409,17 @@ export async function POST(req: NextRequest) {
                 .trim()
             : '') || fromNumber || 'Unknown'
         const isMissed = !duration || duration <= 3
-        // Same safety contract as the SMS branch: a count failure must not
-        // kill the notification, and we omit the badge fields rather than
-        // guessing so a hiccup can't clobber a higher real badge.
-        let counts: UnreadCounts | null = null
-        try {
-          counts = await getUnreadCountsForOrg(orgId)
-        } catch (err) {
-          console.error('[quo/webhook] getUnreadCountsForOrg failed (call), omitting badge so the SW leaves it alone', err)
-        }
+        // Same reliable-or-omit contract as the SMS branch.
+        const counts = await getUnreadCountsForOrg(orgId)
+        // TEMP DIAG (keep until badge reliability confirmed in prod).
+        console.log('[push][badge-diag]', {
+          source: 'quo-call',
+          mailUnread: counts.mailUnread,
+          phoneUnread: counts.phoneUnread,
+          badgeCount: counts.badgeCount,
+          mailReliable: counts.mailReliable,
+          badgeOmitted: counts.badgeCount === null,
+        })
         const payload: PushPayload = {
           title: isMissed ? 'Missed call' : 'Call ended',
           body: duration
@@ -426,13 +427,7 @@ export async function POST(req: NextRequest) {
             : callerName,
           url: `/phone?call=${callLogRow.id}`,
           tag: `call-${callLogRow.id}`,
-          ...(counts
-            ? {
-                mailUnread: counts.mailUnread,
-                phoneUnread: counts.phoneUnread,
-                badgeCount: counts.badgeCount,
-              }
-            : {}),
+          ...badgePayloadFields(counts),
         }
         if (candidate?.createdById) {
           await sendPushToUser(candidate.createdById, orgId, payload)
