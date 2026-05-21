@@ -1,10 +1,18 @@
 # ACE_STATE.md
-Last updated: 2026-05-20 · Ace 61.0
+Last updated: 2026-05-20 · Ace 61.1
 
 ## Current Status
-Current Version: Ace 61.0
+Current Version: Ace 61.1
 Last Shipped: 2026-05-20
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 61.1 (2026-05-20)
+
+### Bulk archive / move no longer drops threads under rate limits
+- **Symptom:** selecting 5 threads and clicking Archive moved only one to the archive; the other four stayed selected and required a second click. Gmail serializes writes per mailbox, so the bulk loop's rapid sequential `threads.modify` calls were coming back 429/403/5xx for all but the first, and the client treated those as hard failures (left them selected) instead of retrying.
+- **Fix:** added a shared `modifyGmailThreadLabels` wrapper in `src/lib/gmail.ts` with exponential backoff + jitter (4 attempts, ~0.4s / 0.9s / 1.9s) on retryable statuses (403, 429, 500, 502, 503, 504). `archiveGmailThread`, `moveGmailThread`, `markGmailThreadRead`, and `markGmailThreadUnread` all route through it, so a single bulk pass now lands every thread. Also removed the duplicated bare-fetch bodies from those four helpers.
+- The client's 150ms inter-call gap in `runBulk` (mail-view.tsx) is kept as visual pacing; the real durability now lives server-side.
+- Files: `src/lib/gmail.ts`.
 
 ## What Shipped in Ace 61.0 (2026-05-20)
 

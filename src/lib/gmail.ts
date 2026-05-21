@@ -864,28 +864,56 @@ async function inlineCidImages(
   });
 }
 
-// ---- Mail Tab archive (Phase 6.1) ----
-// Drops the INBOX label from a thread — Gmail's native "archive". Needs
-// gmail.modify scope in auth.ts. Scoped implicitly to the signed-in
-// user's own mailbox because the access token is theirs.
-export async function archiveGmailThread(userId: string, threadId: string): Promise<void> {
+// Gmail serializes writes per mailbox, so firing several thread.modify
+// calls in quick succession (a bulk archive / move of 5+ threads) can
+// come back 429/403 "rate limit" or a transient 5xx even when each call
+// is well under the per-second quota. Google's prescribed remedy is
+// exponential backoff. Every label mutation below goes through this
+// wrapper instead of a bare fetch — without it a bulk run surfaced only
+// the first success and left the rest "failed" until the user clicked
+// Archive again.
+const RETRYABLE_GMAIL_STATUS = new Set([403, 429, 500, 502, 503, 504]);
+
+async function modifyGmailThreadLabels(
+  userId: string,
+  threadId: string,
+  body: { addLabelIds?: string[]; removeLabelIds?: string[] },
+  op: string,
+): Promise<void> {
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}/modify`;
+  // Token is good for >=60s (getFreshAccessToken guarantees it), so one
+  // fetch up front covers the whole retry window (~3s worst case).
   const accessToken = await getFreshAccessToken(userId);
-  const res = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}/modify`,
-    {
+  const maxAttempts = 4;
+  let lastStatus = 0;
+  let lastText = "";
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await fetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ removeLabelIds: ["INBOX"] }),
+      body: JSON.stringify(body),
       cache: "no-store",
-    },
-  );
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Gmail thread.archive failed (${res.status}): ${text || "no body"}`);
+    });
+    if (res.ok) return;
+    lastStatus = res.status;
+    lastText = await res.text().catch(() => "");
+    if (attempt === maxAttempts - 1 || !RETRYABLE_GMAIL_STATUS.has(res.status)) break;
+    // Exponential backoff with jitter: ~0.4s, 0.9s, 1.9s.
+    const backoff = 400 * 2 ** attempt + Math.random() * 200;
+    await new Promise((r) => setTimeout(r, backoff));
   }
+  throw new Error(`Gmail thread.${op} failed (${lastStatus}): ${lastText || "no body"}`);
+}
+
+// ---- Mail Tab archive (Phase 6.1) ----
+// Drops the INBOX label from a thread — Gmail's native "archive". Needs
+// gmail.modify scope in auth.ts. Scoped implicitly to the signed-in
+// user's own mailbox because the access token is theirs.
+export async function archiveGmailThread(userId: string, threadId: string): Promise<void> {
+  await modifyGmailThreadLabels(userId, threadId, { removeLabelIds: ["INBOX"] }, "archive");
 }
 
 // ---- Mail Tab live polling (Phase 6.x: notification context) ----
@@ -1173,23 +1201,12 @@ export async function moveGmailThread(
   threadId: string,
   labelId: string,
 ): Promise<void> {
-  const accessToken = await getFreshAccessToken(userId);
-  const res = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}/modify`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ addLabelIds: [labelId], removeLabelIds: ["INBOX"] }),
-      cache: "no-store",
-    },
+  await modifyGmailThreadLabels(
+    userId,
+    threadId,
+    { addLabelIds: [labelId], removeLabelIds: ["INBOX"] },
+    "move",
   );
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Gmail thread.move failed (${res.status}): ${text || "no body"}`);
-  }
 }
 
 // Removes the UNREAD label from a thread — Gmail's native "mark read".
@@ -1198,46 +1215,14 @@ export async function moveGmailThread(
 // in-Ace open-thread events back to Gmail so the user's phone /
 // laptop Gmail apps don't keep buzzing on the same message.
 export async function markGmailThreadRead(userId: string, threadId: string): Promise<void> {
-  const accessToken = await getFreshAccessToken(userId);
-  const res = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}/modify`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ removeLabelIds: ["UNREAD"] }),
-      cache: "no-store",
-    },
-  );
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Gmail thread.markRead failed (${res.status}): ${text || "no body"}`);
-  }
+  await modifyGmailThreadLabels(userId, threadId, { removeLabelIds: ["UNREAD"] }, "markRead");
 }
 
 // Inverse of markGmailThreadRead — re-applies UNREAD so a recruiter
 // who has already opened a thread can flag it for follow-up in their
 // native Gmail inbox view.
 export async function markGmailThreadUnread(userId: string, threadId: string): Promise<void> {
-  const accessToken = await getFreshAccessToken(userId);
-  const res = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}/modify`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ addLabelIds: ["UNREAD"] }),
-      cache: "no-store",
-    },
-  );
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Gmail thread.markUnread failed (${res.status}): ${text || "no body"}`);
-  }
+  await modifyGmailThreadLabels(userId, threadId, { addLabelIds: ["UNREAD"] }, "markUnread");
 }
 
 // ---- Mail Tab reply (Phase 6.1) ----
