@@ -19,12 +19,15 @@ export type UnreadCounts = {
   // clearing it.
   mailUnread: number | null;
   phoneUnread: number;
-  // mailUnread + phoneUnread when both are known. null when mailUnread
-  // is null (Gmail unreachable / no watch) so the SW treats it as
-  // "missing" and leaves the existing badge intact — sending the
-  // phone-only count there would regress the displayed total whenever
-  // a text push fires while mail is temporarily unavailable.
-  badgeCount: number | null;
+  // Always numeric: mailUnread + phoneUnread, treating an unreachable
+  // mail count as 0. Earlier this went null whenever mailUnread was
+  // null, and sw.js maps a null badgeCount to "leave the badge alone" -
+  // which silently dropped every SMS/email badge update whenever the
+  // webhook's live Gmail lookup hiccupped. The push must always carry a
+  // real number so the app-icon badge fires even when Ace is closed;
+  // the 15s client poll reconciles the mail portion the moment Ace
+  // reopens if it was briefly unavailable here.
+  badgeCount: number;
 };
 
 // Distinct unread *conversations*, not message rows — mirrors the
@@ -82,12 +85,12 @@ export async function getUnreadCountsForOrg(
   return {
     mailUnread,
     phoneUnread,
-    // Only emit a numeric badgeCount when BOTH counts are known. A
-    // text push that reports phoneUnread-only would shrink an
-    // already-correct badge (e.g. 2 → 1 when mail=1 but unreachable +
-    // phone=1). The SW maps a null badgeCount to "leave the badge
-    // alone" so the client-side mail-tab-title-sync poll reconciles
-    // to the real total within seconds without flickering.
-    badgeCount: mailUnread == null ? null : mailUnread + phoneUnread,
+    // Always a real number so the SW can call setAppBadge on every push.
+    // mailUnread is coalesced to 0 only when Gmail was genuinely
+    // unreachable for this org at trigger time; that is rare and the
+    // client poll corrects the total seconds after Ace reopens. The
+    // mailUnread / phoneUnread fields above ride along untouched for
+    // debugging which surface moved.
+    badgeCount: (mailUnread ?? 0) + phoneUnread,
   };
 }

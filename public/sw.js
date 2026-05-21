@@ -1,6 +1,6 @@
 // Ace PWA service worker. Bump CACHE_NAME on any logic change so
 // the activate handler purges the previous shell.
-const CACHE_NAME = "ace-shell-v4";
+const CACHE_NAME = "ace-shell-v5";
 const PRECACHE_URLS = ["/", "/offline"];
 
 self.addEventListener("install", (event) => {
@@ -117,29 +117,31 @@ self.addEventListener("push", (event) => {
         }
         // Update badge count via badging API if supported. When Ace is
         // closed there's no client to call setAppBadge, so the SW does
-        // it from here - otherwise the home-screen dot only appears
-        // after the user opens Ace and the 30s poll fires.
+        // it from here - otherwise the home-screen badge only appears
+        // after the user opens Ace and the poll fires.
         //
         // Payload contract (see src/lib/web-push.ts + unread-counts.ts):
-        //   badgeCount > 0  → setAppBadge(N): real count, badge stacks
-        //                     correctly as more pushes arrive.
-        //   badgeCount === 0 → clearAppBadge(): sender explicitly says
-        //                     "nothing left to read."
-        //   badgeCount null / missing → leave the badge ALONE. Means
-        //                     the sender couldn't compute the total
-        //                     (e.g. Gmail unreachable when a text push
-        //                     fires) - clobbering with a partial count
-        //                     would regress an already-correct badge.
+        // every mail/SMS/call push now carries a NUMERIC badgeCount
+        // equal to unread email threads + unread SMS conversations, so
+        // the common path is a straight setAppBadge(N):
+        //   badgeCount > 0  → setAppBadge(N): the true combined total.
+        //   badgeCount === 0 → clearAppBadge(): nothing left to read.
+        //   badgeCount null / missing → leave the badge ALONE. Only
+        //                     legacy pushes that predate the numeric
+        //                     contract land here; clobbering a known-good
+        //                     badge with nothing would help no one.
         //
         // Awaited inside the outer waitUntil so the SW isn't killed
         // before the badge promise resolves (iOS Safari especially is
         // quick to kill SW work that escapes waitUntil).
         if ("setAppBadge" in self.navigator) {
           const n = data.badgeCount;
-          if (typeof n === "number" && n > 0) {
-            await self.navigator.setAppBadge(n).catch(() => {});
-          } else if (n === 0) {
-            await self.navigator.clearAppBadge?.().catch(() => {});
+          if (typeof n === "number") {
+            if (n > 0) {
+              await self.navigator.setAppBadge(n).catch(() => {});
+            } else {
+              await self.navigator.clearAppBadge?.().catch(() => {});
+            }
           }
         }
         // Also tell any open Ace windows (even backgrounded ones) to
