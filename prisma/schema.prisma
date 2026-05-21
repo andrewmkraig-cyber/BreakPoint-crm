@@ -61,6 +61,7 @@ model User {
   placements            Placement[]
   jobOverrides          JobOverride[]
   candidates            Candidate[]
+  ownedClients          Client[]                 @relation("ClientOwner")
   interviews            Interview[]
   ownedOrganizations    Organization[]           @relation("OrganizationOwner")
   memberships           OrganizationMembership[]
@@ -777,10 +778,15 @@ model Client {
   feePct               Float?
   feeBillingContact    String?
   organizationId String
+  // Per-user account ownership. Null = unclaimed / available to be
+  // claimed. Existing clients are backfilled to Andrew; new clients are
+  // stamped with their creator. Jobs and pipeline inherit this owner.
+  ownerId        String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   organization  Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  owner         User?                @relation("ClientOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   jobs          Job[]
   contacts      Contact[]
   agreements    ClientAgreement[]
@@ -796,6 +802,7 @@ model Client {
 
   @@index([name])
   @@index([organizationId])
+  @@index([ownerId])
 }
 
 model Job {
