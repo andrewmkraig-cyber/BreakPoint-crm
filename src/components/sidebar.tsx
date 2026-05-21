@@ -212,27 +212,27 @@ function NavLink({
         // background but below the icon/label without escaping the row.
         "relative isolate flex h-9 items-center gap-2.5 rounded-md pl-3 pr-2 text-[13px] font-medium transition-colors [@media(max-height:720px)]:h-8 [@media(max-height:640px)]:h-7 [@media(max-height:640px)]:text-[12.5px]",
         active
-          ? "bg-[var(--court-sidebar-active-bg)] text-court-sidebar-active-fg"
+          ? "bg-court-surface-subtle text-court-sidebar-active-fg"
           : "text-court-sidebar-fg-muted hover:bg-[var(--court-sidebar-active-bg)] hover:text-court-sidebar-fg",
       )}
     >
       {active && (
         <>
-          {/* Faint command-center glow behind the active row only. Uses
-              the per-theme sidebar-rail accent (green in Hard/Grass,
-              themed elsewhere) so no palette gets a hardcoded color. */}
+          {/* Faint command-center glow behind the active row only, in
+              court-brand at low opacity. court-brand is green in every
+              palette, so active nav reads green app-wide (no hex). */}
           <span
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 -z-10 rounded-md"
             style={{
               background:
-                "radial-gradient(75% 120% at 0% 50%, rgb(var(--court-sidebar-rail) / 0.18), transparent 70%)",
+                "radial-gradient(75% 120% at 0% 50%, rgb(var(--court-brand) / 0.12), transparent 70%)",
             }}
           />
-          {/* Thin left-border accent in the same theme-aware rail color. */}
+          {/* Thin court-brand left-border accent. */}
           <span
             aria-hidden="true"
-            className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-court-sidebar-rail"
+            className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-court-brand"
           />
         </>
       )}

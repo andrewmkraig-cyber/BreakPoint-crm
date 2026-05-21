@@ -50,12 +50,16 @@ export function SidebarProfileCard() {
 
   return (
     <div ref={wrapperRef} className="relative">
+      {/* One compact card: avatar / name / phone / chevron on top, a
+          full-width ACE CREATOR badge below. The border lives on this
+          wrapper so the badge sits inside the same card outline. */}
+      <div className="rounded-xl border border-court-sidebar-border p-2">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="Open profile contact card"
         aria-expanded={open}
-        className="flex w-full items-center gap-2.5 rounded-lg border border-court-sidebar-border px-2.5 py-2 text-left transition hover:bg-[var(--court-sidebar-active-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50"
+        className="flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1 text-left transition hover:bg-[var(--court-sidebar-active-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50"
       >
         {imageUrl ? (
           <Image
@@ -93,18 +97,20 @@ export function SidebarProfileCard() {
           >
             {PROFILE.phone}
           </span>
-          {/* Slim status pill. Brand green text + faint brand tint bg,
-              theme-aware via court-brand tokens (no hardcoded color). */}
-          <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-court-brand/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-court-brand">
-            <Crown aria-hidden="true" className="h-3 w-3" />
-            Ace Creator
-          </span>
         </div>
         <ChevronRight
           aria-hidden="true"
           className="h-4 w-4 shrink-0 self-center text-court-sidebar-fg-dim"
         />
       </button>
+        {/* Slim, full-width status badge. rounded-full is allowed here
+            (status pill, per the button standard). Brand green outline +
+            text on a faint brand tint, court-* tokens only. */}
+        <span className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-full border border-court-brand/40 bg-court-brand/5 px-3 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.14em] text-court-brand">
+          <Crown aria-hidden="true" className="h-3 w-3 shrink-0" />
+          Ace Creator
+        </span>
+      </div>
 
       {open && (
         <div className="absolute bottom-0 left-full z-50 ml-2 w-72 overflow-hidden rounded-xl border border-court-border bg-court-surface text-sm shadow-lg">
