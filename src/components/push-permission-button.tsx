@@ -26,7 +26,19 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
-export function PushPermissionButton() {
+export function PushPermissionButton({
+  onStatusChange,
+  hideStatusPill = false,
+}: {
+  // Fires whenever the live state (browser-granted AND server-
+  // subscribed) settles, so a parent Connectors row can mirror it in
+  // its own StateLabel without re-running the getSubscription probe.
+  onStatusChange?: (connected: boolean) => void;
+  // When embedded in a row that already shows a CONNECTED label, the
+  // green "Enabled on this device" pill is redundant - render only the
+  // Disable control.
+  hideStatusPill?: boolean;
+} = {}) {
   const [status, setStatus] = useState<Status>("loading");
   const [busy, setBusy] = useState(false);
   // Captures any failure that lands after permission was granted (VAPID
@@ -49,6 +61,11 @@ export function PushPermissionButton() {
   // the subscribe with a generic NotAllowedError. Caching the reg on
   // mount means the click handler can call subscribe() synchronously.
   const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
+  // Keep the latest callback in a ref so the mount effect can notify the
+  // parent without taking onStatusChange as a dep - an inline parent
+  // function would otherwise re-run the SW registration probe each render.
+  const onStatusChangeRef = useRef(onStatusChange);
+  onStatusChangeRef.current = onStatusChange;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -69,8 +86,16 @@ export function PushPermissionButton() {
         }
         return null;
       })
-      .then((sub) => setHasSubscription(!!sub))
-      .catch(() => setHasSubscription(false));
+      .then((sub) => {
+        setHasSubscription(!!sub);
+        onStatusChangeRef.current?.(
+          Notification.permission === "granted" && !!sub,
+        );
+      })
+      .catch(() => {
+        setHasSubscription(false);
+        onStatusChangeRef.current?.(false);
+      });
   }, []);
 
   // CRITICAL: this handler is intentionally NOT async. iOS Safari for
@@ -136,6 +161,7 @@ export function PushPermissionButton() {
           }
           setStatus("granted");
           setHasSubscription(true);
+          onStatusChangeRef.current?.(true);
           toast.success("Notifications enabled.");
           // Re-read permission state explicitly so the console log
           // surfaces what the browser settled on after subscribe()
@@ -150,6 +176,7 @@ export function PushPermissionButton() {
       )
       .catch((err) => {
         console.error("[push] enable failed", err);
+        onStatusChangeRef.current?.(false);
         // Re-read permission state here — subscribe()'s internal
         // permission prompt may have flipped it to denied, in which
         // case the user needs the browser-settings nudge rather than
@@ -190,6 +217,7 @@ export function PushPermissionButton() {
         await subscription.unsubscribe().catch(() => {});
       }
       setHasSubscription(false);
+      onStatusChangeRef.current?.(false);
       toast.success("Notifications disabled on this device.");
     } catch (err) {
       console.error("[push] disable failed", err);
@@ -231,10 +259,12 @@ export function PushPermissionButton() {
   if (status === "granted" && hasSubscription) {
     return (
       <div className="flex items-center gap-3">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-court-accent-tint px-2 py-1 text-xs font-semibold text-court-accent-dark">
-          <Check className="h-3.5 w-3.5" aria-hidden="true" />
-          Enabled on this device
-        </span>
+        {!hideStatusPill && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-court-accent-tint px-2 py-1 text-xs font-semibold text-court-accent-dark">
+            <Check className="h-3.5 w-3.5" aria-hidden="true" />
+            Enabled on this device
+          </span>
+        )}
         <Button variant="secondary" size="sm" onClick={disable} disabled={busy}>
           {busy ? "Disabling…" : "Disable"}
         </Button>

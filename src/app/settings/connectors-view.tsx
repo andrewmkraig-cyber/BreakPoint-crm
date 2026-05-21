@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { signIn, signOut } from "next-auth/react";
-import { Bell, ExternalLink, Loader2, Music, RefreshCw, Video } from "lucide-react";
+import { Bell, BellRing, ExternalLink, Loader2, Music, RefreshCw, Video } from "lucide-react";
 import { toast } from "sonner";
+import { PushPermissionButton } from "@/components/push-permission-button";
 import type { ConnectorStatus, ConnectorState } from "@/lib/connectors";
 
 export type GmailPushStatus = {
@@ -85,6 +86,7 @@ export function ConnectorsView({
         }
       />
       <GmailPushNotificationsRow gmailPush={gmailPush} />
+      <PushNotificationsRow />
       <MicrosoftTeamsConnectorRow />
       <SpotifyConnectorRow />
     </div>
@@ -320,6 +322,39 @@ function GmailPushNotificationsRow({
           )}
           {current.enabled ? "Renew" : "Enable"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// PWA web-push device registration. Unlike Gmail / Quo (account-level),
+// a push subscription is per-browser, so every device the recruiter
+// installs Ace on needs its own opt-in. This row mirrors the live
+// subscription state for THIS browser in the standard StateLabel and
+// hands the actual subscribe flow to PushPermissionButton. It is also
+// the path back after a PWA reinstall: the reinstall wipes the old
+// service worker and its subscription, so the row reads Disconnected
+// until the user taps Enable here again (no uninstall needed).
+function PushNotificationsRow() {
+  const [connected, setConnected] = useState(false);
+  const detail = connected
+    ? "Active on this browser - alerts push here even when Ace is closed."
+    : "Not enabled here. Turn on for alerts, or to re-register after a reinstall.";
+
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <BellRing className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
+          <span className="text-sm font-semibold text-court-fg">
+            Push Notifications
+          </span>
+          <StateLabel state={connected ? "connected" : "disconnected"} />
+        </div>
+        <div className="mt-1 truncate text-xs text-court-fg-muted">{detail}</div>
+      </div>
+      <div className="shrink-0">
+        <PushPermissionButton hideStatusPill onStatusChange={setConnected} />
       </div>
     </div>
   );
