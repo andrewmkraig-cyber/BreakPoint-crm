@@ -157,17 +157,6 @@ export async function POST(req: NextRequest) {
               }
             : {}),
         }
-        // TEMP DIAG (remove after badge debugging): exact badge values and
-        // whether they came from the fallback path, per push source. No
-        // message body, no full phone number.
-        console.log('[quo/webhook][badge-diag]', {
-          source: 'quo-sms',
-          mailUnread: counts?.mailUnread ?? null,
-          phoneUnread: counts?.phoneUnread ?? null,
-          badgeCount: counts?.badgeCount ?? null,
-          fromFallback: counts === null,
-          routedTo: candidate?.createdById ? 'user' : 'org',
-        })
         if (candidate?.createdById) {
           await sendPushToUser(candidate.createdById, orgId, payload)
         } else {
@@ -445,15 +434,6 @@ export async function POST(req: NextRequest) {
               }
             : {}),
         }
-        // TEMP DIAG (remove after badge debugging): see SMS branch note.
-        console.log('[quo/webhook][badge-diag]', {
-          source: 'quo-call',
-          mailUnread: counts?.mailUnread ?? null,
-          phoneUnread: counts?.phoneUnread ?? null,
-          badgeCount: counts?.badgeCount ?? null,
-          fromFallback: counts === null,
-          routedTo: candidate?.createdById ? 'user' : 'org',
-        })
         if (candidate?.createdById) {
           await sendPushToUser(candidate.createdById, orgId, payload)
         } else {

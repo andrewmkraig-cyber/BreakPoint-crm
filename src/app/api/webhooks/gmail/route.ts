@@ -210,17 +210,6 @@ export async function POST(req: NextRequest) {
       const counts = await getUnreadCountsForOrg(organizationId, {
         extraUnreadMailThreadIds: Array.from(newUnreadInboxThreads),
       });
-      // TEMP DIAG (remove after badge debugging): exact badge values per
-      // push source. counts here is always real - if getUnreadCountsForOrg
-      // threw, the outer try/catch would skip the push entirely (badge left
-      // untouched), so this path never emits a fallback badge.
-      console.log("[gmail webhook][badge-diag]", {
-        source: "gmail",
-        mailUnread: counts.mailUnread,
-        phoneUnread: counts.phoneUnread,
-        badgeCount: counts.badgeCount,
-        fromFallback: false,
-      });
       await sendPushToOrg(organizationId, {
         title: "New Email",
         body: "You have a new message in Ace",
