@@ -10,6 +10,7 @@ import { useYouTubePanel } from "@/components/youtube-panel/YouTubePanelProvider
 import { useSpotifyPanel } from "@/components/spotify-panel/SpotifyPanelProvider";
 import { WeatherWidget } from "@/components/weather-widget";
 import { CalendarPopoverButton } from "@/components/calendar-popover-button";
+import { UserAvatarMenu } from "@/components/user-avatar-menu";
 
 export function TopBar() {
   const { open: claudeOpen, toggle: toggleClaude } = useClaudePanel();
@@ -156,6 +157,10 @@ export function TopBar() {
         />
         <WeatherWidget />
         <CalendarPopoverButton />
+        {/* Account avatar lives at the far right of the row; every item
+            above slides left of it. Same 40px footprint as the icon
+            buttons so the row stays flush. */}
+        <UserAvatarMenu />
       </div>
     </header>
   );
