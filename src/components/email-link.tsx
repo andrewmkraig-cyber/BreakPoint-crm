@@ -4,7 +4,7 @@ import { useState, type MouseEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
-import { sendEmailAction } from "@/app/email/actions";
+import { sendEmailAction, scheduleEmailAction } from "@/app/email/actions";
 import { cn } from "@/lib/utils";
 
 type ComposerSeed = {
@@ -98,6 +98,25 @@ export function EmailLink({
               throw new Error(result.error);
             }
             toast.success("Email sent", { description: `Sent to ${draft.to.join(", ")}.` });
+            setOpen(false);
+          }}
+          onSendLater={async (
+            draft: EmailDraft,
+            scheduledSendAtISO: string,
+            timezone: string,
+          ) => {
+            const result = await scheduleEmailAction({
+              to: draft.to,
+              cc: draft.cc,
+              bcc: draft.bcc,
+              subject: draft.subject,
+              bodyText: draft.body,
+              scheduledSendAt: scheduledSendAtISO,
+              timezone,
+            });
+            if (!result.ok) {
+              throw new Error(result.error);
+            }
             setOpen(false);
           }}
         />

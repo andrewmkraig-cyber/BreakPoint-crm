@@ -8,7 +8,8 @@ import { prisma } from "@/lib/prisma";
 import { getRfJobsForOrg, getRfClientsForOrg } from "@/lib/candidates";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { logActivity } from "@/lib/activity";
-import { sendGmail } from "@/lib/gmail";
+import { sendGmail, plainToHtml } from "@/lib/gmail";
+import { createScheduledEmail } from "@/lib/scheduled-email";
 import { applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
 
 // Bulk Apply / Add-to-List actions backing the /candidates page's
@@ -459,6 +460,118 @@ export async function bulkSendEmail(input: {
   // findMany (id forged for another tenant, or deleted between
   // selection and send). Count those toward `skipped` so the UI
   // reports an honest total.
+  const foundIds = new Set(candidates.map((c) => c.id));
+  const missing = input.candidateIds.filter((id) => !foundIds.has(id)).length;
+  skipped += missing;
+
+  return { ok: errors.length === 0, sent, skipped, errors };
+}
+
+// "Send Later" sibling of bulkSendEmail. Resolves each candidate's
+// per-recipient merge fields NOW and persists one ScheduledEmail row per
+// candidate (no Gmail mirror draft — one draft per recipient would flood
+// the Drafts label). The per-minute cron fires each row independently and
+// records the same "email_sent" activity bulkSendEmail would. `sent` here
+// is the count scheduled.
+export async function scheduleBulkEmail(input: {
+  candidateIds: string[];
+  subject: string;
+  body: string;
+  bodyHtml?: string;
+  jobMergeValues?: MergeFieldValues;
+  scheduledSendAt: string; // ISO UTC
+  timezone: string;
+}): Promise<BulkEmailResult> {
+  const user = await requireUser();
+  if (!user) {
+    return { ok: false, sent: 0, skipped: 0, errors: ["Not signed in."] };
+  }
+  if (input.candidateIds.length === 0) {
+    return { ok: true, sent: 0, skipped: 0, errors: [] };
+  }
+  const subject = (input.subject ?? "").trim();
+  if (subject.length === 0) {
+    return { ok: false, sent: 0, skipped: 0, errors: ["Subject is required."] };
+  }
+  const when = new Date(input.scheduledSendAt);
+  if (Number.isNaN(when.getTime())) {
+    return { ok: false, sent: 0, skipped: 0, errors: ["Invalid scheduled time."] };
+  }
+  if (when.getTime() < Date.now() - 30_000) {
+    return {
+      ok: false,
+      sent: 0,
+      skipped: 0,
+      errors: ["Scheduled time must be in the future."],
+    };
+  }
+
+  const { id: organizationId } = await getCurrentOrg();
+  const candidates = await prisma.candidate.findMany({
+    where: { id: { in: input.candidateIds }, organizationId },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phone: true,
+      location: true,
+      currentDesignation: true,
+      currentOrganization: true,
+    },
+  });
+
+  let sent = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+  const jobValues = input.jobMergeValues ?? {};
+
+  for (const c of candidates) {
+    const email = (c.email ?? "").trim();
+    if (!email) {
+      skipped += 1;
+      continue;
+    }
+    const values: MergeFieldValues = {
+      ...jobValues,
+      candidateFirstName: c.firstName ?? "",
+      candidateLastName: c.lastName ?? "",
+      candidateEmail: email,
+      candidatePhone: c.phone ?? "",
+      candidateLocation: c.location ?? "",
+      candidateCurrentTitle: c.currentDesignation ?? "",
+      candidateCurrentEmployer: c.currentOrganization ?? "",
+    };
+    const mergedSubject = applyMergeFields(subject, values);
+    const mergedBody = applyMergeFields(input.body, values);
+    const mergedHtml = input.bodyHtml
+      ? applyMergeFields(input.bodyHtml, values)
+      : undefined;
+
+    try {
+      await createScheduledEmail({
+        organizationId,
+        userId: user.id,
+        userEmail: user.email,
+        to: [email],
+        subject: mergedSubject,
+        bodyHtml: mergedHtml ?? plainToHtml(mergedBody),
+        bodyText: mergedBody,
+        scheduledSendAt: when,
+        timezone: input.timezone,
+        createDraft: false,
+        autoTag: true,
+        candidateId: c.id,
+        source: "bulk_email",
+      });
+      sent += 1;
+    } catch (e) {
+      const name =
+        [c.firstName, c.lastName].filter(Boolean).join(" ").trim() || email;
+      errors.push(`${name}: ${e instanceof Error ? e.message : "schedule failed"}`);
+    }
+  }
+
   const foundIds = new Set(candidates.map((c) => c.id));
   const missing = input.candidateIds.filter((id) => !foundIds.has(id)).length;
   skipped += missing;

@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/renew-gmail-watch",
       "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/scheduled-send",
+      "schedule": "* * * * *"
     }
   ]
 }

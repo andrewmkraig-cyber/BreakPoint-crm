@@ -72,6 +72,7 @@ model User {
   funFactFeedback       FunFactFeedback[]
   pushSubscriptions     PushSubscription[]
   notes                 Note[]
+  scheduledEmails       ScheduledEmail[]
 }
 
 // Per-user branding for the email signature, resume header, and any
@@ -1060,6 +1061,7 @@ model Organization {
   microsoftToken       MicrosoftToken?
   triggerRules         TriggerRule[]
   notes                Note[]
+  scheduledEmails      ScheduledEmail[]
 }
 
 // One row per org holding the Microsoft Graph OAuth tokens that let us
@@ -2022,4 +2024,82 @@ model Note {
   jobs         Job[]        @relation("NoteJobs")
 
   @@index([organizationId, createdById, updatedAt])
+}
+
+// Status lifecycle for a "Send Later" scheduled email.
+//   SCHEDULED — waiting for the per-minute cron to fire it.
+//   SENDING   — claimed by a cron tick (guards against double-send if
+//               two ticks overlap on a slow send).
+//   SENT      — delivered via Gmail; sentMessageId/sentThreadId set.
+//   FAILED    — Gmail rejected the send; lastError holds the reason and
+//               the app-shell poller surfaces a Retry toast.
+//   CANCELED  — recruiter pulled it back before it fired.
+enum ScheduledEmailStatus {
+  SCHEDULED
+  SENDING
+  SENT
+  FAILED
+  CANCELED
+}
+
+// A "Send Later" email. Holds the full send payload so the per-minute
+// cron (/api/cron/scheduled-send) can fire it through the same sendGmail
+// path the live composers use. Org-scoped (tenant boundary) AND
+// user-scoped (the userId's Gmail account is what actually sends, mirroring
+// /api/mail/send where the user's refresh token is the boundary).
+//
+// Single-send surfaces (FAB, thread reply, candidate email) also stash a
+// Gmail draft (gmailDraftId) so the scheduled email sits in the Drafts
+// folder until it fires; the cron deletes that draft on a successful send.
+// Bulk scheduling skips draft creation to avoid piling dozens of drafts
+// into the Drafts label.
+model ScheduledEmail {
+  id              String               @id @default(cuid())
+  organizationId  String
+  userId          String
+  to              String[]             @default([])
+  cc              String[]             @default([])
+  bcc             String[]             @default([])
+  subject         String
+  bodyHtml        String               @db.Text
+  bodyText        String               @db.Text
+  // Threaded reply target. Null for fresh sends.
+  threadId        String?
+  // Selected "Send mail as" alias from the composer's From dropdown.
+  sendAsEmail     String?
+  // [{ filename, mimeType, dataBase64 }] — same shape the send/draft
+  // routes accept. Null when there are no attachments.
+  attachments     Json?
+  // The Gmail draft mirroring this scheduled email so it shows in the
+  // Drafts folder. Deleted on successful send. Null for bulk sends.
+  gmailDraftId    String?
+  scheduledSendAt DateTime
+  // IANA zone the recruiter picked (default ET). Display-only; the
+  // scheduledSendAt instant is already absolute (stored UTC).
+  timezone        String               @default("America/New_York")
+  status          ScheduledEmailStatus @default(SCHEDULED)
+  attempts        Int                  @default(0)
+  lastError       String?
+  sentMessageId   String?
+  sentThreadId    String?
+  // When true the cron auto-tags the resulting thread to any
+  // candidate/client whose address appears in To/CC (parity with
+  // /api/mail/send). Bulk rows leave this off.
+  autoTag         Boolean              @default(true)
+  // Optional activity-log lineage so the cron can record an
+  // "email_sent" ActivityLog on fire (e.g. bulk candidate emails).
+  candidateId     String?
+  source          String?
+  // Set true once the failure toast has been shown + dismissed so the
+  // app-shell poller doesn't re-surface the same failure every tick.
+  failureAcknowledged Boolean          @default(false)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([status, scheduledSendAt])
+  @@index([userId, status])
 }

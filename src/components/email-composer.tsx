@@ -3,9 +3,11 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Loader2, Send, Sparkles, Variable, X } from "lucide-react";
+import { ChevronDown, Clock, Loader2, Send, Sparkles, Variable, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useSendLater } from "@/components/mail/send-later-popover";
+import { formatScheduledTime } from "@/lib/timezone";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 import { MERGE_FIELDS, applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
 import type { RichTextBodyEditorHandle } from "@/components/rich-text-body-editor";
@@ -47,6 +49,16 @@ export type EmailComposerProps = {
   initial: EmailDraft;
   onClose: () => void;
   onSend: (draft: EmailDraft) => Promise<void>;
+  // When provided, a "Send Later" button renders next to Send and opens a
+  // date / time / timezone picker. The parent receives the same resolved
+  // draft as onSend plus the chosen absolute instant (ISO UTC) and zone,
+  // and is responsible for persisting it as a scheduled email. Throw to
+  // surface an error and keep the picker open.
+  onSendLater?: (
+    draft: EmailDraft,
+    scheduledSendAtISO: string,
+    timezone: string,
+  ) => Promise<void>;
   sendLabel?: string;
   sendingLabel?: string;
   // Optional "step backward" hook. When provided, a Back button
@@ -172,6 +184,7 @@ export function EmailComposer({
   initial,
   onClose,
   onSend,
+  onSendLater,
   sendLabel = "Send",
   sendingLabel = "Sending…",
   onBack,
@@ -623,16 +636,18 @@ export function EmailComposer({
     });
   }
 
-  function onSendClick() {
+  // Shared validation + merge resolution for both Send and Send Later.
+  // Returns the resolved draft, or null after setting the inline error.
+  function buildFinalDraft(): EmailDraft | null {
     setErr(null);
     const draft = draftValue();
     if (!hideRecipientFields && draft.to.length === 0) {
       setErr("At least one recipient (To) is required.");
-      return;
+      return null;
     }
     if (!draft.subject) {
       setErr("Subject is required.");
-      return;
+      return null;
     }
     // If the caller provided merge values, resolve any leftover tokens
     // (e.g. ones the user inserted via "Insert Field" without going through
@@ -647,9 +662,7 @@ export function EmailComposer({
       : draft;
     if (mergeValues) {
       // Browser-console audit so we can diagnose "field X didn't render"
-      // reports without redeploying. Lists tokens still in the body after
-      // resolution (always tokens NOT in MERGE_FIELDS) plus the values
-      // that were null/undefined so the resolver had to use "".
+      // reports without redeploying.
       const remaining = finalDraft.body.match(/\[[A-Z][A-Za-z ]+\]/g) ?? [];
       const blanks = Object.entries(mergeValues)
         .filter(([, v]) => v == null || (typeof v === "string" && v.trim() === ""))
@@ -662,6 +675,31 @@ export function EmailComposer({
         blankMergeKeys: blanks,
       });
     }
+    return finalDraft;
+  }
+
+  // Send Later: resolve the same draft Send would, hand it to the parent's
+  // onSendLater with the picked instant + zone. Throws so the picker keeps
+  // itself open and shows the error.
+  async function onSendLaterConfirm(
+    scheduledSendAtISO: string,
+    timezone: string,
+  ) {
+    if (!onSendLater) return;
+    const finalDraft = buildFinalDraft();
+    if (!finalDraft) {
+      throw new Error("Fix the highlighted fields first.");
+    }
+    await onSendLater(finalDraft, scheduledSendAtISO, timezone);
+    clearDraft(draftKey);
+    toast.success(
+      `Scheduled for ${formatScheduledTime(scheduledSendAtISO, timezone)}`,
+    );
+  }
+
+  function onSendClick() {
+    const finalDraft = buildFinalDraft();
+    if (!finalDraft) return;
     startSend(async () => {
       try {
         await onSend(finalDraft);
@@ -682,6 +720,11 @@ export function EmailComposer({
     setShowRestored(false);
     clearDraft(draftKey);
   }
+
+  // Send Later picker, anchored to the footer's Send Later button. The
+  // hook is always called for stable hook order; the button only renders
+  // when the parent supplied onSendLater.
+  const sendLater = useSendLater(onSendLaterConfirm);
 
   // Portal to document.body so the composer overlay escapes the
   // caller's React tree. Without the portal, ancestor stacking
@@ -1057,6 +1100,19 @@ export function EmailComposer({
             >
               Cancel
             </button>
+            {onSendLater && (
+              <button
+                type="button"
+                ref={sendLater.triggerRef}
+                onClick={() => sendLater.setOpen(true)}
+                disabled={isSending || sendDisabled || !canSend}
+                title={sendDisabled ? sendDisabledReason : undefined}
+                className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+              >
+                <Clock className="h-3.5 w-3.5" /> Send Later
+              </button>
+            )}
+            {sendLater.popover}
             <button
               type="button"
               onClick={onSendClick}

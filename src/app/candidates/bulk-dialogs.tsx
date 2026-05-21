@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition, type ReactNode } from "reac
 import {
   ChevronDown,
   ChevronRight,
+  Clock,
   FileText,
   Loader2,
   Send,
@@ -20,6 +21,7 @@ import {
   bulkAddCandidatesToList,
   bulkAddCandidatesToNewList,
   bulkSendEmail,
+  scheduleBulkEmail,
   getJobMergeValuesForBulk,
   getOpenJobsForBulkPicker,
   type BulkPickerJob,
@@ -28,6 +30,8 @@ import type { CandidateListSummary } from "@/app/candidates/lists-actions";
 import type { EmailDraft } from "@/components/email-composer";
 import { EditWithClaudeMenu, EditWithClaudeCustomPanel, type EditType } from "@/components/edit-with-claude-menu";
 import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
+import { useSendLater } from "@/components/mail/send-later-popover";
+import { formatScheduledTime } from "@/lib/timezone";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 import { MERGE_FIELDS, type MergeFieldValues } from "@/lib/merge-fields";
 import { cn } from "@/lib/utils";
@@ -642,6 +646,48 @@ export function BulkEmailDialog({
     }
   }
 
+  // Send Later: same validation as onSendClick, then persist one
+  // ScheduledEmail per candidate. Throws so the picker stays open on error.
+  async function scheduleLater(scheduledSendAtISO: string, timezone: string) {
+    setErr(null);
+    if (!subject.trim() || !body.trim()) {
+      setErr("Subject and body are required.");
+      throw new Error("Subject and body are required.");
+    }
+    const haystack = `${subject}\n${body}`;
+    if (textNeedsJob(haystack) && !jobMergeValues) {
+      const msg = "Pick a job for the job context fields, or remove them from the body.";
+      setErr(msg);
+      throw new Error(msg);
+    }
+    const res = await scheduleBulkEmail({
+      candidateIds,
+      subject,
+      body,
+      jobMergeValues: jobMergeValues ?? undefined,
+      scheduledSendAt: scheduledSendAtISO,
+      timezone,
+    });
+    if (res.sent === 0) {
+      const head = res.errors[0] ?? "No candidates had an email on file.";
+      toast.error("Could not schedule bulk email", { description: head });
+      throw new Error(head);
+    }
+    const tail = [
+      res.skipped > 0 ? `${res.skipped} skipped` : null,
+      res.errors.length > 0 ? `${res.errors.length} errors` : null,
+    ]
+      .filter(Boolean)
+      .join(" - ");
+    toast.success(
+      `Scheduled for ${res.sent} candidate${res.sent === 1 ? "" : "s"} at ${formatScheduledTime(scheduledSendAtISO, timezone)}${tail ? ` - ${tail}` : ""}`,
+      res.errors.length > 0
+        ? { description: res.errors.slice(0, 3).join("\n") }
+        : undefined,
+    );
+    onDone();
+  }
+
   function onGenerateClick() {
     const prompt = aiPrompt.trim();
     if (!prompt) {
@@ -737,6 +783,9 @@ export function BulkEmailDialog({
 
   const ghostPill =
     "inline-flex h-8 items-center gap-1.5 rounded-full border border-court-border bg-transparent px-3 text-[12px] font-semibold text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-60";
+
+  // Send Later picker, anchored to the footer's Send Later button.
+  const sendLater = useSendLater(scheduleLater);
 
   return (
     <div
@@ -1051,7 +1100,7 @@ export function BulkEmailDialog({
             </div>
           </div>
 
-          {/* Right side: Cancel + Send */}
+          {/* Right side: Cancel + Send Later + Send */}
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -1061,6 +1110,16 @@ export function BulkEmailDialog({
             >
               Cancel
             </button>
+            <button
+              type="button"
+              ref={sendLater.triggerRef}
+              onClick={() => sendLater.setOpen(true)}
+              disabled={isSending || confirmDraft !== null}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 text-[12px] font-semibold text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+            >
+              <Clock className="h-3 w-3" /> Send Later
+            </button>
+            {sendLater.popover}
             <button
               type="button"
               onClick={onSendClick}

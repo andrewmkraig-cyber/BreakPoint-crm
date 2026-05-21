@@ -52,10 +52,13 @@ import {
   SquareArrowOutUpRight,
   Save,
   Trash2,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
+import { useSendLater } from "@/components/mail/send-later-popover";
+import { formatScheduledTime } from "@/lib/timezone";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import { EditWithClaudeMenu, EditWithClaudeCustomPanel, type EditType } from "@/components/edit-with-claude-menu";
 import {
@@ -1223,12 +1226,20 @@ export function MailComposer({
     }
   }
 
-  async function onSend() {
-    setError(null);
+  // Shared validation + merge resolution for both Send and Send Later.
+  // Returns the resolved recipients / subject / body, or null after
+  // setting the inline error when the draft isn't ready to go out.
+  function prepareOutgoing(): {
+    to: string[];
+    cc: string[];
+    bcc: string[];
+    subject: string;
+    bodyHtml: string;
+  } | null {
     const toArr = splitAddresses(to);
     if (toArr.length === 0) {
       setError("At least one To: recipient is required.");
-      return;
+      return null;
     }
     const ccArr = showCc ? splitAddresses(cc) : [];
     const bccArr = showBcc ? splitAddresses(bcc) : [];
@@ -1236,7 +1247,7 @@ export function MailComposer({
     let subjectOut = subject;
     if (!stripHtml(bodyHtml).trim() && attachments.length === 0) {
       setError("Write a reply, paste content, or attach a file before sending.");
-      return;
+      return null;
     }
 
     // Phase 5A.2: resolve merge tags against the effective context
@@ -1248,6 +1259,71 @@ export function MailComposer({
     const subjectMerge = applyMailMergeFields(subjectOut, effectiveContext);
     bodyHtml = bodyMerge.output;
     subjectOut = subjectMerge.output;
+    return {
+      to: toArr,
+      cc: ccArr,
+      bcc: bccArr,
+      subject: subjectOut,
+      bodyHtml,
+    };
+  }
+
+  // Send Later: same prep + payload as onSend, but persisted as a
+  // ScheduledEmail (with a mirror Gmail draft) instead of sending now.
+  // Throws on failure so the picker keeps itself open and shows the error.
+  async function onSendLater(scheduledSendAtISO: string, timezone: string) {
+    setError(null);
+    const prepared = prepareOutgoing();
+    if (!prepared) {
+      throw new Error("Fix the highlighted fields first.");
+    }
+    const res = await fetch(`/api/mail/schedule`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        threadId,
+        to: prepared.to,
+        cc: prepared.cc.length > 0 ? prepared.cc : undefined,
+        bcc: prepared.bcc.length > 0 ? prepared.bcc : undefined,
+        subject: prepared.subject,
+        bodyHtml: prepared.bodyHtml,
+        attachments: attachments.map((a) => ({
+          filename: a.filename,
+          mimeType: a.mimeType,
+          dataBase64: a.dataBase64,
+        })),
+        sendAsEmail: selectedFromEmail ?? undefined,
+        scheduledSendAt: scheduledSendAtISO,
+        timezone,
+        createDraft: true,
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(body?.error ?? `Schedule failed (${res.status})`);
+    }
+    // The schedule route created its own mirror draft; drop any prior
+    // mid-session Save Draft so the recruiter doesn't see two drafts.
+    if (gmailDraftId) {
+      void fetch(`/api/mail/drafts/${encodeURIComponent(gmailDraftId)}`, {
+        method: "DELETE",
+      }).catch(() => {});
+    }
+    toast.success(
+      `Scheduled for ${formatScheduledTime(scheduledSendAtISO, timezone)}`,
+    );
+    onSent();
+  }
+
+  async function onSend() {
+    setError(null);
+    const prepared = prepareOutgoing();
+    if (!prepared) return;
+    const toArr = prepared.to;
+    const ccArr = prepared.cc;
+    const bccArr = prepared.bcc;
+    const bodyHtml = prepared.bodyHtml;
+    const subjectOut = prepared.subject;
 
     setSending(true);
     try {
@@ -1319,6 +1395,9 @@ export function MailComposer({
       setSending(false);
     }
   }
+
+  // Send Later picker, anchored to the footer's Send Later button.
+  const sendLater = useSendLater(onSendLater);
 
   // Phase 5A.2 derived state for the unresolved-fields banner. Reads
   // the current draft + subject and runs them through the merge
@@ -1825,6 +1904,18 @@ export function MailComposer({
             )}
             Save Draft
           </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            ref={sendLater.triggerRef}
+            onClick={() => sendLater.setOpen(true)}
+            disabled={sending || savingDraft || deletingDraft}
+          >
+            <Clock className="h-3 w-3" />
+            Send Later
+          </Button>
+          {sendLater.popover}
           <Button
             type="button"
             size="sm"
