@@ -5,23 +5,24 @@
 // library + worker versions stay locked in sync and the top-level module
 // code evaluates once per page load instead of on every component mount.
 //
-// Why this file exists: the legacy build (legacy/build/pdf.mjs) ships a
-// webpack-bundled core-js polyfill that at module-evaluation time calls
+// Build selection (see importAndConfigure): pdfjs-dist 5.6 calls
+// bleeding-edge JS natively, so the modern build (build/pdf.mjs) crashes
+// on iOS Safari — first "getOrInsertComputed is not a function", then
+// other missing ES2024/2025 APIs. The legacy build (legacy/build/pdf.mjs)
+// is babel-transpiled + core-js-polyfilled for older browsers, so it runs
+// on those phones. We use legacy in production and the modern build in dev
+// (legacy ships a core-js polyfill that calls
 //   Object.defineProperty(createElement('div'), 'a', { get: () => 7 })
-// inside a feature-detect helper. Under certain Next.js dev / HMR
-// re-evaluation contexts that expression resolves to something whose
-// first argument is not a real object, and the browser throws
-//   "Object.defineProperty called on non-object"
-// which the viewer then surfaces to the recruiter as
-//   "Couldn't render this PDF in the browser: Object.defineProperty
-//    called on non-object."
-// The non-legacy build (build/pdf.mjs) omits the core-js polyfills — we
-// only support modern browsers anyway, so the smaller bundle and the
-// clean initialization path are both wins.
+// at module-eval, which can throw "Object.defineProperty called on
+// non-object" under Next.js dev/HMR re-evaluation — but that DOM
+// feature-detect doesn't run in production, nor in a worker scope).
 //
-// The worker in /public/pdfjs/pdf.worker.min.mjs is copied from the
-// matching non-legacy node_modules location; lib and worker MUST match
-// version exactly or getDocument() init explodes in subtler ways.
+// The worker in /public/pdfjs/pdf.worker.min.mjs is the LEGACY worker
+// copied from node_modules/pdfjs-dist/legacy/build/. It self-polyfills,
+// is safe in worker scope (no DOM), and is the same 5.6.205 version as
+// either lib build — lib and worker MUST match version exactly or
+// getDocument() init explodes in subtler ways. Re-copy it from the
+// legacy build location whenever pdfjs-dist is upgraded.
 
 type PdfJsDocument = {
   numPages: number;
@@ -72,13 +73,12 @@ type PdfJsLib = {
 
 let cachedLib: Promise<PdfJsLib> | null = null;
 
-// pdfjs-dist 5.6 calls Map.prototype.getOrInsertComputed natively (no
-// polyfill of its own). That method is a very recent TC39 proposal that
-// desktop Chrome ships but Safari — including iOS Safari — does not yet,
-// so PDF rendering blew up there with "getOrInsertComputed is not a
-// function" while working fine on desktop. Install a tiny spec-shaped
-// polyfill on the main thread before pdfjs runs. The worker thread has
-// its own global scope and is patched separately by pdf.worker.shim.mjs.
+// Belt-and-suspenders main-thread polyfill for the dev path: in
+// production the legacy pdfjs build polyfills Map.prototype.
+// getOrInsertComputed itself, but in dev we load the modern build, so
+// this guards the rare case of a dev browser without that very-new TC39
+// method. No-ops when the method already exists. The worker scope is
+// covered by the legacy worker's own bundled polyfills.
 function installMapGetOrInsertPolyfill(): void {
   if (typeof Map === "undefined") return;
   const proto = Map.prototype as unknown as {
@@ -100,11 +100,26 @@ function installMapGetOrInsertPolyfill(): void {
 
 async function importAndConfigure(): Promise<PdfJsLib> {
   installMapGetOrInsertPolyfill();
-  const lib = (await import("pdfjs-dist/build/pdf.mjs")) as unknown as PdfJsLib;
-  // Point at the shim worker, which installs the same Map polyfill in the
-  // worker scope and then loads the real self-hosted worker. CSP
-  // script-src covers 'self', so the browser is allowed to spawn it.
-  lib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.shim.mjs";
+  // pdfjs-dist 5.6 targets very recent browsers and calls ES2024/2025
+  // APIs natively (Map.prototype.getOrInsertComputed, Iterator helpers,
+  // ...) that iOS Safari hasn't shipped — the modern build crashed there
+  // with "getOrInsertComputed is not a function", then "undefined is not
+  // a function" once that was patched. The legacy build is babel-
+  // transpiled + core-js-polyfilled for exactly these older browsers, so
+  // use it in production (where real phones live). In dev we keep the
+  // modern build: smaller, the dev browser is current, and the legacy
+  // build's core-js DOM feature-detect can throw under Next HMR
+  // re-evaluation (the original reason this app moved off legacy).
+  const lib = (
+    process.env.NODE_ENV === "production"
+      ? await import("pdfjs-dist/legacy/build/pdf.mjs")
+      : await import("pdfjs-dist/build/pdf.mjs")
+  ) as unknown as PdfJsLib;
+  // Self-hosted worker is the LEGACY worker — it bundles the same
+  // polyfills (safe in worker scope, which has no DOM) and is the same
+  // 5.6.205 version as either lib build, so the worker version check
+  // passes in both dev and prod. CSP script-src covers 'self'.
+  lib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
   return lib;
 }
 
