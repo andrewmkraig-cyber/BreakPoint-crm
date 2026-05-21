@@ -328,17 +328,46 @@ export function PlacementActions({
   const [submitInitialJobRfId, setSubmitInitialJobRfId] = useState<number | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
 
-  // Mirror the jobs prop into local state so Apply-to-Job can prepend an
-  // optimistic row. The apply path deliberately does NOT call
-  // router.refresh() — a refresh races the DB commit and re-rendered
-  // server props (still without the new row) would clobber the optimistic
-  // row and the pill would briefly disappear. Instead we wait 500 ms and
-  // re-fetch a slim snapshot list to confirm the placement, merging the
-  // server-truth id/stage into local state. Other paths still call
-  // router.refresh(); this effect handles their reconciliation.
+  // Mirror the jobs prop into local state so the optimistic Apply / Keep /
+  // Reject paths can flip a pill immediately. The catch: every stage server
+  // action calls revalidatePath, which re-renders this page and pushes fresh
+  // `jobs` the instant the action resolves. That refresh races the DB write
+  // and read-replica lag, so a naive setJobsState(jobs) clobbers the
+  // optimistic pill back to its old stage and it flashes then disappears.
+  // pendingStages holds each optimistically-set stage until the server prop
+  // reports the same value, then releases the hold and trusts server truth.
   const [jobsState, setJobsState] = useState<PlacementContextJob[]>(jobs);
+  const pendingStages = useRef<Map<number, string>>(new Map());
   useEffect(() => {
-    setJobsState(jobs);
+    setJobsState((prev) => {
+      // Fast path: nothing optimistic in flight, take server truth as-is.
+      if (pendingStages.current.size === 0) return jobs;
+      const serverIds = new Set(jobs.map((j) => j.jobRfId));
+      const merged = jobs.map((j) => {
+        const pending = pendingStages.current.get(j.jobRfId);
+        if (pending == null) return j;
+        const serverStage = (j.placement?.stage ?? "sourced").trim().toLowerCase();
+        if (serverStage === pending) {
+          // Server caught up, so release the optimistic hold.
+          pendingStages.current.delete(j.jobRfId);
+          return j;
+        }
+        // Server still stale, so keep the optimistic stage on the pill.
+        return {
+          ...j,
+          placement: j.placement
+            ? { ...j.placement, stage: pending as PlacementSnapshot["stage"] }
+            : seedOptimisticPlacement(pending),
+        };
+      });
+      // Brand-new optimistic rows (Apply on a job the server prop does not
+      // list yet) live only in prev. Keep them until the placement surfaces
+      // server-side, then the merge above takes over.
+      const heldNew = prev.filter(
+        (j) => !serverIds.has(j.jobRfId) && pendingStages.current.has(j.jobRfId),
+      );
+      return [...merged, ...heldNew];
+    });
   }, [jobs]);
 
   // Optimistic removal hook for the Reapply-via-delete branch in
@@ -360,6 +389,9 @@ export function PlacementActions({
   // replication window keeps the jobs<-prop effect from clobbering the
   // optimistic stage back to its old value. Mirrors handleApplied.
   function handleStageChanged(jobRfId: number, stage: string) {
+    // Record the hold before mutating so the revalidatePath refresh that
+    // the server action fires can't clobber the pill before it confirms.
+    pendingStages.current.set(jobRfId, stage);
     setJobsState((prev) =>
       prev.map((j) => {
         if (j.jobRfId !== jobRfId) return j;
@@ -375,6 +407,9 @@ export function PlacementActions({
   }
 
   function handleApplied(opt: OpenJobOption, placementId: string) {
+    // Hold the new APPLIED row until the server prop surfaces the placement,
+    // so the revalidatePath refresh can't drop it before the write replicates.
+    pendingStages.current.set(opt.jobRfId, "applied");
     setJobsState((prev) => {
       if (prev.some((j) => j.jobRfId === opt.jobRfId)) return prev;
       const optimistic: PlacementContextJob = {

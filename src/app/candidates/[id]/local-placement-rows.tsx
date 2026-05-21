@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Briefcase,
@@ -152,26 +152,53 @@ export function LocalPlacementRows({
   const [inviteFlow, setInviteFlow] = useState<LocalInviteFlow | null>(null);
   const router = useRouter();
 
-  // Mirror the jobs prop into local state. Reject flips its row's stage in
-  // jobsState optimistically (see handleStageChanged) so the pill updates
-  // without a reload; Reapply still drives through router.refresh(). Either
-  // way jobsState stays in lockstep with the latest `jobs` prop via the
-  // effect below once the reconciling refresh lands.
+  // Mirror the jobs prop into local state so the optimistic Apply (event
+  // below) and Reject (handleStageChanged) paths can flip a pill instantly.
+  // The catch: the stage server actions call revalidatePath, which pushes
+  // fresh `jobs` the instant the action resolves, racing the DB write and
+  // read-replica lag. A naive setJobsState(jobs) would clobber the
+  // optimistic pill and it would flash then disappear. pendingStages holds
+  // each optimistically-set stage (keyed by jobRfId) until the server prop
+  // reports the same value, then releases the hold and trusts server truth.
   const [jobsState, setJobsState] = useState<LocalJobRow[]>(jobs);
+  const pendingStages = useRef<Map<number, string>>(new Map());
   useEffect(() => {
-    setJobsState(jobs);
+    setJobsState((prev) => {
+      // Fast path: nothing optimistic in flight, take server truth as-is.
+      if (pendingStages.current.size === 0) return jobs;
+      const serverIds = new Set(jobs.map((j) => j.jobRfId));
+      const merged = jobs.map((j) => {
+        const pending = pendingStages.current.get(j.jobRfId);
+        if (pending == null) return j;
+        const serverStage = (j.stage ?? "sourced").trim().toLowerCase();
+        if (serverStage === pending) {
+          // Server caught up, so release the optimistic hold.
+          pendingStages.current.delete(j.jobRfId);
+          return j;
+        }
+        // Server still stale, so keep the optimistic stage on the pill.
+        return { ...j, stage: pending };
+      });
+      // Brand-new optimistic Apply rows the server prop does not list yet
+      // live only in prev. Keep them until the placement surfaces.
+      const heldNew = prev.filter(
+        (j) => !serverIds.has(j.jobRfId) && pendingStages.current.has(j.jobRfId),
+      );
+      return [...merged, ...heldNew];
+    });
   }, [jobs]);
 
   // Optimistic apply: the Apply-to-Job modal dispatches
   // LOCAL_PLACEMENT_APPLIED_EVENT the instant its write resolves. Prepend
   // an Applied row immediately so the job pill shows without waiting on the
-  // RSC refetch (which races the DB commit). The jobs-prop sync effect
-  // above replaces it with the canonical server row once router.refresh()
-  // lands. Same local-state update the Reject pill relies on.
+  // RSC refetch (which races the DB commit). pendingStages holds the row
+  // until the server prop surfaces the placement, so the revalidatePath
+  // refresh can't drop it mid-flight. Same hold the Reject pill relies on.
   useEffect(() => {
     function onApplied(e: Event) {
       const detail = (e as CustomEvent<LocalPlacementAppliedDetail>).detail;
       if (!detail || detail.candidateId !== candidateId) return;
+      pendingStages.current.set(detail.jobRfId, "applied");
       setJobsState((prev) => {
         if (prev.some((j) => j.jobRfId === detail.jobRfId)) return prev;
         const optimistic: LocalJobRow = {
@@ -198,13 +225,14 @@ export function LocalPlacementRows({
 
   // Optimistic stage flip for the per-row Reject action. The row pill reads
   // job.stage from jobsState, so mutating it here updates the pill the
-  // instant the server action resolves. The delayed router.refresh
-  // reconciles external surfaces (applicants, pipeline) after the write and
-  // any read-replica lag settle; delaying it past the replication window
-  // keeps the jobs<-prop effect from clobbering the optimistic stage.
-  function handleStageChanged(placementId: string, stage: string) {
+  // instant the server action resolves. pendingStages (keyed by jobRfId)
+  // holds the new stage so the revalidatePath refresh can't clobber it; the
+  // delayed router.refresh reconciles external surfaces (applicants,
+  // pipeline) and lets the hold release once server data confirms.
+  function handleStageChanged(jobRfId: number, stage: string) {
+    pendingStages.current.set(jobRfId, stage);
     setJobsState((prev) =>
-      prev.map((j) => (j.placementId === placementId ? { ...j, stage } : j)),
+      prev.map((j) => (j.jobRfId === jobRfId ? { ...j, stage } : j)),
     );
     setTimeout(() => router.refresh(), 500);
   }
@@ -343,7 +371,7 @@ function LocalJobActionRow({
   onSchedule: () => void;
   onClientInvite: () => void;
   onEditInterview: (interview: LocalInterview) => void;
-  onStageChange: (placementId: string, stage: string) => void;
+  onStageChange: (jobRfId: number, stage: string) => void;
 }) {
   const router = useRouter();
   const [isRejecting, startRejecting] = useTransition();
@@ -430,7 +458,7 @@ function LocalJobActionRow({
           sendRejectionEmail ? "Rejected — email sent" : "Rejected",
         );
         setRejectOpen(false);
-        onStageChange(job.placementId, "rejected");
+        onStageChange(job.jobRfId, "rejected");
         resolve();
       });
     });
