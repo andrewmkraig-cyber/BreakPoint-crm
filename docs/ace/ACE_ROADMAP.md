@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-20 · Ace 61.0
+Last updated: 2026-05-21 · Ace 62.0
 
 ## Active Build Sequence
 
@@ -17,17 +17,15 @@ Notification toast polish (DONE Ace 59.0): SMS toast `MessageSquare` icon, actio
 ### Session 61.0 Status
 Profile / pipeline regression close-out + features (DONE Ace 61.0): split-view candidate Delete restored; Apply / Keep / Reject real-time stage pill (optimistic, holds until server confirm) + the flash-then-disappear follow-on fixed; Add Note button removed from all four candidate profile locations; stage button visibility aligned to spec in `pipeline-row-actions.tsx`; phone thread auto-scroll to bottom on open; CalendarEventDrawer reminder mode (hides Guests / Location / Meeting type / All day / Timezone, ET hard-coded with a comment to pull per-user tz when multi-user ships); scheduled send (Send Later) on every email surface (`ScheduledEmail` table + per-minute Vercel cron + Retry toast); dark luxury login redesign; PWA badge auto-fire fix (`2d0081e`, null badgeCount in `unread-counts.ts`, sw.js cache `v5`); Auto Night Mode (`0dd1e41`, `UserProfile.autoNightMode`, 7pm/7am ET flip). Favicon / tab counter verified already correct. Awaiting Andrew's browser verification of scheduled send, the PWA badge, and Auto Night Mode.
 
-### Next Up (after Ace 61.0)
-Tomorrow's order:
+### Next Up (after Ace 62.0)
 
-1. **Verify scheduled send fired.** Confirm a Send Later email went out on the per-minute cron (ScheduledEmail SCHEDULED -> SENT, sentMessageId set) and the failure-toast Retry path works.
-2. **Verify PWA badge + Auto Night Mode.** Badge moves on a fresh SMS / email with Ace closed (after the v5 SW takes on each device); Auto Night Mode flips dark at 7:00 PM ET / light at 7:00 AM ET and persists across devices.
-3. **Quo setup wizard.** Guided Settings flow to connect Quo, configure the webhook URL, verify inbound SMS / call routing, confirm transcription is live. (Promoted from Non-Urgent.)
-4. **Legacy render path retirement - Phase 1+.** Phase 0 audit done (`8876af2`, read-only): 726 candidates, 692 legacy / 34 native; 10 candidates lose pills (rfId-only placements, incl. 848) + 594 show pills only from raw.jobs[] (580 Sourced / 14 Disqualified). Phase 1: backfill candidateId on 14 placement rows, create 594 Placement rows from raw.jobs[], backfill 1 LinkedIn URL, then atomic cutover. `placement-flows.tsx` / `placement-actions.ts` are shared and stay; only the page.tsx profile branch retires.
-5. **Item 31 + 45 - Full button/color audit.** Partially absorbed in 55.0 + 56.0; still owes a full sweep. Scan every `.tsx` under `src/` for: `rounded-full` on `<button>` elements or `Button` instances; hardcoded color literals (`bg-emerald-*`, `bg-green-*`, `text-white`, hex codes) on buttons; `<button>` elements that bypass `src/components/ui/button.tsx`. Report findings by file with line numbers before changing anything.
-6. **QB - QuickBooks standalone page.** New route at `/finances/quickbooks`, isolated from the existing Mercury-driven Finances page. Detailed spec below under Queued Specs - Not Yet Prompted.
+1. **Multi-user client ownership Steps 3-5:** read-only lock + hidden buttons on the other user's clients, Jobs/Pipeline inherit client owner, 2-month activity auto-release.
+2. **Push notification debugging.** Quo webhook orgId/push path still under investigation, [web-push][diag] logging in place.
+3. **Legacy render path retirement Phase 1.** Audit scripts committed, backfill not yet started.
+4. **Button/color audit.** Grep first, report by file, no changes until scope confirmed.
+5. **Markdown-to-HTML in generated emails.** If not confirmed shipped, verify first.
 
-Carried, lower in the queue: Item 43 (Bulk email Phase 2 - scheduled-send time picker + 30-60 sec throttle + 5-domain rotation sharing the BD warmed pool; Ace 51 shipped Phase 1 synchronous bulk send) and MULTI-USER (per-user auth + role + permission model, plus per-user timezone / weather location; spec under Queued Specs - Not Yet Prompted).
+Carried, lower in the queue: Item 43 (Bulk email Phase 2 - scheduled-send time picker + 30-60 sec throttle + 5-domain rotation sharing the BD warmed pool; Ace 51 shipped Phase 1 synchronous bulk send), QuickBooks standalone page (spec under Queued Specs - Not Yet Prompted), and per-user timezone / weather location (parked; part of the multi-user ownership work above).
 
 ## Branch Status
 - **`design/phase-1`** — local-only branch with Cursor UI redesign Phases 1-2 not yet merged to `main`. Carries `86d3e31` (Phase 1 design system foundation), `38f119c` (Phase 2a card shells on dashboard/placements/finances), `d7f5437` (Phase 2b TableRow + TableCell on list views), `c0fb973` (Phase 2c sidebar polish + list table chrome). Review pending; `main` is the source of truth for shipped state until this lands.

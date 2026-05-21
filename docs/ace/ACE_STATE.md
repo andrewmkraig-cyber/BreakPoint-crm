@@ -1,10 +1,30 @@
 # ACE_STATE.md
-Last updated: 2026-05-20 · Ace 61.1
+Last updated: 2026-05-21 · Ace 62.0
 
 ## Current Status
-Current Version: Ace 61.1
-Last Shipped: 2026-05-20
+Current Version: Ace 62.0
+Last Shipped: 2026-05-21
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 62.0 (2026-05-21)
+
+UI polish pass, AI-compose hardening, Quo webhook resilience, and the first two steps of multi-user client ownership.
+
+- UNKNOWN badge chip: removed border and font-medium from thread list and detail header, now bg-court-surface-subtle text-court-fg-muted no border
+- Phone sidebar filter renamed from "All" to "Inbox"
+- Mail sidebar active state: hardcoded hex replaced with TabStrip canonical style across Inbox/Sent/Drafts/labels
+- Generate button in Claude modal: switched from solid filled to CLAUDE_PILL_CLASS outlined style
+- Gmail badge undercount fix: Gmail leg counts actual unread thread IDs instead of resultSizeEstimate
+- Send Later: UTC removed from timezone dropdown, time field replaced with quarter-hour TimeSelect dropdown
+- Phone sidebar active item: hardcoded hex replaced with court-brand outlined style matching Mail Inbox
+- AI compose JSON parser: hardened to survive unescaped newlines, max tokens raised to 2048
+- Quo webhook resilience: smsMessage.create try/catch, orgId null logging, getUnreadCountsForOrg try/catch with fallback
+- Sidebar polish: active nav item gets thin court-brand left border and subtle background glow using court tokens
+- Profile card consolidated: single bottom card with Andrew Kraig / 216-340-9511 / ACE CREATOR pill, phone copies to clipboard, per-user contact details (Andrew vs Austin)
+- Markdown-to-HTML in generated emails: bold headers and hyperlinks render correctly in sent emails
+- Multi-user client ownership Step 1: owner field added to Client model, 6 existing clients backfilled to andrew@breakpointtalent.com, new clients stamp owner on create
+- Multi-user client ownership Step 2: Mine/All clients toggle on Clients page, owned-by badge on non-owned clients in All view
+- Temporary [web-push][diag] logging in web-push.ts still live - pending removal after push notification debugging
 
 ## What Shipped in Ace 61.1 (2026-05-20)
 
