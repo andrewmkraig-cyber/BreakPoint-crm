@@ -151,11 +151,11 @@ export function Sidebar({ width }: { width?: number } = {}) {
             className={
               idx === 0
                 ? ""
-                : "mt-3 [@media(max-height:720px)]:mt-2"
+                : "mt-2 [@media(max-height:720px)]:mt-1.5"
             }
           >
             {group.title && (
-              <div className="mb-1 px-3 pt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-court-sidebar-fg-dim [@media(max-height:720px)]:mb-0.5 [@media(max-height:720px)]:pt-0.5">
+              <div className="mb-0.5 px-3 pt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-court-sidebar-fg-dim">
                 {group.title}
               </div>
             )}
@@ -218,7 +218,7 @@ function NavLink({
         // scroll. Tap target stays usable; icons stay 16px.
         // `isolate` so the active glow span (-z-10) layers above the row
         // background but below the icon/label without escaping the row.
-        "relative isolate flex h-9 items-center gap-2.5 rounded-md pl-3 pr-2 text-[13px] font-medium transition-colors [@media(max-height:720px)]:h-8 [@media(max-height:640px)]:h-7 [@media(max-height:640px)]:text-[12.5px]",
+        "relative isolate flex h-8 items-center gap-2.5 rounded-md pl-3 pr-2 text-[13px] font-medium transition-colors [@media(max-height:640px)]:h-7 [@media(max-height:640px)]:text-[12.5px]",
         active
           ? "bg-[var(--court-sidebar-active-bg)] text-court-sidebar-active-fg"
           : "text-court-sidebar-fg-muted hover:bg-[var(--court-sidebar-active-bg)] hover:text-court-sidebar-fg",

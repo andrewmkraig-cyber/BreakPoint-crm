@@ -23,7 +23,7 @@ export function TopBar() {
   // instance — duplicating it would mount two debounced inputs, two
   // dropdowns, two server actions in flight).
   return (
-    <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 bg-court-surface px-4 pb-2 md:h-20 md:flex-nowrap md:gap-4 md:px-6 md:pb-0">
+    <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 bg-court-surface px-4 pb-2 pt-3 md:h-20 md:flex-nowrap md:gap-4 md:px-6 md:pb-0 md:pt-0">
       {/* MobileNav appears only below md (where the desktop sidebar is
           hidden). Click opens a left drawer with the same nav groups
           the sidebar shows so the recruiter never loses access to nav

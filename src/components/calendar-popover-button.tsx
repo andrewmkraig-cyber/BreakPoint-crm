@@ -194,14 +194,14 @@ export function CalendarPopoverButton() {
           (open ? "ring-court-brand" : "ring-court-border")
         }
       >
-        <span className="bg-court-brand-tint px-3 py-0.5 text-center text-[10px] font-extrabold uppercase tracking-wider text-court-brand">
+        <span className="bg-court-brand-tint px-2.5 py-px text-center text-[10px] font-extrabold uppercase tracking-wider text-court-brand">
           {today.weekdayShort}
         </span>
-        <span className="flex flex-col items-center bg-court-surface px-3 pb-1 pt-0.5 text-center">
+        <span className="flex flex-col items-center bg-court-surface px-2.5 pb-0.5 pt-0 text-center">
           <span className="text-[9px] font-semibold uppercase tracking-wide text-court-fg-muted">
             {today.monthShort}
           </span>
-          <span className="text-xl font-black leading-none text-court-fg">
+          <span className="text-base font-black leading-none text-court-fg">
             {today.day}
           </span>
         </span>

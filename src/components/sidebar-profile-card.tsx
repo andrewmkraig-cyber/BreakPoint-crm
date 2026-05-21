@@ -135,7 +135,7 @@ export function SidebarProfileCard() {
             standard). Blue outline + text on a faint blue tint - a fixed
             Tailwind palette accent, the same convention the nav icons use
             (no raw hex, consistent in every theme). */}
-        <span className="mt-1.5 flex w-fit items-center gap-1.5 rounded-full border border-blue-400/40 bg-blue-400/10 px-3 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.14em] text-blue-400">
+        <span className="mx-auto mt-1.5 flex w-fit items-center gap-1.5 rounded-full border border-blue-400/40 bg-blue-400/10 px-2.5 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-blue-400">
           <Crown aria-hidden="true" className="h-3 w-3 shrink-0" />
           {profile.accessLabel}
         </span>
