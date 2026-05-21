@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { matchClientByPhone } from '@/lib/quo-contact-match'
 import { sendPushToOrg, sendPushToUser } from '@/lib/web-push'
 import { getUnreadCountsForOrg } from '@/lib/unread-counts'
+import { pickPhone, redactPhone } from '@/lib/quo-phone'
 
 // Quo (formerly KrispCall / OpenPhone) inbound webhook.
 //
@@ -48,14 +49,28 @@ export async function POST(req: NextRequest) {
   )
 
   if (eventType === 'message.received' || eventType === 'new_sms_or_mms') {
-    const fromNumber = pickStr(body, ['data.object.from', 'from_number', 'from'])
-    const toNumber = pickStr(body, ['data.object.to', 'to_number', 'to'])
+    // pickPhone (not pickStr) for from/to so an object-shaped value
+    // (e.g. data.object.from: { number: "+1..." }) gets unwrapped rather
+    // than silently failing the typeof-string check and dropping the push.
+    const fromNumber = pickPhone(body, ['data.object.from', 'from_number', 'from'])
+    const toNumber = pickPhone(body, ['data.object.to', 'to_number', 'to'])
     const content = pickStr(body, ['data.object.body', 'content', 'message'])
     // MMS images. OpenPhone delivers attachments as either
     // `data.object.media: [{ url, type }, ...]` or a top-level
     // `data.object.mediaUrl` (varies across event versions). We grab
     // the first http(s) URL we find and persist it on SmsMessage.
     const mediaUrl = pickMediaUrl(body)
+    // Targeted push-path diagnostic. Logs only resolution booleans, the
+    // shape of the raw from value, the data.object key list, and a
+    // 4-digit redacted suffix - never the full number or message body.
+    const rawFrom = getPath(body, 'data.object.from')
+    console.log(
+      '[quo/webhook] inbound extract' +
+        ` fromResolved=${!!fromNumber} toResolved=${!!toNumber} contentResolved=${!!content}` +
+        ` rawFromType=${Array.isArray(rawFrom) ? 'array' : typeof rawFrom}` +
+        ` fromSuffix=${redactPhone(fromNumber)}` +
+        ` data_object_keys=${dataObj ? Object.keys(dataObj).join(',') : '(none)'}`,
+    )
     if (fromNumber) {
       const candidate = await prisma.candidate.findFirst({
         where: { phone: { contains: fromNumber.replace(/\D/g, '').slice(-10) } },
@@ -146,9 +161,18 @@ export async function POST(req: NextRequest) {
         // (no candidate match, no client match, and defaultOrgId() returned
         // null), so the push was skipped. Surfaces an otherwise silent drop.
         console.error('[quo/webhook] inbound message: orgId null, push skipped', {
-          fromNumber,
+          fromSuffix: redactPhone(fromNumber),
         })
       }
+    } else {
+      // Silent-skip reason: extraction produced no usable from-number, so
+      // the whole SMS block (persist + push) was bypassed. Logs the raw
+      // shape and the data.object key list (no full number / body) so a
+      // payload whose from lives at an unexpected path is diagnosable.
+      console.error('[quo/webhook] inbound message: fromNumber missing, push skipped', {
+        rawFromType: Array.isArray(rawFrom) ? 'array' : typeof rawFrom,
+        dataObjectKeys: dataObj ? Object.keys(dataObj) : null,
+      })
     }
   }
 
