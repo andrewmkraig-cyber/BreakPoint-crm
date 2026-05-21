@@ -163,7 +163,10 @@ export async function POST(req: NextRequest): Promise<NextResponse<AiComposeResp
   try {
     const response = await anthropic.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 1024,
+      // Subject + a multi-section body can run long; 1024 truncated some
+      // generations mid-JSON, which broke parsing and dropped the subject
+      // line. 2048 leaves room for the full {subject, bodyHtml} object.
+      max_tokens: 2048,
       tools: [
         {
           type: "web_search_20250305",
@@ -240,15 +243,62 @@ function parseSubjectAndBody(
   let s = raw.trim();
   // Strip ```json ... ``` or ``` ... ``` wrappers if Claude added them.
   s = s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+
+  // Fast path: well-formed JSON.
   try {
     const obj = JSON.parse(s) as { subject?: unknown; bodyHtml?: unknown };
     const subject = typeof obj.subject === "string" ? obj.subject.trim() : "";
     const bodyHtml = typeof obj.bodyHtml === "string" ? obj.bodyHtml : "";
-    if (!subject || !bodyHtml) return null;
-    return { subject, bodyHtml };
+    if (subject && bodyHtml) return { subject, bodyHtml };
   } catch {
-    return null;
+    // Fall through to tolerant extraction.
   }
+
+  // Tolerant path. Claude frequently emits bodyHtml with raw (unescaped)
+  // newlines, which is invalid JSON and trips JSON.parse - the symptom
+  // being the entire {"subject":...,"bodyHtml":...} object landing in the
+  // email body with an empty subject. It can also add a preamble or get
+  // truncated at max_tokens (no closing brace). Pull both fields out by
+  // hand and undo JSON string escaping so the subject still routes to the
+  // subject line.
+  const subjectMatch = /"subject"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(s);
+  if (!subjectMatch) return null;
+  const subject = unescapeJsonString(subjectMatch[1]).trim();
+  if (!subject) return null;
+
+  let bodyRaw: string | null = null;
+  const bodyClosed = /"bodyHtml"\s*:\s*"([\s\S]*)"\s*}\s*$/.exec(s);
+  if (bodyClosed) {
+    bodyRaw = bodyClosed[1];
+  } else {
+    // Truncated (hit max_tokens) - grab everything after the opening
+    // quote and drop any dangling closing quote / brace.
+    const bodyOpen = /"bodyHtml"\s*:\s*"([\s\S]*)$/.exec(s);
+    if (bodyOpen) bodyRaw = bodyOpen[1].replace(/"\s*}?\s*$/, "");
+  }
+  if (bodyRaw == null) return null;
+  const bodyHtml = unescapeJsonString(bodyRaw);
+  if (!bodyHtml.trim()) return null;
+  return { subject, bodyHtml };
+}
+
+// Undo JSON string escaping in a single pass so escaped quotes,
+// newlines, and unicode in a hand-extracted field render correctly.
+function unescapeJsonString(s: string): string {
+  return s.replace(/\\(u[0-9a-fA-F]{4}|["\\/bfnrt])/g, (_m, esc: string) => {
+    if (esc[0] === "u") return String.fromCharCode(parseInt(esc.slice(1), 16));
+    const map: Record<string, string> = {
+      n: "\n",
+      r: "\r",
+      t: "\t",
+      b: "\b",
+      f: "\f",
+      '"': '"',
+      "\\": "\\",
+      "/": "/",
+    };
+    return map[esc] ?? esc;
+  });
 }
 
 // Claude sometimes wraps responses in ```html ... ``` fences or
