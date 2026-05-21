@@ -46,6 +46,17 @@ export type PdfCanvasViewerProps = {
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 3.0;
 
+// iOS Safari silently paints a BLANK (white) canvas — no error thrown —
+// once a canvas's pixel area crosses an internal ceiling (~16.7M px on
+// most devices), and the iPhone's devicePixelRatio of 3 triples the
+// bitmap area, so it trips that ceiling far sooner than desktop. That's
+// what was leaving mobile resume previews empty. We cap each canvas's
+// area well under the limit and clamp the bitmap DPR below; CSS display
+// size is untouched, so the page still fits-to-width — only the bitmap
+// resolution drops on very large/zoomed pages.
+const MAX_CANVAS_AREA = 12_000_000;
+const MAX_DPR = 2;
+
 export function PdfCanvasViewer({
   src,
   className,
@@ -101,7 +112,12 @@ export function PdfCanvasViewer({
     // scrollbar. 32 = 16px padding on each side.
     const available = Math.max(240, container.clientWidth - 32);
     const fit = available / natural.width;
-    setFitScale(fit);
+    // Mobile Safari fires ResizeObserver on sub-pixel viewport wobble
+    // (the address bar showing/hiding nudges the layout). Re-rendering
+    // every page to canvas on each wobble churns canvas memory — exactly
+    // what tips iOS into blanking them. Ignore deltas under ~1% so a
+    // genuine width change still re-fits but noise doesn't.
+    setFitScale((prev) => (prev != null && Math.abs(prev - fit) < 0.01 ? prev : fit));
   }, []);
 
   useEffect(() => {
@@ -126,60 +142,84 @@ export function PdfCanvasViewer({
     const classMap = highlightClassMap ?? new Map<string, string>();
     let cancelled = false;
     (async () => {
-      const pdfjsLib = await loadPdfjs();
-      if (cancelled) return;
-      host.innerHTML = "";
-      const dpr = typeof window !== "undefined" ? Math.max(1, window.devicePixelRatio || 1) : 1;
-      for (let p = 1; p <= doc.numPages; p++) {
+      try {
+        const pdfjsLib = await loadPdfjs();
         if (cancelled) return;
-        const page = await doc.getPage(p);
-        const viewport = page.getViewport({ scale: effective });
-        // Per-page wrapper so the absolute-positioned text overlay aligns
-        // against the canvas. width/height match the CSS pixel size of the
-        // canvas (not the DPR-scaled bitmap dimensions).
-        const pageWrap = document.createElement("div");
-        pageWrap.style.position = "relative";
-        pageWrap.style.width = `${viewport.width}px`;
-        pageWrap.style.height = `${viewport.height}px`;
-        host.appendChild(pageWrap);
-
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.round(viewport.width * dpr);
-        canvas.height = Math.round(viewport.height * dpr);
-        canvas.style.width = `${viewport.width}px`;
-        canvas.style.height = `${viewport.height}px`;
-        // Literal white: PDF pages are paper — always render against a
-        // white sheet regardless of Court Mode. A court-* surface token
-        // would tint the page in Clay/Grass and make body text unreadable.
-        canvas.className = "block rounded-md bg-white shadow-sm";
-        pageWrap.appendChild(canvas);
-        const ctx = canvas.getContext("2d");
-        if (!ctx) continue;
-        ctx.scale(dpr, dpr);
-        await page.render({ canvasContext: ctx, viewport }).promise;
-        if (cancelled) return;
-
-        if (tokens.length > 0) {
-          const textContent = await page.getTextContent();
+        host.innerHTML = "";
+        const rawDpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+        const dpr = Math.min(Math.max(1, rawDpr), MAX_DPR);
+        for (let p = 1; p <= doc.numPages; p++) {
           if (cancelled) return;
-          const overlay = document.createElement("div");
-          overlay.style.position = "absolute";
-          overlay.style.inset = "0";
-          overlay.style.overflow = "hidden";
-          overlay.style.lineHeight = "1";
-          overlay.style.pointerEvents = "none";
-          overlay.setAttribute("aria-hidden", "true");
-          pageWrap.appendChild(overlay);
-          paintHighlightOverlay({
-            overlay,
-            textContent,
-            viewportTransform: viewport.transform,
-            viewportScale: viewport.scale,
-            tokens,
-            classMap,
-            Util: pdfjsLib.Util,
-          });
+          const page = await doc.getPage(p);
+          const viewport = page.getViewport({ scale: effective });
+          // Per-page wrapper so the absolute-positioned text overlay aligns
+          // against the canvas. width/height match the CSS pixel size of the
+          // canvas (not the DPR-scaled bitmap dimensions).
+          const pageWrap = document.createElement("div");
+          pageWrap.style.position = "relative";
+          pageWrap.style.width = `${viewport.width}px`;
+          pageWrap.style.height = `${viewport.height}px`;
+          host.appendChild(pageWrap);
+
+          // Bitmap resolution = clamped DPR, backed off further if the page
+          // would exceed the iOS canvas-area ceiling (see MAX_CANVAS_AREA).
+          // Display (CSS) size stays at viewport size either way.
+          let outputScale = dpr;
+          const area = viewport.width * viewport.height * outputScale * outputScale;
+          if (area > MAX_CANVAS_AREA) {
+            outputScale = Math.sqrt(
+              MAX_CANVAS_AREA / (viewport.width * viewport.height),
+            );
+          }
+
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(viewport.width * outputScale);
+          canvas.height = Math.round(viewport.height * outputScale);
+          canvas.style.width = `${viewport.width}px`;
+          canvas.style.height = `${viewport.height}px`;
+          // Literal white: PDF pages are paper — always render against a
+          // white sheet regardless of Court Mode. A court-* surface token
+          // would tint the page in Clay/Grass and make body text unreadable.
+          canvas.className = "block rounded-md bg-white shadow-sm";
+          pageWrap.appendChild(canvas);
+          const ctx = canvas.getContext("2d");
+          if (!ctx) continue;
+          ctx.scale(outputScale, outputScale);
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          if (cancelled) return;
+
+          if (tokens.length > 0) {
+            const textContent = await page.getTextContent();
+            if (cancelled) return;
+            const overlay = document.createElement("div");
+            overlay.style.position = "absolute";
+            overlay.style.inset = "0";
+            overlay.style.overflow = "hidden";
+            overlay.style.lineHeight = "1";
+            overlay.style.pointerEvents = "none";
+            overlay.setAttribute("aria-hidden", "true");
+            pageWrap.appendChild(overlay);
+            paintHighlightOverlay({
+              overlay,
+              textContent,
+              viewportTransform: viewport.transform,
+              viewportScale: viewport.scale,
+              tokens,
+              classMap,
+              Util: pdfjsLib.Util,
+            });
+          }
         }
+        // Reached only if every page rendered without throwing — clear any
+        // stale error from a prior failed attempt (e.g. a zoom that was
+        // too large succeeding after zooming back out).
+        if (!cancelled) setErr(null);
+      } catch (e) {
+        // Without this the render loop failed silently and left a blank
+        // white canvas (the mobile bug). Surface it so the error UI +
+        // Download fallback show instead.
+        if (cancelled) return;
+        setErr(e instanceof Error ? e.message : "PDF render failed");
       }
     })();
     return () => {
