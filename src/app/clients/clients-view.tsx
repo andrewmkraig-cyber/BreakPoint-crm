@@ -131,7 +131,7 @@ function OwnerScopeSelect({
         value={scope}
         onChange={(e) => onChange(e.target.value as OwnerScope)}
         aria-label="Filter clients by owner"
-        className="h-10 appearance-none rounded-md border border-court-brand/40 bg-court-brand/5 pl-3 pr-9 text-sm font-medium text-court-brand transition hover:bg-court-brand/10 focus:border-court-brand focus:outline-none focus:ring-2 focus:ring-court-brand/20"
+        className="appearance-none rounded-md border border-court-brand/40 bg-court-brand/5 py-1.5 pl-3 pr-9 text-sm font-medium text-court-brand transition hover:bg-court-brand/10 focus:border-court-brand focus:outline-none focus:ring-2 focus:ring-court-brand/20"
       >
         <option value="mine">My Clients</option>
         {otherFirst && <option value="theirs">{otherFirst}&apos;s Clients</option>}
@@ -381,7 +381,7 @@ export function ClientsView({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by client name, industry, or location..."
-            className="h-10 w-full rounded-full border border-court-border bg-court-surface pl-10 pr-4 text-sm placeholder:text-court-fg-muted focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="w-full rounded-full border border-court-border bg-court-surface py-1.5 pl-10 pr-4 text-sm placeholder:text-court-fg-muted focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
         </div>
 
