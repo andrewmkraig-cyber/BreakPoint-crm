@@ -7,24 +7,43 @@ import { signOut } from "next-auth/react";
 import { ChevronRight, Copy, Crown, ExternalLink, Globe, LogOut, Mail, Phone } from "lucide-react";
 import { toast } from "sonner";
 
-const PROFILE = {
+type Contact = {
+  email: string;
+  phone: string;
+  linkedin: string;
+  accessLabel: string;
+};
+
+// Per-user contact details + access badge, keyed by signed-in email.
+// Internal two-person app, so a small map mirrors the team list already
+// hardcoded in the mail composer and placement flows. Andrew is the
+// default identity; an unmatched email falls back to it.
+const DEFAULT_CONTACT: Contact = {
   email: "andrew@breakpointtalent.com",
   phone: "216-340-9511",
   linkedin: "https://www.linkedin.com/in/andrewkraig/",
-} as const;
+  accessLabel: "Ace Creator Access",
+};
+
+const CONTACTS: Record<string, Contact> = {
+  "andrew@breakpointtalent.com": DEFAULT_CONTACT,
+  "austin@breakpointtalent.com": {
+    email: "austin@breakpointtalent.com",
+    phone: "(614) 582-4970",
+    linkedin: "https://www.linkedin.com/in/austinbarnard/",
+    accessLabel: "Ace Founder Access",
+  },
+};
 
 export function SidebarProfileCard() {
   const { data: session } = useSession();
   const name = session?.user?.name ?? "Andrew Kraig";
   const imageUrl = session?.user?.image ?? null;
-  // Per-user access badge. Austin is the founder; Andrew (the default
-  // identity) is the creator. Keyed off the signed-in email since both
-  // users share the ADMIN role. Internal two-person app, so this binary
-  // split is sufficient.
-  const accessLabel =
-    (session?.user?.email ?? "").toLowerCase() === "austin@breakpointtalent.com"
-      ? "Ace Founder Access"
-      : "Ace Creator Access";
+  // Resolve the signed-in user's contact details + badge. Both users
+  // share the ADMIN role, so we key off email; unknown emails fall back
+  // to the default identity.
+  const profile =
+    CONTACTS[(session?.user?.email ?? "").toLowerCase()] ?? DEFAULT_CONTACT;
 
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -89,21 +108,21 @@ export function SidebarProfileCard() {
           <span
             role="button"
             tabIndex={0}
-            aria-label={`Copy phone number ${PROFILE.phone}`}
+            aria-label={`Copy phone number ${profile.phone}`}
             onClick={(e) => {
               e.stopPropagation();
-              void copy(PROFILE.phone, "phone");
+              void copy(profile.phone, "phone");
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 e.stopPropagation();
-                void copy(PROFILE.phone, "phone");
+                void copy(profile.phone, "phone");
               }
             }}
             className="mt-0.5 block truncate rounded text-[11px] font-medium text-court-sidebar-fg-muted transition hover:text-court-sidebar-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-court-accent/50"
           >
-            {PROFILE.phone}
+            {profile.phone}
           </span>
         </div>
         <ChevronRight
@@ -118,7 +137,7 @@ export function SidebarProfileCard() {
             theme). */}
         <span className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-full border border-blue-400/40 bg-blue-400/10 px-3 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.14em] text-blue-400">
           <Crown aria-hidden="true" className="h-3 w-3 shrink-0" />
-          {accessLabel}
+          {profile.accessLabel}
         </span>
       </div>
 
@@ -133,21 +152,21 @@ export function SidebarProfileCard() {
             <ContactRow
               icon={<Phone className="h-3.5 w-3.5" />}
               label="Work number"
-              value={PROFILE.phone}
-              onCopy={() => copy(PROFILE.phone, "phone")}
+              value={profile.phone}
+              onCopy={() => copy(profile.phone, "phone")}
             />
             <ContactRow
               icon={<Mail className="h-3.5 w-3.5" />}
               label="Email"
-              value={PROFILE.email}
-              onCopy={() => copy(PROFILE.email, "email")}
+              value={profile.email}
+              onCopy={() => copy(profile.email, "email")}
             />
             <ContactRow
               icon={<Globe className="h-3.5 w-3.5" />}
               label="LinkedIn"
-              value={PROFILE.linkedin.replace(/^https?:\/\//, "")}
-              onCopy={() => copy(PROFILE.linkedin, "LinkedIn URL")}
-              externalHref={PROFILE.linkedin}
+              value={profile.linkedin.replace(/^https?:\/\//, "")}
+              onCopy={() => copy(profile.linkedin, "LinkedIn URL")}
+              externalHref={profile.linkedin}
             />
           </ul>
           <div className="border-t border-court-border px-2 py-1.5">
