@@ -72,6 +72,12 @@ const TIMEZONE_OPTS: Array<{ value: string; label: string }> = [
 
 const DEFAULT_TIMEZONE = "America/New_York";
 
+// Reminders are Ace-native toasts with no timezone picker in the drawer,
+// so their wall-clock time is anchored to Eastern. Hard-coded for now;
+// once multi-user settings ship this should pull the signed-in user's
+// per-user timezone preference instead of assuming ET.
+const REMINDER_TIMEZONE = "America/New_York";
+
 // Round a Date up to the next quarter hour so the create form opens
 // at 14:30 instead of 14:23 when no slot prefill is supplied.
 function roundUpQuarter(d: Date): Date {
@@ -399,6 +405,9 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
       );
       setDate((d) => d || toDateInput(start));
       setMeetingType("none");
+      // The all-day toggle is hidden for reminders; clear any prior
+      // all-day choice so the Time field can't get stranded.
+      setAllDay(false);
     } else {
       setMeetingType((m) => (m === "none" ? "google_meet" : m));
     }
@@ -497,7 +506,12 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
       // would never surface in the panel. The stacked NOTIFY leads ride
       // along so a FAB reminder matches a panel-created one.
       if (isReminder) {
-        const when = zonedToInstant(date, startTime, timeZone);
+        // Reminders have no timezone picker; anchor to ET via
+        // REMINDER_TIMEZONE rather than the timeZone state (which may
+        // still hold a value picked before the type switched to
+        // reminder). Swap to the per-user timezone preference here once
+        // multi-user settings ship.
+        const when = zonedToInstant(date, startTime, REMINDER_TIMEZONE);
         if (Number.isNaN(when.getTime())) {
           throw new Error("Invalid date or time.");
         }
@@ -698,23 +712,28 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
                 />
               </div>
             </div>
-            <div>
-              <FieldLabel>Timezone</FieldLabel>
-              <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
-                <Globe className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
-                <select
-                  value={timeZone}
-                  onChange={(e) => setTimeZone(e.target.value)}
-                  className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none"
-                >
-                  {TIMEZONE_OPTS.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
+            {/* Reminders hide the timezone selector and fire in ET (see
+                the hard-coded REMINDER_TIMEZONE in doCreate). Timed events
+                keep the picker. */}
+            {!isReminder && (
+              <div>
+                <FieldLabel>Timezone</FieldLabel>
+                <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
+                  <Globe className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
+                  <select
+                    value={timeZone}
+                    onChange={(e) => setTimeZone(e.target.value)}
+                    className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none"
+                  >
+                    {TIMEZONE_OPTS.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
+            )}
             {!allDay && isReminder && (
               <div>
                 <FieldLabel>Time</FieldLabel>
@@ -779,8 +798,10 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
           {/* All-day + meeting type (create only). All-day is a
               create-time choice - Google's PATCH path the edit
               flow uses doesn't switch a timed event to all-day, so
-              hiding the toggle in edit avoids a no-op control. */}
-          {mode === "create" && (
+              hiding the toggle in edit avoids a no-op control.
+              Reminders hide both: a personal Ace toast has no all-day
+              span and no video link. */}
+          {mode === "create" && !isReminder && (
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <FieldLabel>All day</FieldLabel>
@@ -809,7 +830,9 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
             </div>
           )}
 
-          {/* Guests */}
+          {/* Guests - hidden for reminders; a personal Ace toast has no
+              invitees. */}
+          {!isReminder && (
           <div>
             <FieldLabel>Guests</FieldLabel>
             <div className="space-y-1.5">
@@ -833,8 +856,11 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
               />
             </div>
           </div>
+          )}
 
-          {/* Location / link */}
+          {/* Location / link - hidden for reminders; a personal toast
+              carries no address or video link. */}
+          {!isReminder && (
           <div>
             <FieldLabel>Location or link</FieldLabel>
             {event?.meetLink && (
@@ -871,6 +897,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
               )}
             </div>
           </div>
+          )}
 
           {/* Notes - Google Calendar event description */}
           <div>

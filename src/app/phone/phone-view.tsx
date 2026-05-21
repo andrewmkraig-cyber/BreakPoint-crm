@@ -1014,6 +1014,15 @@ function ThreadDetailPane({
   hasUnread?: boolean;
   onMarkRead?: () => void;
 }) {
+  // Land the message list at the newest entry whenever the open thread
+  // changes or a new message arrives. Keyed on the thread identity
+  // (contact.id) so selecting a thread opens scrolled to the bottom, and
+  // on the entry count so a freshly sent reply scrolls into view.
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [detail.contact.id, detail.entries.length]);
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -1185,6 +1194,9 @@ function ThreadDetailPane({
             })}
           </ul>
         )}
+        {/* Bottom anchor: the scroll-to-bottom effect targets this so the
+            newest message is in view on open and after each send. */}
+        <div ref={bottomRef} />
       </div>
       {/* Inline composer — POSTs directly to /api/sms (same path the
           NewTextPanel and the candidate-sidebar SMS composer use), so
