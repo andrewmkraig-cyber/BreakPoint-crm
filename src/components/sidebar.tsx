@@ -128,8 +128,16 @@ export function Sidebar({ width }: { width?: number } = {}) {
       <Link
         href="/dashboard"
         aria-label="Ace dashboard"
-        className="flex h-20 shrink-0 items-center border-b border-court-sidebar-border px-5 transition-opacity hover:opacity-80"
+        className="relative flex h-20 shrink-0 items-center overflow-hidden border-b border-court-sidebar-border px-5 transition-opacity hover:opacity-80"
       >
+        {/* Soft brand-green radial glow centered on the favicon so the
+            top-left brand area reads as lit. overflow-hidden clips it at
+            the header's bottom border, so it fades out before the
+            Clubhouse row. Gated off on light sidebars in globals.css. */}
+        <span
+          aria-hidden="true"
+          className="ace-sidebar-halo pointer-events-none absolute -left-2 top-1 h-28 w-28 rounded-full bg-[rgb(var(--court-brand)/0.14)] blur-2xl"
+        />
         <BrandMark />
       </Link>
       {/* Compact-by-default: 13px nav text, h-9 rows, tighter group
