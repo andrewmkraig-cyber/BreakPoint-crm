@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getUnreadInboxSummary } from "@/lib/gmail";
+import { getUnreadInboxThreadIds } from "@/lib/gmail";
 
 // Shared snapshot of "what should the PWA app-icon badge read right now"
 // for a given org. Three callers stuff this into the push payload so
@@ -44,43 +44,54 @@ async function getPhoneUnreadForOrg(organizationId: string): Promise<number> {
 }
 
 // Gmail unread is per-account, not per-org. Ace is single-tenant in
-// practice so we sum across every active GmailPushWatch in the org —
-// in the typical case that's just Andrew. Returns null if no watch
-// resolves to a user we can mint a token for, so the SW can fall back
-// to the generic dot rather than incorrectly clearing the badge.
+// practice so we union the unread INBOX thread IDs across every active
+// GmailPushWatch in the org — in the typical case that's just Andrew.
+// `extraUnreadThreadIds` lets the Gmail push webhook fold in a thread it
+// just saw arrive: Gmail's is:unread search index lags a few seconds
+// behind a brand-new message, so without this the badge undercounts the
+// very email the push fired for. Unioning real thread IDs (rather than
+// adding estimates) keeps the count exact whether or not the index has
+// caught up. Returns null only when no watch resolves to a user we can
+// mint a token for AND the caller had nothing to add, so the SW can
+// leave the mail portion alone rather than clearing it.
 async function getMailUnreadForOrg(
   organizationId: string,
+  extraUnreadThreadIds: string[] = [],
 ): Promise<number | null> {
+  const unread = new Set<string>(extraUnreadThreadIds);
   const watches = await prisma.gmailPushWatch.findMany({
     where: { organizationId },
     select: { email: true },
   });
-  if (watches.length === 0) return null;
-  const users = await prisma.user.findMany({
-    where: { email: { in: watches.map((w) => w.email) } },
-    select: { id: true },
-  });
-  if (users.length === 0) return null;
-  let total = 0;
-  let anySucceeded = false;
-  for (const u of users) {
-    try {
-      const summary = await getUnreadInboxSummary(u.id, { maxResults: 1 });
-      total += summary.count;
-      anySucceeded = true;
-    } catch {
-      // Skip this user — token refresh may have failed.
-    }
+  const emails = watches.map((w) => w.email);
+  const users = emails.length
+    ? await prisma.user.findMany({
+        where: { email: { in: emails } },
+        select: { id: true },
+      })
+    : [];
+  if (users.length === 0) {
+    return unread.size > 0 ? unread.size : null;
   }
-  return anySucceeded ? total : null;
+  for (const u of users) {
+    // getUnreadInboxThreadIds swallows its own errors and returns [] so
+    // a failed token refresh for one user just contributes nothing.
+    const ids = await getUnreadInboxThreadIds(u.id, { cap: 100 });
+    for (const id of ids) unread.add(id);
+  }
+  return unread.size;
 }
 
 export async function getUnreadCountsForOrg(
   organizationId: string,
+  opts: { extraUnreadMailThreadIds?: string[] } = {},
 ): Promise<UnreadCounts> {
   const [phoneUnread, mailUnread] = await Promise.all([
     getPhoneUnreadForOrg(organizationId).catch(() => 0),
-    getMailUnreadForOrg(organizationId).catch(() => null),
+    getMailUnreadForOrg(
+      organizationId,
+      opts.extraUnreadMailThreadIds ?? [],
+    ).catch(() => null),
   ]);
   return {
     mailUnread,

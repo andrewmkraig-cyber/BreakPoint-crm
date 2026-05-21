@@ -58,10 +58,10 @@ function headerValue(headers: GmailHeader[] | undefined, name: string): string {
   return hit?.value ?? "";
 }
 
-async function fetchMessageParticipants(
+async function fetchMessageMeta(
   accessToken: string,
   messageId: string,
-): Promise<string[]> {
+): Promise<{ addresses: string[]; labelIds: string[] }> {
   const url = new URL(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}`,
   );
@@ -73,16 +73,20 @@ async function fetchMessageParticipants(
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
-  if (!res.ok) return [];
+  if (!res.ok) return { addresses: [], labelIds: [] };
   const j = (await res.json()) as {
+    labelIds?: string[];
     payload?: { headers?: GmailHeader[] };
   };
   const headers = j.payload?.headers;
-  return [
-    ...extractEmailsFromHeader(headerValue(headers, "From")),
-    ...extractEmailsFromHeader(headerValue(headers, "To")),
-    ...extractEmailsFromHeader(headerValue(headers, "Cc")),
-  ];
+  return {
+    addresses: [
+      ...extractEmailsFromHeader(headerValue(headers, "From")),
+      ...extractEmailsFromHeader(headerValue(headers, "To")),
+      ...extractEmailsFromHeader(headerValue(headers, "Cc")),
+    ],
+    labelIds: j.labelIds ?? [],
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -146,6 +150,10 @@ export async function POST(req: NextRequest) {
     });
 
     let addedCount = 0;
+    // Threads we confirmed are INBOX + UNREAD in this batch. Folded into
+    // the badge count below so the closed-app badge reflects the email
+    // that just arrived even before Gmail's is:unread search index does.
+    const newUnreadInboxThreads = new Set<string>();
     if (histRes.ok) {
       const histJson = (await histRes.json()) as GmailHistoryResponse;
       const entries = histJson.history ?? [];
@@ -158,13 +166,13 @@ export async function POST(req: NextRequest) {
           if (seenThreads.has(m.threadId)) continue;
           seenThreads.add(m.threadId);
 
-          const addresses = await fetchMessageParticipants(accessToken, m.id);
-          if (!addresses.length) continue;
+          const meta = await fetchMessageMeta(accessToken, m.id);
+          if (!meta.addresses.length) continue;
 
           try {
             await tagThreadByAddresses({
               threadId: m.threadId,
-              addresses,
+              addresses: meta.addresses,
               organizationId,
             });
             addedCount += 1;
@@ -173,6 +181,17 @@ export async function POST(req: NextRequest) {
               threadId: m.threadId,
               err: err instanceof Error ? err.message : String(err),
             });
+          }
+
+          // The watch is INBOX-scoped but history.list isn't, so a
+          // concurrent Sent message could ride along. Gate on the real
+          // labels so the badge floor only counts genuine unread inbox
+          // arrivals and never inflates.
+          if (
+            meta.labelIds.includes("INBOX") &&
+            meta.labelIds.includes("UNREAD")
+          ) {
+            newUnreadInboxThreads.add(m.threadId);
           }
         }
       }
@@ -188,7 +207,9 @@ export async function POST(req: NextRequest) {
     });
 
     if (addedCount > 0) {
-      const counts = await getUnreadCountsForOrg(organizationId);
+      const counts = await getUnreadCountsForOrg(organizationId, {
+        extraUnreadMailThreadIds: Array.from(newUnreadInboxThreads),
+      });
       await sendPushToOrg(organizationId, {
         title: "New Email",
         body: "You have a new message in Ace",

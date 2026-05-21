@@ -1026,6 +1026,46 @@ export async function getUnreadMailCount(userId: string): Promise<number> {
   }
 }
 
+// Lists the actual unread INBOX thread IDs for a user (not Gmail's
+// lagging resultSizeEstimate). The push webhook unions these with the
+// thread it just saw arrive so the closed-app badge counts a brand-new
+// email even before Gmail's is:unread search index catches up to it.
+// Capped so a huge unread pile never makes the webhook page forever -
+// the app-icon badge only needs to be right in the low double digits.
+export async function getUnreadInboxThreadIds(
+  userId: string,
+  opts: { cap?: number } = {},
+): Promise<string[]> {
+  const cap = opts.cap ?? 100;
+  try {
+    const accessToken = await getFreshAccessToken(userId);
+    const ids: string[] = [];
+    let pageToken: string | undefined;
+    do {
+      const url = new URL(
+        "https://gmail.googleapis.com/gmail/v1/users/me/threads",
+      );
+      url.searchParams.set("q", "in:inbox is:unread");
+      url.searchParams.set(
+        "maxResults",
+        String(Math.min(100, cap - ids.length)),
+      );
+      if (pageToken) url.searchParams.set("pageToken", pageToken);
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
+      if (!res.ok) break;
+      const body = (await res.json()) as GmailListThreadsResponse;
+      for (const t of body.threads ?? []) ids.push(t.id);
+      pageToken = body.nextPageToken;
+    } while (pageToken && ids.length < cap);
+    return ids;
+  } catch {
+    return [];
+  }
+}
+
 // ---- Mail Tab labels (Phase 6.x: Move To dropdown) ----
 // Lists the signed-in user's Gmail labels, filtered to user-created
 // labels only. System labels (INBOX, SENT, TRASH, SPAM, UNREAD,

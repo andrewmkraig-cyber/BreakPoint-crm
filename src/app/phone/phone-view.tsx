@@ -360,7 +360,7 @@ export function PhoneView() {
           <BucketSection title="Phone">
             <BucketItem
               icon={<Phone className="h-4 w-4" />}
-              label="All"
+              label="Inbox"
               active={bucket === "all"}
               count={bucketCounts.all}
               onClick={() => setBucket("all")}
@@ -732,7 +732,7 @@ function ThreadRow({
               Candidate
             </span>
           ) : (
-            <span className="rounded-sm border border-court-border bg-court-surface-subtle px-1 py-0.5 text-[10px] font-medium uppercase tracking-wider text-court-fg-muted">
+            <span className="rounded-sm bg-court-surface-subtle px-1 py-0.5 text-[10px] uppercase tracking-wider text-court-fg-muted">
               Unknown
             </span>
           )}
@@ -1047,7 +1047,7 @@ function ThreadDetailPane({
               className={
                 "rounded-sm px-1 py-0.5 text-[10px] uppercase tracking-wider " +
                 (detail.contact.kind === "unknown"
-                  ? "border border-court-border bg-court-surface-subtle font-medium text-court-fg-muted"
+                  ? "bg-court-surface-subtle text-court-fg-muted"
                   : "bg-court-surface-subtle")
               }
             >
