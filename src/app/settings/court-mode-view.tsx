@@ -126,7 +126,8 @@ const SURFACES: Array<{
 ];
 
 export function CourtModeView() {
-  const { surface, theme, setSurface, setTheme } = useCourtMode();
+  const { surface, theme, setSurface, setTheme, autoNightMode, setAutoNightMode } =
+    useCourtMode();
 
   return (
     <div className="space-y-3">
@@ -232,6 +233,42 @@ export function CourtModeView() {
             </button>
           );
         })}
+      </div>
+
+      {/* Auto Night Mode. Flips the active surface to its dark variant at
+          7:00 PM ET and back to light at 7:00 AM ET on a 1-minute client
+          check. Saved to the profile so it follows the user across
+          devices; a manual Light/Dark switch still wins until the next
+          7 AM / 7 PM trigger. */}
+      <div className="flex items-center justify-between gap-4 border-t border-court-border pt-4">
+        <div>
+          <div className="text-sm font-semibold text-court-fg">
+            Auto Night Mode
+          </div>
+          <div className="mt-0.5 text-xs text-court-fg-muted">
+            Switch to the dark version of your court automatically at 7:00 PM ET
+            and back to light at 7:00 AM ET. Saved to your profile, so it
+            follows you across devices.
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={autoNightMode}
+          aria-label="Auto Night Mode"
+          onClick={() => setAutoNightMode(!autoNightMode)}
+          className={cn(
+            "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+            autoNightMode ? "bg-court-accent" : "bg-court-border",
+          )}
+        >
+          <span
+            className={cn(
+              "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+              autoNightMode ? "translate-x-[22px]" : "translate-x-0.5",
+            )}
+          />
+        </button>
       </div>
     </div>
   );

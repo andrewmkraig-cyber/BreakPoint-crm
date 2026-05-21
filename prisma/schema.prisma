@@ -95,6 +95,13 @@ model UserProfile {
   birthday     DateTime? @db.Date
   address      String?
   tshirtSize   String?
+  // Auto Night Mode (Settings -> Appearance). When true the client
+  // flips the active Court Mode surface to its dark variant at 7:00 PM
+  // ET and back to light at 7:00 AM ET on a 1-minute interval. Lives on
+  // the profile (not localStorage) so the preference follows the user
+  // across devices; the chosen surface/theme stay in localStorage and
+  // this flag only governs the automatic day/night flip.
+  autoNightMode Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

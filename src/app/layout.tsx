@@ -78,12 +78,23 @@ export default async function RootLayout({
   // user isn't signed in (sign-in surface doesn't show the sidebar).
   const session = await getServerSession(authOptions);
   let unreadMailCount = 0;
+  let autoNightMode = false;
   if (session?.user?.email) {
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true },
-    });
-    if (user) unreadMailCount = await getUnreadMailCount(user.id);
+    // Wrapped so a profile/mail lookup hiccup never 500s the app shell -
+    // this runs on every page render. Both values are decorative defaults
+    // (0 badge, light theme) if the read fails.
+    try {
+      const user = await prisma.user.findUnique({
+        where: { email: session.user.email },
+        select: { id: true, profile: { select: { autoNightMode: true } } },
+      });
+      if (user) {
+        unreadMailCount = await getUnreadMailCount(user.id);
+        autoNightMode = user.profile?.autoNightMode ?? false;
+      }
+    } catch {
+      // Keep the defaults.
+    }
   }
 
   return (
@@ -99,7 +110,7 @@ export default async function RootLayout({
           dangerouslySetInnerHTML={{ __html: COURT_MODE_PRE_HYDRATION_SCRIPT }}
         />
         <Providers>
-          <CourtModeProvider>
+          <CourtModeProvider initialAutoNightMode={autoNightMode}>
             <AppShell unreadMailCount={unreadMailCount}>{children}</AppShell>
             <ReminderToastProvider />
           </CourtModeProvider>
