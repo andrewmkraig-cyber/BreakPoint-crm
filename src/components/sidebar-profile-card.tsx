@@ -17,6 +17,14 @@ export function SidebarProfileCard() {
   const { data: session } = useSession();
   const name = session?.user?.name ?? "Andrew Kraig";
   const imageUrl = session?.user?.image ?? null;
+  // Per-user access badge. Austin is the founder; Andrew (the default
+  // identity) is the creator. Keyed off the signed-in email since both
+  // users share the ADMIN role. Internal two-person app, so this binary
+  // split is sufficient.
+  const accessLabel =
+    (session?.user?.email ?? "").toLowerCase() === "austin@breakpointtalent.com"
+      ? "Ace Founder Access"
+      : "Ace Creator Access";
 
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -110,7 +118,7 @@ export function SidebarProfileCard() {
             theme). */}
         <span className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-full border border-blue-400/40 bg-blue-400/10 px-3 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.14em] text-blue-400">
           <Crown aria-hidden="true" className="h-3 w-3 shrink-0" />
-          Ace Creator
+          {accessLabel}
         </span>
       </div>
 
