@@ -328,8 +328,19 @@ html[data-surface='night'][data-theme='light'] {
    <html data-surface='night' data-theme='dark'>. The selector
    was loosened to match any theme prior to Ace 39+, when Night
    Court was split into Light/Dark variants.
+
+   .signin-night piggybacks on this same rule so the pre-auth sign-in
+   surface pins Night Court · Dark regardless of the visitor's stored
+   Court Mode — the <html> data-attributes reflect their in-app
+   preference, which doesn't apply before they're signed in. Adding the
+   class here (rather than duplicating the palette) keeps a single
+   source of truth and avoids a first-paint flash: the wrapper carries
+   the tokens in the SSR markup, so every *-court-* utility inside it
+   resolves to this palette without mutating <html> or fighting the
+   CourtModeProvider.
    ============================================================ */
-html[data-surface='night'][data-theme='dark'] {
+html[data-surface='night'][data-theme='dark'],
+.signin-night {
   --court-bg:                        15  16  18; /* #0F1012 */
   --court-surface:                   24  25  28; /* #18191C */
   --court-surface-subtle:            20  21  24; /* #141518 */
