@@ -15,6 +15,7 @@ import {
   defaultScheduleInputs,
   scheduleInputToUtcISO,
 } from "@/lib/timezone";
+import { TimeSelect } from "@/components/calendar/time-select";
 
 // Shared "Send Later" picker. useSendLater returns a trigger ref, an
 // open/close handle, and the popover node to render. Each email surface
@@ -168,12 +169,9 @@ function SendLaterPopover({
       <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-court-fg-muted">
         Time
       </label>
-      <input
-        type="time"
-        value={time}
-        onChange={(e) => setTime(e.target.value)}
-        className="mb-2 w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-xs text-court-fg focus:border-court-brand focus:outline-none"
-      />
+      <div className="mb-2">
+        <TimeSelect value={time} onChange={setTime} ariaLabel="Time" />
+      </div>
 
       <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-court-fg-muted">
         Timezone

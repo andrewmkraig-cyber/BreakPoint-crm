@@ -5,14 +5,14 @@
 export type TimezoneOption = { value: string; label: string };
 
 // Curated list for a US recruiting firm. ET is the default everywhere
-// (BreakPoint runs on Eastern). UTC is kept as an escape hatch for the
-// occasional overseas recipient.
+// (BreakPoint runs on Eastern). UTC is intentionally NOT offered as a
+// user-facing option; it is an internal storage format only. Legacy rows
+// that stored "UTC" still render via formatScheduledTime's fallback.
 export const TIMEZONE_OPTIONS: TimezoneOption[] = [
   { value: "America/New_York", label: "Eastern (ET)" },
   { value: "America/Chicago", label: "Central (CT)" },
   { value: "America/Denver", label: "Mountain (MT)" },
   { value: "America/Los_Angeles", label: "Pacific (PT)" },
-  { value: "UTC", label: "UTC" },
 ];
 
 export const DEFAULT_TIMEZONE = "America/New_York";
