@@ -1193,7 +1193,7 @@ export function MailView({
                     ) : (
                       <FolderInput className="h-3 w-3" />
                     )}
-                    Move To
+                    Move
                   </>
                 }
               />
