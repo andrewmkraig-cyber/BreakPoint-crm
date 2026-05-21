@@ -104,7 +104,10 @@ export function MobileNav() {
   const pathname = usePathname();
 
   // Close drawer when the route changes — the user just navigated, no
-  // reason to leave the menu hanging open over the new page.
+  // reason to leave the menu hanging open over the new page. This catches
+  // back/forward and programmatic nav; the per-link onClick below handles
+  // the Metrics/Placements case, which only change ?tab= (same pathname)
+  // and so wouldn't trip this effect on their own.
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
@@ -179,6 +182,7 @@ export function MobileNav() {
                         <li key={item.href}>
                           <Link
                             href={item.href}
+                            onClick={() => setOpen(false)}
                             className={cn(
                               "flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition",
                               active
