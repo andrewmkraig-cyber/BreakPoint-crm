@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-21 · Ace 62.0
+Last updated: 2026-05-21 · Ace 63.0
 
 ## Active Build Sequence
 
@@ -17,15 +17,15 @@ Notification toast polish (DONE Ace 59.0): SMS toast `MessageSquare` icon, actio
 ### Session 61.0 Status
 Profile / pipeline regression close-out + features (DONE Ace 61.0): split-view candidate Delete restored; Apply / Keep / Reject real-time stage pill (optimistic, holds until server confirm) + the flash-then-disappear follow-on fixed; Add Note button removed from all four candidate profile locations; stage button visibility aligned to spec in `pipeline-row-actions.tsx`; phone thread auto-scroll to bottom on open; CalendarEventDrawer reminder mode (hides Guests / Location / Meeting type / All day / Timezone, ET hard-coded with a comment to pull per-user tz when multi-user ships); scheduled send (Send Later) on every email surface (`ScheduledEmail` table + per-minute Vercel cron + Retry toast); dark luxury login redesign; PWA badge auto-fire fix (`2d0081e`, null badgeCount in `unread-counts.ts`, sw.js cache `v5`); Auto Night Mode (`0dd1e41`, `UserProfile.autoNightMode`, 7pm/7am ET flip). Favicon / tab counter verified already correct. Awaiting Andrew's browser verification of scheduled send, the PWA badge, and Auto Night Mode.
 
-### Next Up (after Ace 62.0)
+### Next Up (after Ace 63.0)
 
-1. **Multi-user client ownership Steps 3-5:** read-only lock + hidden buttons on the other user's clients, Jobs/Pipeline inherit client owner, 2-month activity auto-release.
-2. **Push notification debugging.** Quo webhook orgId/push path still under investigation, [web-push][diag] logging in place.
+1. **Badge / title comprehensive fix** - confirm the fix shipped this session is working in production (mailUnread null no longer coerced to 0, desktop title persists across navigation, phone unread API computes from hasUnread).
+2. **Button / color audit.** Grep first, report by file, no changes until scope confirmed.
 3. **Legacy render path retirement Phase 1.** Audit scripts committed, backfill not yet started.
-4. **Button/color audit.** Grep first, report by file, no changes until scope confirmed.
-5. **Markdown-to-HTML in generated emails.** If not confirmed shipped, verify first.
+4. **QuickBooks standalone page** (`/finances/quickbooks`, isolated from the Mercury-driven Finances surface, shows QB income / expenses / aging / P&L).
+5. **Quo setup wizard.** Guided Settings flow to connect Quo, configure the webhook URL, verify inbound SMS/call routing, confirm transcription is live.
 
-Carried, lower in the queue: Item 43 (Bulk email Phase 2 - scheduled-send time picker + 30-60 sec throttle + 5-domain rotation sharing the BD warmed pool; Ace 51 shipped Phase 1 synchronous bulk send), QuickBooks standalone page (spec under Queued Specs - Not Yet Prompted), and per-user timezone / weather location (parked; part of the multi-user ownership work above).
+On deck (this weekend): APRO / job order worksheet (structured intake form).
 
 ## Branch Status
 - **`design/phase-1`** — local-only branch with Cursor UI redesign Phases 1-2 not yet merged to `main`. Carries `86d3e31` (Phase 1 design system foundation), `38f119c` (Phase 2a card shells on dashboard/placements/finances), `d7f5437` (Phase 2b TableRow + TableCell on list views), `c0fb973` (Phase 2c sidebar polish + list table chrome). Review pending; `main` is the source of truth for shipped state until this lands.
@@ -33,40 +33,19 @@ Carried, lower in the queue: Item 43 (Bulk email Phase 2 - scheduled-send time p
 ## Queued From Session
 Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.
 
-- **`UnderlineTabLink` canonical helper** — extract the shared underline-tab anchor markup (used by client detail tabs migrated in Ace 49.0 and any future tab strip that renders as `<a>` links instead of buttons) into a single component so the active/inactive class set lives in one file. Mirrors `TabStrip` for the link-anchor case.
-- **`+ New` menu — New Event + New Reminder entries** — ComposeFAB currently doesn't surface calendar event / reminder creation; both flows exist via the calendar drawer but need to be reachable from the global add affordance.
-- **Notification read-state sync for Quo** — reading a Quo thread on the Quo app side doesn't clear the Ace badge (Quo has no read-receipt webhook event). Workaround would be a periodic Quo API poll (rate-limit risk) or a manual "Mark as read in Quo" affordance on the thread.
-- **Unread badge count — Quo + reminder legs audit** — Gmail leg fixed in Ace 51 via push-driven refresh. Quo unread count + reminder due count still need an audit pass before the aggregate badge is provably correct.
-- **Tighter applied-jobs strip** — PlacementActionsIsland refactor required first; needs its own scoped prompt.
-- **JD/email markdown architecture verification** — `[Job Description]` merge field HTML injection (Candidate Recruit template merge fields wired in Ace 41 but verify end-to-end with real job data).
-- **Bulk email scheduled send + throttle** — Ace 51 ships bulk email synchronously. Phase-2 work: scheduled send time picker, 30-60 sec throttle, 5-domain rotation sharing the BD warmed pool.
-- **Search expansion map** — geocoded map visualization over Candidate Sourcing Surface.
-- **Mercury + QuickBooks integration follow-through** — Mercury feed is live for the Finances module as of Ace 46; QuickBooks sync + variable-cost categorization still pending.
-- **Admin edit UI for ToolExpense rows (item 28 follow-up)** — `updateToolExpense` server action already exists in `src/app/dashboard/expense-actions.ts` but no UI wires it up; only `createToolExpense` (the "+ New expense" form) has a path. Add a pencil affordance on each ToolExpense-backed row in `SubscriptionsList` that opens an edit dialog mirroring the "+ New expense" form, pre-filled with current values. Save calls `updateToolExpense`. Item 28 (move Slack from monthly to annual) was dropped from the Ace 54.0 ship because the row lives in the `ToolExpense` DB table, not in code — the admin UI unblocks Andrew editing it (and any future cadence/cost edits) from the app instead of needing a DB update.
+- **Unread badge count - Quo + reminder legs audit** - Gmail leg fixed in Ace 51 via push-driven refresh; the badge/title comprehensive fix (Next Up 1) covers the Quo + mail reliability legs. The reminder due-count leg still needs an audit pass before the aggregate badge is provably correct.
+- **Search expansion map** - geocoded map visualization over the Candidate Sourcing Surface.
+- **Mercury + QuickBooks integration follow-through** - Mercury feed live for the Finances module since Ace 46; QuickBooks sync + variable-cost categorization still pending (see QuickBooks standalone page, Next Up 4).
+
+Completed this session (Ace 63.0), moved out of this list: UnderlineTabLink canonical helper, the + New menu New Event + New Reminder entries, Notification read-state sync for Quo, tighter applied-jobs strip, JD/email markdown architecture verification, Bulk email Phase 2 (scheduled send + throttle), and the Admin edit UI for ToolExpense rows.
 
 ## Non-Urgent
 Build soon, lower priority than the active sequence above.
 
-- **Reminders badge leg wiring** — `ReminderToastProvider` currently fires toast-only and does not bump the PWA badge. Intentional for now (toasts are sufficient signal); revisit when the badge story needs the third leg alongside Gmail + Quo.
-- **APRO / job order worksheet** — structured intake form.
-- **Invite flow in Settings** — reuses OrganizationMembership; invite + role chip + revoke.
-- **Quo setup wizard** - PROMOTED to the Active Build Sequence (item 3, after Ace 61.0). Guided Settings flow to connect Quo, configure webhook URL, verify inbound SMS/call routing, confirm transcription is live.
-- **LinkedIn import via RapidAPI** (future) — backfill candidate profiles from a LinkedIn URL via a RapidAPI scraper provider. Lands once the Apollo enrichment path stabilizes and we know what fields actually need to come from LinkedIn vs Apollo.
-- **Slack sidebar panel**.
-- **DocuSign auto-import** — ~2-3 hr via DocuSign Connect webhook.
-- **Invoicing + QuickBooks + Mercury** — invoicing workflow, QuickBooks sync, Mercury account integration.
-- **GPT as second AI provider** behind Ace Assistant.
-- **Spotify podcasts tab** — wire `/me/shows` into the Library Podcasts filter (currently shows the empty-state placeholder).
-- **News feed per-tab refresh button** — manual re-pull of a single tab without waiting for the 6 AM cron.
-- **Commission calculator** — recruiter-side fee/split math sandbox on the dashboard.
-- **Stock ticker strip** — small dashboard strip (S&P, NASDAQ, Dow, plus configurable watchlist).
-- **Scoreboard widget** — daily/weekly placement + submittal scoreboard tile.
-- **Ace launch countdown** — countdown chip on the dashboard until 2026-05-15.
-- **Microsoft Teams video interviews** — add "Microsoft Teams" as a second Type option in the interview scheduler alongside "Video (Google Meet)". Creates a Teams meeting via Microsoft Graph API and returns a Teams join link embedded in the calendar event. Requires Microsoft OAuth added to Settings > Connectors so the recruiter connects their Microsoft account. Eliminates the Google Meet Open vs Trusted access issue entirely since Teams allows anonymous join by default.
-- **Resume text view with search highlighting** — add a "Text View" toggle button above the resume PDF on the candidate profile embed view. Switches from the PDF iframe to a styled HTML div rendering the candidate's extracted resume text from the DB (`CandidateResume.extractedText`). Search tokens from the active keyword / Boolean query are `<mark>`-highlighted in amber matching the search rail tokenizer (same one that drives the snippet enrichment). Toggle hidden when no extracted text exists.
-- **Resizable split-view divider on `/candidates`** — drag handle on the boundary between the candidate name list (left) and the profile iframe (right) so the recruiter can make the name list narrower or wider to suit their screen size. Persist the chosen width in localStorage so it survives reloads.
-- **Market Insights** — "Generate Market Brief" button on the client detail page that triggers the market brief PDF workflow for that client (salary benchmarks, talent supply, hiring velocity in the client's vertical and metro). Renders as a downloadable PDF + saves to the client's record so the recruiter can attach it to client conversations.
-- **Stalled Deals card** — requires adding stage-transition timestamps to Placement model so days-in-stage is calculable. Card shell exists on Scoreboard and has been removed — rebuild when timestamps land.
+- **APRO / job order worksheet** - structured intake form. On deck this weekend (see Next Up).
+- **Quo setup wizard** - guided Settings flow to connect Quo, configure the webhook URL, verify inbound SMS/call routing, confirm transcription is live. Promoted to Next Up 5.
+
+Cancelled 2026-05-21 (Ace 63.0) - all other non-urgent backlog: reminders badge leg wiring, invite flow in Settings, LinkedIn import via RapidAPI, Slack sidebar panel, DocuSign auto-import, invoicing + QuickBooks + Mercury, GPT as second AI provider, Spotify podcasts tab, news feed per-tab refresh button, commission calculator, stock ticker strip, scoreboard widget, Ace launch countdown, Microsoft Teams video interviews, resume text view with search highlighting, resizable split-view divider on /candidates, Market Insights, Stalled Deals card.
 
 ## Queued Specs — Not Yet Prompted
 Slotted in the Active Build Sequence but each needs a session-opening prompt before implementation. Full specs to be added next session; one-line stubs below for handoff.
@@ -116,6 +95,10 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 63.0 Multi-user client ownership Steps 3-5 + push re-register UI + Quo webhook hardening + temp log cleanup + badge fixes (May 21, 2026)
+
+Shipped multi-user client ownership Steps 3-5: read-only banner + hidden action buttons on non-owned clients with a claim flow for Available (owner-null) clients that stamps owner on claim; a Mine / Austin's / All dropdown on /jobs and /pipeline that defaults to the logged-in user's book and is URL-persisted (no locks on the detail pages); and a daily auto-release cron at /api/cron/client-release (8:00 UTC) with a 60-day createdAt grace floor and a last-activity line on the view-only banner. Also shipped: push notification re-registration UI (PushPermissionButton as a standalone Push Notifications row in Settings > Connectors with CONNECTED / DISCONNECTED status, fixes re-register after PWA reinstall); Quo webhook fromNumber hardening (new src/lib/quo-phone.ts pickPhone / redactPhone, inbound diagnostics, 14 unit tests); temp diagnostic log cleanup ([web-push][diag] and [badge-diag] removed); and the badge fallback fix (Quo SMS/call omit badgeCount when unreliable instead of sending 1). The comprehensive badge/title reliability fix shipped this session and carries into Next Up 1 for production confirmation. Also confirmed done by Andrew this session: UnderlineTabLink canonical helper, New Event + New Reminder in ComposeFAB, Quo read-state sync, tighter applied-jobs strip, JD/email markdown architecture verification, Bulk email Phase 2, and the Admin edit UI for ToolExpense rows. Full detail in ACE_STATE.md under What Shipped in Ace 62.0 and 63.0.
 
 ## Completed - Ace 61.0 Profile/pipeline regression close-out + scheduled send + login redesign + PWA badge fix + Auto Night Mode (May 20, 2026)
 

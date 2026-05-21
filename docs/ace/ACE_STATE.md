@@ -1,10 +1,23 @@
 # ACE_STATE.md
-Last updated: 2026-05-21 · Ace 62.0
+Last updated: 2026-05-21 · Ace 63.0
 
 ## Current Status
-Current Version: Ace 62.0
+Current Version: Ace 63.0
 Last Shipped: 2026-05-21
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 63.0 (2026-05-21)
+
+Multi-user client ownership Steps 3-5, push re-registration UI, Quo webhook fromNumber hardening, temp diagnostic log cleanup, the badge fallback fix, and a comprehensive badge/title reliability fix in flight at session close.
+
+- Multi-user client ownership Step 3: read-only banner on non-owned clients, hidden action buttons (company edit, delete, contacts, agreements, benefits, add note), claim flow for Available clients (owner null), server action stamps owner on claim
+- Multi-user client ownership Step 4: Mine / Austin's / All dropdown on /jobs and /pipeline, defaults to logged-in user's book, URL-persisted, no locks on job or pipeline detail pages
+- Multi-user client ownership Step 5: daily auto-release cron at /api/cron/client-release (8:00 UTC), 60-day createdAt grace floor added after discovery that all 6 clients had zero activity (prevents day-one mass release), last-activity line added to view-only banner
+- Push notifications re-register: PushPermissionButton wired into Settings > Connectors as a standalone Push Notifications row with CONNECTED / DISCONNECTED status and Enable / Disable, fixes re-registration after PWA reinstall
+- Quo webhook fromNumber hardening: new src/lib/quo-phone.ts with pickPhone (handles object-shaped from values), redactPhone (last-4 suffix only), inbound extract diagnostic log, fromNumber missing log, 14 unit tests passing
+- Temp log cleanup: all [web-push][diag] lines removed from web-push.ts, all [badge-diag] lines removed
+- Badge fallback fix: Quo SMS/call paths no longer send badgeCount: 1 as fallback, omit badgeCount when the count is unreliable so the SW leaves the existing badge untouched
+- Badge/title comprehensive fix (in progress at session close): mailUnread null coerced to 0 causing badge reset to 1, desktop title disappearing on navigation, phone unread API hardcoded zeros, Codex prompt pasted, awaiting confirmation
 
 ## What Shipped in Ace 62.0 (2026-05-21)
 
