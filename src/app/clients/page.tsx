@@ -3,6 +3,7 @@ import { canonicalStage, emptyJobCounts, type JobPipelineCounts } from "@/lib/rf
 import { getRfCandidatesForOrg } from "@/lib/candidates";
 import { getClientsForOrg } from "@/lib/clients";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { getCurrentUserId } from "@/lib/auth/getCurrentUserId";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -26,10 +27,11 @@ export default async function ClientsPage({
   let error: string | null = null;
 
   try {
-    const [clients, candidates, org] = await Promise.all([
+    const [clients, candidates, org, currentUserId] = await Promise.all([
       getClientsForOrg(),
       getRfCandidatesForOrg(),
       getCurrentOrg(),
+      getCurrentUserId(),
     ]);
     // Pipeline counts read from Neon Placement.stage (canonical post-
     // Phase-5), one groupBy across the whole tenant rather than walking
@@ -150,6 +152,8 @@ export default async function ClientsPage({
         isActive: hasOpenJob || hadRecentPlacement,
         lastActivityAtIso: lastActivityAt?.toISOString() ?? null,
         daysSinceLastActivity,
+        ownedByMe: c.ownerId != null && c.ownerId === currentUserId,
+        ownerName: c.ownerName,
       };
     });
   } catch (e) {

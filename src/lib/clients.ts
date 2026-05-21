@@ -23,6 +23,11 @@ export type ClientListRow = {
   closedJobsCount: number;
   isVerified: boolean;
   feePct: number | null;
+  // Per-user ownership. ownerId is null when the client is unclaimed /
+  // available; ownerName is the owner's display name for the "Owned by"
+  // badge in the All-clients view.
+  ownerId: string | null;
+  ownerName: string | null;
 };
 
 type LocationJson = {
@@ -65,6 +70,8 @@ export async function getClientsForOrg(): Promise<ClientListRow[]> {
       location: true,
       phoneNumbers: true,
       raw: true,
+      ownerId: true,
+      owner: { select: { name: true } },
     },
   });
 
@@ -110,6 +117,8 @@ export async function getClientsForOrg(): Promise<ClientListRow[]> {
       closedJobsCount,
       isVerified,
       feePct,
+      ownerId: r.ownerId,
+      ownerName: r.owner?.name ?? null,
     };
   });
 }

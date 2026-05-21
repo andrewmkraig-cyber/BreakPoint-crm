@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import Anthropic from "@anthropic-ai/sdk";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { getCurrentUserId } from "@/lib/auth/getCurrentUserId";
 import { prisma } from "@/lib/prisma";
 import { CLAUDE_MODEL, getClaude } from "@/lib/claude";
 import { findClientByDomain, normalizeDomainKey } from "@/lib/clients";
@@ -19,18 +20,6 @@ async function requireSession(): Promise<boolean> {
   if (!session?.user?.email) return false;
   const u = await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } });
   return Boolean(u);
-}
-
-// Current user's id, for stamping client ownership. Reads the id off the
-// JWT session (stamped in src/lib/auth.ts) and falls back to an email
-// lookup for older sessions.
-async function getCurrentUserId(): Promise<string | null> {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email;
-  if (!email) return null;
-  if (session.user.id) return session.user.id;
-  const u = await prisma.user.findUnique({ where: { email }, select: { id: true } });
-  return u?.id ?? null;
 }
 
 export type CheckClientDomainResult =

@@ -39,6 +39,10 @@ export type ClientCard = {
   // recomputing on every render.
   lastActivityAtIso: string | null;
   daysSinceLastActivity: number | null;
+  // Per-user ownership. ownedByMe drives the "Mine" filter; ownerName
+  // labels the "Owned by" badge shown in the "All clients" view.
+  ownedByMe: boolean;
+  ownerName: string | null;
 };
 
 export type QuietTier = "14-30" | "30-60" | "60+";
@@ -105,6 +109,37 @@ function ShieldCheck() {
   );
 }
 
+function OwnerScopeToggle({
+  scope,
+  onChange,
+}: {
+  scope: "mine" | "all";
+  onChange: (s: "mine" | "all") => void;
+}) {
+  return (
+    <div className="inline-flex shrink-0 items-center rounded-full border border-court-border bg-court-surface p-0.5">
+      {([
+        { k: "mine" as const, label: "Mine" },
+        { k: "all" as const, label: "All clients" },
+      ]).map(({ k, label }) => (
+        <button
+          key={k}
+          type="button"
+          onClick={() => onChange(k)}
+          className={
+            "rounded-full px-3 py-1 text-xs font-medium transition " +
+            (scope === k
+              ? "bg-brand text-white"
+              : "text-court-fg-muted hover:text-court-fg")
+          }
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ClientGridCard({ card, quietTier }: { card: ClientCard; quietTier?: QuietTier }) {
   const activeStages = PIPELINE_STAGES.filter((s: StageEntry) => (card[s.countField] ?? 0) > 0);
   return (
@@ -133,6 +168,11 @@ function ClientGridCard({ card, quietTier }: { card: ClientCard; quietTier?: Qui
           {quietTier && (
             <span className="mt-1 inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900">
               {QUIET_TIER_LABEL[quietTier]}
+            </span>
+          )}
+          {!card.ownedByMe && (
+            <span className="mt-1 inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-medium text-court-fg-muted ring-1 ring-court-border">
+              Owned by {card.ownerName ?? "another user"}
             </span>
           )}
         </div>
@@ -274,9 +314,19 @@ export function ClientsView({
   const [tab, setTab] = useState<"active" | "quiet" | "inactive">("active");
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewKind>(initialView);
+  // Owner scope: default to the signed-in user's own clients. "All"
+  // reveals everyone's (each non-owned card shows an "Owned by" badge),
+  // which doubles as the conflict-check lookup.
+  const [ownerScope, setOwnerScope] = useState<"mine" | "all">("mine");
+
+  const byScope = (list: ClientCard[]) =>
+    ownerScope === "mine" ? list.filter((c) => c.ownedByMe) : list;
+  const visibleActive = byScope(activeCards);
+  const visibleQuiet = byScope(quietCards);
+  const visibleInactive = byScope(inactiveCards);
 
   const cards: ClientCard[] =
-    tab === "active" ? activeCards : tab === "quiet" ? quietCards : inactiveCards;
+    tab === "active" ? visibleActive : tab === "quiet" ? visibleQuiet : visibleInactive;
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return cards;
@@ -308,9 +358,9 @@ export function ClientsView({
           activeId={tab}
           onChange={setTab}
           items={[
-            { id: "active", label: "Active", count: activeCards.length },
-            { id: "quiet", label: "Quiet", count: quietCards.length },
-            { id: "inactive", label: "Inactive", count: inactiveCards.length },
+            { id: "active", label: "Active", count: visibleActive.length },
+            { id: "quiet", label: "Quiet", count: visibleQuiet.length },
+            { id: "inactive", label: "Inactive", count: visibleInactive.length },
           ]}
         />
 
@@ -325,6 +375,7 @@ export function ClientsView({
           />
         </div>
 
+        <OwnerScopeToggle scope={ownerScope} onChange={setOwnerScope} />
         <ViewToggle view={view} onChange={setView} />
       </div>
 
