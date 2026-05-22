@@ -365,10 +365,11 @@ export function EditableResume({
             />
             <Button
               type="button"
-              variant="primary"
+              variant="secondary"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading || isGenerating}
+              className="rounded-md border-blue-500 text-blue-600"
             >
               {isUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
               Upload Resume
