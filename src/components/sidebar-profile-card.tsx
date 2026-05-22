@@ -146,13 +146,12 @@ export function SidebarProfileCard() {
         />
       </button>
         {/* Slim status pill (~20px tall) under the name/phone row. rounded-full
-            is allowed here (status pill, per the button standard). Uses the
-            sidebar-active-fg accent (the same slam color the active nav item
-            uses) so the pill reads on the card in every Court Mode: it stays
-            the slam green / rust / blue / peach on Hard + Clay and turns the
-            readable white / light-green on the Grass + Night sidebars. No raw
-            hex. */}
-        <span className="mt-2 flex w-fit items-center gap-1.5 rounded-full border border-court-sidebar-active-fg/40 bg-court-sidebar-active-fg/10 px-2 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-court-sidebar-active-fg">
+            is allowed here (status pill, per the button standard). ACE CREATOR
+            is always brand green on every Court surface (light + dark) - it
+            uses the court-brand tokens, not the per-theme accent (which flipped
+            to white on Grass/Night Light). Re-skins per court but stays green.
+            No raw hex. */}
+        <span className="mt-2 flex w-fit items-center gap-1.5 rounded-full border border-court-brand/40 bg-court-brand/10 px-2 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-court-brand">
           <Crown aria-hidden="true" className="h-3 w-3 shrink-0" />
           {profile.accessLabel}
         </span>
