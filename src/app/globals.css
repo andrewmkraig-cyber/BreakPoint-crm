@@ -64,6 +64,7 @@ html[data-surface='hard'][data-theme='light'] {
   --court-sidebar-active-bg:        rgb(232 240 226); /* #E8F0E2 */
   --court-sidebar-active-fg:         63 112  48; /* #3F7030 */
   --court-sidebar-rail:              90 150  66; /* #5A9642 */
+  --court-sidebar-card:             255 255 255; /* #FFFFFF — profile card (== surface here) */
 
   --court-brand:                     90 150  66; /* #5A9642 */
   --court-brand-dark:                63 112  48; /* #3F7030 */
@@ -100,6 +101,7 @@ html[data-surface='hard'][data-theme='dark'] {
   --court-sidebar-icon:             168 181 200; /* #A8B5C8 */
   --court-sidebar-active-bg:        rgb(31 45 64); /* #1F2D40 */
   --court-sidebar-active-fg:        125 179 232; /* #7DB3E8 */
+  --court-sidebar-card:              22  32  46; /* #16202E — profile card (== surface here) */
   --court-sidebar-rail:              74 143 217; /* #4A8FD9 */
 
   --court-brand:                    123 184  91; /* #7BB85B */
@@ -141,6 +143,7 @@ html[data-surface='clay'][data-theme='light'] {
   --court-sidebar-icon:             107  58  32; /* #6B3A20 */
   --court-sidebar-active-bg:        rgb(244 226 212); /* #F4E2D4 — less saturated active wash */
   --court-sidebar-active-fg:        139  50   8; /* #8B3208 */
+  --court-sidebar-card:             255 250 243; /* #FFFAF3 — profile card (== surface here) */
   --court-sidebar-rail:             183  65  14; /* #B7410E */
 
   --court-brand:                     90 150  66; /* #5A9642 */
@@ -183,6 +186,7 @@ html[data-surface='clay'][data-theme='dark'] {
   --court-sidebar-icon:             168 162 158; /* #A8A29E */
   --court-sidebar-active-bg:        rgb(68 64 60); /* #44403C */
   --court-sidebar-active-fg:        245 168 120; /* #F5A878 — peach on active */
+  --court-sidebar-card:              39  36  29; /* #27241D — profile card (== surface here) */
   --court-sidebar-rail:             232 144  85; /* #E89055 — peach rail */
 
   --court-brand:                     90 150  66; /* #5A9642 — brand reserved */
@@ -220,6 +224,7 @@ html[data-surface='grass'][data-theme='light'] {
   --court-sidebar-icon:             200 221 208; /* #C8DDD0 */
   --court-sidebar-active-bg:        rgba(255, 255, 255, 0.10); /* translucent white wash per spec */
   --court-sidebar-active-fg:        255 255 255; /* #FFFFFF */
+  --court-sidebar-card:              42 105  70; /* #2A6946 — raised green panel over #1F5638 sidebar */
   --court-sidebar-rail:              90 150  66; /* #5A9642 — brand green rail */
 
   --court-brand:                     90 150  66; /* #5A9642 */
@@ -261,6 +266,7 @@ html[data-surface='grass'][data-theme='dark'] {
   --court-sidebar-icon:             200 221 208; /* #C8DDD0 */
   --court-sidebar-active-bg:        rgba(255, 255, 255, 0.10); /* translucent white wash */
   --court-sidebar-active-fg:        255 255 255; /* #FFFFFF */
+  --court-sidebar-card:              43  76  43; /* #2B4C2B — raised green panel over #1F3A1F sidebar */
   --court-sidebar-rail:              90 150  66; /* #5A9642 — brand rail */
 
   --court-brand:                     90 150  66; /* #5A9642 — accent only */
@@ -308,6 +314,7 @@ html[data-surface='night'][data-theme='light'] {
   --court-sidebar-icon:             164 168 164; /* matches fg-muted */
   --court-sidebar-active-bg:        rgba(90, 150, 66, 0.18); /* brand-green wash */
   --court-sidebar-active-fg:        255 255 255; /* #FFFFFF */
+  --court-sidebar-card:              28  44  28; /* #1C2C1C — raised green-black panel over #0F1A0F sidebar */
   --court-sidebar-rail:              90 150  66; /* #5A9642 — brand-green accent bar */
 
   --court-brand:                     90 150  66; /* #5A9642 */
@@ -364,6 +371,7 @@ html[data-surface='night'][data-theme='dark'],
   --court-sidebar-icon:             184 188 194; /* #B8BCC2 */
   --court-sidebar-active-bg:        rgb(35 37 42); /* #23252A */
   --court-sidebar-active-fg:        156 214 131; /* #9CD683 */
+  --court-sidebar-card:              32  34  38; /* #202226 — raised graphite panel over #18191C sidebar */
   --court-sidebar-rail:             123 184  91; /* #7BB85B */
 
   --court-brand:                    123 184  91; /* #7BB85B */

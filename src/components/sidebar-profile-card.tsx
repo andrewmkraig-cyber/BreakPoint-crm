@@ -78,11 +78,15 @@ export function SidebarProfileCard() {
   return (
     <div ref={wrapperRef} className="relative">
       {/* One compact card: avatar / name / phone / chevron on top, a
-          content-width status pill below. The card chrome (rounded-2xl,
-          court-surface a touch lighter than the sidebar, subtle border,
-          soft court-brand glow on hover) lives on this wrapper so the pill
-          sits inside the same outline. */}
-      <div className="rounded-2xl border border-court-sidebar-border bg-court-surface p-2.5 transition-all duration-150 hover:border-court-brand/40 hover:shadow-[0_0_0_1px_rgb(var(--court-brand)/0.16),0_6px_18px_rgb(var(--court-brand)/0.12)]">
+          content-width status pill below. The card lives INSIDE the sidebar,
+          so its chrome tracks the sidebar token family - bg-court-sidebar-card
+          (a raised panel that resolves to the sidebar surface on every Court
+          Mode), court-sidebar-border, and sidebar foreground text. That keeps
+          the card readable and blended on all 8 themes instead of rendering a
+          white content-surface card on the green / dark sidebars. Soft
+          court-brand glow on hover lives on this wrapper so the pill sits
+          inside the same outline. */}
+      <div className="rounded-2xl border border-court-sidebar-border bg-court-sidebar-card p-2.5 transition-all duration-150 hover:border-court-brand/40 hover:shadow-[0_0_0_1px_rgb(var(--court-brand)/0.16),0_6px_18px_rgb(var(--court-brand)/0.12)]">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -142,10 +146,13 @@ export function SidebarProfileCard() {
         />
       </button>
         {/* Slim status pill (~20px tall) under the name/phone row. rounded-full
-            is allowed here (status pill, per the button standard). Court
-            accent token border + text on a faint court accent tint so it
-            re-skins with every Court Mode (no raw hex). */}
-        <span className="mt-2 flex w-fit items-center gap-1.5 rounded-full border border-court-accent/40 bg-court-accent/10 px-2 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-court-accent">
+            is allowed here (status pill, per the button standard). Uses the
+            sidebar-active-fg accent (the same slam color the active nav item
+            uses) so the pill reads on the card in every Court Mode: it stays
+            the slam green / rust / blue / peach on Hard + Clay and turns the
+            readable white / light-green on the Grass + Night sidebars. No raw
+            hex. */}
+        <span className="mt-2 flex w-fit items-center gap-1.5 rounded-full border border-court-sidebar-active-fg/40 bg-court-sidebar-active-fg/10 px-2 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-court-sidebar-active-fg">
           <Crown aria-hidden="true" className="h-3 w-3 shrink-0" />
           {profile.accessLabel}
         </span>

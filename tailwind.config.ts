@@ -72,6 +72,12 @@ const config: Config = {
           "sidebar-icon": "rgb(var(--court-sidebar-icon) / <alpha-value>)",
           "sidebar-active-fg": "rgb(var(--court-sidebar-active-fg) / <alpha-value>)",
           "sidebar-rail": "rgb(var(--court-sidebar-rail) / <alpha-value>)",
+          // Profile card surface — a raised panel that lives IN the sidebar,
+          // so it tracks the sidebar family (not court-surface). Resolves to
+          // court-surface on Hard/Clay (sidebar == surface there) and to an
+          // elevated sidebar-blended tone on Grass/Night where the sidebar
+          // has its own color, so the card blends + stays readable on all 8.
+          "sidebar-card": "rgb(var(--court-sidebar-card) / <alpha-value>)",
           // Brand green (always available, even in non-grass modes)
           brand: "rgb(var(--court-brand) / <alpha-value>)",
           "brand-dark": "rgb(var(--court-brand-dark) / <alpha-value>)",
