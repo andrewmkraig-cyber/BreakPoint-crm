@@ -155,7 +155,7 @@ export function Sidebar({ width }: { width?: number } = {}) {
           remaining height (after spacing maxes out on very tall screens)
           pools as a single gap directly above the footer, never
           distributed between the groups. */}
-      <nav className="flex min-h-0 flex-1 flex-col gap-[clamp(8px,calc(100dvh*0.015),24px)] overflow-y-auto px-2 py-1">
+      <nav className="flex min-h-0 flex-1 flex-col gap-[clamp(11px,calc(100dvh*0.018),26px)] overflow-y-auto px-2 py-1">
         {NAV_GROUPS.map((group, idx) => (
           <div key={group.title ?? `group-${idx}`}>
             {group.title && (
@@ -163,7 +163,7 @@ export function Sidebar({ width }: { width?: number } = {}) {
                 {group.title}
               </div>
             )}
-            <div className="flex flex-col gap-[clamp(2px,calc(100dvh*0.0035),6px)]">
+            <div className="flex flex-col gap-[clamp(4px,calc(100dvh*0.006),9px)]">
               {group.items.map((item) => (
                 <NavLink
                   key={item.href}
@@ -217,13 +217,13 @@ function NavLink({
     <Link
       href={item.href}
       className={cn(
-        // Fluid row height: clamp(28px .. 40px) scaled on 100dvh, so rows
-        // ride near 28px on a short laptop (every group fits, no scroll)
+        // Fluid row height: clamp(30px .. 40px) scaled on 100dvh, so rows
+        // ride near 30px on a short laptop (every group fits, no scroll)
         // and climb to 40px on a tall monitor (the nav breathes). 13px
         // text, 16px icons throughout; tap target stays usable.
         // `isolate` so the active glow span (-z-10) layers above the row
         // background but below the icon/label without escaping the row.
-        "relative isolate flex h-[clamp(28px,calc(100dvh*0.028),40px)] items-center gap-2.5 rounded-md pl-3 pr-2 text-[13px] font-medium transition-colors",
+        "relative isolate flex h-[clamp(30px,calc(100dvh*0.03),40px)] items-center gap-2.5 rounded-md pl-3 pr-2 text-[13px] font-medium transition-colors",
         active
           ? "bg-[var(--court-sidebar-active-bg)] text-court-sidebar-active-fg"
           : "text-court-sidebar-fg-muted hover:bg-[var(--court-sidebar-active-bg)] hover:text-court-sidebar-fg",
