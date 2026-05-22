@@ -187,26 +187,26 @@ export function CalendarPopoverButton() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-label={`Calendar — ${today.weekdayLong} ${today.monthLong} ${today.day}`}
+        aria-label={`Calendar - ${today.weekdayLong} ${today.monthLong} ${today.day}`}
         aria-expanded={open}
         className={
-          // min-w-[3.5rem] gives the weekday band enough slack to center
-          // the widest 3-letter label (WED / THU / FRI) with equal
-          // breathing room on both sides, so the trailing letter-spacing
-          // never clips against overflow-hidden. Both bands keep symmetric
-          // px-2.5 so the text stays visually centered.
-          "group inline-flex min-w-[3.5rem] flex-col overflow-hidden rounded-lg shadow-sm ring-1 transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
+          // h-10 matches the avatar + icon buttons exactly (40px). Width
+          // is content-sized (no min-w) so the FRI/MAY/22 stack fills the
+          // chip with no dead space on the right. The weekday band
+          // stretches full width and centers its label; no letter-spacing
+          // so nothing clips against overflow-hidden.
+          "group inline-flex h-10 shrink-0 flex-col overflow-hidden rounded-lg shadow-sm ring-1 transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
           (open ? "ring-court-brand" : "ring-court-border")
         }
       >
-        <span className="bg-court-brand-tint px-2.5 py-px text-center text-[10px] font-extrabold uppercase tracking-wider text-court-brand">
+        <span className="bg-court-brand-tint px-2 py-0.5 text-center text-[9px] font-extrabold uppercase leading-none text-court-brand">
           {today.weekdayShort}
         </span>
-        <span className="flex flex-col items-center bg-court-surface px-2.5 pb-0.5 pt-0 text-center">
-          <span className="text-[9px] font-semibold uppercase tracking-wide text-court-fg-muted">
+        <span className="flex flex-1 flex-col items-center justify-center bg-court-surface px-2 leading-none">
+          <span className="text-[8px] font-semibold uppercase text-court-fg-muted">
             {today.monthShort}
           </span>
-          <span className="text-base font-black leading-none text-court-fg">
+          <span className="text-sm font-black leading-none text-court-fg">
             {today.day}
           </span>
         </span>
