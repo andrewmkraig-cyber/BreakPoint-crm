@@ -201,11 +201,19 @@ export function CalendarPopoverButton() {
       >
         {/* Weekday band: block w-full forces it flush to the full chip
             width (left + right), independent of any flex stretch quirk,
-            so the green fills all the way to the right edge. */}
-        <span className="block w-full bg-court-brand-tint px-1 py-0.5 text-center text-[9px] font-extrabold uppercase leading-none text-court-brand">
+            so the green fills all the way to the right edge. py-px (vs
+            py-0.5) trims the band so the month + day stack rides higher. */}
+        <span className="block w-full bg-court-brand-tint px-1 py-px text-center text-[9px] font-extrabold uppercase leading-none text-court-brand">
           {today.weekdayShort}
         </span>
-        <span className="flex w-full flex-1 flex-col items-center justify-center bg-court-surface px-1 leading-none">
+        {/* Month + day sit directly under the band (no flex-1 stretch /
+            justify-center, which previously centered them in the lower
+            two-thirds and dropped the bold day number below the row's
+            center line). Top-anchored, the day number now lands on the
+            same vertical center as the weather chip number and the avatar.
+            The unused space below is court-surface (the topbar's own bg) so
+            it stays invisible. */}
+        <span className="flex w-full flex-col items-center bg-court-surface px-1 pt-px leading-none">
           <span className="text-[8px] font-semibold uppercase text-court-fg-muted">
             {today.monthShort}
           </span>

@@ -78,31 +78,42 @@ export function SidebarProfileCard() {
   return (
     <div ref={wrapperRef} className="relative">
       {/* One compact card: avatar / name / phone / chevron on top, a
-          content-width status pill below. The border lives on this
-          wrapper so the pill sits inside the same card outline. */}
-      <div className="rounded-xl border border-court-sidebar-border p-2">
+          content-width status pill below. The card chrome (rounded-2xl,
+          court-surface a touch lighter than the sidebar, subtle border,
+          soft court-brand glow on hover) lives on this wrapper so the pill
+          sits inside the same outline. */}
+      <div className="rounded-2xl border border-court-sidebar-border bg-court-surface p-2.5 transition-all duration-150 hover:border-court-brand/40 hover:shadow-[0_0_0_1px_rgb(var(--court-brand)/0.16),0_6px_18px_rgb(var(--court-brand)/0.12)]">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="Open profile contact card"
         aria-expanded={open}
-        className="flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1 text-left transition hover:bg-[var(--court-sidebar-active-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50"
+        className="flex w-full items-center gap-2.5 rounded-lg text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50"
       >
-        {imageUrl ? (
-          <Image
-            src={imageUrl}
-            alt={name}
-            width={36}
-            height={36}
-            className="h-9 w-9 shrink-0 rounded-full border border-court-sidebar-border object-cover"
-          />
-        ) : (
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-court-accent-tint text-sm font-semibold text-court-accent-dark">
-            {name?.[0] ?? "?"}
-          </span>
-        )}
+        {/* Avatar wrapped in the Ace-logo green treatment: brand border,
+            soft court-brand glow, and a translucent court-brand-tint wash
+            behind the photo. The 40px ring holds a 36px photo so the brand
+            wash + border read as a thin ring around the picture. */}
+        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-court-brand/35 bg-court-brand-tint shadow-[0_0_0_1px_rgb(var(--court-brand)/0.18),0_0_16px_rgb(var(--court-brand)/0.22)]">
+          {imageUrl ? (
+            <Image
+              src={imageUrl}
+              alt={name}
+              width={36}
+              height={36}
+              className="h-9 w-9 rounded-full object-cover"
+            />
+          ) : (
+            <span className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold text-court-brand-dark">
+              {name?.[0] ?? "?"}
+            </span>
+          )}
+        </span>
+        {/* min-w-0 lets this column shrink inside the flex row so the name
+            WRAPS to a second line instead of truncating. No truncate / no
+            fixed width here on purpose: the full name always shows. */}
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-semibold text-court-sidebar-fg">
+          <div className="text-[13px] font-semibold leading-tight text-court-sidebar-fg">
             {name}
           </div>
           <span
@@ -120,7 +131,7 @@ export function SidebarProfileCard() {
                 void copy(profile.phone, "phone");
               }
             }}
-            className="mt-0.5 block truncate rounded text-[11px] font-medium text-court-sidebar-fg-muted transition hover:text-court-sidebar-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-court-accent/50"
+            className="mt-0.5 block rounded text-[11px] font-medium text-court-sidebar-fg-muted transition hover:text-court-sidebar-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-court-accent/50"
           >
             {profile.phone}
           </span>
@@ -130,12 +141,11 @@ export function SidebarProfileCard() {
           className="h-4 w-4 shrink-0 self-center text-court-sidebar-fg-dim"
         />
       </button>
-        {/* Slim status pill, sized to its content (no full-width stretch).
-            rounded-full is allowed here (status pill, per the button
-            standard). Blue outline + text on a faint blue tint - a fixed
-            Tailwind palette accent, the same convention the nav icons use
-            (no raw hex, consistent in every theme). */}
-        <span className="mx-auto mt-1.5 flex w-fit items-center gap-1.5 rounded-full border border-blue-400/40 bg-blue-400/10 px-2.5 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-blue-400">
+        {/* Slim status pill (~20px tall) under the name/phone row. rounded-full
+            is allowed here (status pill, per the button standard). Court
+            accent token border + text on a faint court accent tint so it
+            re-skins with every Court Mode (no raw hex). */}
+        <span className="mt-2 flex w-fit items-center gap-1.5 rounded-full border border-court-accent/40 bg-court-accent/10 px-2 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-court-accent">
           <Crown aria-hidden="true" className="h-3 w-3 shrink-0" />
           {profile.accessLabel}
         </span>

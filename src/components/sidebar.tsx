@@ -96,10 +96,10 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
   },
 ];
 
-// Settings is pinned to the bottom of the sidebar, visually separated
-// from the main nav by a border and its own padding block. Matches the
-// "account / settings drawer at the bottom" treatment used by most
-// CRMs (Apollo, HubSpot, Linear).
+// Settings is pinned to the bottom of the sidebar, flowing straight out
+// of the main nav as a normal nav row (no divider boxing it into its own
+// section). Matches the "account / settings drawer at the bottom"
+// treatment used by most CRMs (Apollo, HubSpot, Linear).
 const FOOTER_NAV = [
   { href: "/settings", label: "Settings", icon: Settings, iconColor: "text-slate-400" },
 ] as const;
@@ -182,12 +182,12 @@ export function Sidebar({ width }: { width?: number } = {}) {
           </div>
         ))}
       </nav>
-      <nav className="shrink-0 space-y-1 border-t border-court-sidebar-border p-1.5">
+      <nav className="shrink-0 space-y-1 px-1.5 pb-1 pt-0.5">
         {FOOTER_NAV.map((item) => (
           <NavLink key={item.href} item={item} pathname={pathname} badge={0} />
         ))}
       </nav>
-      <div className="shrink-0 border-t border-court-sidebar-border p-1.5">
+      <div className="shrink-0 px-1.5 pb-1.5 pt-0.5">
         <SidebarProfileCard />
       </div>
     </aside>
