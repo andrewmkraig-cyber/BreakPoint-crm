@@ -24,14 +24,23 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useMailContext } from "@/lib/mail-context";
+import { usePhoneContext } from "@/lib/phone-context";
 
 // Mobile / narrow-viewport nav drawer. Below md the sidebar is
 // `hidden md:flex` so there's no nav at all — this hamburger fills
 // that gap. Click opens a left-anchored drawer with the same nav
 // groups the desktop sidebar shows; route change or backdrop click
 // dismisses it. Mirrors the sidebar's NAV_GROUPS rather than
-// importing them so the sidebar file's other deps (mail/phone
-// context, court tokens) don't get pulled into the mobile bundle.
+// importing them so the sidebar's per-icon color map and chrome
+// don't get pulled into the mobile bundle.
+//
+// Mail/Phone unread DO read from the shared MailContext/PhoneContext
+// (same source the desktop sidebar uses) so the installed iPhone PWA,
+// which only ever sees this hamburger nav, gets the same Mail + text
+// unread badges the desktop sidebar shows. TopBar (which renders this)
+// mounts inside both providers in app-shell, so the live counts flow
+// here, not the providers' static-zero fallback.
 
 type NavItem = {
   href: string;
@@ -102,6 +111,14 @@ function isActive(pathname: string, href: string): boolean {
 export function MobileNav() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  // Live unread counts, same context the desktop sidebar reads. Mail =
+  // unread Gmail threads; Phone = unread inbound text threads (calls do
+  // not contribute — CallLog has no read state). Total drives the
+  // hamburger overlay so the recruiter sees inbox activity before
+  // opening the drawer.
+  const { unreadCount: mailUnread } = useMailContext();
+  const { unreadCount: phoneUnread } = usePhoneContext();
+  const totalUnread = mailUnread + phoneUnread;
 
   // Close drawer when the route changes — the user just navigated, no
   // reason to leave the menu hanging open over the new page. This catches
@@ -133,11 +150,28 @@ export function MobileNav() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="Open navigation menu"
+        aria-label={
+          totalUnread > 0
+            ? `Open navigation menu, ${totalUnread} unread`
+            : "Open navigation menu"
+        }
         aria-expanded={open}
-        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg transition hover:border-court-accent/40 md:hidden"
+        className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg transition hover:border-court-accent/40 md:hidden"
       >
         <Menu className="h-5 w-5" />
+        {/* Total inbox-activity overlay: mail + text unread combined, so
+            the recruiter sees there's something waiting before opening the
+            drawer. Same Court badge tokens as the in-drawer item badges;
+            count is announced via the button's aria-label so this stays
+            aria-hidden. */}
+        {totalUnread > 0 && (
+          <span
+            aria-hidden="true"
+            className="absolute -right-1.5 -top-1.5 inline-flex min-w-[17px] items-center justify-center rounded-full bg-[var(--court-badge)] px-1 py-0.5 text-[9px] font-semibold leading-none text-court-badge-fg"
+          >
+            {totalUnread > 99 ? "99+" : totalUnread}
+          </span>
+        )}
       </button>
 
       {open && (
@@ -178,6 +212,15 @@ export function MobileNav() {
                     {group.items.map((item) => {
                       const Icon = item.icon;
                       const active = isActive(pathname ?? "", item.href);
+                      // Same badge wiring as the desktop sidebar: Mail
+                      // shows unread threads, Phone shows unread texts,
+                      // everything else has no badge.
+                      const badge =
+                        item.href === "/mail"
+                          ? mailUnread
+                          : item.href === "/phone"
+                            ? phoneUnread
+                            : 0;
                       return (
                         <li key={item.href}>
                           <Link
@@ -191,7 +234,15 @@ export function MobileNav() {
                             )}
                           >
                             <Icon className="h-4 w-4 shrink-0" />
-                            {item.label}
+                            <span className="flex-1">{item.label}</span>
+                            {badge > 0 && (
+                              <span
+                                aria-label={`${badge} unread`}
+                                className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-[var(--court-badge)] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-court-badge-fg"
+                              >
+                                {badge > 99 ? "99+" : badge}
+                              </span>
+                            )}
                           </Link>
                         </li>
                       );
