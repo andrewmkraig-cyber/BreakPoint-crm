@@ -174,14 +174,14 @@ function MicrosoftTeamsConnectorRow() {
 
   return (
     <div
-      className={`flex items-start justify-between gap-4 rounded-lg border px-4 py-3 ${
+      className={`flex min-h-0 items-start justify-between gap-4 rounded-lg border px-4 py-3 ${
         expired
           ? "border-amber-300 bg-amber-50"
           : "border-court-border bg-court-surface-subtle/40"
       }`}
     >
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Video
             className={`h-3.5 w-3.5 ${expired ? "text-amber-600" : "text-emerald-600"}`}
             aria-hidden
@@ -191,7 +191,7 @@ function MicrosoftTeamsConnectorRow() {
           </span>
           {!loading && connected && <StateLabel state="connected" />}
           {!loading && expired && (
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">
+            <span className="shrink-0 whitespace-nowrap text-[11px] font-semibold uppercase tracking-wider text-amber-700">
               Token expired - reconnect
             </span>
           )}
@@ -295,9 +295,9 @@ function GmailPushNotificationsRow({
     : "Not enabled - turn on for instant mail alerts even when Ace is closed";
 
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
+    <div className="flex min-h-0 items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Bell className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
           <span className="text-sm font-semibold text-court-fg">
             Gmail Push Notifications
@@ -342,9 +342,9 @@ function PushNotificationsRow() {
     : "Not enabled here. Turn on for alerts, or to re-register after a reinstall.";
 
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
+    <div className="flex min-h-0 items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <BellRing className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
           <span className="text-sm font-semibold text-court-fg">
             Push Notifications
@@ -434,9 +434,9 @@ function SpotifyConnectorRow() {
       : "Not connected. Open the floating Spotify panel to connect.";
 
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
+    <div className="flex min-h-0 items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Music className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
           <span className="text-sm font-semibold text-court-fg">Spotify</span>
           {!loading && (
@@ -478,9 +478,9 @@ function ConnectorRow({
   action: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
+    <div className="flex min-h-0 items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <StateDot state={status.state} />
           <span className="text-sm font-semibold text-court-fg">
             {status.label}
@@ -525,5 +525,5 @@ function StateLabel({ state }: { state: ConnectorState }) {
       : state === "degraded"
         ? "text-amber-700"
         : "text-red-700";
-  return <span className={`text-[11px] font-semibold uppercase tracking-wider ${cls}`}>{text}</span>;
+  return <span className={`shrink-0 whitespace-nowrap text-[11px] font-semibold uppercase tracking-wider ${cls}`}>{text}</span>;
 }

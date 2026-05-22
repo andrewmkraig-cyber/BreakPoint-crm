@@ -285,7 +285,7 @@ export function PushPermissionButton({
   // has no live subscription (user disabled, or never finished
   // enabling). Both surface the same Enable affordance.
   return (
-    <Button variant="primary" size="sm" onClick={enable} disabled={busy}>
+    <Button variant="secondary" size="sm" onClick={enable} disabled={busy}>
       {busy ? "Enabling…" : "Enable notifications"}
     </Button>
   );

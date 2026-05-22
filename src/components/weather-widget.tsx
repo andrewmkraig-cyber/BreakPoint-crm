@@ -650,13 +650,15 @@ export function WeatherWidget() {
         <WeatherIcon
           code={data.code}
           isDay={data.isCurrentDay}
-          sizeClass="h-6 w-6"
+          sizeClass="h-5 w-5"
         />
         {/* Hide the temp text on sub-360px viewports (Galaxy Fold
             closed, iPhone 5/SE-era) so the topbar's icon row doesn't
             wrap — at ≥360px it's back. The WeatherIcon to the left
-            still conveys the conditions on its own. */}
-        <span className="hidden min-[360px]:inline text-xl font-semibold tabular-nums">{rounded}°</span>
+            still conveys the conditions on its own. Sized to text-sm so
+            the chip sits at the same visual weight as the icon buttons
+            and avatar rather than dominating the row. */}
+        <span className="hidden min-[360px]:inline text-sm font-semibold tabular-nums">{rounded}°</span>
       </div>
 
       {hovered && (
