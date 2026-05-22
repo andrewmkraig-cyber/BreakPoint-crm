@@ -141,24 +141,29 @@ export function Sidebar({ width }: { width?: number } = {}) {
         <BrandMark />
       </Link>
       {/* Nav groups stack naturally near the top (justify-start, never
-          justify-between) with COMPACT, viewport-adaptive spacing. The
-          group gap and each row height are clamp()'d against vh, so the
-          nav tightens on a short laptop - every group plus the pinned
-          Settings + profile footer fit without hiding Metrics or
-          Placements - and breathes a little on a large monitor. min-h-0
-          + overflow-y-auto lets the nav scroll only when the viewport is
-          extremely short. flex-1 means any leftover height pools as one
-          gap directly above the footer, never distributed between the
-          groups. */}
-      <nav className="flex min-h-0 flex-1 flex-col gap-[clamp(0.25rem,0.7vh,0.65rem)] overflow-y-auto px-2 py-1">
+          justify-between). Spacing is FLUID, not fixed: the group gap,
+          row height, and group-header margins are each clamp()'d against
+          100dvh so they grow and shrink with the viewport between sane
+          min/max caps. Short laptop -> rows + gaps ride near their floor
+          so every group (Scoreboard/Metrics/Placements included) plus the
+          pinned Settings + profile footer fit without scrolling and
+          without looking crushed. Tall monitor -> rows + gaps climb
+          toward their max, so the nav itself breathes more (not just a
+          bigger empty gap). The caps bind near ~1700px tall, so the whole
+          common range keeps scaling. min-h-0 + overflow-y-auto lets the
+          nav scroll only on an extremely short viewport. flex-1 means any
+          remaining height (after spacing maxes out on very tall screens)
+          pools as a single gap directly above the footer, never
+          distributed between the groups. */}
+      <nav className="flex min-h-0 flex-1 flex-col gap-[clamp(8px,calc(100dvh*0.015),24px)] overflow-y-auto px-2 py-1">
         {NAV_GROUPS.map((group, idx) => (
           <div key={group.title ?? `group-${idx}`}>
             {group.title && (
-              <div className="mb-0.5 px-3 text-[10px] font-bold uppercase leading-tight tracking-[0.14em] text-court-sidebar-fg-dim">
+              <div className="mb-[clamp(3px,calc(100dvh*0.004),7px)] px-3 pt-[clamp(2px,calc(100dvh*0.005),9px)] text-[10px] font-bold uppercase leading-tight tracking-[0.14em] text-court-sidebar-fg-dim">
                 {group.title}
               </div>
             )}
-            <div className="flex flex-col gap-[clamp(0.125rem,0.35vh,0.3rem)]">
+            <div className="flex flex-col gap-[clamp(2px,calc(100dvh*0.0035),6px)]">
               {group.items.map((item) => (
                 <NavLink
                   key={item.href}
@@ -212,12 +217,13 @@ function NavLink({
     <Link
       href={item.href}
       className={cn(
-        // Compact rows: 13px text, h-9 default, shrinks to h-7 on the
-        // shortest viewports so every nav group still fits without
-        // scroll. Tap target stays usable; icons stay 16px.
+        // Fluid row height: clamp(28px .. 40px) scaled on 100dvh, so rows
+        // ride near 28px on a short laptop (every group fits, no scroll)
+        // and climb to 40px on a tall monitor (the nav breathes). 13px
+        // text, 16px icons throughout; tap target stays usable.
         // `isolate` so the active glow span (-z-10) layers above the row
         // background but below the icon/label without escaping the row.
-        "relative isolate flex h-[clamp(1.7rem,3.2vh,2.2rem)] items-center gap-2.5 rounded-md pl-3 pr-2 text-[13px] font-medium transition-colors",
+        "relative isolate flex h-[clamp(28px,calc(100dvh*0.028),40px)] items-center gap-2.5 rounded-md pl-3 pr-2 text-[13px] font-medium transition-colors",
         active
           ? "bg-[var(--court-sidebar-active-bg)] text-court-sidebar-active-fg"
           : "text-court-sidebar-fg-muted hover:bg-[var(--court-sidebar-active-bg)] hover:text-court-sidebar-fg",
