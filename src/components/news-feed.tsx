@@ -5,8 +5,6 @@ import { ChevronDown, ChevronUp, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { WordOfDayCard } from "@/components/word-of-day-card";
 import { ChessPuzzle } from "@/components/chess-puzzle";
-import { FunFact } from "@/components/fun-fact";
-import { Horoscope } from "@/components/horoscope";
 
 // Editorial briefing layout: header, four tabs, lead story + list,
 // then a quiet 2x2 mini-grid of the daily companion items (Chess,
@@ -390,18 +388,13 @@ export function NewsFeed() {
             )}
           </div>
 
-          {/* Daily companions live at the bottom of the briefing card as
-              a compact, wrapping row of pills. Each component owns its
-              own popover: chess is a centered fixed modal, the other
-              three open an absolute popover above their pill. This
-              wrapper deliberately does NOT clip — the previous
-              overflow-hidden cells silently cut off those absolute
-              popovers, so only the fixed chess one was ever visible. */}
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          {/* Daily companions: two side-by-side tiles (Chess + Word).
+              Each is a full-width half-column bubble. Chess opens a
+              centered fixed modal; Word opens an absolute popover above
+              its tile (this wrapper doesn't clip, so it's visible). */}
+          <div className="mt-3 grid grid-cols-2 gap-2">
             <ChessPuzzle />
             <WordOfDayCard />
-            <FunFact />
-            <Horoscope />
           </div>
         </div>
       )}
