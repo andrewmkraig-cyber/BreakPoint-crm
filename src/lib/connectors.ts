@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 
 // Ace 28.0: server-side health checks for the three integrations the
 // recruiter relies on. Surfaces a uniform { state, detail } shape so
@@ -228,12 +229,18 @@ export async function getQuoStatus(): Promise<ConnectorStatus> {
   // Optional supporting evidence: most recent inbound event.
   let lastEventAt: Date | null = null;
   try {
+    // Tenant scope (NN #8): the "last inbound event" evidence is the
+    // viewing org's, not a global max. getCurrentOrg throwing (no
+    // session) is caught below and just omits the evidence line.
+    const org = await getCurrentOrg();
     const [latestSms, latestCall] = await Promise.all([
       prisma.smsMessage.findFirst({
+        where: { organizationId: org.id },
         orderBy: { createdAt: "desc" },
         select: { createdAt: true },
       }),
       prisma.callLog.findFirst({
+        where: { organizationId: org.id },
         orderBy: { createdAt: "desc" },
         select: { createdAt: true },
       }),

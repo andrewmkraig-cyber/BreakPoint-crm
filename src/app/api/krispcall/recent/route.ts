@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -18,12 +19,15 @@ export async function GET() {
   if (!session?.user?.email) {
     return NextResponse.json({ texts: [], calls: [] });
   }
+  // Tenant scope (NN #8): the toaster must only surface this org's
+  // inbound activity, not every org's.
+  const org = await getCurrentOrg();
   const sinceMs = Date.now() - 5 * 60 * 1000;
   const since = new Date(sinceMs);
 
   const [texts, calls] = await Promise.all([
     prisma.smsMessage.findMany({
-      where: { direction: "inbound", createdAt: { gte: since } },
+      where: { organizationId: org.id, direction: "inbound", createdAt: { gte: since } },
       orderBy: { createdAt: "desc" },
       take: 10,
       select: {
@@ -35,7 +39,7 @@ export async function GET() {
       },
     }),
     prisma.callLog.findMany({
-      where: { direction: "inbound", createdAt: { gte: since } },
+      where: { organizationId: org.id, direction: "inbound", createdAt: { gte: since } },
       orderBy: { createdAt: "desc" },
       take: 10,
       select: {

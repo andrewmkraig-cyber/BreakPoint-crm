@@ -356,12 +356,12 @@ export async function buildCandidateContext(
 
   const [smsMessages, callLogs, transcripts, placements] = await Promise.all([
     prisma.smsMessage.findMany({
-      where: { candidateId: candidate.id },
+      where: { candidateId: candidate.id, organizationId: org.id },
       orderBy: { createdAt: "desc" },
       take: 10,
     }),
     prisma.callLog.findMany({
-      where: { candidateId: candidate.id },
+      where: { candidateId: candidate.id, organizationId: org.id },
       orderBy: { createdAt: "desc" },
       take: 5,
       include: { transcript: true },

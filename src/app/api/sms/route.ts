@@ -131,8 +131,13 @@ export async function GET(req: NextRequest) {
   const candidateId = req.nextUrl.searchParams.get('candidateId')
   const clientId = req.nextUrl.searchParams.get('clientId')
   if (!candidateId && !clientId) return NextResponse.json([])
+  // Tenant scope (NN #8): never return rows from another org even if a
+  // caller passes a candidate/client id that isn't theirs.
+  const org = await getCurrentOrg()
   const messages = await prisma.smsMessage.findMany({
-    where: candidateId ? { candidateId } : { clientId: clientId! },
+    where: candidateId
+      ? { candidateId, organizationId: org.id }
+      : { clientId: clientId!, organizationId: org.id },
     orderBy: { createdAt: 'asc' },
   })
   return NextResponse.json(messages)
@@ -149,7 +154,16 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'missing id' }, { status: 400 })
   }
   try {
-    await prisma.smsMessage.delete({ where: { id } })
+    // Tenant-scoped delete: deleteMany (not delete) so we can apply the
+    // org filter. A forged id from another tenant matches zero rows and
+    // returns 404 instead of deleting a cross-tenant message.
+    const org = await getCurrentOrg()
+    const res = await prisma.smsMessage.deleteMany({
+      where: { id, organizationId: org.id },
+    })
+    if (res.count === 0) {
+      return NextResponse.json({ ok: false, error: 'not found' }, { status: 404 })
+    }
     return NextResponse.json({ ok: true })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'delete failed'
