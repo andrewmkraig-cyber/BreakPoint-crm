@@ -1,10 +1,20 @@
 # ACE_STATE.md
-Last updated: 2026-05-21 · Ace 63.0
+Last updated: 2026-05-22 · Ace 63.1
 
 ## Current Status
-Current Version: Ace 63.0
-Last Shipped: 2026-05-21
+Current Version: Ace 63.1
+Last Shipped: 2026-05-22
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 63.1 (2026-05-22)
+
+Today's Briefing daily-companion tiles: fixed clicks, restyled pills, and hardened the rate-limited fetches.
+
+- Click fix: Word of the Day / Daily Fact / Daily Horoscope popovers were clipped by the overflow-hidden grid cells (only chess worked, because it renders a position:fixed modal). Replaced the clipping 2x2 grid in news-feed.tsx with a non-clipping flex-wrap row so the absolute popovers are visible.
+- Pill restyle: tiles are now content-width with a very light tinted border per color family (emerald/sky/amber/violet), padding trimmed px-3 py-2 to px-2.5 py-1.5 — removes the large empty colored space to the right of each label.
+- 429 resilience: Word/Fact/Horoscope routes proxy rate-limited upstreams (Claude API for word/fact, free horoscope API for horoscope) and can transiently 429 on the first cold load of an ET day before the per-day cache warms. New src/lib/retry-fetch.ts adds bounded backoff retries on 429/502/503/504 to those on-mount fetches so one attempt lands and warms the cache for the rest of the day. Chess (Lichess, reliable) left unchanged.
+
+Next task: confirm in prod that the briefing tiles open and load cleanly on a fresh ET day (cold-cache morning).
 
 ## What Shipped in Ace 63.0 (2026-05-21)
 
