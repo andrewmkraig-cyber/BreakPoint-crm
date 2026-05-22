@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getUnreadInboxThreadIdsStrict } from "@/lib/gmail";
-import { computeBadgeCount } from "@/lib/badge-math";
+import { computeBadgeCount, phoneUnreadMessageCount } from "@/lib/badge-math";
 
 // Shared snapshot of "what should the PWA app-icon badge read right now"
 // for a given org. Three callers stuff this into the push payload so
@@ -31,17 +31,18 @@ export type UnreadCounts = {
   mailReliable: boolean;
 };
 
-// Distinct unread *conversations*, not message rows - mirrors the
-// grouping in /api/phone/unread-count/route.ts so the value adds cleanly
-// to the mail thread count.
+// Unread inbound SMS *messages* (notification items), not conversations -
+// mirrors /api/phone/unread-count/route.ts via the shared
+// phoneUnreadMessageCount helper so the push badge and the live-poll
+// badge always agree. Five texts from one number count as 5. (Mail stays
+// thread-granular, by design - the combined badge is mail threads + phone
+// messages.)
 async function getPhoneUnreadForOrg(organizationId: string): Promise<number> {
   const rows = await prisma.smsMessage.findMany({
     where: { organizationId, direction: "inbound", isRead: false },
-    select: { candidateId: true, clientId: true, fromNumber: true },
+    select: { direction: true, isRead: true },
   });
-  const keys = new Set<string>();
-  for (const r of rows) keys.add(r.candidateId ?? r.clientId ?? r.fromNumber);
-  return keys.size;
+  return phoneUnreadMessageCount(rows);
 }
 
 // Gmail unread is per-account, not per-org. Ace is single-tenant in

@@ -24,6 +24,29 @@ export function computeBadgeCount(c: BadgeInputs): number | null {
   return c.mailUnread + c.phoneUnread;
 }
 
+// Phone NOTIFICATION badge contract: count unread inbound SMS *messages*,
+// NOT unique conversations. Three texts from the same sender are three
+// notification items, so they count as 3 - matching how the OS surfaced
+// three pushes. Collapsing them to one unread conversation (the old
+// behavior) is what kept the badge stuck at 1 no matter how many texts
+// arrived from one number.
+//
+// This is deliberately message-granular and DIFFERENT from the Phone-tab
+// left-rail triage badges (/api/phone/threads), which stay conversation-
+// granular on purpose (one row per person to reply to). Pure + row-shaped
+// so the contract unit-tests without Prisma; both notification sources
+// (/api/phone/unread-count + getPhoneUnreadForOrg) feed it the same
+// already-filtered rows.
+export type SmsUnreadRow = { direction: string; isRead: boolean };
+export function phoneUnreadMessageCount(
+  rows: ReadonlyArray<SmsUnreadRow>,
+): number {
+  // Defensive re-filter: callers query inbound+unread already, but
+  // re-applying it here makes the contract self-contained and lets the
+  // test prove outbound / already-read rows never inflate the count.
+  return rows.filter((r) => r.direction === "inbound" && !r.isRead).length;
+}
+
 export type BadgePayloadFields = {
   mailUnread: number | null;
   phoneUnread: number | null;

@@ -39,7 +39,10 @@ export type UnreadInboxThread = {
   timestampIso: string | null;
 };
 
-type Summary = { count: number; latest: UnreadInboxThread[] };
+// count is `number | null`: null = UNKNOWN (unresolved session / failed
+// Gmail lookup), distinct from 0 (proven empty inbox). The provider keeps
+// its last-known count on null so a transient blip can't zero the badge.
+type Summary = { count: number | null; latest: UnreadInboxThread[] };
 
 type MailContextValue = {
   unreadCount: number;
@@ -87,6 +90,12 @@ export function MailProvider({
   }, []);
 
   const apply = useCallback((summary: Summary) => {
+    // UNKNOWN count (count === null): the server could not prove the
+    // unread total this tick. Keep the last-known count + threads + seen
+    // set untouched rather than zeroing the badge. `latest` is empty in
+    // this case, so bailing before the seed below also avoids wiping the
+    // seen-id set (which would re-toast the whole inbox on recovery).
+    if (typeof summary.count !== "number") return;
     setUnreadCount(summary.count);
     setLatestThreads(summary.latest);
     const incomingIds = new Set(summary.latest.map((t) => t.id));

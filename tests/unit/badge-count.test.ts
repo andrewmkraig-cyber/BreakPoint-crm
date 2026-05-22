@@ -68,4 +68,12 @@ assert(
   "reliable -> payload carries badgeCount 6",
 );
 
+// 7. Clearing phone unread (a genuine, proven 0) must leave the mail
+// count standing in the combined total - 5 mail + 0 phone -> 5, NOT 0.
+// This is the "read the one text, keep the 5 unread emails" case.
+assert(
+  computeBadgeCount({ mailUnread: 5, phoneUnread: 0 }) === 5,
+  "mail 5 + phone cleared(0) -> badgeCount 5 (mail preserved)",
+);
+
 console.log(`PASS: badge-count reliability (${passed} assertions)`);
