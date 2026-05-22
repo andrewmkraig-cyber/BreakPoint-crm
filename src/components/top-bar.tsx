@@ -1,49 +1,79 @@
 "use client";
 
+import Link from "next/link";
+import { Moon, Sun } from "lucide-react";
 import { TopBarSearch } from "@/components/top-bar-search";
 import { ComposeFAB } from "@/components/mail/compose-fab";
 import { TopBarPageAction, TopBarPageTitle } from "@/components/top-bar-page-title";
 import { MobileNav } from "@/components/mobile-nav";
+import { BrandMark } from "@/components/brand-mark";
 import { InConversation } from "@/components/icons/in-conversation";
 import { useClaudePanel } from "@/lib/claude-panel-context";
 import { useYouTubePanel } from "@/components/youtube-panel/YouTubePanelProvider";
 import { useSpotifyPanel } from "@/components/spotify-panel/SpotifyPanelProvider";
+import { useCourtMode } from "@/lib/court-mode";
 import { WeatherWidget } from "@/components/weather-widget";
 import { CalendarPopoverButton } from "@/components/calendar-popover-button";
-import { UserAvatarMenu } from "@/components/user-avatar-menu";
 
 export function TopBar() {
   const { open: claudeOpen, toggle: toggleClaude } = useClaudePanel();
   const { open: youtubeOpen, toggle: toggleYouTube } = useYouTubePanel();
   const { open: spotifyOpen, toggle: toggleSpotify } = useSpotifyPanel();
+  // Light/Dark toggle reuses the exact mechanism Auto Night Mode drives:
+  // toggleTheme flips only the data-theme axis on <html> (never the
+  // surface) and writes ace-court-theme. It does NOT touch the auto-night
+  // window marker, so a manual flip stands until the next 7 AM / 7 PM ET
+  // boundary - identical to the manual-override behavior in the Auto
+  // Night Mode spec.
+  const { theme, toggleTheme } = useCourtMode();
+  const nextThemeLabel = theme === "light" ? "Dark theme" : "Light theme";
 
-  // Desktop: h-20 (80px) icon row matches the sidebar header. Mobile:
-  // icon row collapses to h-14 (56px) chrome plus a full-width search
-  // line that wraps beneath via `order-last w-full` (single TopBarSearch
-  // instance — duplicating it would mount two debounced inputs, two
-  // dropdowns, two server actions in flight).
+  // Desktop: h-20 (80px) icon row matches the sidebar header. PWA / mobile:
+  // the header wraps onto two rows. Row 1 carries the Ace brand lockup
+  // top-left and the icon cluster (toggle, FAB, chat, weather, calendar)
+  // top-right. Row 2 (the `order-last w-full` wrapper) carries the
+  // hamburger + the full-width search line. md:contents dissolves that
+  // wrapper on desktop so its children (hamburger, search) drop back into
+  // their original single-row desktop slots. Single TopBarSearch instance
+  // throughout - duplicating it would mount two debounced inputs, two
+  // dropdowns, two server actions in flight.
   return (
     <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 bg-court-surface px-4 pb-2 pt-3 md:h-20 md:flex-nowrap md:gap-4 md:px-6 md:pb-0 md:pt-0">
-      {/* MobileNav appears only below md (where the desktop sidebar is
-          hidden). Click opens a left drawer with the same nav groups
-          the sidebar shows so the recruiter never loses access to nav
-          on a phone or shrunk window. */}
-      <div className="flex h-14 items-center md:h-auto md:contents">
-        <MobileNav />
-      </div>
-      {/* Page title (breadcrumb "Group › Page") sits to the left, search
+      {/* PWA-only top-left brand lockup. Reuses BrandMark - the same
+          Serve-Arc disc + "Ace" wordmark the desktop sidebar shows - so
+          the installed PWA gets the sidebar's logo treatment in the
+          corner the desktop sidebar would otherwise own. Hidden at md+
+          where the real sidebar carries the mark. */}
+      <Link
+        href="/dashboard"
+        aria-label="Ace dashboard"
+        className="flex h-14 shrink-0 items-center transition-opacity hover:opacity-80 md:hidden"
+      >
+        <BrandMark />
+      </Link>
+
+      {/* Page title (breadcrumb "Group > Page") sits to the left, search
           bar tucks immediately to its right, and the page's +Add action
-          (when present) sits just to the right of search — that whole
-          cluster is the left half of the topbar. The flex-1 spacer
-          pushes the right cluster (four buttons + weather + profile)
-          out to the right edge. */}
+          (when present) sits just to the right of search - that whole
+          cluster is the left half of the desktop topbar. The flex-1
+          spacer pushes the right cluster out to the right edge. */}
       <div className="hidden min-w-0 items-center lg:flex">
         <TopBarPageTitle />
       </div>
 
-      <div className="order-last w-full md:order-none md:w-56 md:flex-none lg:ml-8 lg:w-64 xl:ml-12 xl:w-80 2xl:w-96">
-        <div className="rounded-full border border-court-border bg-court-surface transition focus-within:border-court-accent">
-          <TopBarSearch />
+      {/* Row 2 on PWA: hamburger + search bar, hamburger to the LEFT of
+          the search input. `order-last w-full` drops the whole group to
+          its own line beneath row 1; `md:contents` dissolves the wrapper
+          on desktop so the hamburger (hidden at md+) and the search box
+          return to their single-row desktop positions unchanged. */}
+      <div className="order-last flex w-full items-center gap-2 md:order-none md:contents">
+        <div className="flex h-14 items-center md:hidden">
+          <MobileNav />
+        </div>
+        <div className="min-w-0 flex-1 md:w-56 md:flex-none lg:ml-8 lg:w-64 xl:ml-12 xl:w-80 2xl:w-96">
+          <div className="rounded-full border border-court-border bg-court-surface transition focus-within:border-court-accent">
+            <TopBarSearch />
+          </div>
         </div>
       </div>
 
@@ -53,7 +83,40 @@ export function TopBar() {
 
       <div className="hidden flex-1 lg:block" />
 
+      {/* Right cluster. Every element here is a fixed h-10 (40px) so the
+          tops and bottoms line up on one vertically-centered row: the
+          Light/Dark toggle, the green + FAB, the chat icon, the
+          weather chip, and the calendar chip. The profile avatar that
+          used to close out this row is gone - the sidebar/drawer
+          profile card is the single source for profile. */}
       <div className="flex h-14 items-center gap-3 md:h-auto">
+        {/* Light/Dark toggle - immediately left of the green + FAB.
+            Same h-10 w-10 icon-button vocabulary as the FAB + chat
+            buttons (rounded-full, brand border, brand-tint wash, hover
+            lift) so it reads as part of the cluster. Shows the Moon in
+            Light mode (click -> Dark) and the Sun in Dark mode
+            (click -> Light). Flips only the Light/Dark axis on the
+            active court; the surface (Hard/Clay/Grass/Night) is
+            untouched. */}
+        <button
+          type="button"
+          onClick={toggleTheme}
+          aria-label={nextThemeLabel}
+          title={nextThemeLabel}
+          className="group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-court-brand bg-court-brand-tint text-court-brand-dark shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 hover:bg-court-brand/30 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40"
+        >
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute right-full mr-2 whitespace-nowrap rounded-md bg-court-fg px-2 py-1 text-xs font-medium text-court-surface opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+          >
+            {nextThemeLabel}
+          </span>
+          {theme === "light" ? (
+            <Moon className="h-5 w-5" />
+          ) : (
+            <Sun className="h-5 w-5" />
+          )}
+        </button>
         <ComposeFAB />
         {/* Matches ComposeFAB's icon-button vocabulary: same h-10 w-10
             footprint, same rounded-full + brand border + brand-tint
@@ -101,7 +164,7 @@ export function TopBar() {
             YouTube
           </span>
           {/* Ringed play triangle to match the YouTube Music app icon
-              — same colors and same 40px button, just a ring + filled
+              - same colors and same 40px button, just a ring + filled
               triangle inside instead of the bare lucide Play glyph.
               Lucide's PlayCircle would fill the outer circle along with
               the triangle when `fill="currentColor"` is set, so the
@@ -157,10 +220,6 @@ export function TopBar() {
         />
         <WeatherWidget />
         <CalendarPopoverButton />
-        {/* Account avatar lives at the far right of the row; every item
-            above slides left of it. Same 40px footprint as the icon
-            buttons so the row stays flush. */}
-        <UserAvatarMenu />
       </div>
     </header>
   );
