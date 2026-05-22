@@ -140,51 +140,49 @@ export function Sidebar({ width }: { width?: number } = {}) {
         />
         <BrandMark />
       </Link>
-      {/* One scroll region under the fixed logo holds the nav groups,
-          Settings, and the profile card. Sections are top-aligned with a
-          FIXED, even gap between them (space-y-5) so the rhythm is
-          identical on a tall display and a short laptop — no
-          justify-between, which inflated the inter-section gaps on big
-          screens. Whatever height is left over collects as quiet empty
-          space at the very bottom instead of as a void between sections.
-          [@media(max-height:...)] tightens the gap on short laptops so
-          every section still fits before scrolling. */}
-      <div className="flex flex-1 flex-col overflow-y-auto">
-        <nav className="space-y-5 p-2 [@media(max-height:760px)]:space-y-3 [@media(max-height:640px)]:space-y-2">
-          {NAV_GROUPS.map((group, idx) => (
-            <div key={group.title ?? `group-${idx}`}>
-              {group.title && (
-                <div className="mb-1 px-3 pt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-court-sidebar-fg-dim">
-                  {group.title}
-                </div>
-              )}
-              <div className="space-y-1">
-                {group.items.map((item) => (
-                  <NavLink
-                    key={item.href}
-                    item={item}
-                    pathname={pathname}
-                    badge={
-                      item.href === "/mail"
-                        ? unreadCount
-                        : item.href === "/phone"
-                          ? phoneUnreadCount
-                          : 0
-                    }
-                  />
-                ))}
+      {/* Nav groups, top-aligned, with a FIXED even gap between sections
+          (space-y-5) so the rhythm is identical on a tall display and a
+          short laptop — no justify-between, which inflated the gaps on
+          big screens. The nav is flex-1, so leftover height pools as ONE
+          modest gap directly above the pinned Settings + profile footer
+          (the account stays glued to the bottom). Taller rows let the
+          nav fill most of the column so that gap reads as breathing room,
+          not a glaring void; the [@media(max-height:...)] steps shrink
+          rows + gaps so everything still fits a short laptop. */}
+      <nav className="flex-1 overflow-y-auto space-y-5 p-2 [@media(max-height:760px)]:space-y-3 [@media(max-height:640px)]:space-y-2">
+        {NAV_GROUPS.map((group, idx) => (
+          <div key={group.title ?? `group-${idx}`}>
+            {group.title && (
+              <div className="mb-1 px-3 pt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-court-sidebar-fg-dim">
+                {group.title}
               </div>
+            )}
+            <div className="space-y-1">
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.href}
+                  item={item}
+                  pathname={pathname}
+                  badge={
+                    item.href === "/mail"
+                      ? unreadCount
+                      : item.href === "/phone"
+                        ? phoneUnreadCount
+                        : 0
+                  }
+                />
+              ))}
             </div>
-          ))}
-        </nav>
-        <nav className="mt-1 space-y-1 border-t border-court-sidebar-border p-1.5">
-          {FOOTER_NAV.map((item) => (
-            <NavLink key={item.href} item={item} pathname={pathname} badge={0} />
-          ))}
-        </nav>
-        <div className="border-t border-court-sidebar-border p-1.5">
-          <SidebarProfileCard />
-        </div>
+          </div>
+        ))}
+      </nav>
+      <nav className="shrink-0 space-y-1 border-t border-court-sidebar-border p-1.5">
+        {FOOTER_NAV.map((item) => (
+          <NavLink key={item.href} item={item} pathname={pathname} badge={0} />
+        ))}
+      </nav>
+      <div className="shrink-0 border-t border-court-sidebar-border p-1.5">
+        <SidebarProfileCard />
       </div>
     </aside>
   );
@@ -218,7 +216,7 @@ function NavLink({
         // scroll. Tap target stays usable; icons stay 16px.
         // `isolate` so the active glow span (-z-10) layers above the row
         // background but below the icon/label without escaping the row.
-        "relative isolate flex h-8 items-center gap-2.5 rounded-md pl-3 pr-2 text-[13px] font-medium transition-colors [@media(max-height:640px)]:h-7 [@media(max-height:640px)]:text-[12.5px]",
+        "relative isolate flex h-10 items-center gap-2.5 rounded-md pl-3 pr-2 text-[13px] font-medium transition-colors [@media(max-height:820px)]:h-9 [@media(max-height:720px)]:h-8 [@media(max-height:640px)]:h-7 [@media(max-height:640px)]:text-[12.5px]",
         active
           ? "bg-[var(--court-sidebar-active-bg)] text-court-sidebar-active-fg"
           : "text-court-sidebar-fg-muted hover:bg-[var(--court-sidebar-active-bg)] hover:text-court-sidebar-fg",
