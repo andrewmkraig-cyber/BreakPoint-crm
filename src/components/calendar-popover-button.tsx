@@ -191,27 +191,25 @@ export function CalendarPopoverButton() {
         aria-expanded={open}
         className={
           // Sized to match the weather pill EXACTLY so the two read as one
-          // matched pair: same h-10, w-16, rounded-lg, border, bg, and
-          // shadow. relative + overflow-hidden lets the green weekday band
-          // pin flush to the top edge while the month + day are centered in
-          // the FULL height (absolute children below), landing the bold day
-          // number on the same vertical center as the weather temperature.
-          "group relative inline-flex h-10 w-16 shrink-0 overflow-hidden rounded-lg border bg-court-surface-subtle shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
+          // matched pair: same h-10, w-[4.5rem], rounded-xl, border, white
+          // bg, and shadow. A green weekday band caps the top; the month +
+          // bold day number sit on one centered row in the white body
+          // below, mirroring the weather chip's icon + temperature.
+          "group inline-flex h-10 w-[4.5rem] shrink-0 flex-col overflow-hidden rounded-xl border bg-court-surface shadow-sm transition-colors duration-150 ease-out focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
           (open ? "border-court-brand" : "border-court-border")
         }
       >
-        {/* Green weekday band pinned flush to the top edge, full width. */}
-        <span className="absolute inset-x-0 top-0 bg-court-brand-tint py-px text-center text-[9px] font-extrabold uppercase leading-none text-court-brand">
+        {/* Green weekday band: full width, flush to the top edge. */}
+        <span className="block w-full bg-court-brand-tint py-0.5 text-center text-[10px] font-bold uppercase leading-none tracking-wide text-court-brand">
           {today.weekdayShort}
         </span>
-        {/* Month + day centered in the full pill height (not just the space
-            under the band) so the bold day number sits on the same vertical
-            center line as the weather chip's temperature. */}
-        <span className="absolute inset-0 flex items-center justify-center gap-1 leading-none">
-          <span className="text-[8px] font-semibold uppercase text-court-fg-muted">
+        {/* White body: grey month label + bold day number on one centered
+            row, the day number sized like the weather chip's temperature. */}
+        <span className="flex w-full flex-1 items-center justify-center gap-1 bg-court-surface leading-none">
+          <span className="text-[10px] font-semibold uppercase text-court-fg-muted">
             {today.monthShort}
           </span>
-          <span className="text-sm font-black leading-none text-court-fg">
+          <span className="text-lg font-black leading-none text-court-fg">
             {today.day}
           </span>
         </span>

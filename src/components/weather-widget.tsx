@@ -259,11 +259,35 @@ function PartlyCloudyNightIcon({ className }: { className?: string }) {
   );
 }
 
+// Solid grey cloud for the plain-cloud buckets (overcast / fog / cloudy).
+// A filled iOS-style cloud - soft light-grey fill with a slightly darker
+// grey outline - rather than the thin Lucide outline, so the topbar
+// weather chip reads as a real grey cloud. Tailwind slate utilities only
+// (the weather glyphs already use the slate/amber ramps for their
+// semantic colors), no raw hex.
+function FilledCloudIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={`${className} fill-slate-300 text-slate-400`}
+    >
+      <path
+        stroke="currentColor"
+        strokeWidth={1}
+        d="M19.35 10.04A7.49 7.49 0 0 0 12 4 7.49 7.49 0 0 0 5.06 8.63 6 6 0 0 0 6 20h13a5 5 0 0 0 .35-9.96z"
+      />
+    </svg>
+  );
+}
+
 // Single dispatch point for every weather-icon render. Code 2 (partly
-// cloudy) gets the 2-tone glyph; every other bucket falls back to the
-// matching Lucide icon plus a single tint from colorFor. The same
-// (code, isDay) pair always produces the same icon and color so the
-// current, hourly, and daily views stay visually consistent.
+// cloudy) gets the 2-tone glyph; the plain-cloud buckets get the filled
+// grey cloud; every other bucket falls back to the matching Lucide icon
+// plus a single tint from colorFor. The same (code, isDay) pair always
+// produces the same icon and color so the current, hourly, and daily
+// views stay visually consistent.
 function WeatherIcon({
   code,
   isDay,
@@ -281,6 +305,11 @@ function WeatherIcon({
     );
   }
   const Icon = iconFor(code, isDay);
+  // The plain-cloud buckets (overcast / fog / unknown) map to Lucide's
+  // Cloud; render the filled grey cloud instead for those.
+  if (Icon === Cloud) {
+    return <FilledCloudIcon className={sizeClass} />;
+  }
   return (
     <Icon
       className={`${sizeClass} ${colorFor(code, isDay)}`}
@@ -646,21 +675,21 @@ export function WeatherWidget() {
       onMouseLeave={() => setHovered(false)}
     >
       <div
-        className="inline-flex h-10 w-16 cursor-default items-center justify-center gap-1 rounded-lg border border-court-border bg-court-surface-subtle text-court-fg shadow-sm"
+        className="inline-flex h-10 w-[4.5rem] cursor-default items-center justify-center gap-1 rounded-xl border border-court-border bg-court-surface text-court-fg shadow-sm"
         aria-label={`Current temperature ${rounded} degrees Fahrenheit`}
       >
         <WeatherIcon
           code={data.code}
           isDay={data.isCurrentDay}
-          sizeClass="h-5 w-5"
+          sizeClass="h-6 w-6"
         />
         {/* Hide the temp text on sub-360px viewports (Galaxy Fold
             closed, iPhone 5/SE-era) so the topbar's icon row doesn't
             wrap — at ≥360px it's back. The WeatherIcon to the left
-            still conveys the conditions on its own. Sized to text-sm so
-            the chip sits at the same visual weight as the icon buttons
-            and avatar rather than dominating the row. */}
-        <span className="hidden min-[360px]:inline text-sm font-semibold tabular-nums">{rounded}°</span>
+            still conveys the conditions on its own. text-lg bold so the
+            number reads as the prominent element, matching the reference
+            weather chip + the calendar day number beside it. */}
+        <span className="hidden min-[360px]:inline text-lg font-bold leading-none tabular-nums">{rounded}°</span>
       </div>
 
       {hovered && (
