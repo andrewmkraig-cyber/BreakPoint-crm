@@ -140,24 +140,25 @@ export function Sidebar({ width }: { width?: number } = {}) {
         />
         <BrandMark />
       </Link>
-      {/* Nav groups, top-aligned, with a FIXED even gap between sections
-          (space-y-5) so the rhythm is identical on a tall display and a
-          short laptop — no justify-between, which inflated the gaps on
-          big screens. The nav is flex-1, so leftover height pools as ONE
-          modest gap directly above the pinned Settings + profile footer
-          (the account stays glued to the bottom). Taller rows let the
-          nav fill most of the column so that gap reads as breathing room,
-          not a glaring void; the [@media(max-height:...)] steps shrink
-          rows + gaps so everything still fits a short laptop. */}
-      <nav className="flex-1 overflow-y-auto space-y-5 p-2 [@media(max-height:760px)]:space-y-3 [@media(max-height:640px)]:space-y-2">
+      {/* Nav groups stack naturally near the top (justify-start, never
+          justify-between) with COMPACT, viewport-adaptive spacing. The
+          group gap and each row height are clamp()'d against vh, so the
+          nav tightens on a short laptop - every group plus the pinned
+          Settings + profile footer fit without hiding Metrics or
+          Placements - and breathes a little on a large monitor. min-h-0
+          + overflow-y-auto lets the nav scroll only when the viewport is
+          extremely short. flex-1 means any leftover height pools as one
+          gap directly above the footer, never distributed between the
+          groups. */}
+      <nav className="flex min-h-0 flex-1 flex-col gap-[clamp(0.25rem,0.7vh,0.65rem)] overflow-y-auto px-2 py-1">
         {NAV_GROUPS.map((group, idx) => (
           <div key={group.title ?? `group-${idx}`}>
             {group.title && (
-              <div className="mb-1 px-3 pt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-court-sidebar-fg-dim">
+              <div className="mb-0.5 px-3 text-[10px] font-bold uppercase leading-tight tracking-[0.14em] text-court-sidebar-fg-dim">
                 {group.title}
               </div>
             )}
-            <div className="space-y-1">
+            <div className="flex flex-col gap-[clamp(0.125rem,0.35vh,0.3rem)]">
               {group.items.map((item) => (
                 <NavLink
                   key={item.href}
@@ -216,7 +217,7 @@ function NavLink({
         // scroll. Tap target stays usable; icons stay 16px.
         // `isolate` so the active glow span (-z-10) layers above the row
         // background but below the icon/label without escaping the row.
-        "relative isolate flex h-10 items-center gap-2.5 rounded-md pl-3 pr-2 text-[13px] font-medium transition-colors [@media(max-height:820px)]:h-9 [@media(max-height:720px)]:h-8 [@media(max-height:640px)]:h-7 [@media(max-height:640px)]:text-[12.5px]",
+        "relative isolate flex h-[clamp(1.7rem,3.2vh,2.2rem)] items-center gap-2.5 rounded-md pl-3 pr-2 text-[13px] font-medium transition-colors",
         active
           ? "bg-[var(--court-sidebar-active-bg)] text-court-sidebar-active-fg"
           : "text-court-sidebar-fg-muted hover:bg-[var(--court-sidebar-active-bg)] hover:text-court-sidebar-fg",
