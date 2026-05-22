@@ -13,12 +13,14 @@ import { createPortal } from "react-dom";
 import {
   Archive,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   FileText,
   FolderInput,
   Forward,
   Loader2,
   Mail as MailIcon,
+  Menu,
   MoreVertical,
   Pencil,
   Plus,
@@ -908,9 +910,38 @@ export function MailView({
   // conversation pane always lands at majority width.
   const effectiveListWidth = selected ? Math.min(listWidth, 240) : listWidth;
 
+  // --- Mobile (Gmail-style) single-pane state --------------------------
+  // Below lg the resizable three-pane grid collapses to ONE pane at a
+  // time: the thread LIST (default), a thread DETAIL (when the user taps
+  // a row), or the LABELS drawer (slid in over the list from the
+  // hamburger). Desktop (lg+) is untouched - it keeps the three-pane
+  // grid and shows the first thread in the reading pane on load, so
+  // mobile detail visibility is gated by an explicit-open flag rather
+  // than `selected` (which defaults to the first thread).
+  const [mobileLabelsOpen, setMobileLabelsOpen] = useState(false);
+  const [mobileThreadOpen, setMobileThreadOpen] = useState(false);
+  // Drop back to the list whenever the selection clears (archive / move /
+  // delete of the open thread) so mobile never strands the user on an
+  // empty detail pane.
+  useEffect(() => {
+    if (!selected) setMobileThreadOpen(false);
+  }, [selected]);
+  // Picking a folder/label closes the drawer and returns to the freshly
+  // scoped list. Wraps setSelectedLabel so every entry point (Inbox,
+  // Sent, Drafts, label tree) gets the same mobile behavior.
+  const selectLabel = useCallback(
+    (label: { id: string; name: string } | null) => {
+      setSelectedLabel(label);
+      setMobileLabelsOpen(false);
+      setMobileThreadOpen(false);
+    },
+    [],
+  );
+  const currentFolderName = selectedLabel ? selectedLabel.name : "Inbox";
+
   return (
     <div
-      className="ace-mail-grid grid min-h-0 flex-1 grid-cols-1 gap-4 lg:gap-0 lg:overflow-hidden lg:rounded-lg lg:border lg:border-court-border lg:bg-court-surface lg:shadow-sm"
+      className="ace-mail-grid flex min-h-0 flex-1 flex-col lg:grid lg:gap-0 lg:overflow-hidden lg:rounded-lg lg:border lg:border-court-border lg:bg-court-surface lg:shadow-sm"
       style={
         {
           // CSS vars consumed by the lg+ media query in the inline
@@ -929,7 +960,42 @@ export function MailView({
           }
         }
       `}</style>
-      <aside className="flex flex-col overflow-hidden border border-court-border bg-court-surface lg:border-0 lg:bg-transparent">
+      {/* Labels-drawer backdrop (mobile only). Tapping it dismisses the
+          slide-in folder list. lg:hidden so it never renders over the
+          static desktop sidebar. */}
+      {mobileLabelsOpen ? (
+        <div
+          aria-hidden="true"
+          onClick={() => setMobileLabelsOpen(false)}
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+        />
+      ) : null}
+      <aside
+        className={
+          "flex-col overflow-hidden bg-court-surface " +
+          // Mobile: a fixed slide-in drawer when open, fully hidden
+          // otherwise. Desktop: a static grid column, always shown.
+          (mobileLabelsOpen
+            ? "fixed inset-y-0 left-0 z-50 flex w-80 max-w-[85vw] border-r border-court-border shadow-2xl"
+            : "hidden") +
+          " lg:static lg:z-auto lg:flex lg:w-auto lg:max-w-none lg:border-0 lg:bg-transparent lg:shadow-none"
+        }
+      >
+        {/* Drawer header (mobile only): title + close. Desktop shows the
+            sidebar inline, so it has no header. */}
+        <div className="flex shrink-0 items-center justify-between border-b border-court-border px-3 py-3 lg:hidden">
+          <span className="font-serif text-base font-bold text-court-fg">
+            Mail
+          </span>
+          <button
+            type="button"
+            onClick={() => setMobileLabelsOpen(false)}
+            aria-label="Close labels menu"
+            className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
         <nav className="flex-1 overflow-y-auto p-2 text-sm">
           {/* Inbox entry - the default destination (selectedLabel
               null). Uses the canonical TabStrip active style
@@ -940,7 +1006,7 @@ export function MailView({
               Sent / Drafts siblings below. */}
           <button
             type="button"
-            onClick={() => setSelectedLabel(null)}
+            onClick={() => selectLabel(null)}
             className={
               "flex min-h-9 w-full items-center gap-2 rounded-md border px-3 py-1.5 text-left transition " +
               (!selectedLabel
@@ -981,7 +1047,7 @@ export function MailView({
             <li>
               <button
                 type="button"
-                onClick={() => setSelectedLabel({ id: "SENT", name: "Sent" })}
+                onClick={() => selectLabel({ id: "SENT", name: "Sent" })}
                 className={
                   "flex min-h-9 w-full items-center gap-2 rounded-md border px-3 py-1.5 text-left transition " +
                   (selectedLabel?.id === "SENT"
@@ -996,7 +1062,7 @@ export function MailView({
             <li>
               <button
                 type="button"
-                onClick={() => setSelectedLabel({ id: "DRAFT", name: "Drafts" })}
+                onClick={() => selectLabel({ id: "DRAFT", name: "Drafts" })}
                 className={
                   "flex min-h-9 w-full items-center gap-2 rounded-md border px-3 py-1.5 text-left transition " +
                   (selectedLabel?.id === "DRAFT"
@@ -1025,7 +1091,7 @@ export function MailView({
                     collapsed={collapsedLabels}
                     onToggleCollapse={toggleCollapsed}
                     selectedLabel={selectedLabel}
-                    onSelect={setSelectedLabel}
+                    onSelect={selectLabel}
                     onDropThread={({ threadIds, labelId, labelName }) => {
                       if (threadIds.length === 1) {
                         void moveThread(threadIds[0], labelId, labelName);
@@ -1118,7 +1184,31 @@ export function MailView({
         <span className="my-2 w-px self-stretch bg-court-border/70" />
       </div>
 
-      <aside className="flex flex-col overflow-hidden border border-court-border bg-court-surface lg:border-0 lg:bg-transparent">
+      <aside
+        className={
+          "min-h-0 flex-1 flex-col overflow-hidden border border-court-border bg-court-surface lg:flex-none lg:border-0 lg:bg-transparent " +
+          // Mobile: the list is the default pane; it yields to the detail
+          // pane when a thread is open. Desktop: always shown.
+          (mobileThreadOpen ? "hidden lg:flex" : "flex")
+        }
+      >
+        {/* Mobile-only folder header: labels hamburger + current folder
+            name. Desktop reads folder context from the always-visible
+            sidebar, so this row is lg:hidden. */}
+        <div className="flex shrink-0 items-center gap-2 border-b border-court-border bg-court-surface px-2 py-2 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileLabelsOpen(true)}
+            aria-label="Open labels menu"
+            aria-expanded={mobileLabelsOpen}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg transition hover:border-court-accent/40"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <span className="truncate text-base font-semibold text-court-fg">
+            {currentFolderName}
+          </span>
+        </div>
         <div className="shrink-0 border-b border-court-border bg-court-surface-subtle/60 px-3 py-2.5">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
@@ -1257,7 +1347,10 @@ export function MailView({
                   checked={selectedIds.has(t.id)}
                   anySelected={selectedIds.size > 0}
                   selectedIds={selectedIds}
-                  onOpen={() => setSelected(t.id)}
+                  onOpen={() => {
+                    setSelected(t.id);
+                    setMobileThreadOpen(true);
+                  }}
                   onArchive={() => archiveThread(t.id)}
                   onToggle={() => toggleSelectedId(t.id)}
                 />
@@ -1282,7 +1375,27 @@ export function MailView({
         <span className="my-2 w-px self-stretch bg-court-border/70" />
       </div>
 
-      <section className="flex min-h-0 flex-col overflow-hidden border border-court-border bg-court-surface lg:border-0 lg:bg-transparent">
+      <section
+        className={
+          "min-h-0 flex-1 flex-col overflow-hidden border border-court-border bg-court-surface lg:flex-none lg:border-0 lg:bg-transparent " +
+          // Mobile: the detail pane replaces the list once a thread is
+          // open. Desktop: always shown beside the list.
+          (mobileThreadOpen ? "flex" : "hidden lg:flex")
+        }
+      >
+        {/* Mobile-only back bar: returns to the thread list. Desktop keeps
+            both panes side by side, so it's lg:hidden. */}
+        <div className="flex shrink-0 items-center border-b border-court-border bg-court-surface px-1 py-1.5 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileThreadOpen(false)}
+            aria-label="Back to thread list"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            {currentFolderName}
+          </button>
+        </div>
         {!selected ? (
           <EmptyRightPane />
         ) : loading ? (
