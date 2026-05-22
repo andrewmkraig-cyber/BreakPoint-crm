@@ -140,44 +140,51 @@ export function Sidebar({ width }: { width?: number } = {}) {
         />
         <BrandMark />
       </Link>
-      {/* Compact-by-default: 13px nav text, h-9 rows, tighter group
-          spacing. The [@media(max-height:...)] variants shave one more
-          notch off heights and label margins so every group fits on a
-          short laptop display without scrolling. */}
-      <nav className="flex flex-1 flex-col justify-between gap-y-1.5 overflow-y-auto p-2">
-        {NAV_GROUPS.map((group, idx) => (
-          <div key={group.title ?? `group-${idx}`}>
-            {group.title && (
-              <div className="mb-1 px-3 pt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-court-sidebar-fg-dim">
-                {group.title}
+      {/* One scroll region under the fixed logo holds the nav groups,
+          Settings, and the profile card. Sections are top-aligned with a
+          FIXED, even gap between them (space-y-5) so the rhythm is
+          identical on a tall display and a short laptop — no
+          justify-between, which inflated the inter-section gaps on big
+          screens. Whatever height is left over collects as quiet empty
+          space at the very bottom instead of as a void between sections.
+          [@media(max-height:...)] tightens the gap on short laptops so
+          every section still fits before scrolling. */}
+      <div className="flex flex-1 flex-col overflow-y-auto">
+        <nav className="space-y-5 p-2 [@media(max-height:760px)]:space-y-3 [@media(max-height:640px)]:space-y-2">
+          {NAV_GROUPS.map((group, idx) => (
+            <div key={group.title ?? `group-${idx}`}>
+              {group.title && (
+                <div className="mb-1 px-3 pt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-court-sidebar-fg-dim">
+                  {group.title}
+                </div>
+              )}
+              <div className="space-y-1">
+                {group.items.map((item) => (
+                  <NavLink
+                    key={item.href}
+                    item={item}
+                    pathname={pathname}
+                    badge={
+                      item.href === "/mail"
+                        ? unreadCount
+                        : item.href === "/phone"
+                          ? phoneUnreadCount
+                          : 0
+                    }
+                  />
+                ))}
               </div>
-            )}
-            <div className="space-y-1">
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.href}
-                  item={item}
-                  pathname={pathname}
-                  badge={
-                    item.href === "/mail"
-                      ? unreadCount
-                      : item.href === "/phone"
-                        ? phoneUnreadCount
-                        : 0
-                  }
-                />
-              ))}
             </div>
-          </div>
-        ))}
-      </nav>
-      <nav className="shrink-0 space-y-0.5 border-t border-court-sidebar-border p-1.5">
-        {FOOTER_NAV.map((item) => (
-          <NavLink key={item.href} item={item} pathname={pathname} badge={0} />
-        ))}
-      </nav>
-      <div className="shrink-0 border-t border-court-sidebar-border p-1.5">
-        <SidebarProfileCard />
+          ))}
+        </nav>
+        <nav className="mt-1 space-y-1 border-t border-court-sidebar-border p-1.5">
+          {FOOTER_NAV.map((item) => (
+            <NavLink key={item.href} item={item} pathname={pathname} badge={0} />
+          ))}
+        </nav>
+        <div className="border-t border-court-sidebar-border p-1.5">
+          <SidebarProfileCard />
+        </div>
       </div>
     </aside>
   );
