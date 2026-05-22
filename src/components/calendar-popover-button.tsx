@@ -190,19 +190,22 @@ export function CalendarPopoverButton() {
         aria-label={`Calendar - ${today.weekdayLong} ${today.monthLong} ${today.day}`}
         aria-expanded={open}
         className={
-          // h-10 matches the avatar + icon buttons exactly (40px). Width
-          // is content-sized (no min-w) so the FRI/MAY/22 stack fills the
-          // chip with no dead space on the right. The weekday band
-          // stretches full width and centers its label; no letter-spacing
-          // so nothing clips against overflow-hidden.
-          "group inline-flex h-10 shrink-0 flex-col overflow-hidden rounded-lg shadow-sm ring-1 transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
+          // Fixed 44x40 date stamp. h-10 (40px) matches the avatar and
+          // icon buttons exactly so the chip sits even/centered with the
+          // profile icon in the items-center topbar row. A defined width
+          // (vs. content-sizing) guarantees the green weekday band can run
+          // edge to edge with no dead space on the right.
+          "group inline-flex h-10 w-11 shrink-0 flex-col overflow-hidden rounded-lg shadow-sm ring-1 transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
           (open ? "ring-court-brand" : "ring-court-border")
         }
       >
-        <span className="bg-court-brand-tint px-2 py-0.5 text-center text-[9px] font-extrabold uppercase leading-none text-court-brand">
+        {/* Weekday band: block w-full forces it flush to the full chip
+            width (left + right), independent of any flex stretch quirk,
+            so the green fills all the way to the right edge. */}
+        <span className="block w-full bg-court-brand-tint px-1 py-0.5 text-center text-[9px] font-extrabold uppercase leading-none text-court-brand">
           {today.weekdayShort}
         </span>
-        <span className="flex flex-1 flex-col items-center justify-center bg-court-surface px-2 leading-none">
+        <span className="flex w-full flex-1 flex-col items-center justify-center bg-court-surface px-1 leading-none">
           <span className="text-[8px] font-semibold uppercase text-court-fg-muted">
             {today.monthShort}
           </span>
