@@ -306,7 +306,7 @@ export function ChessPuzzle() {
             style={{
               transform: `translate(calc(-50% + ${dragPos.x}px), calc(-50% + ${dragPos.y}px))`,
             }}
-            className="fixed left-1/2 top-1/2 z-50 w-[360px] max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl border border-court-border bg-court-surface px-4 pb-4 pt-2 shadow-2xl"
+            className="fixed left-1/2 top-1/2 z-50 w-[360px] max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl border border-court-border bg-court-surface px-4 pb-4 pt-2 shadow-2xl dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_8px_32px_rgba(0,0,0,0.4)]"
           >
             {/* Drag handle — small grip bar at the top of the dialog so
                 the user can reposition the puzzle. Sized to clear the

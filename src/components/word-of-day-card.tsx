@@ -120,7 +120,7 @@ export function WordOfDayCard() {
           ref={popoverRef}
           role="dialog"
           aria-label="Word of the Day"
-          className="absolute bottom-full right-0 z-20 mb-2 w-72 rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
+          className="absolute bottom-full right-0 z-20 mb-2 w-72 rounded-xl border border-court-border bg-court-surface p-4 shadow-xl dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_8px_32px_rgba(0,0,0,0.4)]"
         >
           <button
             type="button"

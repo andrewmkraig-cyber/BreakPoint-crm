@@ -121,7 +121,7 @@ export function Horoscope() {
           ref={popoverRef}
           role="dialog"
           aria-label="Daily horoscope"
-          className="absolute bottom-full right-0 z-20 mb-2 w-72 rounded-xl border border-court-border bg-court-surface p-3 shadow-xl"
+          className="absolute bottom-full right-0 z-20 mb-2 w-72 rounded-xl border border-court-border bg-court-surface p-3 shadow-xl dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_8px_32px_rgba(0,0,0,0.4)]"
         >
           <button
             type="button"
