@@ -89,24 +89,48 @@ export async function POST(req: Request) {
     createdById = user.id;
   }
 
-  // Resolve each name independently so a parser miss on one row doesn't
-  // poison the rest. We could batch with OR clauses but the per-name
-  // findFirst keeps the result list aligned 1:1 with the input order and
-  // the cardinality is bounded by the 50-file UI cap.
-  const matches: MatchResult[] = await Promise.all(
-    inputs.map(async ({ name }) => {
-      const parts = splitName(name);
-      if (!parts) return { name, candidateId: null };
-      const row = await prisma.candidate.findFirst({
+  // Parse every name once, then resolve all matches in a single findMany over
+  // the OR of each (first, last) pair, replacing the per-name findFirst that
+  // fired once per input (N+1). The in-memory map is keyed by lowercased
+  // "first|last" and built from updatedAt-desc rows so the first hit per key
+  // is the most recent match — reproducing the original orderBy semantics.
+  const dedupKey = (first: string, last: string) =>
+    `${first.toLowerCase()}|${last.toLowerCase()}`;
+  const parsedInputs = inputs.map(({ name }) => ({ name, parts: splitName(name) }));
+  const uniquePairs = Array.from(
+    new Map(
+      parsedInputs
+        .filter((p): p is { name: string; parts: { first: string; last: string } } => p.parts !== null)
+        .map((p) => [dedupKey(p.parts.first, p.parts.last), p.parts]),
+    ).values(),
+  );
+  const matchRows = uniquePairs.length
+    ? await prisma.candidate.findMany({
         where: {
           organizationId: org.id,
-          firstName: { equals: parts.first, mode: "insensitive" },
-          lastName: { equals: parts.last, mode: "insensitive" },
+          OR: uniquePairs.map((p) => ({
+            firstName: { equals: p.first, mode: "insensitive" as const },
+            lastName: { equals: p.last, mode: "insensitive" as const },
+          })),
         },
         orderBy: { updatedAt: "desc" },
-        select: { id: true },
-      });
-      if (row) return { name, candidateId: row.id, created: false };
+        select: { id: true, firstName: true, lastName: true },
+      })
+    : [];
+  const matchByKey = new Map<string, string>();
+  for (const row of matchRows) {
+    if (!row.firstName || !row.lastName) continue;
+    const key = dedupKey(row.firstName, row.lastName);
+    if (!matchByKey.has(key)) matchByKey.set(key, row.id); // first row = most recent
+  }
+
+  // createIfMissing stays per-name, but only fires for genuinely-unmatched
+  // names (the rare path) rather than once per input, so it isn't an N+1.
+  const matches: MatchResult[] = await Promise.all(
+    parsedInputs.map(async ({ name, parts }) => {
+      if (!parts) return { name, candidateId: null };
+      const existingId = matchByKey.get(dedupKey(parts.first, parts.last));
+      if (existingId) return { name, candidateId: existingId, created: false };
       if (!createIfMissing || !createdById) return { name, candidateId: null };
 
       const created = await prisma.candidate.create({

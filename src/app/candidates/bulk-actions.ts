@@ -141,6 +141,30 @@ export async function bulkApplyCandidatesToJob(input: {
   });
   const allowedIds = new Set(allowed.map((c) => c.id));
 
+  // Batch the placement-existence check across every allowed candidate in a
+  // single query, replacing the per-candidate findUnique that fired once per
+  // loop iteration (N+1). Scoped to the target job (cuid or RF id) and the
+  // caller's org; the resulting Set lets the loop skip candidates already
+  // placed on this job without another round trip.
+  const allowedIdList = input.candidateIds.filter((id) => allowedIds.has(id));
+  const existingPlacements = allowedIdList.length
+    ? await prisma.placement.findMany({
+        where: {
+          organizationId: org.id,
+          candidateId: { in: allowedIdList },
+          ...(input.jobCuid
+            ? { jobId: input.jobCuid }
+            : { jobRfId: input.jobRfId! }),
+        },
+        select: { candidateId: true },
+      })
+    : [];
+  const alreadyPlaced = new Set(
+    existingPlacements
+      .map((p) => p.candidateId)
+      .filter((id): id is string => id != null),
+  );
+
   let applied = 0;
   let skipped = 0;
   const errors: string[] = [];
@@ -151,21 +175,7 @@ export async function bulkApplyCandidatesToJob(input: {
       continue;
     }
     try {
-      const existing = input.jobCuid
-        ? await prisma.placement.findUnique({
-            where: { candidateId_jobId: { candidateId, jobId: input.jobCuid } },
-            select: { id: true },
-          })
-        : await prisma.placement.findUnique({
-            where: {
-              candidateId_jobRfId: {
-                candidateId,
-                jobRfId: input.jobRfId!,
-              },
-            },
-            select: { id: true },
-          });
-      if (existing) {
+      if (alreadyPlaced.has(candidateId)) {
         skipped += 1;
         continue;
       }

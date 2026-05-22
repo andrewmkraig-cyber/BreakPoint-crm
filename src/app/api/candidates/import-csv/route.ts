@@ -179,6 +179,27 @@ export async function POST(req: Request) {
   const rows = parsed.data ?? [];
   const org = await getCurrentOrg();
 
+  // Batch the duplicate-email check: collect every normalized email in the
+  // CSV up front and resolve existing candidates in one query instead of a
+  // findUnique per row (N+1). email carries a global unique constraint, so a
+  // single findMany mirrors the original per-row lookup semantics.
+  const csvEmails = Array.from(
+    new Set(
+      rows
+        .map((row) => normalizeEmail(row[COL.email]))
+        .filter((e): e is string => !!e),
+    ),
+  );
+  const existingByEmail = csvEmails.length
+    ? await prisma.candidate.findMany({
+        where: { email: { in: csvEmails } },
+        select: { email: true },
+      })
+    : [];
+  const existingEmails = new Set(
+    existingByEmail.map((c) => c.email).filter((e): e is string => !!e),
+  );
+
   let imported = 0;
   let skipped = 0;
   let duplicates = 0;
@@ -192,15 +213,9 @@ export async function POST(req: Request) {
     }
 
     const email = normalizeEmail(row[COL.email]);
-    if (email) {
-      const existing = await prisma.candidate.findUnique({
-        where: { email },
-        select: { id: true },
-      });
-      if (existing) {
-        duplicates += 1;
-        continue;
-      }
+    if (email && existingEmails.has(email)) {
+      duplicates += 1;
+      continue;
     }
 
     const experiences = collectExperiences(row);
@@ -225,6 +240,9 @@ export async function POST(req: Request) {
         },
       });
       imported += 1;
+      // Track this email so a later row in the same CSV with the same address
+      // is counted as a duplicate without a failing insert + P2002 round trip.
+      if (email) existingEmails.add(email);
     } catch (err) {
       // Most likely a race on the email unique constraint (two rows in the
       // same CSV with the same address). Count as duplicate so the user sees
