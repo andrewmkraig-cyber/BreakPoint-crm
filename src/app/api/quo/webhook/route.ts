@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'node:crypto'
 import { prisma } from '@/lib/prisma'
 import { matchClientByPhone } from '@/lib/quo-contact-match'
-import { sendPushToOrg, sendPushToUser, type PushPayload } from '@/lib/web-push'
+import { sendPushToOrg, sendPushToUserOrOrg, type PushPayload } from '@/lib/web-push'
 import { getUnreadCountsForOrg } from '@/lib/unread-counts'
 import { badgePayloadFields } from '@/lib/badge-math'
 import { pickPhone, redactPhone } from '@/lib/quo-phone'
@@ -157,7 +157,12 @@ export async function POST(req: NextRequest) {
           ...badgePayloadFields(counts),
         }
         if (candidate?.createdById) {
-          await sendPushToUser(candidate.createdById, orgId, payload)
+          // Route to the owning recruiter first; if that user has zero
+          // live devices, fall back to the org so a known-candidate push
+          // never silently drops (the regression this chases). Org
+          // fallback only fires when the owner has no subscriptions, so
+          // no device is double-pushed.
+          await sendPushToUserOrOrg(candidate.createdById, orgId, payload)
         } else {
           // Shared line: no owner to route to, fan out across the org.
           await sendPushToOrg(orgId, payload)
@@ -430,7 +435,10 @@ export async function POST(req: NextRequest) {
           ...badgePayloadFields(counts),
         }
         if (candidate?.createdById) {
-          await sendPushToUser(candidate.createdById, orgId, payload)
+          // Same owner-first, org-fallback routing as the SMS branch so a
+          // known-candidate inbound call push doesn't vanish when the
+          // owner has no live device.
+          await sendPushToUserOrOrg(candidate.createdById, orgId, payload)
         } else {
           // Shared line: no owner to route to, fan out across the org.
           await sendPushToOrg(orgId, payload)
