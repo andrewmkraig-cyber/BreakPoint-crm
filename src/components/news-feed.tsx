@@ -391,23 +391,17 @@ export function NewsFeed() {
           </div>
 
           {/* Daily companions live at the bottom of the briefing card as
-              a quiet 2x2 grid of tiles. Each component owns its own
-              popover; they were previously rendered as pills in the
-              header but now read as secondary add-ons rather than
-              competing with the briefing itself. */}
-          <div className="mt-3 grid grid-cols-2 gap-2 overflow-x-auto">
-            <div className="min-w-0 overflow-hidden">
-              <ChessPuzzle />
-            </div>
-            <div className="min-w-0 overflow-hidden">
-              <WordOfDayCard />
-            </div>
-            <div className="min-w-0 overflow-hidden">
-              <FunFact />
-            </div>
-            <div className="min-w-0 overflow-hidden">
-              <Horoscope />
-            </div>
+              a compact, wrapping row of pills. Each component owns its
+              own popover: chess is a centered fixed modal, the other
+              three open an absolute popover above their pill. This
+              wrapper deliberately does NOT clip — the previous
+              overflow-hidden cells silently cut off those absolute
+              popovers, so only the fixed chess one was ever visible. */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <ChessPuzzle />
+            <WordOfDayCard />
+            <FunFact />
+            <Horoscope />
           </div>
         </div>
       )}

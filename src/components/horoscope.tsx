@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Sparkles, X } from "lucide-react";
+import { fetchWithRetry } from "@/lib/retry-fetch";
 
 // Daily horoscope chip in the briefing header. Sign is derived from
 // the signed-in user's UserProfile.birthday by /api/horoscope; the
@@ -46,7 +47,9 @@ export function Horoscope() {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/horoscope", { cache: "no-store" });
+        const res = await fetchWithRetry("/api/horoscope", {
+          cache: "no-store",
+        });
         const json = (await res.json()) as ApiResponse;
         if (cancelled) return;
         if (!res.ok || !json.ok) {
@@ -107,7 +110,7 @@ export function Horoscope() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className="flex w-full items-center gap-2 rounded-xl bg-violet-50 px-3 py-2 text-xs font-medium text-violet-800 transition hover:bg-violet-100 hover:text-violet-900 dark:bg-violet-950/40 dark:text-violet-200 dark:hover:bg-violet-950/60"
+        className="inline-flex items-center gap-2 rounded-xl border border-violet-100 bg-violet-50 px-2.5 py-1.5 text-xs font-medium text-violet-800 transition hover:bg-violet-100 hover:text-violet-900 dark:border-violet-900/40 dark:bg-violet-950/40 dark:text-violet-200 dark:hover:bg-violet-950/60"
       >
         <Sparkles aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">Daily Horoscope</span>

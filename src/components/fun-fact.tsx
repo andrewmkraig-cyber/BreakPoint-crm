@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Lightbulb, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import { fetchWithRetry } from "@/lib/retry-fetch";
 
 // Fun fact chip in the briefing header. One Claude-generated fact per
 // (org, ET day) — see /api/fun-fact for the generation + caching
@@ -63,7 +64,9 @@ export function FunFact() {
     setDateLabel(todayLabel());
     void (async () => {
       try {
-        const res = await fetch("/api/fun-fact", { cache: "no-store" });
+        const res = await fetchWithRetry("/api/fun-fact", {
+          cache: "no-store",
+        });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = (await res.json()) as ApiResponse;
         if (cancelled) return;
@@ -158,7 +161,7 @@ export function FunFact() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className="flex w-full items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 transition hover:bg-amber-100 hover:text-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60"
+        className="inline-flex items-center gap-2 rounded-xl border border-amber-100 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800 transition hover:bg-amber-100 hover:text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60"
       >
         <Lightbulb aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">Daily Fact</span>

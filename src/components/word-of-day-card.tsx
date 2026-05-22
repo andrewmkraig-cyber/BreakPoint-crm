@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Sparkles, X } from "lucide-react";
+import { fetchWithRetry } from "@/lib/retry-fetch";
 
 // Compact "Word of the Day" pill that lives at the bottom-right of the
 // dashboard column. Renders a single-line chip ("Word of the Day:
@@ -39,7 +40,9 @@ export function WordOfDayCard() {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/word-of-day", { cache: "no-store" });
+        const res = await fetchWithRetry("/api/word-of-day", {
+          cache: "no-store",
+        });
         const json = (await res.json()) as ApiResponse;
         if (cancelled) return;
         if (!res.ok || !json.ok) {
@@ -106,7 +109,7 @@ export function WordOfDayCard() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className="flex w-full items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-xs font-medium text-sky-800 transition hover:bg-sky-100 hover:text-sky-900 dark:bg-sky-950/40 dark:text-sky-200 dark:hover:bg-sky-950/60"
+        className="inline-flex items-center gap-2 rounded-xl border border-sky-100 bg-sky-50 px-2.5 py-1.5 text-xs font-medium text-sky-800 transition hover:bg-sky-100 hover:text-sky-900 dark:border-sky-900/40 dark:bg-sky-950/40 dark:text-sky-200 dark:hover:bg-sky-950/60"
       >
         <span aria-hidden="true" className="text-[14px] leading-none">📖</span>
         <span className="truncate">Word of the Day</span>
