@@ -142,7 +142,7 @@ function resolveBaseSpec(
 
   if (pathname === "/phone") {
     return {
-      title: { label: "Calls & Texts" },
+      title: { label: "Phone" },
       action: { kind: "phone-dial", label: "New Text/Call" },
     };
   }

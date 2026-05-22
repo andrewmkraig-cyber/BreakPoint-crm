@@ -435,6 +435,19 @@ html[data-surface='clay'][data-theme='light'] [data-in-sidebar] .ace-brand-disc 
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
+/* PWA topbar Ace mark (mobile only - the desktop sidebar carries the mark
+   at md+). The topbar sits on the light court-surface in EVERY Light court,
+   where the green disc glow reads as a pale white halo. Soften it to the
+   same neutral drop shadow the light-sidebar disc uses, across all four
+   Light courts. Dark courts keep the green glow (the topbar is dark there,
+   matching the desktop sidebar). */
+html[data-theme='light'] .ace-topbar-mark .ace-brand-disc {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    0 8px 18px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
 /* Confine Leaflet's internal z-index ladder (panes 200-700, controls up
    to 1000) inside the map container's own stacking context. Without
    this, those high values escape to the page root and the map paints on

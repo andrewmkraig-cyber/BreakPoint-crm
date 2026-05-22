@@ -49,7 +49,7 @@ export function TopBar() {
         aria-label="Ace dashboard"
         className="flex h-14 shrink-0 items-center transition-opacity hover:opacity-80 md:hidden"
       >
-        <BrandMark />
+        <BrandMark className="ace-topbar-mark" />
       </Link>
 
       {/* Page title (breadcrumb "Group > Page") sits to the left, search
