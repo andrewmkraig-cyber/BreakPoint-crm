@@ -397,7 +397,7 @@ export function NewsFeed() {
               wrapper deliberately does NOT clip — the previous
               overflow-hidden cells silently cut off those absolute
               popovers, so only the fixed chess one was ever visible. */}
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-1.5">
             <ChessPuzzle />
             <WordOfDayCard />
             <FunFact />

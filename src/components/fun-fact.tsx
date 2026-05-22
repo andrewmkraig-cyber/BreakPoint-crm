@@ -161,9 +161,9 @@ export function FunFact() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className="inline-flex items-center gap-2 rounded-xl border border-amber-100 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800 transition hover:bg-amber-100 hover:text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-100 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-800 transition hover:bg-amber-100 hover:text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60"
       >
-        <Lightbulb aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+        <Lightbulb aria-hidden="true" className="h-3 w-3 shrink-0" />
         <span className="truncate">Daily Fact</span>
       </button>
 
@@ -172,7 +172,7 @@ export function FunFact() {
           ref={popoverRef}
           role="dialog"
           aria-label="Fun fact of the day"
-          className="absolute bottom-full left-0 z-20 mb-2 w-80 rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
+          className="absolute bottom-full right-0 z-20 mb-2 w-80 rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
         >
           <button
             type="button"

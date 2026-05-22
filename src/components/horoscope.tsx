@@ -110,9 +110,9 @@ export function Horoscope() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className="inline-flex items-center gap-2 rounded-xl border border-violet-100 bg-violet-50 px-2.5 py-1.5 text-xs font-medium text-violet-800 transition hover:bg-violet-100 hover:text-violet-900 dark:border-violet-900/40 dark:bg-violet-950/40 dark:text-violet-200 dark:hover:bg-violet-950/60"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-violet-100 bg-violet-50 px-2 py-1 text-[11px] font-medium text-violet-800 transition hover:bg-violet-100 hover:text-violet-900 dark:border-violet-900/40 dark:bg-violet-950/40 dark:text-violet-200 dark:hover:bg-violet-950/60"
       >
-        <Sparkles aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+        <Sparkles aria-hidden="true" className="h-3 w-3 shrink-0" />
         <span className="truncate">Daily Horoscope</span>
       </button>
 
