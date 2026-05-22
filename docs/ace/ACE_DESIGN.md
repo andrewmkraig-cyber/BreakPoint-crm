@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-05-20 · Ace 61.0
+Last updated: 2026-05-22 · Ace 64.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -44,10 +44,17 @@ Everything else is neutral.
 
 #### Approved hex exceptions (Ace 36.0)
 
-The "no hardcoded colors" rule has two scoped, intentional exceptions documented here so future audits don't try to rip them out:
+The "no hardcoded colors" rule has three scoped, intentional exceptions documented here so future audits don't try to rip them out:
 
 - **Spotify panel** — `src/components/spotify-panel/` uses the Spotify product palette directly (`#121212` page bg, `#181818` card bg, `#282828` hover, `#B3B3B3` muted text, `#1DB954` Spotify green, `#1ED760` hover green). The whole point of the panel is to feel like Spotify's own product, so it does not route through Court Mode tokens. This exception is scoped to the `spotify-panel/` directory only — no other surface may import these hex values.
 - **Dashboard premium surface** — the dashboard page-bg + KPI card mix uses `#F6FAF4`, `#EFF5EB`, `#1F6A3A`, and `#F3F8EF` directly to land the green-tinted "premium" tone the recruiter signed off on. This exception is scoped to the dashboard components only (`src/app/dashboard/*` and the KPI / Billing Tower / Upcoming Interviews tiles). Other pages must continue to use Court Mode tokens.
+- **AI / Claude pill color family (Ace 64.0)** — the shared Button component bakes the Claude/AI pill palette directly: `#1F3A29` (pill bg), `#2A4D38` (border + hover border), `#284A36` (hover bg), plus the dark-mode lifts `#2D4435` (bg), `#3A5944` (border + hover border), and `#37533F` (hover bg). These are the `ai-primary` Button variant and the `CLAUDE_PILL_CLASS` constant; the two border hexes (`#2A4D38` / `#3A5944`) are also the hover-border tones on the `ai-secondary` variant. The pill is intentionally a graphite-leaning dark green that reads as a distinct "Claude" surface in every Court Mode, so it does not route through Court Mode tokens. This exception is scoped to `src/components/ui/button.tsx` and `src/components/edit-with-claude-menu.tsx` only — no other surface may import these hex values.
+
+#### Approved shape exceptions (Ace 64.0)
+
+The Button Standard's `rounded-full` ban applies to text buttons only (see Button Standard below). One scoped, intentional shape exception is documented here so future audits don't try to square it off:
+
+- **Spotify panel** — the circular `rounded-full` buttons in `src/components/spotify-panel/` (the transport controls) are intentional Spotify-product mimicry, the shape parallel to the Spotify hex exception above. This exception is scoped to the `spotify-panel/` directory only.
 
 ### Dark themes (rebuild required)
 
@@ -235,11 +242,11 @@ After dedicated polish phase ships, Andrew sends updated screenshots for a secon
 Source of truth for every button across the app. Mirrors the same block in ACE_RULES.md.
 - **Action row buttons** (Submit, Apply, Keep, Reject, Add Note, Add to List): `rounded-md`, outlined, colored border + text, transparent background.
 - **Toolbar buttons** (Use Template, Insert Field, Edit with Claude, Delete, Save Draft, Send): `rounded-md`, outlined, NOT pill shaped.
-- **Generate with Claude / Generate Resume / Generate JD**: `rounded-md`, dark green outlined (`border-court-brand-dark text-court-brand-dark`), NOT solid filled.
+- **Generate with Claude / Generate Resume / Generate JD**: `rounded-md`, solid-filled dark (the `ai-primary` Button variant / `CLAUDE_PILL_CLASS` - graphite-leaning dark green fill), NOT outlined. Code is canonical: the shipped pill is solid-filled, superseding the older "dark green outlined" wording the Ace 54.0 spec carried.
 - **Primary CTA** (New Candidate, New Job, + New X at page tops, Save, Create): `rounded-md`, filled green (`bg-court-brand text-white`).
 - **Upload Resume**: `rounded-md`, blue outlined (`border-blue-500 text-blue-600`).
 - **Tab strip active**: `rounded-md border-court-brand text-court-brand font-semibold` transparent background.
-- **NEVER use `rounded-full` on any button.** `rounded-full` is reserved for badges, chips, status pills, and avatars ONLY.
+- **NEVER use `rounded-full` on text buttons.** The ban applies to text buttons only. `rounded-full` is reserved for badges, chips, status pills, and avatars, and IS permitted on icon-only circular buttons, toggle switches, and FABs.
 
 Supersedes the older "All buttons are rounded-full" rule from the Ace 24.0 Button System section below.
 

@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-22 · Ace 63.1
+Last updated: 2026-05-22 · Ace 64.0
 
 ## Active Build Sequence
 
@@ -17,18 +17,14 @@ Notification toast polish (DONE Ace 59.0): SMS toast `MessageSquare` icon, actio
 ### Session 61.0 Status
 Profile / pipeline regression close-out + features (DONE Ace 61.0): split-view candidate Delete restored; Apply / Keep / Reject real-time stage pill (optimistic, holds until server confirm) + the flash-then-disappear follow-on fixed; Add Note button removed from all four candidate profile locations; stage button visibility aligned to spec in `pipeline-row-actions.tsx`; phone thread auto-scroll to bottom on open; CalendarEventDrawer reminder mode (hides Guests / Location / Meeting type / All day / Timezone, ET hard-coded with a comment to pull per-user tz when multi-user ships); scheduled send (Send Later) on every email surface (`ScheduledEmail` table + per-minute Vercel cron + Retry toast); dark luxury login redesign; PWA badge auto-fire fix (`2d0081e`, null badgeCount in `unread-counts.ts`, sw.js cache `v5`); Auto Night Mode (`0dd1e41`, `UserProfile.autoNightMode`, 7pm/7am ET flip). Favicon / tab counter verified already correct. Awaiting Andrew's browser verification of scheduled send, the PWA badge, and Auto Night Mode.
 
-### Next Up (after Ace 63.0)
+### Next Up (after Ace 64.0)
 
-1. **Badge / title comprehensive fix** - confirm the fix shipped this session is working in production (mailUnread null no longer coerced to 0, desktop title persists across navigation, phone unread API computes from hasUnread).
-2. **Button / color audit.** Grep first, report by file, no changes until scope confirmed.
-3. **Legacy render path retirement Phase 1.** Audit scripts committed, backfill not yet started.
-4. **QuickBooks standalone page** (`/finances/quickbooks`, isolated from the Mercury-driven Finances surface, shows QB income / expenses / aging / P&L).
-5. **Quo setup wizard.** Guided Settings flow to connect Quo, configure the webhook URL, verify inbound SMS/call routing, confirm transcription is live.
+1. **Button / color standard cleanup.** Fix the pill-shaped text buttons (audit items 1A/1B) and the 4 hardcoded hex colors (audit item 2A). The button/color audit shipped in Ace 64.0; this is the fix pass it surfaced.
+2. **Legacy render path retirement Phase 1.** Audit scripts committed, backfill not yet started.
+3. **QuickBooks standalone page** (`/finances/quickbooks`, isolated from the Mercury-driven Finances surface, shows QB income / expenses / aging / P&L).
+4. **Quo setup wizard.** Guided Settings flow to connect Quo, configure the webhook URL, verify inbound SMS/call routing, confirm transcription is live.
 
 On deck (this weekend): APRO / job order worksheet (structured intake form).
-
-## Branch Status
-- **`design/phase-1`** — local-only branch with Cursor UI redesign Phases 1-2 not yet merged to `main`. Carries `86d3e31` (Phase 1 design system foundation), `38f119c` (Phase 2a card shells on dashboard/placements/finances), `d7f5437` (Phase 2b TableRow + TableCell on list views), `c0fb973` (Phase 2c sidebar polish + list table chrome). Review pending; `main` is the source of truth for shipped state until this lands.
 
 ## Queued From Session
 Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.
@@ -43,7 +39,8 @@ Completed this session (Ace 63.0), moved out of this list: UnderlineTabLink cano
 Build soon, lower priority than the active sequence above.
 
 - **APRO / job order worksheet** - structured intake form. On deck this weekend (see Next Up).
-- **Quo setup wizard** - guided Settings flow to connect Quo, configure the webhook URL, verify inbound SMS/call routing, confirm transcription is live. Promoted to Next Up 5.
+- **Quo setup wizard** - guided Settings flow to connect Quo, configure the webhook URL, verify inbound SMS/call routing, confirm transcription is live. Promoted to Next Up.
+- **CallLog read/unread model** - add a read/unread state to CallLog so missed calls can increment the Phone badge. No schema exists today (CallLog carries no read/unread field), so this needs a schema addition before the Phone badge can reflect missed calls.
 
 Cancelled 2026-05-21 (Ace 63.0) - all other non-urgent backlog: reminders badge leg wiring, invite flow in Settings, LinkedIn import via RapidAPI, Slack sidebar panel, DocuSign auto-import, invoicing + QuickBooks + Mercury, GPT as second AI provider, Spotify podcasts tab, news feed per-tab refresh button, commission calculator, stock ticker strip, scoreboard widget, Ace launch countdown, Microsoft Teams video interviews, resume text view with search highlighting, resizable split-view divider on /candidates, Market Insights, Stalled Deals card.
 
@@ -51,7 +48,6 @@ Cancelled 2026-05-21 (Ace 63.0) - all other non-urgent backlog: reminders badge 
 Slotted in the Active Build Sequence but each needs a session-opening prompt before implementation. Full specs to be added next session; one-line stubs below for handoff.
 
 - **QB — QuickBooks standalone page** (`/finances/quickbooks`). Isolated from the existing Finances page so the QuickBooks-sourced view (income / expenses / aging / P&L) doesn't mingle with the Mercury-driven Finances surface. Lives behind the existing OPS sidebar entry next to Finances.
-- **MULTI-USER - Multi-user login + permissions model.** Replaces the current single-user assumption (Andrew + Austin via shared sessions) with a real per-user auth + role + permission model. Scope includes: invite flow in Settings (reuses `OrganizationMembership`); role chip (Owner / Recruiter / Read-only); per-row visibility rules where they matter; revoke + suspend; and per-user preference settings for timezone and weather location (so the dashboard clock/weather and calendar default zone follow each user, not a shared default). Detailed spec to be captured next session.
 
 ## Cleanup
 Do alongside other work.
@@ -95,6 +91,10 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 64.0 Push delivery + badge reliability fixes + connectors cleanup + mobile/topbar pass + button/color audit (May 22, 2026)
+
+Shipped the push delivery regression fix (org fallback when `candidate.createdById` has zero push subscriptions, so notifications still land instead of silently dropping), the phone badge now counting unread messages instead of threads, and the badge reliability fix (the badge holds the last-known-good mail count when the live Gmail unread lookup fails, instead of resetting). Also shipped a Settings > Connectors cleanup (mobile overflow fixes + the Gmail Push Notifications connector removed), a mobile + topbar UI pass (mobile nav unread badges for Mail and Phone, mobile-only stat card compaction, profile card added to the PWA drawer, light-mode profile card fix for Grass and Night Court Light; topbar avatar removed, light/dark toggle + PWA Ace logo added, hamburger moved to the search row), and the weather fallback changed to Chagrin Falls OH. Closed the button/color audit: three doc-vs-code reconciliations captured in ACE_RULES.md + ACE_DESIGN.md (Generate-with-Claude buttons documented as solid-filled `ai-primary`, the AI-pill hex family added as a third documented hex exception scoped to `button.tsx` + `edit-with-claude-menu.tsx`, and the Spotify-panel `rounded-full` buttons documented as a shape exception); the remaining fix work - pill-shaped text buttons (1A/1B) + the 4 hardcoded hexes (2A) - is queued first in the active sequence. Also marked DONE this session: the multi-user login + permissions model, removed from Queued Specs. Full detail in ACE_STATE.md under What Shipped in Ace 64.0.
 
 ## Completed - Ace 63.0 Multi-user client ownership Steps 3-5 + push re-register UI + Quo webhook hardening + temp log cleanup + badge fixes (May 21, 2026)
 

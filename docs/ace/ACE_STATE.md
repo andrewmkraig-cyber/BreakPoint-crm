@@ -1,10 +1,29 @@
 # ACE_STATE.md
-Last updated: 2026-05-22 · Ace 63.1
+Last updated: 2026-05-22 · Ace 64.0
 
 ## Current Status
-Current Version: Ace 63.1
+Current Version: Ace 64.0
 Last Shipped: 2026-05-22
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 64.0 (2026-05-22)
+
+Push delivery + badge reliability fixes, a connectors page cleanup, and a mobile/topbar UI pass, plus the button/color audit closed out.
+
+- Push delivery regression fix: when `candidate.createdById` has zero push subscriptions, delivery now falls back to the org so notifications still land instead of silently dropping. (The org-fallback in `sendPushToUserOrOrg` is the permanent fix from the temp-diag work.)
+- Phone badge counts unread messages, not threads: the phone unread leg now reflects the number of unread messages rather than the number of conversations.
+- Badge reliability fix: when the live Gmail unread lookup fails, the badge holds the last-known-good mail count instead of resetting, so a transient Gmail error no longer wipes the count.
+- Connectors page mobile overflow fixes: the Settings > Connectors rows no longer blow out horizontally on narrow viewports.
+- Gmail Push Notifications connector removed from Settings > Connectors.
+- Weather fallback changed to Chagrin Falls OH (was the prior default location) for the dashboard weather widget.
+- Mobile nav unread badges for Mail and Phone: the mobile navigation now surfaces unread-count badges on the Mail and Phone entries.
+- Topbar pass: avatar removed, a light/dark toggle added, the PWA Ace logo added, and the hamburger menu moved down to the search row.
+- Light-mode profile card fix for Grass and Night Court Light: the profile card now renders legibly in those two light palettes.
+- Profile card added to the PWA drawer.
+- Mobile-only stat card compaction: stat cards are tightened on mobile only; desktop sizing unchanged.
+- Button / color audit completed: full audit done. Three doc-vs-code reconciliations captured in ACE_RULES.md + ACE_DESIGN.md (Generate-with-Claude buttons are solid-filled `ai-primary`, the AI-pill hex family is a third documented hex exception scoped to `button.tsx` + `edit-with-claude-menu.tsx`, and the Spotify-panel `rounded-full` buttons are a documented shape exception). The remaining fix work - pill-shaped text buttons (audit items 1A/1B) and the 4 hardcoded hex colors (audit item 2A) - is queued first in ACE_ROADMAP.md.
+
+Next task: button/color standard cleanup - fix the pill-shaped text buttons (audit items 1A/1B) and the 4 hardcoded hex colors (audit item 2A).
 
 ## What Shipped in Ace 63.1 (2026-05-22)
 

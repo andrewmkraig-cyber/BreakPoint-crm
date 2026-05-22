@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-05-22 · Ace 63.1
+Last updated: 2026-05-22 · Ace 64.0
 
 ## How to Start Every Session
 Every Ace session opens with this exact sequence:
@@ -97,16 +97,17 @@ Claude must ask Andrew a full set of scoping questions before writing any BD Pha
 - Never full-page green tinting or heavy green dark mode backgrounds.
 - Reduce borders by ~40%, use spacing instead.
 - Dark themes (Clay + Grass): charcoal/graphite base, NOT green. Green as accent only.
-- No hardcoded colors anywhere.
+- No hardcoded colors anywhere. Three documented hex exceptions (full detail in ACE_DESIGN.md): Spotify panel palette (`spotify-panel/` only), dashboard premium surface (`dashboard/*` only), and the AI / Claude pill color family (`#1F3A29 / #2A4D38 / #284A36 / #2D4435 / #3A5944 / #37533F`, scoped to `button.tsx` + `edit-with-claude-menu.tsx`).
+- Documented shape exception (Ace 64.0): the circular `rounded-full` transport buttons in `src/components/spotify-panel/` are intentional Spotify-product mimicry, parallel to the Spotify hex exception. Full detail in ACE_DESIGN.md.
 
 ## Button Standard (added Ace 54.0 - DO NOT CHANGE)
 - Action row buttons (Submit, Apply, Keep, Reject, Add Note, Add to List): rounded-md, outlined, colored border + text, transparent background.
 - Toolbar buttons (Use Template, Insert Field, Edit with Claude, Delete, Save Draft, Send): rounded-md, outlined, NOT pill shaped.
-- Generate with Claude / Generate Resume / Generate JD: rounded-md, dark green outlined (`border-court-brand-dark text-court-brand-dark`), NOT solid filled.
+- Generate with Claude / Generate Resume / Generate JD: rounded-md, solid-filled dark (the `ai-primary` variant / `CLAUDE_PILL_CLASS` - graphite-leaning dark green fill), NOT outlined. Code is canonical: the shipped pill is solid-filled, superseding the older "dark green outlined" wording from the Ace 54.0 spec.
 - Primary CTA (New Candidate, New Job, + New X at page tops, Save, Create): rounded-md, filled green (`bg-court-brand text-white`).
 - Upload Resume: rounded-md, blue outlined (`border-blue-500 text-blue-600`).
 - Tab strip active: `rounded-md border-court-brand text-court-brand font-semibold` transparent background.
-- NEVER use `rounded-full` on any button. `rounded-full` is reserved for badges, chips, status pills, and avatars ONLY.
+- NEVER use `rounded-full` on text buttons. The ban applies to text buttons only. `rounded-full` is reserved for badges, chips, status pills, and avatars, and IS permitted on icon-only circular buttons, toggle switches, and FABs.
 
 This rule supersedes the older "All buttons are rounded-full" line in the Ace 24.0 Button System section of ACE_DESIGN.md. ACE_DESIGN.md carries the same Button Standard block — both docs hold the same source of truth.
 
