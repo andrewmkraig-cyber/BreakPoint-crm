@@ -670,7 +670,7 @@ export function WeatherWidget() {
 
   return (
     <div
-      className="relative"
+      className="relative flex items-center"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >

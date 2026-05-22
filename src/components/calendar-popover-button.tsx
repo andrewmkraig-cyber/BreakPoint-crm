@@ -183,7 +183,7 @@ export function CalendarPopoverButton() {
   }, []);
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className="relative flex items-center">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
