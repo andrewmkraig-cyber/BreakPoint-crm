@@ -147,6 +147,7 @@ export async function POST(req: NextRequest) {
           phoneUnread: counts.phoneUnread,
           badgeCount: counts.badgeCount,
           mailReliable: counts.mailReliable,
+          mailReason: counts.mailReason,
           badgeOmitted: counts.badgeCount === null,
         })
         const payload: PushPayload = {
@@ -423,6 +424,7 @@ export async function POST(req: NextRequest) {
           phoneUnread: counts.phoneUnread,
           badgeCount: counts.badgeCount,
           mailReliable: counts.mailReliable,
+          mailReason: counts.mailReason,
           badgeOmitted: counts.badgeCount === null,
         })
         const payload: PushPayload = {

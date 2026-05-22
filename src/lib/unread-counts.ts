@@ -16,6 +16,17 @@ import { computeBadgeCount, phoneUnreadMessageCount } from "@/lib/badge-math";
 // existing app badge untouched. Coercing an unavailable Gmail count to 0
 // was what let a new SMS knock the badge from 4 down to 1.
 
+// Why the Gmail unread count is / isn't proven this call. Diagnostics
+// only - lets the temporary [push][badge-diag] logs separate the three
+// cases the badge-down-to-1 bug could come from:
+//   - "ok"            Gmail answered; mailUnread is the real count (incl 0)
+//   - "no-watch"      no GmailPushWatch / no resolvable user -> mailUnread null
+//   - "lookup-failed" a Gmail call threw or returned non-2xx -> mailUnread null
+// If a badge ever drops to phone-only again, the log shows whether mail
+// was a genuine Gmail 0 (reason "ok", count 0 -> a Gmail/account issue,
+// NOT a coercion bug) or an unprovable count that was correctly omitted.
+export type MailReason = "ok" | "no-watch" | "lookup-failed";
+
 export type UnreadCounts = {
   // null when the Gmail unread count could not be proven for the org (no
   // reachable watch/user, or the Gmail API call failed) - distinct from 0
@@ -29,6 +40,8 @@ export type UnreadCounts = {
   badgeCount: number | null;
   // Diagnostics only: was the Gmail unread count proven this call.
   mailReliable: boolean;
+  // Diagnostics only: WHY mail was / wasn't proven (see MailReason).
+  mailReason: MailReason;
 };
 
 // Unread inbound SMS *messages* (notification items), not conversations -
@@ -60,7 +73,7 @@ async function getPhoneUnreadForOrg(organizationId: string): Promise<number> {
 async function getMailUnreadForOrg(
   organizationId: string,
   extraUnreadThreadIds: string[] = [],
-): Promise<number | null> {
+): Promise<{ count: number | null; reason: MailReason }> {
   const unread = new Set<string>(extraUnreadThreadIds);
   const watches = await prisma.gmailPushWatch.findMany({
     where: { organizationId },
@@ -75,34 +88,39 @@ async function getMailUnreadForOrg(
     : [];
   // No reachable Gmail user means the true mail unread total is unknown,
   // even if `extra` carried a freshly-arrived thread id. Unprovable -> null.
-  if (users.length === 0) return null;
+  if (users.length === 0) return { count: null, reason: "no-watch" };
   for (const u of users) {
     const res = await getUnreadInboxThreadIdsStrict(u.id, { cap: 100 });
     // Any failed lookup makes the combined count unprovable. Bail to null
     // so the caller omits the badge instead of undercounting it.
-    if (!res.ok) return null;
+    if (!res.ok) return { count: null, reason: "lookup-failed" };
     for (const id of res.ids) unread.add(id);
   }
-  return unread.size;
+  return { count: unread.size, reason: "ok" };
 }
 
 export async function getUnreadCountsForOrg(
   organizationId: string,
   opts: { extraUnreadMailThreadIds?: string[] } = {},
 ): Promise<UnreadCounts> {
-  const [phoneUnread, mailUnread] = await Promise.all([
+  const [phoneUnread, mail] = await Promise.all([
     // A thrown local query degrades to null (unprovable), NOT 0, so a DB
     // hiccup can't silently drop the phone portion of the badge.
     getPhoneUnreadForOrg(organizationId).catch(() => null),
+    // A thrown mail lookup is treated as a failed lookup (count null), so
+    // the badge is omitted rather than undercounted.
     getMailUnreadForOrg(
       organizationId,
       opts.extraUnreadMailThreadIds ?? [],
-    ).catch(() => null),
+    ).catch(
+      () => ({ count: null, reason: "lookup-failed" }) as const,
+    ),
   ]);
   return {
-    mailUnread,
+    mailUnread: mail.count,
     phoneUnread,
-    badgeCount: computeBadgeCount({ mailUnread, phoneUnread }),
-    mailReliable: mailUnread !== null,
+    badgeCount: computeBadgeCount({ mailUnread: mail.count, phoneUnread }),
+    mailReliable: mail.count !== null,
+    mailReason: mail.reason,
   };
 }
