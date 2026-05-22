@@ -190,10 +190,12 @@ export function CalendarPopoverButton() {
         aria-label={`Calendar — ${today.weekdayLong} ${today.monthLong} ${today.day}`}
         aria-expanded={open}
         className={
-          // min-w-[3rem] guarantees the weekday band has slack to center
-          // the widest 3-letter label (WED / THU / FRI) without the
-          // trailing letter-spacing clipping against overflow-hidden.
-          "group inline-flex min-w-[3rem] flex-col overflow-hidden rounded-lg shadow-sm ring-1 transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
+          // min-w-[3.5rem] gives the weekday band enough slack to center
+          // the widest 3-letter label (WED / THU / FRI) with equal
+          // breathing room on both sides, so the trailing letter-spacing
+          // never clips against overflow-hidden. Both bands keep symmetric
+          // px-2.5 so the text stays visually centered.
+          "group inline-flex min-w-[3.5rem] flex-col overflow-hidden rounded-lg shadow-sm ring-1 transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
           (open ? "ring-court-brand" : "ring-court-border")
         }
       >

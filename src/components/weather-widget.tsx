@@ -18,17 +18,19 @@ import { cn } from "@/lib/utils";
 // refreshes every 30 min.
 //
 // If geolocation is unavailable or the user denied it, we fall back
-// to BreakPoint's home base (Cleveland) so the chip always renders —
-// the recruiter caught it disappearing whenever the browser revoked
-// the permission, and an empty topbar slot looked like a regression.
+// to Chagrin Falls, OH so the chip always renders. The recruiter caught
+// it disappearing whenever the browser revoked the permission, and an
+// empty topbar slot looked like a regression. A fixed fallback also
+// keeps desktop and mobile showing the same place when GPS is off.
 
 const REFRESH_MS = 30 * 60 * 1000;
 const HOURS_AHEAD = 6;
 const DAYS_AHEAD = 7;
-// Cleveland, OH — BreakPoint's office. Used when the browser hasn't
-// granted geolocation so weather still renders.
-const FALLBACK_LAT = 41.4993;
-const FALLBACK_LON = -81.6944;
+// Chagrin Falls, OH - used when the browser hasn't granted geolocation
+// so weather still renders, and so desktop and mobile show the same
+// location when GPS isn't in use.
+const FALLBACK_LAT = 41.4312;
+const FALLBACK_LON = -81.3901;
 
 type Hourly = { time: string; tempF: number; precipPct: number; code: number };
 type Daily = {
@@ -597,7 +599,7 @@ export function WeatherWidget() {
           else setLocation("Your Location");
         });
       } else {
-        setLocation("Cleveland, OH");
+        setLocation("Chagrin Falls, OH");
       }
       intervalId = window.setInterval(
         () => void fetchWeather(lat, lon),
@@ -614,7 +616,7 @@ export function WeatherWidget() {
         (err) => {
           if (cancelled) return;
           console.warn(
-            "[weather] geolocation denied or failed, using Cleveland fallback",
+            "[weather] geolocation denied or failed, using Chagrin Falls fallback",
             err,
           );
           startWith(FALLBACK_LAT, FALLBACK_LON, "fallback");
