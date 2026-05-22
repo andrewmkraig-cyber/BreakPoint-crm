@@ -69,7 +69,7 @@ type StageEntry = (typeof PIPELINE_STAGES)[number];
 
 function ViewToggle({ view, onChange }: { view: ViewKind; onChange: (v: ViewKind) => void }) {
   return (
-    <div className="inline-flex shrink-0 items-center rounded-full border border-court-border bg-court-surface p-0.5">
+    <div className="inline-flex shrink-0 items-center rounded-md border border-court-border bg-court-surface p-0.5">
       {([
         { k: "grid" as const, label: "Grid", Icon: LayoutGrid },
         { k: "list" as const, label: "List", Icon: List },
@@ -78,7 +78,7 @@ function ViewToggle({ view, onChange }: { view: ViewKind; onChange: (v: ViewKind
           key={k}
           type="button"
           onClick={() => onChange(k)}
-          className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition ${
             view === k ? "bg-ink text-white" : "text-court-fg-muted hover:text-court-fg"
           }`}
         >

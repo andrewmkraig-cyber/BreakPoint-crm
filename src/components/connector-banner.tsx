@@ -42,7 +42,7 @@ export function ConnectorBanner({
         <button
           type="button"
           onClick={onReconnectGmail}
-          className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900 transition hover:bg-amber-200"
+          className="inline-flex items-center gap-1.5 rounded-md border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900 transition hover:bg-amber-200"
         >
           <RefreshCw className="h-3 w-3" />
           Reconnect Gmail

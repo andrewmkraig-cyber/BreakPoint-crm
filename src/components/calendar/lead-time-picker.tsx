@@ -72,7 +72,7 @@ export function LeadTimePicker({
               key={p.value}
               type="button"
               onClick={() => onChange([...leads, p.value])}
-              className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-2 py-0.5 text-[11px] font-medium text-court-fg-muted transition hover:border-court-brand/40 hover:text-court-brand-dark"
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-0.5 text-[11px] font-medium text-court-fg-muted transition hover:border-court-brand/40 hover:text-court-brand-dark"
             >
               <Plus className="h-2.5 w-2.5" />
               {p.label}

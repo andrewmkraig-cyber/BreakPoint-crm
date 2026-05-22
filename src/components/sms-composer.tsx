@@ -133,7 +133,6 @@ export function SmsComposer({
             size="sm"
             onClick={onSend}
             disabled={disabled}
-            className="rounded-full"
             title="Send SMS"
           >
             {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}

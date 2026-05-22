@@ -320,7 +320,7 @@ function BlackoutPill({
       type="button"
       onClick={() => onChange(!on)}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition",
+        "inline-flex items-center gap-1.5 rounded-md border px-3 py-1 text-xs font-medium transition",
         on
           ? "border-court-brand/30 bg-court-brand-tint text-court-brand-dark"
           : "border-court-border bg-court-surface text-court-fg-muted hover:text-court-fg",

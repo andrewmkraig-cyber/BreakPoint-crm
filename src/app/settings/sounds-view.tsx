@@ -95,7 +95,7 @@ function SoundSelector({
           onClick={() => playSound(value)}
           disabled={value === "off"}
           aria-label={`Preview ${selected?.label ?? "sound"}`}
-          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex h-9 items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Play className="h-3 w-3" />
           Preview

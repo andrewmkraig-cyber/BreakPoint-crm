@@ -369,7 +369,6 @@ export function EditableResume({
               size="sm"
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading || isGenerating}
-              className="rounded-full"
             >
               {isUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
               Upload Resume
@@ -386,7 +385,6 @@ export function EditableResume({
               size="sm"
               onClick={() => void onGenerate()}
               disabled={isUploading || isGenerating}
-              className="rounded-full"
             >
               {isGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
               Generate Resume

@@ -39,7 +39,7 @@ export function ToastStackControls({ stackDir }: { stackDir: ToastStackDir }) {
       type="button"
       onClick={() => toast.dismiss()}
       style={style}
-      className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-2.5 py-1 text-[10px] font-semibold text-court-fg shadow-md transition hover:bg-court-surface-subtle"
+      className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[10px] font-semibold text-court-fg shadow-md transition hover:bg-court-surface-subtle"
     >
       <X className="h-2.5 w-2.5" />
       Dismiss all ({count})

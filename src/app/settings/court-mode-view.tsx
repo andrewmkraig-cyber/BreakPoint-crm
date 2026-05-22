@@ -298,7 +298,7 @@ function ThemeButton({
       aria-label={ariaLabel}
       title={title}
       className={cn(
-        "inline-flex h-9 items-center gap-2 rounded-full border px-4 text-sm font-medium transition",
+        "inline-flex h-9 items-center gap-2 rounded-md border px-4 text-sm font-medium transition",
         active
           ? "border-court-accent bg-court-accent-tint text-court-accent-dark"
           : "border-court-border bg-court-surface-subtle text-court-fg-muted hover:text-court-fg",

@@ -1092,7 +1092,7 @@ export function YouTubePanel() {
                     }}
                     aria-pressed={active}
                     className={
-                      "rounded-full px-2.5 py-0.5 text-[11px] font-medium transition " +
+                      "rounded-md px-2.5 py-0.5 text-[11px] font-medium transition " +
                       (active
                         ? "bg-court-accent text-white"
                         : "bg-court-surface-subtle text-court-fg-muted hover:text-court-fg")

@@ -132,7 +132,7 @@ export function PlacementDrilldownDialog({ title, eyebrow, query, onClose }: Pro
             <div
               role="tablist"
               aria-label="Period"
-              className="inline-flex items-center gap-0.5 rounded-full border border-court-border bg-court-surface-subtle/40 p-0.5"
+              className="inline-flex items-center gap-0.5 rounded-md border border-court-border bg-court-surface-subtle/40 p-0.5"
             >
               <PeriodTab active={period === "quarter"} onClick={() => setPeriod("quarter")}>
                 Quarter
@@ -197,7 +197,7 @@ function PeriodTab({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "rounded-full px-3 py-1 text-[11px] font-semibold transition",
+        "rounded-md px-3 py-1 text-[11px] font-semibold transition",
         active
           ? "bg-court-surface text-court-fg shadow-sm"
           : "text-court-fg-muted hover:text-court-fg",

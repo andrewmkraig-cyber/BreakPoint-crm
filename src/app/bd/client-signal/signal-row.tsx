@@ -124,7 +124,7 @@ export function SignalRow(props: SignalRowData) {
           onClick={onReachOut}
           disabled={isPending || reachedOut}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-semibold shadow-sm transition",
+            "inline-flex items-center gap-1.5 rounded-md border px-3.5 py-1.5 text-xs font-semibold shadow-sm transition",
             reachedOut
               ? "cursor-default border-court-brand bg-court-brand-tint text-court-brand-dark opacity-80"
               : "border-court-brand bg-court-brand-tint text-court-brand-dark hover:bg-court-brand hover:text-white",

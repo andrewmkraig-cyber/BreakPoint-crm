@@ -1386,7 +1386,7 @@ export default function CandidatesPage() {
             size="sm"
             onClick={onSaveCurrent}
             disabled={!hasFilters}
-            className="h-8 w-full rounded-full"
+            className="h-8 w-full"
           >
             <Bookmark className="h-3.5 w-3.5" />
             Save search
@@ -1694,7 +1694,6 @@ export default function CandidatesPage() {
                           type="button"
                           variant="secondary"
                           size="sm"
-                          className="rounded-full"
                           onClick={() => applySavedSearch(s)}
                         >
                           {s.label}

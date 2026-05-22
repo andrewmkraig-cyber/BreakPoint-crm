@@ -584,7 +584,7 @@ function MobileBucketTabs({
             type="button"
             onClick={() => setBucket(p.key)}
             className={
-              "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition " +
+              "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition " +
               (active
                 ? "border-court-accent bg-court-accent-tint text-court-accent-dark"
                 : "border-court-border bg-court-surface text-court-fg-muted hover:bg-court-surface-subtle")
@@ -907,7 +907,7 @@ function DialPad({
             key={k.digit}
             type="button"
             onClick={() => append(k.digit)}
-            className="flex h-14 flex-col items-center justify-center rounded-lg border border-court-border bg-court-surface text-court-fg shadow-sm transition hover:bg-court-surface-subtle active:bg-[#EAF4E4]"
+            className="flex h-14 flex-col items-center justify-center rounded-lg border border-court-border bg-court-surface text-court-fg shadow-sm transition hover:bg-court-surface-subtle active:bg-court-brand-tint"
           >
             <span className="text-xl font-semibold leading-none">{k.digit}</span>
             {k.letters && (
@@ -928,15 +928,16 @@ function DialPad({
           <Send className="h-4 w-4" />
           Text
         </button>
-        <button
+        <Button
           type="button"
+          variant="primary"
           onClick={() => dispatch("call")}
           disabled={!number.trim()}
-          className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-md bg-[#5A9642] text-sm font-semibold text-white shadow-sm transition hover:bg-[#3F7030] disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-10 flex-1"
         >
           <PhoneCall className="h-4 w-4" />
           Call
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -2002,15 +2003,16 @@ export function CallPanel({
             </div>
           )}
         </div>
-        <button
+        <Button
           type="button"
+          variant="primary"
           onClick={placeCall}
           disabled={!contact}
-          className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md bg-[#5A9642] text-sm font-semibold text-white shadow-sm transition hover:bg-[#3F7030] disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-10 w-full"
         >
           <PhoneCall className="h-4 w-4" />
           Call in Quo
-        </button>
+        </Button>
         <div className="flex items-center justify-between text-[11px]">
           <button
             type="button"

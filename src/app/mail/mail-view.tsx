@@ -1487,8 +1487,7 @@ function ThreadRow({
           ghost.style.left = "-1000px";
           ghost.style.padding = "6px 10px";
           ghost.style.borderRadius = "9999px";
-          ghost.style.background = "#5A9642";
-          ghost.style.color = "#ffffff";
+          ghost.className = "bg-court-brand text-white";
           ghost.style.fontSize = "12px";
           ghost.style.fontWeight = "600";
           ghost.style.boxShadow = "0 4px 12px rgba(0,0,0,0.18)";

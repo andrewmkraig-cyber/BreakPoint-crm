@@ -244,12 +244,11 @@ function NowLine({ now }: { now: Date }) {
   const y = hourToY(decimalHour(now));
   return (
     <div
-      className="pointer-events-none absolute -left-1.5 right-0 z-[4] h-0.5"
-      style={{ top: y, background: "#E11D48" }}
+      className="pointer-events-none absolute -left-1.5 right-0 z-[4] h-0.5 bg-rose-600"
+      style={{ top: y }}
     >
       <span
-        className="absolute -left-1.5 -top-1 inline-block h-2.5 w-2.5 rounded-full"
-        style={{ background: "#E11D48", boxShadow: "0 0 0 3px rgba(225,29,72,.18)" }}
+        className="absolute -left-1.5 -top-1 inline-block h-2.5 w-2.5 rounded-full bg-rose-600 ring-[3px] ring-rose-600/20"
       />
     </div>
   );

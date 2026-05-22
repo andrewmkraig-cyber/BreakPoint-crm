@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 
 import { LeadTimePicker, leadsSummary } from "@/components/calendar/lead-time-picker";
 import { TimeSelect } from "@/components/calendar/time-select";
+import { Button } from "@/components/ui/button";
 import type { CalendarReminder } from "@/lib/calendar/types";
 import { cn } from "@/lib/utils";
 
@@ -261,13 +262,14 @@ function ReminderForm({
         >
           Cancel
         </button>
-        <button
+        <Button
           type="submit"
+          variant="primary"
+          size="sm"
           disabled={submitting || !title.trim()}
-          className="inline-flex items-center gap-1 rounded-full border-[1.5px] border-court-brand bg-court-surface px-3 py-1 text-[11.5px] font-semibold text-court-brand-dark transition hover:bg-court-brand-tint/40 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {submitting ? "Saving..." : submitLabel}
-        </button>
+        </Button>
       </div>
     </form>
   );

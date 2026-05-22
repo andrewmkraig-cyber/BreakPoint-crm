@@ -1479,7 +1479,7 @@ export function MatchesTab({
               size="sm"
               onClick={onSaveSearch}
               disabled={!hasFilters || saveInFlight}
-              className="h-8 w-full rounded-full"
+              className="h-8 w-full"
             >
               {saveInFlight ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

@@ -42,7 +42,7 @@ export function ConnectorsView({
                   void signIn("google", { callbackUrl: "/settings" });
                 });
               }}
-              className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface"
+              className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface"
             >
               <RefreshCw className="h-3 w-3" />
               Reconnect
@@ -204,7 +204,7 @@ function MicrosoftTeamsConnectorRow() {
             type="button"
             onClick={() => void disconnect()}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:opacity-60"
           >
             {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
             Disconnect
@@ -346,7 +346,7 @@ function SpotifyConnectorRow() {
             type="button"
             onClick={() => void disconnect()}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:opacity-60"
           >
             {busy ? (
               <Loader2 className="h-3 w-3 animate-spin" />

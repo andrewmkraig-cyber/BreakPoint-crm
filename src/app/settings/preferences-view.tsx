@@ -493,7 +493,7 @@ function NotifStylePicker({
           <button
             type="button"
             onClick={fireSampleEmailToast}
-            className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
+            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
           >
             Email
           </button>
@@ -502,7 +502,7 @@ function NotifStylePicker({
           <button
             type="button"
             onClick={fireSampleTextToast}
-            className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
+            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
           >
             Text
           </button>

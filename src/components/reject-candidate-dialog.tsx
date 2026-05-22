@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { Loader2, UserX, X } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+
 // Confirmation prompt fired before rejecting a candidate-job pairing.
 // Replaces the old `window.confirm()` so the recruiter can choose
 // whether the templated rejection email goes out or not. The action
@@ -109,11 +111,12 @@ export function RejectCandidateDialog({
           >
             Cancel
           </button>
-          <button
+          <Button
             type="button"
+            variant="reject"
+            size="sm"
             onClick={onClickConfirm}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 shadow-sm transition hover:bg-red-100 disabled:opacity-60"
           >
             {busy ? (
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -121,7 +124,7 @@ export function RejectCandidateDialog({
               <UserX className="h-3 w-3" />
             )}
             {sendEmail ? "Send Rejection Email" : "Reject"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

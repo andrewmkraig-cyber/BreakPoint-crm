@@ -87,7 +87,7 @@ export function PromoteTab({
             type="button"
             disabled
             title="Coming soon."
-            className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1.5 text-[11px] font-semibold text-court-fg-muted opacity-70"
+            className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1.5 text-[11px] font-semibold text-court-fg-muted opacity-70"
           >
             <Sparkles className="h-3 w-3" /> Suggest Boards with Claude
           </button>

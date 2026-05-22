@@ -82,7 +82,7 @@ export function QuoteOfDay() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg-muted transition hover:border-court-accent/40 hover:text-court-fg"
+        className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg-muted transition hover:border-court-accent/40 hover:text-court-fg"
       >
         <span aria-hidden="true">💬</span>
         <span>Quote of the Day</span>

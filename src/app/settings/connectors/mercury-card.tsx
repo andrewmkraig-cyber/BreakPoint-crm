@@ -103,7 +103,7 @@ export function MercuryConnectorCard({
             type="button"
             onClick={onDisconnect}
             disabled={pending}
-            className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:opacity-60"
           >
             {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
             Disconnect
