@@ -24,6 +24,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BrandDisc } from "@/components/brand-mark";
 import { useMailContext } from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
 
@@ -188,9 +189,16 @@ export function MobileNav() {
             className="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col overflow-y-auto border-r border-court-sidebar-border bg-court-sidebar-bg p-4 shadow-2xl md:hidden"
           >
             <div className="mb-4 flex items-center justify-between">
-              <span className="font-serif text-lg font-bold text-court-sidebar-fg">
-                Ace
-              </span>
+              {/* Serve-Arc disc + wordmark, matching the topbar lockup so
+                  the drawer header carries the same brand mark the
+                  installed PWA shows up top. BrandDisc is the same mark
+                  the topbar/sidebar render. */}
+              <div className="flex items-center gap-2.5">
+                <BrandDisc />
+                <span className="font-serif text-lg font-bold text-court-sidebar-fg">
+                  Ace
+                </span>
+              </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}

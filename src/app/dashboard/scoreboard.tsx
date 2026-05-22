@@ -132,7 +132,11 @@ function ScoreboardKpiTile({
   return (
     <div
       title={sub}
-      className="flex h-full min-h-[84px] flex-col rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]"
+      // Mobile (base): drop the 84px floor + tighten padding so the
+      // full-width tile compacts to its content (icon/label, number,
+      // sub-caption) with no trailing dead space. sm+ restores the
+      // canonical chrome - desktop sizing is unchanged.
+      className="flex h-full min-h-0 flex-col rounded-2xl bg-court-surface px-3 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)] sm:min-h-[84px] sm:py-2.5"
     >
       {/* Icon chip + label row mirrors the canonical KpiTile used on
           Clubhouse + Finances so the three surfaces read as one family. */}
@@ -149,7 +153,7 @@ function ScoreboardKpiTile({
       </div>
       <div
         className={
-          "mt-1.5 text-center font-serif text-[26px] font-bold leading-none tracking-[-0.04em] tabular-nums " +
+          "mt-1 text-center font-serif text-[26px] font-bold leading-none tracking-[-0.04em] tabular-nums sm:mt-1.5 " +
           (isEmpty ? "text-court-fg-dim" : "text-court-fg")
         }
       >

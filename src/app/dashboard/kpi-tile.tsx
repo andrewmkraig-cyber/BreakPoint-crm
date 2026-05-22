@@ -23,7 +23,11 @@ export function KpiTile({
   return (
     <div
       className={cn(
-        "flex h-full min-h-[84px] flex-col rounded-2xl bg-court-surface px-3 py-2.5 transition-shadow",
+        // Mobile (base): no min-height floor + tighter padding so the
+        // full-width stacked card hugs its content with no dead gap
+        // below the number. sm+ restores the original 84px / py-2.5
+        // chrome exactly - desktop sizing is untouched.
+        "flex h-full min-h-0 flex-col rounded-2xl bg-court-surface px-3 py-2 transition-shadow sm:min-h-[84px] sm:py-2.5",
         live
           ? "border border-court-brand/35"
           : "shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]",
@@ -50,7 +54,7 @@ export function KpiTile({
       </div>
       <div
         className={cn(
-          "mt-1.5 text-center font-serif text-[26px] font-extrabold leading-none tracking-[-0.04em] tabular-nums",
+          "mt-1 text-center font-serif text-[26px] font-extrabold leading-none tracking-[-0.04em] tabular-nums sm:mt-1.5",
           isZero ? "text-court-fg-dim" : "text-court-fg",
         )}
       >
