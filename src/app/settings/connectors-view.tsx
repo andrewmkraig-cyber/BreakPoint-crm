@@ -2,18 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { signIn, signOut } from "next-auth/react";
-import { Bell, BellRing, ExternalLink, Loader2, Music, RefreshCw, Video } from "lucide-react";
+import { BellRing, ExternalLink, Loader2, Music, RefreshCw, Video } from "lucide-react";
 import { toast } from "sonner";
 import { PushPermissionButton } from "@/components/push-permission-button";
 import type { ConnectorStatus, ConnectorState } from "@/lib/connectors";
 
-export type GmailPushStatus = {
-  enabled: boolean;
-  expiresAt: string | null;
-};
-
-// Ace 28.0 Connectors panel - three rows showing the live health of
-// each integration. The row UI follows the same shape across all three
+// Ace 28.0 Connectors panel - live health of each integration. The row
+// UI follows the same shape across every row
 // (icon + label + state dot + detail line + right-side action) so the
 // recruiter can scan top-to-bottom and immediately see what's broken.
 //
@@ -29,12 +24,10 @@ export function ConnectorsView({
   gmail,
   claude,
   quo,
-  gmailPush,
 }: {
   gmail: ConnectorStatus;
   claude: ConnectorStatus;
   quo: ConnectorStatus;
-  gmailPush: GmailPushStatus;
 }) {
   return (
     <div className="space-y-2">
@@ -67,25 +60,19 @@ export function ConnectorsView({
       />
       <ConnectorRow
         status={quo}
+        note="Sessions are managed at quo.com - sign in there if you got logged out."
         action={
-          <div className="flex flex-col items-end gap-1">
-            <a
-              href="https://my.openphone.com"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface"
-            >
-              <ExternalLink className="h-3 w-3" />
-              Open Quo
-            </a>
-            <span className="text-[11px] italic text-court-fg-muted">
-              Sessions are managed at quo.com - sign in there if you got
-              logged out.
-            </span>
-          </div>
+          <a
+            href="https://my.openphone.com"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface"
+          >
+            <ExternalLink className="h-3 w-3" />
+            Open Quo
+          </a>
         }
       />
-      <GmailPushNotificationsRow gmailPush={gmailPush} />
       <PushNotificationsRow />
       <MicrosoftTeamsConnectorRow />
       <SpotifyConnectorRow />
@@ -244,89 +231,6 @@ function MicrosoftTeamsConnectorRow() {
   );
 }
 
-// Gmail INBOX push watch. Server-rendered status (enabled + expiry)
-// comes from the GmailPushWatch table. Watches die after 7 days, so
-// the daily renew-gmail-watch cron refreshes them automatically;
-// this button is the manual override for the first enable and for
-// any case where the cron missed.
-function GmailPushNotificationsRow({
-  gmailPush,
-}: {
-  gmailPush: GmailPushStatus;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [statusOverride, setStatusOverride] = useState<GmailPushStatus | null>(
-    null,
-  );
-  const current = statusOverride ?? gmailPush;
-
-  async function enableOrRenew() {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const res = await fetch("/api/gmail/watch", { method: "POST" });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(text || `HTTP ${res.status}`);
-      }
-      const json = (await res.json()) as { expiresAt?: string };
-      setStatusOverride({
-        enabled: true,
-        expiresAt: json.expiresAt ?? null,
-      });
-      toast.success("Gmail push notifications active", {
-        description: json.expiresAt
-          ? `Renews automatically. Current watch expires ${formatExpiry(json.expiresAt)}.`
-          : "Renews automatically.",
-      });
-    } catch (e) {
-      toast.error("Couldn't enable Gmail push", {
-        description: e instanceof Error ? e.message : "Try again in a moment.",
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const detail = current.enabled
-    ? current.expiresAt
-      ? `Active - current watch expires ${formatExpiry(current.expiresAt)}`
-      : "Active"
-    : "Not enabled - turn on for instant mail alerts even when Ace is closed";
-
-  return (
-    <div className="flex min-h-0 items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <Bell className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
-          <span className="text-sm font-semibold text-court-fg">
-            Gmail Push Notifications
-          </span>
-          <StateLabel state={current.enabled ? "connected" : "disconnected"} />
-        </div>
-        <div className="mt-1 truncate text-xs text-court-fg-muted">
-          {detail}
-        </div>
-      </div>
-      <div className="shrink-0">
-        <button
-          type="button"
-          onClick={() => void enableOrRenew()}
-          disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:opacity-60"
-        >
-          {busy ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3 w-3" />
-          )}
-          {current.enabled ? "Renew" : "Enable"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // PWA web-push device registration. Unlike Gmail / Quo (account-level),
 // a push subscription is per-browser, so every device the recruiter
 // installs Ace on needs its own opt-in. This row mirrors the live
@@ -358,19 +262,6 @@ function PushNotificationsRow() {
       </div>
     </div>
   );
-}
-
-function formatExpiry(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
 }
 
 // Spotify connector lives client-side because its session is cookie-
@@ -473,31 +364,43 @@ function SpotifyConnectorRow() {
 function ConnectorRow({
   status,
   action,
+  note,
 }: {
   status: ConnectorStatus;
   action: React.ReactNode;
+  note?: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-0 items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <StateDot state={status.state} />
-          <span className="text-sm font-semibold text-court-fg">
-            {status.label}
-          </span>
-          <StateLabel state={status.state} />
+    <div className="min-h-0 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <StateDot state={status.state} />
+            <span className="text-sm font-semibold text-court-fg">
+              {status.label}
+            </span>
+            <StateLabel state={status.state} />
+          </div>
+          <div className="mt-1 truncate text-xs text-court-fg-muted">
+            {status.account ? (
+              <>
+                <span className="font-mono">{status.account}</span> · {status.detail}
+              </>
+            ) : (
+              status.detail
+            )}
+          </div>
         </div>
-        <div className="mt-1 truncate text-xs text-court-fg-muted">
-          {status.account ? (
-            <>
-              <span className="font-mono">{status.account}</span> · {status.detail}
-            </>
-          ) : (
-            status.detail
-          )}
-        </div>
+        <div className="shrink-0">{action}</div>
       </div>
-      <div className="shrink-0">{action}</div>
+      {/* Optional helper line wraps full-width BELOW the header row so a
+          long note (e.g. Quo's "managed at quo.com" copy) never collides
+          with the status label or spills outside the card on mobile. */}
+      {note ? (
+        <div className="mt-1.5 text-[11px] italic text-court-fg-muted">
+          {note}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -25,31 +25,13 @@ export default async function ConnectorsSettingsPage() {
     getAllConnectorStatuses(sessionUserId),
     getCurrentOrg(),
   ]);
-  const sessionEmail = session?.user?.email ?? null;
-  const [orgRow, gmailPushRow] = await Promise.all([
-    prisma.organization.findUnique({
-      where: { id: org.id },
-      select: { mercuryApiKey: true },
-    }),
-    sessionEmail
-      ? prisma.gmailPushWatch.findUnique({
-          where: {
-            organizationId_email: {
-              organizationId: org.id,
-              email: sessionEmail.toLowerCase().trim(),
-            },
-          },
-          select: { expiresAt: true },
-        })
-      : Promise.resolve(null),
-  ]);
+  const orgRow = await prisma.organization.findUnique({
+    where: { id: org.id },
+    select: { mercuryApiKey: true },
+  });
   const mercuryMasked = orgRow?.mercuryApiKey
     ? maskMercuryKey(orgRow.mercuryApiKey)
     : null;
-  const gmailPush = {
-    enabled: Boolean(gmailPushRow),
-    expiresAt: gmailPushRow ? gmailPushRow.expiresAt.toISOString() : null,
-  };
 
   return (
     <CollapsibleSection
@@ -61,7 +43,6 @@ export default async function ConnectorsSettingsPage() {
         gmail={connectors.gmail}
         claude={connectors.claude}
         quo={connectors.quo}
-        gmailPush={gmailPush}
       />
       <div className="mt-2">
         <MercuryConnectorCard maskedKey={mercuryMasked} />

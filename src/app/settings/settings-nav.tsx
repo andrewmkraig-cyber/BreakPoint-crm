@@ -7,19 +7,19 @@ import { cn } from "@/lib/utils";
 // Category list lives here so layout.tsx (server component) and the
 // nav (client component) share the same source of truth.
 //
-// Order: setup-y items first, then the catch-all live-health
-// Connectors panel, then housekeeping panels at the bottom —
-// Branding, Personal Info, Claude History (rarely visited). Email
-// Preferences was removed; phone + signature are owned by Branding
-// now, and the auto-send trigger moved into Templates/Triggers.
+// Order: Appearance + Notifications first, then the live-health
+// Connectors panel, then BD Engine right after it, then the workflow
+// and housekeeping panels (rarely visited ones last). Email Preferences
+// was removed; phone + signature are owned by Branding now, and the
+// auto-send trigger moved into Templates/Triggers.
 export const SETTINGS_CATEGORIES = [
   { slug: "appearance",        label: "Appearance" },
   { slug: "notifications",     label: "Notifications" },
+  { slug: "connectors",        label: "Connectors" },
+  { slug: "bd",                label: "BD Engine" },
   { slug: "personal-trainer",  label: "Personal Trainer" },
   { slug: "templates",         label: "Templates + Triggers" },
   { slug: "billing",           label: "Billing" },
-  { slug: "bd",                label: "BD Engine" },
-  { slug: "connectors",        label: "Connectors" },
   { slug: "branding",          label: "Branding" },
   { slug: "personal-info",     label: "Personal Info" },
   { slug: "history",           label: "Claude History" },
