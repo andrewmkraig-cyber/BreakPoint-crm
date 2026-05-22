@@ -646,7 +646,7 @@ export function WeatherWidget() {
       onMouseLeave={() => setHovered(false)}
     >
       <div
-        className="inline-flex h-10 cursor-default items-center gap-1 rounded-lg border border-court-border bg-court-surface-subtle px-2 text-court-fg shadow-sm"
+        className="inline-flex h-10 w-16 cursor-default items-center justify-center gap-1 rounded-lg border border-court-border bg-court-surface-subtle text-court-fg shadow-sm"
         aria-label={`Current temperature ${rounded} degrees Fahrenheit`}
       >
         <WeatherIcon

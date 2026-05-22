@@ -190,30 +190,24 @@ export function CalendarPopoverButton() {
         aria-label={`Calendar - ${today.weekdayLong} ${today.monthLong} ${today.day}`}
         aria-expanded={open}
         className={
-          // Fixed 44x40 date stamp. h-10 (40px) matches the avatar and
-          // icon buttons exactly so the chip sits even/centered with the
-          // profile icon in the items-center topbar row. A defined width
-          // (vs. content-sizing) guarantees the green weekday band can run
-          // edge to edge with no dead space on the right.
-          "group inline-flex h-10 w-11 shrink-0 flex-col overflow-hidden rounded-lg shadow-sm ring-1 transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
-          (open ? "ring-court-brand" : "ring-court-border")
+          // Sized to match the weather pill EXACTLY so the two read as one
+          // matched pair: same h-10, w-16, rounded-lg, border, bg, and
+          // shadow. relative + overflow-hidden lets the green weekday band
+          // pin flush to the top edge while the month + day are centered in
+          // the FULL height (absolute children below), landing the bold day
+          // number on the same vertical center as the weather temperature.
+          "group relative inline-flex h-10 w-16 shrink-0 overflow-hidden rounded-lg border bg-court-surface-subtle shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
+          (open ? "border-court-brand" : "border-court-border")
         }
       >
-        {/* Weekday band: block w-full forces it flush to the full chip
-            width (left + right), independent of any flex stretch quirk,
-            so the green fills all the way to the right edge. py-px (vs
-            py-0.5) trims the band so the month + day stack rides higher. */}
-        <span className="block w-full bg-court-brand-tint px-1 py-px text-center text-[9px] font-extrabold uppercase leading-none text-court-brand">
+        {/* Green weekday band pinned flush to the top edge, full width. */}
+        <span className="absolute inset-x-0 top-0 bg-court-brand-tint py-px text-center text-[9px] font-extrabold uppercase leading-none text-court-brand">
           {today.weekdayShort}
         </span>
-        {/* Month + day sit directly under the band (no flex-1 stretch /
-            justify-center, which previously centered them in the lower
-            two-thirds and dropped the bold day number below the row's
-            center line). Top-anchored, the day number now lands on the
-            same vertical center as the weather chip number and the avatar.
-            The unused space below is court-surface (the topbar's own bg) so
-            it stays invisible. */}
-        <span className="flex w-full flex-col items-center bg-court-surface px-1 pt-px leading-none">
+        {/* Month + day centered in the full pill height (not just the space
+            under the band) so the bold day number sits on the same vertical
+            center line as the weather chip's temperature. */}
+        <span className="absolute inset-0 flex items-center justify-center gap-1 leading-none">
           <span className="text-[8px] font-semibold uppercase text-court-fg-muted">
             {today.monthShort}
           </span>
