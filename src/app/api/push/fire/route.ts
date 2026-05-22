@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
     badgeCount: counts.badgeCount,
     mailReliable: counts.mailReliable,
     mailReason: counts.mailReason,
+    mailSource: counts.mailSource,
     badgeOmitted: counts.badgeCount === null,
   });
 

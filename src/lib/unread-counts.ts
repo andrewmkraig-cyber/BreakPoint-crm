@@ -10,11 +10,16 @@ import { computeBadgeCount, phoneUnreadMessageCount } from "@/lib/badge-math";
 //   - src/app/api/quo/webhook/route.ts (sms + missed call)
 //   - src/app/api/push/fire/route.ts (client-relayed pushes)
 //
-// Reliability is the whole point: a count we cannot PROVE (Gmail
-// unreachable, no resolvable user, local SMS query failing) surfaces as
-// null - never 0 - so the push omits badgeCount and sw.js leaves the
-// existing app badge untouched. Coercing an unavailable Gmail count to 0
-// was what let a new SMS knock the badge from 4 down to 1.
+// Reliability is the whole point: a Gmail count we cannot PROVE this call
+// (Gmail unreachable, no resolvable user) must never be coerced to 0 -
+// that is what let a new SMS knock the badge from 4 down to 1. But fully
+// omitting the badge on every Gmail hiccup meant a background text never
+// bumped the app badge at all (the symptom: badge only updated after the
+// app was opened and the client poll reconciled). So a failed live mail
+// lookup now falls back to the last KNOWN-GOOD mail count cached in
+// Setting, and the badge math becomes lastKnownGoodMail + livePhone. The
+// badge is only omitted in a true cold state - no successful mail count
+// has ever been cached - or when the local SMS query itself fails.
 
 // Why the Gmail unread count is / isn't proven this call. Diagnostics
 // only - lets the temporary [push][badge-diag] logs separate the three
@@ -27,10 +32,16 @@ import { computeBadgeCount, phoneUnreadMessageCount } from "@/lib/badge-math";
 // NOT a coercion bug) or an unprovable count that was correctly omitted.
 export type MailReason = "ok" | "no-watch" | "lookup-failed";
 
+// Provenance of the mail count actually used for the badge math:
+//   "live"            the live Gmail lookup succeeded this call
+//   "last-known-good" live lookup failed, fell back to the cached value
+//   "none"            live lookup failed and nothing cached yet (cold state)
+export type MailSource = "live" | "last-known-good" | "none";
+
 export type UnreadCounts = {
-  // null when the Gmail unread count could not be proven for the org (no
-  // reachable watch/user, or the Gmail API call failed) - distinct from 0
-  // so the badge is omitted instead of cleared.
+  // The mail count USED for the badge: the live Gmail count when it was
+  // proven this call, otherwise the last known-good cached value. null
+  // only in a true cold state (no successful mail count ever cached).
   mailUnread: number | null;
   // null when the local SMS unread query failed - same reasoning.
   phoneUnread: number | null;
@@ -38,11 +49,51 @@ export type UnreadCounts = {
   // otherwise. A null badgeCount is omitted from the push payload, which
   // sw.js maps to "leave the app badge alone".
   badgeCount: number | null;
-  // Diagnostics only: was the Gmail unread count proven this call.
+  // Diagnostics only: was the LIVE Gmail unread count proven this call.
   mailReliable: boolean;
-  // Diagnostics only: WHY mail was / wasn't proven (see MailReason).
+  // Diagnostics only: WHY the live mail lookup did / didn't prove (MailReason).
   mailReason: MailReason;
+  // Diagnostics only: whether the badge used a live or last-known-good mail
+  // count (or omitted it in cold state).
+  mailSource: MailSource;
 };
+
+// Last known-good mail count cache, stored in the generic Setting KV so it
+// survives across serverless invocations (an in-process cache would not on
+// Vercel). Keyed per org so it stays org-scoped without a schema change.
+const lastMailKey = (organizationId: string) => `badge:last-mail:${organizationId}`;
+
+async function readLastKnownMail(organizationId: string): Promise<number | null> {
+  try {
+    const row = await prisma.setting.findUnique({
+      where: { key: lastMailKey(organizationId) },
+      select: { value: true },
+    });
+    const v = row?.value as { count?: unknown } | null;
+    return v && typeof v.count === "number" ? v.count : null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveLastKnownMail(
+  organizationId: string,
+  count: number,
+): Promise<void> {
+  // Best-effort: a write failure just means the next failed live lookup
+  // falls back to an older value (or omits in cold state). Never throws -
+  // this runs inside the best-effort push path.
+  try {
+    const value = { count, at: new Date().toISOString() };
+    await prisma.setting.upsert({
+      where: { key: lastMailKey(organizationId) },
+      update: { value },
+      create: { key: lastMailKey(organizationId), value },
+    });
+  } catch {
+    // swallow
+  }
+}
 
 // Unread inbound SMS *messages* (notification items), not conversations -
 // mirrors /api/phone/unread-count/route.ts via the shared
@@ -107,8 +158,7 @@ export async function getUnreadCountsForOrg(
     // A thrown local query degrades to null (unprovable), NOT 0, so a DB
     // hiccup can't silently drop the phone portion of the badge.
     getPhoneUnreadForOrg(organizationId).catch(() => null),
-    // A thrown mail lookup is treated as a failed lookup (count null), so
-    // the badge is omitted rather than undercounted.
+    // A thrown mail lookup is treated as a failed lookup (count null).
     getMailUnreadForOrg(
       organizationId,
       opts.extraUnreadMailThreadIds ?? [],
@@ -116,11 +166,33 @@ export async function getUnreadCountsForOrg(
       () => ({ count: null, reason: "lookup-failed" }) as const,
     ),
   ]);
+
+  // Resolve the mail count to use: the live count when proven (and refresh
+  // the cache with it), otherwise the last known-good cached value, so a
+  // flaky Gmail lookup never freezes the badge for a new background text.
+  let effectiveMail: number | null;
+  let mailSource: MailSource;
+  if (mail.count !== null) {
+    effectiveMail = mail.count;
+    mailSource = "live";
+    await saveLastKnownMail(organizationId, mail.count);
+  } else {
+    const cached = await readLastKnownMail(organizationId);
+    if (cached !== null) {
+      effectiveMail = cached;
+      mailSource = "last-known-good";
+    } else {
+      effectiveMail = null;
+      mailSource = "none";
+    }
+  }
+
   return {
-    mailUnread: mail.count,
+    mailUnread: effectiveMail,
     phoneUnread,
-    badgeCount: computeBadgeCount({ mailUnread: mail.count, phoneUnread }),
+    badgeCount: computeBadgeCount({ mailUnread: effectiveMail, phoneUnread }),
     mailReliable: mail.count !== null,
     mailReason: mail.reason,
+    mailSource,
   };
 }

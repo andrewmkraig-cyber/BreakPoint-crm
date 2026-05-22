@@ -1,6 +1,6 @@
 // Ace PWA service worker. Bump CACHE_NAME on any logic change so
 // the activate handler purges the previous shell.
-const CACHE_NAME = "ace-shell-v5";
+const CACHE_NAME = "ace-shell-v6";
 const PRECACHE_URLS = ["/", "/offline"];
 
 self.addEventListener("install", (event) => {
@@ -112,7 +112,13 @@ self.addEventListener("push", (event) => {
             icon: "/icons/icon-192.png",
             badge: "/icons/icon-192.png",
             data: { url: data.url || "/" },
+            // Per-thread tag (sms-<id> / gmail-push) so a burst in one
+            // thread replaces its own banner instead of stacking, while
+            // different threads still surface separately. renotify re-alerts
+            // (sound/vibrate) when a replacement lands so a follow-up text
+            // isn't silently swapped in.
             tag: data.tag,
+            renotify: true,
           });
         }
         // Update badge count via badging API if supported. When Ace is
@@ -171,7 +177,8 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = event.notification.data?.url || "/";
   event.waitUntil(
-    self.clients.matchAll({ type: "window" }).then(async (clients) => {
+    (async () => {
+      const clients = await self.clients.matchAll({ type: "window" });
       const existing = clients.find((c) =>
         c.url.includes(self.location.origin),
       );
@@ -182,11 +189,19 @@ self.addEventListener("notificationclick", (event) => {
         // badge converges on the true unread total within seconds of
         // the tap instead of waiting for the next 15s/30s tick.
         existing.postMessage({ type: "PUSH_RECEIVED" });
-        return;
+      } else {
+        // No window open - opening one mounts MailProvider + PhoneProvider
+        // which auto-poll and reconcile the badge on their own.
+        await self.clients.openWindow(url);
       }
-      // No window open - opening one mounts MailProvider + PhoneProvider
-      // which auto-poll and reconcile the badge on their own.
-      await self.clients.openWindow(url);
-    }),
+      // Dismiss any other Ace banners still sitting in the OS tray so the
+      // stack doesn't re-surface as the app gains focus. This closes
+      // notification banners ONLY - it deliberately does NOT touch the app
+      // badge, which still reconciles to the true unread total via the
+      // PUSH_RECEIVED message above (keeps the badge policy in the header
+      // comment intact).
+      const notes = await self.registration.getNotifications();
+      for (const n of notes) n.close();
+    })(),
   );
 });
