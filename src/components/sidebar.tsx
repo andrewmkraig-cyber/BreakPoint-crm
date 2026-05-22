@@ -144,22 +144,15 @@ export function Sidebar({ width }: { width?: number } = {}) {
           spacing. The [@media(max-height:...)] variants shave one more
           notch off heights and label margins so every group fits on a
           short laptop display without scrolling. */}
-      <nav className="flex-1 overflow-y-auto p-2">
+      <nav className="flex flex-1 flex-col justify-between gap-y-1.5 overflow-y-auto p-2">
         {NAV_GROUPS.map((group, idx) => (
-          <div
-            key={group.title ?? `group-${idx}`}
-            className={
-              idx === 0
-                ? ""
-                : "mt-2 [@media(max-height:720px)]:mt-1.5"
-            }
-          >
+          <div key={group.title ?? `group-${idx}`}>
             {group.title && (
-              <div className="mb-0.5 px-3 pt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-court-sidebar-fg-dim">
+              <div className="mb-1 px-3 pt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-court-sidebar-fg-dim">
                 {group.title}
               </div>
             )}
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               {group.items.map((item) => (
                 <NavLink
                   key={item.href}

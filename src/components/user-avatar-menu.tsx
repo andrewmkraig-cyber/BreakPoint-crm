@@ -73,7 +73,7 @@ export function UserAvatarMenu() {
         aria-label="Account menu"
         aria-haspopup="menu"
         aria-expanded={open}
-        className="group inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-court-border bg-court-surface shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 hover:border-court-brand focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40"
+        className="group inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[rgb(var(--court-brand)/0.35)] bg-court-surface shadow-[0_0_0_1px_rgb(var(--court-brand)/0.18),0_0_22px_rgb(var(--court-brand)/0.22),0_12px_28px_rgba(0,0,0,0.35)] transition-all duration-150 ease-out hover:-translate-y-0.5 hover:border-court-brand focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40"
       >
         {showImage && imageUrl ? (
           <Image
