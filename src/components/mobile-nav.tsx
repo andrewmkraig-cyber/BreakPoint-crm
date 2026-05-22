@@ -13,10 +13,12 @@ import {
   Mail,
   Megaphone,
   Menu,
+  Moon,
   Phone,
   Receipt,
   Settings,
   StickyNote,
+  Sun,
   Trophy,
   User,
   Users,
@@ -27,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { BrandDisc } from "@/components/brand-mark";
 import { useMailContext } from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
+import { useCourtMode } from "@/lib/court-mode";
 
 // Mobile / narrow-viewport nav drawer. Below md the sidebar is
 // `hidden md:flex` so there's no nav at all — this hamburger fills
@@ -120,6 +123,11 @@ export function MobileNav() {
   const { unreadCount: mailUnread } = useMailContext();
   const { unreadCount: phoneUnread } = usePhoneContext();
   const totalUnread = mailUnread + phoneUnread;
+  // Light/Dark toggle - PWA only. The desktop topbar carries this control;
+  // on mobile it lives in this drawer (below Settings) so the topbar icon
+  // row stays on one line. Flips only the Light/Dark axis on the active
+  // court; the surface (Hard/Clay/Grass/Night) is untouched.
+  const { theme, toggleTheme } = useCourtMode();
 
   // Close drawer when the route changes — the user just navigated, no
   // reason to leave the menu hanging open over the new page. This catches
@@ -258,6 +266,23 @@ export function MobileNav() {
                   </ul>
                 </div>
               ))}
+              {/* Light/Dark toggle - sits below Settings. Mirrors the nav
+                  item chrome but is a button (toggles theme, no navigation).
+                  Drawer stays open so the user sees the theme flip apply. */}
+              <button
+                type="button"
+                onClick={() => toggleTheme()}
+                className="flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium text-court-sidebar-fg transition hover:bg-[var(--court-sidebar-active-bg)]/60"
+              >
+                {theme === "light" ? (
+                  <Moon className="h-4 w-4 shrink-0" />
+                ) : (
+                  <Sun className="h-4 w-4 shrink-0" />
+                )}
+                <span className="flex-1 text-left">
+                  {theme === "light" ? "Dark Mode" : "Light Mode"}
+                </span>
+              </button>
             </nav>
           </aside>
         </>

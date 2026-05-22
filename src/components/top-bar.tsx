@@ -90,20 +90,19 @@ export function TopBar() {
           used to close out this row is gone - the sidebar/drawer
           profile card is the single source for profile. */}
       <div className="flex h-14 items-center gap-3 md:h-auto">
-        {/* Light/Dark toggle - immediately left of the green + FAB.
-            Same h-10 w-10 icon-button vocabulary as the FAB + chat
-            buttons (rounded-full, brand border, brand-tint wash, hover
-            lift) so it reads as part of the cluster. Shows the Moon in
-            Light mode (click -> Dark) and the Sun in Dark mode
-            (click -> Light). Flips only the Light/Dark axis on the
-            active court; the surface (Hard/Clay/Grass/Night) is
-            untouched. */}
+        {/* Light/Dark toggle - DESKTOP ONLY (hidden below md). On the
+            mobile PWA this control moves into the hamburger drawer (below
+            Settings) so the topbar icon row stays on one line. Same h-10
+            w-10 icon-button vocabulary as the FAB + chat buttons. Shows
+            the Moon in Light mode (click -> Dark) and the Sun in Dark mode
+            (click -> Light). Flips only the Light/Dark axis on the active
+            court; the surface (Hard/Clay/Grass/Night) is untouched. */}
         <button
           type="button"
           onClick={toggleTheme}
           aria-label={nextThemeLabel}
           title={nextThemeLabel}
-          className="group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-court-brand bg-court-brand-tint text-court-brand-dark shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 hover:bg-court-brand/30 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40"
+          className="group relative hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-court-brand bg-court-brand-tint text-court-brand-dark shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 hover:bg-court-brand/30 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 md:inline-flex"
         >
           <span
             aria-hidden="true"
