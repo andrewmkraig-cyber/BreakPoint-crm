@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
-import { Bookmark, CalendarClock, ChevronDown, DollarSign, Handshake, Loader2, Search, UserX, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Bookmark, CalendarClock, ChevronDown, DollarSign, Handshake, Loader2, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { Pagination } from "@/components/pagination";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
@@ -143,12 +143,7 @@ function OwnerScopeSelect({
 export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q, counts, owner, otherUserName, error }: PipelineViewProps) {
   const router = useRouter();
   const params = useSearchParams();
-  const [query, setQuery] = useState(q);
-  const [isPending, startTransition] = useTransition();
-
-  useEffect(() => {
-    setQuery(q);
-  }, [q]);
+  const [, startTransition] = useTransition();
 
   // Bulk selection — rejectable rows only. Stores Placement.id so the
   // bulk handler can call rejectLocalPlacement directly without
@@ -283,13 +278,6 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
     return `/pipeline?${next.toString()}`;
   };
 
-  function onSubmitSearch(e: FormEvent) {
-    e.preventDefault();
-    startTransition(() => {
-      router.push(buildHref({ q: query, page: 1 }));
-    });
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex flex-col items-start gap-3 md:flex-row md:items-center">
@@ -306,27 +294,6 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
           />
         </div>
       </div>
-
-      <form
-        onSubmit={onSubmitSearch}
-        className="flex flex-col gap-2 rounded-xl border border-court-border/40 bg-court-surface p-3 shadow-sm md:flex-row md:items-center"
-      >
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by candidate, job, or client…"
-            // Same focus behaviour as the candidates list: input lifts from
-            // surface-subtle (deeper) to surface on focus — mode-aware depth
-            // change that still reads as "focused" in every palette.
-            className="w-full rounded-lg border border-transparent bg-court-surface-subtle py-2 pl-10 pr-3 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:bg-court-surface focus:outline-none"
-          />
-        </div>
-        <Button type="submit" size="md">
-          {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}
-        </Button>
-      </form>
 
       {/* Error panel keeps red semantics in every mode. */}
       {error && (
