@@ -66,6 +66,10 @@ export function LabeledTextarea({
   // existing callers (candidate detail page) are untouched; the New Job
   // Description field opts into the rectangular variant via this prop.
   frameClassName = INPUT_FRAME_CLASS,
+  // Extra classes for the inner <textarea>. Defaults to none so existing
+  // callers render identically; the New Job Description passes "rounded-xl"
+  // so the control's corners match its rectangular frame.
+  controlClassName,
 }: {
   label: string;
   value: string;
@@ -73,6 +77,7 @@ export function LabeledTextarea({
   rows?: number;
   placeholder?: string;
   frameClassName?: string;
+  controlClassName?: string;
 }) {
   return (
     <label className="block text-sm">
@@ -83,7 +88,7 @@ export function LabeledTextarea({
           rows={rows}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
-          className={`${INPUT_CONTROL_CLASS} resize-none text-sm leading-relaxed`}
+          className={cn(INPUT_CONTROL_CLASS, "resize-none text-sm leading-relaxed", controlClassName)}
         />
       </div>
     </label>

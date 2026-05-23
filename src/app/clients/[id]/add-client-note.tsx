@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
+
 export function AddClientNote({ clientId }: { clientId: string }) {
   const router = useRouter();
   const [text, setText] = useState("");
@@ -54,15 +56,16 @@ export function AddClientNote({ clientId }: { clientId: string }) {
       />
       <div className="mt-2 flex items-center justify-between">
         <span className="text-[11px] text-court-fg-muted">{text.length} chars</span>
-        <button
+        <Button
           type="button"
+          variant="primary"
+          size="sm"
           onClick={onAdd}
           disabled={!text.trim() || busy}
-          className="inline-flex items-center gap-1 rounded-md bg-brand px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
         >
           {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
           Add note
-        </button>
+        </Button>
       </div>
     </div>
   );

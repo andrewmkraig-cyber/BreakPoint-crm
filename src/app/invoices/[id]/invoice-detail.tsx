@@ -28,7 +28,7 @@ type Contact = { name: string; email: string; title?: string };
 const STATUS_PILL: Record<string, { label: string; tone: string }> = {
   DRAFT: { label: "Draft", tone: "bg-court-surface-subtle text-court-fg" },
   SENT: { label: "Sent", tone: "bg-amber-50 text-amber-800 border border-amber-200" },
-  PAID: { label: "Paid", tone: "bg-emerald-50 text-emerald-700 border border-emerald-200" },
+  PAID: { label: "Paid", tone: "bg-court-brand/20 text-court-brand border border-court-brand/40" },
   VOID: { label: "Void", tone: "bg-slate-100 text-slate-500 border border-slate-200" },
 };
 
@@ -440,7 +440,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               type="button"
               disabled={isPending}
               onClick={() => save()}
-              className="rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle disabled:opacity-60"
+              className="rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle disabled:opacity-60 dark:border-court-border dark:text-court-fg-muted"
             >
               Save draft
             </button>
@@ -448,7 +448,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               type="button"
               disabled={isPending}
               onClick={handleSend}
-              className="rounded-md bg-court-fg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-surface shadow-sm hover:bg-court-brand-dark disabled:opacity-60"
+              className="rounded-md bg-court-fg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-surface shadow-sm hover:bg-court-brand-dark disabled:opacity-60 dark:border-court-border dark:text-court-fg-muted"
             >
               Mark as sent
             </button>
@@ -456,7 +456,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               type="button"
               disabled={isPending || draftingEmail}
               onClick={handleEmailDraft}
-              className="rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle disabled:opacity-60"
+              className="rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle disabled:opacity-60 dark:border-court-border dark:text-court-fg-muted"
             >
               {draftingEmail ? "Opening…" : "Draft Email"}
             </button>
@@ -471,7 +471,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
                   return r;
                 });
               }}
-              className="ml-auto rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-700 hover:bg-red-100 disabled:opacity-60"
+              className="ml-auto rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-700 hover:bg-red-100 disabled:opacity-60 dark:border-red-800 dark:text-red-400"
             >
               Delete draft
             </button>

@@ -204,7 +204,7 @@ function AddPhoneInline({ candidateId }: { candidateId: string }) {
 
   if (!editing) {
     return (
-      <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+      <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-300">
         <span className="flex-1">No phone on file.</span>
         <button
           type="button"
