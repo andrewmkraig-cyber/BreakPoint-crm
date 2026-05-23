@@ -33,6 +33,15 @@ export const config = {
     // Also skip /pdfjs/* so the self-hosted pdf.worker is publicly fetchable
     // — Web Workers instantiated from a redirected script get blocked by
     // browsers, so we can't afford middleware interception here.
-    "/((?!api|sign-in|pdfjs|_next/static|_next/image|favicon.ico).*)",
+    //
+    // PWA assets MUST be excluded for the same reason. A service worker
+    // script is fetched with redirect mode "error": when the session has
+    // lapsed (background ~24h update checks, iOS PWA relaunch after the
+    // cookie expired) an un-excluded /sw.js 307s to the sign-in HTML, the
+    // browser rejects the update, and the worker can't refresh until the
+    // user re-authenticates. The manifest, icons, offline fallback, and
+    // brand marks are gated the same way and have no business behind auth,
+    // so they're excluded here too.
+    "/((?!api|sign-in|pdfjs|sw.js|manifest.json|offline|icons|brand|apple-touch-icon|favicon|ace-mark|_next/static|_next/image).*)",
   ],
 };
