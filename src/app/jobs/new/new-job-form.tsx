@@ -598,6 +598,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               value={description}
               onChange={setDescription}
               rows={10}
+              frameClassName={INPUT_FRAME_RECT_CLASS}
               placeholder="Blank canvas. Paste or write the job description — or drop a JD file above and let Claude reformat it into the BreakPoint format (A Bit About Us / Why Join Us / Job Details)."
             />
             {description.trim() && (

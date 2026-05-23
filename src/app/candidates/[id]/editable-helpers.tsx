@@ -62,17 +62,22 @@ export function LabeledTextarea({
   onChange,
   rows = 3,
   placeholder,
+  // Frame variant for the wrapper. Defaults to the pill (INPUT_FRAME_CLASS) so
+  // existing callers (candidate detail page) are untouched; the New Job
+  // Description field opts into the rectangular variant via this prop.
+  frameClassName = INPUT_FRAME_CLASS,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   rows?: number;
   placeholder?: string;
+  frameClassName?: string;
 }) {
   return (
     <label className="block text-sm">
       <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
-      <div className={`${INPUT_FRAME_CLASS} mt-1 w-full`}>
+      <div className={cn(frameClassName, "mt-1 w-full")}>
         <textarea
           value={value}
           rows={rows}
