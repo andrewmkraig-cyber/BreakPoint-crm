@@ -474,3 +474,8 @@ html[data-theme='light'] .ace-topbar-mark .ace-brand-disc {
   box-shadow: 0 4px 20px rgba(0,0,0,0.10), 0 0 0 2px rgba(90,150,66,0.22);
   transform: translateY(-1px);
 }
+@media (hover: none) {
+  .ace-input-pill:focus {
+    transform: none;
+  }
+}

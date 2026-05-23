@@ -10,4 +10,4 @@
 //   <input className={INPUT_PILL_CLASS} />
 //   <input className={`${INPUT_PILL_CLASS} w-full`} />  // append layout
 export const INPUT_PILL_CLASS =
-  "ace-input-pill rounded-full bg-court-surface/60 backdrop-blur-sm border border-court-border/50 px-4 py-2 text-court-fg placeholder:text-court-fg-muted focus:bg-court-surface/80 focus:border-transparent focus:ring-0 focus:outline-none";
+  "ace-input-pill rounded-full bg-court-surface-subtle border border-court-border/40 px-4 py-2 text-court-fg placeholder:text-court-fg-muted focus:border-transparent focus:ring-0 focus:outline-none";
