@@ -170,7 +170,7 @@ function MicrosoftTeamsConnectorRow() {
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Video
-            className={`h-3.5 w-3.5 ${expired ? "text-amber-600" : "text-emerald-600"}`}
+            className={`h-3.5 w-3.5 ${expired ? "text-amber-600" : "text-court-brand"}`}
             aria-hidden
           />
           <span className={`text-sm font-semibold ${expired ? "text-amber-900" : "text-court-fg"}`}>
@@ -249,7 +249,7 @@ function PushNotificationsRow() {
     <div className="flex min-h-0 items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <BellRing className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
+          <BellRing className="h-3.5 w-3.5 text-court-brand" aria-hidden />
           <span className="text-sm font-semibold text-court-fg">
             Push Notifications
           </span>
@@ -328,7 +328,7 @@ function SpotifyConnectorRow() {
     <div className="flex min-h-0 items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <Music className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
+          <Music className="h-3.5 w-3.5 text-court-brand" aria-hidden />
           <span className="text-sm font-semibold text-court-fg">Spotify</span>
           {!loading && (
             <StateLabel state={connected ? "connected" : "disconnected"} />
@@ -408,7 +408,7 @@ function ConnectorRow({
 function StateDot({ state }: { state: ConnectorState }) {
   const cls =
     state === "connected"
-      ? "bg-emerald-500"
+      ? "bg-court-brand"
       : state === "degraded"
         ? "bg-amber-500"
         : "bg-red-500";
@@ -424,7 +424,7 @@ function StateLabel({ state }: { state: ConnectorState }) {
         : "Disconnected";
   const cls =
     state === "connected"
-      ? "text-emerald-700"
+      ? "text-court-brand-dark"
       : state === "degraded"
         ? "text-amber-700"
         : "text-red-700";

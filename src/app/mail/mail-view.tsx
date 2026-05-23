@@ -2336,7 +2336,7 @@ export function ThreadDetail({
                 })
               }
               aria-label="Pop out thread into a floating window"
-              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+              className="hidden md:flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
             >
               <SquareArrowOutUpRight className="h-3 w-3" /> Pop out
             </button>

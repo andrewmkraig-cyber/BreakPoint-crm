@@ -92,7 +92,7 @@ export function QuoteOfDay() {
         <div
           role="dialog"
           aria-label="Quote of the Day"
-          className="absolute bottom-full left-0 z-20 mb-2 w-80 rounded-xl border border-court-border bg-court-surface p-4 shadow-xl dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_8px_32px_rgba(0,0,0,0.4)]"
+          className="absolute bottom-full left-0 z-20 mb-2 w-80 rounded-xl border border-court-border bg-court-surface p-4 shadow-[0_8px_40px_rgba(0,0,0,0.35),0_2px_12px_rgba(0,0,0,0.25)] dark:shadow-[0_8px_40px_rgba(0,0,0,0.55),0_2px_12px_rgba(0,0,0,0.35)]"
         >
           <div className="text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
             Quote of the Day

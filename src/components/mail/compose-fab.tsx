@@ -676,7 +676,7 @@ export function ComposeFAB() {
               ? { left: dragPos.x, top: dragPos.y, right: "auto" }
               : undefined
           }
-          className="fixed right-6 top-[100px] z-[1001] w-80 rounded-xl border border-court-border bg-court-surface shadow-2xl dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_8px_32px_rgba(0,0,0,0.4)]"
+          className="fixed right-6 top-[100px] z-[1001] w-80 rounded-xl border border-court-border bg-court-surface shadow-[0_8px_40px_rgba(0,0,0,0.35),0_2px_12px_rgba(0,0,0,0.25)] dark:shadow-[0_8px_40px_rgba(0,0,0,0.55),0_2px_12px_rgba(0,0,0,0.35)]"
         >
           {view === "menu" && (
             <div className="relative p-2">

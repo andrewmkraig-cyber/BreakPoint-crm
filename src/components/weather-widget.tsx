@@ -701,7 +701,7 @@ export function WeatherWidget() {
         <div
           role="dialog"
           aria-label="Forecast"
-          className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-court-border bg-court-surface p-4 shadow-xl dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_8px_32px_rgba(0,0,0,0.4)]"
+          className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-court-border bg-court-surface p-4 shadow-[0_8px_40px_rgba(0,0,0,0.35),0_2px_12px_rgba(0,0,0,0.25)] dark:shadow-[0_8px_40px_rgba(0,0,0,0.55),0_2px_12px_rgba(0,0,0,0.35)]"
         >
           {/* HEADER — location (reverse-geocoded from current
               coordinates) on the left, today's full date on the right.
