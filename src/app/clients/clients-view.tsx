@@ -147,7 +147,7 @@ function ClientGridCard({ card, quietTier }: { card: ClientCard; quietTier?: Qui
   return (
     <Link
       href={`/clients/${card.slug}`}
-      className="group relative flex cursor-pointer flex-col rounded-2xl border border-court-border/40 bg-court-surface p-5 transition hover:border-brand/40 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+      className="group relative flex cursor-pointer flex-col rounded-2xl border border-court-border/40 bg-court-surface p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
     >
       <div className="flex items-start gap-3">
         <ClientLogo domain={card.domain} name={card.name || "(unnamed)"} size={44} />
@@ -303,7 +303,6 @@ export function ClientsView({
   inactiveCards,
   quietCards = [],
   initialView = "grid",
-  verifiedCount = 0,
   error = null,
   otherUserId = null,
   otherUserName = null,
@@ -430,18 +429,6 @@ export function ClientsView({
           </div>
         </div>
       )}
-
-      <div className="mt-8 flex items-center justify-between gap-3 text-xs text-court-fg-muted">
-        <span>
-          {filtered.length} {filtered.length === 1 ? "client" : "clients"}
-          {query ? ` matching "${query}"` : ""}
-        </span>
-        {verifiedCount > 0 && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-brand-tint px-2 py-0.5 text-[11px] font-medium text-brand-dark">
-            <ShieldCheck /> {verifiedCount} verified
-          </span>
-        )}
-      </div>
     </div>
   );
 }
