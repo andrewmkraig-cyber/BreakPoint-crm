@@ -1160,7 +1160,7 @@ export function ClaudePanel() {
         const dropped = Array.from(e.dataTransfer.files);
         if (dropped.length > 0) void addFiles(dropped);
       }}
-      className="pointer-events-auto fixed flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_8px_32px_rgba(0,0,0,0.4)]"
+      className="pointer-events-auto fixed flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-[0_8px_40px_rgba(0,0,0,0.35),0_2px_12px_rgba(0,0,0,0.25)] dark:shadow-[0_8px_40px_rgba(0,0,0,0.55),0_2px_12px_rgba(0,0,0,0.35)]"
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,

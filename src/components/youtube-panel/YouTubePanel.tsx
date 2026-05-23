@@ -21,6 +21,7 @@ import {
 } from "@/components/youtube-panel/YouTubePanelProvider";
 import { useFloatingZ } from "@/lib/floating-z";
 import { Button } from "@/components/ui/button";
+import { TabStrip } from "@/components/ui/tab-strip";
 
 // Floating YouTube panel with three visual states:
 //   search    — query input + results list (no video selected)
@@ -951,7 +952,7 @@ export function YouTubePanel() {
       aria-label="YouTube"
       onPointerDownCapture={bringToFront}
       className={
-        "group pointer-events-auto fixed flex flex-col overflow-hidden border border-court-border bg-court-surface shadow-2xl dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_8px_32px_rgba(0,0,0,0.4)] " +
+        "group pointer-events-auto fixed flex flex-col overflow-hidden border border-court-border bg-court-surface shadow-[0_8px_40px_rgba(0,0,0,0.35),0_2px_12px_rgba(0,0,0,0.25)] dark:shadow-[0_8px_40px_rgba(0,0,0,0.55),0_2px_12px_rgba(0,0,0,0.35)] " +
         (minimized ? "rounded-lg" : "rounded-xl")
       }
       style={rootStyle}
@@ -1071,38 +1072,23 @@ export function YouTubePanel() {
                 otherwise the last search query. With no active
                 results the click only updates state; the next Search
                 click runs against the picked mode. */}
-            <div className="flex items-center gap-1">
-              {SEARCH_MODES.map((m) => {
-                const active = searchMode === m.value;
-                return (
-                  <button
-                    key={m.value}
-                    type="button"
-                    onClick={() => {
-                      if (m.value === searchMode) return;
-                      setSearchMode(m.value);
-                      if (channelView) {
-                        void openChannel(channelView.info, m.value);
-                      } else if (lastSearchedQuery) {
-                        void runSearch({
-                          modeOverride: m.value,
-                          queryOverride: lastSearchedQuery,
-                        });
-                      }
-                    }}
-                    aria-pressed={active}
-                    className={
-                      "rounded-md px-2.5 py-0.5 text-[11px] font-medium transition " +
-                      (active
-                        ? "bg-court-accent text-white"
-                        : "bg-court-surface-subtle text-court-fg-muted hover:text-court-fg")
-                    }
-                  >
-                    {m.label}
-                  </button>
-                );
-              })}
-            </div>
+            <TabStrip
+              ariaLabel="YouTube sort"
+              items={SEARCH_MODES.map((m) => ({ id: m.value, label: m.label }))}
+              activeId={searchMode}
+              onChange={(mode) => {
+                if (mode === searchMode) return;
+                setSearchMode(mode);
+                if (channelView) {
+                  void openChannel(channelView.info, mode);
+                } else if (lastSearchedQuery) {
+                  void runSearch({
+                    modeOverride: mode,
+                    queryOverride: lastSearchedQuery,
+                  });
+                }
+              }}
+            />
           </div>
 
           <div className="flex-1 overflow-y-auto">
