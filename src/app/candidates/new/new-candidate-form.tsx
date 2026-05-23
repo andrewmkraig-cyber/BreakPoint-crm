@@ -9,7 +9,7 @@ import { DocumentDropzone } from "@/components/document-dropzone";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { cn } from "@/lib/utils";
 import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
-import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
+import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import {
   checkCandidateEmail,
   createCandidate,
@@ -364,7 +364,7 @@ export function NewCandidateForm() {
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
       {/* Left: inputs */}
       <div className="space-y-6 lg:col-span-2">
-        <div className="rounded-xl border border-border bg-white shadow-sm">
+        <div className="rounded-xl border border-border bg-court-surface shadow-sm">
           <div className="border-b border-border px-5 py-3">
             <h2 className="font-serif text-base font-semibold text-ink">Resume</h2>
             <p className="text-xs text-muted-foreground">
@@ -400,7 +400,7 @@ export function NewCandidateForm() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-white shadow-sm">
+        <div className="rounded-xl border border-border bg-court-surface shadow-sm">
           <div className="border-b border-border px-5 py-3">
             <h2 className="font-serif text-base font-semibold text-ink">LinkedIn</h2>
             <p className="text-xs text-muted-foreground">
@@ -411,7 +411,7 @@ export function NewCandidateForm() {
             <Field label="Profile URL" type="url" value={linkedinUrl} onChange={onLinkedinChange} placeholder="https://linkedin.com/in/…" />
             <div>
               <label className="text-[11px] uppercase tracking-wider text-muted-foreground">Pasted profile text (optional)</label>
-              <div className={`${INPUT_FRAME_CLASS} mt-1 w-full`}>
+              <div className={`${INPUT_FRAME_RECT_CLASS} mt-1 w-full`}>
                 <textarea
                   value={pastedText}
                   onChange={(e) => setPastedText(e.target.value)}
@@ -437,7 +437,7 @@ export function NewCandidateForm() {
           <button
             type="button"
             onClick={onReset}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-medium text-ink-400 shadow-sm transition hover:text-ink"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-court-surface px-3 py-2 text-xs font-medium text-ink-400 shadow-sm transition hover:text-ink"
           >
             Clear and start over
           </button>
@@ -447,7 +447,7 @@ export function NewCandidateForm() {
 
       {/* Right: editable fields */}
       <div className="lg:col-span-3">
-        <div className="rounded-xl border border-border bg-white shadow-sm">
+        <div className="rounded-xl border border-border bg-court-surface shadow-sm">
           <div className="flex items-center justify-between border-b border-border px-5 py-3">
             <div>
               <h2 className="font-serif text-base font-semibold text-ink">Candidate fields</h2>
@@ -545,7 +545,7 @@ export function NewCandidateForm() {
                   </div>
                   <Link
                     href={`/candidates/${emailDuplicate.id}`}
-                    className="shrink-0 rounded-md border border-red-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-red-800 shadow-sm transition hover:bg-red-100"
+                    className="shrink-0 rounded-md border border-red-300 bg-court-surface px-2.5 py-1 text-[11px] font-semibold text-red-800 shadow-sm transition hover:bg-red-100"
                   >
                     View Profile
                   </Link>
@@ -569,7 +569,7 @@ export function NewCandidateForm() {
             </div>
             <div className="sm:col-span-2">
               <label className="text-[11px] uppercase tracking-wider text-muted-foreground">Notes</label>
-              <div className={`${INPUT_FRAME_CLASS} mt-1 w-full`}>
+              <div className={`${INPUT_FRAME_RECT_CLASS} mt-1 w-full`}>
                 <textarea
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
@@ -668,7 +668,7 @@ function Field({
           </span>
         )}
       </span>
-      <div className={`${INPUT_FRAME_CLASS} mt-1 w-full`}>
+      <div className={`${INPUT_FRAME_RECT_CLASS} mt-1 w-full`}>
         <input
           type={type}
           value={value}

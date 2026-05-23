@@ -16,4 +16,9 @@
 //   <input className={`${INPUT_CONTROL_CLASS} pl-10 pr-10 text-sm`} />
 export const INPUT_FRAME_CLASS = "court-input-frame";
 
+// Rectangular frame variant — same surface / border / focus glow as
+// INPUT_FRAME_CLASS, but .court-input-rect squares the pill off to a 0.75rem
+// radius. Used by the New Candidate / Job / Client forms.
+export const INPUT_FRAME_RECT_CLASS = "court-input-frame court-input-rect";
+
 export const INPUT_CONTROL_CLASS = "court-input-control";

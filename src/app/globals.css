@@ -484,6 +484,17 @@ html[data-theme='light'] .ace-topbar-mark .ace-brand-disc {
     align-items: center;
   }
 
+  /* Rectangular variant — opt-in via INPUT_FRAME_RECT_CLASS. Squares off the
+     9999px pill to a 0.75rem radius for the long stacked form fields on the
+     New Candidate / Job / Client pages, where the pill reads too rounded next
+     to the rounded-xl cards. !important so it wins over the base radius
+     regardless of source order within @layer components. Only the radius is
+     overridden; surface, border, and the focus glow stay shared with
+     .court-input-frame. */
+  .court-input-rect {
+    border-radius: 0.75rem !important;
+  }
+
   .court-input-frame::before,
   .court-input-frame::after {
     pointer-events: none;

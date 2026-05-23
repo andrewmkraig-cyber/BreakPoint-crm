@@ -9,7 +9,7 @@ import remarkGfm from "remark-gfm";
 import { LabeledTextarea } from "@/app/candidates/[id]/editable-helpers";
 import { createJob, extractFieldsFromGeneratedJd, generateJobDescriptionFromSource } from "@/app/jobs/new/actions";
 import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
-import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
+import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 const JOB_TYPES = ["Permanent", "Contract", "Contract to Hire", "Temporary", "Internship"] as const;
@@ -388,7 +388,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
         </p>
 
         <div className="mt-2">
-          <div className={`${INPUT_FRAME_CLASS} w-full`}>
+          <div className={`${INPUT_FRAME_RECT_CLASS} w-full`}>
             <input
               type="url"
               value={sourceUrl}
@@ -715,7 +715,7 @@ function CompactField({
   return (
     <label className="block text-sm">
       <span className={COMPACT_LABEL_CLASS}>{label}</span>
-      <div className={`${INPUT_FRAME_CLASS} mt-0.5 w-full`}>
+      <div className={`${INPUT_FRAME_RECT_CLASS} mt-0.5 w-full`}>
         <input
           type={type}
           value={value}
@@ -763,7 +763,7 @@ function CompactNumber({
   return (
     <label className="block text-sm">
       <span className={COMPACT_LABEL_CLASS}>{label}</span>
-      <div className={`${INPUT_FRAME_CLASS} mt-0.5 w-full`}>
+      <div className={`${INPUT_FRAME_RECT_CLASS} mt-0.5 w-full`}>
         <input
           type="number"
           min={min}
@@ -796,7 +796,7 @@ function SalaryField({
   return (
     <label className="block text-sm">
       <span className={COMPACT_LABEL_CLASS}>{label}</span>
-      <div className={cn(INPUT_FRAME_CLASS, "mt-0.5 w-full", invalid && "border-amber-300 bg-amber-50")}>
+      <div className={cn(INPUT_FRAME_RECT_CLASS, "mt-0.5 w-full", invalid && "border-amber-300 bg-amber-50")}>
         <input
           type="number"
           min={0}

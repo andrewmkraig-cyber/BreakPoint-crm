@@ -6,7 +6,7 @@ import { AlertTriangle, Globe, Loader2, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
+import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import {
   checkClientDomain,
   createClient,
@@ -236,7 +236,7 @@ export function NewClientForm() {
               <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Company URL</span>
               <div
                 className={cn(
-                  INPUT_FRAME_CLASS,
+                  INPUT_FRAME_RECT_CLASS,
                   "relative mt-1 w-full",
                   domainCheckStatus === "duplicate" && "border-red-300",
                 )}
@@ -369,7 +369,7 @@ export function NewClientForm() {
             <div className="sm:col-span-2">
               <label className="block text-sm">
                 <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Overview</span>
-                <div className={`${INPUT_FRAME_CLASS} mt-1 w-full`}>
+                <div className={`${INPUT_FRAME_RECT_CLASS} mt-1 w-full`}>
                   <textarea
                     value={form.overview}
                     onChange={(e) => setForm({ ...form, overview: e.target.value })}
@@ -449,7 +449,7 @@ function Field({
         {label}
         {required && <span className="ml-0.5 text-red-500">*</span>}
       </span>
-      <div className={`${INPUT_FRAME_CLASS} mt-1 w-full`}>
+      <div className={`${INPUT_FRAME_RECT_CLASS} mt-1 w-full`}>
         <input
           type={type}
           value={value}
