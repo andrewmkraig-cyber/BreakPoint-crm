@@ -6,6 +6,7 @@ RecruiterFlow (RF) is the system of record: all candidate / job / client / conta
 
 ## Stack
 
+
 - Next.js 14 (App Router) + TypeScript + Tailwind + shadcn/ui primitives
 - Prisma ORM + Neon Postgres
 - NextAuth (Google OAuth, restricted to `@breakpointtalent.com`)
