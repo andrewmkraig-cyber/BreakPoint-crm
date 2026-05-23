@@ -17,7 +17,6 @@ import {
 import { toast } from "sonner";
 
 import { SectionCard } from "@/app/candidates/[id]/editable-helpers";
-import { Button } from "@/components/ui/button";
 import {
   createNoteAttachedTo,
   deleteNote,
@@ -124,15 +123,14 @@ export function CandidateNotesPanel({
             className="w-full resize-vertical rounded-md border border-transparent bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
           <div className="mt-2 flex items-center justify-end">
-            <Button
+            <button
               type="button"
-              variant="primary"
-              size="sm"
               onClick={onAdd}
               disabled={!newNote.trim() || pending}
+              className="inline-flex items-center gap-1 rounded-md bg-court-brand px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:opacity-60"
             >
               <Plus className="h-3 w-3" /> Add note
-            </Button>
+            </button>
           </div>
         </div>
 

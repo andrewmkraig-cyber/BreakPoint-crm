@@ -4,7 +4,6 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Paperclip, Send } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { createNote } from "@/app/notes/actions";
 import type { Attachments } from "@/lib/notes/action-types";
 import { MultiAttachPicker } from "@/components/notes/multi-attach-picker";
@@ -93,16 +92,15 @@ export function NoteComposer() {
             <Paperclip className="h-3.5 w-3.5" />
             {attachCount > 0 ? `Attached (${attachCount})` : "Attach"}
           </button>
-          <Button
+          <button
             type="button"
-            variant="primary"
-            size="sm"
             onClick={onSave}
             disabled={pending || !body.trim()}
+            className="inline-flex items-center gap-1.5 rounded-md bg-court-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:opacity-60"
           >
             <Send className="h-3.5 w-3.5" />
             {pending ? "Saving..." : "Save"}
-          </Button>
+          </button>
         </div>
       </div>
 
