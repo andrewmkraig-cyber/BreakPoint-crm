@@ -138,7 +138,7 @@ function SendLaterPopover({
         zIndex: 2147483000,
         visibility: pos ? "visible" : "hidden",
       }}
-      className="w-72 rounded-xl border border-court-border bg-court-surface p-3 shadow-2xl"
+      className="w-72 rounded-xl backdrop-blur-md bg-court-surface/90 border border-court-border/40 p-3 shadow-[0_8px_32px_rgba(0,0,0,0.18),0_2px_8px_rgba(0,0,0,0.12)]"
     >
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-1.5 text-xs font-semibold text-court-fg">

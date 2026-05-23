@@ -94,7 +94,7 @@ export function EditWithClaudeMenu({
       {open && !isEditing && (
         <div
           role="menu"
-          className="absolute bottom-full left-0 z-[70] mb-1 w-64 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg"
+          className="absolute bottom-full left-0 z-[70] mb-1 w-64 overflow-hidden rounded-lg backdrop-blur-md bg-court-surface/90 border border-court-border/40 shadow-[0_8px_32px_rgba(0,0,0,0.18),0_2px_8px_rgba(0,0,0,0.12)]"
         >
           <ul className="py-1 text-sm">
             {OPTIONS.map((opt) => (

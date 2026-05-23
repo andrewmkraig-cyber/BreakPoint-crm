@@ -95,7 +95,7 @@ export function UserAvatarMenu() {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-xl border border-court-border bg-court-surface text-sm shadow-lg"
+          className="absolute right-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-xl backdrop-blur-md bg-court-surface/90 border border-court-border/40 text-sm shadow-[0_8px_32px_rgba(0,0,0,0.18),0_2px_8px_rgba(0,0,0,0.12)]"
         >
           <div className="px-4 pb-3 pt-3">
             <div className="truncate text-[13px] font-semibold text-court-fg">

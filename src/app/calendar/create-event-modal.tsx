@@ -189,7 +189,7 @@ export function CreateEventModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
+        className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-court-border backdrop-blur-sm bg-court-surface/95 shadow-[0_24px_64px_rgba(0,0,0,0.25),0_4px_16px_rgba(0,0,0,0.15)]"
       >
         <div className="flex items-start justify-between gap-3 border-b border-court-border px-5 py-2.5">
           <div>

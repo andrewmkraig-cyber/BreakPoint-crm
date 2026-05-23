@@ -62,7 +62,7 @@ export function RejectCandidateDialog({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-xl border border-court-border bg-court-surface p-5 shadow-2xl"
+        className="w-full max-w-md rounded-xl border border-court-border backdrop-blur-sm bg-court-surface/95 p-5 shadow-[0_24px_64px_rgba(0,0,0,0.25),0_4px_16px_rgba(0,0,0,0.15)]"
       >
         <div className="mb-3 flex items-start justify-between gap-3">
           <h2 className="font-serif text-base font-semibold text-court-fg">
