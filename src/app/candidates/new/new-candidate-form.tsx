@@ -573,7 +573,7 @@ export function NewCandidateForm() {
                 <textarea
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                  rows={5}
+                  rows={7}
                   placeholder="Short summary of the candidate's background, or internal recruiter notes."
                   className={`${INPUT_CONTROL_CLASS} resize-none text-sm leading-relaxed`}
                 />
