@@ -417,7 +417,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
         <div className="bg-court-surface rounded-2xl border border-court-border/40 p-6 space-y-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-court-brand text-white text-xs font-semibold flex items-center justify-center shrink-0">
+              <span className="w-6 h-6 rounded-full bg-court-surface border border-court-brand text-court-brand text-xs font-semibold flex items-center justify-center shrink-0">
                 1
               </span>
               <h2 className="font-semibold text-court-fg">Add Job Description</h2>
@@ -565,7 +565,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
         <div className="bg-court-surface rounded-2xl border border-court-border/40 p-6 space-y-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-court-brand text-white text-xs font-semibold flex items-center justify-center shrink-0">
+              <span className="w-6 h-6 rounded-full bg-court-surface border border-court-brand text-court-brand text-xs font-semibold flex items-center justify-center shrink-0">
                 2
               </span>
               <h2 className="font-semibold text-court-fg">Job Details</h2>
