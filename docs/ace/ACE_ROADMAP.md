@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-23 · Ace 65.0
+Last updated: 2026-05-23 · Ace 66.0
 
 ## Active Build Sequence
 
@@ -17,10 +17,10 @@ Notification toast polish (DONE Ace 59.0): SMS toast `MessageSquare` icon, actio
 ### Session 61.0 Status
 Profile / pipeline regression close-out + features (DONE Ace 61.0): split-view candidate Delete restored; Apply / Keep / Reject real-time stage pill (optimistic, holds until server confirm) + the flash-then-disappear follow-on fixed; Add Note button removed from all four candidate profile locations; stage button visibility aligned to spec in `pipeline-row-actions.tsx`; phone thread auto-scroll to bottom on open; CalendarEventDrawer reminder mode (hides Guests / Location / Meeting type / All day / Timezone, ET hard-coded with a comment to pull per-user tz when multi-user ships); scheduled send (Send Later) on every email surface (`ScheduledEmail` table + per-minute Vercel cron + Retry toast); dark luxury login redesign; PWA badge auto-fire fix (`2d0081e`, null badgeCount in `unread-counts.ts`, sw.js cache `v5`); Auto Night Mode (`0dd1e41`, `UserProfile.autoNightMode`, 7pm/7am ET flip). Favicon / tab counter verified already correct. Awaiting Andrew's browser verification of scheduled send, the PWA badge, and Auto Night Mode.
 
-### Next Up (after Ace 65.0)
+### Next Up (after Ace 66.0)
 
-1. **iOS-style input field pass.** Next session's first task. Give the search bar, the SMS composer, the Ace Assistant bar, and all text inputs a soft pill / glass treatment with lift-on-focus and spring easing. Inputs get their own visual standard, separate from the Button Standard - buttons stay `rounded-md`, inputs do NOT follow the button shape rule (see ACE_DESIGN.md, Input Field Treatment).
-2. **Liquid Glass floating-surface pass.** Targeted translucency on the topbar, popouts, panels, modals, and dropdowns only. This is NOT a full-app conversion - floating surfaces only. Lower priority than the input field pass (item 1).
+1. ~~**iOS-style input field pass.**~~ **DONE Ace 66.0** - shipped as the `court-input-frame` / `court-input-rect` system (pill on the search bar / SMS composer / Ace Assistant, rectangular on forms). See ACE_DESIGN.md, Input Field Treatment.
+2. ~~**Liquid Glass floating-surface pass.**~~ **DONE Ace 66.0** - translucency + glass shadow stacks on the topbar, dropdowns, popovers, and modals (floating surfaces only).
 3. **QuickBooks standalone page** (`/finances/quickbooks`, isolated from the Mercury-driven Finances surface, shows QB income / expenses / aging / P&L). Blocked on Intuit developer-app production-key approval (Austin's task) - cannot ship until the production key lands.
 4. **Quo setup wizard.** Guided Settings flow to connect Quo, configure the webhook URL, verify inbound SMS/call routing, confirm transcription is live.
 
@@ -91,6 +91,10 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 66.0 UI polish: input field treatment + Liquid Glass + New Job restructure + dark-mode buttons + list/table polish (May 23, 2026)
+
+Shipped the input field treatment pass (the `court-input-frame` pill / `court-input-rect` rectangular system in `globals.css`, paired via `INPUT_FRAME_CLASS` / `INPUT_CONTROL_CLASS` - pill on the search bar / SMS composer / Ace Assistant, rectangular on forms) and the Liquid Glass floating-surface pass (backdrop-blur + glass shadow stacks on the topbar, dropdowns, popovers, and modals; heavier glow on the Ace Assistant / YouTube / briefing tiles; YouTube tabs moved to TabStrip). Restructured the New Job page into two numbered section cards with a TabStrip source toggle, a Save to Ace CTA, dark-fill green-ring number badges, and a top-aligned header. Swept dark-mode button fixes across invoice / note / call / connector buttons (invoice sent/paid + draft-row outlined, Draft Email blue, note Add/Save solid green), migrated the New Candidate flow onto Court Mode tokens, and added a `storage`-event listener so iframes re-skin on theme toggle. List/table polish: distinct table headers on pipeline / applicants / jobs, client card shadows + footer removal, pipeline + jobs search restyled to the clients style, uniform settings Save buttons (floppy icon), and the glass Contact Info panel. Full detail in ACE_STATE.md under What Shipped in Ace 66.0. Next up: QuickBooks standalone page (blocked on Intuit prod key) and the Quo setup wizard.
 
 ## Completed - Ace 65.0 Button/color standard cleanup + cleanup-queue clear + dark-mode polish + sidebar card token + PWA icon (May 23, 2026)
 

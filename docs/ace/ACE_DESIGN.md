@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-05-23 · Ace 65.0
+Last updated: 2026-05-23 · Ace 66.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -325,5 +325,16 @@ Full token coverage on every page — no holdouts. Token names follow the same `
 ## Sidebar Profile Card Token (added Ace 65.0)
 - **`--court-sidebar-card` is a dedicated token for the sidebar profile card surface.** Added across all 8 Court Mode palettes (Hard / Clay / Grass / Night Court, light + dark each). The profile card previously borrowed a generic surface token that washed out against the deep-green sidebars on Grass and Night Court; the new token gives the card its own per-theme value so it reads with proper contrast on every palette. Use `--court-sidebar-card` for the sidebar profile card only - it is not a general surface token.
 
-## Input Field Treatment (forward-looking, slated Ace 66.0)
-- **Input fields get their own visual standard, separate from the Button Standard.** Buttons stay `rounded-md` per the Button Standard above. Text inputs do NOT follow the button shape rule - the next session's input-field pass gives search bars, the SMS composer, the Ace Assistant bar, and all text inputs a distinct soft pill / glass treatment (lift-on-focus, spring easing). When that pass lands this section becomes the source of truth for input shape; until then, treat it as the documented intent so no one squares inputs to match buttons.
+## Input Field Treatment (shipped Ace 66.0 - SOURCE OF TRUTH for input shape)
+- **Input fields have their own visual standard, separate from the Button Standard.** Buttons stay `rounded-md` per the Button Standard above; inputs do NOT follow the button shape rule.
+- **Two variants, one system.** Shared tokens live in `globals.css`: `court-input-frame` (the pill wrapper - surface fill, border, focus-within glow + 1px lift) and `court-input-control` (the transparent inner field), paired via the `INPUT_FRAME_CLASS` / `INPUT_CONTROL_CLASS` constants. `court-input-rect` squares the pill to a `0.75rem` radius for the rectangular variant.
+  - **Pill (`court-input-frame`)**: the search bar, the SMS composer, and the Ace Assistant bar.
+  - **Rectangular (`court-input-rect`)**: forms - New Candidate / New Job / New Client, settings inputs, and inline editable fields.
+- Do not square inputs to match buttons, and do not pill-shape form inputs.
+
+## Ace 66.0 Standards (added 2026-05-23 - PERMANENT)
+Mirrored in ACE_RULES.md. Permanent, apply to every surface.
+- **No full-width buttons** unless the button is a full-width form-submit CTA. Action buttons are `w-auto`.
+- **TabStrip is mandatory for grouped controls.** Any in-page filter, tab, time-range selector, or nav group uses `TabStrip` (`src/components/ui/tab-strip.tsx`). No hand-rolled button rows. The Clubhouse "This Week / Last Week" strip is the reference.
+- **Both-modes verification gates every button task.** Every button and interactive element is visually verified in BOTH light and dark mode across the Court themes before the task is done. Token compliance alone is not sufficient.
+- **Input Field Treatment (above) is the source of truth for input shape.** Forms use rectangular `court-input-rect`; the search bar, SMS composer, and Ace Assistant keep the pill `court-input-frame`.

@@ -1,10 +1,25 @@
 # ACE_STATE.md
-Last updated: 2026-05-23 · Ace 65.0
+Last updated: 2026-05-23 · Ace 66.0
 
 ## Current Status
-Current Version: Ace 65.0
+Current Version: Ace 66.0
 Last Shipped: 2026-05-23
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 66.0 (2026-05-23)
+
+A full UI-polish session: the input field treatment pass landed the `court-input-frame` / `court-input-rect` system, the Liquid Glass pass added translucency to floating surfaces, the New Job page was restructured, and a long sweep of dark-mode button fixes, Court Mode token migrations, and list-page / table polish shipped across the app.
+
+- **Input field treatment pass.** New shared input system in `globals.css`: `court-input-frame` (pill wrapper with surface fill, border, and a focus-within glow + 1px lift) and `court-input-control` (transparent inner field), paired via `INPUT_FRAME_CLASS` / `INPUT_CONTROL_CLASS`, plus `court-input-rect` for the squared `0.75rem` variant. Pill on the search bar, SMS composer, and Ace Assistant; rectangular on the forms (New Candidate / New Job / settings / inline editable fields). Iterations along the way: removed an early backdrop-blur for a cleaner solid fill, wrapped the tokens in `rgb()`, tuned the frame fill to be subtle-but-visible across all Court Modes, and removed a green tint that showed in light mode.
+- **Liquid Glass floating-surface pass.** Targeted translucency on floating surfaces only - topbar, dropdowns, popovers, and modals got `backdrop-blur` + glass shadow stacks. Heavier panel glow added to the Ace Assistant / YouTube / briefing tiles, and the YouTube panel tabs moved onto TabStrip. Not a full-app conversion - floating surfaces only.
+- **New Job page restructure.** Rebuilt into two numbered section cards (Add Job Description / Job Details), a TabStrip for the URL-vs-file source toggle, a "Save to Ace" primary CTA, and uniform dropdowns. The numbered badges render as dark-fill green rings (not solid green discs). Header lifted to the top of the page (removed extra top padding) to match Applicants / New Candidate, and the New Candidate two-column layout was evened up so both columns end on the same line.
+- **Dark-mode button fixes.** Invoice page buttons converted to outlined style in dark mode (Mark as sent / paid green outlined, Delete draft / Void red outlined, Draft Email differentiated blue); note Add/Save buttons set to solid theme-aware `bg-court-brand` green matching the Create job CTA; plus call / connector / amber-banner dark-mode fixes. Textarea corners squared to match the rect input frame.
+- **Court Mode token migration on the candidate flow.** The New Candidate page moved off hardcoded styling onto Court Mode tokens (matching the clients page), with a dark-mode card fix, rect inputs on the form, and a lengthened Notes textarea so the right card bottom aligns with the left column.
+- **Theme-toggle iframe re-skin.** Court Mode now listens for `storage` events so embedded iframes (e.g. the candidate resume split-view) re-skin immediately on a theme toggle instead of staying on the old palette until reload.
+- **List-page + table polish.** Table header rows on pipeline / applicants / jobs made visually distinct from body rows (`bg-court-surface` + a bottom border). Client cards got a resting + hover shadow/lift, and the "X clients / X verified" footer row was removed. Pipeline + jobs search restyled to the clean clients-page style (rounded input, icon inside, no green fill or submit button), kept on both pages.
+- **Settings + chrome polish.** Uniform Save buttons across the settings pages (personal info, branding, billing, BD limits) - outlined green with a floppy-disk icon, matching the BD Engine "Save targeting" button. The "My contact info" floating panel got the YouTube-panel glass treatment (`bg-court-surface/90` + `backdrop-blur-md` + the matching shadow stack).
+
+Next task: TBD - opens with Andrew's live verification of this session's UI passes in BOTH light and dark mode across the Court themes.
 
 ## What Shipped in Ace 65.0 (2026-05-23)
 

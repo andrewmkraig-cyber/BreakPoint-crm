@@ -1,5 +1,8 @@
 # ACE_RULES.md
-Last updated: 2026-05-23 · Ace 65.0
+Last updated: 2026-05-23 · Ace 66.0
+
+## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
+When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
 
 ## How to Start Every Session
 Every Ace session opens with this exact sequence:
@@ -110,6 +113,13 @@ Claude must ask Andrew a full set of scoping questions before writing any BD Pha
 - NEVER use `rounded-full` on text buttons. The ban applies to text buttons only. `rounded-full` is reserved for badges, chips, status pills, and avatars, and IS permitted on icon-only circular buttons, toggle switches, and FABs.
 
 This rule supersedes the older "All buttons are rounded-full" line in the Ace 24.0 Button System section of ACE_DESIGN.md. ACE_DESIGN.md carries the same Button Standard block — both docs hold the same source of truth.
+
+## Button + Input + TabStrip Standards (added 2026-05-23 · Ace 66.0 - PERMANENT)
+Mirrored in ACE_DESIGN.md. Permanent, apply to every surface.
+- **No full-width buttons** unless the button is a full-width form-submit CTA. Action buttons are `w-auto`. A button only stretches edge-to-edge when it submits the form it sits at the bottom of.
+- **TabStrip is mandatory for grouped controls.** Any in-page filter, tab, time-range selector, or nav group uses the `TabStrip` component (`src/components/ui/tab-strip.tsx`). No hand-rolled button rows. The Clubhouse "This Week / Last Week" strip is the reference.
+- **Both-modes verification gates every button task.** Every button and interactive element must be visually verified in BOTH light and dark mode across the Court themes before a button task is considered done. Token compliance alone is NOT sufficient - look at it in both modes.
+- **Input Field Treatment is source of truth for input shape.** Forms use the rectangular `court-input-rect` frame; the search bar, SMS composer, and Ace Assistant keep the pill `court-input-frame`. Buttons stay `rounded-md` (Button Standard); inputs do not follow the button shape rule.
 
 ## UI Consistency Rules (added 2026-05-12 · Ace 43.0)
 - **TabStrip is the single source of truth.** All tab strips and filter pill groups across the app route through `src/components/ui/tab-strip.tsx`. No one-off pill groups anywhere — if a new surface needs filter pills or a tabbed selector, use TabStrip (link mode for navigation, controlled mode for in-page state).
