@@ -3323,7 +3323,7 @@ function SubmittalResumeAttachmentPicker({
             className={cn(
               "flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-xs transition",
               selected === o.variant
-                ? "border-brand bg-brand-tint"
+                ? "border-court-brand bg-court-brand-tint"
                 : "border-court-border bg-court-surface hover:border-brand/40",
             )}
           >
