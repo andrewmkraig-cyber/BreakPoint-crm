@@ -158,7 +158,7 @@ export function SidebarProfileCard() {
       </div>
 
       {open && (
-        <div className="absolute bottom-0 left-full z-50 ml-2 w-72 overflow-hidden rounded-xl border border-court-border bg-court-surface text-sm shadow-lg">
+        <div className="absolute bottom-0 left-full z-50 ml-2 w-72 overflow-hidden rounded-xl border border-court-border bg-court-surface/90 text-sm backdrop-blur-md shadow-[0_8px_40px_rgba(0,0,0,0.35),0_2px_12px_rgba(0,0,0,0.25)] dark:shadow-[0_8px_40px_rgba(0,0,0,0.55),0_2px_12px_rgba(0,0,0,0.35)]">
           <div className="px-4 pb-2 pt-3">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
               My contact info

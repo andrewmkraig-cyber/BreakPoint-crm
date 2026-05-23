@@ -2,14 +2,13 @@
 
 import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Loader2, Upload, Trash2 } from "lucide-react";
+import { Loader2, Save, Upload, Trash2 } from "lucide-react";
 import {
   resetBrandingLogo,
   saveBrandingFields,
   uploadBrandingLogo,
 } from "@/app/settings/branding-actions";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 
 // Max matches MAX_LOGO_BYTES server-side — double-enforced so a user
 // gets feedback before a 500KB+ file leaves the browser.
@@ -175,15 +174,15 @@ export function BrandingView({
       </div>
 
       <div className="flex items-center justify-end gap-2">
-        <Button
+        <button
           type="button"
-          size="sm"
           onClick={onSave}
           disabled={saving}
+          className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
         >
-          {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           Save branding
-        </Button>
+        </button>
       </div>
 
       {signaturePreviewHtml && (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Loader2, Save } from "lucide-react";
 import { savePersonalInfo } from "@/app/settings/personal-info-actions";
 import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import {
@@ -132,9 +133,10 @@ export function PersonalInfoView({
           type="button"
           onClick={handleSave}
           disabled={pending}
-          className="rounded-md bg-court-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-court-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
         >
-          {pending ? "Saving..." : "Save"}
+          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          Save
         </button>
         {savedAt && !pending && !error && (
           <span className="text-xs text-court-fg-muted">Saved.</span>

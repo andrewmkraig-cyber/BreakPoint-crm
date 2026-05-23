@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Check, X, Loader2 } from "lucide-react";
+import { Pencil, Check, X, Loader2, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { updateBdOrgConfig, updateVerticalDailyCap } from "./actions";
 
@@ -193,9 +193,9 @@ function GlobalCapRow({ value }: { value: number }) {
               type="button"
               onClick={onSave}
               disabled={pending}
-              className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-2.5 py-1 text-xs font-semibold text-court-brand-dark transition hover:bg-court-brand/25 disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
             >
-              {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
               Save
             </button>
           </>
