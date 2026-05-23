@@ -379,7 +379,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
   }
 
   return (
-    <div className="max-w-[1100px] mx-auto px-6 py-8">
+    <div className="max-w-[1100px] mx-auto px-6 pb-8">
       {/* Page header: title + helper on the left, Cancel / Save to Ace on
           the right (Save to Ace mirrors the New Client form's primary CTA). */}
       <div className="flex items-start justify-between">

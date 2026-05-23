@@ -363,7 +363,7 @@ export function NewCandidateForm() {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
       {/* Left: inputs */}
-      <div className="space-y-6 lg:col-span-2">
+      <div className="flex flex-col gap-6 lg:col-span-2">
         <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
           <div className="border-b border-court-border px-5 py-3">
             <h2 className="font-serif text-base font-semibold text-court-fg">Resume</h2>
@@ -400,24 +400,24 @@ export function NewCandidateForm() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
+        <div className="flex flex-1 flex-col rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
           <div className="border-b border-court-border px-5 py-3">
             <h2 className="font-serif text-base font-semibold text-court-fg">LinkedIn</h2>
             <p className="text-xs text-court-fg-muted">
               URL is saved on the record. For full enrichment, paste the profile text below and re-parse from the resume dropzone (LinkedIn blocks automated URL fetches).
             </p>
           </div>
-          <div className="space-y-3 p-5">
+          <div className="flex flex-1 flex-col gap-3 p-5">
             <Field label="Profile URL" type="url" value={linkedinUrl} onChange={onLinkedinChange} placeholder="https://linkedin.com/in/…" />
-            <div>
+            <div className="flex flex-1 flex-col">
               <label className="text-[11px] uppercase tracking-wider text-court-fg-muted">Pasted profile text (optional)</label>
-              <div className={`${INPUT_FRAME_RECT_CLASS} mt-1 w-full`}>
+              <div className={`${INPUT_FRAME_RECT_CLASS} mt-1 w-full flex-1 items-stretch`}>
                 <textarea
                   value={pastedText}
                   onChange={(e) => setPastedText(e.target.value)}
                   rows={6}
                   placeholder="Paste the LinkedIn About / Experience section here — included in the next parse."
-                  className={`${INPUT_CONTROL_CLASS} resize-none font-sans text-sm leading-relaxed`}
+                  className={`${INPUT_CONTROL_CLASS} h-full resize-none font-sans text-sm leading-relaxed`}
                 />
               </div>
             </div>
