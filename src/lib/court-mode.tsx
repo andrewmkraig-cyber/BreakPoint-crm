@@ -207,6 +207,27 @@ export function CourtModeProvider({
     }
   }, [hydrated, surface, theme]);
 
+  // Cross-document Court Mode sync. The palette lives in localStorage, so
+  // when the parent window toggles surface/theme the change must also reach
+  // any same-origin iframe rendering Ace chrome — the candidates split-view
+  // profile and the job Matches profile both embed /candidates/[id], which
+  // mounts its own CourtModeProvider inside the iframe document. The
+  // `storage` event fires in *other* same-origin documents, so each open
+  // iframe re-reads the persisted values and re-stamps its own <html>. The
+  // window that made the change already updated itself via the setters and
+  // never receives its own event. Re-stamps the DOM directly (no setState,
+  // no write-back) so it can't echo another storage event and loop between
+  // documents.
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (e.key !== SURFACE_KEY && e.key !== THEME_KEY) return;
+      const stored = readStored();
+      applyToHtml(stored.surface, stored.theme);
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   const setSurface = useCallback((next: CourtSurface) => {
     setSurfaceState(next);
     if (typeof document !== "undefined") {
