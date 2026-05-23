@@ -508,7 +508,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
                       markInvoicePaidAction(props.id, paymentMethod as InvoicePaymentMethod),
                     );
                   }}
-                  className="rounded-md bg-court-fg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-surface shadow-sm hover:bg-court-brand-dark disabled:opacity-60"
+                  className="rounded-md border border-court-brand bg-transparent px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-brand shadow-sm hover:bg-court-brand/10 disabled:opacity-60"
                 >
                   Mark as paid
                 </button>
@@ -532,7 +532,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
                   if (!confirm("Void this invoice? It stays on file but won't count toward outstanding.")) return;
                   runAction(() => markInvoiceVoidAction(props.id));
                 }}
-                className="ml-auto rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-700 hover:bg-red-100 disabled:opacity-60"
+                className="ml-auto rounded-md border border-red-500 bg-transparent px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-600 hover:bg-red-500/10 disabled:opacity-60 dark:text-red-400"
               >
                 Void
               </button>

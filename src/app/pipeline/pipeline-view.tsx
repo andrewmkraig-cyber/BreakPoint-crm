@@ -370,7 +370,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-left text-sm">
             <DataTableHead>
-              <tr>
+              <tr className="bg-court-surface border-b border-court-border/60">
                 {showCheckboxCol && (
                   <DataTableHeaderCell align="center">
                     <input

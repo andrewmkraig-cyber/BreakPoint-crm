@@ -305,7 +305,7 @@ export function ApplicantsView({
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm">
             <DataTableHead>
-              <tr>
+              <tr className="bg-court-surface border-b border-court-border/60">
                 <DataTableHeaderCell align="center">
                   <input
                     ref={headerCheckboxRef}

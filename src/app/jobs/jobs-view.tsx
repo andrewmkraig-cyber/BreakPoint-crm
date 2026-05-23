@@ -180,7 +180,7 @@ export function JobsView(props: JobsViewProps) {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] text-left text-sm">
             <DataTableHead>
-              <tr>
+              <tr className="bg-court-surface border-b border-court-border/60">
                 <DataTableHeaderCell><SortableHeader label="Client" columnKey="client" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
                 <DataTableHeaderCell><SortableHeader label="Job Title" columnKey="title" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
                 <DataTableHeaderCell><SortableHeader label="Location" columnKey="location" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
