@@ -21,25 +21,20 @@ Profile / pipeline regression close-out + features (DONE Ace 61.0): split-view c
 
 1. ~~**iOS-style input field pass.**~~ **DONE Ace 66.0** - shipped as the `court-input-frame` / `court-input-rect` system (pill on the search bar / SMS composer / Ace Assistant, rectangular on forms). See ACE_DESIGN.md, Input Field Treatment.
 2. ~~**Liquid Glass floating-surface pass.**~~ **DONE Ace 66.0** - translucency + glass shadow stacks on the topbar, dropdowns, popovers, and modals (floating surfaces only).
-3. **QuickBooks standalone page** (`/finances/quickbooks`, isolated from the Mercury-driven Finances surface, shows QB income / expenses / aging / P&L). Blocked on Intuit developer-app production-key approval (Austin's task) - cannot ship until the production key lands.
-4. **Quo setup wizard.** Guided Settings flow to connect Quo, configure the webhook URL, verify inbound SMS/call routing, confirm transcription is live.
-
-On deck (this weekend): APRO / job order worksheet (structured intake form).
+Cancelled (Ace 66.0): QuickBooks standalone page, Quo setup wizard, and the APRO / job order worksheet - removed from the roadmap, not being built.
 
 ## Queued From Session
 Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.
 
 - **Unread badge count - Quo + reminder legs audit** - Gmail leg fixed in Ace 51 via push-driven refresh; the badge/title comprehensive fix (Next Up 1) covers the Quo + mail reliability legs. The reminder due-count leg still needs an audit pass before the aggregate badge is provably correct.
 - **Search expansion map** - geocoded map visualization over the Candidate Sourcing Surface.
-- **Mercury + QuickBooks integration follow-through** - Mercury feed live for the Finances module since Ace 46; QuickBooks sync + variable-cost categorization still pending (see QuickBooks standalone page, Next Up 4).
+- **Mercury + QuickBooks integration follow-through** - Mercury feed live for the Finances module since Ace 46; QuickBooks sync + variable-cost categorization still pending.
 
 Completed this session (Ace 63.0), moved out of this list: UnderlineTabLink canonical helper, the + New menu New Event + New Reminder entries, Notification read-state sync for Quo, tighter applied-jobs strip, JD/email markdown architecture verification, Bulk email Phase 2 (scheduled send + throttle), and the Admin edit UI for ToolExpense rows.
 
 ## Non-Urgent
 Build soon, lower priority than the active sequence above.
 
-- **APRO / job order worksheet** - structured intake form. On deck this weekend (see Next Up).
-- **Quo setup wizard** - guided Settings flow to connect Quo, configure the webhook URL, verify inbound SMS/call routing, confirm transcription is live. Promoted to Next Up.
 - **CallLog read/unread model** - add a read/unread state to CallLog so missed calls can increment the Phone badge. No schema exists today (CallLog carries no read/unread field), so this needs a schema addition before the Phone badge can reflect missed calls.
 
 Cancelled 2026-05-21 (Ace 63.0) - all other non-urgent backlog: reminders badge leg wiring, invite flow in Settings, LinkedIn import via RapidAPI, Slack sidebar panel, DocuSign auto-import, invoicing + QuickBooks + Mercury, GPT as second AI provider, Spotify podcasts tab, news feed per-tab refresh button, commission calculator, stock ticker strip, scoreboard widget, Ace launch countdown, Microsoft Teams video interviews, resume text view with search highlighting, resizable split-view divider on /candidates, Market Insights, Stalled Deals card.
@@ -47,7 +42,7 @@ Cancelled 2026-05-21 (Ace 63.0) - all other non-urgent backlog: reminders badge 
 ## Queued Specs — Not Yet Prompted
 Slotted in the Active Build Sequence but each needs a session-opening prompt before implementation. Full specs to be added next session; one-line stubs below for handoff.
 
-- **QB — QuickBooks standalone page** (`/finances/quickbooks`). Isolated from the existing Finances page so the QuickBooks-sourced view (income / expenses / aging / P&L) doesn't mingle with the Mercury-driven Finances surface. Lives behind the existing OPS sidebar entry next to Finances.
+_(none currently queued)_
 
 ## Cleanup
 Do alongside other work.
