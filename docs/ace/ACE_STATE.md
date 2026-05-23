@@ -1,10 +1,27 @@
 # ACE_STATE.md
-Last updated: 2026-05-22 · Ace 64.0
+Last updated: 2026-05-23 · Ace 65.0
 
 ## Current Status
-Current Version: Ace 64.0
-Last Shipped: 2026-05-22
+Current Version: Ace 65.0
+Last Shipped: 2026-05-23
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 65.0 (2026-05-23)
+
+Button/color standard cleanup closed out (the fix pass the Ace 64.0 audit surfaced), the deferred cleanup queue cleared (branch kill, tenant-scoping, Sentry N+1), and a dark-mode polish pass plus the sidebar profile card token and PWA icon.
+
+- Button / color standard cleanup (audit items 1A/1B + 2A): removed `rounded-full` from text buttons, converted several one-off buttons to shared Button variants, and replaced the remaining hardcoded hex with Court Mode tokens. Follow-up fixes after first review: phone Call buttons switched to solid filled green, the connector-banner Reconnect button squared to `rounded-md`, and Upload Resume set to the blue outline treatment (`border-blue-500 text-blue-600`).
+- `design/phase-1` branch deleted (abandoned, never merged).
+- `src/lib/recruiterflow/` confirmed nonexistent - the MANUAL "delete the directory" cleanup item is a no-op, no action needed.
+- SmsMessage / CallLog tenant-scoping: 9 query sites fixed across 5 files, all now org-scoped by organizationId.
+- CallTranscript / AiWorkspaceMessage tenant-scoping completed (closes the rest of the cleanup-queue tenant-scoping line).
+- Sentry N+1 fixes: 3 genuine N+1s fixed - bulk-actions placement lookup, import-csv candidate lookup, and match-by-name lookup - all converted to batched `findMany`.
+- Dark-mode glow added to floating popovers: briefing tiles, Ace Assistant, YouTube panel, and the + New dropdown.
+- Dark-mode tone-downs: skills chips, the candidate search selected row, and keyword highlight pills.
+- Sidebar profile card fix: new `--court-sidebar-card` token added across all 8 themes, fixing the washed-out card on Grass and Night Court.
+- PWA icon regenerated to match the topbar Ace logomark (dark disc, green arc).
+
+Next task: iOS-style input field pass - soft pill / glass treatment, lift-on-focus, spring easing for the search bar, SMS composer, Ace Assistant bar, and all text inputs.
 
 ## What Shipped in Ace 64.0 (2026-05-22)
 

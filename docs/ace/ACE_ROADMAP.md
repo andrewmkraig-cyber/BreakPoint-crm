@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-22 · Ace 64.0
+Last updated: 2026-05-23 · Ace 65.0
 
 ## Active Build Sequence
 
@@ -17,11 +17,11 @@ Notification toast polish (DONE Ace 59.0): SMS toast `MessageSquare` icon, actio
 ### Session 61.0 Status
 Profile / pipeline regression close-out + features (DONE Ace 61.0): split-view candidate Delete restored; Apply / Keep / Reject real-time stage pill (optimistic, holds until server confirm) + the flash-then-disappear follow-on fixed; Add Note button removed from all four candidate profile locations; stage button visibility aligned to spec in `pipeline-row-actions.tsx`; phone thread auto-scroll to bottom on open; CalendarEventDrawer reminder mode (hides Guests / Location / Meeting type / All day / Timezone, ET hard-coded with a comment to pull per-user tz when multi-user ships); scheduled send (Send Later) on every email surface (`ScheduledEmail` table + per-minute Vercel cron + Retry toast); dark luxury login redesign; PWA badge auto-fire fix (`2d0081e`, null badgeCount in `unread-counts.ts`, sw.js cache `v5`); Auto Night Mode (`0dd1e41`, `UserProfile.autoNightMode`, 7pm/7am ET flip). Favicon / tab counter verified already correct. Awaiting Andrew's browser verification of scheduled send, the PWA badge, and Auto Night Mode.
 
-### Next Up (after Ace 64.0)
+### Next Up (after Ace 65.0)
 
-1. **Button / color standard cleanup.** Fix the pill-shaped text buttons (audit items 1A/1B) and the 4 hardcoded hex colors (audit item 2A). The button/color audit shipped in Ace 64.0; this is the fix pass it surfaced.
-2. **Legacy render path retirement Phase 1.** Audit scripts committed, backfill not yet started.
-3. **QuickBooks standalone page** (`/finances/quickbooks`, isolated from the Mercury-driven Finances surface, shows QB income / expenses / aging / P&L).
+1. **iOS-style input field pass.** Next session's first task. Give the search bar, the SMS composer, the Ace Assistant bar, and all text inputs a soft pill / glass treatment with lift-on-focus and spring easing. Inputs get their own visual standard, separate from the Button Standard - buttons stay `rounded-md`, inputs do NOT follow the button shape rule (see ACE_DESIGN.md, Input Field Treatment).
+2. **Liquid Glass floating-surface pass.** Targeted translucency on the topbar, popouts, panels, modals, and dropdowns only. This is NOT a full-app conversion - floating surfaces only. Lower priority than the input field pass (item 1).
+3. **QuickBooks standalone page** (`/finances/quickbooks`, isolated from the Mercury-driven Finances surface, shows QB income / expenses / aging / P&L). Blocked on Intuit developer-app production-key approval (Austin's task) - cannot ship until the production key lands.
 4. **Quo setup wizard.** Guided Settings flow to connect Quo, configure the webhook URL, verify inbound SMS/call routing, confirm transcription is live.
 
 On deck (this weekend): APRO / job order worksheet (structured intake form).
@@ -52,11 +52,11 @@ Slotted in the Active Build Sequence but each needs a session-opening prompt bef
 ## Cleanup
 Do alongside other work.
 
-- **Sentry N+1 fixes** — ACE-CRM-5 (37 events), ACE-CRM-6 (28), ACE-CRM-7 (2), ACE-CRM-9 (1), ACE-CRM-A (1). Fix via Prisma include eager-loading.
+- **Sentry N+1 fixes** — ACE-CRM-5 (37 events), ACE-CRM-6 (28), ACE-CRM-7 (2), ACE-CRM-9 (1), ACE-CRM-A (1). Fix via Prisma include eager-loading. **DONE Ace 65.0** - audit found 3 genuine N+1s (bulk-actions placement lookup, import-csv candidate lookup, match-by-name lookup), all converted to batched `findMany`.
 - **Compound-unique widening** — 3 Placement compound uniques missing organizationId.
-- **SmsMessage / CallLog / CallTranscript / AiWorkspaceMessage tenant-scoping**.
+- **SmsMessage / CallLog / CallTranscript / AiWorkspaceMessage tenant-scoping**. **DONE Ace 65.0** - SmsMessage / CallLog covered by 9 query sites fixed across 5 files; CallTranscript / AiWorkspaceMessage scoping completed.
 - **MANUAL** — delete `RECRUITERFLOW_API_KEY` from `.env.local` and GitHub Actions secrets.
-- **MANUAL** — delete `src/lib/recruiterflow/` directory entirely.
+- **MANUAL** — delete `src/lib/recruiterflow/` directory entirely. **DONE Ace 65.0** - confirmed nonexistent, no-op.
 - **Postgres search indexes** — already in active sequence above; listed here for completeness.
 
 ## Future Ideas
@@ -91,6 +91,10 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 65.0 Button/color standard cleanup + cleanup-queue clear + dark-mode polish + sidebar card token + PWA icon (May 23, 2026)
+
+Closed the button/color standard cleanup (the fix pass the Ace 64.0 audit surfaced): removed `rounded-full` from text buttons, converted several one-offs to shared Button variants, and replaced the remaining hardcoded hex with Court Mode tokens; follow-up review fixes set phone Call buttons to solid filled green, squared the connector-banner Reconnect button to `rounded-md`, and set Upload Resume to the blue outline treatment. Cleared the deferred cleanup queue: deleted the abandoned `design/phase-1` branch (never merged), confirmed `src/lib/recruiterflow/` is already nonexistent (the MANUAL delete-directory item is a no-op), completed SmsMessage / CallLog tenant-scoping (9 query sites across 5 files, all org-scoped) plus CallTranscript / AiWorkspaceMessage scoping, and fixed 3 genuine Sentry N+1s (bulk-actions placement lookup, import-csv candidate lookup, match-by-name lookup, all batched to `findMany`). Shipped a dark-mode polish pass: glow added to floating popovers (briefing tiles, Ace Assistant, YouTube panel, + New dropdown) and tone-downs on skills chips, the candidate search selected row, and keyword highlight pills. Also added the `--court-sidebar-card` token across all 8 themes (fixes the washed-out sidebar profile card on Grass and Night Court) and regenerated the PWA icon to match the topbar Ace logomark (dark disc, green arc). The legacy render path retirement item was removed from the roadmap this session - abandoned, not being done. Full detail in ACE_STATE.md under What Shipped in Ace 65.0. Next up: the iOS-style input field pass.
 
 ## Completed - Ace 64.0 Push delivery + badge reliability fixes + connectors cleanup + mobile/topbar pass + button/color audit (May 22, 2026)
 

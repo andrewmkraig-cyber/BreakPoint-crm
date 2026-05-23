@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-05-22 · Ace 64.0
+Last updated: 2026-05-23 · Ace 65.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -321,3 +321,9 @@ Full token coverage on every page — no holdouts. Token names follow the same `
 
 ## Calendar Reminder-Mode Drawer (added Ace 61.0)
 - **Reminder mode hides event-only fields.** When `CalendarEventDrawer` is in reminder mode it hides Guests, Location, Meeting type, All day, and Timezone - a reminder is a personal time-anchored nudge, not a meeting. Time is hard-coded to ET with a code comment to pull the per-user timezone once MULTI-USER ships.
+
+## Sidebar Profile Card Token (added Ace 65.0)
+- **`--court-sidebar-card` is a dedicated token for the sidebar profile card surface.** Added across all 8 Court Mode palettes (Hard / Clay / Grass / Night Court, light + dark each). The profile card previously borrowed a generic surface token that washed out against the deep-green sidebars on Grass and Night Court; the new token gives the card its own per-theme value so it reads with proper contrast on every palette. Use `--court-sidebar-card` for the sidebar profile card only - it is not a general surface token.
+
+## Input Field Treatment (forward-looking, slated Ace 66.0)
+- **Input fields get their own visual standard, separate from the Button Standard.** Buttons stay `rounded-md` per the Button Standard above. Text inputs do NOT follow the button shape rule - the next session's input-field pass gives search bars, the SMS composer, the Ace Assistant bar, and all text inputs a distinct soft pill / glass treatment (lift-on-focus, spring easing). When that pass lands this section becomes the source of truth for input shape; until then, treat it as the documented intent so no one squares inputs to match buttons.
