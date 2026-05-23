@@ -460,22 +460,73 @@ html[data-theme='light'] .ace-topbar-mark .ace-brand-disc {
   z-index: 0;
 }
 
-/* iOS-style input pill. The spring transition (overshoot easing) and the
-   lift + dual-shadow focus glow can't be expressed in Tailwind utilities,
-   so they live here; the INPUT_PILL_CLASS string in src/components/ui/input.tsx
-   carries the rest (radius, surface, border, padding). The focus box-shadow
-   pairs a soft drop shadow with a 2px brand-green ring (90 150 66 = #5A9642)
-   and overrides the global *:focus-visible outline via higher specificity. */
-.ace-input-pill {
-  transition: all 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.ace-input-pill:focus {
-  outline: none;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.10), 0 0 0 2px rgba(90,150,66,0.22);
-  transform: translateY(-1px);
-}
-@media (hover: none) {
-  .ace-input-pill:focus {
-    transform: none;
+/* Court input frame + control. The pill surface/border and the focus glow
+   (brand-tinted border, brand ring, soft halo, 1px lift) live on a wrapper
+   element so :focus-within lifts the whole frame when the inner field is
+   focused — letting an icon-padded <input> or an auto-growing <textarea>
+   share identical chrome. The inner control is transparent + borderless.
+   INPUT_FRAME_CLASS / INPUT_CONTROL_CLASS in src/components/ui/input.tsx
+   point at these classes. Kept in @layer components so per-call Tailwind
+   utilities (pl-10 / pr-10 for search-icon clearance, text-sm for the
+   composers) still win over the control's padding + font-size. color-mix
+   derives every tint from --court-brand so all 8 Court Mode palettes
+   resolve their own accent. */
+@layer components {
+  .court-input-frame {
+    border-radius: 9999px;
+    background: var(--court-surface-subtle);
+    border: 1px solid color-mix(in srgb, var(--court-border) 40%, transparent);
+    transition:
+      transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 180ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      border-color 180ms ease;
+    display: flex;
+    align-items: center;
+  }
+
+  .court-input-frame::before,
+  .court-input-frame::after {
+    pointer-events: none;
+  }
+
+  .court-input-frame:focus-within {
+    border-color: color-mix(in srgb, var(--court-brand) 55%, var(--court-border));
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--court-brand) 35%, transparent),
+      0 0 18px color-mix(in srgb, var(--court-brand) 22%, transparent);
+    transform: translateY(-1px);
+  }
+
+  @media (hover: none) {
+    .court-input-frame:focus-within {
+      transform: none;
+    }
+  }
+
+  /* Disabled dimming for the SMS composer (replaces the old
+     `disabled:bg-court-surface-subtle/60` utility): when the inner
+     control is disabled, fade the whole frame and show the no-drop cursor. */
+  .court-input-frame:has(:disabled) {
+    opacity: 0.6;
+  }
+
+  .court-input-control {
+    width: 100%;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: var(--court-text, var(--court-fg));
+    font-size: 16px;
+    -webkit-appearance: none;
+    appearance: none;
+    padding: 0.5rem 1rem;
+  }
+
+  .court-input-control:disabled {
+    cursor: not-allowed;
+  }
+
+  .court-input-control::placeholder {
+    color: var(--court-fg-muted);
   }
 }

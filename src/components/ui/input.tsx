@@ -1,13 +1,19 @@
-// Shared input styling tokens. Mirrors the CLAUDE_PILL_CLASS pattern in
-// button.tsx: a single exported className string so every "iOS-style"
-// text field across the app reads identically and a restyle happens in
-// one place. Pairs with the `.ace-input-pill` utility in globals.css,
-// which carries the spring transition + focus glow that can't be
-// expressed in Tailwind utilities alone.
+// Shared input styling tokens. Two classes that pair with the
+// .court-input-frame / .court-input-control rules in globals.css:
+//
+//   INPUT_FRAME_CLASS   → the pill wrapper. Carries the surface, border,
+//                         and the :focus-within glow (brand-tinted border,
+//                         brand ring, soft halo, 1px lift) so the whole
+//                         frame reacts when the inner field is focused.
+//   INPUT_CONTROL_CLASS → the inner field. Transparent + borderless, fills
+//                         the frame; works for <input> and <textarea> alike.
 //
 // Usage:
-//   import { INPUT_PILL_CLASS } from "@/components/ui/input";
-//   <input className={INPUT_PILL_CLASS} />
-//   <input className={`${INPUT_PILL_CLASS} w-full`} />  // append layout
-export const INPUT_PILL_CLASS =
-  "ace-input-pill rounded-full bg-court-surface-subtle border border-court-border/40 px-4 py-2 text-court-fg placeholder:text-court-fg-muted focus:border-transparent focus:ring-0 focus:outline-none";
+//   <div className={INPUT_FRAME_CLASS}>
+//     <input className={INPUT_CONTROL_CLASS} />
+//   </div>
+// Append icon-clearance / sizing utilities to either as needed, e.g.
+//   <input className={`${INPUT_CONTROL_CLASS} pl-10 pr-10 text-sm`} />
+export const INPUT_FRAME_CLASS = "court-input-frame";
+
+export const INPUT_CONTROL_CLASS = "court-input-control";

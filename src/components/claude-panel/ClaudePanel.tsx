@@ -13,7 +13,7 @@ import {
 import { useFloatingZ } from "@/lib/floating-z";
 import { useComposerManager } from "@/lib/composer-manager";
 import { Button } from "@/components/ui/button";
-import { INPUT_PILL_CLASS } from "@/components/ui/input";
+import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import {
   CopyButton,
   EmailThisButton,
@@ -1332,42 +1332,44 @@ export function ClaudePanel() {
           >
             <Paperclip className="h-4 w-4" />
           </button>
-          <textarea
-            ref={textareaRef}
-            rows={2}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onPaste={(e) => {
-              // Pull image blobs out of the clipboard so Cmd+V on a
-              // screenshot drops it into the composer. Non-file paste
-              // (plain text) falls through to the textarea's default
-              // handler — we only preventDefault when we actually
-              // claim a file.
-              const items = e.clipboardData?.items;
-              if (!items) return;
-              const files: File[] = [];
-              for (let i = 0; i < items.length; i++) {
-                const it = items[i];
-                if (it.kind === "file") {
-                  const f = it.getAsFile();
-                  if (f) files.push(f);
+          <div className={`${INPUT_FRAME_CLASS} flex-1 min-w-0`}>
+            <textarea
+              ref={textareaRef}
+              rows={2}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onPaste={(e) => {
+                // Pull image blobs out of the clipboard so Cmd+V on a
+                // screenshot drops it into the composer. Non-file paste
+                // (plain text) falls through to the textarea's default
+                // handler — we only preventDefault when we actually
+                // claim a file.
+                const items = e.clipboardData?.items;
+                if (!items) return;
+                const files: File[] = [];
+                for (let i = 0; i < items.length; i++) {
+                  const it = items[i];
+                  if (it.kind === "file") {
+                    const f = it.getAsFile();
+                    if (f) files.push(f);
+                  }
                 }
-              }
-              if (files.length > 0) {
-                e.preventDefault();
-                void addFiles(files);
-              }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-            placeholder="Message Ace…"
-            style={{ touchAction: "manipulation" }}
-            className={`${INPUT_PILL_CLASS} min-h-[44px] flex-1 resize-none text-sm`}
-          />
+                if (files.length > 0) {
+                  e.preventDefault();
+                  void addFiles(files);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              placeholder="Message Ace…"
+              style={{ touchAction: "manipulation" }}
+              className={`${INPUT_CONTROL_CLASS} min-h-[44px] resize-none text-sm`}
+            />
+          </div>
           <Button
             type="button"
             variant="primary"

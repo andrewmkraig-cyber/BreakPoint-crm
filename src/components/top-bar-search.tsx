@@ -10,7 +10,7 @@ import {
   type QuickSearchRow,
 } from "@/app/candidates/actions";
 import { setCandidateNavList } from "@/lib/candidate-nav";
-import { INPUT_PILL_CLASS } from "@/components/ui/input";
+import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 
 // Phase 5.4: global quick-search across candidates + clients + contacts.
 // Lives in the TopBar, visible on every route. Debounced 300ms. Up to
@@ -174,27 +174,29 @@ export function TopBarSearch() {
   return (
     <div ref={containerRef} className="relative w-full">
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
-        <input
-          ref={inputRef}
-          type="search"
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setIsOpen(true);
-          }}
-          onFocus={() => setIsOpen(true)}
-          onKeyDown={onKeyDown}
-          placeholder="Search"
-          aria-label="Global search"
-          // Autocomplete off + unusual name stops Chrome from filling this
-          // with the recruiter's stored profile.
-          autoComplete="off"
-          name="__breakpoint-quick-search"
-          className={`${INPUT_PILL_CLASS} w-full overflow-hidden text-ellipsis whitespace-nowrap pl-10 pr-10 text-sm`}
-        />
+        <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
+        <div className={INPUT_FRAME_CLASS}>
+          <input
+            ref={inputRef}
+            type="search"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setIsOpen(true);
+            }}
+            onFocus={() => setIsOpen(true)}
+            onKeyDown={onKeyDown}
+            placeholder="Search"
+            aria-label="Global search"
+            // Autocomplete off + unusual name stops Chrome from filling this
+            // with the recruiter's stored profile.
+            autoComplete="off"
+            name="__breakpoint-quick-search"
+            className={`${INPUT_CONTROL_CLASS} overflow-hidden text-ellipsis whitespace-nowrap pl-10 pr-10 text-sm`}
+          />
+        </div>
         {isSearching && (
-          <Loader2 className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-court-fg-muted" />
+          <Loader2 className="pointer-events-none absolute right-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 animate-spin text-court-fg-muted" />
         )}
       </div>
 

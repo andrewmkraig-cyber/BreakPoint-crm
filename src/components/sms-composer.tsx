@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Plus, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { INPUT_PILL_CLASS } from "@/components/ui/input";
+import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 import { normalizeToE164 } from "@/lib/rf-payload-shapes";
 import {
@@ -104,20 +104,22 @@ export function SmsComposer({
             because input flex-1 + Send + Quo can't all fit in <300px
             of sidebar. Stacking guarantees Send stays visible at any
             viewport. */}
-        <input
-          type="text"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void onSend();
-            }
-          }}
-          placeholder={toNumber ? "Type a text…" : "No phone on file"}
-          disabled={!toNumber || sending}
-          className={`${INPUT_PILL_CLASS} w-full text-sm disabled:bg-court-surface-subtle/60`}
-        />
+        <div className={`${INPUT_FRAME_CLASS} w-full`}>
+          <input
+            type="text"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void onSend();
+              }
+            }}
+            placeholder={toNumber ? "Type a text…" : "No phone on file"}
+            disabled={!toNumber || sending}
+            className={`${INPUT_CONTROL_CLASS} text-sm`}
+          />
+        </div>
         <div className="flex items-center justify-end gap-2">
           <button
             type="button"
