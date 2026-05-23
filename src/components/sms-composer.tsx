@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Plus, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { INPUT_PILL_CLASS } from "@/components/ui/input";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 import { normalizeToE164 } from "@/lib/rf-payload-shapes";
 import {
@@ -115,7 +116,7 @@ export function SmsComposer({
           }}
           placeholder={toNumber ? "Type a text…" : "No phone on file"}
           disabled={!toNumber || sending}
-          className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-court-surface-subtle/60"
+          className={`${INPUT_PILL_CLASS} w-full text-sm disabled:bg-court-surface-subtle/60`}
         />
         <div className="flex items-center justify-end gap-2">
           <button

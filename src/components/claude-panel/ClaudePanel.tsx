@@ -13,6 +13,7 @@ import {
 import { useFloatingZ } from "@/lib/floating-z";
 import { useComposerManager } from "@/lib/composer-manager";
 import { Button } from "@/components/ui/button";
+import { INPUT_PILL_CLASS } from "@/components/ui/input";
 import {
   CopyButton,
   EmailThisButton,
@@ -1365,7 +1366,7 @@ export function ClaudePanel() {
             }}
             placeholder="Message Ace…"
             style={{ touchAction: "manipulation" }}
-            className="min-h-[44px] flex-1 resize-none rounded-md border border-court-border bg-court-surface-subtle px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none"
+            className={`${INPUT_PILL_CLASS} min-h-[44px] flex-1 resize-none text-sm`}
           />
           <Button
             type="button"
