@@ -489,28 +489,30 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onParseAndGenerate}
-          disabled={
-            isCombinedRunning ||
-            isParsing ||
-            isGenerating ||
-            (!sourceUrl.trim() && !description.trim() && !jdFile)
-          }
-          className={cn(
-            CLAUDE_PILL_CLASS,
-            "mt-3 w-full justify-center py-1.5",
-            (isCombinedRunning || isParsing) && "opacity-60",
-          )}
-        >
-          {isCombinedRunning || isParsing ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Sparkles className="h-3 w-3" />
-          )}
-          {isCombinedRunning ? "Parsing and generating…" : "Parse & Generate JD with Claude"}
-        </button>
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={onParseAndGenerate}
+            disabled={
+              isCombinedRunning ||
+              isParsing ||
+              isGenerating ||
+              (!sourceUrl.trim() && !description.trim() && !jdFile)
+            }
+            className={cn(
+              CLAUDE_PILL_CLASS,
+              "mt-3 w-auto justify-center py-1.5",
+              (isCombinedRunning || isParsing) && "opacity-60",
+            )}
+          >
+            {isCombinedRunning || isParsing ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Sparkles className="h-3 w-3" />
+            )}
+            {isCombinedRunning ? "Parsing and generating…" : "Parse & Generate JD with Claude"}
+          </button>
+        </div>
       </div>
 
       {/* 3. Structured fields card. 4. Description textarea (with Parse &
