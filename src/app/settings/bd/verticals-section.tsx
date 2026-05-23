@@ -268,7 +268,6 @@ function SavedSearchEditForm({
   initialName,
   initialContactCap,
   initialCriteria,
-  version,
   savedSearchId,
   verticalId,
   sequences,
@@ -291,7 +290,6 @@ function SavedSearchEditForm({
   const [locationOverride, setLocationOverride] = useState(initialCriteria.locationOverride);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const nextVersion = mode === "edit" ? version + 1 : 1;
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -388,7 +386,7 @@ function SavedSearchEditForm({
           className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
         >
           {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          Save · creates v{nextVersion}
+          Save
         </button>
       </div>
     </form>

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Power } from "lucide-react";
+import { Loader2, Power, Save } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Toggle } from "./limits-section";
@@ -144,11 +144,9 @@ export function BdEngineSection({ config }: { config: BdEngineConfig }) {
             type="button"
             onClick={onSave}
             disabled={pending || !dirty}
-            className="inline-flex items-center gap-2 rounded-md border border-court-brand bg-court-brand px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
           >
-            {pending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : null}
+            {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             Save
           </button>
         </div>
