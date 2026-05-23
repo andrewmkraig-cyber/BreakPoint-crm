@@ -1332,7 +1332,7 @@ export function ClaudePanel() {
           >
             <Paperclip className="h-4 w-4" />
           </button>
-          <div className={`${INPUT_FRAME_CLASS} flex-1 min-w-0`}>
+          <div className={`${INPUT_FRAME_CLASS} flex-1 min-w-0 !bg-white/10`}>
             <textarea
               ref={textareaRef}
               rows={2}
