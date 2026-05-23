@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   BarChart3,
   Building2,
@@ -183,19 +184,32 @@ export function MobileNav() {
         )}
       </button>
 
-      {open && (
-        <>
-          <div
-            aria-hidden="true"
-            onClick={() => setOpen(false)}
-            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
-          />
-          <aside
-            role="dialog"
-            aria-modal="true"
-            aria-label="Navigation"
-            className="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col overflow-y-auto border-r border-court-sidebar-border bg-court-sidebar-bg p-4 shadow-2xl md:hidden"
-          >
+      {/* Portal the drawer to <body>: TopBar (which renders this) is a
+          sticky, backdrop-blurred header, and BOTH sticky+z-index AND
+          backdrop-filter establish a stacking context. Rendered inline
+          the drawer is trapped inside that context at the header's z-30,
+          so dashboard content with its own higher stacking contexts
+          paints over it — the "hamburger stuck behind the dashboard" bug
+          on the installed PWA. Portaling to document.body lifts it to the
+          root stacking context; z-[1100]/z-[1101] matches the app's
+          slide-in drawer band so it sits above page content. The block
+          only renders once open (false during SSR / first paint), so
+          there's no hydration mismatch from the document guard. */}
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <>
+            <div
+              aria-hidden="true"
+              onClick={() => setOpen(false)}
+              className="fixed inset-0 z-[1100] bg-black/50 backdrop-blur-sm md:hidden"
+            />
+            <aside
+              role="dialog"
+              aria-modal="true"
+              aria-label="Navigation"
+              className="fixed inset-y-0 left-0 z-[1101] flex w-72 max-w-[85vw] flex-col overflow-y-auto border-r border-court-sidebar-border bg-court-sidebar-bg p-4 shadow-2xl md:hidden"
+            >
             <div className="mb-4 flex items-center justify-between">
               {/* Serve-Arc disc + wordmark, matching the topbar lockup so
                   the drawer header carries the same brand mark the
@@ -285,8 +299,9 @@ export function MobileNav() {
               </button>
             </nav>
           </aside>
-        </>
-      )}
+          </>,
+          document.body,
+        )}
     </>
   );
 }
