@@ -9,6 +9,7 @@ import { DocumentDropzone } from "@/components/document-dropzone";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { cn } from "@/lib/utils";
 import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
+import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import {
   checkCandidateEmail,
   createCandidate,
@@ -410,16 +411,15 @@ export function NewCandidateForm() {
             <Field label="Profile URL" type="url" value={linkedinUrl} onChange={onLinkedinChange} placeholder="https://linkedin.com/in/…" />
             <div>
               <label className="text-[11px] uppercase tracking-wider text-muted-foreground">Pasted profile text (optional)</label>
-              <textarea
-                value={pastedText}
-                onChange={(e) => setPastedText(e.target.value)}
-                rows={6}
-                placeholder="Paste the LinkedIn About / Experience section here — included in the next parse."
-                className={cn(
-                  "mt-1 w-full resize-vertical rounded-lg border border-border bg-white px-3 py-2 font-sans text-sm leading-relaxed text-ink",
-                  "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-                )}
-              />
+              <div className={`${INPUT_FRAME_CLASS} mt-1 w-full`}>
+                <textarea
+                  value={pastedText}
+                  onChange={(e) => setPastedText(e.target.value)}
+                  rows={6}
+                  placeholder="Paste the LinkedIn About / Experience section here — included in the next parse."
+                  className={`${INPUT_CONTROL_CLASS} resize-none font-sans text-sm leading-relaxed`}
+                />
+              </div>
             </div>
             <button
               type="button"
@@ -569,16 +569,15 @@ export function NewCandidateForm() {
             </div>
             <div className="sm:col-span-2">
               <label className="text-[11px] uppercase tracking-wider text-muted-foreground">Notes</label>
-              <textarea
-                value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                rows={5}
-                placeholder="Short summary of the candidate's background, or internal recruiter notes."
-                className={cn(
-                  "mt-1 w-full resize-vertical rounded-lg border border-border bg-white px-3 py-2 text-sm leading-relaxed text-ink",
-                  "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-                )}
-              />
+              <div className={`${INPUT_FRAME_CLASS} mt-1 w-full`}>
+                <textarea
+                  value={form.notes}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  rows={5}
+                  placeholder="Short summary of the candidate's background, or internal recruiter notes."
+                  className={`${INPUT_CONTROL_CLASS} resize-none text-sm leading-relaxed`}
+                />
+              </div>
             </div>
           </div>
           {(form.experience.length > 0 || form.education.length > 0) && (
@@ -669,15 +668,17 @@ function Field({
           </span>
         )}
       </span>
-      <input
-        type={type}
-        value={value}
-        required={required}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onBlur}
-        className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-      />
+      <div className={`${INPUT_FRAME_CLASS} mt-1 w-full`}>
+        <input
+          type={type}
+          value={value}
+          required={required}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
+          className={`${INPUT_CONTROL_CLASS} text-sm`}
+        />
+      </div>
     </label>
   );
 }

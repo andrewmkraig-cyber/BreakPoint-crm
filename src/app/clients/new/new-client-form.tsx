@@ -6,6 +6,7 @@ import { AlertTriangle, Globe, Loader2, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import {
   checkClientDomain,
   createClient,
@@ -233,7 +234,13 @@ export function NewClientForm() {
           <div className="space-y-3 p-5">
             <label className="block text-sm">
               <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Company URL</span>
-              <div className="relative mt-1">
+              <div
+                className={cn(
+                  INPUT_FRAME_CLASS,
+                  "relative mt-1 w-full",
+                  domainCheckStatus === "duplicate" && "border-red-300",
+                )}
+              >
                 <Globe className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-court-fg-muted" />
                 <input
                   type="url"
@@ -244,12 +251,7 @@ export function NewClientForm() {
                   }}
                   onBlur={onWebsiteBlur}
                   placeholder="acme.com or https://acme.com"
-                  className={cn(
-                    "w-full rounded-lg border bg-court-surface py-2 pl-8 pr-3 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:outline-none focus:ring-2",
-                    domainCheckStatus === "duplicate"
-                      ? "border-red-300 focus:border-red-400 focus:ring-red-200"
-                      : "border-court-border focus:border-brand focus:ring-brand/20",
-                  )}
+                  className={`${INPUT_CONTROL_CLASS} pl-8 text-sm`}
                 />
               </div>
             </label>
@@ -367,16 +369,15 @@ export function NewClientForm() {
             <div className="sm:col-span-2">
               <label className="block text-sm">
                 <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Overview</span>
-                <textarea
-                  value={form.overview}
-                  onChange={(e) => setForm({ ...form, overview: e.target.value })}
-                  rows={3}
-                  placeholder="Short description of what the company does."
-                  className={cn(
-                    "mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm leading-relaxed text-court-fg",
-                    "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-                  )}
-                />
+                <div className={`${INPUT_FRAME_CLASS} mt-1 w-full`}>
+                  <textarea
+                    value={form.overview}
+                    onChange={(e) => setForm({ ...form, overview: e.target.value })}
+                    rows={3}
+                    placeholder="Short description of what the company does."
+                    className={`${INPUT_CONTROL_CLASS} resize-none text-sm leading-relaxed`}
+                  />
+                </div>
               </label>
             </div>
           </div>
@@ -448,14 +449,16 @@ function Field({
         {label}
         {required && <span className="ml-0.5 text-red-500">*</span>}
       </span>
-      <input
-        type={type}
-        value={value}
-        required={required}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-      />
+      <div className={`${INPUT_FRAME_CLASS} mt-1 w-full`}>
+        <input
+          type={type}
+          value={value}
+          required={required}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          className={`${INPUT_CONTROL_CLASS} text-sm`}
+        />
+      </div>
     </label>
   );
 }

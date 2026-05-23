@@ -21,6 +21,7 @@ import {
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
+import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { JobOverviewActionButtons } from "@/app/jobs/[id]/job-overview-action-buttons";
 import {
   updateJobOverview,
@@ -225,8 +226,8 @@ function StatusCell({ lifecycle }: { lifecycle: JobLifecycle }) {
   );
 }
 
-const inlineInputCls =
-  "block w-full rounded border border-court-accent bg-white px-1.5 py-0.5 text-sm text-court-fg focus:outline-none focus:ring-2 focus:ring-court-accent/30";
+const inlineFrameCls = `${INPUT_FRAME_CLASS} w-full`;
+const inlineInputCls = `${INPUT_CONTROL_CLASS} text-sm`;
 
 const cellButtonCls =
   "block w-full rounded text-left text-sm text-court-fg hover:bg-court-surface-subtle hover:text-court-accent-dark";
@@ -267,25 +268,27 @@ function InlineTextCell({
   return (
     <CellShell icon={icon} label={label}>
       {editing ? (
-        <input
-          autoFocus
-          type="text"
-          value={draft}
-          disabled={saving}
-          placeholder={placeholder}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => void commit()}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              (e.currentTarget as HTMLInputElement).blur();
-            } else if (e.key === "Escape") {
-              setDraft(value);
-              setEditing(false);
-            }
-          }}
-          className={inlineInputCls}
-        />
+        <div className={inlineFrameCls}>
+          <input
+            autoFocus
+            type="text"
+            value={draft}
+            disabled={saving}
+            placeholder={placeholder}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => void commit()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                (e.currentTarget as HTMLInputElement).blur();
+              } else if (e.key === "Escape") {
+                setDraft(value);
+                setEditing(false);
+              }
+            }}
+            className={inlineInputCls}
+          />
+        </div>
       ) : (
         <button
           type="button"
@@ -345,25 +348,27 @@ function InlineNumberCell({
   return (
     <CellShell icon={icon} label={label}>
       {editing ? (
-        <input
-          autoFocus
-          type="number"
-          inputMode="numeric"
-          value={draft}
-          disabled={saving}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => void commit()}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              (e.currentTarget as HTMLInputElement).blur();
-            } else if (e.key === "Escape") {
-              setDraft(value != null ? String(value) : "");
-              setEditing(false);
-            }
-          }}
-          className={inlineInputCls}
-        />
+        <div className={inlineFrameCls}>
+          <input
+            autoFocus
+            type="number"
+            inputMode="numeric"
+            value={draft}
+            disabled={saving}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => void commit()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                (e.currentTarget as HTMLInputElement).blur();
+              } else if (e.key === "Escape") {
+                setDraft(value != null ? String(value) : "");
+                setEditing(false);
+              }
+            }}
+            className={inlineInputCls}
+          />
+        </div>
       ) : (
         <button
           type="button"
@@ -487,34 +492,40 @@ function CompensationCell({
             </label>
           </div>
           <div className="grid grid-cols-3 gap-1.5">
-            <input
-              autoFocus
-              type="text"
-              value={draftLo}
-              disabled={saving}
-              onChange={(e) => setDraftLo(e.target.value)}
-              placeholder="Low"
-              aria-label="Salary low"
-              className={inlineInputCls}
-            />
-            <input
-              type="text"
-              value={draftHi}
-              disabled={saving}
-              onChange={(e) => setDraftHi(e.target.value)}
-              placeholder="High"
-              aria-label="Salary high"
-              className={inlineInputCls}
-            />
-            <input
-              type="text"
-              value={draftCcy}
-              disabled={saving}
-              onChange={(e) => setDraftCcy(e.target.value)}
-              placeholder="USD"
-              aria-label="Currency"
-              className={inlineInputCls}
-            />
+            <div className={inlineFrameCls}>
+              <input
+                autoFocus
+                type="text"
+                value={draftLo}
+                disabled={saving}
+                onChange={(e) => setDraftLo(e.target.value)}
+                placeholder="Low"
+                aria-label="Salary low"
+                className={inlineInputCls}
+              />
+            </div>
+            <div className={inlineFrameCls}>
+              <input
+                type="text"
+                value={draftHi}
+                disabled={saving}
+                onChange={(e) => setDraftHi(e.target.value)}
+                placeholder="High"
+                aria-label="Salary high"
+                className={inlineInputCls}
+              />
+            </div>
+            <div className={inlineFrameCls}>
+              <input
+                type="text"
+                value={draftCcy}
+                disabled={saving}
+                onChange={(e) => setDraftCcy(e.target.value)}
+                placeholder="USD"
+                aria-label="Currency"
+                className={inlineInputCls}
+              />
+            </div>
           </div>
         </div>
       ) : (

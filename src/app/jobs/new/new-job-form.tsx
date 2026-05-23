@@ -9,6 +9,7 @@ import remarkGfm from "remark-gfm";
 import { LabeledTextarea } from "@/app/candidates/[id]/editable-helpers";
 import { createJob, extractFieldsFromGeneratedJd, generateJobDescriptionFromSource } from "@/app/jobs/new/actions";
 import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
+import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 const JOB_TYPES = ["Permanent", "Contract", "Contract to Hire", "Temporary", "Internship"] as const;
@@ -387,20 +388,19 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
         </p>
 
         <div className="mt-2">
-          <input
-            type="url"
-            value={sourceUrl}
-            onChange={(e) => {
-              setSourceUrl(e.target.value);
-              if (parseInlineError) setParseInlineError(null);
-              if (linkSaved) setLinkSaved(false);
-            }}
-            placeholder="https://…"
-            className={cn(
-              "w-full rounded-md border border-court-border bg-court-bg px-3 py-1.5 text-xs text-court-fg shadow-sm",
-              "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-            )}
-          />
+          <div className={`${INPUT_FRAME_CLASS} w-full`}>
+            <input
+              type="url"
+              value={sourceUrl}
+              onChange={(e) => {
+                setSourceUrl(e.target.value);
+                if (parseInlineError) setParseInlineError(null);
+                if (linkSaved) setLinkSaved(false);
+              }}
+              placeholder="https://…"
+              className={`${INPUT_CONTROL_CLASS} text-xs`}
+            />
+          </div>
         </div>
         {parseInlineError && (
           <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
@@ -713,13 +713,15 @@ function CompactField({
   return (
     <label className="block text-sm">
       <span className={COMPACT_LABEL_CLASS}>{label}</span>
-      <input
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className={COMPACT_INPUT_CLASS}
-      />
+      <div className={`${INPUT_FRAME_CLASS} mt-0.5 w-full`}>
+        <input
+          type={type}
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          className={`${INPUT_CONTROL_CLASS} text-xs`}
+        />
+      </div>
     </label>
   );
 }
@@ -759,13 +761,15 @@ function CompactNumber({
   return (
     <label className="block text-sm">
       <span className={COMPACT_LABEL_CLASS}>{label}</span>
-      <input
-        type="number"
-        min={min}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={COMPACT_INPUT_CLASS}
-      />
+      <div className={`${INPUT_FRAME_CLASS} mt-0.5 w-full`}>
+        <input
+          type="number"
+          min={min}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={`${INPUT_CONTROL_CLASS} text-xs`}
+        />
+      </div>
     </label>
   );
 }
@@ -790,24 +794,21 @@ function SalaryField({
   return (
     <label className="block text-sm">
       <span className={COMPACT_LABEL_CLASS}>{label}</span>
-      <input
-        type="number"
-        min={0}
-        step={step}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => {
-          const n = e.target.value;
-          if (n === "" || Number(n) >= 0) onChange(n);
-        }}
-        onBlur={onBlur}
-        className={cn(
-          "mt-0.5 w-full rounded-md border px-2.5 py-1 text-xs text-court-fg focus:outline-none focus:ring-2",
-          invalid
-            ? "border-amber-300 bg-amber-50 focus:border-amber-400 focus:ring-amber-200"
-            : "border-court-border bg-court-surface focus:border-brand focus:ring-brand/20",
-        )}
-      />
+      <div className={cn(INPUT_FRAME_CLASS, "mt-0.5 w-full", invalid && "border-amber-300 bg-amber-50")}>
+        <input
+          type="number"
+          min={0}
+          step={step}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => {
+            const n = e.target.value;
+            if (n === "" || Number(n) >= 0) onChange(n);
+          }}
+          onBlur={onBlur}
+          className={`${INPUT_CONTROL_CLASS} text-xs`}
+        />
+      </div>
     </label>
   );
 }

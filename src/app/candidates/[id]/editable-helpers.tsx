@@ -2,6 +2,7 @@
 
 import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 
 export function SectionCard({
   title,
@@ -41,17 +42,16 @@ export function LabeledField({
   return (
     <label className="block text-sm">
       <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
-      <input
-        type={type}
-        value={value}
-        disabled={disabled}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className={cn(
-          "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-          disabled && "cursor-not-allowed opacity-60",
-        )}
-      />
+      <div className={cn(INPUT_FRAME_CLASS, "mt-1 w-full", disabled && "opacity-60")}>
+        <input
+          type={type}
+          value={value}
+          disabled={disabled}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          className={`${INPUT_CONTROL_CLASS} text-sm`}
+        />
+      </div>
     </label>
   );
 }
@@ -72,13 +72,15 @@ export function LabeledTextarea({
   return (
     <label className="block text-sm">
       <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
-      <textarea
-        value={value}
-        rows={rows}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm leading-relaxed text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-      />
+      <div className={`${INPUT_FRAME_CLASS} mt-1 w-full`}>
+        <textarea
+          value={value}
+          rows={rows}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          className={`${INPUT_CONTROL_CLASS} resize-none text-sm leading-relaxed`}
+        />
+      </div>
     </label>
   );
 }

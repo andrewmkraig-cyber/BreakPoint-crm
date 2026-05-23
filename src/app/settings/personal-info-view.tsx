@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { savePersonalInfo } from "@/app/settings/personal-info-actions";
+import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import {
   TSHIRT_SIZES,
   type AddressFields,
@@ -59,44 +60,52 @@ export function PersonalInfoView({
           Address
         </legend>
         <SubField label="Street">
-          <input
-            type="text"
-            value={address.street}
-            onChange={(e) => setAddressField("street", e.target.value)}
-            placeholder="123 Main St"
-            className="block w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
-          />
+          <div className={`${INPUT_FRAME_CLASS} w-full`}>
+            <input
+              type="text"
+              value={address.street}
+              onChange={(e) => setAddressField("street", e.target.value)}
+              placeholder="123 Main St"
+              className={`${INPUT_CONTROL_CLASS} text-sm`}
+            />
+          </div>
         </SubField>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto] sm:gap-3">
           <SubField label="City">
-            <input
-              type="text"
-              value={address.city}
-              onChange={(e) => setAddressField("city", e.target.value)}
-              placeholder="Solon"
-              className="block w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
-            />
+            <div className={`${INPUT_FRAME_CLASS} w-full`}>
+              <input
+                type="text"
+                value={address.city}
+                onChange={(e) => setAddressField("city", e.target.value)}
+                placeholder="Solon"
+                className={`${INPUT_CONTROL_CLASS} text-sm`}
+              />
+            </div>
           </SubField>
           <SubField label="State">
-            <input
-              type="text"
-              value={address.state}
-              onChange={(e) => setAddressField("state", e.target.value)}
-              placeholder="OH"
-              maxLength={32}
-              className="block w-20 rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm uppercase text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
-            />
+            <div className={`${INPUT_FRAME_CLASS} w-20`}>
+              <input
+                type="text"
+                value={address.state}
+                onChange={(e) => setAddressField("state", e.target.value)}
+                placeholder="OH"
+                maxLength={32}
+                className={`${INPUT_CONTROL_CLASS} uppercase text-sm`}
+              />
+            </div>
           </SubField>
           <SubField label="ZIP">
-            <input
-              type="text"
-              value={address.zip}
-              onChange={(e) => setAddressField("zip", e.target.value)}
-              placeholder="44139"
-              inputMode="numeric"
-              maxLength={10}
-              className="block w-28 rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm tabular-nums text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
-            />
+            <div className={`${INPUT_FRAME_CLASS} w-28`}>
+              <input
+                type="text"
+                value={address.zip}
+                onChange={(e) => setAddressField("zip", e.target.value)}
+                placeholder="44139"
+                inputMode="numeric"
+                maxLength={10}
+                className={`${INPUT_CONTROL_CLASS} tabular-nums text-sm`}
+              />
+            </div>
           </SubField>
         </div>
       </fieldset>

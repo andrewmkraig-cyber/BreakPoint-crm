@@ -6,6 +6,7 @@ import { Loader2, Save, Mail, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { setAutoSendCandidateConfirmation, setMyEmailSignature, setMyRecruiterPhone } from "@/app/settings/preferences-actions";
+import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { MAIL_NOTIFICATIONS_PREF_KEY } from "@/lib/mail-context";
 import {
   DEFAULT_TOAST_THEME,
@@ -215,12 +216,14 @@ export function EmailPreferencesView({
             <div className="mt-1 text-xs text-court-fg-muted">
               Populates <code className="rounded bg-court-surface-subtle px-1 py-0.5 text-[10px] text-court-fg">[Recruiter Phone]</code> in templates when you send. Signed in as {myEmail}.
             </div>
-            <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="216-488-5565"
-              className="mt-2 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20"
-            />
+            <div className={`${INPUT_FRAME_CLASS} mt-2 w-full`}>
+              <input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="216-488-5565"
+                className={`${INPUT_CONTROL_CLASS} text-sm`}
+              />
+            </div>
           </label>
           <button
             type="button"
@@ -241,12 +244,14 @@ export function EmailPreferencesView({
             requests, manual emails. Don&apos;t paste a signature inside a template body or you&apos;ll duplicate.
           </div>
         </div>
-        <textarea
-          value={signature}
-          onChange={(e) => setSignature(e.target.value)}
-          rows={6}
-          className="mt-2 w-full resize-vertical whitespace-pre-wrap rounded-lg border border-court-border bg-court-surface px-3 py-2 font-sans text-sm leading-relaxed text-court-fg placeholder:text-court-fg-muted/60 focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20"
-        />
+        <div className={`${INPUT_FRAME_CLASS} mt-2 w-full`}>
+          <textarea
+            value={signature}
+            onChange={(e) => setSignature(e.target.value)}
+            rows={6}
+            className={`${INPUT_CONTROL_CLASS} resize-none whitespace-pre-wrap font-sans text-sm leading-relaxed`}
+          />
+        </div>
         <div className="mt-2 flex items-center justify-end gap-2">
           <button
             type="button"
