@@ -21,7 +21,6 @@ const OPTIONS: { type: EditType; label: string }[] = [
   { type: "friendly", label: "Make it friendlier" },
   { type: "casual", label: "Make it more casual" },
   { type: "shorter", label: "Make it shorter" },
-  { type: "better", label: "Make it better (general polish)" },
   { type: "custom", label: "Custom…" },
 ];
 
