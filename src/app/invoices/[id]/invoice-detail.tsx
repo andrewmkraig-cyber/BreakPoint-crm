@@ -448,7 +448,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               type="button"
               disabled={isPending}
               onClick={handleSend}
-              className="rounded-md bg-court-fg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-surface shadow-sm hover:bg-court-brand-dark disabled:opacity-60 dark:border-court-border dark:text-court-fg-muted"
+              className="rounded-md border border-court-brand bg-transparent px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-brand shadow-sm hover:bg-court-brand/10 disabled:opacity-60"
             >
               Mark as sent
             </button>
@@ -456,7 +456,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               type="button"
               disabled={isPending || draftingEmail}
               onClick={handleEmailDraft}
-              className="rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle disabled:opacity-60 dark:border-court-border dark:text-court-fg-muted"
+              className="rounded-md border border-blue-500 bg-transparent px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-blue-600 shadow-sm hover:bg-blue-500/10 disabled:opacity-60 dark:text-blue-400"
             >
               {draftingEmail ? "Opening…" : "Draft Email"}
             </button>
@@ -471,7 +471,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
                   return r;
                 });
               }}
-              className="ml-auto rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-700 hover:bg-red-100 disabled:opacity-60 dark:border-red-800 dark:text-red-400"
+              className="ml-auto rounded-md border border-red-500 bg-transparent px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-600 hover:bg-red-500/10 disabled:opacity-60 dark:text-red-400"
             >
               Delete draft
             </button>
