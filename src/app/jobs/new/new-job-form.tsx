@@ -8,8 +8,9 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { LabeledTextarea } from "@/app/candidates/[id]/editable-helpers";
 import { createJob, extractFieldsFromGeneratedJd, generateJobDescriptionFromSource } from "@/app/jobs/new/actions";
-import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
+import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
+import { TabStrip } from "@/components/ui/tab-strip";
 import { cn } from "@/lib/utils";
 
 const JOB_TYPES = ["Permanent", "Contract", "Contract to Hire", "Temporary", "Internship"] as const;
@@ -95,6 +96,9 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
   const [isGenerating, startGenerate] = useTransition();
 
   const [sourceUrl, setSourceUrl] = useState("");
+  // Which source the "Add Job Description" card is showing — paste a URL or
+  // upload a JD file. Controlled TabStrip; defaults to the URL paste tab.
+  const [sourceTab, setSourceTab] = useState<"url" | "file">("url");
   const [isParsing, setParsing] = useState(false);
   const [parseInlineError, setParseInlineError] = useState<string | null>(null);
   const [isCombinedRunning, setCombinedRunning] = useState(false);
@@ -375,200 +379,246 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
   }
 
   return (
-    <div className="space-y-3">
-      {/* 1. Source Material card — merges Source Job Link URL input and
-            Upload JD drop zone into one container, separated by an "or"
-            divider. Parse & Generate JD with Claude lives with the URL row. */}
-      <div className="rounded-xl border border-court-border/40 bg-court-surface p-4 shadow-sm">
-        <label className="block text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
-          Source Material
-        </label>
-        <p className="mt-0.5 text-[11px] text-court-fg-muted">
-          Paste a URL, upload a file, or both — then click Parse & Generate JD with Claude.
-        </p>
-
-        <div className="mt-2">
-          <div className={`${INPUT_FRAME_RECT_CLASS} w-full`}>
-            <input
-              type="url"
-              value={sourceUrl}
-              onChange={(e) => {
-                setSourceUrl(e.target.value);
-                if (parseInlineError) setParseInlineError(null);
-                if (linkSaved) setLinkSaved(false);
-              }}
-              placeholder="https://…"
-              className={`${INPUT_CONTROL_CLASS} text-xs`}
-            />
-          </div>
+    <div className="max-w-[1100px] mx-auto px-6 py-8">
+      {/* Page header: title + helper on the left, Cancel / Save to Ace on
+          the right (Save to Ace mirrors the New Client form's primary CTA). */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-court-fg">New Job</h1>
+          <p className="mt-1 text-sm text-court-fg-muted">
+            Create a new job by adding the details below. You can paste a job description or upload a JD to get started.
+          </p>
         </div>
-        {parseInlineError && (
-          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <span className="min-w-0">{parseInlineError}</span>
-              {linkSaved ? (
-                <span className="inline-flex shrink-0 items-center gap-1 font-semibold text-amber-900">
-                  <Check className="h-3 w-3" /> Link saved
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={onSaveLink}
-                  disabled={!sourceUrl.trim()}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100 disabled:opacity-60"
-                >
-                  Save Link
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* "or" divider between URL row and Upload JD drop zone */}
-        <div className="my-2.5 flex items-center gap-3" aria-hidden="true">
-          <div className="h-px flex-1 bg-court-border" />
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">or</span>
-          <div className="h-px flex-1 bg-court-border" />
-        </div>
-
-        <div
-          onDragEnter={onDragEnter}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-          className={cn(
-            "flex flex-col gap-2 rounded-lg border-2 border-dashed px-3 py-2.5 transition sm:flex-row sm:items-center sm:justify-between",
-            isDragOver
-              ? "border-brand bg-brand/10"
-              : "border-court-border bg-court-surface-subtle/40",
-          )}
-        >
-          <div className="flex min-w-0 items-center gap-2 text-xs">
-            {jdFile ? (
-              <>
-                <FileText className="h-3.5 w-3.5 shrink-0 text-brand-dark" />
-                <span className="truncate font-medium text-court-fg">{jdFile.name}</span>
-                <span className="text-[11px] text-court-fg-muted">{formatSize(jdFile.size)}</span>
-                <button
-                  type="button"
-                  onClick={clearJd}
-                  className="ml-1 rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
-                  aria-label="Remove uploaded JD"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </>
-            ) : (
-              <>
-                <UploadCloud className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
-                <span className="text-court-fg-muted">
-                  {isDragOver
-                    ? "Drop the PDF or DOCX to stage it."
-                    : "Drop a PDF or DOCX here, or click to browse."}
-                </span>
-              </>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => jdInputRef.current?.click()}
-              disabled={isGenerating || isCombinedRunning}
-              className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
-            >
-              <UploadCloud className="h-3.5 w-3.5" />
-              {jdFile ? "Replace file" : "Upload JD"}
-            </button>
-            <input
-              ref={jdInputRef}
-              type="file"
-              accept="application/pdf,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              className="hidden"
-              onChange={onPickJd}
-            />
-          </div>
-        </div>
-
-        <div className="flex justify-center">
-          <button
+        <div className="flex gap-2">
+          <Button
             type="button"
-            onClick={onParseAndGenerate}
-            disabled={
-              isCombinedRunning ||
-              isParsing ||
-              isGenerating ||
-              (!sourceUrl.trim() && !description.trim() && !jdFile)
-            }
-            className={cn(
-              CLAUDE_PILL_CLASS,
-              "mt-3 w-auto justify-center py-1.5",
-              (isCombinedRunning || isParsing) && "opacity-60",
-            )}
+            variant="secondary"
+            size="sm"
+            onClick={() => router.push("/jobs")}
+            disabled={isPending || isCombinedRunning}
           >
-            {isCombinedRunning || isParsing ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Sparkles className="h-3 w-3" />
-            )}
-            {isCombinedRunning ? "Parsing and generating…" : "Parse & Generate JD with Claude"}
-          </button>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={onSubmit}
+            disabled={isPending || isCombinedRunning || rangeInvalid}
+          >
+            {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+            Save to Ace
+          </Button>
         </div>
       </div>
 
-      {/* 3. Structured fields card. 4. Description textarea (with Parse &
-            Edit JD button beneath when it has content) and Preview at the
-            bottom of the same card. The compensation row (Salary Type /
-            Low / High / Currency / Openings) sits in a single 5-col sub-
-            grid on md+ so the form doesn't burn rows on small fields. */}
-      <div className="rounded-xl border border-court-border/40 bg-court-surface p-4 shadow-sm">
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-          <CompactField label="Job title" value={title} onChange={setTitle} />
-          <CompactSelect
-            label="Client"
-            value={clientId}
-            onChange={setClientId}
-          >
-            <option value="">Select a client…</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </CompactSelect>
-          {/* Location is split into three searchable inputs on a single
-              row. City takes the most horizontal space; State and Zip
-              are narrower because their content is short. The composed
-              "City, ST Zip" string is reassembled server-side. */}
-          <div className="md:col-span-2 grid grid-cols-1 gap-2 sm:grid-cols-6">
-            <div className="sm:col-span-3">
-              <CompactField label="City" value={locationCity} onChange={setLocationCity} />
+      <div className="mt-6 space-y-6">
+        {/* Section 1 — Add Job Description: paste a URL or upload a JD,
+              then Parse & Generate with Claude. */}
+        <div className="bg-court-surface rounded-2xl border border-court-border/40 p-6 space-y-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-court-brand text-white text-xs font-semibold flex items-center justify-center shrink-0">
+                1
+              </span>
+              <h2 className="font-semibold text-court-fg">Add Job Description</h2>
             </div>
-            <div className="sm:col-span-2">
-              <CompactField label="State" value={locationState} onChange={setLocationState} />
-            </div>
-            <div className="sm:col-span-1">
-              <CompactField label="Zip" value={locationZip} onChange={setLocationZip} />
-            </div>
+            <p className="mt-1 text-sm text-court-fg-muted">
+              Provide a job description or upload a JD file. We&apos;ll parse the details for you using Claude.
+            </p>
           </div>
-          <CompactSelect label="Employment type" value={employmentType} onChange={setEmploymentType}>
-            {EMPLOYMENT_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </CompactSelect>
-          <CompactSelect label="Job type" value={jobType} onChange={setJobType}>
-            {JOB_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </CompactSelect>
-          <div className="md:col-span-2 grid grid-cols-2 gap-2 md:grid-cols-5">
+
+          <TabStrip
+            items={[
+              { id: "url", label: "Paste URL" },
+              { id: "file", label: "Upload File" },
+            ]}
+            activeId={sourceTab}
+            onChange={setSourceTab}
+            ariaLabel="Job description source"
+          />
+
+          {sourceTab === "url" ? (
+            <div className="space-y-2">
+              <div className={`${INPUT_FRAME_RECT_CLASS} w-full`}>
+                <input
+                  type="url"
+                  value={sourceUrl}
+                  onChange={(e) => {
+                    setSourceUrl(e.target.value);
+                    if (parseInlineError) setParseInlineError(null);
+                    if (linkSaved) setLinkSaved(false);
+                  }}
+                  placeholder="https://…"
+                  className={`${INPUT_CONTROL_CLASS} text-sm`}
+                />
+              </div>
+              {parseInlineError && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <span className="min-w-0">{parseInlineError}</span>
+                    {linkSaved ? (
+                      <span className="inline-flex shrink-0 items-center gap-1 font-semibold text-amber-900">
+                        <Check className="h-3 w-3" /> Link saved
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={onSaveLink}
+                        disabled={!sourceUrl.trim()}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100 disabled:opacity-60"
+                      >
+                        Save Link
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              onDragEnter={onDragEnter}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
+              className={cn(
+                "flex flex-col gap-2 rounded-lg border-2 border-dashed px-3 py-2.5 transition sm:flex-row sm:items-center sm:justify-between",
+                isDragOver
+                  ? "border-brand bg-brand/10"
+                  : "border-court-border bg-court-surface-subtle/40",
+              )}
+            >
+              <div className="flex min-w-0 items-center gap-2 text-xs">
+                {jdFile ? (
+                  <>
+                    <FileText className="h-3.5 w-3.5 shrink-0 text-brand-dark" />
+                    <span className="truncate font-medium text-court-fg">{jdFile.name}</span>
+                    <span className="text-[11px] text-court-fg-muted">{formatSize(jdFile.size)}</span>
+                    <button
+                      type="button"
+                      onClick={clearJd}
+                      className="ml-1 rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
+                      aria-label="Remove uploaded JD"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
+                    <span className="text-court-fg-muted">
+                      {isDragOver
+                        ? "Drop the PDF or DOCX to stage it."
+                        : "Drop a PDF or DOCX here, or click to browse."}
+                    </span>
+                  </>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => jdInputRef.current?.click()}
+                  disabled={isGenerating || isCombinedRunning}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
+                >
+                  <UploadCloud className="h-3.5 w-3.5" />
+                  {jdFile ? "Replace file" : "Upload JD"}
+                </button>
+                <input
+                  ref={jdInputRef}
+                  type="file"
+                  accept="application/pdf,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  className="hidden"
+                  onChange={onPickJd}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={onParseAndGenerate}
+              disabled={
+                isCombinedRunning ||
+                isParsing ||
+                isGenerating ||
+                (!sourceUrl.trim() && !description.trim() && !jdFile)
+              }
+              className={cn(
+                CLAUDE_PILL_CLASS,
+                "w-auto justify-center py-1.5",
+                (isCombinedRunning || isParsing) && "opacity-60",
+              )}
+            >
+              {isCombinedRunning || isParsing ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Sparkles className="h-3 w-3" />
+              )}
+              {isCombinedRunning ? "Parsing and generating…" : "Parse & Generate JD with Claude"}
+            </button>
+          </div>
+        </div>
+
+        {/* Section 2 — Job Details: the structured fields, laid out in
+              flex rows, plus the Description textarea + preview. */}
+        <div className="bg-court-surface rounded-2xl border border-court-border/40 p-6 space-y-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-court-brand text-white text-xs font-semibold flex items-center justify-center shrink-0">
+                2
+              </span>
+              <h2 className="font-semibold text-court-fg">Job Details</h2>
+            </div>
+            <p className="mt-1 text-sm text-court-fg-muted">Review and edit the details below.</p>
+          </div>
+
+          {/* Row 1: Job Title | Client */}
+          <div className="flex gap-4">
+            <CompactField label="Job Title" value={title} onChange={setTitle} className="flex-1" />
+            <CompactSelect label="Client" value={clientId} onChange={setClientId} className="flex-1">
+              <option value="">Select a client…</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </CompactSelect>
+          </div>
+
+          {/* Row 2: City | State | Zip — the composed "City, ST Zip"
+              string is reassembled server-side. */}
+          <div className="flex gap-4">
+            <CompactField label="City" value={locationCity} onChange={setLocationCity} className="flex-1" />
+            <CompactField label="State" value={locationState} onChange={setLocationState} className="flex-1" />
+            <CompactField label="Zip" value={locationZip} onChange={setLocationZip} className="w-32" />
+          </div>
+
+          {/* Row 3: Employment Type | Job Type */}
+          <div className="flex gap-4">
+            <CompactSelect label="Employment Type" value={employmentType} onChange={setEmploymentType} className="flex-1">
+              {EMPLOYMENT_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </CompactSelect>
+            <CompactSelect label="Job Type" value={jobType} onChange={setJobType} className="flex-1">
+              {JOB_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </CompactSelect>
+          </div>
+
+          {/* Row 4: Salary Type | Salary Low | Salary High | Currency | Openings */}
+          <div className="flex gap-4">
             <CompactSelect
-              label="Salary type"
+              label="Salary Type"
               value={salaryFrequency}
               onChange={(v) => setSalaryFrequency(v === "hourly" ? "hourly" : "yearly")}
+              className="flex-1"
             >
               <option value="yearly">Salary</option>
               <option value="hourly">Hourly</option>
@@ -580,6 +630,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               onBlur={onSalaryLowBlur}
               invalid={rangeInvalid}
               step={salaryFrequency === "hourly" ? "0.01" : "1"}
+              className="flex-1"
             />
             <SalaryField
               label={salaryFrequency === "hourly" ? "Hourly high" : "Salary high"}
@@ -588,18 +639,21 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               onBlur={onSalaryHighBlur}
               invalid={rangeInvalid}
               step={salaryFrequency === "hourly" ? "0.01" : "1"}
+              className="flex-1"
             />
-            <CompactField label="Currency" value={currency} onChange={setCurrency} />
-            <CompactNumber label="Openings" value={openings} onChange={setOpenings} min={1} />
+            <CompactField label="Currency" value={currency} onChange={setCurrency} className="flex-1" />
+            <CompactNumber label="Openings" value={openings} onChange={setOpenings} min={1} className="flex-1" />
           </div>
-          <div className="md:col-span-2 space-y-2">
+
+          {/* Description, full width */}
+          <div className="space-y-2">
             <LabeledTextarea
               label="Description"
               value={description}
               onChange={setDescription}
               rows={10}
-              frameClassName={`${INPUT_FRAME_RECT_CLASS} rounded-xl`}
-              controlClassName="rounded-xl"
+              frameClassName={INPUT_FRAME_RECT_CLASS}
+              controlClassName="min-h-[180px]"
               placeholder="Blank canvas. Paste or write the job description — or drop a JD file above and let Claude reformat it into the BreakPoint format (A Bit About Us / Why Join Us / Job Details)."
             />
             {description.trim() && (
@@ -644,33 +698,13 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               </div>
             )}
           </div>
-        </div>
 
-        {rangeInvalid && (
-          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-            Salary low is greater than salary high. We&apos;ll swap them automatically when you tab out.
-          </div>
-        )}
-        {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
-
-        <div className="mt-4 flex items-center justify-end gap-2 border-t border-court-border pt-3">
-          <button
-            type="button"
-            onClick={() => router.push("/jobs")}
-            disabled={isPending || isCombinedRunning}
-            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onSubmit}
-            disabled={isPending || isCombinedRunning || rangeInvalid}
-            className="inline-flex items-center gap-1 rounded-md bg-brand px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
-          >
-            {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-            Create job
-          </button>
+          {rangeInvalid && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              Salary low is greater than salary high. We&apos;ll swap them automatically when you tab out.
+            </div>
+          )}
+          {err && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
         </div>
       </div>
     </div>
@@ -693,13 +727,12 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// The "Compact*" helpers below mirror LabeledField/LabeledSelect but with
-// tighter padding (py-1.5 / mt-0.5) so the structured-fields card stays
-// dense on /jobs/new without affecting other pages that depend on the
-// roomier shared LabeledField helpers.
-const COMPACT_LABEL_CLASS = "text-[10px] uppercase tracking-wider text-court-fg-muted";
-const COMPACT_INPUT_CLASS =
-  "mt-0.5 w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-xs text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20";
+// The "Compact*" helpers below render a stacked field (label over a
+// rectangular input frame). Each takes a `className` so the caller can size
+// it in the parent flex row (flex-1, w-32, etc). Selects share the same
+// INPUT_FRAME_RECT_CLASS frame + INPUT_CONTROL_CLASS control as the text
+// inputs so the dropdowns match the text fields in height and width.
+const FIELD_LABEL_CLASS = "text-xs uppercase tracking-wide text-court-fg-muted mb-1";
 
 function CompactField({
   label,
@@ -707,23 +740,25 @@ function CompactField({
   onChange,
   placeholder,
   type = "text",
+  className,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   type?: string;
+  className?: string;
 }) {
   return (
-    <label className="block text-sm">
-      <span className={COMPACT_LABEL_CLASS}>{label}</span>
-      <div className={`${INPUT_FRAME_RECT_CLASS} mt-0.5 w-full`}>
+    <label className={cn("flex flex-col", className)}>
+      <span className={FIELD_LABEL_CLASS}>{label}</span>
+      <div className={`${INPUT_FRAME_RECT_CLASS} w-full`}>
         <input
           type={type}
           value={value}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
-          className={`${INPUT_CONTROL_CLASS} text-xs`}
+          className={`${INPUT_CONTROL_CLASS} text-sm`}
         />
       </div>
     </label>
@@ -735,18 +770,26 @@ function CompactSelect({
   value,
   onChange,
   children,
+  className,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <label className="block text-sm">
-      <span className={COMPACT_LABEL_CLASS}>{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className={COMPACT_INPUT_CLASS}>
-        {children}
-      </select>
+    <label className={cn("flex flex-col", className)}>
+      <span className={FIELD_LABEL_CLASS}>{label}</span>
+      <div className={`${INPUT_FRAME_RECT_CLASS} w-full`}>
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={`${INPUT_CONTROL_CLASS} text-sm`}
+        >
+          {children}
+        </select>
+      </div>
     </label>
   );
 }
@@ -756,22 +799,24 @@ function CompactNumber({
   value,
   onChange,
   min,
+  className,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   min?: number;
+  className?: string;
 }) {
   return (
-    <label className="block text-sm">
-      <span className={COMPACT_LABEL_CLASS}>{label}</span>
-      <div className={`${INPUT_FRAME_RECT_CLASS} mt-0.5 w-full`}>
+    <label className={cn("flex flex-col", className)}>
+      <span className={FIELD_LABEL_CLASS}>{label}</span>
+      <div className={`${INPUT_FRAME_RECT_CLASS} w-full`}>
         <input
           type="number"
           min={min}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className={`${INPUT_CONTROL_CLASS} text-xs`}
+          className={`${INPUT_CONTROL_CLASS} text-sm`}
         />
       </div>
     </label>
@@ -786,6 +831,7 @@ function SalaryField({
   invalid,
   placeholder,
   step,
+  className,
 }: {
   label: string;
   value: string;
@@ -794,11 +840,12 @@ function SalaryField({
   invalid: boolean;
   placeholder?: string;
   step?: string;
+  className?: string;
 }) {
   return (
-    <label className="block text-sm">
-      <span className={COMPACT_LABEL_CLASS}>{label}</span>
-      <div className={cn(INPUT_FRAME_RECT_CLASS, "mt-0.5 w-full", invalid && "border-amber-300 bg-amber-50")}>
+    <label className={cn("flex flex-col", className)}>
+      <span className={FIELD_LABEL_CLASS}>{label}</span>
+      <div className={cn(INPUT_FRAME_RECT_CLASS, "w-full", invalid && "border-amber-300 bg-amber-50")}>
         <input
           type="number"
           min={0}
@@ -810,7 +857,7 @@ function SalaryField({
             if (n === "" || Number(n) >= 0) onChange(n);
           }}
           onBlur={onBlur}
-          className={`${INPUT_CONTROL_CLASS} text-xs`}
+          className={`${INPUT_CONTROL_CLASS} text-sm`}
         />
       </div>
     </label>
