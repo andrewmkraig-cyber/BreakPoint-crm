@@ -364,10 +364,10 @@ export function NewCandidateForm() {
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
       {/* Left: inputs */}
       <div className="space-y-6 lg:col-span-2">
-        <div className="rounded-xl border border-border bg-court-surface shadow-sm">
-          <div className="border-b border-border px-5 py-3">
-            <h2 className="font-serif text-base font-semibold text-ink">Resume</h2>
-            <p className="text-xs text-muted-foreground">
+        <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
+          <div className="border-b border-court-border px-5 py-3">
+            <h2 className="font-serif text-base font-semibold text-court-fg">Resume</h2>
+            <p className="text-xs text-court-fg-muted">
               Drop a PDF and we&apos;ll parse it automatically. If Claude is unavailable, a basic extractor fills in name / email / phone. Re-parse manually after editing the LinkedIn fields below.
             </p>
           </div>
@@ -380,18 +380,18 @@ export function NewCandidateForm() {
               emptyHint="PDF, DOC/DOCX, or TXT up to 15MB"
             />
             {resume && (
-              <div className="mt-3 flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
-                <span className="truncate text-ink">
+              <div className="mt-3 flex items-center justify-between rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-xs">
+                <span className="truncate text-court-fg">
                   {resume.name}
-                  {isParsing && <span className="ml-2 text-muted-foreground">· parsing…</span>}
-                  {!isParsing && !parseSource && <span className="ml-2 text-muted-foreground">· ready to parse</span>}
+                  {isParsing && <span className="ml-2 text-court-fg-muted">· parsing…</span>}
+                  {!isParsing && !parseSource && <span className="ml-2 text-court-fg-muted">· ready to parse</span>}
                   {!isParsing && parseSource === "claude" && <span className="ml-2 text-brand-dark">· parsed with Claude</span>}
                   {!isParsing && parseSource === "fallback" && <span className="ml-2 text-amber-700">· basic extraction</span>}
                 </span>
                 <button
                   type="button"
                   onClick={() => setResume(null)}
-                  className="text-muted-foreground hover:text-ink"
+                  className="text-court-fg-muted hover:text-court-fg"
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -400,17 +400,17 @@ export function NewCandidateForm() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-court-surface shadow-sm">
-          <div className="border-b border-border px-5 py-3">
-            <h2 className="font-serif text-base font-semibold text-ink">LinkedIn</h2>
-            <p className="text-xs text-muted-foreground">
+        <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
+          <div className="border-b border-court-border px-5 py-3">
+            <h2 className="font-serif text-base font-semibold text-court-fg">LinkedIn</h2>
+            <p className="text-xs text-court-fg-muted">
               URL is saved on the record. For full enrichment, paste the profile text below and re-parse from the resume dropzone (LinkedIn blocks automated URL fetches).
             </p>
           </div>
           <div className="space-y-3 p-5">
             <Field label="Profile URL" type="url" value={linkedinUrl} onChange={onLinkedinChange} placeholder="https://linkedin.com/in/…" />
             <div>
-              <label className="text-[11px] uppercase tracking-wider text-muted-foreground">Pasted profile text (optional)</label>
+              <label className="text-[11px] uppercase tracking-wider text-court-fg-muted">Pasted profile text (optional)</label>
               <div className={`${INPUT_FRAME_RECT_CLASS} mt-1 w-full`}>
                 <textarea
                   value={pastedText}
@@ -437,7 +437,7 @@ export function NewCandidateForm() {
           <button
             type="button"
             onClick={onReset}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-court-surface px-3 py-2 text-xs font-medium text-ink-400 shadow-sm transition hover:text-ink"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
           >
             Clear and start over
           </button>
@@ -447,11 +447,11 @@ export function NewCandidateForm() {
 
       {/* Right: editable fields */}
       <div className="lg:col-span-3">
-        <div className="rounded-xl border border-border bg-court-surface shadow-sm">
-          <div className="flex items-center justify-between border-b border-border px-5 py-3">
+        <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
+          <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
             <div>
-              <h2 className="font-serif text-base font-semibold text-ink">Candidate fields</h2>
-              <p className="text-xs text-muted-foreground">
+              <h2 className="font-serif text-base font-semibold text-court-fg">Candidate fields</h2>
+              <p className="text-xs text-court-fg-muted">
                 {parseSource === "claude"
                   ? "Pre-filled by Claude — review and edit before saving."
                   : parseSource === "fallback"
@@ -568,7 +568,7 @@ export function NewCandidateForm() {
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="text-[11px] uppercase tracking-wider text-muted-foreground">Notes</label>
+              <label className="text-[11px] uppercase tracking-wider text-court-fg-muted">Notes</label>
               <div className={`${INPUT_FRAME_RECT_CLASS} mt-1 w-full`}>
                 <textarea
                   value={form.notes}
@@ -581,17 +581,17 @@ export function NewCandidateForm() {
             </div>
           </div>
           {(form.experience.length > 0 || form.education.length > 0) && (
-            <div className="grid grid-cols-1 gap-4 border-t border-border px-5 py-5 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 border-t border-court-border px-5 py-5 sm:grid-cols-2">
               {form.experience.length > 0 && (
                 <div>
-                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
                     Experience (will save to Ace)
                   </h3>
                   <ul className="mt-2 space-y-2 text-sm">
                     {form.experience.map((r, i) => (
-                      <li key={`exp-${i}`} className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-                        <div className="font-medium text-ink">{r.designation || "(role)"} <span className="font-normal text-muted-foreground">· {r.organization || "(employer)"}</span></div>
-                        <div className="text-[11px] text-muted-foreground">
+                      <li key={`exp-${i}`} className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2">
+                        <div className="font-medium text-court-fg">{r.designation || "(role)"} <span className="font-normal text-court-fg-muted">· {r.organization || "(employer)"}</span></div>
+                        <div className="text-[11px] text-court-fg-muted">
                           {[r.from_year, r.to_year ?? "present"].filter(Boolean).join(" – ") || "—"}
                         </div>
                       </li>
@@ -601,14 +601,14 @@ export function NewCandidateForm() {
               )}
               {form.education.length > 0 && (
                 <div>
-                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
                     Education (will save to Ace)
                   </h3>
                   <ul className="mt-2 space-y-2 text-sm">
                     {form.education.map((r, i) => (
-                      <li key={`edu-${i}`} className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-                        <div className="font-medium text-ink">{r.degree || "(degree)"} <span className="font-normal text-muted-foreground">· {r.school || "(school)"}</span></div>
-                        <div className="text-[11px] text-muted-foreground">
+                      <li key={`edu-${i}`} className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2">
+                        <div className="font-medium text-court-fg">{r.degree || "(degree)"} <span className="font-normal text-court-fg-muted">· {r.school || "(school)"}</span></div>
+                        <div className="text-[11px] text-court-fg-muted">
                           {[r.from_year, r.to_year].filter(Boolean).join(" – ") || "—"}
                         </div>
                       </li>
@@ -619,7 +619,7 @@ export function NewCandidateForm() {
             </div>
           )}
           {saveError && (
-            <div className="border-t border-border px-5 py-3 text-xs text-red-800">
+            <div className="border-t border-court-border px-5 py-3 text-xs text-red-800">
               <div className="rounded-lg border border-red-200 bg-red-50 p-3">{saveError}</div>
             </div>
           )}
@@ -652,7 +652,7 @@ function Field({
 }) {
   return (
     <label className="block text-sm">
-      <span className="flex items-baseline justify-between text-[11px] uppercase tracking-wider text-muted-foreground">
+      <span className="flex items-baseline justify-between text-[11px] uppercase tracking-wider text-court-fg-muted">
         <span>
           {label}
           {required && <span className="ml-0.5 text-red-500">*</span>}
@@ -661,7 +661,7 @@ function Field({
           <span
             className={cn(
               "normal-case tracking-normal",
-              hintTone === "error" ? "text-red-600" : "text-muted-foreground",
+              hintTone === "error" ? "text-red-600" : "text-court-fg-muted",
             )}
           >
             {hint}
