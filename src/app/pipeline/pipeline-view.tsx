@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Bookmark, CalendarClock, ChevronDown, DollarSign, Handshake, Loader2, UserX, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
+import { Bookmark, CalendarClock, ChevronDown, DollarSign, Handshake, Loader2, Search, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { Pagination } from "@/components/pagination";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
@@ -143,7 +143,12 @@ function OwnerScopeSelect({
 export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q, counts, owner, otherUserName, error }: PipelineViewProps) {
   const router = useRouter();
   const params = useSearchParams();
+  const [query, setQuery] = useState(q);
   const [, startTransition] = useTransition();
+
+  useEffect(() => {
+    setQuery(q);
+  }, [q]);
 
   // Bulk selection — rejectable rows only. Stores Placement.id so the
   // bulk handler can call rejectLocalPlacement directly without
@@ -278,6 +283,13 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
     return `/pipeline?${next.toString()}`;
   };
 
+  function onSubmitSearch(e: FormEvent) {
+    e.preventDefault();
+    startTransition(() => {
+      router.push(buildHref({ q: query, page: 1 }));
+    });
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col items-start gap-3 md:flex-row md:items-center">
@@ -294,6 +306,20 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
           />
         </div>
       </div>
+
+      {/* Clients-style search: clean rounded input, icon inside, no green
+          fill or submit button. Enter submits the form, which runs the
+          existing server-side `?q=` search. */}
+      <form onSubmit={onSubmitSearch} className="relative">
+        <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-court-fg-muted" />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by candidate, job, or client…"
+          className="w-full rounded-full border border-court-border bg-court-surface py-1.5 pl-10 pr-4 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        />
+      </form>
 
       {/* Error panel keeps red semantics in every mode. */}
       {error && (

@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition, type FormEvent } from "react";
-import { Search, Loader2, MapPin, ChevronDown } from "lucide-react";
+import { Search, MapPin, ChevronDown } from "lucide-react";
 import { Pagination } from "@/components/pagination";
 import { SortableHeader, type SortDirection } from "@/components/sortable-header";
 import { cn } from "@/lib/utils";
@@ -94,7 +94,7 @@ export function JobsView(props: JobsViewProps) {
   const router = useRouter();
   const params = useSearchParams();
   const [query, setQuery] = useState(q);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   useEffect(() => {
     setQuery(q);
@@ -148,25 +148,18 @@ export function JobsView(props: JobsViewProps) {
         </div>
       </div>
 
-      <form
-        onSubmit={onSubmitSearch}
-        className="flex flex-col gap-2 rounded-xl border border-court-border/40 bg-court-surface p-3 shadow-sm md:flex-row md:items-center"
-      >
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by job title, client, or location…"
-            className="w-full rounded-lg border border-transparent bg-court-surface-subtle py-2 pl-10 pr-3 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-brand focus:bg-court-surface focus:outline-none"
-          />
-        </div>
-        <button
-          type="submit"
-          className="inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-5 py-2 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
-        >
-          {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}
-        </button>
+      {/* Clients-style search: clean rounded input, icon inside, no green
+          fill or submit button. Enter submits the form, which runs the
+          existing server-side `?q=` search. */}
+      <form onSubmit={onSubmitSearch} className="relative">
+        <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-court-fg-muted" />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by job title, client, or location…"
+          className="w-full rounded-full border border-court-border bg-court-surface py-1.5 pl-10 pr-4 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        />
       </form>
 
       {error && (
