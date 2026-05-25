@@ -26,6 +26,22 @@ export const dynamic = "force-dynamic";
 // app-open multiple chances to renew before it actually lapses.
 const RENEW_WINDOW_MS = 48 * 60 * 60 * 1000;
 
+// TEMP DIAG (remove after capturing the watch-arming error). Vercel runtime
+// logs aren't reachable from the dev box, so persist the last ensure outcome
+// to the Setting KV table where a read-only query can pull it back.
+async function recordWatchDiag(value: Record<string, unknown>) {
+  try {
+    const payload = { ...value, at: new Date().toISOString() };
+    await prisma.setting.upsert({
+      where: { key: "diag:gmail-watch-ensure" },
+      update: { value: payload },
+      create: { key: "diag:gmail-watch-ensure", value: payload },
+    });
+  } catch {
+    // ignore - diagnostics must never break the arm path
+  }
+}
+
 export async function POST() {
   const session = await getServerSession(authOptions);
   const email = session?.user?.email?.toLowerCase().trim();
@@ -50,6 +66,7 @@ export async function POST() {
       !!existing &&
       existing.expiresAt.getTime() - Date.now() > RENEW_WINDOW_MS;
     if (fresh) {
+      await recordWatchDiag({ outcome: "already-armed" }); // TEMP DIAG
       return NextResponse.json({ ok: true, status: "already-armed" });
     }
     const { expiresAt } = await registerGmailWatch({
@@ -57,6 +74,10 @@ export async function POST() {
       organizationId: org.id,
       email,
     });
+    await recordWatchDiag({
+      outcome: existing ? "renewed" : "created",
+      expiresAt: expiresAt.toISOString(),
+    }); // TEMP DIAG
     return NextResponse.json({
       ok: true,
       status: existing ? "renewed" : "created",
@@ -67,6 +88,7 @@ export async function POST() {
     // call doesn't log a network error. The cron is the backstop.
     const message = err instanceof Error ? err.message : "ensure failed";
     console.error("[gmail watch ensure] failed", { message });
+    await recordWatchDiag({ outcome: "error", error: message }); // TEMP DIAG
     return NextResponse.json({ ok: false, error: message });
   }
 }
