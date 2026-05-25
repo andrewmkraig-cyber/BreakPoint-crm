@@ -1242,7 +1242,7 @@ export function MailView({
             onChange={toggleSelectAll}
             disabled={threads.length === 0}
             aria-label="Select all threads"
-            className="h-3.5 w-3.5 cursor-pointer rounded border-court-border accent-brand-dark disabled:cursor-not-allowed"
+            className="h-5 w-5 cursor-pointer rounded border-court-border accent-brand-dark disabled:cursor-not-allowed"
           />
           <span>
             {threads.length} {threads.length === 1 ? "thread" : "threads"}
@@ -1509,8 +1509,15 @@ function ThreadRow({
       <label
         onClick={(e) => e.stopPropagation()}
         className={
-          "flex cursor-pointer items-center pl-3 pr-1 transition " +
-          (checkboxVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100")
+          // Wider horizontal padding gives the (otherwise small) checkbox a
+          // finger-sized tap target; the label already stretches the full
+          // row height vertically. On touch devices there's no hover, so
+          // pointer-coarse keeps the checkbox visible instead of stranding
+          // the first selection on an invisible square.
+          "flex cursor-pointer items-center pl-3 pr-3 transition " +
+          (checkboxVisible
+            ? "opacity-100"
+            : "opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100")
         }
       >
         <input
@@ -1518,7 +1525,7 @@ function ThreadRow({
           checked={checked}
           onChange={onToggle}
           aria-label={`Select thread: ${t.subject}`}
-          className="h-3.5 w-3.5 cursor-pointer rounded border-court-border accent-brand-dark"
+          className="h-5 w-5 cursor-pointer rounded border-court-border accent-brand-dark"
         />
       </label>
       <button
