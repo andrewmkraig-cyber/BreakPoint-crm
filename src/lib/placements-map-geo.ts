@@ -212,7 +212,7 @@ export const STATUS_COLORS: Record<PlacementsDashboardBillingStatus, string> = {
 };
 
 export const STATUS_LABELS: Record<PlacementsDashboardBillingStatus, string> = {
-  COLLECTED: "Collected",
+  COLLECTED: "Paid",
   BILLED: "Billed",
   PENDING_START: "Pending start",
   OVERDUE: "Overdue",

@@ -26,10 +26,10 @@ type SendAsAlias = {
 type Contact = { name: string; email: string; title?: string };
 
 const STATUS_PILL: Record<string, { label: string; tone: string }> = {
-  DRAFT: { label: "Draft", tone: "bg-court-surface-subtle text-court-fg" },
-  SENT: { label: "Sent", tone: "bg-amber-50 text-amber-800 border border-amber-200" },
-  PAID: { label: "Paid", tone: "bg-court-brand/20 text-court-brand border border-court-brand/40" },
-  VOID: { label: "Void", tone: "bg-slate-100 text-slate-500 border border-slate-200" },
+  DRAFT: { label: "Draft", tone: "rounded-full bg-court-surface-subtle text-court-fg" },
+  SENT: { label: "Sent", tone: "rounded-full bg-amber-50 text-amber-800 border border-amber-200" },
+  PAID: { label: "Paid", tone: "rounded-md border border-court-brand bg-transparent text-court-brand" },
+  VOID: { label: "Void", tone: "rounded-full bg-slate-100 text-slate-500 border border-slate-200" },
 };
 
 function formatUsd(amount: string): string {
@@ -169,7 +169,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
   }
 
   const isDraft = props.status === "DRAFT";
-  const statusPill = STATUS_PILL[props.status] ?? { label: props.status, tone: "" };
+  const statusPill = STATUS_PILL[props.status] ?? { label: props.status, tone: "rounded-full" };
   const billingPrimary = billingContacts[0];
 
   function save(then?: () => void | Promise<void>) {
@@ -343,7 +343,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
           </div>
           <span
             className={
-              "inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wider " +
+              "inline-flex items-center px-3 py-1 text-[11px] font-semibold uppercase tracking-wider " +
               statusPill.tone
             }
           >

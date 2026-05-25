@@ -55,7 +55,7 @@ export function PlacementsMapCard({ cities, totalFee }: Props) {
             Placement Map
           </p>
           <p className="mt-0.5 text-xs text-court-fg-muted">
-            Collected, billed, pending start, and overdue placements by location
+            Paid, billed, pending start, and overdue placements by location
           </p>
         </div>
         <p className="shrink-0 text-[11px] text-court-fg-muted">

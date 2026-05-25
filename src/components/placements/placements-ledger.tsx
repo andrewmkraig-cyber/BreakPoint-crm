@@ -53,26 +53,26 @@ const FILTERS: ReadonlyArray<{ id: FilterId; label: string }> = [
   { id: "ALL", label: "All" },
   { id: "PENDING_START", label: "Pending Start" },
   { id: "BILLED", label: "Billed" },
-  { id: "COLLECTED", label: "Collected" },
+  { id: "COLLECTED", label: "Paid" },
   { id: "OVERDUE", label: "Overdue" },
 ];
 
 const STATUS_LABEL: Record<PlacementsDashboardBillingStatus, string> = {
   PENDING_START: "Pending Start",
   BILLED: "Billed",
-  COLLECTED: "Collected",
+  COLLECTED: "Paid",
   OVERDUE: "Overdue",
 };
 
 const STATUS_PILL: Record<PlacementsDashboardBillingStatus, string> = {
   PENDING_START:
-    "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900",
+    "rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900",
   BILLED:
-    "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
+    "rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
   COLLECTED:
-    "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-900",
+    "rounded-md border border-court-brand bg-transparent text-court-brand",
   OVERDUE:
-    "bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-900",
+    "rounded-full bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-900",
 };
 
 function toDrawerContext(row: LedgerRow): PlacementDrawerContext {
@@ -267,7 +267,7 @@ function LedgerTableRow({
       <td className="px-4 py-1.5 align-middle">
         <span
           className={
-            "inline-flex items-center justify-center whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide " +
+            "inline-flex items-center justify-center whitespace-nowrap px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide " +
             STATUS_PILL[row.billingStatus]
           }
         >

@@ -39,10 +39,10 @@ const INVOICE_FILTERS: Array<{ value: InvoiceListFilter; label: string }> = [
 ];
 
 const STATUS_COPY: Record<string, { label: string; tone: string }> = {
-  DRAFT: { label: "Draft", tone: "bg-court-surface-subtle text-court-fg" },
-  SENT: { label: "Sent", tone: "bg-amber-50 text-amber-800 border border-amber-200" },
-  PAID: { label: "Paid", tone: "bg-emerald-50 text-emerald-700 border border-emerald-200" },
-  VOID: { label: "Void", tone: "bg-slate-100 text-slate-500 border border-slate-200" },
+  DRAFT: { label: "Draft", tone: "rounded-full bg-court-surface-subtle text-court-fg" },
+  SENT: { label: "Sent", tone: "rounded-full bg-amber-50 text-amber-800 border border-amber-200" },
+  PAID: { label: "Paid", tone: "rounded-md border border-court-brand bg-transparent text-court-brand" },
+  VOID: { label: "Void", tone: "rounded-full bg-slate-100 text-slate-500 border border-slate-200" },
 };
 
 function formatUsd(cents: number): string {
@@ -210,7 +210,7 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
                   const candName = inv.candidate
                     ? orDash(`${inv.candidate.firstName ?? ""} ${inv.candidate.lastName ?? ""}`.trim())
                     : "—";
-                  const status = STATUS_COPY[inv.status] ?? { label: inv.status, tone: "bg-court-surface-subtle text-court-fg" };
+                  const status = STATUS_COPY[inv.status] ?? { label: inv.status, tone: "rounded-full bg-court-surface-subtle text-court-fg" };
                   const isOverdue = inv.status === "SENT" && inv.dueDate && inv.dueDate < new Date();
                   return (
                     <InvoiceRow key={inv.id} href={`/invoices/${inv.id}`}>
@@ -235,7 +235,7 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
                       <td className="px-6 py-3 align-top">
                         <span
                           className={
-                            "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider " +
+                            "inline-flex items-center px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider " +
                             status.tone
                           }
                         >

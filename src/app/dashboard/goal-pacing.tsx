@@ -202,7 +202,7 @@ export function GoalPacingCard({ data }: { data: GoalPacingCardData }) {
         pctToGoal={data.quarter.pctToGoal}
         pctToGoalLabel={data.quarter.pctToGoalLabel}
         leftFooter={`Day ${data.quarter.dayOfQuarter} of ${data.quarter.daysInQuarter} (${data.quarter.pctOfQuarterLabel} of quarter)`}
-        rightFooter={`${data.quarter.toGoFormatted} to go · pacing ${data.quarter.pacingLabel}`}
+        rightFooter={`${data.quarter.toGoFormatted} to go`}
         className="mt-4"
       />
 
@@ -215,7 +215,7 @@ export function GoalPacingCard({ data }: { data: GoalPacingCardData }) {
         pctToGoal={data.annual.pctToGoal}
         pctToGoalLabel={data.annual.pctToGoalLabel}
         leftFooter={`Day ${data.annual.dayOfYear} of ${data.annual.daysInYear} (${data.annual.pctOfYearLabel} of year)`}
-        rightFooter={`${data.annual.toGoFormatted} to clear · forecast ${data.annual.forecastFormatted} EOY`}
+        rightFooter={`${data.annual.toGoFormatted} to clear`}
       />
 
       <p className="mt-4 border-t border-court-border-soft pt-3 text-xs text-court-fg-muted">

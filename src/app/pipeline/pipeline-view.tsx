@@ -744,7 +744,7 @@ function InvoiceStatusPill({ status }: { status: "DRAFT" | "SENT" | "PAID" | nul
   // three Court modes (paid=green, sent=blue, draft=amber, missing=muted).
   if (status === "PAID") {
     return (
-      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200">
+      <span className="inline-flex items-center rounded-md border border-court-brand bg-transparent px-2 py-0.5 text-[11px] font-semibold text-court-brand">
         Paid
       </span>
     );
