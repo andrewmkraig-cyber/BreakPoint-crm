@@ -47,9 +47,11 @@ const EMAIL_CSS = `
     line-height: 1.5;
     color: #1f2937;
     background: #ffffff;
+    box-sizing: border-box;
+    padding: 14px 16px;
     word-wrap: break-word;
   }
-  pre { font-family: inherit; white-space: pre-wrap; word-break: break-word; margin: 0; padding: 12px 16px; }
+  pre { font-family: inherit; white-space: pre-wrap; word-break: break-word; margin: 0; padding: 0; }
   img { max-width: 100%; height: auto; border: 0; }
   blockquote {
     border-left: 2px solid #cbd5e1;
@@ -144,23 +146,25 @@ export function EmailHtmlViewer({ html }: { html: string }) {
   }, [srcDoc]);
 
   return (
-    <iframe
-      ref={ref}
-      srcDoc={srcDoc}
-      sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
-      title="Email body"
-      style={{
-        width: "100%",
-        height: `${height}px`,
-        border: "0",
-        display: "block",
-        // White email card in every Court Mode, so received mail reads the
-        // same as sent mail. colorScheme:light keeps default UA controls
-        // and form widgets light-mode to match the white canvas.
-        background: "#ffffff",
-        borderRadius: "8px",
-        colorScheme: "light",
-      }}
-    />
+    <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface-subtle p-1 shadow-sm">
+      <iframe
+        ref={ref}
+        srcDoc={srcDoc}
+        sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+        title="Email body"
+        style={{
+          width: "100%",
+          height: `${height}px`,
+          border: "0",
+          display: "block",
+          // White email card in every Court Mode, so received mail reads the
+          // same as sent mail. colorScheme:light keeps default UA controls
+          // and form widgets light-mode to match the white canvas.
+          background: "#ffffff",
+          borderRadius: "8px",
+          colorScheme: "light",
+        }}
+      />
+    </div>
   );
 }
