@@ -343,6 +343,22 @@ model Placement {
   expectedStartDate   DateTime?
   placementNotes      String?   @db.Text
 
+  // Custom payment terms. When useCustomTerms is true the recruiter has
+  // overridden the default fee/guarantee handling with an explicit
+  // installment schedule (1-3 payments) keyed off the confirmed start
+  // date, and/or a custom guarantee end date. All fields except
+  // useCustomTerms are nullable; existing placements default to
+  // useCustomTerms=false and are unaffected.
+  useCustomTerms      Boolean   @default(false)
+  installmentCount    Int? // 1, 2, or 3
+  inst1Amount         Float? // installment 1 dollar amount
+  inst1DaysAfterStart Int? // days after confirmed start date (0 = day of start)
+  inst2Amount         Float? // installment 2 dollar amount
+  inst2DaysAfterStart Int? // days after confirmed start date
+  inst3Amount         Float? // installment 3 dollar amount
+  inst3DaysAfterStart Int? // days after confirmed start date
+  customGuaranteeDate DateTime? // overrides guaranteePeriod (days) when set
+
   // Hired (start confirmed) details
   startConfirmedAt      DateTime?
   startConfirmationFile Bytes?
