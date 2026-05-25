@@ -1,6 +1,6 @@
 // Ace PWA service worker. Bump CACHE_NAME on any logic change so
 // the activate handler purges the previous shell.
-const CACHE_NAME = "ace-shell-v7";
+const CACHE_NAME = "ace-shell-v8";
 const PRECACHE_URLS = ["/", "/offline"];
 
 self.addEventListener("install", (event) => {
@@ -21,6 +21,15 @@ self.addEventListener("activate", (event) => {
         keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)),
       );
       await self.clients.claim();
+      // Best-effort badge self-heal on SW cold-start. iOS can suspend the
+      // worker and evict the app-icon badge while Ace sits idle; on the
+      // next wake (activate) re-assert it from the live server unread
+      // total so a stale or missing badge converges without waiting for
+      // the app to be foregrounded. Failures are swallowed inside the
+      // helpers - the open-app context polls remain the authoritative
+      // reconciler, this is purely additive.
+      const total = await fetchUnreadTotal();
+      if (total !== null) await applyBadge(total);
     })(),
   );
 });
@@ -79,6 +88,49 @@ async function networkFirst(request, { fallback }) {
   }
 }
 
+// --- Badge self-heal helpers ------------------------------------------
+// Shared by the activate handler (cold-start re-assert) and the push
+// handler (fallback when a push carries no numeric badgeCount).
+
+// Pull the combined mail + phone unread total from the same authed
+// endpoints the in-app contexts poll (/api/mail/unread +
+// /api/phone/unread-count, both returning { count }). A service-worker
+// fetch sends the same-origin session cookie, so these resolve as the
+// logged-in recruiter. Returns the total, or null when NEITHER count
+// could be read - so callers leave the badge alone instead of zeroing a
+// known-good number on a transient auth / network blip. A single null
+// side counts as 0 (mirrors the in-app MailTabTitleSync math).
+async function fetchUnreadTotal() {
+  const read = async (url) => {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) return null;
+      const body = await res.json().catch(() => null);
+      return typeof body?.count === "number" ? body.count : null;
+    } catch {
+      return null;
+    }
+  };
+  const [mail, phone] = await Promise.all([
+    read("/api/mail/unread"),
+    read("/api/phone/unread-count"),
+  ]);
+  if (mail === null && phone === null) return null;
+  return (mail ?? 0) + (phone ?? 0);
+}
+
+// Apply a resolved total to the app icon: a positive number sets the
+// badge, zero clears it. Guarded on Badging API support; all failures
+// swallowed (iOS rejects when the page isn't installed / visible).
+async function applyBadge(total) {
+  if (!("setAppBadge" in self.navigator)) return;
+  if (total > 0) {
+    await self.navigator.setAppBadge(total).catch(() => {});
+  } else {
+    await self.navigator.clearAppBadge?.().catch(() => {});
+  }
+}
+
 // Push handler. Payload shape comes from sendPushToUser /
 // sendPushToOrg in src/lib/web-push.ts - always JSON with at least
 // title + body, optionally url and tag. Tag dedupes: subsequent
@@ -132,10 +184,16 @@ self.addEventListener("push", (event) => {
         // the common path is a straight setAppBadge(N):
         //   badgeCount > 0  → setAppBadge(N): the true combined total.
         //   badgeCount === 0 → clearAppBadge(): nothing left to read.
-        //   badgeCount null / missing → leave the badge ALONE. Only
-        //                     legacy pushes that predate the numeric
-        //                     contract land here; clobbering a known-good
-        //                     badge with nothing would help no one.
+        //   badgeCount null / missing → fetch the live combined unread
+        //                     total from the server and set the badge
+        //                     from that; only if THAT fetch also fails do
+        //                     we leave the badge alone (the original
+        //                     last-resort behavior). Legacy pushes that
+        //                     predate the numeric contract, and the Quo
+        //                     SMS/call pushes that omit the count when it
+        //                     is unreliable, land here - and after a long
+        //                     idle a stale badge is worse than a re-derived
+        //                     one, so we self-heal rather than no-op.
         //
         // Awaited inside the outer waitUntil so the SW isn't killed
         // before the badge promise resolves (iOS Safari especially is
@@ -143,11 +201,10 @@ self.addEventListener("push", (event) => {
         if ("setAppBadge" in self.navigator) {
           const n = data.badgeCount;
           if (typeof n === "number") {
-            if (n > 0) {
-              await self.navigator.setAppBadge(n).catch(() => {});
-            } else {
-              await self.navigator.clearAppBadge?.().catch(() => {});
-            }
+            await applyBadge(n);
+          } else {
+            const total = await fetchUnreadTotal();
+            if (total !== null) await applyBadge(total);
           }
         }
         // Also tell any open Ace windows (even backgrounded ones) to
@@ -202,6 +259,53 @@ self.addEventListener("notificationclick", (event) => {
       // comment intact).
       const notes = await self.registration.getNotifications();
       for (const n of notes) n.close();
+    })(),
+  );
+});
+
+// Push subscription rotation / expiry. The browser fires this when it
+// invalidates the existing push subscription - common on iOS after the
+// PWA sits idle for a long stretch. Without re-subscribing here the
+// server's stored PushSubscription row goes stale, push delivery stops,
+// and with it the ONLY closed-app badge writer dies silently until the
+// user re-opens Ace and re-enables in Settings. This is the most
+// important leg of the self-heal: it keeps push alive across long idle.
+//
+// We re-subscribe with the SAME VAPID key the old subscription was
+// created with (event.oldSubscription.options.applicationServerKey),
+// so no key has to be embedded in this static file. Some browsers hand
+// us the already-rotated subscription on event.newSubscription - if so
+// we just re-POST that. Either way the new subscription is upserted via
+// the same /api/push/subscribe endpoint + body shape sw-register uses,
+// so the server row stays fresh (upsert is keyed on endpoint).
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(
+    (async () => {
+      let subscription = event.newSubscription || null;
+      if (!subscription) {
+        const applicationServerKey =
+          event.oldSubscription?.options?.applicationServerKey;
+        // No key to re-subscribe with (this event carried no
+        // oldSubscription) - nothing safe to do here. The next app open
+        // re-syncs via sw-register, or the Settings Enable button.
+        if (!applicationServerKey) return;
+        subscription = await self.registration.pushManager
+          .subscribe({ userVisibleOnly: true, applicationServerKey })
+          .catch(() => null);
+      }
+      if (!subscription) return;
+      // Same-origin fetch carries the session cookie so the server binds
+      // the row to the logged-in recruiter. If the session has lapsed the
+      // POST 401s and we drop it - the browser-side subscription still
+      // exists and sw-register re-POSTs it on the next app open.
+      await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...subscription.toJSON(),
+          userAgent: self.navigator.userAgent,
+        }),
+      }).catch(() => {});
     })(),
   );
 });
