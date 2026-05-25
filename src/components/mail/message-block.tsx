@@ -201,7 +201,7 @@ export function MessageBlock({
   return (
     <article
       className={
-        "min-w-0 overflow-hidden px-4 py-2 " +
+        "min-w-0 overflow-hidden px-4 py-3 " +
         (isFirst ? "" : "border-t border-court-border")
       }
     >
@@ -212,7 +212,7 @@ export function MessageBlock({
       <header
         onClick={() => setExpanded(false)}
         title="Click to collapse"
-        className="mb-1.5 flex cursor-pointer flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5"
+        className="mb-2 flex cursor-pointer flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5"
       >
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
           <span className="truncate text-sm font-medium text-court-fg">
@@ -289,7 +289,7 @@ export function MessageBlock({
           single-column light layout. The viewer drops the bodyHtml into
           a sandboxed iframe so newsletter <style> blocks render against
           their own document, while Ace's chrome sits cleanly around it. */}
-      <div className="min-w-0 overflow-x-auto">
+      <div className="min-w-0 overflow-x-auto pb-1">
         <EmailHtmlViewer html={msg.bodyHtml} />
       </div>
       {msg.attachments && msg.attachments.length > 0 && (

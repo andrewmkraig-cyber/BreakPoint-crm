@@ -44,11 +44,11 @@ const EMAIL_CSS = `
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
     font-size: 14px;
-    line-height: 1.5;
+    line-height: 1.55;
     color: #1f2937;
     background: #ffffff;
     box-sizing: border-box;
-    padding: 14px 16px;
+    padding: 18px 20px;
     word-wrap: break-word;
   }
   pre { font-family: inherit; white-space: pre-wrap; word-break: break-word; margin: 0; padding: 0; }
@@ -146,7 +146,7 @@ export function EmailHtmlViewer({ html }: { html: string }) {
   }, [srcDoc]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface-subtle p-1 shadow-sm">
+    <div className="w-full max-w-[840px] overflow-hidden rounded-xl border border-court-border bg-court-surface-subtle p-2 shadow-sm">
       <iframe
         ref={ref}
         srcDoc={srcDoc}
