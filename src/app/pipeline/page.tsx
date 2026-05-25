@@ -431,6 +431,15 @@ function toPlacementDetails(
     placementNotes: p.placementNotes ?? null,
     candidateSource: p.candidateSource ?? null,
     cityOverride: p.cityOverride ?? null,
+    useCustomTerms: p.useCustomTerms,
+    installmentCount: p.installmentCount ?? null,
+    inst1Amount: p.inst1Amount ?? null,
+    inst1DaysAfterStart: p.inst1DaysAfterStart ?? null,
+    inst2Amount: p.inst2Amount ?? null,
+    inst2DaysAfterStart: p.inst2DaysAfterStart ?? null,
+    inst3Amount: p.inst3Amount ?? null,
+    inst3DaysAfterStart: p.inst3DaysAfterStart ?? null,
+    customGuaranteeDate: p.customGuaranteeDate?.toISOString() ?? null,
   };
 }
 

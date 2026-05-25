@@ -51,6 +51,18 @@ export type PlacementDetails = {
   placementNotes: string | null;
   candidateSource: string | null;
   cityOverride: string | null;
+  // Custom payment agreement fields, threaded through to seed the edit
+  // drawer. customGuaranteeDate is an ISO string (serialized in
+  // toPlacementDetails), matching the expectedStartDate convention.
+  useCustomTerms: boolean;
+  installmentCount: number | null;
+  inst1Amount: number | null;
+  inst1DaysAfterStart: number | null;
+  inst2Amount: number | null;
+  inst2DaysAfterStart: number | null;
+  inst3Amount: number | null;
+  inst3DaysAfterStart: number | null;
+  customGuaranteeDate: string | null;
 };
 
 export type NextInterview = {
@@ -182,6 +194,15 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
       placementNotes: row.placement.placementNotes,
       candidateSource: row.placement.candidateSource,
       cityOverride: row.placement.cityOverride,
+      useCustomTerms: row.placement.useCustomTerms,
+      installmentCount: row.placement.installmentCount,
+      inst1Amount: row.placement.inst1Amount,
+      inst1DaysAfterStart: row.placement.inst1DaysAfterStart,
+      inst2Amount: row.placement.inst2Amount,
+      inst2DaysAfterStart: row.placement.inst2DaysAfterStart,
+      inst3Amount: row.placement.inst3Amount,
+      inst3DaysAfterStart: row.placement.inst3DaysAfterStart,
+      customGuaranteeDate: row.placement.customGuaranteeDate,
     });
     setDrawerOpen(true);
   }

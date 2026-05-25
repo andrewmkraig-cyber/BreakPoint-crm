@@ -75,6 +75,17 @@ function toLedgerRows(rows: PlacementsDashboardRow[]): LedgerRow[] {
     candidateSource: r.leadSource ?? null,
     billingStatus: r.billingStatus,
     leadSource: r.leadSource ?? null,
+    useCustomTerms: r.useCustomTerms,
+    installmentCount: r.installmentCount,
+    inst1Amount: r.inst1Amount,
+    inst1DaysAfterStart: r.inst1DaysAfterStart,
+    inst2Amount: r.inst2Amount,
+    inst2DaysAfterStart: r.inst2DaysAfterStart,
+    inst3Amount: r.inst3Amount,
+    inst3DaysAfterStart: r.inst3DaysAfterStart,
+    customGuaranteeDate: r.customGuaranteeDate
+      ? r.customGuaranteeDate.toISOString()
+      : null,
   }));
 }
 

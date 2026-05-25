@@ -39,6 +39,18 @@ export type LedgerRow = {
   candidateSource: string | null;
   billingStatus: PlacementsDashboardBillingStatus;
   leadSource: string | null;
+  // Custom payment agreement fields, threaded through to seed the edit
+  // drawer. customGuaranteeDate is an ISO string (serialized in
+  // toLedgerRows) so it crosses the server/client boundary cleanly.
+  useCustomTerms: boolean;
+  installmentCount: number | null;
+  inst1Amount: number | null;
+  inst1DaysAfterStart: number | null;
+  inst2Amount: number | null;
+  inst2DaysAfterStart: number | null;
+  inst3Amount: number | null;
+  inst3DaysAfterStart: number | null;
+  customGuaranteeDate: string | null;
 };
 
 const STAGE_LABEL: Record<LedgerRow["stage"], string> = {
@@ -90,6 +102,15 @@ function toDrawerContext(row: LedgerRow): PlacementDrawerContext {
     placementNotes: row.placementNotes,
     candidateSource: row.candidateSource,
     cityOverride: row.cityOverride,
+    useCustomTerms: row.useCustomTerms,
+    installmentCount: row.installmentCount,
+    inst1Amount: row.inst1Amount,
+    inst1DaysAfterStart: row.inst1DaysAfterStart,
+    inst2Amount: row.inst2Amount,
+    inst2DaysAfterStart: row.inst2DaysAfterStart,
+    inst3Amount: row.inst3Amount,
+    inst3DaysAfterStart: row.inst3DaysAfterStart,
+    customGuaranteeDate: row.customGuaranteeDate,
   };
 }
 

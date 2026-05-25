@@ -86,6 +86,19 @@ export type PlacementsDashboardRow = {
   // "Source" column on the placements ledger and as the source-mix
   // input on the Financial Performance card.
   leadSource: string | null;
+  // Custom payment agreement fields — threaded through so the placement
+  // edit drawer can display and edit previously-saved terms. Raw
+  // Placement columns; customGuaranteeDate stays a Date here and is
+  // serialized to ISO at the client boundary (toLedgerRows).
+  useCustomTerms: boolean;
+  installmentCount: number | null;
+  inst1Amount: number | null;
+  inst1DaysAfterStart: number | null;
+  inst2Amount: number | null;
+  inst2DaysAfterStart: number | null;
+  inst3Amount: number | null;
+  inst3DaysAfterStart: number | null;
+  customGuaranteeDate: Date | null;
 };
 
 type ClientLocationJson = {
@@ -233,6 +246,15 @@ export async function getPlacementsDashboardData(
         cityOverride: true,
         source: true,
         candidateSource: true,
+        useCustomTerms: true,
+        installmentCount: true,
+        inst1Amount: true,
+        inst1DaysAfterStart: true,
+        inst2Amount: true,
+        inst2DaysAfterStart: true,
+        inst3Amount: true,
+        inst3DaysAfterStart: true,
+        customGuaranteeDate: true,
         candidate: { select: { firstName: true, lastName: true } },
         client: { select: { name: true, industry: true, location: true } },
         job: { select: { title: true, employmentType: true } },
@@ -316,6 +338,15 @@ export async function getPlacementsDashboardData(
         ? priorYearClientIds.has(p.clientId)
         : false,
       leadSource: p.candidateSource ?? null,
+      useCustomTerms: p.useCustomTerms,
+      installmentCount: p.installmentCount ?? null,
+      inst1Amount: p.inst1Amount ?? null,
+      inst1DaysAfterStart: p.inst1DaysAfterStart ?? null,
+      inst2Amount: p.inst2Amount ?? null,
+      inst2DaysAfterStart: p.inst2DaysAfterStart ?? null,
+      inst3Amount: p.inst3Amount ?? null,
+      inst3DaysAfterStart: p.inst3DaysAfterStart ?? null,
+      customGuaranteeDate: p.customGuaranteeDate ?? null,
     };
   });
 }
