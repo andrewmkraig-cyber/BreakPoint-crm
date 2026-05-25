@@ -459,6 +459,10 @@ export async function confirmStart(
         acceptedSalary: true,
         feePercentage: true,
         expectedStartDate: true,
+        // Needed before the full-fee auto-draft below so we can suppress it
+        // when this placement carries custom installment terms (the custom
+        // path creates an installment-1 draft instead).
+        useCustomTerms: true,
       },
     });
     if (!existing || existing.feeTotal == null || existing.feeTotal <= 0) {
@@ -509,17 +513,24 @@ export async function confirmStart(
     // placement, it returns the existing id instead of stacking
     // duplicates on re-uploads. We catch and log so a transient
     // failure here never breaks the Confirm Start flow.
-    try {
-      await createInvoiceForPlacement({
-        placementId: input.placementId,
-        organizationId: org.id,
-      });
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error("[confirmStart] invoice draft failed", {
-        placementId: input.placementId,
-        error: e instanceof Error ? e.message : String(e),
-      });
+    //
+    // Suppressed when the placement uses custom installment terms: in that
+    // case the custom-payment block below creates an installment-1 draft
+    // instead, and a full-fee draft would double-bill. When useCustomTerms
+    // is false or null this fires exactly as before.
+    if (!existing.useCustomTerms) {
+      try {
+        await createInvoiceForPlacement({
+          placementId: input.placementId,
+          organizationId: org.id,
+        });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[confirmStart] invoice draft failed", {
+          placementId: input.placementId,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
     }
 
     // Auto-fire the Hired — Welcome / Next Steps template. Routes
