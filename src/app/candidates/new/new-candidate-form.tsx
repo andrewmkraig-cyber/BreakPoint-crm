@@ -43,12 +43,22 @@ const EMPTY: FormState = {
   education: [],
 };
 
-export function NewCandidateForm() {
+export function NewCandidateForm({
+  // Prefilled from the New Candidate page's `?phone=` param when the
+  // recruiter taps "Add as candidate" on an unknown phone thread. Lazy
+  // initializer seeds the Phone field on first render; a resume parse
+  // later can still overwrite it (parse maps p.phone over prev.phone).
+  initialPhone = "",
+}: {
+  initialPhone?: string;
+} = {}) {
   const router = useRouter();
   const [resume, setResume] = useState<File | null>(null);
   const [pastedText, setPastedText] = useState<string>("");
   const [linkedinUrl, setLinkedinUrl] = useState<string>("");
-  const [form, setForm] = useState<FormState>(EMPTY);
+  const [form, setForm] = useState<FormState>(() =>
+    initialPhone ? { ...EMPTY, phone: initialPhone } : EMPTY,
+  );
   const [parseSource, setParseSource] = useState<ParseSource | null>(null);
   const [claudeError, setClaudeError] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);

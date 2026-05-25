@@ -28,6 +28,7 @@ import {
   PHONE_SMS_SENT_EVENT,
   type PhoneSmsSentEventDetail,
 } from "@/components/text-notification-toast";
+import { ImageLightbox } from "@/components/image-lightbox";
 import { telHref } from "@/lib/rf-payload-shapes";
 
 // Phase 1 Phone Tab. Layout mirrors /mail exactly:
@@ -1024,6 +1025,9 @@ function ThreadDetailPane({
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [detail.contact.id, detail.entries.length]);
 
+  // Tapped MMS attachment, opened in the full-screen viewer. Null = closed.
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -1060,7 +1064,7 @@ function ThreadDetailPane({
           </p>
           </div>
         </div>
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+        <div className="ml-auto flex items-center gap-1.5">
           {/* Text button removed — the inline composer at the bottom of
               this pane is the same surface, so a separate header
               button would just be a redundant entry point. Call hands
@@ -1083,7 +1087,7 @@ function ThreadDetailPane({
               className="inline-flex h-7 items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-default disabled:opacity-50 disabled:hover:bg-court-surface disabled:hover:text-court-fg-muted"
             >
               <CheckCheck className="h-3 w-3" />
-              Mark as read
+              <span className="hidden sm:inline">Mark as read</span>
             </button>
           ) : null}
         </div>
@@ -1153,11 +1157,11 @@ function ThreadDetailPane({
                       }
                     >
                       {e.mediaUrl && (
-                        <a
-                          href={e.mediaUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mb-1 block"
+                        <button
+                          type="button"
+                          onClick={() => setLightboxSrc(e.mediaUrl)}
+                          className="mb-1 block cursor-zoom-in"
+                          title="View image"
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
@@ -1165,7 +1169,7 @@ function ThreadDetailPane({
                             alt="MMS attachment"
                             className="max-h-72 max-w-full rounded-lg object-contain"
                           />
-                        </a>
+                        </button>
                       )}
                       {e.body && (
                         <div className="whitespace-pre-wrap break-words">{e.body}</div>
@@ -1210,6 +1214,9 @@ function ThreadDetailPane({
         phoneNumber={detail.contact.phoneNumber}
         onSent={onSent}
       />
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      )}
     </div>
   );
 }
@@ -1317,10 +1324,11 @@ function OpenProfileButton({ match }: { match: PhoneMatch | null }) {
   return (
     <Link
       href={href}
+      title="Open Profile"
       className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-transparent px-2 py-1 text-[11px] font-medium text-court-brand transition hover:bg-court-brand-tint"
     >
       <UserIcon className="h-3 w-3" />
-      Open Profile
+      <span className="hidden sm:inline">Open Profile</span>
     </Link>
   );
 }
@@ -1353,7 +1361,7 @@ function CallInQuoButton({ phoneNumber }: { phoneNumber: string }) {
       title="Place call from Quo Desktop"
     >
       <PhoneCall className="h-3 w-3" />
-      Call in Quo
+      <span className="hidden sm:inline">Call in Quo</span>
     </a>
   );
 }
@@ -1385,7 +1393,7 @@ function OpenInQuoButton({ phoneNumber }: { phoneNumber: string }) {
       title="Open this conversation in Quo"
     >
       {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
-      Open in Quo
+      <span className="hidden sm:inline">Open in Quo</span>
     </button>
   );
 }
@@ -1430,7 +1438,7 @@ function AddToAceButton({ phoneNumber }: { phoneNumber: string }) {
         title="Add this number to Ace"
       >
         <UserPlus className="h-3 w-3" />
-        Add to Ace
+        <span className="hidden sm:inline">Add to Ace</span>
       </button>
       {open && (
         <div

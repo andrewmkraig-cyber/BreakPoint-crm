@@ -7,6 +7,7 @@ import {
   PHONE_SMS_SENT_EVENT,
   type PhoneSmsSentEventDetail,
 } from "@/components/text-notification-toast";
+import { ImageLightbox } from "@/components/image-lightbox";
 
 type SmsRow = {
   id: string;
@@ -144,6 +145,9 @@ export function TextingExchanges(props: TextingExchangesProps) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, open]);
 
+  // Tapped MMS attachment, opened in the full-screen viewer. Null = closed.
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
   return (
     <section className="rounded-xl border border-court-border bg-court-surface shadow-sm">
       <button
@@ -228,11 +232,11 @@ export function TextingExchanges(props: TextingExchangesProps) {
                         )}
                       >
                         {m.mediaUrl && (
-                          <a
-                            href={m.mediaUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mb-1 block"
+                          <button
+                            type="button"
+                            onClick={() => setLightboxSrc(m.mediaUrl)}
+                            className="mb-1 block cursor-zoom-in"
+                            title="View image"
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
@@ -240,7 +244,7 @@ export function TextingExchanges(props: TextingExchangesProps) {
                               alt="MMS attachment"
                               className="max-h-64 max-w-full rounded-lg object-contain"
                             />
-                          </a>
+                          </button>
                         )}
                         {m.body && (
                           <div className="whitespace-pre-wrap">{m.body}</div>
@@ -264,6 +268,9 @@ export function TextingExchanges(props: TextingExchangesProps) {
             </div>
           )}
         </div>
+      )}
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       )}
     </section>
   );
