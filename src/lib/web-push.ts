@@ -27,6 +27,7 @@ function ensureVapid(): boolean {
 export type PushPayload = {
   title: string;
   body: string;
+  type?: "notification" | "badge-sync";
   url?: string;
   // Tag dedupes notifications — subsequent pushes with the same tag
   // replace the previous notification rather than stacking. Pass a
@@ -40,6 +41,9 @@ export type PushPayload = {
   mailUnread?: number | null;
   phoneUnread?: number | null;
   badgeCount?: number | null;
+  // Badge-sync pushes can ask the service worker to close stale visible
+  // notifications for messages now read on another device.
+  closeTags?: string[];
 };
 
 // TEMP DIAG (keep until production push delivery is confirmed — see
@@ -58,7 +62,9 @@ function redactDigits(s: string): string {
 function diagPayload(payload: PushPayload) {
   return {
     title: redactDigits(payload.title),
+    type: payload.type ?? "notification",
     tag: payload.tag ? redactDigits(payload.tag) : "(none)",
+    closeTags: payload.closeTags?.map(redactDigits) ?? [],
     badgeCountPresent: typeof payload.badgeCount === "number",
     badgeCount: typeof payload.badgeCount === "number" ? payload.badgeCount : null,
   };

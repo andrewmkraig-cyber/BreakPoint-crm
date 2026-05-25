@@ -1,6 +1,6 @@
 // Ace PWA service worker. Bump CACHE_NAME on any logic change so
 // the activate handler purges the previous shell.
-const CACHE_NAME = "ace-shell-v8";
+const CACHE_NAME = "ace-shell-v9";
 const PRECACHE_URLS = ["/", "/offline"];
 
 self.addEventListener("install", (event) => {
@@ -131,6 +131,16 @@ async function applyBadge(total) {
   }
 }
 
+async function closeNotificationsByTags(tags) {
+  if (!Array.isArray(tags) || tags.length === 0) return;
+  const wanted = new Set(tags.filter((t) => typeof t === "string" && t));
+  if (wanted.size === 0) return;
+  const notes = await self.registration.getNotifications();
+  for (const n of notes) {
+    if (wanted.has(n.tag)) n.close();
+  }
+}
+
 // Push handler. Payload shape comes from sendPushToUser /
 // sendPushToOrg in src/lib/web-push.ts - always JSON with at least
 // title + body, optionally url and tag. Tag dedupes: subsequent
@@ -152,13 +162,15 @@ self.addEventListener("push", (event) => {
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then(async (clients) => {
+        const isBadgeSync = data.type === "badge-sync";
+        await closeNotificationsByTags(data.closeTags);
         const aceFocused = clients.some(
           (c) =>
             c.url.includes(self.location.origin) &&
             c.focused &&
             c.visibilityState === "visible",
         );
-        if (!aceFocused) {
+        if (!aceFocused && !isBadgeSync) {
           await self.registration.showNotification(data.title, {
             body: data.body,
             icon: "/icons/icon-192.png",

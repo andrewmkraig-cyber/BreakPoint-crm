@@ -2,6 +2,7 @@
 
 import { Prisma } from "@prisma/client";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { sendBadgeSyncToOrg } from "@/lib/badge-sync-push";
 import { prisma } from "@/lib/prisma";
 
 // Normalize a phone number to its 10-digit form. Strips all non-digits,
@@ -13,6 +14,36 @@ function toTenDigits(raw: string | null | undefined): string {
   const digits = raw.replace(/\D/g, "");
   const trimmed = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
   return trimmed.length === 10 ? trimmed : "";
+}
+
+function smsNotificationTagsForThread(threadId: string): string[] {
+  if (threadId.startsWith("cand:")) {
+    const candidateId = threadId.slice("cand:".length);
+    return candidateId ? [`sms-${candidateId}`] : [];
+  }
+  if (threadId.startsWith("unk:")) {
+    const raw = threadId.slice("unk:".length);
+    const digits = raw.replace(/\D/g, "").slice(-10);
+    const key = digits || raw;
+    return key ? [`sms-${key}`] : [];
+  }
+  return threadId ? [`sms-${threadId}`] : [];
+}
+
+async function syncPhoneBadgeAfterRead({
+  organizationId,
+  threadId,
+  updated,
+}: {
+  organizationId: string;
+  threadId: string;
+  updated: number;
+}): Promise<void> {
+  if (updated <= 0) return;
+  await sendBadgeSyncToOrg({
+    organizationId,
+    closeTags: smsNotificationTagsForThread(threadId),
+  });
 }
 
 export type PhoneMatch =
@@ -100,6 +131,11 @@ export async function markThreadRead(threadId: string): Promise<{ updated: numbe
       },
       data: { isRead: true },
     });
+    await syncPhoneBadgeAfterRead({
+      organizationId: org.id,
+      threadId,
+      updated: res.count,
+    });
     return { updated: res.count };
   }
 
@@ -121,6 +157,11 @@ export async function markThreadRead(threadId: string): Promise<{ updated: numbe
           AND right(regexp_replace(COALESCE("fromNumber", ''), '\D', '', 'g'), 10) = ${digits}
       `,
     );
+    await syncPhoneBadgeAfterRead({
+      organizationId: org.id,
+      threadId,
+      updated,
+    });
     return { updated };
   }
 
@@ -133,6 +174,11 @@ export async function markThreadRead(threadId: string): Promise<{ updated: numbe
       isRead: false,
     },
     data: { isRead: true },
+  });
+  await syncPhoneBadgeAfterRead({
+    organizationId: org.id,
+    threadId,
+    updated: res.count,
   });
   return { updated: res.count };
 }
