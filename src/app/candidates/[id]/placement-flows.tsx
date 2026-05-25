@@ -1812,9 +1812,20 @@ function ConfirmStartDialog({
         toast.error("Couldn't confirm start", { description: result.error });
         return;
       }
-      toast.success("Start confirmed — candidate moved to Hired", {
-        description: "Draft invoice created. Open Invoicing to review and send.",
-      });
+      if (result.value?.customTermsFired) {
+        toast.success("Start confirmed - invoice draft created for installment 1", {
+          description:
+            result.value.remindersSet > 0
+              ? `Reminders set for ${result.value.remindersSet} remaining installment${
+                  result.value.remindersSet === 1 ? "" : "s"
+                }`
+              : undefined,
+        });
+      } else {
+        toast.success("Start confirmed — candidate moved to Hired", {
+          description: "Draft invoice created. Open Invoicing to review and send.",
+        });
+      }
       onClose();
       router.refresh();
     });

@@ -77,6 +77,11 @@ export type CreateDraftInvoiceInput = {
   notes?: string | null;
   candidateId?: string | null;
   clientId?: string | null;
+  // Optional link back to the originating placement. The New Invoice
+  // editor leaves this unset (null); programmatic callers (e.g. the
+  // custom-installment trigger on Confirm Start) pass it so the draft is
+  // tied to its placement like createInvoiceForPlacement's invoices are.
+  placementId?: string | null;
   billingContacts?: unknown;
   hiringContacts?: unknown;
   sendFromAlias?: string | null;
@@ -107,6 +112,7 @@ export async function createDraftInvoiceAction(
         invoiceNumber,
         clientId: input.clientId ?? null,
         candidateId: input.candidateId ?? null,
+        placementId: input.placementId ?? null,
         roleTitle: input.roleTitle?.trim() || null,
         startDate: input.startDate ? new Date(input.startDate) : today,
         dueDate: input.dueDate ? new Date(input.dueDate) : defaultDue,

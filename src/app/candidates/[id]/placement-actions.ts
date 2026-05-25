@@ -27,6 +27,9 @@ import { extractCandidateFields } from "@/lib/candidate-fields";
 import { formatLocation } from "@/lib/utils";
 import { formatCompensation, type RFJob } from "@/lib/rf-payload-shapes";
 import { createInvoiceForPlacement } from "@/lib/invoices";
+import { createDraftInvoiceAction } from "@/app/invoices/actions";
+import { createReminder } from "@/app/calendar/reminder-actions";
+import { zonedWallTimeToUtc } from "@/lib/timezone";
 import {
   CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
   CANDIDATE_CONFIRMATION_TRIGGER,
@@ -412,7 +415,18 @@ export type ConfirmStartInput = {
   mimeType: string;
 };
 
-export async function confirmStart(input: ConfirmStartInput): Promise<Result> {
+// Surfaced to the Confirm Start UI so it can tailor the success toast.
+// customTermsFired is true when the placement carried a custom payment
+// agreement (so an installment-1 draft was created); remindersSet is the
+// number of later-installment reminders (2 + 3) that apply.
+export type ConfirmStartResult = {
+  customTermsFired: boolean;
+  remindersSet: number;
+};
+
+export async function confirmStart(
+  input: ConfirmStartInput,
+): Promise<Result<ConfirmStartResult>> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   const org = await getCurrentOrg();
@@ -523,6 +537,21 @@ export async function confirmStart(input: ConfirmStartInput): Promise<Result> {
         clientRfId: true,
         clientId: true,
         expectedStartDate: true,
+        // Custom payment agreement fields + names for the installment
+        // trigger below. Selected here so non-custom placements don't pay
+        // for a second round trip.
+        startConfirmedAt: true,
+        offerTitle: true,
+        useCustomTerms: true,
+        installmentCount: true,
+        inst1Amount: true,
+        inst1DaysAfterStart: true,
+        inst2Amount: true,
+        inst2DaysAfterStart: true,
+        inst3Amount: true,
+        inst3DaysAfterStart: true,
+        candidate: { select: { firstName: true, lastName: true } },
+        client: { select: { name: true } },
       },
     });
     if (placementForFire) {
@@ -549,7 +578,125 @@ export async function confirmStart(input: ConfirmStartInput): Promise<Result> {
       });
     }
 
-    return { ok: true };
+    // ---- Custom payment agreement trigger ----
+    // Fires only when the recruiter attached custom installment terms to
+    // this placement (set via the placement edit drawer). For every other
+    // placement this block is a no-op and Confirm Start behaves exactly as
+    // before. Wrapped in try/catch so a draft/reminder hiccup never breaks
+    // the confirmation, mirroring the full-fee auto-draft above.
+    let customTermsFired = false;
+    let remindersSet = 0;
+    if (
+      placementForFire?.useCustomTerms &&
+      (placementForFire.installmentCount ?? 0) >= 1 &&
+      placementForFire.inst1Amount != null
+    ) {
+      customTermsFired = true;
+      const count = placementForFire.installmentCount ?? 1;
+      // Start date is stored as midnight UTC of the chosen day; read it in
+      // UTC so "+ N days" lands on the intended calendar date regardless of
+      // server timezone. Fall back to the just-stamped confirmation time.
+      const base =
+        placementForFire.expectedStartDate ??
+        placementForFire.startConfirmedAt ??
+        new Date();
+      const baseY = base.getUTCFullYear();
+      const baseM = base.getUTCMonth();
+      const baseD = base.getUTCDate();
+      const candidateName =
+        [placementForFire.candidate?.firstName, placementForFire.candidate?.lastName]
+          .filter((s): s is string => Boolean(s && s.trim()))
+          .join(" ")
+          .trim() || "Candidate";
+      const clientName = placementForFire.client?.name?.trim() || "Client";
+
+      // Installments 2 + 3 are the "remaining" ones surfaced in the toast;
+      // count them from the terms so the message is stable on a re-fire.
+      if (count >= 2 && placementForFire.inst2Amount != null) remindersSet += 1;
+      if (count >= 3 && placementForFire.inst3Amount != null) remindersSet += 1;
+
+      try {
+        // (a) Installment 1 draft invoice. Idempotent: skip if a custom
+        // installment draft already exists for this placement so a re-fired
+        // Confirm Start can't stack duplicate drafts.
+        const existingInstallment = await prisma.invoice.findFirst({
+          where: {
+            placementId: input.placementId,
+            organizationId: org.id,
+            status: { not: "VOID" },
+            notes: { contains: "custom payment agreement" },
+          },
+          select: { id: true },
+        });
+        if (!existingInstallment) {
+          const draftRes = await createDraftInvoiceAction({
+            placementId: input.placementId,
+            candidateId: placementForFire.candidateId ?? null,
+            clientId: placementForFire.clientId ?? null,
+            roleTitle: placementForFire.offerTitle ?? null,
+            startDate: new Date(Date.UTC(baseY, baseM, baseD)).toISOString(),
+            dueDate: new Date(
+              Date.UTC(baseY, baseM, baseD + (placementForFire.inst1DaysAfterStart ?? 0)),
+            ).toISOString(),
+            feeAmount: String(placementForFire.inst1Amount),
+            notes: `Installment 1 of ${count} - custom payment agreement`,
+          });
+          if (!draftRes.ok) {
+            // eslint-disable-next-line no-console
+            console.error("[confirmStart] installment-1 draft failed", {
+              placementId: input.placementId,
+              error: draftRes.error,
+            });
+          }
+        }
+
+        // (b/c) Reminders for installments 2 and 3 at 9:00 AM ET on the due
+        // day. Deduped by title so a re-fire doesn't stack reminders.
+        const reminderSpecs: Array<{ n: number; amount: number; days: number }> = [];
+        if (count >= 2 && placementForFire.inst2Amount != null) {
+          reminderSpecs.push({
+            n: 2,
+            amount: placementForFire.inst2Amount,
+            days: placementForFire.inst2DaysAfterStart ?? 0,
+          });
+        }
+        if (count >= 3 && placementForFire.inst3Amount != null) {
+          reminderSpecs.push({
+            n: 3,
+            amount: placementForFire.inst3Amount,
+            days: placementForFire.inst3DaysAfterStart ?? 0,
+          });
+        }
+        for (const spec of reminderSpecs) {
+          // AceReminder has no separate note field, so the amount + position
+          // live in the title (the only text column createReminder writes).
+          const title = `Invoice installment ${spec.n} - ${candidateName} / ${clientName} - $${spec.amount.toLocaleString("en-US")} due (${spec.n} of ${count})`;
+          const dupe = await prisma.aceReminder.findFirst({
+            where: { organizationId: org.id, title },
+            select: { id: true },
+          });
+          if (dupe) continue;
+          const remindAt = zonedWallTimeToUtc(
+            base.getUTCFullYear(),
+            base.getUTCMonth() + 1,
+            base.getUTCDate() + spec.days,
+            9,
+            0,
+            "America/New_York",
+          );
+          // notifyLeadsMin [0] => fire exactly at 9:00 AM ET, not before.
+          await createReminder(title, remindAt.toISOString(), [0]);
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[confirmStart] custom payment trigger failed", {
+          placementId: input.placementId,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
+    return { ok: true, value: { customTermsFired, remindersSet } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to confirm start." };
   }
