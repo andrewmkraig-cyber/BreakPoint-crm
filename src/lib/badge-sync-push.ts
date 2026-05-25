@@ -20,13 +20,20 @@ export async function sendBadgeSyncToUser({
   userId,
   organizationId,
   closeTags,
+  extraUnreadMailThreadIds,
 }: {
   userId: string;
   organizationId: string;
   closeTags?: string[];
+  // Thread ids a caller just confirmed are INBOX+UNREAD (e.g. the Gmail
+  // webhook on a fresh arrival), folded into the count so the badge
+  // reflects the new message even before Gmail's is:unread index catches up.
+  extraUnreadMailThreadIds?: string[];
 }): Promise<void> {
   try {
-    const counts = await getUnreadCountsForOrg(organizationId);
+    const counts = await getUnreadCountsForOrg(organizationId, {
+      extraUnreadMailThreadIds,
+    });
     await sendPushToUser(
       userId,
       organizationId,
@@ -40,12 +47,16 @@ export async function sendBadgeSyncToUser({
 export async function sendBadgeSyncToOrg({
   organizationId,
   closeTags,
+  extraUnreadMailThreadIds,
 }: {
   organizationId: string;
   closeTags?: string[];
+  extraUnreadMailThreadIds?: string[];
 }): Promise<void> {
   try {
-    const counts = await getUnreadCountsForOrg(organizationId);
+    const counts = await getUnreadCountsForOrg(organizationId, {
+      extraUnreadMailThreadIds,
+    });
     await sendPushToOrg(organizationId, badgeSyncPayload(counts, closeTags));
   } catch (err) {
     console.error("[badge-sync] sendBadgeSyncToOrg failed", err);

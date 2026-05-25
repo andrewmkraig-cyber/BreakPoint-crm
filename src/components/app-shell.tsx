@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Sidebar } from "@/components/sidebar";
 import { TopBar } from "@/components/top-bar";
 import { MailTabTitleSync } from "@/components/mail-tab-title-sync";
+import { GmailWatchKeepalive } from "@/components/gmail-watch-keepalive";
 import { ScheduledSendFailureToaster } from "@/components/scheduled-send-failure-toaster";
 import { MailProvider } from "@/lib/mail-context";
 import { PhoneProvider } from "@/lib/phone-context";
@@ -160,6 +161,7 @@ export function AppShell({
         <TextingProvider>
           <div className="flex min-h-screen bg-court-bg">
             <MailTabTitleSync />
+            <GmailWatchKeepalive />
             <ScheduledSendFailureToaster />
             <Sidebar width={sidebarWidth} />
             {/* Resize handle sits between the sticky sidebar and the

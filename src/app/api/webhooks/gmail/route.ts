@@ -5,9 +5,7 @@ import {
   getFreshAccessToken,
   tagThreadByAddresses,
 } from "@/lib/gmail";
-import { sendPushToOrg } from "@/lib/web-push";
-import { getUnreadCountsForOrg } from "@/lib/unread-counts";
-import { badgePayloadFields } from "@/lib/badge-math";
+import { sendBadgeSyncToUser } from "@/lib/badge-sync-push";
 
 export const dynamic = "force-dynamic";
 
@@ -207,29 +205,34 @@ export async function POST(req: NextRequest) {
       data: { lastHistoryId: newHistoryId },
     });
 
-    if (addedCount > 0) {
-      const counts = await getUnreadCountsForOrg(organizationId, {
-        extraUnreadMailThreadIds: Array.from(newUnreadInboxThreads),
-      });
-      // TEMP DIAG (keep until badge reliability confirmed in prod).
-      console.log("[push][badge-diag]", {
-        source: "gmail-webhook",
-        mailUnread: counts.mailUnread,
-        phoneUnread: counts.phoneUnread,
-        badgeCount: counts.badgeCount,
-        mailReliable: counts.mailReliable,
-        mailReason: counts.mailReason,
-        mailSource: counts.mailSource,
-        badgeOmitted: counts.badgeCount === null,
-      });
-      await sendPushToOrg(organizationId, {
-        title: "New Email",
-        body: "You have a new message in Ace",
-        url: "/mail",
-        tag: "gmail-push",
-        ...badgePayloadFields(counts),
-      });
-    }
+    console.log("[gmail webhook] processed", {
+      email,
+      newThreadsTagged: addedCount,
+      newUnreadInbox: newUnreadInboxThreads.size,
+    });
+
+    // Reconcile the badge after EVERY Pub/Sub notice, not just on new mail.
+    // Gmail pings us on any INBOX change - new arrivals AND reads / label
+    // changes done in native Gmail - so recomputing the live unread count
+    // here is what lets the closed mobile PWA badge drop when a message is
+    // read outside Ace. (Desktop Ace already covered this by polling while
+    // open; the closed PWA had no way to know - this is that gap.)
+    //
+    // SILENT by design: this sends a `badge-sync` push, which sw.js never
+    // renders as a banner (it short-circuits showNotification on
+    // type === "badge-sync"). So this path produces ZERO visible
+    // notifications and cannot duplicate a new-mail alert. Targeted to the
+    // mailbox owner resolved above, not broadcast to the whole org.
+    await sendBadgeSyncToUser({
+      userId: user.id,
+      organizationId,
+      // Floor the count with threads confirmed INBOX+UNREAD this batch -
+      // Gmail's is:unread index lags a few seconds behind a fresh arrival.
+      extraUnreadMailThreadIds: Array.from(newUnreadInboxThreads),
+      // Clear any stale mail banner left in the tray once the count settles
+      // (e.g. a message that was read elsewhere).
+      closeTags: ["gmail-push"],
+    });
   } catch (err) {
     console.error("[gmail webhook] handler error", {
       err: err instanceof Error ? err.message : String(err),
