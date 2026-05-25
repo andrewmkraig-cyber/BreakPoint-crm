@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState, useTransition } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { ChevronRight, Plus } from "lucide-react";
 import { useComposerManager } from "@/lib/composer-manager";
 import { usePhonePanels } from "@/lib/phone-panels-context";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import { DASHBOARD_TAB_LABELS, resolveDashboardTab } from "@/app/dashboard/tabs";
-import { createBlankInvoiceAction } from "@/app/invoices/actions";
 
 // Pathname-driven page title rendered on the left side of the
 // TopBar. Mirrors the Jobot pattern Andrew showed: the section title
@@ -353,21 +352,17 @@ function CalendarNewEventButton({ label }: { label: string }) {
 
 function NewInvoiceTopBarButton({ label }: { label: string }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  // Navigate to the blank editor. The DRAFT row is NOT created here — it is
+  // only written when the user explicitly clicks Save draft or Mark as sent
+  // inside the editor, so opening + cancelling produces zero DB writes.
   return (
     <button
       type="button"
-      disabled={pending}
-      onClick={() =>
-        startTransition(async () => {
-          const result = await createBlankInvoiceAction({});
-          if (result.ok) router.push(`/invoices/${result.data.id}`);
-        })
-      }
+      onClick={() => router.push("/invoices/new")}
       className={ACTION_BUTTON_CLASS}
     >
       <Plus className="h-3 w-3" />
-      {pending ? "Creating…" : label}
+      {label}
     </button>
   );
 }

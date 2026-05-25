@@ -68,13 +68,29 @@ export async function createInvoiceFromPlacementAction(placementId: string): Pro
   }
 }
 
-export type CreateBlankInvoiceInput = {
-  clientId?: string | null;
+export type CreateDraftInvoiceInput = {
+  roleTitle?: string | null;
+  startDate?: string | null;
+  feeAmount?: string | null;
+  paymentTerms?: string | null;
+  dueDate?: string | null;
+  notes?: string | null;
   candidateId?: string | null;
+  clientId?: string | null;
+  billingContacts?: unknown;
+  hiringContacts?: unknown;
+  sendFromAlias?: string | null;
 };
 
-export async function createBlankInvoiceAction(
-  input: CreateBlankInvoiceInput = {},
+// Creates a DRAFT invoice from the editor's field values. This is the ONLY
+// path that writes a new invoice row from the "New Invoice" flow, and it
+// fires only on an explicit Save draft / Mark as sent click — opening the
+// blank editor and cancelling never reaches here, so no orphan drafts. The
+// invoice number is assigned here via the same nextInvoiceNumber sequence
+// used everywhere else (max existing + 1); deferring creation to save-time
+// leaves that logic untouched.
+export async function createDraftInvoiceAction(
+  input: CreateDraftInvoiceInput = {},
 ): Promise<Result<{ id: string }>> {
   const userId = await requireUserId();
   if (!userId) return fail("Not signed in");
@@ -82,19 +98,24 @@ export async function createBlankInvoiceAction(
   try {
     const invoiceNumber = await nextInvoiceNumber(org.id);
     const today = new Date();
-    const dueDate = new Date(today);
-    dueDate.setDate(dueDate.getDate() + 30);
+    const defaultDue = new Date(today);
+    defaultDue.setDate(defaultDue.getDate() + 30);
+    const feeCleaned = (input.feeAmount ?? "").toString().replace(/[,$\s]/g, "").trim();
     const created = await prisma.invoice.create({
       data: {
         organizationId: org.id,
         invoiceNumber,
         clientId: input.clientId ?? null,
         candidateId: input.candidateId ?? null,
-        startDate: today,
-        paymentTerms: "Net 30",
-        dueDate,
-        billingContacts: [] as unknown as Prisma.InputJsonValue,
-        hiringContacts: [] as unknown as Prisma.InputJsonValue,
+        roleTitle: input.roleTitle?.trim() || null,
+        startDate: input.startDate ? new Date(input.startDate) : today,
+        dueDate: input.dueDate ? new Date(input.dueDate) : defaultDue,
+        feeAmount: feeCleaned ? new Prisma.Decimal(feeCleaned) : null,
+        paymentTerms: input.paymentTerms?.trim() || "Net 30",
+        notes: input.notes?.trim() || null,
+        billingContacts: sanitizeContacts(input.billingContacts) as unknown as Prisma.InputJsonValue,
+        hiringContacts: sanitizeContacts(input.hiringContacts) as unknown as Prisma.InputJsonValue,
+        sendFromAlias: input.sendFromAlias?.trim() || null,
         status: "DRAFT",
       },
       select: { id: true },

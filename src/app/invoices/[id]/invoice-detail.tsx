@@ -8,6 +8,7 @@ import { useComposerManager } from "@/lib/composer-manager";
 import type { AttachmentDraft } from "@/app/mail/mail-composer";
 
 import {
+  createDraftInvoiceAction,
   deleteInvoiceAction,
   markInvoicePaidAction,
   markInvoiceSentAction,
@@ -53,7 +54,10 @@ const PAYMENT_METHOD_LABEL: Record<InvoicePaymentMethod, string> = {
 };
 
 export type InvoiceDetailProps = {
-  id: string;
+  // Null = unsaved "new invoice" mode. No DB row exists yet; it is created
+  // only when the user clicks Save draft / Mark as sent. Every server action
+  // that needs a persisted row is gated on this being non-null.
+  id: string | null;
   invoiceNumber: string;
   status: string;
   roleTitle: string;
@@ -160,6 +164,9 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
 
   function onPickAlias(next: string) {
     setSelectedFromAlias(next);
+    // In new mode there's no row to persist to yet — the choice rides along
+    // in createDraftInvoiceAction when the invoice is first saved.
+    if (props.id === null) return;
     setAliasSaving(true);
     void updateInvoiceSendFromAliasAction(props.id, next)
       .then((r) => {
@@ -169,12 +176,43 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
   }
 
   const isDraft = props.status === "DRAFT";
+  // Unsaved "new invoice" mode — no row exists yet.
+  const isNew = props.id === null;
   const statusPill = STATUS_PILL[props.status] ?? { label: props.status, tone: "rounded-full" };
   const billingPrimary = billingContacts[0];
 
-  function save(then?: () => void | Promise<void>) {
+  // Persists the editor. In new mode this CREATES the draft row (the first
+  // and only write for a brand-new invoice); in edit mode it updates the
+  // existing row. The continuation receives the effective invoice id so
+  // callers (e.g. Mark as sent) can act on the freshly-created row.
+  function save(then?: (invoiceId: string) => void | Promise<void>) {
     setError(null);
     startTransition(async () => {
+      if (props.id === null) {
+        const result = await createDraftInvoiceAction({
+          roleTitle,
+          startDate: startDate || null,
+          dueDate: dueDate || null,
+          feeAmount,
+          paymentTerms,
+          notes,
+          billingContacts,
+          hiringContacts,
+          candidateId: props.candidateId,
+          clientId: props.clientId,
+          sendFromAlias: selectedFromAlias,
+        });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        if (then) {
+          await then(result.data.id);
+        } else {
+          router.push(`/invoices/${result.data.id}`);
+        }
+        return;
+      }
       const result = await updateInvoiceAction({
         id: props.id,
         roleTitle,
@@ -191,7 +229,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
         return;
       }
       router.refresh();
-      if (then) await then();
+      if (then) await then(props.id);
     });
   }
 
@@ -208,18 +246,25 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
   }
 
   function handleSend() {
-    save(async () => {
-      const result = await markInvoiceSentAction(props.id);
+    save(async (invoiceId) => {
+      const result = await markInvoiceSentAction(invoiceId);
       if (!result.ok) {
         setError(result.error);
         return;
       }
-      router.refresh();
+      // New invoice: we're on /invoices/new, so route to the saved row.
+      // Existing invoice: stay put and refresh the server data.
+      if (props.id === null) router.push(`/invoices/${invoiceId}`);
+      else router.refresh();
     });
   }
 
   async function handleEmailDraft() {
     if (draftingEmail) return;
+    // Drafting the email pulls the rendered PDF from /invoices/[id]/pdf, so
+    // it requires a saved row. The button is hidden in new mode; this guard
+    // keeps the id non-null for the rest of the handler.
+    if (props.id === null) return;
     setError(null);
     setDraftingEmail(true);
     try {
@@ -452,29 +497,44 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
             >
               Mark as sent
             </button>
-            <button
-              type="button"
-              disabled={isPending || draftingEmail}
-              onClick={handleEmailDraft}
-              className="rounded-md border border-blue-500 bg-transparent px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-blue-600 shadow-sm hover:bg-blue-500/10 disabled:opacity-60 dark:text-blue-400"
-            >
-              {draftingEmail ? "Opening…" : "Draft Email"}
-            </button>
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() => {
-                if (!confirm("Delete this draft? This cannot be undone.")) return;
-                runAction(async () => {
-                  const r = await deleteInvoiceAction(props.id);
-                  if (r.ok) router.push("/invoices");
-                  return r;
-                });
-              }}
-              className="ml-auto rounded-md border border-red-500 bg-transparent px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-600 hover:bg-red-500/10 disabled:opacity-60 dark:text-red-400"
-            >
-              Delete draft
-            </button>
+            {!isNew ? (
+              <button
+                type="button"
+                disabled={isPending || draftingEmail}
+                onClick={handleEmailDraft}
+                className="rounded-md border border-blue-500 bg-transparent px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-blue-600 shadow-sm hover:bg-blue-500/10 disabled:opacity-60 dark:text-blue-400"
+              >
+                {draftingEmail ? "Opening…" : "Draft Email"}
+              </button>
+            ) : null}
+            {isNew ? (
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => router.push("/invoices")}
+                className="ml-auto rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => {
+                  const id = props.id;
+                  if (!id) return;
+                  if (!confirm("Delete this draft? This cannot be undone.")) return;
+                  runAction(async () => {
+                    const r = await deleteInvoiceAction(id);
+                    if (r.ok) router.push("/invoices");
+                    return r;
+                  });
+                }}
+                className="ml-auto rounded-md border border-red-500 bg-transparent px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-600 hover:bg-red-500/10 disabled:opacity-60 dark:text-red-400"
+              >
+                Delete draft
+              </button>
+            )}
           </div>
         ) : (
           <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-court-border pt-5">
@@ -500,12 +560,14 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
                   type="button"
                   disabled={isPending || !paymentMethod}
                   onClick={() => {
+                    const id = props.id;
+                    if (!id) return;
                     if (!paymentMethod) {
                       setError("Pick a payment method before marking paid.");
                       return;
                     }
                     runAction(() =>
-                      markInvoicePaidAction(props.id, paymentMethod as InvoicePaymentMethod),
+                      markInvoicePaidAction(id, paymentMethod as InvoicePaymentMethod),
                     );
                   }}
                   className="rounded-md border border-court-brand bg-transparent px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-brand shadow-sm hover:bg-court-brand/10 disabled:opacity-60"
@@ -518,7 +580,11 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               <button
                 type="button"
                 disabled={isPending}
-                onClick={() => runAction(() => restoreInvoiceDraftAction(props.id))}
+                onClick={() => {
+                  const id = props.id;
+                  if (!id) return;
+                  runAction(() => restoreInvoiceDraftAction(id));
+                }}
                 className="rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle disabled:opacity-60"
               >
                 Restore to draft
@@ -529,8 +595,10 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
                 type="button"
                 disabled={isPending}
                 onClick={() => {
+                  const id = props.id;
+                  if (!id) return;
                   if (!confirm("Void this invoice? It stays on file but won't count toward outstanding.")) return;
-                  runAction(() => markInvoiceVoidAction(props.id));
+                  runAction(() => markInvoiceVoidAction(id));
                 }}
                 className="ml-auto rounded-md border border-red-500 bg-transparent px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-600 hover:bg-red-500/10 disabled:opacity-60 dark:text-red-400"
               >
@@ -582,14 +650,16 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
           </dl>
         </div>
 
-        <a
-          href={`/invoices/${props.id}/pdf`}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center justify-center gap-2 rounded-md border border-court-border bg-court-surface px-4 py-3 text-[12px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle"
-        >
-          Open invoice PDF
-        </a>
+        {!isNew ? (
+          <a
+            href={`/invoices/${props.id}/pdf`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center justify-center gap-2 rounded-md border border-court-border bg-court-surface px-4 py-3 text-[12px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle"
+          >
+            Open invoice PDF
+          </a>
+        ) : null}
 
         <div className="rounded-2xl border border-court-border bg-court-surface-subtle/40 p-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
