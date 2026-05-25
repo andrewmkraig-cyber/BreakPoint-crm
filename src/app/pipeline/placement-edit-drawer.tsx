@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { StageBadge } from "@/components/stage-badge";
+import { TabStrip } from "@/components/ui/tab-strip";
 import { cn } from "@/lib/utils";
 import { updatePlacement } from "@/app/pipeline/placement-update-action";
 import { LEAD_SOURCES } from "@/lib/lead-sources";
@@ -29,6 +30,22 @@ export type PlacementDrawerContext = {
   // Placement.cityOverride. Empty = fall back to client.location.city
   // when the dashboard derives the per-placement city.
   cityOverride: string | null;
+  // Custom payment agreement. All optional: the consumers that render
+  // this drawer do not yet thread these values into the context, so when
+  // a field is absent the section opens off/empty and Save leaves the
+  // matching column untouched (see handleSave). Once a consumer provides
+  // them the section round-trips like every other field with no drawer
+  // change. customGuaranteeDate is an ISO string, normalized to the
+  // "YYYY-MM-DD" shape the date input wants (same as expectedStartDate).
+  useCustomTerms?: boolean;
+  installmentCount?: number | null;
+  inst1Amount?: number | null;
+  inst1DaysAfterStart?: number | null;
+  inst2Amount?: number | null;
+  inst2DaysAfterStart?: number | null;
+  inst3Amount?: number | null;
+  inst3DaysAfterStart?: number | null;
+  customGuaranteeDate?: string | null;
 };
 
 // Lead source options — canonical list shared with the candidate-
@@ -58,6 +75,14 @@ function parseNumberOrNull(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// "Days after start" maps to an Int column, so coerce to a whole number.
+function parseIntOrNull(value: string): number | null {
+  const t = value.trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
 export function PlacementEditDrawer({ open, context, onClose }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -68,6 +93,19 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
   const [notes, setNotes] = useState("");
   const [source, setSource] = useState("");
   const [city, setCity] = useState("");
+
+  // Custom Payment Agreement section. Collapsed by default; the fields
+  // below the toggle are grayed out and inert until useCustomTerms is on.
+  const [termsOpen, setTermsOpen] = useState(false);
+  const [useCustomTerms, setUseCustomTerms] = useState(false);
+  const [installmentCount, setInstallmentCount] = useState<1 | 2 | 3>(1);
+  const [inst1Amount, setInst1Amount] = useState("");
+  const [inst1Days, setInst1Days] = useState("");
+  const [inst2Amount, setInst2Amount] = useState("");
+  const [inst2Days, setInst2Days] = useState("");
+  const [inst3Amount, setInst3Amount] = useState("");
+  const [inst3Days, setInst3Days] = useState("");
+  const [guaranteeDate, setGuaranteeDate] = useState("");
 
   // Re-seed the form whenever a different placement is loaded into the
   // drawer (or the same one is re-opened after a close). Keying on
@@ -81,11 +119,65 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
     setNotes(context.placementNotes ?? "");
     setSource(context.candidateSource ?? "");
     setCity(context.cityOverride ?? "");
+
+    setUseCustomTerms(context.useCustomTerms ?? false);
+    const seededCount = context.installmentCount;
+    setInstallmentCount(seededCount === 2 || seededCount === 3 ? seededCount : 1);
+    setInst1Amount(context.inst1Amount != null ? String(context.inst1Amount) : "");
+    setInst1Days(
+      context.inst1DaysAfterStart != null ? String(context.inst1DaysAfterStart) : "",
+    );
+    setInst2Amount(context.inst2Amount != null ? String(context.inst2Amount) : "");
+    setInst2Days(
+      context.inst2DaysAfterStart != null ? String(context.inst2DaysAfterStart) : "",
+    );
+    setInst3Amount(context.inst3Amount != null ? String(context.inst3Amount) : "");
+    setInst3Days(
+      context.inst3DaysAfterStart != null ? String(context.inst3DaysAfterStart) : "",
+    );
+    setGuaranteeDate(isoToDateInput(context.customGuaranteeDate ?? null));
+    // Always reopen collapsed so the section never carries open-state
+    // across different placements.
+    setTermsOpen(false);
   }, [context, open]);
 
   function handleSave() {
     if (!context) return;
     startTransition(async () => {
+      // Only write the custom-term columns when the drawer actually holds
+      // their state: the recruiter enabled the section this session, or a
+      // consumer seeded the values into the context (context.useCustomTerms
+      // is then defined). Otherwise leave them untouched so a routine
+      // re-save can't wipe terms the drawer never loaded.
+      const termsLoaded = context.useCustomTerms !== undefined;
+      const termsPayload =
+        useCustomTerms || termsLoaded
+          ? {
+              useCustomTerms,
+              installmentCount: useCustomTerms ? installmentCount : null,
+              inst1Amount: useCustomTerms ? parseNumberOrNull(inst1Amount) : null,
+              inst1DaysAfterStart: useCustomTerms ? parseIntOrNull(inst1Days) : null,
+              inst2Amount:
+                useCustomTerms && installmentCount >= 2
+                  ? parseNumberOrNull(inst2Amount)
+                  : null,
+              inst2DaysAfterStart:
+                useCustomTerms && installmentCount >= 2
+                  ? parseIntOrNull(inst2Days)
+                  : null,
+              inst3Amount:
+                useCustomTerms && installmentCount >= 3
+                  ? parseNumberOrNull(inst3Amount)
+                  : null,
+              inst3DaysAfterStart:
+                useCustomTerms && installmentCount >= 3
+                  ? parseIntOrNull(inst3Days)
+                  : null,
+              customGuaranteeDate:
+                useCustomTerms && guaranteeDate.trim() ? guaranteeDate.trim() : null,
+            }
+          : {};
+
       const res = await updatePlacement({
         placementId: context.placementId,
         expectedStartDate: startDate.trim() ? startDate.trim() : null,
@@ -95,6 +187,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
         placementNotes: notes,
         candidateSource: source.trim() ? source.trim() : null,
         cityOverride: city.trim() ? city.trim() : null,
+        ...termsPayload,
       });
       if (!res.ok) {
         toast.error("Couldn't save changes", { description: res.error });
@@ -105,6 +198,14 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
       router.refresh();
     });
   }
+
+  // Visible installment rows are sliced to the selected count; each row
+  // owns its own amount + days-after-start state.
+  const installmentFields = [
+    { n: 1, amount: inst1Amount, setAmount: setInst1Amount, days: inst1Days, setDays: setInst1Days },
+    { n: 2, amount: inst2Amount, setAmount: setInst2Amount, days: inst2Days, setDays: setInst2Days },
+    { n: 3, amount: inst3Amount, setAmount: setInst3Amount, days: inst3Days, setDays: setInst3Days },
+  ];
 
   return (
     <>
@@ -255,6 +356,125 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
               placeholder="Internal notes on this placement"
               className="w-full resize-y rounded-md border border-court-border bg-court-surface px-3 py-2.5 text-[13.5px] leading-relaxed text-court-fg outline-none placeholder:text-court-fg-dim focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
             />
+          </div>
+
+          {/* Custom Payment Agreement — collapsible advanced section.
+              Collapsed by default; the chevron toggles it. */}
+          <div className="border-t border-court-border pt-5">
+            <button
+              type="button"
+              onClick={() => setTermsOpen((o) => !o)}
+              aria-expanded={termsOpen}
+              className="flex w-full items-center justify-between text-left"
+            >
+              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
+                Custom Payment Agreement
+              </span>
+              {termsOpen ? (
+                <ChevronUp className="h-4 w-4 text-court-fg-muted" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-court-fg-muted" />
+              )}
+            </button>
+
+            {termsOpen ? (
+              <div className="mt-4 space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="text-sm font-semibold text-court-fg">
+                    Use custom payment terms
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={useCustomTerms}
+                    aria-label="Use custom payment terms"
+                    onClick={() => setUseCustomTerms((v) => !v)}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+                      useCustomTerms ? "bg-court-brand" : "bg-court-border",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+                        useCustomTerms ? "translate-x-[22px]" : "translate-x-0.5",
+                      )}
+                    />
+                  </button>
+                </div>
+
+                <div
+                  className={cn(
+                    "space-y-4",
+                    !useCustomTerms && "pointer-events-none opacity-50",
+                  )}
+                >
+                  <div>
+                    <FieldLabel>Number of installments</FieldLabel>
+                    <TabStrip
+                      ariaLabel="Number of installments"
+                      items={[
+                        { id: "1", label: "1" },
+                        { id: "2", label: "2" },
+                        { id: "3", label: "3" },
+                      ]}
+                      activeId={String(installmentCount)}
+                      onChange={(id) =>
+                        setInstallmentCount(Number(id) as 1 | 2 | 3)
+                      }
+                    />
+                  </div>
+
+                  {installmentFields.slice(0, installmentCount).map((f) => (
+                    <div key={f.n}>
+                      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-court-fg">
+                        {`Installment ${f.n}`}
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <FieldLabel>Amount ($)</FieldLabel>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            value={f.amount}
+                            onChange={(e) => f.setAmount(e.target.value)}
+                            placeholder="0"
+                            className={INPUT_CLS}
+                          />
+                        </div>
+                        <div>
+                          <FieldLabel>Days after start</FieldLabel>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            step={1}
+                            value={f.days}
+                            onChange={(e) => f.setDays(e.target.value)}
+                            placeholder="0"
+                            className={INPUT_CLS}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div>
+                    <FieldLabel>Guarantee end date (custom)</FieldLabel>
+                    <input
+                      type="date"
+                      value={guaranteeDate}
+                      onChange={(e) => setGuaranteeDate(e.target.value)}
+                      className={INPUT_CLS}
+                    />
+                    <div className="mt-1 text-[11px] text-court-fg-muted">
+                      Overrides the guarantee days field above when set.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
 
