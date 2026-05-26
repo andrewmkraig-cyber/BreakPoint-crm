@@ -524,13 +524,14 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                           onClick={(e) => e.stopPropagation()}
                         >
                           {r.candidateName}
-                          {/* Kept badge uses the same soft blue as the Keep
-                              button variant so the bookmark indicator reads
-                              as a single intent across every Keep surface
-                              (button, stage badge, pipeline indicator). */}
+                          {/* Kept badge sits in the Keep-button blue family
+                              but one step darker (blue-100/800 vs the Keep
+                              button's blue-50/700) so the bookmark indicator
+                              stays distinct from the interviewing stage
+                              chip, which already owns the lighter blue. */}
                           {r.isKept && (
                             <span
-                              className="inline-flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-blue-700 dark:bg-blue-950/40 dark:text-blue-200"
+                              className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-blue-800 dark:bg-blue-950/60 dark:text-blue-100"
                               title="Kept candidate"
                             >
                               <Bookmark className="h-2.5 w-2.5" /> Kept
