@@ -85,7 +85,11 @@ export function GuaranteePeriodTable({
         </p>
       </div>
 
-      <div className="mt-2.5 overflow-x-auto">
+      {/* pb-2 matches the visual bottom whitespace the placements ledger gets
+          "for free" from its two-line rows (client name + industry sub-line).
+          Guarantee rows are single-line, so without explicit bottom padding
+          the last row's border-b sits right against the card edge. */}
+      <div className="mt-2.5 overflow-x-auto pb-2">
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr className="border-y border-court-border-soft text-left text-[10px] uppercase tracking-wide text-court-fg-muted">
