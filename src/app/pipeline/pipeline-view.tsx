@@ -28,9 +28,9 @@ import {
 } from "@/app/pipeline/placement-edit-drawer";
 import {
   GuaranteePeriodTable,
-  resolveGuaranteeEnd,
   type GuaranteePeriodRow,
 } from "@/components/placements/guarantee-period-table";
+import { resolveGuaranteeEnd } from "@/components/placements/guarantee-period-utils";
 
 type Stage = keyof typeof PIPELINE_LABELS;
 

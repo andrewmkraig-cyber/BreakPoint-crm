@@ -1,9 +1,9 @@
 import { PlacementsBreakdowns } from "@/components/placements/placements-breakdowns";
 import {
   GuaranteePeriodTable,
-  resolveGuaranteeEnd,
   type GuaranteePeriodRow,
 } from "@/components/placements/guarantee-period-table";
+import { resolveGuaranteeEnd } from "@/components/placements/guarantee-period-utils";
 import {
   PlacementsLedger,
   type LedgerRow,
