@@ -2522,7 +2522,37 @@ function ScheduleInterviewDialog({
   }
 
   return (
-    <Modal title="Schedule interview" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
+    <Modal
+      title="Schedule interview"
+      subtitle={`${job.jobTitle} · ${job.clientName}`}
+      onClose={onClose}
+      // Pin Cancel/Schedule to a flex-none footer slot so they remain
+      // visible on short laptop viewports — inside the body they used
+      // to scroll out of view alongside the form fields. Mirrors
+      // ModalFooter's button styling so the visual is unchanged.
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isPending}
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+          >
+            <X className="h-3 w-3" /> Cancel
+          </button>
+          <Button
+            type="button"
+            size="sm"
+            variant="primary"
+            onClick={onSave}
+            disabled={isPending}
+          >
+            {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+            Schedule
+          </Button>
+        </>
+      }
+    >
       <div className="grid grid-cols-1 gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="block text-sm sm:col-span-2">
@@ -2630,7 +2660,6 @@ function ScheduleInterviewDialog({
           )}
         </div>
       )}
-      <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Schedule" />
     </Modal>
   );
 }
@@ -3850,12 +3879,14 @@ function Modal({
   subtitle,
   onClose,
   children,
+  footer,
   wide,
 }: {
   title: string;
   subtitle?: string;
   onClose: () => void;
   children: React.ReactNode;
+  footer?: React.ReactNode;
   wide?: boolean;
 }) {
   // Portal to document.body so the overlay escapes the candidate
@@ -3867,30 +3898,52 @@ function Modal({
   // viewport. Guard SSR with typeof document === "undefined".
   if (typeof document === "undefined") return null;
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
-      {/* Flex-column shell capped at viewport height so header + scrollable
-          body together can never exceed the screen. Body gets flex-1 + min-h-0
-          so it shrinks (and scrolls) instead of pushing the modal off-screen
-          on short viewports. Replaces the older max-h-[70vh] / 85vh body cap
-          that only counted the body — the header sat above it, so total
-          height could exceed 100vh. */}
-      <div
-        className={cn(
-          "flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl",
-          wide ? "max-w-2xl" : "max-w-lg",
-        )}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex flex-none items-start justify-between border-b border-court-border px-5 py-3">
-          <div>
-            <h2 className="font-serif text-lg font-semibold text-court-fg">{title}</h2>
-            {subtitle && <p className="mt-0.5 text-xs text-court-fg-muted">{subtitle}</p>}
+    // Two-layer overlay: the outer fixed container handles the dim
+    // backdrop and the scroll fallback if a panel ever does exceed
+    // the viewport; the inner flex wrapper (min-h-full items-center)
+    // vertically centers the panel inside the available space. This
+    // avoids the failure mode where a single-layer `flex items-center`
+    // overlay can push the panel's top above the viewport on a short
+    // laptop screen — symptom is the title and the first form fields
+    // sit above the top of the screen even though the body scrolls
+    // internally. Outer padding (p-4 sm:p-6) plus the responsive panel
+    // max-height (calc(100dvh - 2rem) / -3rem) together guarantee a
+    // breathing margin between the panel edge and the viewport edge.
+    <div
+      className="fixed inset-0 z-[200] overflow-y-auto bg-ink/40 p-4 sm:p-6"
+      onClick={onClose}
+    >
+      <div className="flex min-h-full items-center justify-center">
+        {/* Flex-column shell capped at viewport height so header +
+            scrollable body + footer together can never exceed the
+            screen. Header and footer are flex-none so the title and
+            action buttons stay pinned; the middle body gets flex-1 +
+            min-h-0 so it shrinks and scrolls internally instead of
+            pushing the modal off-screen. */}
+        <div
+          className={cn(
+            "flex w-full flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl",
+            "max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-3rem)]",
+            wide ? "max-w-2xl" : "max-w-lg",
+          )}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex flex-none items-start justify-between border-b border-court-border px-5 py-3">
+            <div>
+              <h2 className="font-serif text-lg font-semibold text-court-fg">{title}</h2>
+              {subtitle && <p className="mt-0.5 text-xs text-court-fg-muted">{subtitle}</p>}
+            </div>
+            <button type="button" onClick={onClose} className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle">
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button type="button" onClick={onClose} className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle">
-            <X className="h-4 w-4" />
-          </button>
+          <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
+          {footer && (
+            <div className="flex flex-none items-center justify-end gap-2 border-t border-court-border bg-court-surface px-5 py-3">
+              {footer}
+            </div>
+          )}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
       </div>
     </div>,
     document.body,
