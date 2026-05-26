@@ -6,8 +6,11 @@ import { ButtonHTMLAttributes, forwardRef } from "react";
 //   secondary — neutral utility (Add Note / Add to List / filters /
 //               view toggles / download / attach)
 //   schedule  — Schedule Interview (soft blue, calendar-tinted)
-//   keep      — Keep / save-for-later (soft light blue, a hair lighter
-//               than schedule so the two intents sit beside each other)
+//   keep      — Keep / save-for-later (cyan). Pulled off the soft-blue
+//               schedule wash so the Kept button no longer reads as
+//               the INTERVIEWING stage badge (which is bg-blue-50 /
+//               text-blue-700) sitting beside it on the candidate-
+//               profile pipeline strip.
 //   apply     — Apply to Job (amber, the recruiter's "candidate is now in
 //               the pipeline" gate-pass; intentionally NOT primary green
 //               so Submit stays the only affirmative-green action)
@@ -40,6 +43,7 @@ type Variant =
   | "schedule"
   | "keep"
   | "apply"
+  | "offer"
   | "client-invite"
   | "reject"
   | "danger"
@@ -70,15 +74,27 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
               variant === "primary",
             "bg-court-surface-subtle text-court-fg border border-court-border hover:bg-court-surface":
               variant === "secondary",
-            // Soft light blue. schedule + keep collapse to the same
-            // wash — both are calendar/pipeline-adjacent intents that
-            // Andrew wants reading as the same colour family,
-            // intentionally outside the brand palette so they stay
-            // distinct from primary green in every Court Mode.
+            // Soft light blue. schedule sits on the candidate-profile
+            // pipeline strip beside the INTERVIEWING stage badge (also
+            // bg-blue-50) — that's intentional: Schedule Interview is
+            // tied to the interviewing flow and shares its colour
+            // family.
             "bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900 dark:hover:bg-blue-950/60":
-              variant === "schedule" || variant === "keep",
+              variant === "schedule",
+            // Cyan. Keep used to share schedule's blue-50 wash, which
+            // made the Kept button visually identical to the
+            // INTERVIEWING stage badge on the candidate-profile job
+            // pill. Cyan stays in the blue family but reads as a
+            // distinct hue so the two never blur at a glance.
+            "bg-cyan-50 text-cyan-700 border border-cyan-200 hover:bg-cyan-100 dark:bg-cyan-950/40 dark:text-cyan-200 dark:border-cyan-900 dark:hover:bg-cyan-950/60":
+              variant === "keep",
             "bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900 dark:hover:bg-amber-950/60":
               variant === "apply",
+            // Purple. Matches the OFFER stage chip + the
+            // Pipeline-row "Offer" tone so Extend Offer reads as
+            // the same intent wherever it lands.
+            "bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 dark:bg-purple-950/40 dark:text-purple-200 dark:border-purple-900 dark:hover:bg-purple-950/60":
+              variant === "offer",
             // Slate greyish-blue. Sits beside schedule (light blue)
             // and primary (green) on the candidate-profile job
             // strip — slate is cool but neutral enough to read as

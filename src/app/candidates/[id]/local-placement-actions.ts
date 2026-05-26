@@ -15,6 +15,7 @@ import {
   CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
   CANDIDATE_CONFIRMATION_TRIGGER,
   CANDIDATE_REJECTION_TRIGGER,
+  OFFER_EXTENDED_TRIGGER,
 } from "@/app/settings/template-constants";
 
 // Local-candidate placement actions. Mirror the three RF actions (Apply /
@@ -704,5 +705,137 @@ export async function dismissPlacementFromProfile(input: {
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to remove placement." };
+  }
+}
+
+// ---- Extend Offer (Ace-native) ----
+
+// Mirrors recordOffer (placement-actions.ts) for Ace-native Placement rows
+// that carry candidateId (cuid) with candidateRfId null. The RF version keys
+// the upsert off (candidateRfId, jobRfId), which won't match an Ace-native
+// row — so this one looks the placement up by its cuid id and updates in
+// place. Same Scoreboard rule applies: feeTotal must be > 0 because the
+// Pipeline Value KPI sums it across offer + pending_start rows; a null fee
+// would silently drop the deal out of the forecast.
+export type RecordLocalOfferInput = {
+  placementId: string;
+  salary: number | null;
+  currency: string;
+  title: string;
+  startDate: string | null; // ISO date
+  notes: string;
+  feePercentage: number | null;
+  feeTotal: number;
+  minFee: number | null;
+};
+
+export async function recordLocalOffer(
+  input: RecordLocalOfferInput,
+): Promise<Result<{ id: string }>> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  if (input.feeTotal == null || input.feeTotal <= 0) {
+    return { ok: false, error: "Fee amount is required at this stage." };
+  }
+  const org = await getCurrentOrg();
+  try {
+    const placement = await prisma.placement.findFirst({
+      where: { id: input.placementId, organizationId: org.id },
+      select: {
+        id: true,
+        stage: true,
+        candidateId: true,
+        candidateRfId: true,
+        jobId: true,
+        jobRfId: true,
+        clientId: true,
+        clientRfId: true,
+      },
+    });
+    if (!placement) return { ok: false, error: "Placement not found." };
+    const startDate = input.startDate ? new Date(input.startDate) : null;
+    const previousStage = placement.stage;
+
+    const row = await prisma.placement.update({
+      where: { id: input.placementId },
+      data: {
+        stage: "offer",
+        offerReceivedAt: new Date(),
+        offerSalary: input.salary ?? null,
+        offerCurrency: input.currency || "USD",
+        offerTitle: input.title || null,
+        offerStartDate: startDate,
+        offerNotes: input.notes || null,
+        // Mirror offered salary into acceptedSalary at offer time so the
+        // Hired-tab Salary column is populated even if PlacementDialog
+        // isn't opened to type it in again — matches the RF recordOffer
+        // semantics.
+        acceptedSalary: input.salary ?? null,
+        acceptedCurrency: input.currency || "USD",
+        feePercentage: input.feePercentage,
+        feeTotal: input.feeTotal,
+        minFee: input.minFee,
+        // Ace-native rows never sync to RF; keep the flag false so the
+        // pill's "(Ace only)" indicator stays accurate.
+        syncedToRf: false,
+      },
+      select: { id: true },
+    });
+
+    await logActivity({
+      organizationId: org.id,
+      userId: user.id,
+      actionType: "offer_extended",
+      targetType: "placement",
+      targetId: row.id,
+      metadata: {
+        offerAmount: input.salary ?? null,
+        currency: input.currency || "USD",
+        title: input.title || null,
+        startDate: input.startDate ?? null,
+        candidateId: placement.candidateId,
+        jobId: placement.jobId,
+        jobRfId: placement.jobRfId,
+        clientId: placement.clientId,
+        clientRfId: placement.clientRfId,
+        previousStage,
+        local: true,
+      },
+    });
+
+    if (placement.candidateId) revalidatePath(`/candidates/${placement.candidateId}`);
+    if (placement.candidateRfId != null) revalidatePath(`/candidates/${placement.candidateRfId}`);
+    revalidatePath(`/pipeline`);
+
+    // Auto-fire the Offer Extended template to the candidate, same as
+    // the RF recordOffer flow. Trigger metadata routes through
+    // fireTriggerAndLog by candidateId for Ace-native candidates.
+    if (placement.candidateId) {
+      await fireTriggerAndLog({
+        trigger: OFFER_EXTENDED_TRIGGER,
+        ref: {
+          candidateId: placement.candidateId,
+          candidateRfId: placement.candidateRfId,
+          jobId: placement.jobId,
+          jobRfId: placement.jobRfId,
+          clientId: placement.clientId,
+          clientRfId: placement.clientRfId,
+        },
+        actionType: "offer_extended_email",
+        organizationId: org.id,
+        overrides: {
+          jobTitle: input.title,
+        },
+        metadata: {
+          placementId: row.id,
+          previousStage,
+          local: true,
+        },
+      });
+    }
+
+    return { ok: true, value: { id: row.id } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to record offer." };
   }
 }

@@ -1,10 +1,65 @@
 # ACE_STATE.md
-Last updated: 2026-05-26 · Ace 67.0
+Last updated: 2026-05-26 · Ace 67.1
 
 ## Current Status
-Current Version: Ace 67.0
+Current Version: Ace 67.1
 Last Shipped: 2026-05-26
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.1 (2026-05-26)
+
+Ace-native candidate-profile job-pill polish: action buttons shrunk to chip
+size, an Extend Offer affordance added at the interviewing stage with a new
+local recordLocalOffer server action, the standalone "Client Sending Invite"
+button folded into the schedule modal as a "Client will send invite"
+checkbox, and the Keep button reskinned to cyan so it stops reading as the
+INTERVIEWING stage badge sitting beside it.
+
+- **Smaller job-pill action buttons.** Every chip on the candidate-profile
+  job pill (Submit / Edit Interview / Schedule Interview / Reject / Reapply
+  + the new Extend Offer) now renders at `px-2 py-0.5 text-[11px] gap-1`
+  via a shared `CHIP_BTN_CLS` override on each size="sm" Button. Visually
+  closer to the stage-badge chips (`px-2 py-0.5 text-[10px]`) the row
+  carries beside them, so the pill reads as a uniform row of chips instead
+  of a stack of full-size action buttons.
+- **Extend Offer at interviewing.** New chip-style "Extend Offer" button
+  surfaces on the job pill when stage === "interviewing", mirroring the
+  Pipeline-board Offer action. Opens a local OfferDialog (salary /
+  currency / title / start date / fee % / min fee / flat-fee override /
+  notes) wired to a new `recordLocalOffer` server action — it keys the
+  Placement update off `placementId` (rather than the RF
+  `candidateRfId_jobRfId` upsert key) because Ace-native rows carry
+  `candidateRfId: null`. Auto-fires the OFFER_EXTENDED trigger by
+  `candidateId` (cuid), parity with the RF recordOffer path.
+- **Client Sending Invite button removed; folded into ScheduleDialog as a
+  checkbox.** The standalone "Client Sending Invite" chip on the job pill
+  is gone (along with `ClientInviteDialog`, `clientInviteFor` state, the
+  `onClientInvite` prop, and the CalendarPlus import). In its place,
+  ScheduleDialog gains a "Client will send invite" checkbox below the
+  form: when checked, scheduling routes through `source="client_scheduled"`
+  (Interview row + calendar sync + activity log still write, recruiter
+  gets credit) and skips the candidate/client invite composers — no
+  emails go out. The Open-Meeting + Cc/Bcc fields are suppressed in that
+  branch since they only ride on outbound invite emails.
+- **Extend Offer Button variant.** New `offer` variant in `button.tsx`
+  (purple) matching the OFFER stage badge + the Pipeline-row Offer tone
+  so the new Extend Offer chip reads as the same intent wherever it
+  lands.
+- **Keep button → cyan.** The `keep` Button variant used to share the
+  `schedule` variant's blue-50 wash, which read as the INTERVIEWING stage
+  badge (also blue-50) sitting beside it on the candidate-profile job
+  pill. Pulled `keep` off the shared wash and onto cyan-50 / cyan-700 /
+  cyan-200 (dark: cyan-950/40 / cyan-200 / cyan-900) so the Keep button
+  stays in the blue family but reads as a distinctly different hue from
+  INTERVIEWING. Applies everywhere the Keep button surfaces
+  (KeepCandidateButton, matches-tab x2, pipeline-row-actions x2,
+  pipeline-view).
+
+Next task: TBD — opens with Andrew's live verification of the new chip-
+sized job pill, the Extend Offer flow on an Ace-native candidate at
+interviewing, the "Client will send invite" tracking-only branch in
+ScheduleDialog, and the Kept-button cyan recolor next to the INTERVIEWING
+stage badge.
 
 ## What Shipped in Ace 67.0 (2026-05-26)
 

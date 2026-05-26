@@ -7,14 +7,18 @@ import { useRouter } from "next/navigation";
 import {
   Briefcase,
   CalendarClock,
-  CalendarPlus,
+  DollarSign,
   Loader2,
   RotateCcw,
   Send,
   UserX,
   X,
 } from "lucide-react";
-import { reapplyLocalPlacement, rejectLocalPlacement } from "@/app/candidates/[id]/local-placement-actions";
+import {
+  reapplyLocalPlacement,
+  recordLocalOffer,
+  rejectLocalPlacement,
+} from "@/app/candidates/[id]/local-placement-actions";
 import { DismissPlacementButton } from "@/app/candidates/[id]/dismiss-placement-button";
 import { toast } from "sonner";
 import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
@@ -155,7 +159,7 @@ export function LocalPlacementRows({
   embed?: boolean;
 }) {
   const [scheduleFor, setScheduleFor] = useState<LocalJobRow | null>(null);
-  const [clientInviteFor, setClientInviteFor] = useState<LocalJobRow | null>(null);
+  const [offerFor, setOfferFor] = useState<LocalJobRow | null>(null);
   const [rescheduleFor, setRescheduleFor] = useState<LocalInterview | null>(null);
   const [inviteFlow, setInviteFlow] = useState<LocalInviteFlow | null>(null);
   const router = useRouter();
@@ -263,7 +267,7 @@ export function LocalPlacementRows({
             candidateName={candidateName}
             job={j}
             onSchedule={() => setScheduleFor(j)}
-            onClientInvite={() => setClientInviteFor(j)}
+            onOffer={() => setOfferFor(j)}
             onEditInterview={(iv) => setRescheduleFor(iv)}
             onStageChange={handleStageChanged}
             embed={embed}
@@ -287,12 +291,14 @@ export function LocalPlacementRows({
           }}
         />
       )}
-      {clientInviteFor && (
-        <ClientInviteDialog
-          candidateId={candidateId}
-          candidateName={candidateName}
-          job={clientInviteFor}
-          onClose={() => setClientInviteFor(null)}
+      {offerFor && (
+        <OfferDialog
+          job={offerFor}
+          onClose={() => setOfferFor(null)}
+          onRecorded={() => {
+            handleStageChanged(offerFor.jobRfId, "offer");
+            setOfferFor(null);
+          }}
         />
       )}
       {rescheduleFor && (
@@ -370,7 +376,7 @@ function LocalJobActionRow({
   candidateName,
   job,
   onSchedule,
-  onClientInvite,
+  onOffer,
   onEditInterview,
   onStageChange,
   embed,
@@ -379,7 +385,7 @@ function LocalJobActionRow({
   candidateName: string;
   job: LocalJobRow;
   onSchedule: () => void;
-  onClientInvite: () => void;
+  onOffer: () => void;
   onEditInterview: (interview: LocalInterview) => void;
   onStageChange: (jobRfId: number, stage: string) => void;
   // Threaded from LocalPlacementRows so the per-row Submit href can
@@ -422,12 +428,13 @@ function LocalJobActionRow({
     normalizedStage === "offer" ||
     normalizedStage === "pending_start";
 
-  // Client Sending Invite is a status-specific shortcut: it only
-  // makes sense once the candidate is in a stage where the client is
-  // (or might be) scheduling the interview themselves. Default Applied
-  // rows hide it — recruiters reach for Schedule Interview there.
-  const canClientInvite =
-    normalizedStage === "submitted" || normalizedStage === "interviewing";
+  // Extend Offer is interviewing-only: the recruiter has met the
+  // client + candidate, and the offer is the next forward action.
+  // Mirrors the "Offer" button in the Job-page Pipeline rows
+  // (see PipelineRowActions, case "interviewing"). The "Client
+  // Sending Invite" shortcut that used to live here is now folded
+  // into the schedule modal as a "Client will send invite" checkbox.
+  const canExtendOffer = normalizedStage === "interviewing";
 
   // Reapply is the inverse of Reject — visible only on already-rejected
   // rows. Moves the row back to "applied" stage so the candidate
@@ -503,16 +510,19 @@ function LocalJobActionRow({
             <span className="truncate text-xs text-court-fg-muted">{formatNextInterviewLocal(nextInterview)}</span>
           )}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
           {canSubmit && (
             // Canonical Submit chip — tinted brand green, rounded-md.
             // Same signature as the candidate-profile action row, the
             // Applicants table, and the Pipeline / Search Submit
             // buttons so the affirmative submittal action reads
-            // identically wherever it lands.
+            // identically wherever it lands. Sized close to the stage
+            // badge chip beside it (px-2 py-0.5 text-[11px]) so the
+            // row reads as a compact strip instead of a stack of
+            // chunky action buttons.
             <Link
               href={`/candidates/${candidateId}?${submitHrefPrefix}submit=${job.jobRfId}`}
-              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
+              className={CHIP_BTN_CLS_SUBMIT}
               title="Open submittal composer"
             >
               <Send className="h-3 w-3" />
@@ -526,6 +536,7 @@ function LocalJobActionRow({
               variant="secondary"
               onClick={() => onEditInterview(nextInterview)}
               title="Edit the upcoming interview"
+              className={CHIP_BTN_CLS}
             >
               <CalendarClock className="h-3 w-3" />
               <span className="hidden sm:inline">Edit Interview</span>
@@ -538,21 +549,23 @@ function LocalJobActionRow({
               variant="schedule"
               onClick={onSchedule}
               title="Schedule interview"
+              className={CHIP_BTN_CLS}
             >
               <CalendarClock className="h-3 w-3" />
               <span className="hidden sm:inline">Schedule Interview</span>
             </Button>
           )}
-          {canClientInvite && (
+          {canExtendOffer && (
             <Button
               type="button"
               size="sm"
-              variant="client-invite"
-              onClick={onClientInvite}
-              title="Log an interview the client is scheduling themselves. Adds to your calendar only"
+              variant="offer"
+              onClick={onOffer}
+              title="Extend an offer to this candidate for this job"
+              className={CHIP_BTN_CLS}
             >
-              <CalendarPlus className="h-3 w-3" />
-              <span className="hidden sm:inline">Client Sending Invite</span>
+              <DollarSign className="h-3 w-3" />
+              <span className="hidden sm:inline">Extend Offer</span>
             </Button>
           )}
           {canReject && (
@@ -563,6 +576,7 @@ function LocalJobActionRow({
               onClick={onReject}
               disabled={isRejecting}
               title="Reject this candidate for this job"
+              className={CHIP_BTN_CLS}
             >
               {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
               <span className="hidden sm:inline">Reject</span>
@@ -576,6 +590,7 @@ function LocalJobActionRow({
               onClick={onReapply}
               disabled={isReapplying}
               title="Reapply this candidate. Deletes the disqualified placement row"
+              className={CHIP_BTN_CLS}
             >
               {isReapplying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
               <span className="hidden sm:inline">Reapply</span>
@@ -646,6 +661,14 @@ function ScheduleDialog({
   const [ccCsv, setCcCsv] = useState("");
   const [bccCsv, setBccCsv] = useState("");
   const [notes, setNotes] = useState("");
+  // When checked, the recruiter is logging an interview the client is
+  // scheduling themselves: we still write the Interview row + sync the
+  // recruiter's calendar + log the activity (so the interview credit
+  // lands), but we route through source="client_scheduled" and skip the
+  // candidate/client invite composers entirely — no emails go out to
+  // anyone. Folds the old "Client Sending Invite" button on the row
+  // into the schedule modal so there's one canonical scheduling entry.
+  const [clientWillSendInvite, setClientWillSendInvite] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
 
@@ -686,13 +709,21 @@ function ScheduleDialog({
         type,
         attendees,
         notes: notes.trim(),
-        source: "ace_scheduled",
+        // client_scheduled flips off the candidate/client email
+        // composers downstream; ace_scheduled keeps the existing
+        // Schedule → Candidate Invite → Client Invite chain.
+        source: clientWillSendInvite ? "client_scheduled" : "ace_scheduled",
         jobTitle: job.jobTitle,
         clientName: job.clientName,
         candidateName,
         location: type === "in_person" ? location.trim() : undefined,
-        openMeeting,
-        meetingType: type === "video" ? meetingType : undefined,
+        // openMeeting + meetingType only matter for ace_scheduled (we
+        // create the Meet on Andrew's behalf). For client_scheduled
+        // the client is creating the calendar event themselves, so
+        // skip both — no Meet link is generated.
+        openMeeting: clientWillSendInvite ? undefined : openMeeting,
+        meetingType:
+          clientWillSendInvite ? undefined : type === "video" ? meetingType : undefined,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -707,6 +738,19 @@ function ScheduleDialog({
       // every interview. Best-effort: reminder failures never block the
       // schedule success path.
       void upsertInterviewReminder(result.value.interviewId);
+
+      // Client-scheduled branch: interview row + calendar + activity
+      // log are already written by scheduleInterview above (the
+      // recruiter gets the interview credit). Skip the invite
+      // composers entirely and close the modal — no emails are sent
+      // to candidate or client.
+      if (clientWillSendInvite) {
+        toast.success("Interview scheduled", {
+          description: "Logged for tracking. No invites were sent.",
+        });
+        onClose();
+        return;
+      }
       // Same pre-fetch as the RF flow — templates seed the composers,
       // failures fall back to hardcoded defaults silently.
       let templates: { candidate: { subject: string; body: string } | null; client: { subject: string; body: string } | null } = {
@@ -766,7 +810,13 @@ function ScheduleDialog({
         notes={notes}
         setNotes={setNotes}
         typeExtras={
-          type === "video" ? (
+          // Open-Meet toggle only matters on the ace_scheduled path
+          // (we mint the Meet on Andrew's behalf there). The
+          // client-scheduled toggle below routes scheduling to the
+          // tracking-only path, which never creates a Meet link —
+          // hide the open-meeting checkbox in that case so its state
+          // isn't misleading.
+          type === "video" && !clientWillSendInvite ? (
             <div className="space-y-2">
               <MeetingProviderSelect
                 value={meetingType}
@@ -799,16 +849,40 @@ function ScheduleDialog({
           />
         }
         ccBccSlot={
-          <CcBccPicker
-            clientContacts={job.clientContacts}
-            aceTeam={aceTeam}
-            cc={ccCsv}
-            bcc={bccCsv}
-            onCcChange={setCcCsv}
-            onBccChange={setBccCsv}
-          />
+          // Cc/Bcc only ride on outbound invite emails; the
+          // client-scheduled path doesn't send any email at all, so
+          // suppress the picker rather than collect values that
+          // would silently be discarded.
+          clientWillSendInvite ? null : (
+            <CcBccPicker
+              clientContacts={job.clientContacts}
+              aceTeam={aceTeam}
+              cc={ccCsv}
+              bcc={bccCsv}
+              onCcChange={setCcCsv}
+              onBccChange={setBccCsv}
+            />
+          )
         }
       />
+      <label
+        className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/60 p-3 text-sm"
+        title="Use this when the client is scheduling the interview themselves and sending their own invite. We'll log it on your calendar for tracking and credit, but skip the candidate/client invite emails Ace would otherwise send."
+      >
+        <input
+          type="checkbox"
+          checked={clientWillSendInvite}
+          onChange={(e) => setClientWillSendInvite(e.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-court-border accent-brand-dark"
+        />
+        <span>
+          <span className="font-semibold text-court-fg">Client will send invite</span>
+          <span className="block text-xs text-court-fg-muted">
+            Log the interview on your calendar and activity log for tracking + credit.
+            Skip the candidate/client invite emails — the client is sending their own.
+          </span>
+        </span>
+      </label>
       {err && (
         <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
           {err}
@@ -826,98 +900,201 @@ function ScheduleDialog({
   );
 }
 
-function ClientInviteDialog({
-  candidateId,
-  candidateName,
+// Shared chip-size className used by every action button on the job pill.
+// Stage badges next door sit at px-2 py-0.5 text-[10px]; matching them
+// (with text bumped one step for legibility) makes the strip read as a
+// compact row of chips rather than a stack of full-size action buttons.
+// twMerge in our cn() picks the later padding/text utilities, so passing
+// this as `className` on a size="sm" Button cleanly overrides the
+// "px-3 py-1.5 text-xs gap-1.5" defaults from button.tsx.
+const CHIP_BTN_CLS = "px-2 py-0.5 text-[11px] gap-1";
+// Submit is a raw <Link>, not a <Button>, so it carries the full chip
+// class set (matching the brand-green Submit treatment everywhere else
+// but at chip size). Keep visually identical to the size="sm" chip Buttons
+// so the row stays uniform.
+const CHIP_BTN_CLS_SUBMIT =
+  "inline-flex items-center justify-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-2 py-0.5 text-[11px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25";
+
+// Extend Offer modal. Mirrors the Job-page pipeline-board OfferDialog
+// for Ace-native placements: collects salary/title/start-date/notes plus
+// the fee math the Scoreboard's Pipeline Value KPI sums across offer +
+// pending_start rows. Wired to recordLocalOffer (keyed on placementId)
+// rather than the RF recordOffer because Ace-native rows carry
+// candidateRfId: null.
+function OfferDialog({
   job,
   onClose,
+  onRecorded,
 }: {
-  candidateId: string;
-  candidateName: string;
   job: LocalJobRow;
   onClose: () => void;
+  onRecorded: () => void;
 }) {
   const router = useRouter();
-  const [scheduledAt, setScheduledAt] = useState("");
-  const [durationMin, setDurationMin] = useState(30);
-  const [type, setType] = useState<InterviewType>("video");
-  const [interviewerName, setInterviewerName] = useState("");
-  const [location, setLocation] = useState("");
+  const [salary, setSalary] = useState("");
+  const [currency, setCurrency] = useState("USD");
+  const [title, setTitle] = useState(job.jobTitle);
+  const [startDate, setStartDate] = useState("");
   const [notes, setNotes] = useState("");
+  const [feePct, setFeePct] = useState("");
+  const [minFee, setMinFee] = useState("");
+  const [feeAmountOverride, setFeeAmountOverride] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
 
+  const salaryNum = parseAmount(salary);
+  const pctNum = parseFloat(feePct) || 0;
+  const minFeeNum = parseAmount(minFee);
+  const overrideNum = parseAmount(feeAmountOverride);
+  const rawFee = salaryNum && pctNum ? Math.round(salaryNum * (pctNum / 100)) : 0;
+  // Fee resolution priority matches the RF OfferDialog: override > min-vs-calc > calc.
+  const calcFee = minFeeNum && rawFee < minFeeNum ? minFeeNum : rawFee;
+  const feeTotal = overrideNum != null ? overrideNum : calcFee;
+  const usedMinFee = overrideNum == null && minFeeNum != null && rawFee < minFeeNum;
+  const usedOverride = overrideNum != null;
+
   function onSave() {
     setErr(null);
-    if (!scheduledAt) return setErr("Pick a date and time.");
-    if (type === "in_person" && !location.trim()) {
-      return setErr("Address required for in-person interviews.");
+    if (salaryNum != null && salaryNum < 0) return setErr("Salary can't be negative.");
+    if (overrideNum != null && overrideNum < 0) return setErr("Fee amount can't be negative.");
+    if (minFeeNum != null && minFeeNum < 0) return setErr("Minimum fee can't be negative.");
+    if (pctNum < 0) return setErr("Fee percentage can't be negative.");
+    if (feeTotal <= 0) {
+      return setErr("Fee amount is required at this stage — enter salary + fee %, or a flat amount.");
     }
     startSave(async () => {
-      const attendees = interviewerName.trim() ? [{ name: interviewerName.trim(), email: "" }] : [];
-      const result = await scheduleInterview({
-        candidateId,
-        jobRfId: job.jobRfId,
-        clientRfId: job.clientRfId,
-        scheduledAt: snapTo15Minutes(scheduledAt).toISOString(),
-        durationMin,
-        type,
-        attendees,
+      const result = await recordLocalOffer({
+        placementId: job.placementId,
+        salary: salaryNum,
+        currency: currency.toUpperCase().slice(0, 3),
+        title: title.trim(),
+        startDate: startDate || null,
         notes: notes.trim(),
-        source: "client_scheduled",
-        jobTitle: job.jobTitle,
-        clientName: job.clientName,
-        candidateName,
-        location: type === "in_person" ? location.trim() : undefined,
+        feePercentage: pctNum > 0 ? pctNum : null,
+        feeTotal,
+        minFee: minFeeNum,
       });
       if (!result.ok) {
         setErr(result.error);
-        toast.error("Couldn't record interview", { description: result.error });
+        toast.error("Couldn't record offer", { description: result.error });
         return;
       }
-      toast.success("Logged client-scheduled interview", {
-        description: "Added to your calendar for tracking. No invites were sent.",
-      });
-      onClose();
-      void triggerCalendarSync(router);
-      void upsertInterviewReminder(result.value.interviewId);
+      toast.success("Offer recorded");
+      onRecorded();
+      router.refresh();
     });
   }
 
   return (
     <ModalShell
-      title="Client sending invite"
+      title="Extend offer"
       subtitle={`${job.jobTitle} · ${job.clientName}`}
       onClose={onClose}
-      footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Log interview" />}
+      footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Record offer" />}
     >
-      <p className="mb-3 text-xs text-court-fg-muted">
-        Use this when the client is scheduling the interview themselves and will send the invite. We&apos;ll
-        log it for tracking and drop it on your calendar. No invite is sent to candidate or client.
-      </p>
-      <ScheduleFields
-        scheduledAt={scheduledAt}
-        setScheduledAt={setScheduledAt}
-        durationMin={durationMin}
-        setDurationMin={setDurationMin}
-        type={type}
-        setType={setType}
-        location={location}
-        setLocation={setLocation}
-        notes={notes}
-        setNotes={setNotes}
-        interviewerSlot={
-          <InterviewerPicker
-            initialContacts={job.clientContacts}
-            name={interviewerName}
-            email=""
-            onChange={(n) => setInterviewerName(n)}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <OfferField label="Offered salary" value={salary} onChange={setSalary} placeholder="e.g. 120000 or 120k" />
+        <OfferField label="Currency" value={currency} onChange={setCurrency} />
+        <div className="sm:col-span-2">
+          <OfferField label="Offered title" value={title} onChange={setTitle} />
+        </div>
+        <OfferField label="Proposed start date" type="date" value={startDate} onChange={setStartDate} />
+        <OfferField label="Fee %" value={feePct} onChange={setFeePct} placeholder="25" />
+        <OfferField label="Min fee" value={minFee} onChange={setMinFee} placeholder="20000 (optional)" />
+        <OfferField
+          label="Fee amount (flat, overrides calc)"
+          value={feeAmountOverride}
+          onChange={setFeeAmountOverride}
+          placeholder="7500 (wins over salary × fee %)"
+        />
+        <label className="block text-sm sm:col-span-2">
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Notes</span>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            className="mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
-        }
-      />
+        </label>
+      </div>
+      <div className="mt-3 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 p-3">
+        <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+          {usedOverride ? "Fee (flat override)" : "Calculated fee"}
+        </div>
+        <div className="mt-1 font-serif text-2xl font-semibold text-court-fg">
+          {formatMoney(feeTotal, currency)}
+          {usedMinFee && <span className="ml-2 text-xs text-amber-700">(min fee applied)</span>}
+          {usedOverride && <span className="ml-2 text-xs text-brand-dark">(flat override)</span>}
+        </div>
+        {usedOverride ? (
+          <div className="mt-1 text-xs text-court-fg-muted">
+            Flat-fee amount; salary × fee % calc is ignored while this is set.
+          </div>
+        ) : salaryNum && pctNum ? (
+          <div className="mt-1 text-xs text-court-fg-muted">
+            {formatMoney(salaryNum, currency)} × {pctNum}% = {formatMoney(rawFee, currency)}
+          </div>
+        ) : (
+          <div className="mt-1 text-xs text-court-fg-muted">
+            Enter salary + fee % to calculate, or type a flat fee amount above.
+          </div>
+        )}
+      </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
     </ModalShell>
   );
+}
+
+function OfferField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: "text" | "date";
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+      />
+    </label>
+  );
+}
+
+// Local parser so the offer dialog doesn't have to import the RF flow's
+// parseCompensation. Accepts "120000", "120,000", "120k", "$120,000".
+function parseAmount(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const cleaned = trimmed.replace(/[$,\s]/g, "").toLowerCase();
+  const kMatch = cleaned.match(/^(\d+(?:\.\d+)?)k$/);
+  if (kMatch) return Math.round(parseFloat(kMatch[1]) * 1000);
+  const num = Number(cleaned);
+  if (!Number.isFinite(num)) return null;
+  return Math.round(num);
+}
+
+function formatMoney(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency.toUpperCase().slice(0, 3) || "USD",
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch {
+    return `${currency.toUpperCase()} ${amount.toLocaleString()}`;
+  }
 }
 
 function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; onClose: () => void }) {
