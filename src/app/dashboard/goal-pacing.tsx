@@ -10,12 +10,6 @@ function formatUsd(n: number): string {
   return USD_NO_CENTS.format(Math.round(n));
 }
 
-function decimalToNumber(d: { toString(): string } | null): number {
-  if (d == null) return 0;
-  const n = Number(d.toString());
-  return Number.isFinite(n) ? n : 0;
-}
-
 export const QUARTERLY_REVENUE_GOAL_USD = 125_000;
 export const ANNUAL_REVENUE_GOAL_USD = 300_000;
 
@@ -57,6 +51,15 @@ export type GoalPacingCardData = {
 // renders it (Scoreboard or Finances Profitability). Vercel runs in UTC;
 // day-of-quarter and day-of-year are computed from explicit ET parts so
 // the counter ticks at midnight ET, not 8pm.
+//
+// Revenue source (Ace fix 2026-05-26): BILLED revenue, not collected.
+// We sum Placement.feeTotal over rows where stage IN (pending_start, hired)
+// and (expectedStartDate ?? placedAt) lands inside the window. Same logic
+// as the Placements tab's "Billed This Quarter" total (see
+// src/lib/placements-dashboard.ts) - Pending Start + Billed + Paid combined,
+// not just paid invoices. Previously this card read from
+// Invoice.status IN (SENT, PAID) which excluded Pending Start placements
+// with no invoice row yet, dragging the goal pacing % below the real number.
 export async function getGoalPacingData(
   organizationId: string,
   now: Date = new Date(),
@@ -68,17 +71,28 @@ export async function getGoalPacingData(
   const qStart = new Date(year, qIndex * 3, 1);
   const qEnd = new Date(year, qIndex * 3 + 3, 1);
 
-  const [invoices, placementsYtd] = await Promise.all([
-    prisma.invoice.findMany({
+  const [yearPlacements, placementsYtd] = await Promise.all([
+    // Same shape as getPlacementsDashboardData: rows with a locked stage
+    // (pending_start or hired) whose start lands inside the window.
+    // expectedStartDate is the primary pivot; placedAt is the fallback for
+    // rows that have an accepted offer but no committed start date yet, so
+    // they don't fall off the year just because the recruiter hasn't typed
+    // a start date in.
+    prisma.placement.findMany({
       where: {
         organizationId,
-        status: { in: ["SENT", "PAID"] },
+        stage: { in: ["pending_start", "hired"] },
         OR: [
-          { sentAt: { gte: yearStart, lt: yearEnd } },
-          { paidAt: { gte: yearStart, lt: yearEnd } },
+          { expectedStartDate: { gte: yearStart, lt: yearEnd } },
+          {
+            AND: [
+              { expectedStartDate: null },
+              { placedAt: { gte: yearStart, lt: yearEnd } },
+            ],
+          },
         ],
       },
-      select: { feeAmount: true, sentAt: true, paidAt: true },
+      select: { feeTotal: true, expectedStartDate: true, placedAt: true },
     }),
     prisma.placement.count({
       where: {
@@ -90,10 +104,12 @@ export async function getGoalPacingData(
 
   let ytdRevenueUsd = 0;
   let quarterRevenueUsd = 0;
-  for (const inv of invoices) {
-    const amt = decimalToNumber(inv.feeAmount);
+  for (const p of yearPlacements) {
+    const amt = p.feeTotal ?? 0;
     ytdRevenueUsd += amt;
-    const ref = inv.paidAt ?? inv.sentAt;
+    // Quarter window pivots on the same date the placements tab uses:
+    // expectedStartDate when set, placedAt otherwise.
+    const ref = p.expectedStartDate ?? p.placedAt;
     if (ref && ref >= qStart && ref < qEnd) {
       quarterRevenueUsd += amt;
     }
@@ -202,7 +218,7 @@ export function GoalPacingCard({ data }: { data: GoalPacingCardData }) {
         pctToGoal={data.quarter.pctToGoal}
         pctToGoalLabel={data.quarter.pctToGoalLabel}
         leftFooter={`Day ${data.quarter.dayOfQuarter} of ${data.quarter.daysInQuarter} (${data.quarter.pctOfQuarterLabel} of quarter)`}
-        rightFooter={`${data.quarter.toGoFormatted} to go`}
+        rightFooter={`${data.quarter.toGoFormatted} to goal`}
         className="mt-4"
       />
 
@@ -215,7 +231,7 @@ export function GoalPacingCard({ data }: { data: GoalPacingCardData }) {
         pctToGoal={data.annual.pctToGoal}
         pctToGoalLabel={data.annual.pctToGoalLabel}
         leftFooter={`Day ${data.annual.dayOfYear} of ${data.annual.daysInYear} (${data.annual.pctOfYearLabel} of year)`}
-        rightFooter={`${data.annual.toGoFormatted} to clear`}
+        rightFooter={`${data.annual.toGoFormatted} to goal`}
       />
 
       <p className="mt-4 border-t border-court-border-soft pt-3 text-xs text-court-fg-muted">

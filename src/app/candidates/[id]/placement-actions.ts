@@ -293,6 +293,10 @@ export type RecordPlacementInput = {
   billingContacts?: Array<{ name: string; email: string }>;
   hiringManagerName: string;
   hiringManagerEmail: string;
+  // Multi-contact hiring manager list. Optional; mirrors the billingContacts
+  // pattern — the first entry is mirrored into hiringManagerName/Email and
+  // the full list is stored in the Placement.hiringContacts JSON column.
+  hiringContacts?: Array<{ name: string; email: string }>;
   expectedStartDate: string; // ISO
   notes: string;
   // Recruiter-tagged lead source — drives the dashboard's By Source
@@ -347,6 +351,15 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
     // Contact" flow would fight the single fields for the mirrored slot.
     const mirroredName = primaryContact?.name || input.billingContactName || null;
     const mirroredEmail = primaryContact?.email || input.billingContactEmail || null;
+    // Same normalize / mirror logic for the hiring-manager list. The first
+    // entry mirrors into hiringManagerName / hiringManagerEmail so single-
+    // contact readers (Pipeline, invoice, gmail-recipients) stay correct.
+    const cleanedHiring = (input.hiringContacts ?? [])
+      .map((c) => ({ name: (c.name ?? "").trim(), email: (c.email ?? "").trim() }))
+      .filter((c) => c.name || c.email);
+    const primaryHiring = cleanedHiring[0] ?? null;
+    const mirroredHiringName = primaryHiring?.name || input.hiringManagerName || null;
+    const mirroredHiringEmail = primaryHiring?.email || input.hiringManagerEmail || null;
     const trimmedSource = input.candidateSource?.trim();
     const commonData = {
       acceptedSalary: input.acceptedSalary,
@@ -358,8 +371,9 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
       billingContactName: mirroredName,
       billingContactEmail: mirroredEmail,
       billingContacts: cleanedContacts.length > 0 ? cleanedContacts : Prisma.JsonNull,
-      hiringManagerName: input.hiringManagerName || null,
-      hiringManagerEmail: input.hiringManagerEmail || null,
+      hiringManagerName: mirroredHiringName,
+      hiringManagerEmail: mirroredHiringEmail,
+      hiringContacts: cleanedHiring.length > 0 ? cleanedHiring : Prisma.JsonNull,
       expectedStartDate: new Date(input.expectedStartDate),
       placementNotes: input.notes || null,
       candidateSource: trimmedSource ? trimmedSource : null,

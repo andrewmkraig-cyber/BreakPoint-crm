@@ -355,6 +355,12 @@ model Placement {
   billingContacts     Json?
   hiringManagerName   String?
   hiringManagerEmail  String?
+  // Multiple hiring manager contacts per placement, stored as a JSON array of
+  // { name, email } objects. Mirrors the billingContacts pattern: the first
+  // entry is mirrored into the legacy hiringManagerName / hiringManagerEmail
+  // columns above so single-contact readers (Pipeline, invoice flows,
+  // gmail-recipients) keep working without a wave of call-site updates.
+  hiringContacts      Json?
   expectedStartDate   DateTime?
   placementNotes      String?   @db.Text
 

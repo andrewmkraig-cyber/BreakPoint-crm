@@ -222,6 +222,10 @@ export type PlacementSnapshot = {
   billingContacts: Array<{ name: string; email: string }> | null;
   hiringManagerName: string | null;
   hiringManagerEmail: string | null;
+  // Array of { name, email } hiring-manager contacts. Same shape as
+  // billingContacts; null on rows saved before the multi-contact migration
+  // (reads fall back to hiringManagerName/Email above).
+  hiringContacts: Array<{ name: string; email: string }> | null;
   expectedStartDate: string | null;
   placementNotes: string | null;
   startConfirmedAt: string | null;
@@ -264,6 +268,7 @@ function seedOptimisticPlacement(stage: string): PlacementSnapshot {
     billingContacts: null,
     hiringManagerName: null,
     hiringManagerEmail: null,
+    hiringContacts: null,
     expectedStartDate: null,
     placementNotes: null,
     startConfirmedAt: null,
@@ -452,6 +457,7 @@ export function PlacementActions({
           billingContacts: null,
           hiringManagerName: null,
           hiringManagerEmail: null,
+          hiringContacts: null,
           expectedStartDate: null,
           placementNotes: null,
           startConfirmedAt: null,
@@ -1308,6 +1314,21 @@ function OfferDialog({
 
 // ---------------- Placement dialog ----------------
 
+// Unified input style for every text input, number input, date input, select,
+// and textarea inside PlacementDialog. Per Ace fix 2026-05-26: no field in
+// the placement modal should look visually different from any other. Court
+// Mode tokens only.
+const PLACEMENT_INPUT_CLS =
+  "w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-court-brand focus:outline-none focus:ring-2 focus:ring-court-brand/20";
+
+function PlacementInputLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+      {children}
+    </span>
+  );
+}
+
 function PlacementDialog({
   candidateRfId,
   job,
@@ -1358,8 +1379,18 @@ function PlacementDialog({
       ? seeded
       : [{ key: makeLocalKey(), name: "", email: "" }];
   });
-  const [hiringName, setHiringName] = useState(job.placement?.hiringManagerName ?? "");
-  const [hiringEmail, setHiringEmail] = useState(job.placement?.hiringManagerEmail ?? "");
+  // Multi-contact hiring manager list. Same seed priority as billing:
+  //   1. Existing hiringContacts JSON array (post-migration rows)
+  //   2. Legacy single hiringManagerName/Email (pre-migration rows)
+  //   3. One empty row so the UI always has at least one slot to fill in.
+  const [hiringContacts, setHiringContacts] = useState<
+    Array<{ key: string; name: string; email: string }>
+  >(() => {
+    const seeded = seedHiringContactList(job.placement);
+    return seeded.length > 0
+      ? seeded
+      : [{ key: makeLocalKey(), name: "", email: "" }];
+  });
   const [leadSource, setLeadSource] = useState(job.placement?.candidateSource ?? "");
   const [startDate, setStartDate] = useState(
     job.placement?.expectedStartDate
@@ -1413,6 +1444,36 @@ function PlacementDialog({
     );
   }
 
+  // Hiring-contact list helpers — mirror the billing-contact set above. The
+  // server action mirrors the first entry into hiringManagerName/Email and
+  // persists the full list in Placement.hiringContacts.
+  function setHiringContactField(key: string, field: "name" | "email", value: string) {
+    setHiringContacts((prev) =>
+      prev.map((c) => (c.key === key ? { ...c, [field]: value } : c)),
+    );
+  }
+
+  function addHiringContactRow() {
+    setHiringContacts((prev) => [...prev, { key: makeLocalKey(), name: "", email: "" }]);
+  }
+
+  function removeHiringContactRow(key: string) {
+    setHiringContacts((prev) => {
+      const next = prev.filter((c) => c.key !== key);
+      return next.length > 0 ? next : [{ key: makeLocalKey(), name: "", email: "" }];
+    });
+  }
+
+  function pickKnownHiringContact(key: string, contactId: string) {
+    const match = job.clientContacts.find((c) => String(c.id) === contactId);
+    if (!match) return;
+    setHiringContacts((prev) =>
+      prev.map((c) =>
+        c.key === key ? { ...c, name: match.name, email: match.email ?? "" } : c,
+      ),
+    );
+  }
+
   function validate(): string | null {
     // Direct fee-amount override short-circuits the salary × pct math —
     // salary/pct stay optional when the recruiter is typing a flat fee in.
@@ -1448,6 +1509,12 @@ function PlacementDialog({
       .map((c) => ({ name: c.name.trim(), email: c.email.trim() }))
       .filter((c) => c.name || c.email);
     const primary = cleanedContacts[0] ?? { name: "", email: "" };
+    // Same shape for hiring contacts; first entry mirrors into the legacy
+    // hiringManagerName / hiringManagerEmail columns server-side.
+    const cleanedHiring = hiringContacts
+      .map((c) => ({ name: c.name.trim(), email: c.email.trim() }))
+      .filter((c) => c.name || c.email);
+    const primaryHiring = cleanedHiring[0] ?? { name: "", email: "" };
     startSave(async () => {
       const result = await recordPlacement({
         candidateRfId,
@@ -1471,8 +1538,9 @@ function PlacementDialog({
         billingContactName: primary.name,
         billingContactEmail: primary.email,
         billingContacts: cleanedContacts,
-        hiringManagerName: hiringName.trim(),
-        hiringManagerEmail: hiringEmail.trim(),
+        hiringManagerName: primaryHiring.name,
+        hiringManagerEmail: primaryHiring.email,
+        hiringContacts: cleanedHiring,
         expectedStartDate: startDate,
         notes: notes.trim(),
         candidateSource: leadSource.trim() ? leadSource.trim() : null,
@@ -1507,32 +1575,90 @@ function PlacementDialog({
           </div>
         </div>
       </div>
+      {/* Every field below uses PLACEMENT_INPUT_CLS so Accepted Salary,
+          Currency, Fee %, Min Fee, Fee Amount, Guarantee Period, and
+          Expected Start Date all read as one visual family. No mix of
+          court-input-frame / rounded-md / rounded-lg variants here — that
+          was the regression we just closed. */}
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <LabeledField
-          label="Accepted salary"
-          value={acceptedSalary}
-          onChange={setAcceptedSalary}
-          placeholder="120000 or 120k"
-        />
-        <LabeledField label="Currency" value={acceptedCurrency} onChange={setAcceptedCurrency} />
-        <NumericField label="Fee %" value={feePct} onChange={setFeePct} placeholder="25" min={0} step="0.1" />
-        <NumericField label="Min fee" value={minFee} onChange={setMinFee} placeholder="20000 (optional)" min={0} />
-        <NumericField
-          label="Fee amount (flat, overrides calc)"
-          value={feeAmountOverride}
-          onChange={setFeeAmountOverride}
-          placeholder="7500 — wins over salary × fee %"
-          min={0}
-        />
-        <NumericField
-          label="Guarantee period (days)"
-          value={guarantee}
-          onChange={setGuarantee}
-          placeholder="90"
-          min={0}
-          step="1"
-        />
-        <LabeledField label="Expected start date" type="date" value={startDate} onChange={setStartDate} />
+        <label className="block text-sm">
+          <PlacementInputLabel>Accepted salary</PlacementInputLabel>
+          <input
+            type="text"
+            value={acceptedSalary}
+            onChange={(e) => setAcceptedSalary(e.target.value)}
+            placeholder="120000 or 120k"
+            className={`mt-1 ${PLACEMENT_INPUT_CLS}`}
+          />
+        </label>
+        <label className="block text-sm">
+          <PlacementInputLabel>Currency</PlacementInputLabel>
+          <input
+            type="text"
+            value={acceptedCurrency}
+            onChange={(e) => setAcceptedCurrency(e.target.value)}
+            className={`mt-1 ${PLACEMENT_INPUT_CLS}`}
+          />
+        </label>
+        <label className="block text-sm">
+          <PlacementInputLabel>Fee %</PlacementInputLabel>
+          <input
+            type="number"
+            inputMode="decimal"
+            value={feePct}
+            min={0}
+            step="0.1"
+            placeholder="25"
+            onChange={(e) => setFeePct(e.target.value)}
+            className={`mt-1 ${PLACEMENT_INPUT_CLS}`}
+          />
+        </label>
+        <label className="block text-sm">
+          <PlacementInputLabel>Min fee</PlacementInputLabel>
+          <input
+            type="number"
+            inputMode="decimal"
+            value={minFee}
+            min={0}
+            placeholder="20000 (optional)"
+            onChange={(e) => setMinFee(e.target.value)}
+            className={`mt-1 ${PLACEMENT_INPUT_CLS}`}
+          />
+        </label>
+        <label className="block text-sm">
+          <PlacementInputLabel>Fee amount (flat, overrides calc)</PlacementInputLabel>
+          <input
+            type="number"
+            inputMode="decimal"
+            value={feeAmountOverride}
+            min={0}
+            placeholder="7500 - wins over salary x fee %"
+            onChange={(e) => setFeeAmountOverride(e.target.value)}
+            className={`mt-1 ${PLACEMENT_INPUT_CLS}`}
+          />
+        </label>
+        <label className="block text-sm">
+          <PlacementInputLabel>Guarantee period (days)</PlacementInputLabel>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={guarantee}
+            min={0}
+            step="1"
+            placeholder="90"
+            onChange={(e) => setGuarantee(e.target.value)}
+            className={`mt-1 ${PLACEMENT_INPUT_CLS}`}
+          />
+        </label>
+        <label className="block text-sm">
+          <PlacementInputLabel>Expected start date</PlacementInputLabel>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className={`mt-1 ${PLACEMENT_INPUT_CLS}`}
+          />
+        </label>
       </div>
 
       <div className="mt-3 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 p-3">
@@ -1560,13 +1686,11 @@ function PlacementDialog({
       </div>
 
       <label className="mt-4 block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
-          Lead Source
-        </span>
+        <PlacementInputLabel>Lead Source</PlacementInputLabel>
         <select
           value={leadSource}
           onChange={(e) => setLeadSource(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className={`mt-1 ${PLACEMENT_INPUT_CLS}`}
         >
           <option value="">—</option>
           {LEAD_SOURCES.map((opt) => (
@@ -1609,14 +1733,14 @@ function PlacementDialog({
                 made the inputs appear staggered). */}
             <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[1fr_1fr_auto]">
               <div>
-                <label className="text-[11px] uppercase tracking-wider text-court-fg-muted">Name</label>
+                <PlacementInputLabel>Name</PlacementInputLabel>
                 <input
                   type="text"
                   value={row.name}
                   onChange={(e) => setContactField(row.key, "name", e.target.value)}
                   placeholder="Contact name"
                   list={`billing-contact-suggestions-${row.key}`}
-                  className="mt-1 w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                  className={`mt-1 ${PLACEMENT_INPUT_CLS}`}
                 />
                 {/* Native datalist mirrors the candidate's known client contacts
                     so typing offers quick-fill. The visible chip row below is
@@ -1628,13 +1752,13 @@ function PlacementDialog({
                 </datalist>
               </div>
               <div>
-                <label className="text-[11px] uppercase tracking-wider text-court-fg-muted">Email</label>
+                <PlacementInputLabel>Email</PlacementInputLabel>
                 <input
                   type="email"
                   value={row.email}
                   onChange={(e) => setContactField(row.key, "email", e.target.value)}
                   placeholder="name@client.com"
-                  className="mt-1 w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                  className={`mt-1 ${PLACEMENT_INPUT_CLS}`}
                 />
               </div>
               <button
@@ -1665,15 +1789,94 @@ function PlacementDialog({
           </div>
         ))}
       </div>
-      <h3 className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">Hiring manager</h3>
-      <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <LabeledField label="Name" value={hiringName} onChange={setHiringName} />
-        <LabeledField label="Email" type="email" value={hiringEmail} onChange={setHiringEmail} />
+      {/* Hiring managers - same add/remove pattern as Billing contacts.
+          Persisted via Placement.hiringContacts (JSON, Ace fix 2026-05-26);
+          the first entry mirrors into the legacy hiringManagerName /
+          hiringManagerEmail columns server-side so single-contact readers
+          (Pipeline table, invoice flow, gmail-recipients) stay correct. */}
+      <div className="mt-4 flex items-end justify-between gap-3">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+          Hiring managers
+        </h3>
+        <button
+          type="button"
+          onClick={addHiringContactRow}
+          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-semibold text-court-fg-muted shadow-sm transition hover:border-court-brand/40 hover:text-court-fg"
+        >
+          <Plus className="h-3 w-3" /> Add Contact
+        </button>
+      </div>
+      <div className="mt-2 space-y-2">
+        {hiringContacts.map((row) => (
+          <div
+            key={row.key}
+            className="rounded-lg border border-court-border/40 bg-court-surface-subtle/30 p-2"
+          >
+            <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[1fr_1fr_auto]">
+              <div>
+                <PlacementInputLabel>Name</PlacementInputLabel>
+                <input
+                  type="text"
+                  value={row.name}
+                  onChange={(e) => setHiringContactField(row.key, "name", e.target.value)}
+                  placeholder="Hiring manager name"
+                  list={`hiring-contact-suggestions-${row.key}`}
+                  className={`mt-1 ${PLACEMENT_INPUT_CLS}`}
+                />
+                <datalist id={`hiring-contact-suggestions-${row.key}`}>
+                  {job.clientContacts.map((c) => (
+                    <option key={c.id} value={c.name} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <PlacementInputLabel>Email</PlacementInputLabel>
+                <input
+                  type="email"
+                  value={row.email}
+                  onChange={(e) => setHiringContactField(row.key, "email", e.target.value)}
+                  placeholder="name@client.com"
+                  className={`mt-1 ${PLACEMENT_INPUT_CLS}`}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => removeHiringContactRow(row.key)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+                title="Remove this contact"
+                aria-label="Remove contact"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {job.clientContacts.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {job.clientContacts.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => pickKnownHiringContact(row.key, String(c.id))}
+                    className="rounded-full border border-court-border bg-court-surface px-2 py-0.5 text-[10px] text-court-fg-muted transition hover:border-court-brand/40 hover:text-court-fg"
+                    title={`Fill from ${c.name}`}
+                  >
+                    {c.name.split(/\s+/)[0]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
 
-      <div className="mt-4">
-        <LabeledTextarea label="Placement notes" value={notes} onChange={setNotes} rows={2} />
-      </div>
+      <label className="mt-4 block text-sm">
+        <PlacementInputLabel>Placement notes</PlacementInputLabel>
+        <textarea
+          value={notes}
+          rows={2}
+          onChange={(e) => setNotes(e.target.value)}
+          className={`mt-1 resize-y ${PLACEMENT_INPUT_CLS}`}
+        />
+      </label>
 
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
       <ModalFooter
@@ -1708,6 +1911,26 @@ function seedBillingContactList(
   }
   const legacyName = placement?.billingContactName ?? "";
   const legacyEmail = placement?.billingContactEmail ?? "";
+  if (legacyName || legacyEmail) {
+    return [{ key: makeLocalKey(), name: legacyName, email: legacyEmail }];
+  }
+  return [];
+}
+
+// Same shape as seedBillingContactList — preferred source is the new
+// hiringContacts JSON array; falls back to the legacy single
+// hiringManagerName / hiringManagerEmail pair so pre-migration rows still
+// show their saved contact when reopened. Returns an empty array when neither
+// source has data so the caller can seed one blank row via the initializer.
+function seedHiringContactList(
+  placement: PlacementSnapshot | null,
+): Array<{ key: string; name: string; email: string }> {
+  const fromJson = placement?.hiringContacts ?? null;
+  if (fromJson && fromJson.length > 0) {
+    return fromJson.map((c) => ({ key: makeLocalKey(), name: c.name, email: c.email }));
+  }
+  const legacyName = placement?.hiringManagerName ?? "";
+  const legacyEmail = placement?.hiringManagerEmail ?? "";
   if (legacyName || legacyEmail) {
     return [{ key: makeLocalKey(), name: legacyName, email: legacyEmail }];
   }
