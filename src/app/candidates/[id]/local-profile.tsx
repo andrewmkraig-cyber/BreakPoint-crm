@@ -539,24 +539,31 @@ export async function LocalCandidateProfile({
               className="mt-4"
               embed
             />
-            <UnderlineTabs tab={tab} candidateId={candidate.id} embed />
-            <div className="flex flex-wrap items-center gap-2">
-              <Link
-                href={`/candidates/${candidate.id}?embed=true&openApply=1`}
-                className={APPLY_LINK_CLASS}
-              >
-                <Target className="h-3 w-3" /> Apply to Job
-              </Link>
-              <KeepCandidateButton
-                candidateId={candidate.id}
-                isKept={isKeptEmbed}
-                className="border-blue-400 text-sm dark:border-blue-500"
-              />
-              <AddToListButton
-              candidateId={candidate.id}
-              candidateName={fullName}
-              className="border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
-            />
+            {/* Single sticky bar in the split-view scroll container —
+                tabs left, action buttons right-aligned with the resume's
+                right edge. sticky top-0 anchors to the scroll container
+                (the overflow-y-auto parent flex column) so the pipeline
+                strip above scrolls away while these stay pinned. */}
+            <div className="sticky top-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-court-bg/85 px-1 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
+              <UnderlineTabs tab={tab} candidateId={candidate.id} embed />
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href={`/candidates/${candidate.id}?embed=true&openApply=1`}
+                  className={APPLY_LINK_CLASS}
+                >
+                  <Target className="h-3 w-3" /> Apply to Job
+                </Link>
+                <KeepCandidateButton
+                  candidateId={candidate.id}
+                  isKept={isKeptEmbed}
+                  className="border-blue-400 text-sm dark:border-blue-500"
+                />
+                <AddToListButton
+                  candidateId={candidate.id}
+                  candidateName={fullName}
+                  className="border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
+                />
+              </div>
             </div>
             {tab === "game-plan" ? (
               <AiWorkspace
@@ -669,29 +676,35 @@ export async function LocalCandidateProfile({
           CompactOverview box. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="space-y-4 lg:col-span-8">
-          <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center gap-3 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
+          {/* Single sticky bar pinning Profile/Game Plan/Notes on the
+              left and Apply/Keep/Add-to-List on the right edge of the
+              resume column. Merging the two former rows keeps the action
+              buttons in view while scrolling the resume and tightens the
+              gap between the bar and the resume below from two rows to
+              one. */}
+          <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
             <UnderlineTabs tab={tab} candidateId={candidate.id} />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href={`/candidates/${candidate.id}?openApply=1`}
-              className={APPLY_LINK_CLASS}
-            >
-              <Target className="h-3 w-3" /> Apply to Job
-            </Link>
-            <KeepCandidateButton
-              candidateId={candidate.id}
-              isKept={(candidate.tags ?? []).some((t) => {
-                const lower = t.trim().toLowerCase();
-                return lower === "kept" || lower === "keep";
-              })}
-              className="border-blue-400 text-sm dark:border-blue-500"
-            />
-            <AddToListButton
-              candidateId={candidate.id}
-              candidateName={fullName}
-              className="border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={`/candidates/${candidate.id}?openApply=1`}
+                className={APPLY_LINK_CLASS}
+              >
+                <Target className="h-3 w-3" /> Apply to Job
+              </Link>
+              <KeepCandidateButton
+                candidateId={candidate.id}
+                isKept={(candidate.tags ?? []).some((t) => {
+                  const lower = t.trim().toLowerCase();
+                  return lower === "kept" || lower === "keep";
+                })}
+                className="border-blue-400 text-sm dark:border-blue-500"
+              />
+              <AddToListButton
+                candidateId={candidate.id}
+                candidateName={fullName}
+                className="border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
+              />
+            </div>
           </div>
           {tab === "game-plan" ? (
             <AiWorkspace

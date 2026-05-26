@@ -431,6 +431,9 @@ export function NewCandidateForm({
                 />
               </div>
             </div>
+            {/* Compact CLAUDE pill — dark-green + sparkles already signal
+                "Claude" so the label drops the "with Claude" suffix to keep
+                the affordance from stretching across the LinkedIn column. */}
             <button
               type="button"
               onClick={() => runParse()}
@@ -438,18 +441,21 @@ export function NewCandidateForm({
               className={cn(CLAUDE_PILL_CLASS, "self-start")}
             >
               {isParsing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-              {parseSource ? "Re-parse with Claude" : "Parse with Claude"}
+              {parseSource ? "Re-parse" : "Parse"}
             </button>
           </div>
         </div>
 
         {parseSource && (
+          // self-start so the button doesn't stretch full-column in the
+          // outer flex-col; compact label so it reads as a tidy reset
+          // chip instead of a wide stretched bar.
           <button
             type="button"
             onClick={onReset}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+            className="inline-flex items-center gap-1.5 self-start rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
           >
-            Clear and start over
+            Reset
           </button>
         )}
         {parseError && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{parseError}</div>}
@@ -534,12 +540,21 @@ export function NewCandidateForm({
                   emailCheckStatus === "checking" ? (
                     "Checking…"
                   ) : emailCheckStatus === "clean" ? (
+                    // Green "New Candidate" — the candidate side cares
+                    // about whether they're a new record vs an existing
+                    // one in Ace, not raw email availability. The Save
+                    // button is gated on the same emailCheckStatus, so
+                    // "Existing Candidate" doubles as the create-block
+                    // signal.
                     <span className="inline-flex items-center gap-1 text-green-700">
                       <CheckCircle2 className="h-3.5 w-3.5" />
-                      Available
+                      New Candidate
                     </span>
                   ) : emailCheckStatus === "duplicate" ? (
-                    "Duplicate detected"
+                    <span className="inline-flex items-center gap-1">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      Existing Candidate
+                    </span>
                   ) : undefined
                 }
                 hintTone={emailCheckStatus === "duplicate" ? "error" : "muted"}
