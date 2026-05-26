@@ -879,7 +879,7 @@ function ScheduleDialog({
           <span className="font-semibold text-court-fg">Client will send invite</span>
           <span className="block text-xs text-court-fg-muted">
             Log the interview on your calendar and activity log for tracking + credit.
-            Skip the candidate/client invite emails — the client is sending their own.
+            Skip the candidate/client invite emails. The client is sending their own.
           </span>
         </span>
       </label>
