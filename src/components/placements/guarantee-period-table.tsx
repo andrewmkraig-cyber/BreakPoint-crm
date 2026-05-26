@@ -1,0 +1,160 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+// Inputs the parent surface passes for each candidate guarantee-eligible row.
+// Each surface (Placements tab + Pipeline Hired tab) does its own status /
+// start-date / guarantee resolution upstream, then hands us a flat list. The
+// component owns the live "days remaining" countdown and the at-0 row drop.
+//
+// `startDateIso` and `guaranteeEndIso` are pre-resolved ISO strings — the
+// upstream caller decides whether `customGuaranteeDate` or
+// `startDate + guaranteePeriod` wins, so the rules stay in one place.
+export type GuaranteePeriodRow = {
+  placementId: string;
+  candidateName: string;
+  clientName: string;
+  roleTitle: string | null;
+  startDateIso: string;
+  guaranteeEndIso: string;
+};
+
+const MS_PER_DAY = 86_400_000;
+
+function formatYmd(iso: string): string {
+  // YYYY-MM-DD slice so the column stays compact + matches the
+  // placements ledger Start column (which also uses the ISO prefix).
+  return iso.slice(0, 10);
+}
+
+export function GuaranteePeriodTable({
+  rows,
+  className,
+}: {
+  rows: GuaranteePeriodRow[];
+  className?: string;
+}) {
+  // Recompute "days remaining" off a ticking `now` so the column counts down
+  // without a page refresh. 24-hour interval per spec, plus an initial
+  // schedule to next-midnight so a row sitting in a foregrounded tab flips
+  // on the day boundary instead of 24h after first render.
+  const [now, setNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    const nowMs = Date.now();
+    const next = new Date(nowMs);
+    next.setHours(24, 0, 0, 0);
+    const msUntilMidnight = Math.max(60_000, next.getTime() - nowMs);
+    const initial = setTimeout(() => {
+      tick();
+      // After the first boundary, keep ticking once per 24h.
+    }, msUntilMidnight);
+    const daily = setInterval(tick, MS_PER_DAY);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(daily);
+    };
+  }, []);
+
+  // Compute days remaining + drop rows that have hit 0 / gone negative.
+  // Math.ceil((end - now) / 86400000) per spec — a row whose end-date is
+  // later today still reads "1 day"; only rows whose end has actually passed
+  // are removed.
+  const active = useMemo(() => {
+    return rows
+      .map((r) => {
+        const endMs = new Date(r.guaranteeEndIso).getTime();
+        if (!Number.isFinite(endMs)) return null;
+        const daysRemaining = Math.ceil((endMs - now) / MS_PER_DAY);
+        if (daysRemaining <= 0) return null;
+        return { row: r, daysRemaining };
+      })
+      .filter(
+        (x): x is { row: GuaranteePeriodRow; daysRemaining: number } =>
+          x !== null,
+      );
+  }, [rows, now]);
+
+  if (active.length === 0) return null;
+
+  return (
+    <div
+      className={
+        "rounded-3xl bg-court-surface shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)] " +
+        (className ?? "")
+      }
+    >
+      <div className="flex flex-col gap-2.5 px-4 pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
+          Guarantee Period
+        </p>
+        <span className="inline-flex items-center justify-center rounded-md bg-court-brand-tint px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-court-brand-dark">
+          {active.length}
+        </span>
+      </div>
+
+      <div className="mt-2.5 overflow-x-auto">
+        <table className="w-full border-collapse text-[13px]">
+          <thead>
+            <tr className="border-y border-court-border-soft text-left text-[10px] uppercase tracking-wide text-court-fg-muted">
+              <th className="px-4 py-1.5 font-semibold">Candidate</th>
+              <th className="px-3 py-1.5 font-semibold">Client</th>
+              <th className="px-3 py-1.5 font-semibold">Role</th>
+              <th className="px-3 py-1.5 font-semibold">Start</th>
+              <th className="px-3 py-1.5 font-semibold">Guarantee ends</th>
+              <th className="px-3 py-1.5 text-right font-semibold">
+                Days remaining
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {active.map(({ row, daysRemaining }) => (
+              <tr
+                key={row.placementId}
+                className="border-b border-court-border-soft"
+              >
+                <td className="px-4 py-1.5 align-middle font-medium text-court-fg">
+                  {row.candidateName || "-"}
+                </td>
+                <td className="px-3 py-1.5 align-middle text-court-fg">
+                  {row.clientName || "-"}
+                </td>
+                <td className="px-3 py-1.5 align-middle text-court-fg-muted">
+                  {row.roleTitle ?? "-"}
+                </td>
+                <td className="px-3 py-1.5 align-middle tabular-nums text-court-fg-muted">
+                  {formatYmd(row.startDateIso)}
+                </td>
+                <td className="px-3 py-1.5 align-middle tabular-nums text-court-fg-muted">
+                  {formatYmd(row.guaranteeEndIso)}
+                </td>
+                <td className="px-3 py-1.5 text-right align-middle tabular-nums font-semibold text-court-fg">
+                  {daysRemaining}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Shared resolver for guarantee end date. Hands back null when the placement
+// does not qualify (no start date, no guarantee terms, or end already passed).
+// Surfaces call this with their own billing-status guard already applied.
+export function resolveGuaranteeEnd(args: {
+  startDateIso: string | null;
+  guaranteePeriodDays: number | null;
+  customGuaranteeDateIso: string | null;
+}): string | null {
+  const { startDateIso, guaranteePeriodDays, customGuaranteeDateIso } = args;
+  if (customGuaranteeDateIso) return customGuaranteeDateIso;
+  if (!startDateIso) return null;
+  if (guaranteePeriodDays == null || guaranteePeriodDays <= 0) return null;
+  const start = new Date(startDateIso);
+  if (!Number.isFinite(start.getTime())) return null;
+  const end = new Date(start);
+  end.setDate(end.getDate() + guaranteePeriodDays);
+  return end.toISOString();
+}

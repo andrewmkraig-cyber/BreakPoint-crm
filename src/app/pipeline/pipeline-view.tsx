@@ -26,6 +26,11 @@ import {
   PlacementEditDrawer,
   type PlacementDrawerContext,
 } from "@/app/pipeline/placement-edit-drawer";
+import {
+  GuaranteePeriodTable,
+  resolveGuaranteeEnd,
+  type GuaranteePeriodRow,
+} from "@/components/placements/guarantee-period-table";
 
 type Stage = keyof typeof PIPELINE_LABELS;
 
@@ -63,6 +68,10 @@ export type PlacementDetails = {
   inst3Amount: number | null;
   inst3DaysAfterStart: number | null;
   customGuaranteeDate: string | null;
+  // Default guarantee window in days from start. Drives the "Guarantee
+  // Period" countdown card below the hired table (resolved against
+  // customGuaranteeDate when both are present).
+  guaranteePeriodDays: number | null;
 };
 
 export type NextInterview = {
@@ -294,6 +303,37 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
       ids: rows.map((r) => String(r.candidateId)),
     });
   }, [rows, params]);
+
+  // Hired-tab guarantee rows: surface every hired placement that has been
+  // billed or paid, has a start date, and still has an active guarantee
+  // window. The live countdown + zero-day drop live inside the table
+  // component. Empty array on any non-hired stage so the section disables
+  // itself cleanly outside the Hired view.
+  const guaranteeRows = useMemo<GuaranteePeriodRow[]>(() => {
+    if (stage !== "hired") return [];
+    const out: GuaranteePeriodRow[] = [];
+    for (const r of rows) {
+      const p = r.placement;
+      if (!p) continue;
+      if (p.invoiceStatus !== "SENT" && p.invoiceStatus !== "PAID") continue;
+      if (!p.expectedStartDate) continue;
+      const guaranteeEndIso = resolveGuaranteeEnd({
+        startDateIso: p.expectedStartDate,
+        guaranteePeriodDays: p.guaranteePeriodDays,
+        customGuaranteeDateIso: p.customGuaranteeDate,
+      });
+      if (!guaranteeEndIso) continue;
+      out.push({
+        placementId: p.id,
+        candidateName: r.candidateName,
+        clientName: r.clientName,
+        roleTitle: r.jobTitle || null,
+        startDateIso: p.expectedStartDate,
+        guaranteeEndIso,
+      });
+    }
+    return out;
+  }, [rows, stage]);
 
   const buildHref = (overrides: Record<string, string | number | undefined>): string => {
     const next = new URLSearchParams(params?.toString() ?? "");
@@ -624,6 +664,9 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
           label="submittals"
         />
       </div>
+      {stage === "hired" && (
+        <GuaranteePeriodTable rows={guaranteeRows} />
+      )}
       {bulkRejectOpen && (
         <RejectCandidateDialog
           candidateName={`${selectedPlacementIds.size} candidate${selectedPlacementIds.size === 1 ? "" : "s"}`}

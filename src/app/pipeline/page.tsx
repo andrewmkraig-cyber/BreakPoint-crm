@@ -440,6 +440,7 @@ function toPlacementDetails(
     inst3Amount: p.inst3Amount ?? null,
     inst3DaysAfterStart: p.inst3DaysAfterStart ?? null,
     customGuaranteeDate: p.customGuaranteeDate?.toISOString() ?? null,
+    guaranteePeriodDays: p.guaranteePeriodDays ?? null,
   };
 }
 

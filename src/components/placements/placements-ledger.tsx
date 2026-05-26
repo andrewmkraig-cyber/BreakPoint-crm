@@ -51,6 +51,10 @@ export type LedgerRow = {
   inst3Amount: number | null;
   inst3DaysAfterStart: number | null;
   customGuaranteeDate: string | null;
+  // Default guarantee window in days from start. Used downstream (outside
+  // this component) to render the live "Guarantee Period" countdown card
+  // beneath the ledger. Not consumed by the ledger render itself.
+  guaranteePeriodDays: number | null;
 };
 
 const STAGE_LABEL: Record<LedgerRow["stage"], string> = {

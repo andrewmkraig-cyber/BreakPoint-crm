@@ -99,6 +99,11 @@ export type PlacementsDashboardRow = {
   inst3Amount: number | null;
   inst3DaysAfterStart: number | null;
   customGuaranteeDate: Date | null;
+  // Default guarantee window in days from start. The guarantee end date
+  // is `startDate + guaranteePeriodDays` UNLESS customGuaranteeDate is
+  // set (which overrides the days math). Surfaced for the live
+  // "days remaining" countdown on the placements + pipeline hired tabs.
+  guaranteePeriodDays: number | null;
 };
 
 type ClientLocationJson = {
@@ -255,6 +260,7 @@ export async function getPlacementsDashboardData(
         inst3Amount: true,
         inst3DaysAfterStart: true,
         customGuaranteeDate: true,
+        guaranteePeriodDays: true,
         candidate: { select: { firstName: true, lastName: true } },
         client: { select: { name: true, industry: true, location: true } },
         job: { select: { title: true, employmentType: true } },
@@ -347,6 +353,7 @@ export async function getPlacementsDashboardData(
       inst3Amount: p.inst3Amount ?? null,
       inst3DaysAfterStart: p.inst3DaysAfterStart ?? null,
       customGuaranteeDate: p.customGuaranteeDate ?? null,
+      guaranteePeriodDays: p.guaranteePeriodDays ?? null,
     };
   });
 }

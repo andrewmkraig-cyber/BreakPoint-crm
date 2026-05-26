@@ -1,5 +1,10 @@
 import { PlacementsBreakdowns } from "@/components/placements/placements-breakdowns";
 import {
+  GuaranteePeriodTable,
+  resolveGuaranteeEnd,
+  type GuaranteePeriodRow,
+} from "@/components/placements/guarantee-period-table";
+import {
   PlacementsLedger,
   type LedgerRow,
 } from "@/components/placements/placements-ledger";
@@ -33,6 +38,10 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
   const cities = aggregateByCity(rows);
   const totalFee = cities.reduce((s, c) => s + c.totalFee, 0);
   const ledgerRows = toLedgerRows(rows);
+  // Active guarantees: Billed (invoice SENT) or Paid (invoice PAID), with a
+  // resolved start date and a guarantee end still in the future. The live
+  // countdown + zero-day drop happen client-side inside GuaranteePeriodTable.
+  const guaranteeRows = toGuaranteeRows(ledgerRows);
 
   return (
     <div className="flex flex-col gap-6">
@@ -43,10 +52,36 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
         <PeriodTabs period={period} />
       </div>
       <PlacementsLedger rows={ledgerRows} title={LEDGER_TITLE[period]} />
+      <GuaranteePeriodTable rows={guaranteeRows} />
       <PlacementsBreakdowns rows={rows} />
       <PlacementsMapCard cities={cities} totalFee={totalFee} />
     </div>
   );
+}
+
+function toGuaranteeRows(rows: LedgerRow[]): GuaranteePeriodRow[] {
+  const out: GuaranteePeriodRow[] = [];
+  for (const r of rows) {
+    if (r.billingStatus !== "BILLED" && r.billingStatus !== "COLLECTED") {
+      continue;
+    }
+    if (!r.expectedStartDateIso) continue;
+    const guaranteeEndIso = resolveGuaranteeEnd({
+      startDateIso: r.expectedStartDateIso,
+      guaranteePeriodDays: r.guaranteePeriodDays,
+      customGuaranteeDateIso: r.customGuaranteeDate,
+    });
+    if (!guaranteeEndIso) continue;
+    out.push({
+      placementId: r.id,
+      candidateName: r.candidateFullName,
+      clientName: r.clientName,
+      roleTitle: r.roleTitle,
+      startDateIso: r.expectedStartDateIso,
+      guaranteeEndIso,
+    });
+  }
+  return out;
 }
 
 function toLedgerRows(rows: PlacementsDashboardRow[]): LedgerRow[] {
@@ -86,6 +121,7 @@ function toLedgerRows(rows: PlacementsDashboardRow[]): LedgerRow[] {
     customGuaranteeDate: r.customGuaranteeDate
       ? r.customGuaranteeDate.toISOString()
       : null,
+    guaranteePeriodDays: r.guaranteePeriodDays,
   }));
 }
 
