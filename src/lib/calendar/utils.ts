@@ -1,11 +1,13 @@
 import type { CalendarEventType } from "@/lib/calendar/types";
 import { decimalHour } from "@/lib/calendar/week";
 
-// Each slot is 56px tall and the grid starts at 7 AM. Same constant
-// the week / day views all reference, so the now-line and event
-// positions stay aligned even if the start hour changes.
+// Each slot is 56px tall and the grid starts at midnight. Same
+// constant the week / day views all reference, so the now-line and
+// event positions stay aligned even if the start hour changes. The
+// grid covers the full 24 hours; views scroll internally to whichever
+// hour the recruiter is looking at (defaulting to ~7 AM on mount).
 export const SLOT_HEIGHT = 56;
-export const GRID_START_HOUR = 7;
+export const GRID_START_HOUR = 0;
 
 export function hourToY(h: number): number {
   return (h - GRID_START_HOUR) * SLOT_HEIGHT;

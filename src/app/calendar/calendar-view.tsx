@@ -10,7 +10,6 @@ import type { EventTypeFilter } from "@/components/calendar/left-rail";
 import { GoogleGlyph } from "@/components/calendar/left-rail";
 import { CalendarLeftRail } from "@/components/calendar/left-rail";
 import { CalendarMonthView } from "@/components/calendar/month-view";
-import { CalendarRemindersPanel } from "@/components/calendar/reminders-panel";
 import { CalendarWeekView } from "@/components/calendar/week-view";
 import { TabStrip } from "@/components/ui/tab-strip";
 import { useCalendarDrawer } from "@/lib/calendar-drawer-context";
@@ -25,7 +24,7 @@ import { triggerCalendarSync } from "@/lib/calendar/trigger-sync";
 import {
   addDays,
   addMonths,
-  formatWeekRange,
+  formatFullWeekRange,
   getMondayOfWeek,
   getStartOfMonth,
 } from "@/lib/calendar/week";
@@ -375,7 +374,7 @@ export function CalendarView({
   }, []);
 
   return (
-    <div className="flex min-h-[calc(100vh-6rem)] flex-col gap-5">
+    <div className="flex min-h-0 flex-col gap-5">
       <CalSubheader
         view={view}
         scope={scope}
@@ -403,6 +402,12 @@ export function CalendarView({
           currentWeekStart={currentWeekStart}
           today={today}
           onSelectDate={goToDate}
+          reminders={reminders}
+          editingReminderId={editingReminderId}
+          onEditReminder={setEditingReminderId}
+          onCreateReminder={handleCreateReminder}
+          onUpdateReminder={handleUpdateReminder}
+          onDeleteReminder={handleDeleteReminder}
         />
 
         <div className="min-w-0 flex-1">
@@ -452,17 +457,6 @@ export function CalendarView({
             />
           )}
         </div>
-
-        <aside className="hidden w-[280px] shrink-0 lg:block">
-          <CalendarRemindersPanel
-            reminders={reminders}
-            editingId={editingReminderId}
-            onEdit={setEditingReminderId}
-            onCreate={handleCreateReminder}
-            onUpdate={handleUpdateReminder}
-            onDelete={handleDeleteReminder}
-          />
-        </aside>
       </div>
 
       <CalendarEventDrawer
@@ -531,7 +525,7 @@ function CalSubheader({
         ? currentDate.toLocaleDateString(undefined, {
             month: "long",
           })
-        : formatWeekRange(currentWeekStart);
+        : formatFullWeekRange(currentWeekStart);
   const yearLabel = (view === "month" ? currentDate : currentWeekStart)
     .getFullYear()
     .toString();

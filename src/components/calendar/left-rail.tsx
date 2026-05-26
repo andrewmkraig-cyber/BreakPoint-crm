@@ -3,7 +3,11 @@
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import type { CalendarTeamMember } from "@/lib/calendar/types";
+import { CalendarRemindersPanel } from "@/components/calendar/reminders-panel";
+import type {
+  CalendarReminder,
+  CalendarTeamMember,
+} from "@/lib/calendar/types";
 import {
   addDays,
   addMonths,
@@ -37,11 +41,32 @@ type Props = {
   // Mini-cal day click → main view jumps to that date (keeps the
   // current view mode, mirroring Google Calendar's side-cal behavior).
   onSelectDate: (date: Date) => void;
+  // Upcoming-reminders panel props. The reminders section moved from
+  // the right side of the calendar into the left rail (below Team) so
+  // the main calendar surface could stretch toward the right edge.
+  reminders: CalendarReminder[];
+  editingReminderId: string | null;
+  onEditReminder: (id: string | null) => void;
+  onCreateReminder: (
+    title: string,
+    reminderAt: Date,
+    notifyLeadsMin: number[],
+  ) => Promise<void>;
+  onUpdateReminder: (
+    id: string,
+    title: string,
+    reminderAt: Date,
+    notifyLeadsMin: number[],
+  ) => Promise<void>;
+  onDeleteReminder: (id: string) => void;
 };
 
-// Slim left rail. Three stacked cards (mini-cal, event-types legend,
-// team checkboxes) plus a small Google sync footer. Width is fixed at
-// 200px so the main grid keeps its breathing room.
+// Single left-side rail. Stacked cards: mini-cal, event-types legend,
+// team checkboxes, upcoming reminders, and a small Google sync footer.
+// Width is 280px to house the reminders panel comfortably — same width
+// the panel used when it lived on the right side of the calendar.
+// The aside scrolls internally when the stack of cards is taller than
+// the viewport so the page itself stays at a fixed viewport height.
 
 export function CalendarLeftRail({
   teamMembers,
@@ -53,9 +78,18 @@ export function CalendarLeftRail({
   currentWeekStart,
   today,
   onSelectDate,
+  reminders,
+  editingReminderId,
+  onEditReminder,
+  onCreateReminder,
+  onUpdateReminder,
+  onDeleteReminder,
 }: Props) {
   return (
-    <aside className="hidden w-[200px] shrink-0 flex-col gap-4 xl:flex">
+    <aside
+      className="hidden w-[280px] shrink-0 flex-col gap-4 overflow-y-auto pr-1 lg:flex"
+      style={{ maxHeight: "calc(100vh - 13rem)" }}
+    >
       <MiniMonth
         monthStart={monthStart}
         currentWeekStart={currentWeekStart}
@@ -70,6 +104,14 @@ export function CalendarLeftRail({
         teamMembers={teamMembers}
         hiddenMembers={hiddenMembers}
         onToggleMember={onToggleMember}
+      />
+      <CalendarRemindersPanel
+        reminders={reminders}
+        editingId={editingReminderId}
+        onEdit={onEditReminder}
+        onCreate={onCreateReminder}
+        onUpdate={onUpdateReminder}
+        onDelete={onDeleteReminder}
       />
       <GoogleSyncFooter />
     </aside>
@@ -131,7 +173,10 @@ function MiniMonth({
     return { days, daysInMonth };
   }, [viewMonth]);
 
-  const weekEnd = addDays(currentWeekStart, 4);
+  // Tint the whole Mon-Sun span in the mini-cal — the main grid shows
+  // all seven days now, so the side cal should reflect the same range
+  // instead of stopping at Friday.
+  const weekEnd = addDays(currentWeekStart, 6);
 
   return (
     <div className="rounded-2xl border border-court-border bg-court-surface p-3.5 shadow-sm">
@@ -166,8 +211,9 @@ function MiniMonth({
         ))}
         {cells.days.map(({ date, outsideMonth }) => {
           const isToday = isSameDay(date, today);
-          const inWeek =
-            date >= currentWeekStart && date <= weekEnd && date.getDay() !== 0 && date.getDay() !== 6;
+          // Sat/Sun now belong to the main week view too, so they
+          // should pick up the tint instead of being excluded.
+          const inWeek = date >= currentWeekStart && date <= weekEnd;
           return (
             <button
               key={date.toISOString()}

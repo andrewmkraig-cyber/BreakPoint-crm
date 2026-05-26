@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import type { CalendarEvent, CalendarTeamMember } from "@/lib/calendar/types";
 import {
@@ -13,12 +13,18 @@ import {
 } from "@/lib/calendar/utils";
 import {
   decimalHour,
-  getWorkWeekDays,
+  getFullWeekDays,
   isSameDay,
 } from "@/lib/calendar/week";
 import { cn } from "@/lib/utils";
 
-const HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+// Full 24-hour grid. The body scrolls inside a fixed-height container
+// so the rest of the page never gets pushed off-screen.
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+// Hour to land on when the view first mounts. 7 AM matches the old
+// fixed 7-AM-to-8-PM window so the default still reads as "morning at
+// the top" for users who have it muscle-memorized.
+const DEFAULT_SCROLL_HOUR = 7;
 
 type Props = {
   events: CalendarEvent[];
@@ -50,7 +56,7 @@ export function CalendarWeekView({
   onSlotClick,
   onDayHeaderClick,
 }: Props) {
-  const weekDays = useMemo(() => getWorkWeekDays(weekStart), [weekStart]);
+  const weekDays = useMemo(() => getFullWeekDays(weekStart), [weekStart]);
 
   const eventsByDay = useMemo(() => {
     const out: CalendarEvent[][] = weekDays.map(() => []);
@@ -67,12 +73,28 @@ export function CalendarWeekView({
     return out;
   }, [events, hiddenMembers, weekDays]);
 
+  // Scrollable body that holds the full 24-hour grid. We scroll to
+  // 7 AM on first mount so the default reading position matches the
+  // old fixed-window behavior. Re-running on week change would yank
+  // the recruiter back to morning every time they hit "next week" —
+  // intentionally avoided.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (bodyRef.current) {
+      bodyRef.current.scrollTop = DEFAULT_SCROLL_HOUR * SLOT_HEIGHT;
+    }
+  }, []);
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">
-      {/* Day headers */}
+    <div
+      className="flex flex-col overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm"
+      style={{ height: "calc(100vh - 13rem)", minHeight: 480 }}
+    >
+      {/* Day headers — stay pinned above the scrollable body so the
+          recruiter always knows which column is which. */}
       <div
-        className="grid border-b border-court-border"
-        style={{ gridTemplateColumns: "56px repeat(5, minmax(0, 1fr))" }}
+        className="grid shrink-0 border-b border-court-border"
+        style={{ gridTemplateColumns: "56px repeat(7, minmax(0, 1fr))" }}
       >
         <div />
         {weekDays.map((d) => {
@@ -111,11 +133,13 @@ export function CalendarWeekView({
         })}
       </div>
 
-      {/* Grid body */}
-      <div className="relative">
+      {/* Grid body — scrolls vertically so the calendar surface stays
+          a fixed size on screen no matter how tall the 24-hour grid
+          gets. */}
+      <div ref={bodyRef} className="relative flex-1 overflow-y-auto">
         <div
           className="grid"
-          style={{ gridTemplateColumns: "56px repeat(5, minmax(0, 1fr))" }}
+          style={{ gridTemplateColumns: "56px repeat(7, minmax(0, 1fr))" }}
         >
           {/* Time column */}
           <div>

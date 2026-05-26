@@ -1,7 +1,7 @@
 "use client";
 
 import { MapPin, Plus, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { CalendarEvent, CalendarTeamMember } from "@/lib/calendar/types";
 import {
@@ -18,9 +18,14 @@ import {
 } from "@/lib/calendar/week";
 import { cn } from "@/lib/utils";
 
-const HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+// Full 24-hour grid; the body scrolls inside a fixed-height container.
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const SLOT = 88;
-const START_HOUR = 7;
+const START_HOUR = 0;
+// Hour to land on when the day view first mounts — matches the legacy
+// 7-AM-at-the-top default so recruiters don't open the page to a wall
+// of midnight slots.
+const DEFAULT_SCROLL_HOUR = 7;
 const MAX_AVATARS = 2;
 
 type Props = {
@@ -70,9 +75,21 @@ export function CalendarDayView({
     return () => window.clearInterval(id);
   }, [isToday, displayDate]);
 
+  // Scroll body to ~7 AM on first mount so the user lands on the
+  // workday rather than the midnight section of the now-full 24h grid.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (bodyRef.current) {
+      bodyRef.current.scrollTop = DEFAULT_SCROLL_HOUR * SLOT;
+    }
+  }, []);
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">
-      <div className="border-b border-court-border px-7 py-5">
+    <div
+      className="flex flex-col overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm"
+      style={{ height: "calc(100vh - 13rem)", minHeight: 480 }}
+    >
+      <div className="shrink-0 border-b border-court-border px-7 py-5">
         <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-brand-dark">
           {getWeekdayLong(displayDate)}
         </div>
@@ -90,7 +107,11 @@ export function CalendarDayView({
         </div>
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: "56px 1fr" }}>
+      <div
+        ref={bodyRef}
+        className="grid flex-1 overflow-y-auto"
+        style={{ gridTemplateColumns: "56px 1fr" }}
+      >
         <div>
           {HOURS.map((h) => (
             <div

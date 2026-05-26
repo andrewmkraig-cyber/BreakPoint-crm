@@ -19,6 +19,17 @@ const MONTH_NAMES_LONG = [
 ] as const;
 
 const WEEKDAY_LABELS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
+// Mon-first 7-day label list for the full-week view. Sat/Sun were
+// added when the grid expanded past the work week — see week-view.tsx.
+const WEEKDAY_LABELS_FULL = [
+  "Mon",
+  "Tue",
+  "Wed",
+  "Thu",
+  "Fri",
+  "Sat",
+  "Sun",
+] as const;
 
 const WEEKDAY_LABELS_LONG = [
   "Sunday",
@@ -107,6 +118,22 @@ export function getWorkWeekDays(monday: Date): WeekDay[] {
   });
 }
 
+// The 7-column Mon-Sun header for the week containing `monday` — used
+// by the week view since it expanded to include Sat/Sun. Kept separate
+// from getWorkWeekDays so any work-week-only consumer (e.g. a future
+// analytics view) doesn't accidentally pick up the weekend.
+export function getFullWeekDays(monday: Date): WeekDay[] {
+  return WEEKDAY_LABELS_FULL.map((label, i) => {
+    const d = addDays(monday, i);
+    return {
+      key: label.toLowerCase(),
+      label,
+      date: d.getDate(),
+      fullDate: d,
+    };
+  });
+}
+
 export function getMonthName(d: Date): string {
   return MONTH_NAMES_LONG[d.getMonth()];
 }
@@ -128,4 +155,15 @@ export function formatWeekRange(monday: Date): string {
     return `${getMonthName(monday)} ${monday.getDate()} – ${friday.getDate()}`;
   }
   return `${getMonthName(monday)} ${monday.getDate()} – ${getMonthName(friday)} ${friday.getDate()}`;
+}
+
+// Mon-Sun variant of formatWeekRange. The week view shows all 7 days
+// now, so the header should announce the same span the grid covers
+// ("May 25 – 31") instead of stopping at Friday.
+export function formatFullWeekRange(monday: Date): string {
+  const sunday = addDays(monday, 6);
+  if (monday.getMonth() === sunday.getMonth()) {
+    return `${getMonthName(monday)} ${monday.getDate()} – ${sunday.getDate()}`;
+  }
+  return `${getMonthName(monday)} ${monday.getDate()} – ${getMonthName(sunday)} ${sunday.getDate()}`;
 }
