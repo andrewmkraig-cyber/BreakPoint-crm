@@ -675,15 +675,22 @@ export default async function CandidateProfilePage({
                   <KeepCandidateButton
                     candidateId={candidate.id}
                     isKept={isKept}
-                    // Border bumped to blue-400 so the chip reads at the
-                    // same visual weight as Submit's brand border on the
-                    // candidate-profile action row.
-                    className="min-w-0 border-blue-400 text-sm dark:border-blue-500"
+                    // Tab-chip size: px-2.5 py-1 text-[13px] gap-1
+                    // matches the Profile/Game Plan/Notes tabs sitting
+                    // beside this button. twMerge picks the later
+                    // padding/text/gap utilities, so this overrides
+                    // both the size="sm" defaults and the keep
+                    // variant's normal sizing without changing the
+                    // KeepCandidateButton's behavior on other surfaces.
+                    className="min-w-0 gap-1 border-blue-400 px-2.5 py-1 text-[13px] dark:border-blue-500"
                   />
                   <AddToListButton
                     candidateId={candidate.id}
                     candidateName={name}
-                    className="min-w-0 border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
+                    // Same tab-chip size as the siblings — overrides
+                    // ADD_TO_LIST_BUTTON_CLASS's px-2.5 py-1.5 + text-xs
+                    // defaults via twMerge.
+                    className="min-w-0 gap-1 border-court-fg-muted/50 px-2.5 py-1 text-[13px] font-medium"
                   />
                 </div>
               </div>
@@ -831,15 +838,14 @@ export default async function CandidateProfilePage({
                 <KeepCandidateButton
                   candidateId={candidate.id}
                   isKept={isKept}
-                  // Border bumped to blue-400 so the chip reads at the
-                  // same visual weight as Submit's brand border on the
-                  // candidate-profile action row.
-                  className="min-w-0 border-blue-400 text-sm dark:border-blue-500"
+                  // Tab-chip size — matches the embed-view sibling above
+                  // (see comment there).
+                  className="min-w-0 gap-1 border-blue-400 px-2.5 py-1 text-[13px] dark:border-blue-500"
                 />
                 <AddToListButton
                   candidateId={candidate.id}
                   candidateName={name}
-                  className="min-w-0 border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
+                  className="min-w-0 gap-1 border-court-fg-muted/50 px-2.5 py-1 text-[13px] font-medium"
                 />
               </div>
             </div>
@@ -910,8 +916,13 @@ async function CandidateNotesTab({ candidateId }: { candidateId: string }) {
 // Submit to Job button's brand border (Andrew 2026-05-26: every
 // action-row button must read with the same border prominence as
 // Submit).
+// Sized to match the TabStrip chips (Profile / Game Plan / Notes) sitting
+// next to this button on the candidate-profile action row — same px-2.5
+// py-1, text-[13px], gap-1 — so the three actions read at the same scale
+// as the tabs they share the row with. Visual weight (amber-400 border,
+// amber-50 fill, font-semibold) is untouched.
 const APPLY_LINK_CLASS =
-  "inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-400 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60";
+  "inline-flex items-center justify-center gap-1 rounded-md border border-amber-400 bg-amber-50 px-2.5 py-1 text-[13px] font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60";
 
 function UnderlineTabs({
   tab,

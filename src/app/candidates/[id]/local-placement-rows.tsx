@@ -565,7 +565,7 @@ function LocalJobActionRow({
               className={CHIP_BTN_CLS}
             >
               <DollarSign className="h-3 w-3" />
-              <span className="hidden sm:inline">Extend Offer</span>
+              <span className="hidden sm:inline">Offer</span>
             </Button>
           )}
           {canReject && (
@@ -987,7 +987,7 @@ function OfferDialog({
 
   return (
     <ModalShell
-      title="Extend offer"
+      title="Offer"
       subtitle={`${job.jobTitle} · ${job.clientName}`}
       onClose={onClose}
       footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Record offer" />}
