@@ -8,6 +8,11 @@ import { cn } from "@/lib/utils";
 // (font-serif) bold. The optional `live` flag swaps the resting shadow
 // for a sage-tinted one so recruiters can see which tiles moved this
 // week, without altering label/value size.
+//
+// Mobile (base) renders as a Jobot/Jax-style card: icon alone top-left,
+// value centered, label below value. Desktop (sm+) keeps the original
+// icon+label-in-a-row over centered value layout so Finances surfaces
+// that share this tile don't shift.
 export function KpiTile({
   label,
   value,
@@ -24,10 +29,9 @@ export function KpiTile({
     <div
       className={cn(
         // Mobile (base): no min-height floor + tighter padding so the
-        // full-width stacked card hugs its content with no dead gap
-        // below the number. sm+ restores the original 84px / py-2.5
-        // chrome exactly - desktop sizing is untouched.
-        "flex h-full min-h-0 flex-col rounded-2xl bg-court-surface px-3 py-2 transition-shadow sm:min-h-[84px] sm:py-2.5",
+        // 2-col card hugs its content. sm+ restores the original 84px /
+        // py-2.5 chrome exactly - desktop sizing is untouched.
+        "flex h-full min-h-0 flex-col rounded-2xl bg-court-surface px-3 py-2.5 transition-shadow sm:min-h-[84px] sm:py-2.5",
         live
           ? "border border-court-brand/35"
           : "shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]",
@@ -48,17 +52,24 @@ export function KpiTile({
         >
           <Icon className="h-3 w-3" />
         </div>
-        <div className="min-w-0 flex-1 text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">
+        {/* Desktop: label inline with icon. Hidden on mobile so the icon
+            sits alone in the top-left corner per the Jobot card style. */}
+        <div className="hidden min-w-0 flex-1 text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted sm:block">
           {label}
         </div>
       </div>
       <div
         className={cn(
-          "mt-1 text-center font-serif text-[26px] font-extrabold leading-none tracking-[-0.04em] tabular-nums sm:mt-1.5",
+          "mt-2 text-center font-serif text-[26px] font-extrabold leading-none tracking-[-0.04em] tabular-nums sm:mt-1.5",
           isZero ? "text-court-fg-dim" : "text-court-fg",
         )}
       >
         {value}
+      </div>
+      {/* Mobile-only: label below value in smaller text. Hidden on
+          desktop where it lives next to the icon above. */}
+      <div className="mt-1 text-center text-[11px] font-semibold text-court-fg-muted sm:hidden">
+        {label}
       </div>
     </div>
   );

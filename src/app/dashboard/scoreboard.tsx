@@ -109,7 +109,7 @@ function KpiRow({ kpis, periodLabel }: { kpis: Kpis; periodLabel: string }) {
     },
   ];
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
       {tiles.map((t) => (
         <ScoreboardKpiTile key={t.label} {...t} />
       ))}
@@ -132,14 +132,12 @@ function ScoreboardKpiTile({
   return (
     <div
       title={sub}
-      // Mobile (base): drop the 84px floor + tighten padding so the
-      // full-width tile compacts to its content (icon/label, number,
-      // sub-caption) with no trailing dead space. sm+ restores the
-      // canonical chrome - desktop sizing is unchanged.
-      className="flex h-full min-h-0 flex-col rounded-2xl bg-court-surface px-3 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)] sm:min-h-[84px] sm:py-2.5"
+      // Mobile (base): 2-col Jobot/Jax card style — icon alone top-left,
+      // value centered, label below value, sub-caption at bottom. sm+
+      // restores the canonical icon+label-in-a-row over centered value
+      // chrome so desktop reads as the same family as KpiTile.
+      className="flex h-full min-h-0 flex-col rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)] sm:min-h-[84px] sm:py-2.5"
     >
-      {/* Icon chip + label row mirrors the canonical KpiTile used on
-          Clubhouse + Finances so the three surfaces read as one family. */}
       <div className="flex items-center gap-2">
         <div
           className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-court-brand-tint text-court-brand-dark"
@@ -147,18 +145,25 @@ function ScoreboardKpiTile({
         >
           <Icon className="h-3 w-3" />
         </div>
-        <p className="min-w-0 flex-1 text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">
+        {/* Desktop: label inline with icon. Hidden on mobile so the icon
+            sits alone in the top-left corner per the Jobot card style. */}
+        <p className="hidden min-w-0 flex-1 text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted sm:block">
           {label}
         </p>
       </div>
       <div
         className={
-          "mt-1 text-center font-serif text-[26px] font-bold leading-none tracking-[-0.04em] tabular-nums sm:mt-1.5 " +
+          "mt-2 text-center font-serif text-[26px] font-bold leading-none tracking-[-0.04em] tabular-nums sm:mt-1.5 " +
           (isEmpty ? "text-court-fg-dim" : "text-court-fg")
         }
       >
         {value}
       </div>
+      {/* Mobile-only: label below value in smaller text. Hidden on
+          desktop where it lives next to the icon above. */}
+      <p className="mt-1 text-center text-[11px] font-semibold text-court-fg-muted sm:hidden">
+        {label}
+      </p>
       <div className="mt-1 text-center text-[10px] text-court-fg-dim">
         {sub}
       </div>
