@@ -646,7 +646,32 @@ export function EmailComposer({
         // landed in between). Whitespace-only counts as empty so a stray
         // space doesn't block the fill.
         if (generateFallbackSubject) {
-          setSubject((prev) => (prev.trim().length === 0 ? generateFallbackSubject : prev));
+          // Temp diagnostic logging — confirms the empty-subject auto-fill
+          // path is reached and the value is the one the caller passed.
+          // Gated on generateFallbackSubject so only the submittal flow
+          // (the one that wires this prop) emits. Remove once Andrew has
+          // confirmed the Ace-native submittal subject populates in prod.
+          //   [submittal-subject-diag] tag for easy grep / DevTools filter.
+          // eslint-disable-next-line no-console
+          console.log(
+            "[submittal-subject-diag] before setSubject — currentSubject=",
+            JSON.stringify(subject),
+            "fallback=",
+            JSON.stringify(generateFallbackSubject),
+          );
+          setSubject((prev) => {
+            const next = prev.trim().length === 0 ? generateFallbackSubject : prev;
+            // eslint-disable-next-line no-console
+            console.log(
+              "[submittal-subject-diag] after setSubject — prev=",
+              JSON.stringify(prev),
+              "next=",
+              JSON.stringify(next),
+              "wouldFill=",
+              prev.trim().length === 0,
+            );
+            return next;
+          });
         }
         toast.success("Draft generated", { description: "Edit before sending if needed." });
       } catch (e) {

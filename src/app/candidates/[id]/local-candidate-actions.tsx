@@ -309,6 +309,15 @@ function SubmitModal(props: {
   // onSend and we substitute this fallback so the email always ships with
   // a sane subject. Same fallback format the RF submittal composer uses.
   const fallbackSubject = `Candidate Submittal - ${props.candidateName} | ${job.jobTitle}`;
+  // Subject filled by Generate with Claude when the subject field is
+  // still empty (no template picked, nothing hand-typed). Format requested
+  // by Andrew: "<Candidate Name> - <Job Title> for <Client Company Name>".
+  // Passed to EmailComposer via generateFallbackSubject so the existing
+  // mechanism at email-composer.tsx:648-650 fills it right after setBody.
+  // Kept distinct from fallbackSubject above so the post-send fallback
+  // (which only fires if the recruiter clears the subject before send)
+  // stays in its established shape.
+  const generateSubject = `${props.candidateName} - ${job.jobTitle} for ${job.clientName}`;
   const contactOptions = (job.clientContacts ?? []).map((c) => ({
     id: String(c.id),
     name: c.name,
@@ -355,6 +364,11 @@ function SubmitModal(props: {
           body: applyMergeFieldsClient(t.body, values),
         };
       }}
+      // Empty-subject auto-fill on Generate. EmailComposer's onGenerateClick
+      // runs this right after setBody, only when the subject is empty —
+      // so a picked template's subject or a hand-typed subject is never
+      // clobbered.
+      generateFallbackSubject={generateSubject}
       onGenerate={async () => {
         const res = await generateLocalSubmittal({
           candidateId: props.candidateId,
