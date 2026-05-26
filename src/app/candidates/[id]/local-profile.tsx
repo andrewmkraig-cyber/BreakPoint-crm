@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Send, Target } from "lucide-react";
+import { Target } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { getRfClientsForOrg, getRfContactsForOrg, getRfJobsForOrg } from "@/lib/candidates";
@@ -556,15 +556,10 @@ export async function LocalCandidateProfile({
                   the embed panel is narrow. */}
               <div className="flex items-center justify-between gap-3">
                 <UnderlineTabs tab={tab} candidateId={candidate.id} embed />
+                {/* Submit removed from the action bar — the canonical
+                    Submit entry point is the per-job-pill Submit
+                    rendered by LocalPlacementRows above. */}
                 <div className="flex min-w-0 shrink items-center gap-2">
-                  <Link
-                    href={`/candidates/${candidate.id}?embed=true&openSubmit=1`}
-                    className={cn(SUBMIT_LINK_CLASS, "min-w-0")}
-                    title="Submit to Job"
-                  >
-                    <Send className="h-3 w-3 shrink-0" />
-                    <span className="truncate">Submit</span>
-                  </Link>
                   <Link
                     href={`/candidates/${candidate.id}?embed=true&openApply=1`}
                     className={cn(APPLY_LINK_CLASS, "min-w-0")}
@@ -710,15 +705,10 @@ export async function LocalCandidateProfile({
             </section>
             <div className="flex items-center justify-between gap-3">
               <UnderlineTabs tab={tab} candidateId={candidate.id} />
+              {/* Submit removed from the action bar — the canonical
+                  Submit entry point is the per-job-pill Submit
+                  rendered by LocalPlacementRows above. */}
               <div className="flex min-w-0 shrink items-center gap-2">
-                <Link
-                  href={`/candidates/${candidate.id}?openSubmit=1`}
-                  className={cn(SUBMIT_LINK_CLASS, "min-w-0")}
-                  title="Submit to Job"
-                >
-                  <Send className="h-3 w-3 shrink-0" />
-                  <span className="truncate">Submit</span>
-                </Link>
                 <Link
                   href={`/candidates/${candidate.id}?openApply=1`}
                   className={cn(APPLY_LINK_CLASS, "min-w-0")}
@@ -815,14 +805,6 @@ async function LocalNotesTab({ candidateId }: { candidateId: string }) {
 // every button).
 const APPLY_LINK_CLASS =
   "inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-400 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60";
-
-// Submit to Job chip — tinted brand green, rounded-md. Mirrors the
-// legacy RF-candidate page.tsx SUBMIT_LINK_CLASS so the affirmative
-// submittal action reads identically across both render paths.
-// Submit is wired through LocalCandidateActions' ?openSubmit=1
-// listener (mounted with hideButtons=true so its modals stay live).
-const SUBMIT_LINK_CLASS =
-  "inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25";
 
 function UnderlineTabs({
   tab,

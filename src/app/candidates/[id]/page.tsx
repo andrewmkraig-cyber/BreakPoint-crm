@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Send, Target } from "lucide-react";
+import { Target } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { cn, formatLocation } from "@/lib/utils";
 import { extractCandidateFields } from "@/lib/candidate-fields";
@@ -657,15 +657,13 @@ export default async function CandidateProfilePage({
               />
               <div className="flex items-center justify-between gap-3">
                 <UnderlineTabs tab={tab} candidateId={id} embed />
+                {/* Submit removed from the action bar — the canonical
+                    Submit entry point is the per-job-pill Submit
+                    rendered by PlacementActionsIsland above. Keeping
+                    one entry point per action avoids the redundant +
+                    half-wired second Submit recruiters complained
+                    about. */}
                 <div className="flex min-w-0 shrink items-center gap-2">
-                  <Link
-                    href={`/candidates/${id}?embed=true&openSubmit=1`}
-                    className={cn(SUBMIT_LINK_CLASS, "min-w-0")}
-                    title="Submit to Job"
-                  >
-                    <Send className="h-3 w-3 shrink-0" />
-                    <span className="truncate">Submit</span>
-                  </Link>
                   <Link
                     href={`/candidates/${id}?embed=true&openApply=1`}
                     className={cn(APPLY_LINK_CLASS, "min-w-0")}
@@ -818,15 +816,10 @@ export default async function CandidateProfilePage({
                   </span>
                 ))}
               </div>
+              {/* Submit removed from the action bar — the canonical
+                  Submit entry point is the per-job-pill Submit
+                  rendered by PlacementActionsIsland above. */}
               <div className="flex min-w-0 shrink items-center gap-2">
-                <Link
-                  href={`/candidates/${id}?openSubmit=1`}
-                  className={cn(SUBMIT_LINK_CLASS, "min-w-0")}
-                  title="Submit to Job"
-                >
-                  <Send className="h-3 w-3 shrink-0" />
-                  <span className="truncate">Submit</span>
-                </Link>
                 <Link
                   href={`/candidates/${id}?openApply=1`}
                   className={cn(APPLY_LINK_CLASS, "min-w-0")}
@@ -909,15 +902,6 @@ async function CandidateNotesTab({ candidateId }: { candidateId: string }) {
 // Used for the candidate-level action row above the resume so the buttons
 // pick up the same Court Mode tokens as <Button> without nesting a
 // <button> inside an <a> (Link wraps an <a>).
-// Submit to Job chip — tinted brand green, rounded-md. One canonical
-// Submit look across every surface: candidate profile action row,
-// candidate profile pipeline row, Applicants table, Pipeline page,
-// Search / Find Matches. All use the brand-tint + brand-border + dark
-// text token trio so the affirmative submittal action reads
-// identically wherever it lands and follows Court Mode skinning.
-const SUBMIT_LINK_CLASS =
-  "inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25";
-
 // Anchor-shaped twin of <Button variant="apply">. Token classes mirror
 // the amber apply variant so the Apply to Job link renders identically
 // to the matching <Button> without nesting a <button> inside an <a>.
