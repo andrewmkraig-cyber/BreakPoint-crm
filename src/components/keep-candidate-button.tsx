@@ -55,11 +55,15 @@ export function KeepCandidateButton({
       className={className ?? "text-sm"}
     >
       {isPending ? (
-        <Loader2 className="h-3 w-3 animate-spin" />
+        <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
       ) : (
-        <Bookmark className={isKept ? "h-3 w-3 fill-current" : "h-3 w-3"} />
+        <Bookmark className={isKept ? "h-3 w-3 shrink-0 fill-current" : "h-3 w-3 shrink-0"} />
       )}
-      {isKept ? "Kept" : "Keep"}
+      {/* Label wrapped so a min-w-0 parent (e.g. a no-wrap sticky bar)
+          can ellipsize "Keep"/"Kept" instead of forcing the button to
+          push its siblings to a second row. No-op when the parent
+          doesn't constrain width. */}
+      <span className="truncate">{isKept ? "Kept" : "Keep"}</span>
     </Button>
   );
 }

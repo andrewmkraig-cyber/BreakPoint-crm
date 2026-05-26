@@ -14,6 +14,7 @@ import { CandidateCompactOverview } from "@/components/candidate-compact-overvie
 import { CandidateNotesPanel } from "@/components/notes/candidate-notes-panel";
 import { getNotesForEntity } from "@/lib/notes/queries";
 import { toExpectedSalary } from "@/components/candidate-overview-helpers";
+import { cn } from "@/lib/utils";
 import { TextHighlighter } from "@/components/text-highlighter";
 import {
   parseHighlightTokens,
@@ -543,25 +544,30 @@ export async function LocalCandidateProfile({
                 tabs left, action buttons right-aligned with the resume's
                 right edge. sticky top-0 anchors to the scroll container
                 (the overflow-y-auto parent flex column) so the pipeline
-                strip above scrolls away while these stay pinned. */}
-            <div className="sticky top-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-court-bg/85 px-1 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
+                strip above scrolls away while these stay pinned.
+                flex-nowrap + min-w-0 lets the action group ellipsize
+                button labels instead of wrapping to a second row when
+                the embed panel is narrow. */}
+            <div className="sticky top-0 z-10 -mx-1 flex items-center justify-between gap-3 rounded-lg bg-court-bg/85 px-1 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
               <UnderlineTabs tab={tab} candidateId={candidate.id} embed />
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex min-w-0 shrink items-center gap-2">
                 <Link
                   href={`/candidates/${candidate.id}?embed=true&openApply=1`}
-                  className={APPLY_LINK_CLASS}
+                  className={cn(APPLY_LINK_CLASS, "min-w-0")}
+                  title="Apply to Job"
                 >
-                  <Target className="h-3 w-3" /> Apply to Job
+                  <Target className="h-3 w-3 shrink-0" />
+                  <span className="truncate">Apply to Job</span>
                 </Link>
                 <KeepCandidateButton
                   candidateId={candidate.id}
                   isKept={isKeptEmbed}
-                  className="border-blue-400 text-sm dark:border-blue-500"
+                  className="min-w-0 border-blue-400 text-sm dark:border-blue-500"
                 />
                 <AddToListButton
                   candidateId={candidate.id}
                   candidateName={fullName}
-                  className="border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
+                  className="min-w-0 border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
                 />
               </div>
             </div>
@@ -681,15 +687,18 @@ export async function LocalCandidateProfile({
               resume column. Merging the two former rows keeps the action
               buttons in view while scrolling the resume and tightens the
               gap between the bar and the resume below from two rows to
-              one. */}
-          <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
+              one. flex-nowrap + min-w-0 lets the action group ellipsize
+              labels rather than wrap to a second row at narrow widths. */}
+          <div className="sticky top-20 z-10 -mx-2 flex items-center justify-between gap-3 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
             <UnderlineTabs tab={tab} candidateId={candidate.id} />
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 shrink items-center gap-2">
               <Link
                 href={`/candidates/${candidate.id}?openApply=1`}
-                className={APPLY_LINK_CLASS}
+                className={cn(APPLY_LINK_CLASS, "min-w-0")}
+                title="Apply to Job"
               >
-                <Target className="h-3 w-3" /> Apply to Job
+                <Target className="h-3 w-3 shrink-0" />
+                <span className="truncate">Apply to Job</span>
               </Link>
               <KeepCandidateButton
                 candidateId={candidate.id}
@@ -697,12 +706,12 @@ export async function LocalCandidateProfile({
                   const lower = t.trim().toLowerCase();
                   return lower === "kept" || lower === "keep";
                 })}
-                className="border-blue-400 text-sm dark:border-blue-500"
+                className="min-w-0 border-blue-400 text-sm dark:border-blue-500"
               />
               <AddToListButton
                 candidateId={candidate.id}
                 candidateName={fullName}
-                className="border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
+                className="min-w-0 border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
               />
             </div>
           </div>

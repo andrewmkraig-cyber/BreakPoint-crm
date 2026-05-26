@@ -38,8 +38,14 @@ export function AddToListButton({
         type="button"
         onClick={() => setOpen(true)}
         className={cn(ADD_TO_LIST_BUTTON_CLASS, className)}
+        title="Add to List"
       >
-        <ListPlus className="h-3 w-3" /> Add to List
+        <ListPlus className="h-3 w-3 shrink-0" />
+        {/* Label wrapped so a min-w-0 parent (e.g. a no-wrap sticky
+            bar) can ellipsize "Add to List" rather than wrapping the
+            button onto a second row. No-op when width isn't
+            constrained. */}
+        <span className="truncate">Add to List</span>
       </button>
       {open && (
         <AddToListModal
