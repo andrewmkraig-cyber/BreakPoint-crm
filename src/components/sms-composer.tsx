@@ -68,7 +68,7 @@ export function SmsComposer({
       // actually leave the network.
       setBody("");
       if (msg?.status === "failed") {
-        const detail = msg?.providerError ? ` — ${msg.providerError}` : "";
+        const detail = msg?.providerError ? `: ${msg.providerError}` : "";
         setError(
           `Saved, but send failed${detail}. Check your Quo number and API key in Vercel.`,
         );

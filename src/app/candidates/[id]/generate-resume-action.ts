@@ -110,7 +110,7 @@ export async function generateAiResume(input: {
     // for the rare turn where the model wraps it.
     const systemPrompt = [
       "You are a professional resume writer for a recruiting agency.",
-      "From the candidate data, produce a clean professional resume as STRICT JSON only — no commentary, no markdown, no fences.",
+      "From the candidate data, produce a clean professional resume as STRICT JSON only. No commentary, no markdown, no fences.",
       "Schema:",
       "{",
       '  "name": string,',

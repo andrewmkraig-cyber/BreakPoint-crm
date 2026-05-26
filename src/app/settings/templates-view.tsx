@@ -588,7 +588,7 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
                 ))}
               </select>
               <span className="mt-1 block text-[11px] text-court-fg-muted">
-                Groups templates in scoped dropdowns — e.g. the interview invite composers pull every template tagged &quot;interview&quot;.
+                Groups templates in scoped dropdowns. E.g. the interview invite composers pull every template tagged &quot;interview&quot;.
               </span>
             </label>
           </div>

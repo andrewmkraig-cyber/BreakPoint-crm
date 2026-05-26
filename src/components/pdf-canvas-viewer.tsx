@@ -299,7 +299,7 @@ export function PdfCanvasViewer({
             <div className="font-semibold">Couldn&apos;t render this PDF in the browser.</div>
             <div className="mt-1 font-mono">{err}</div>
             <div className="mt-2">
-              Try reloading the page — this is usually a stale client bundle. If reloading doesn&apos;t help, use Download to open it instead.
+              Try reloading the page. This is usually a stale client bundle. If reloading doesn&apos;t help, use Download to open it instead.
             </div>
           </div>
         )}

@@ -62,7 +62,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse>>
 
   const body = (payload.body ?? "").toString();
   if (!body.trim()) {
-    return NextResponse.json({ error: "Body is empty — nothing to edit." }, { status: 400 });
+    return NextResponse.json({ error: "Body is empty. Nothing to edit." }, { status: 400 });
   }
   if (!EDIT_TYPES.includes(payload.editType)) {
     return NextResponse.json({ error: "Invalid editType." }, { status: 400 });

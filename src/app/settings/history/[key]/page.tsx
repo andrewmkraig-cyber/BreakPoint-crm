@@ -65,7 +65,7 @@ export default async function HistoryDetailPage({
     <CollapsibleSection
       id={`history-${key}`}
       title={`Conversation · ${dateLabel}`}
-      description={`${rows.length} message${rows.length === 1 ? "" : "s"} archived.${isLegacy ? " (Legacy bucket — predates conversation ids.)" : ""}`}
+      description={`${rows.length} message${rows.length === 1 ? "" : "s"} archived.${isLegacy ? " (Legacy bucket: predates conversation ids.)" : ""}`}
     >
       <div className="mb-4 flex items-center justify-between">
         <Link

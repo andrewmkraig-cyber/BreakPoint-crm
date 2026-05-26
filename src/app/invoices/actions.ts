@@ -397,7 +397,7 @@ export async function createTestInvoice(): Promise<Result<{ id: string }>> {
         billingContacts: billingContacts as unknown as Prisma.InputJsonValue,
         hiringContacts: hiringContacts as unknown as Prisma.InputJsonValue,
         status: "DRAFT",
-        notes: "Test invoice — generated from the /invoices header.",
+        notes: "Test invoice. Generated from the /invoices header.",
       },
       select: { id: true },
     });

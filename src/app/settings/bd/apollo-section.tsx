@@ -44,7 +44,7 @@ export function ApolloSection({
           </div>
           <div className="flex items-center gap-2">
             <span
-              title="Rotation ships in next session — set APOLLO_API_KEY in Vercel env for now"
+              title="Rotation ships in next session. Set APOLLO_API_KEY in Vercel env for now"
               className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1.5 text-xs font-medium text-court-fg-muted opacity-60"
             >
               <RotateCw className="h-3.5 w-3.5" />

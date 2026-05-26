@@ -218,7 +218,7 @@ export async function uploadProfilePicture(input: {
   if (bytes.byteLength > MAX_PROFILE_PICTURE_BYTES) {
     return {
       ok: false,
-      error: `Image is ${Math.round(bytes.byteLength / 1024)}KB — max is ${MAX_PROFILE_PICTURE_BYTES / 1024}KB.`,
+      error: `Image is ${Math.round(bytes.byteLength / 1024)}KB. Max is ${MAX_PROFILE_PICTURE_BYTES / 1024}KB.`,
     };
   }
   // Prisma's Bytes column wants Uint8Array<ArrayBuffer>; Buffer is a

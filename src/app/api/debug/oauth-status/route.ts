@@ -134,7 +134,7 @@ function buildGuidance(input: {
     return out;
   }
   if (!input.refreshTokenPresent) {
-    out.push("refresh_token missing on the Account row. Sign out, then sign in again — Google only returns a refresh_token when prompt=consent is honored.");
+    out.push("refresh_token missing on the Account row. Sign out, then sign in again. Google only returns a refresh_token when prompt=consent is honored.");
   }
   if (input.tokenInfoStatus === 400) {
     out.push("tokeninfo returned 400. The access_token is likely expired or revoked. Sign in again to get a fresh one.");

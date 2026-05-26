@@ -63,7 +63,7 @@ export function AgreementsTab({
             { clientId },
             {
               onProgress: (pct) => {
-                toast.loading(`Uploading ${file.name} — ${pct}%`, { id: toastId });
+                toast.loading(`Uploading ${file.name}: ${pct}%`, { id: toastId });
               },
             },
           );

@@ -112,7 +112,7 @@ export async function GET() {
     "You are a vocabulary curator. Return a single sophisticated, uncommon English word that a sharp business professional would find useful. Respond with raw JSON only, no prose, no code fences. Schema: {\"word\": string, \"partOfSpeech\": string, \"definition\": string, \"exampleSentence\": string}.";
   const userMessage =
     recentWords.length > 0
-      ? `Today's date is ${generatedDate.toISOString().slice(0, 10)}. The following words have been used in the last ${recentWords.length} days — do NOT repeat any of them: ${recentWords.join(", ")}. Return a new word.`
+      ? `Today's date is ${generatedDate.toISOString().slice(0, 10)}. The following words have been used in the last ${recentWords.length} days. Do NOT repeat any of them: ${recentWords.join(", ")}. Return a new word.`
       : `Today's date is ${generatedDate.toISOString().slice(0, 10)}. Return today's word.`;
 
   let payload: WordPayload | null;

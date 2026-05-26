@@ -317,7 +317,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
               type="text"
               value={city}
               onChange={(e) => setCity(e.target.value)}
-              placeholder="e.g. Pittsburgh — leave blank to use client's city"
+              placeholder="e.g. Pittsburgh. Leave blank to use client's city"
               className={INPUT_CLS}
             />
           </div>

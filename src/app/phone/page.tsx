@@ -44,7 +44,7 @@ export default async function PhonePage() {
       {quoStatus.state !== "connected" ? (
         <ConnectorBanner
           variant="quo-down"
-          message={`Quo ${quoStatus.state === "degraded" ? "looks degraded" : "unreachable"} — calls and texts may not work. ${quoStatus.detail}`}
+          message={`Quo ${quoStatus.state === "degraded" ? "looks degraded" : "unreachable"}. Calls and texts may not work. ${quoStatus.detail}`}
         />
       ) : null}
       <PhoneView />

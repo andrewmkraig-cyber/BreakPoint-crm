@@ -301,8 +301,8 @@ function RunCard({
       {approveBlocked && (
         <p className="mt-3 text-[11px] text-amber-700 dark:text-amber-400">
           {companiesWithNoContacts.length === 1
-            ? `${companiesWithNoContacts[0]?.companyName} has no contacts — add at least one to approve.`
-            : `${companiesWithNoContacts.length} companies have no contacts — restore at least one each to approve.`}
+            ? `${companiesWithNoContacts[0]?.companyName} has no contacts. Add at least one to approve.`
+            : `${companiesWithNoContacts.length} companies have no contacts. Restore at least one each to approve.`}
         </p>
       )}
 

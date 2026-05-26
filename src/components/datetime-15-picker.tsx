@@ -158,7 +158,7 @@ function TimeSelect({
   const listRef = useRef<HTMLUListElement>(null);
 
   const selected = options.find((o) => o.value === value) ?? null;
-  const label = selected?.label ?? "— time —";
+  const label = selected?.label ?? "Pick a time";
 
   // Outside-click dismiss. Document-level listener gated by `open` so
   // we don't slap an inset-0 overlay on top of the surrounding modal

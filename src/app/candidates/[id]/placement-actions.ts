@@ -79,7 +79,7 @@ async function trySyncRfStage(args: {
   void args; // keep the param surface so a future real sync call is a one-line flip
   return {
     synced: false,
-    reason: "RF /external doesn't expose pipeline stage changes — Ace-only.",
+    reason: "RF /external doesn't expose pipeline stage changes. Ace-only.",
   };
 }
 

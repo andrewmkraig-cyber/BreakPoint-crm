@@ -96,7 +96,7 @@ export function PersonalInfoView({
     }
     if (file.size > MAX_PROFILE_PICTURE_BYTES) {
       setPictureError(
-        `Image is ${Math.round(file.size / 1024)}KB — max is ${MAX_PROFILE_PICTURE_BYTES / 1024}KB.`,
+        `Image is ${Math.round(file.size / 1024)}KB. Max is ${MAX_PROFILE_PICTURE_BYTES / 1024}KB.`,
       );
       return;
     }

@@ -840,7 +840,7 @@ export function ComposeFAB() {
                           {adhocPhoneInput.display}
                         </span>
                         <span className="block truncate text-[11px]">
-                          Not in Ace — add the candidate first to text them.
+                          Not in Ace. Add the candidate first to text them.
                         </span>
                       </span>
                     </div>
@@ -924,7 +924,7 @@ export function ComposeFAB() {
                   peopleHits.length > 0 ? null : (
                     <div className="px-2 py-3 text-xs text-court-fg-muted">
                       {adhocPhoneInput && !adhocAlreadyKnown
-                        ? "No saved contact — pick the number above to start fresh."
+                        ? "No saved contact. Pick the number above to start fresh."
                         : phoneSearch
                           ? "No matches."
                           : "No recent conversations yet."}

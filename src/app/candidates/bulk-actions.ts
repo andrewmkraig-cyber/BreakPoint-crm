@@ -60,7 +60,7 @@ function buildLabel(j: {
   jobCompensation: string;
   clientName: string;
 }): string {
-  const head = j.clientName ? `${j.clientName} — ${j.jobTitle}` : j.jobTitle;
+  const head = j.clientName ? `${j.clientName}: ${j.jobTitle}` : j.jobTitle;
   const tail = [j.jobLocation, j.jobCompensation].filter(Boolean);
   return tail.length > 0 ? `${head} · ${tail.join(" · ")}` : head;
 }

@@ -277,7 +277,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
     if (fail === 0) {
       toast.success(
         sendRejectionEmail
-          ? `Rejected ${ok} — emails sent`
+          ? `Rejected ${ok}. Emails sent`
           : `Rejected ${ok}`,
       );
     } else if (ok === 0) {
@@ -906,7 +906,7 @@ function RejectButton({ placementId, candidateName }: { placementId: string; can
           resolve();
           return;
         }
-        toast.success(sendRejectionEmail ? "Rejected — email sent" : "Rejected");
+        toast.success(sendRejectionEmail ? "Rejected. Email sent" : "Rejected");
         setOpen(false);
         router.refresh();
         resolve();

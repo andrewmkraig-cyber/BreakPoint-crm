@@ -54,7 +54,7 @@ export class TheirStackProvider implements JobDiscoveryProvider {
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       throw new Error(
-        `TheirStackProvider: request failed ${res.status} ${res.statusText} — ${text.slice(0, 500)}`,
+        `TheirStackProvider: request failed ${res.status} ${res.statusText}: ${text.slice(0, 500)}`,
       );
     }
 

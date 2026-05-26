@@ -164,7 +164,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
     // freshly staged file's context. Surface the busy state instead and
     // leave the form exactly as it was so the user can retry.
     if (result.value.fallback) {
-      toast.error("Claude API is busy — try again in a moment. Your file is still staged.");
+      toast.error("Claude API is busy. Try again in a moment. Your file is still staged.");
       return;
     }
     setDescription(result.value.text);
@@ -654,7 +654,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               rows={10}
               frameClassName={INPUT_FRAME_RECT_CLASS}
               controlClassName="min-h-[180px]"
-              placeholder="Blank canvas. Paste or write the job description — or drop a JD file above and let Claude reformat it into the BreakPoint format (A Bit About Us / Why Join Us / Job Details)."
+              placeholder="Blank canvas. Paste or write the job description, or drop a JD file above and let Claude reformat it into the BreakPoint format (A Bit About Us / Why Join Us / Job Details)."
             />
             {description.trim() && (
               <div className="flex justify-end">

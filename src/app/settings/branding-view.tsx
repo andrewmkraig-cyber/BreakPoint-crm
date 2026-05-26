@@ -60,7 +60,7 @@ export function BrandingView({
   async function onLogoSelected(file: File) {
     if (file.size > MAX_LOGO_KB * 1024) {
       toast.error("Logo too large", {
-        description: `Max ${MAX_LOGO_KB}KB — this file is ${Math.round(file.size / 1024)}KB.`,
+        description: `Max ${MAX_LOGO_KB}KB. This file is ${Math.round(file.size / 1024)}KB.`,
       });
       return;
     }

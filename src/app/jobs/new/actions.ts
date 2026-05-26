@@ -29,7 +29,7 @@ export type GenerateJDInput = {
 const MAX_JD_BYTES = 4 * 1024 * 1024;
 
 const JD_FALLBACK_TEXT =
-  "Claude API unavailable — write the job description manually.\n\n" +
+  "Claude API unavailable. Write the job description manually.\n\n" +
   "Role Summary\n<2–3 sentence overview of the role and the team/company.>\n\n" +
   "What You'll Do\n<5–7 bullet points on day-to-day responsibilities.>\n\n" +
   "What We're Looking For\n<5–7 bullet points on must-have skills and experience.>\n\n" +
@@ -64,7 +64,7 @@ export async function generateJobDescriptionFromSource(
 
   if (!process.env.ANTHROPIC_API_KEY) {
     // eslint-disable-next-line no-console
-    console.log("[generate-jd] ANTHROPIC_API_KEY missing — returning fallback");
+    console.log("[generate-jd] ANTHROPIC_API_KEY missing. Returning fallback");
     return { ok: true, value: { text: JD_FALLBACK_TEXT, fallback: true, reason: "ANTHROPIC_API_KEY not set" } };
   }
 

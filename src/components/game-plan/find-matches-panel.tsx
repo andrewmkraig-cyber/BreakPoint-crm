@@ -764,7 +764,7 @@ function ActionRow({
   // modal elsewhere in the app is intentionally NOT touched.
   async function onApply() {
     if (!targetJobId) {
-      onApplyError("No target job — pick a job first.");
+      onApplyError("No target job. Pick a job first.");
       return;
     }
     clearApplyError();
@@ -803,7 +803,7 @@ function ActionRow({
   // Rejected pipeline bucket and removes them from the panel.
   async function onReject() {
     if (!targetJobId) {
-      onApplyError("No target job — pick a job first.");
+      onApplyError("No target job. Pick a job first.");
       return;
     }
     clearApplyError();

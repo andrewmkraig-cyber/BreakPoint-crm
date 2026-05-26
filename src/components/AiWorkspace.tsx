@@ -140,7 +140,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
       // visible so the recruiter can see what they sent + retry.
       setMessages((prev) => prev.filter((m) => m.id !== pendingAssistantId));
       const detail = err instanceof Error ? err.message : "unknown error";
-      setErrorText(`Failed to send — ${detail}`);
+      setErrorText(`Failed to send: ${detail}`);
     } finally {
       setSending(false);
     }

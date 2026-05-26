@@ -680,7 +680,7 @@ export function PlacementActions({
     <>
       {!chromeless && jobsState.length === 0 && (
         <div className="rounded-xl border border-dashed border-court-border bg-court-surface-subtle/40 px-5 py-4 text-xs text-court-fg-muted">
-          No jobs linked to this candidate yet — click <span className="font-semibold">Submit to Job</span> to add one.
+          No jobs linked to this candidate yet. Click <span className="font-semibold">Submit to Job</span> to add one.
         </div>
       )}
 
@@ -1019,7 +1019,7 @@ function JobActionRow({
       {isCancelled && job.placement?.cancellationReason && (
         <div className="px-3 pb-1.5 text-[11px] text-red-700">
           Reason: {CANCEL_REASON_LABELS[job.placement.cancellationReason] ?? job.placement.cancellationReason}
-          {job.placement.cancellationDetail ? ` — ${job.placement.cancellationDetail}` : ""}
+          {job.placement.cancellationDetail ? `: ${job.placement.cancellationDetail}` : ""}
         </div>
       )}
 
@@ -1209,7 +1209,7 @@ function OfferDialog({
         return;
       }
       if (!primaryContact?.email) {
-        setErr("No client contact email on file — add one before marking accepted.");
+        setErr("No client contact email on file. Add one before marking accepted.");
         return;
       }
     }
@@ -1296,7 +1296,7 @@ function OfferDialog({
           label="Fee amount (flat, overrides calc)"
           value={feeAmountOverride}
           onChange={setFeeAmountOverride}
-          placeholder="7500 — wins over salary × fee %"
+          placeholder="7500 (wins over salary × fee %)"
           min={0}
         />
         <div className="sm:col-span-2">
@@ -2283,7 +2283,7 @@ function ConfirmStartDialog({
               : undefined,
         });
       } else {
-        toast.success("Start confirmed — candidate moved to Hired", {
+        toast.success("Start confirmed. Candidate moved to Hired", {
           description: "Draft invoice created. Open Invoicing to review and send.",
         });
       }
@@ -2720,7 +2720,7 @@ function ClientInviteDialog({
     >
       <p className="mb-3 text-xs text-court-fg-muted">
         Use this when the client is scheduling the interview themselves and will send the invite. We&apos;ll
-        log it for tracking and drop it on your calendar — no invite is sent to the candidate or client.
+        log it for tracking and drop it on your calendar. No invite is sent to the candidate or client.
       </p>
       <div className="grid grid-cols-1 gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -2857,8 +2857,8 @@ function EditInterviewDialog({
       }
       toast.success(
         notifyMode === "all"
-          ? "Interview updated — all guests notified"
-          : "Interview updated — only new guests notified",
+          ? "Interview updated. All guests notified"
+          : "Interview updated. Only new guests notified",
       );
       onClose();
       router.refresh();
@@ -3082,13 +3082,13 @@ function RejectDialog({
           });
         } else if (v.status === "drafted") {
           toast.success("Rejection recorded", {
-            description: "Auto-send disabled — draft saved to your Gmail Drafts.",
+            description: "Auto-send disabled. Draft saved to your Gmail Drafts.",
           });
         } else if (v.status === "skipped") {
           toast.success("Rejection recorded", {
             description:
               v.reason === "no_recipient"
-                ? "No candidate email on file — email skipped."
+                ? "No candidate email on file. Email skipped."
                 : v.reason === "missing"
                   ? "No Candidate Rejection template found. Set one in Settings."
                   : "Candidate Rejection template is inactive. Enable it in Settings to auto-send.",
@@ -3120,7 +3120,7 @@ function RejectDialog({
         email sent. Either way the stage moves to Rejected.
       </p>
       <div className="mt-3">
-        <LabeledTextarea label="Internal reason (optional — not sent)" value={reason} onChange={setReason} rows={3} />
+        <LabeledTextarea label="Internal reason (optional, not sent)" value={reason} onChange={setReason} rows={3} />
       </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
       <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-court-border pt-4">
@@ -3306,7 +3306,7 @@ export function formatOpenJobOption(j: {
   alreadyLinked: boolean;
   linkedStage?: string | null;
 }): string {
-  const head = j.clientName ? `${j.clientName} — ${j.jobTitle}` : j.jobTitle;
+  const head = j.clientName ? `${j.clientName}: ${j.jobTitle}` : j.jobTitle;
   const tail: string[] = [];
   if (j.jobLocation) tail.push(j.jobLocation);
   if (j.jobCompensation) tail.push(j.jobCompensation);
@@ -3369,7 +3369,7 @@ function ApplyToJobDialog({
         return;
       }
       if (!result.value.placementId) {
-        const msg = "No Placement record was created — candidate won't appear on the Pipeline.";
+        const msg = "No Placement record was created. Candidate won't appear on the Pipeline.";
         setErr(msg);
         toast.error("Apply failed silently", { description: msg });
         return;
@@ -3386,7 +3386,7 @@ function ApplyToJobDialog({
   }
 
   return (
-    <Modal title="Apply to Job" subtitle="Pick an open job — no email goes out." onClose={onClose}>
+    <Modal title="Apply to Job" subtitle="Pick an open job. No email goes out." onClose={onClose}>
       <label className="block text-sm">
         <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Open job</span>
         <select
@@ -3506,8 +3506,8 @@ function SubmitToJobDialog({
           <div className="text-court-fg-muted">{picked.clientName || "—"}</div>
           <div className="mt-1 text-[11px] text-court-fg-muted">
             {picked.clientContacts.length > 0
-              ? `${picked.clientContacts.length} contact${picked.clientContacts.length === 1 ? "" : "s"} on file — first becomes the To:, rest are Cc.`
-              : "No client contacts on file — you'll need to enter the recipient manually."}
+              ? `${picked.clientContacts.length} contact${picked.clientContacts.length === 1 ? "" : "s"} on file. First becomes the To:, rest are Cc.`
+              : "No client contacts on file. You'll need to enter the recipient manually."}
           </div>
         </div>
       )}
@@ -3597,14 +3597,14 @@ function SubmittalEmailCompose({
       onClose={onBack}
       sendLabel="Send Submittal"
       sendingLabel="Sending…"
-      helperText="Pick a client contact, then Generate with Claude. Cmd+B / Cmd+U toggle bold and underline in the editor — Gmail renders them as real bold / underline."
+      helperText="Pick a client contact, then Generate with Claude. Cmd+B / Cmd+U toggle bold and underline in the editor. Gmail renders them as real bold / underline."
       showTemplatePicker
       enableEditWithClaude
       richTextBody
       toEditorHtml={submittalMarkdownToEditorHtml}
       templateFilter={(t) => t.audience !== "candidate"}
       sendDisabled={sendBlocked}
-      sendDisabledReason={sendBlocked ? "No resume uploaded for this candidate — upload one before sending." : undefined}
+      sendDisabledReason={sendBlocked ? "No resume uploaded for this candidate. Upload one before sending." : undefined}
       attachmentsSlot={
         <div className="space-y-3">
           <SubmittalResumeAttachmentPicker
@@ -3631,7 +3631,7 @@ function SubmittalEmailCompose({
               <span className="block text-court-fg-muted">
                 {sendCandidateConfirmation
                   ? "After the submittal sends, auto-fires the candidate confirmation using the Settings-level send/draft preference."
-                  : "Turned off for this send only — only the client submittal will go out; no candidate follow-up."}
+                  : "Turned off for this send only. Only the client submittal will go out; no candidate follow-up."}
               </span>
             </span>
           </label>
@@ -3705,7 +3705,7 @@ function SubmittalEmailCompose({
           // server action entirely — this overrides the Settings-level auto-
           // send/draft preference for this one submittal.
           toast.success("Submittal sent", {
-            description: "Candidate confirmation turned off — only the client email went out.",
+            description: "Candidate confirmation turned off. Only the client email went out.",
           });
         } else if (candidateEmail) {
           const primaryContact = job.clientContacts.find((c) => c.email) ?? null;
@@ -3727,7 +3727,7 @@ function SubmittalEmailCompose({
               description:
                 confirmResult.value.mode === "sent"
                   ? "Candidate confirmation auto-sent."
-                  : "Candidate confirmation saved to your Gmail Drafts — review and send.",
+                  : "Candidate confirmation saved to your Gmail Drafts. Review and send.",
             });
           } else {
             toast.success("Submittal sent", {
@@ -3736,7 +3736,7 @@ function SubmittalEmailCompose({
           }
         } else {
           toast.success("Submittal sent", {
-            description: "No candidate email on file — skipped the confirmation.",
+            description: "No candidate email on file. Skipped the confirmation.",
           });
         }
         onDone();
@@ -4203,7 +4203,7 @@ function ClientInviteComposer({
       ccOptions={ccPickerOptions}
       bccOptions={bccPickerOptions}
       mergeValues={values}
-      helperText="Subject becomes the calendar event title; body becomes the event description. Sending adds the client to the event — Google emails them the native invite with Accept / Maybe / Decline."
+      helperText="Subject becomes the calendar event title; body becomes the event description. Sending adds the client to the event. Google emails them the native invite with Accept / Maybe / Decline."
       sendLabel="Send Invite"
       sendingLabel="Sending invite…"
       onClose={onClose}
@@ -4300,7 +4300,7 @@ function CandidateInviteComposer({
       ccOptions={ccPickerOptions}
       bccOptions={bccPickerOptions}
       mergeValues={values}
-      helperText="Subject becomes the calendar event title; body becomes the event description. Sending adds the candidate to the event — Google emails them the native invite with Accept / Maybe / Decline."
+      helperText="Subject becomes the calendar event title; body becomes the event description. Sending adds the candidate to the event. Google emails them the native invite with Accept / Maybe / Decline."
       sendLabel="Send Invite"
       sendingLabel="Sending…"
       onClose={onClose}
@@ -4802,7 +4802,7 @@ export function InterviewerPicker({
           className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         >
           <option value="">
-            {contacts.length === 0 ? "No contacts on file — pick an option…" : "Select an interviewer…"}
+            {contacts.length === 0 ? "No contacts on file. Pick an option…" : "Select an interviewer…"}
           </option>
           {contacts.map((c) => (
             <option key={c.id} value={String(c.id)}>

@@ -1237,7 +1237,7 @@ export function YouTubePanel() {
             type="button"
             onClick={cycleSpeed}
             className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white/80 transition hover:bg-white/10 hover:text-white"
-            aria-label={`Playback speed ${playbackRate}x — click to change`}
+            aria-label={`Playback speed ${playbackRate}x. Click to change`}
             title="Playback speed"
           >
             {playbackRate}x

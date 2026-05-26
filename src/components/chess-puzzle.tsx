@@ -683,7 +683,7 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
         : status === "solved"
           ? "Solved!"
           : status === "wrong"
-            ? "Not quite — try again."
+            ? "Not quite. Try again."
             : moveIdx === 0
               ? `${userColor === "white" ? "White" : "Black"} to move`
               : "Your move";

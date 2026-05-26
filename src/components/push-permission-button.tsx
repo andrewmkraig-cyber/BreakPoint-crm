@@ -118,7 +118,7 @@ export function PushPermissionButton({
       .replace(/^"|"$/g, "");
     const reg = registrationRef.current;
     if (!vapidKey) {
-      toast.error("VAPID public key missing — push not configured.");
+      toast.error("VAPID public key missing. Push not configured.");
       setErrored(true);
       setBusy(false);
       return;
@@ -127,7 +127,7 @@ export function PushPermissionButton({
       // useEffect populates this within a few ms of mount; landing
       // here usually means the user tapped before the SW finished
       // installing. Surface a soft retry — they can tap again.
-      toast.error("Service worker still installing — try again in a moment.");
+      toast.error("Service worker still installing. Try again in a moment.");
       setBusy(false);
       return;
     }
@@ -187,7 +187,7 @@ export function PushPermissionButton({
         ) {
           setStatus("denied");
           toast.error(
-            "Notifications blocked — enable them in browser settings.",
+            "Notifications blocked. Enable them in browser settings.",
           );
         } else {
           setErrored(true);

@@ -1765,7 +1765,7 @@ function MonthlyOperatingCostCard({
 
       {rows.length === 0 ? (
         <EmptyBlock>
-          No recurring subscriptions logged yet — monthly run rate will land here once tools are tracked.
+          No recurring subscriptions logged yet. Monthly run rate will land here once tools are tracked.
         </EmptyBlock>
       ) : (
         <div className="mt-4">

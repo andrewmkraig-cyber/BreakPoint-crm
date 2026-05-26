@@ -33,7 +33,7 @@ export default async function MailPage() {
   if (!user) {
     return (
       <div className="p-6 text-sm text-court-fg-muted">
-        User row missing — sign out and back in to re-link your account.
+        User row missing. Sign out and back in to re-link your account.
       </div>
     );
   }
@@ -82,7 +82,7 @@ export default async function MailPage() {
       {gmailStatus.state !== "connected" ? (
         <ConnectorBanner
           variant="gmail-down"
-          message={`Gmail ${gmailStatus.state === "degraded" ? "looks degraded" : "disconnected"} — emails cannot be sent or received. ${gmailStatus.detail}`}
+          message={`Gmail ${gmailStatus.state === "degraded" ? "looks degraded" : "disconnected"}. Emails cannot be sent or received. ${gmailStatus.detail}`}
         />
       ) : null}
       {error ? (
@@ -90,8 +90,8 @@ export default async function MailPage() {
           <p className="font-medium">Couldn&rsquo;t load your inbox.</p>
           <p className="mt-1 text-xs">{error}</p>
           <p className="mt-2 text-xs">
-            If this says the Gmail read scope isn&rsquo;t granted, sign out and sign back in —
-            the new <code>gmail.readonly</code> scope was added in this release.
+            If this says the Gmail read scope isn&rsquo;t granted, sign out and sign back in.
+            The new <code>gmail.readonly</code> scope was added in this release.
           </p>
         </div>
       ) : (

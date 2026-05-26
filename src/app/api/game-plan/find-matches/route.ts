@@ -385,7 +385,7 @@ export async function POST(req: NextRequest) {
           if (!matchedJobId || !org.id || !c.id) {
             // eslint-disable-next-line no-console
             console.warn(
-              "[find-matches] upsert skipped — missing id",
+              "[find-matches] upsert skipped: missing id",
               {
                 hasJobId: Boolean(matchedJobId),
                 hasOrgId: Boolean(org.id),
@@ -557,7 +557,7 @@ async function loadTarget(
         legacyRfId: j.legacyRfId,
         searchKeywords: splitKeywords(j.searchKeywords),
       })),
-      label: `${client.name} — ${jobs.length} open role${jobs.length === 1 ? "" : "s"}`,
+      label: `${client.name}: ${jobs.length} open role${jobs.length === 1 ? "" : "s"}`,
       source: "client",
     };
   }
@@ -741,19 +741,19 @@ function buildStreamingPrompt(
     "",
     "TASK:",
     `Score each candidate 1-100 on fit. ${target.source === "client" ? "If the client has multiple roles, score against the candidate's best-fit role across the union." : ""} Drop weak fits (score < 40).`,
-    "Emit your STRONGEST fit FIRST, then the next strongest, etc. Output them as you score them — start writing the first match as soon as you've decided on it. Do NOT pre-rank silently.",
+    "Emit your STRONGEST fit FIRST, then the next strongest, etc. Output them as you score them. Start writing the first match as soon as you've decided on it. Do NOT pre-rank silently.",
     "Each rationale: 1-2 sentences calling out the specific reason they fit (title overlap, comp alignment, location, domain experience).",
     "Use plain prose. Do NOT use em dashes - use hyphens or commas.",
     "",
     "Per match, also produce a scoreBreakdown object with EXACTLY these five fields, each ONE short sentence:",
-    "  titleMatch       — how the candidate's current title compares to the role.",
-    "  locationFit      — whether the candidate's location works for this role.",
-    "  experienceFit    — depth of relevant domain / years of experience for this role.",
-    "  compensationFit  — whether candidate comp target fits the role's range (use \"unspecified\" when comp is missing).",
-    "  overallSummary   — one-sentence verdict that rolls the four axes into a recommendation.",
+    "  titleMatch       : how the candidate's current title compares to the role.",
+    "  locationFit      : whether the candidate's location works for this role.",
+    "  experienceFit    : depth of relevant domain / years of experience for this role.",
+    "  compensationFit  : whether candidate comp target fits the role's range (use \"unspecified\" when comp is missing).",
+    "  overallSummary   : one-sentence verdict that rolls the four axes into a recommendation.",
     "If a dimension can't be grounded in the data, write a short sentence saying so (do NOT leave the field blank or omit it).",
     "",
-    "OUTPUT FORMAT — emit one JSON object per line (newline-delimited JSON). NOT a JSON array. NO markdown fence. NO preamble. NO commentary between objects.",
+    "OUTPUT FORMAT: emit one JSON object per line (newline-delimited JSON). NOT a JSON array. NO markdown fence. NO preamble. NO commentary between objects.",
     `Each line schema: {"candidateId":"<id>","score":<int>,"rationale":"<1-2 sentences>","scoreBreakdown":{"titleMatch":"...","locationFit":"...","experienceFit":"...","compensationFit":"...","overallSummary":"..."}}`,
     `Example of two lines:`,
     `{"candidateId":"abc123","score":92,"rationale":"Strong match - current title aligns directly and location is on-site eligible.","scoreBreakdown":{"titleMatch":"Currently a Senior Tax Manager, exact match for the open Tax Manager role.","locationFit":"Lives in Cleveland, the role is Cleveland on-site, no relocation needed.","experienceFit":"8 years public accounting with audit + tax exposure covers the JD's scope.","compensationFit":"Target $150k sits comfortably inside the role's $140-160k band.","overallSummary":"Top-tier fit on every axis, ready to submit immediately."}}`,

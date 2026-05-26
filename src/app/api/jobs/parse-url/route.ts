@@ -246,7 +246,7 @@ async function extractJobFields(pageText: string): Promise<{ extracted: string; 
     max_tokens: 2000,
     system:
       "You extract structured job fields from raw job-board HTML for a recruiting CRM. " +
-      "Return STRICT JSON only — no prose, no markdown fences. Never invent fields; if missing, return null or [].",
+      "Return STRICT JSON only. No prose, no markdown fences. Never invent fields; if missing, return null or [].",
     messages: [
       {
         role: "user",
@@ -276,7 +276,7 @@ async function extractJobFields(pageText: string): Promise<{ extracted: string; 
           "- 'salary_low' and 'salary_high' are the numeric comp bounds parsed from the listing. For '$80,000-$120,000' return 80000 and 120000. For '$25-35/hr' return 25 and 35. If only one value is shown, set both to that value. If no comp info, both null. Never invent values.\n" +
           "- 'employment_type' is e.g. 'Full-time', 'Contract', 'Part-time'.\n" +
           "- 'company_info' is a short factual blurb about the hiring company (industry, size, mission).\n" +
-          "- List items are short factual phrases pulled from the source — no paraphrasing flourishes.\n" +
+          "- List items are short factual phrases pulled from the source. No paraphrasing flourishes.\n" +
           "- Drop boilerplate like 'apply now', 'EEO statements', cookie notices.\n" +
           "- If the page is not actually a job posting, return all nulls / empty arrays.\n\n" +
           "=== Page text ===\n" +

@@ -206,7 +206,7 @@ export function EditableResume({
         uploadExtra,
         {
           onProgress: (pct) => {
-            toast.loading(`Uploading ${file.name} — ${pct}%`, { id: toastId });
+            toast.loading(`Uploading ${file.name}: ${pct}%`, { id: toastId });
           },
         },
       );
@@ -271,7 +271,7 @@ export function EditableResume({
         toast.error("Couldn't convert to PDF", { id: toastId, description: result.error });
         return;
       }
-      toast.success("Converted to PDF — you can now brand this version", { id: toastId });
+      toast.success("Converted to PDF. You can now brand this version", { id: toastId });
       setPendingSelectId(result.value.resumeId);
       router.refresh();
     });

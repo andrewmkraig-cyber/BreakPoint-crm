@@ -99,10 +99,10 @@ export async function GET() {
   const recentLines = recent.map((r) => `${r.author}: "${r.quote}"`);
 
   const system =
-    "You are a curator of memorable quotes. Return one sharp, specific quote from a respected business leader, athlete, philosopher, scientist, or historical figure — someone a sharp recruiting executive at a small firm would respect (founders, operators, generals, champions, thinkers). Avoid clichés and overused inspirational lines. Prefer specificity and bite over uplift. Respond with raw JSON only, no prose, no code fences. Schema: {\"quote\": string, \"author\": string, \"context\": string}. The context field is one sentence (under 20 words) describing who the author is and why they are worth quoting.";
+    "You are a curator of memorable quotes. Return one sharp, specific quote from a respected business leader, athlete, philosopher, scientist, or historical figure: someone a sharp recruiting executive at a small firm would respect (founders, operators, generals, champions, thinkers). Avoid clichés and overused inspirational lines. Prefer specificity and bite over uplift. Respond with raw JSON only, no prose, no code fences. Schema: {\"quote\": string, \"author\": string, \"context\": string}. The context field is one sentence (under 20 words) describing who the author is and why they are worth quoting.";
   const userMessage =
     recentLines.length > 0
-      ? `Today's date is ${generatedDate.toISOString().slice(0, 10)}. The following quotes have been used in the last ${recentLines.length} days — do NOT repeat any of them and pick a different author from any of these:\n${recentLines.join("\n")}\nReturn a new quote.`
+      ? `Today's date is ${generatedDate.toISOString().slice(0, 10)}. The following quotes have been used in the last ${recentLines.length} days. Do NOT repeat any of them and pick a different author from any of these:\n${recentLines.join("\n")}\nReturn a new quote.`
       : `Today's date is ${generatedDate.toISOString().slice(0, 10)}. Return today's quote.`;
 
   let payload: QuotePayload | null;

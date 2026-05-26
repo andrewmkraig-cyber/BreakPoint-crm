@@ -122,7 +122,7 @@ async function sendSmsReply(args: {
       | { status?: string; providerError?: string | null }
       | null;
     if (json?.status === "failed") {
-      const detail = json?.providerError ? ` — ${json.providerError}` : "";
+      const detail = json?.providerError ? `: ${json.providerError}` : "";
       return { ok: false, error: `Saved, but Quo reported failure${detail}` };
     }
     await markThreadReadAndBroadcast({

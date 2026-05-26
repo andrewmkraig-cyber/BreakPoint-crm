@@ -398,7 +398,7 @@ function JobPicker({
         onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
         className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
       >
-        <option value="">— pick a job —</option>
+        <option value="">Pick a job…</option>
         {openJobs.map((j) => (
           <option key={j.jobRfId} value={j.jobRfId} disabled={j.alreadyLinked}>
             {formatOpenJobOption(j)}

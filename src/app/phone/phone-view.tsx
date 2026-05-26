@@ -1655,7 +1655,7 @@ function NewTextRecipientInput({
         });
         return;
       }
-      setHint("Texting a number not yet in Ace — that's fine, the message still sends.");
+      setHint("Texting a number not yet in Ace. That's fine, the message still sends.");
       onPick({
         candidateId: null,
         name: raw,
@@ -1800,7 +1800,7 @@ export function NewTextPanel({
         return;
       }
       if (json?.status === "failed") {
-        const detail = json?.providerError ? ` — ${json.providerError}` : "";
+        const detail = json?.providerError ? `: ${json.providerError}` : "";
         setError(`Saved, but Quo reported send failed${detail}`);
         // Still broadcast — the failed row landed in Neon and any open
         // thread for this candidate should surface it (red bubble +

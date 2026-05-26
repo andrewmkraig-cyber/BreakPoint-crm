@@ -64,7 +64,7 @@ export async function parseCandidate(args: {
       select: { filename: true, mimeType: true, size: true, data: true, uploadComplete: true },
     });
     if (!row) return { ok: false, error: "Resume upload not found." };
-    if (!row.uploadComplete) return { ok: false, error: "Resume upload not finished — try again." };
+    if (!row.uploadComplete) return { ok: false, error: "Resume upload not finished. Try again." };
     resume = {
       filename: row.filename,
       mimeType: row.mimeType,

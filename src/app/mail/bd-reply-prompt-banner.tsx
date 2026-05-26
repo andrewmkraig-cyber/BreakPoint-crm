@@ -224,7 +224,7 @@ export function BdReplyPromptBanner({
             ) : (
               <Check className="h-3.5 w-3.5" />
             )}
-            Yes — Create Client
+            Yes, Create Client
           </button>
         </div>
       </div>

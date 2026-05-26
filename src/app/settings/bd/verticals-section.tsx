@@ -355,12 +355,12 @@ function SavedSearchEditForm({
         </Field>
       </div>
 
-      <Field label="Location override" hint="Optional — passed to TheirStack when set; ignored when blank">
+      <Field label="Location override" hint="Optional. Passed to TheirStack when set; ignored when blank">
         <input
           type="text"
           value={locationOverride}
           onChange={(e) => setLocationOverride(e.target.value)}
-          placeholder="Nationwide — leave blank for all locations"
+          placeholder="Nationwide. Leave blank for all locations"
           className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
         />
       </Field>

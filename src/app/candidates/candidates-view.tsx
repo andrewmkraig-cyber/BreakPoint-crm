@@ -478,7 +478,7 @@ function BulkApplyDialog({
       ]
         .filter(Boolean)
         .join(" · ");
-      toast.success(`Bulk apply complete${desc ? ` — ${desc}` : ""}`);
+      toast.success(`Bulk apply complete${desc ? `: ${desc}` : ""}`);
       onDone();
     } finally {
       setBusy(false);
@@ -496,7 +496,7 @@ function BulkApplyDialog({
         disabled={busy}
         className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
       >
-        <option value="">— pick a job —</option>
+        <option value="">Pick a job…</option>
         {jobs.map((j) => (
           <option key={j.key} value={j.key}>
             {j.label}
@@ -608,7 +608,7 @@ function BulkAddToListDialog({
           disabled={busy}
           className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
         >
-          <option value="">— pick a list —</option>
+          <option value="">Pick a list…</option>
           {lists.map((l) => (
             <option key={l.id} value={l.id}>
               {l.name} ({l.memberCount})

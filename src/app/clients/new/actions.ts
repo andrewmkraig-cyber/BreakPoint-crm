@@ -282,7 +282,7 @@ async function extractFieldsFromHomepage(url: string, pageText: string): Promise
           "Return ONLY a JSON object, no prose, no code fences:\n" +
           "{\n" +
           '  "name": string|null,        // official company name\n' +
-          '  "industry": string|null,    // one short phrase — "Software", "Healthcare", "Financial Services"\n' +
+          '  "industry": string|null,    // one short phrase: "Software", "Healthcare", "Financial Services"\n' +
           '  "city": string|null,        // HQ city if present\n' +
           '  "state": string|null,       // US state abbreviation (e.g. "OH"), else country\n' +
           '  "phone": string|null,       // a contact phone if listed\n' +
@@ -291,7 +291,7 @@ async function extractFieldsFromHomepage(url: string, pageText: string): Promise
           "}\n\n" +
           "Rules:\n" +
           "- Use null for fields that aren't clearly on the homepage. Don't guess.\n" +
-          "- 'phone' is digits+formatting as it appears — don't reformat.\n" +
+          "- 'phone' is digits+formatting as it appears. Don't reformat.\n" +
           "- 'industry' is ONE phrase, not a list.\n" +
           "- 'overview' is the recruiter-facing summary: what they do, who they serve.",
       },

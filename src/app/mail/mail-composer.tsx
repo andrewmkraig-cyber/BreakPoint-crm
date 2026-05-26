@@ -1382,7 +1382,7 @@ export function MailComposer({
       // so the recruiter knows nothing actually went out and where to
       // find it.
       if (body?.asDraft) {
-        toast.success("Draft created — check your Gmail Drafts to review and send.");
+        toast.success("Draft created. Check your Gmail Drafts to review and send.");
       } else {
         toast.success(threadId ? "Reply sent" : "Email sent");
       }
@@ -1648,7 +1648,7 @@ export function MailComposer({
                 onChange={(e) => setSelectedJobId(e.target.value || null)}
                 className="w-full appearance-none truncate rounded-md border border-court-border bg-court-surface py-1 pl-2 pr-8 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
               >
-                <option value="">— Pick a job —</option>
+                <option value="">Pick a job...</option>
                 {activeJobs.map((j) => {
                   const loc = [j.jobCity, j.jobState].filter(Boolean).join(", ");
                   const label = loc
@@ -1730,7 +1730,7 @@ export function MailComposer({
         {allUnresolved.length > 0 && (
           <div className="mx-3 mt-2 shrink-0 rounded-md border border-court-border/60 bg-court-surface-subtle/60 px-3 py-2 text-[11px] text-court-fg">
             <span className="font-medium text-court-fg-muted">
-              {unresolvedNote ? `${unresolvedNote} — ` : ""}
+              {unresolvedNote ? `${unresolvedNote}. ` : ""}
               These fields will send literally:
             </span>{" "}
             {allUnresolved.map((tag, i) => (

@@ -86,7 +86,7 @@ export async function uploadBrandingLogo(input: {
   if (bytes.byteLength > MAX_LOGO_BYTES) {
     return {
       ok: false,
-      error: `Logo is ${Math.round(bytes.byteLength / 1024)}KB — max is ${MAX_LOGO_BYTES / 1024}KB.`,
+      error: `Logo is ${Math.round(bytes.byteLength / 1024)}KB. Max is ${MAX_LOGO_BYTES / 1024}KB.`,
     };
   }
   // Prisma's Bytes column expects Uint8Array<ArrayBuffer>; Buffer

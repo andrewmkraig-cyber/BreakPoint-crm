@@ -177,7 +177,7 @@ export async function GET(): Promise<NextResponse<FunFactApiResponse>> {
   const today = generatedDate.toISOString().slice(0, 10);
   const topicGuidance: Record<Topic, string> = {
     history:
-      "A historical event, battle, invention, or surprising story from any era. Include the year. Skip anything tragic or grim — go for memorable and conversation-worthy.",
+      "A historical event, battle, invention, or surprising story from any era. Include the year. Skip anything tragic or grim. Go for memorable and conversation-worthy.",
     technology:
       "A surprising fact about how a technology, gadget, software, or company came to be. Include a year if it sharpens the story.",
     science:
@@ -185,13 +185,13 @@ export async function GET(): Promise<NextResponse<FunFactApiResponse>> {
     geography:
       "An odd, unexpected fact about a place, country, city, river, or landmark. Year optional.",
     trivia:
-      "A random, useful-in-conversation fun fact — sports, food, language origins, pop culture, animals. Year optional.",
+      "A random, useful-in-conversation fun fact: sports, food, language origins, pop culture, animals. Year optional.",
   };
 
   const system =
     "You curate one short, conversation-worthy fun fact per day for a senior recruiter to drop into client small talk. " +
-    "Respond with raw JSON only — no prose, no code fences. Schema: {\"topic\": \"history\"|\"technology\"|\"science\"|\"geography\"|\"trivia\", \"year\": number|null, \"text\": string}. " +
-    "The text should be one to three sentences, factual, specific, and end with a complete thought. Avoid ChatGPT-flavored phrasing — no em dashes, no 'fascinatingly', no 'did you know'. Just state the fact.";
+    "Respond with raw JSON only. No prose, no code fences. Schema: {\"topic\": \"history\"|\"technology\"|\"science\"|\"geography\"|\"trivia\", \"year\": number|null, \"text\": string}. " +
+    "The text should be one to three sentences, factual, specific, and end with a complete thought. Avoid ChatGPT-flavored phrasing. No em dashes, no 'fascinatingly', no 'did you know'. Just state the fact.";
 
   const userMessage =
     `Today's date is ${today}. Generate one fun fact in the topic: "${topic}".\n\n` +

@@ -117,7 +117,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: `${DEFAULT_ORG_FALLBACK} env var not set — cron has no org to scope to`,
+        error: `${DEFAULT_ORG_FALLBACK} env var not set. Cron has no org to scope to`,
       },
       { status: 500 },
     );

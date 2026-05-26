@@ -38,6 +38,6 @@ export async function getCurrentOrg(): Promise<{ id: string }> {
   if (fallback) return { id: fallback };
 
   throw new Error(
-    "getCurrentOrg: no session membership and no DEFAULT_ORG_ID env — cannot resolve tenant",
+    "getCurrentOrg: no session membership and no DEFAULT_ORG_ID env. Cannot resolve tenant",
   );
 }

@@ -121,7 +121,7 @@ export function EditableJobDescription({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             rows={12}
-            placeholder="Describe the role — responsibilities, requirements, anything the candidate or client needs to see in [Job Description] merge fields."
+            placeholder="Describe the role: responsibilities, requirements, anything the candidate or client needs to see in [Job Description] merge fields."
             className="w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm leading-relaxed text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
           {err && (

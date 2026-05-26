@@ -60,7 +60,7 @@ export function DocxPreview({
       <div className={className}>
         <div className="flex h-64 flex-col items-center justify-center gap-2 text-sm text-court-fg-muted">
           <FileText className="h-6 w-6" />
-          Preview failed — {error}
+          Preview failed: {error}
         </div>
       </div>
     );

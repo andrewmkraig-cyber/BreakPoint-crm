@@ -142,7 +142,7 @@ const DATA_TOOLS: Anthropic.Tool[] = [
   {
     name: "get_pipeline",
     description:
-      "Pipeline lookup. `stage` is one of: interviewing, offer, pending_start, hired, submitted (any reasonable phrasing — 'interview', 'offered', 'placed' — is normalized server-side). 'interviewing' reads upcoming Interview rows; offer/pending_start/hired read the Placement table; 'submitted' is not tracked in Ace's Placement table and the tool will say so. `clientName` does a forgiving substring match against the client (so 'Sheehan' matches 'Sheehan Brothers Vending'). Pass `historical: true` for past-tense lookups like 'who has interviewed at Sheehan' or 'what placements have we made at Sheehan' — it merges Placement rows (every stage, every date) with Interview rows (every status, every date), labels each, and returns up to 30 sorted by most-recent activity. When `historical` is true the `stage` filter is ignored. Returns up to 20 rows in non-historical mode.",
+      "Pipeline lookup. `stage` is one of: interviewing, offer, pending_start, hired, submitted (any reasonable phrasing such as 'interview', 'offered', 'placed' is normalized server-side). 'interviewing' reads upcoming Interview rows; offer/pending_start/hired read the Placement table; 'submitted' is not tracked in Ace's Placement table and the tool will say so. `clientName` does a forgiving substring match against the client (so 'Sheehan' matches 'Sheehan Brothers Vending'). Pass `historical: true` for past-tense lookups like 'who has interviewed at Sheehan' or 'what placements have we made at Sheehan'; it merges Placement rows (every stage, every date) with Interview rows (every status, every date), labels each, and returns up to 30 sorted by most-recent activity. When `historical` is true the `stage` filter is ignored. Returns up to 20 rows in non-historical mode.",
     input_schema: {
       type: "object",
       properties: {
@@ -174,19 +174,19 @@ const DATA_TOOLS: Anthropic.Tool[] = [
   {
     name: "move_candidate_stage",
     description:
-      "Propose moving a candidate's placement to a new pipeline stage. The recruiter must Confirm before this lands. Pass the id you got back from search_candidates (the bracketed slug — cuid or numeric rfId, both work). placementId is OPTIONAL; if you skip it the server picks the candidate's most recent non-rejected placement automatically. newStage must be one of: sourced, applied, kept, submitted, interviewing, offer, pending_start, hired, rejected, cancelled.",
+      "Propose moving a candidate's placement to a new pipeline stage. The recruiter must Confirm before this lands. Pass the id you got back from search_candidates (the bracketed slug, cuid or numeric rfId, both work). placementId is OPTIONAL; if you skip it the server picks the candidate's most recent non-rejected placement automatically. newStage must be one of: sourced, applied, kept, submitted, interviewing, offer, pending_start, hired, rejected, cancelled.",
     input_schema: {
       type: "object",
       properties: {
         candidateId: {
           type: "string",
           description:
-            "Candidate id from search_candidates — cuid OR numeric rfId, both resolve.",
+            "Candidate id from search_candidates (cuid OR numeric rfId, both resolve).",
         },
         placementId: {
           type: "string",
           description:
-            "Placement cuid from get_pipeline. Optional — the server falls back to the candidate's most recent non-rejected placement.",
+            "Placement cuid from get_pipeline. Optional; the server falls back to the candidate's most recent non-rejected placement.",
         },
         newStage: {
           type: "string",
@@ -211,7 +211,7 @@ const DATA_TOOLS: Anthropic.Tool[] = [
         },
         entityId: {
           type: "string",
-          description: "Identifier of the candidate / client / job — cuid OR numeric rfId.",
+          description: "Identifier of the candidate / client / job (cuid OR numeric rfId).",
         },
         note: {
           type: "string",
@@ -224,7 +224,7 @@ const DATA_TOOLS: Anthropic.Tool[] = [
   {
     name: "draft_email",
     description:
-      "Propose opening Ace's mail composer pre-filled with a draft. Never sends — the recruiter reviews and sends from the composer. Use this when the recruiter asks you to 'draft', 'write', 'compose', or 'send' an email; the recruiter still has to click Send themselves after Confirm.",
+      "Propose opening Ace's mail composer pre-filled with a draft. Never sends; the recruiter reviews and sends from the composer. Use this when the recruiter asks you to 'draft', 'write', 'compose', or 'send' an email; the recruiter still has to click Send themselves after Confirm.",
     input_schema: {
       type: "object",
       properties: {
@@ -238,7 +238,7 @@ const DATA_TOOLS: Anthropic.Tool[] = [
         },
         body: {
           type: "string",
-          description: "Email body. Plain text or markdown — the composer cleans it up.",
+          description: "Email body. Plain text or markdown; the composer cleans it up.",
         },
       },
       required: ["to", "subject", "body"],
@@ -253,7 +253,7 @@ const DATA_TOOLS: Anthropic.Tool[] = [
       properties: {
         jobId: {
           type: "string",
-          description: "Job id from search_jobs — cuid OR numeric legacyRfId, both resolve.",
+          description: "Job id from search_jobs (cuid OR numeric legacyRfId, both resolve).",
         },
       },
       required: ["jobId"],
@@ -268,7 +268,7 @@ const DATA_TOOLS: Anthropic.Tool[] = [
       properties: {
         jobId: {
           type: "string",
-          description: "Job id from search_jobs — cuid OR numeric legacyRfId, both resolve.",
+          description: "Job id from search_jobs (cuid OR numeric legacyRfId, both resolve).",
         },
       },
       required: ["jobId"],
@@ -283,7 +283,7 @@ const DATA_TOOLS: Anthropic.Tool[] = [
       properties: {
         jobId: {
           type: "string",
-          description: "Job id from search_jobs — cuid OR numeric legacyRfId, both resolve.",
+          description: "Job id from search_jobs (cuid OR numeric legacyRfId, both resolve).",
         },
       },
       required: ["jobId"],
@@ -292,13 +292,13 @@ const DATA_TOOLS: Anthropic.Tool[] = [
   {
     name: "delete_job",
     description:
-      "Propose permanently deleting a job. The recruiter must Confirm before this lands. Use when the recruiter explicitly says 'delete' / 'remove' / 'permanently delete' a job — never for routine 'inactivate' / 'close out' requests, which use inactivate_job instead. Cascades through Placement / Interview / CandidateMatch rows for the job.",
+      "Propose permanently deleting a job. The recruiter must Confirm before this lands. Use when the recruiter explicitly says 'delete' / 'remove' / 'permanently delete' a job. Never use for routine 'inactivate' / 'close out' requests, which use inactivate_job instead. Cascades through Placement / Interview / CandidateMatch rows for the job.",
     input_schema: {
       type: "object",
       properties: {
         jobId: {
           type: "string",
-          description: "Job id from search_jobs — cuid OR numeric legacyRfId, both resolve.",
+          description: "Job id from search_jobs (cuid OR numeric legacyRfId, both resolve).",
         },
       },
       required: ["jobId"],
@@ -314,7 +314,7 @@ const DATA_TOOLS: Anthropic.Tool[] = [
         candidateId: {
           type: "string",
           description:
-            "Candidate id from search_candidates — cuid OR numeric rfId, both resolve.",
+            "Candidate id from search_candidates (cuid OR numeric rfId, both resolve).",
         },
       },
       required: ["candidateId"],
@@ -323,7 +323,7 @@ const DATA_TOOLS: Anthropic.Tool[] = [
   {
     name: "reset_activity_log",
     description:
-      "Propose deleting ActionLog (activity log) rows in a date range. The recruiter must Confirm before anything lands. Use when the recruiter says 'clear / delete / reset' the activity log or audit trail. Pass dateFrom and/or dateTo as ISO 8601 (YYYY-MM-DD or full timestamp) — omit both to wipe every activity log entry in the org. After the delete completes, a single audit row (actionType=data_reset_activity_log) lands so the reset itself is traceable.",
+      "Propose deleting ActionLog (activity log) rows in a date range. The recruiter must Confirm before anything lands. Use when the recruiter says 'clear / delete / reset' the activity log or audit trail. Pass dateFrom and/or dateTo as ISO 8601 (YYYY-MM-DD or full timestamp); omit both to wipe every activity log entry in the org. After the delete completes, a single audit row (actionType=data_reset_activity_log) lands so the reset itself is traceable.",
     input_schema: {
       type: "object",
       properties: {
@@ -335,7 +335,7 @@ const DATA_TOOLS: Anthropic.Tool[] = [
         dateTo: {
           type: "string",
           description:
-            "Optional ISO 8601 upper bound (exclusive — pass the day AFTER the last day to include). Omit for no upper bound.",
+            "Optional ISO 8601 upper bound (exclusive: pass the day AFTER the last day to include). Omit for no upper bound.",
         },
       },
     },
@@ -654,15 +654,15 @@ async function runSearchCandidates(
     const title = c.currentDesignation || "—";
     const employer = c.currentOrganization || "—";
     const loc = c.location || "—";
-    const tags = c.tags?.length ? ` — tags: ${c.tags.slice(0, 4).join(", ")}` : "";
-    return `${i + 1}. ${candidateLink(c)} — ${title} at ${employer} — ${loc}${tags}`;
+    const tags = c.tags?.length ? `, tags: ${c.tags.slice(0, 4).join(", ")}` : "";
+    return `${i + 1}. ${candidateLink(c)}, ${title} at ${employer}, ${loc}${tags}`;
   });
   // Overflow banner triggers when more rows match the broad WHERE than
   // we ranked. Uses the user's literal "show more" phrasing so Claude
   // can quote it back if Andrew asks for the next batch.
   const overflow =
     totalMatching > ranked.length
-      ? `\n\nShowing ${ranked.length} of ${totalMatching} — ask me to show more and I'll load the next batch.`
+      ? `\n\nShowing ${ranked.length} of ${totalMatching}. Ask me to show more and I'll load the next batch.`
       : "";
   return `Top ${ranked.length} candidate match${ranked.length === 1 ? "" : "es"} for "${query}":\n${lines.join("\n")}${overflow}`;
 }
@@ -731,7 +731,7 @@ async function runSearchCandidatesByCreatedAt(
     const employer = c.currentOrganization || "—";
     const loc = c.location || "—";
     const when = c.createdAt.toISOString().slice(0, 10);
-    return `${i + 1}. ${candidateLink(c)} — ${title} at ${employer} — ${loc} — added ${when}`;
+    return `${i + 1}. ${candidateLink(c)}, ${title} at ${employer}, ${loc}, added ${when}`;
   });
   const direction = order === "desc" ? "newest" : "oldest";
   const filterNote = tokens.length > 0 ? ` matching "${query}"` : "";
@@ -780,7 +780,7 @@ async function runSearchJobs(query: string, orgId: string): Promise<string> {
     // log() below so it's grep-friendly when triaging from the dashboard.
     // eslint-disable-next-line no-console
     console.log(
-      "[claude-panel.tool] search_jobs open-jobs branch — totalOpen=" + totalOpen,
+      "[claude-panel.tool] search_jobs open-jobs branch: totalOpen=" + totalOpen,
       "returned=" + rows.length,
       "orgId=" + orgId,
     );
@@ -789,11 +789,11 @@ async function runSearchJobs(query: string, orgId: string): Promise<string> {
     const lines = rows.map((j, i) => {
       const loc = j.locations?.length ? j.locations.join("; ") : "—";
       const clientName = j.client?.name ?? "—";
-      return `${i + 1}. ${jobLink(j)} — ${clientName} — ${loc}`;
+      return `${i + 1}. ${jobLink(j)}, ${clientName}, ${loc}`;
     });
     const overflow =
       totalOpen > rows.length
-        ? `\n\nShowing ${rows.length} of ${totalOpen} — ask me to show more and I'll load the next batch.`
+        ? `\n\nShowing ${rows.length} of ${totalOpen}. Ask me to show more and I'll load the next batch.`
         : "";
     return `Open jobs (${rows.length}):\n${lines.join("\n")}${overflow}`;
   }
@@ -872,11 +872,11 @@ async function runSearchJobs(query: string, orgId: string): Promise<string> {
     const status = j.isOpen ? "open" : "closed";
     const loc = j.locations?.length ? j.locations.join("; ") : "—";
     const clientName = j.client?.name ?? "—";
-    return `${i + 1}. ${jobLink(j)} — ${clientName} — ${loc} — ${status}`;
+    return `${i + 1}. ${jobLink(j)}, ${clientName}, ${loc}, ${status}`;
   });
   const overflow =
     totalMatching > ranked.length
-      ? `\n\nShowing ${ranked.length} of ${totalMatching} — ask me to show more and I'll load the next batch.`
+      ? `\n\nShowing ${ranked.length} of ${totalMatching}. Ask me to show more and I'll load the next batch.`
       : "";
   return `Top ${ranked.length} job match${ranked.length === 1 ? "" : "es"} for "${query}":\n${lines.join("\n")}${overflow}`;
 }
@@ -977,7 +977,7 @@ async function runSearchClients(query: string, orgId: string): Promise<string> {
   const lines = ranked.map(({ c, locStr }, i) => {
     const industry = c.industry || "—";
     const loc = locStr || "—";
-    return `${i + 1}. ${c.name} — ${industry} — ${loc} — id: ${c.id}`;
+    return `${i + 1}. ${c.name}, ${industry}, ${loc}, id: ${c.id}`;
   });
   return `Top ${ranked.length} client match${ranked.length === 1 ? "" : "es"} for "${query}":\n${lines.join("\n")}`;
 }
@@ -1084,11 +1084,11 @@ async function runGetPipeline(
         : "No pipeline history found.";
     }
     const lines = top.map((r, i) => {
-      return `${i + 1}. [${r.kind}] ${r.candidateName} — ${r.jobTitle} — ${r.clientName} — ${r.detail}`;
+      return `${i + 1}. [${r.kind}] ${r.candidateName}, ${r.jobTitle}, ${r.clientName}, ${r.detail}`;
     });
     const overflow =
       rows.length > top.length
-        ? `\n\nShowing ${top.length} of ${rows.length} — ask me to narrow by stage or date if you want a tighter slice.`
+        ? `\n\nShowing ${top.length} of ${rows.length}. Ask me to narrow by stage or date if you want a tighter slice.`
         : "";
     return `Pipeline history${clientName ? ` for "${clientName}"` : ""} (${top.length} rows, placements + interviews merged, most recent first):\n${lines.join("\n")}${overflow}`;
   }
@@ -1096,7 +1096,7 @@ async function runGetPipeline(
   if (stage === "submitted") {
     log("get_pipeline", { clientName, stage: args.stage }, 0, "submitted-not-tracked");
     return (
-      "Submitted-stage candidates aren't tracked directly in Ace's Placement table — that stage lives in the candidate's RF pipeline data. " +
+      "Submitted-stage candidates aren't tracked directly in Ace's Placement table; that stage lives in the candidate's RF pipeline data. " +
       "Use search_candidates with the relevant client/job context, or ask about a stage that Ace tracks (interviewing, offer, pending_start, hired)."
     );
   }
@@ -1134,7 +1134,7 @@ async function runGetPipeline(
       const job = iv.job?.title ?? "(unknown job)";
       const cl = iv.client?.name ?? "(unknown client)";
       const when = iv.scheduledAt.toISOString().replace("T", " ").slice(0, 16);
-      return `${i + 1}. ${cand} — ${job} — ${cl} — ${iv.type} — ${when} UTC — id: ${iv.id}`;
+      return `${i + 1}. ${cand}, ${job}, ${cl}, ${iv.type}, ${when} UTC, id: ${iv.id}`;
     });
     return `Upcoming interviews${clientName ? ` for "${clientName}"` : ""} (${rows.length}):\n${lines.join("\n")}`;
   }
@@ -1177,9 +1177,9 @@ async function runGetPipeline(
     const job = p.job?.title ?? "(unknown job)";
     const cl = p.client?.name ?? "(unknown client)";
     const updated = p.updatedAt.toISOString().slice(0, 10);
-    return `${i + 1}. ${cand} — ${job} — ${cl} — stage: ${p.stage} — updated: ${updated}`;
+    return `${i + 1}. ${cand}, ${job}, ${cl}, stage: ${p.stage}, updated: ${updated}`;
   });
-  return `Pipeline${clientName ? ` for "${clientName}"` : ""}${stage ? ` (stage=${stage})` : ""} — ${rows.length} row${rows.length === 1 ? "" : "s"}:\n${lines.join("\n")}`;
+  return `Pipeline${clientName ? ` for "${clientName}"` : ""}${stage ? ` (stage=${stage})` : ""}: ${rows.length} row${rows.length === 1 ? "" : "s"}:\n${lines.join("\n")}`;
 }
 
 // Single point of tool-call telemetry. One line per call so the Vercel
@@ -1586,7 +1586,7 @@ async function describeAction(
       const body = typeof input.body === "string" ? input.body : "";
       return {
         kind: "draft_email",
-        description: `Open mail composer to ${to || "(no recipient)"} — subject: "${subject || "(no subject)"}"`,
+        description: `Open mail composer to ${to || "(no recipient)"}, subject: "${subject || "(no subject)"}"`,
         to,
         subject,
         body,
@@ -1616,11 +1616,11 @@ async function describeAction(
         name === "inactivate_job"
           ? "mark inactive and remove from the active pipeline"
           : name === "privatize_job"
-            ? "hide from the Active tab — still searchable from the Private tab"
+            ? "hide from the Active tab, still searchable from the Private tab"
             : "move back to the Active tab";
       return {
         kind: name,
-        description: `${verb} ${jobTitle} — ${explainer}.`,
+        description: `${verb} ${jobTitle}: ${explainer}.`,
         jobId: job?.id ?? null,
         jobTitle,
         clientName,

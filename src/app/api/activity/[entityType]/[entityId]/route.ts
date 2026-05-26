@@ -234,13 +234,13 @@ function describeAction(actionType: string, meta: Record<string, unknown> | null
     case "email_sent": {
       const head = kind === "interview_invite" ? "Interview invite sent" : "Email sent";
       const to = recipient ? ` to ${recipient}` : "";
-      const subj = subject ? ` — ${subject}` : "";
+      const subj = subject ? `: ${subject}` : "";
       return `${head}${to}${subj}`;
     }
     case "cancel_placement":
-      return `Placement cancelled${reason ? ` — ${reason}` : ""}`;
+      return `Placement cancelled${reason ? `: ${reason}` : ""}`;
     case "reject":
-      return `Candidate rejected${reason ? ` — ${reason}` : ""}`;
+      return `Candidate rejected${reason ? `: ${reason}` : ""}`;
     case "unreject":
       return "Candidate reapplied";
     case "candidate_rejected_for_job": {
@@ -254,7 +254,7 @@ function describeAction(actionType: string, meta: Record<string, unknown> | null
     case "job_source_posting_saved": {
       const sourceUrl = readString(meta, "sourceUrl");
       const titleHead = jobTitle ?? "this job";
-      return `Source posting saved: ${titleHead}${sourceUrl ? ` — ${sourceUrl}` : ""}`;
+      return `Source posting saved: ${titleHead}${sourceUrl ? ` (${sourceUrl})` : ""}`;
     }
     case "job_description_generated":
       return `Job description generated${jobTitle ? ` for ${jobTitle}` : ""}`;

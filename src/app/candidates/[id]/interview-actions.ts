@@ -898,7 +898,7 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   });
   if (!interview) return { ok: false, error: "Interview not found." };
   if (!interview.googleEventIdMine) {
-    return { ok: false, error: "No calendar event on this interview — re-schedule to create one." };
+    return { ok: false, error: "No calendar event on this interview. Re-schedule to create one." };
   }
 
   // Server-side safety net for [Job Description] — fetch the latest

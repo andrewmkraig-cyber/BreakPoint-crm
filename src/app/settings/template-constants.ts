@@ -36,25 +36,25 @@ export const TRIGGER_OPTIONS: ReadonlyArray<{ value: string; label: string; desc
   { value: "", label: "Manual only", description: "Not auto-sent. Pick this template by hand from the composer." },
   {
     value: CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
-    label: "Candidate Applied — Confirmation",
+    label: "Candidate Applied: Confirmation",
     description: "Auto-sends to the candidate when you click Apply to Job (sets stage = Applied).",
   },
   {
     value: CANDIDATE_CONFIRMATION_TRIGGER,
-    label: "Candidate Submitted — Confirmation",
+    label: "Candidate Submitted: Confirmation",
     description: "Auto-sends to the candidate after a submittal email goes out to the client (stage = Submitted).",
   },
   {
     value: CLIENT_INTERVIEW_SCHEDULED_TRIGGER,
-    label: "Interview Scheduled — Client Confirmation",
+    label: "Interview Scheduled: Client Confirmation",
     description:
-      "Pre-populates the Send Client Invite composer when you Schedule Interview. Does NOT auto-send — the calendar invite is the only thing that ships.",
+      "Pre-populates the Send Client Invite composer when you Schedule Interview. Does NOT auto-send. The calendar invite is the only thing that ships.",
   },
   {
     value: CANDIDATE_INTERVIEW_PREP_TRIGGER,
-    label: "Interview Scheduled — Candidate Prep",
+    label: "Interview Scheduled: Candidate Prep",
     description:
-      "Pre-populates the Send Candidate Invite composer when you Schedule Interview. Does NOT auto-send — the calendar invite is the only thing that ships.",
+      "Pre-populates the Send Candidate Invite composer when you Schedule Interview. Does NOT auto-send. The calendar invite is the only thing that ships.",
   },
   {
     value: OFFER_EXTENDED_TRIGGER,
@@ -68,7 +68,7 @@ export const TRIGGER_OPTIONS: ReadonlyArray<{ value: string; label: string; desc
   },
   {
     value: CANDIDATE_HIRED_WELCOME_TRIGGER,
-    label: "Hired — Welcome / Next Steps",
+    label: "Hired: Welcome / Next Steps",
     description: "Auto-sends to the candidate when you Confirm Start Date (stage = Hired).",
   },
   {

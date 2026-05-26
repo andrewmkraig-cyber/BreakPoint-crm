@@ -98,7 +98,7 @@ export function DocumentDropzone({
         </div>
         <div className="text-xs text-court-fg-muted">
           or <span className="font-medium text-brand-dark">click to browse</span>
-          {emptyHint ? ` — ${emptyHint}` : ""}
+          {emptyHint ? `. ${emptyHint}` : ""}
         </div>
         <input
           ref={inputRef}

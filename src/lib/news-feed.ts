@@ -72,7 +72,7 @@ const TAB_PROMPTS: Record<NewsTab, (todayIso: string) => string> = {
 
 const SYSTEM_PROMPT =
   "You are a news researcher for a US recruiting executive's morning briefing. Use the web_search tool to find current headlines, then respond with EXACTLY 4 stories as a JSON array. " +
-  "Output ONLY the JSON array — no preamble, no commentary, no markdown fences, no trailing text. " +
+  "Output ONLY the JSON array. No preamble, no commentary, no markdown fences, no trailing text. " +
   'Schema: [{"headline": string, "source": string, "url": string, "summary": string}, ...]. ' +
   "Order matters: the most important / lead story FIRST, then 3 supporting stories. " +
   "Every entry must have a non-empty headline, source name, canonical article URL, and a one-sentence summary. " +

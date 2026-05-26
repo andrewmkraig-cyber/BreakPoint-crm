@@ -222,7 +222,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
   function onUnrejectViaDelete() {
     if (!props.placementId) {
       toast.error("Can't reapply", {
-        description: "No local placement id — refresh and try again.",
+        description: "No local placement id. Refresh and try again.",
       });
       return;
     }

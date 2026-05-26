@@ -240,7 +240,7 @@ export function EmailPreferencesView({
         <div className="mb-2">
           <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">Email signature</div>
           <div className="mt-1 text-xs text-court-fg-muted">
-            Auto-appended to every email sent from Ace — submittals, rejections, candidate confirmations, reference
+            Auto-appended to every email sent from Ace: submittals, rejections, candidate confirmations, reference
             requests, manual emails. Don&apos;t paste a signature inside a template body or you&apos;ll duplicate.
           </div>
         </div>

@@ -43,7 +43,7 @@ export function DomainsSection({ domains }: { domains: DomainRow[] }) {
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-court-fg-muted">
-          Priority is the rotation order — slot 1 picks next.
+          Priority is the rotation order. Slot 1 picks next.
         </p>
         {!adding && (
           <button

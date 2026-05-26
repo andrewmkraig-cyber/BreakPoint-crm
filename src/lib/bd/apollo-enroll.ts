@@ -147,7 +147,7 @@ async function generateCandidateSummary(
   const urlSnippet = (jobPostingUrl ?? "").slice(0, 500);
   const descBlock = urlSnippet
     ? `Job URL (first 500 chars): ${urlSnippet}`
-    : `(No description available — derive solely from the job title.)`;
+    : `(No description available. Derive solely from the job title.)`;
 
   const prompt =
     `You are a recruiter writing a 4-bullet candidate summary for a cold BD email. ` +
@@ -176,7 +176,7 @@ async function generateCandidateSummary(
       .slice(0, 4);
     if (bullets.length < 4) {
       console.warn(
-        `[Apollo] candidate summary parse short (${bullets.length}/4) for "${companyName}" — falling back to generic`,
+        `[Apollo] candidate summary parse short (${bullets.length}/4) for "${companyName}". Falling back to generic`,
       );
       return genericCandidateSummary(titleForFallback);
     }
@@ -314,7 +314,7 @@ export async function enrollCompaniesInApollo(
       data: { status: "COMPLETE", completedAt: new Date() },
     });
     console.log(
-      `[Apollo] runId=${run.id} skipped — daily cap (${dailyCap}) already reached (${enrolledToday} enrolled today)`,
+      `[Apollo] runId=${run.id} skipped: daily cap (${dailyCap}) already reached (${enrolledToday} enrolled today)`,
     );
     return { enrolled: 0, capped: true };
   }
@@ -326,7 +326,7 @@ export async function enrollCompaniesInApollo(
   const sequenceId = process.env.APOLLO_SEQUENCE_ID ?? getDefaultApolloSequence()?.apolloId ?? "";
   if (!apiKey || !sequenceId) {
     console.warn(
-      `[Apollo] runId=${run.id} cannot enroll — APOLLO_API_KEY or APOLLO_SEQUENCE_ID unset`,
+      `[Apollo] runId=${run.id} cannot enroll: APOLLO_API_KEY or APOLLO_SEQUENCE_ID unset`,
     );
     // Echo Andrew's curated list per company so the approval flow is
     // verifiable end-to-end even without live Apollo credentials.
@@ -391,7 +391,7 @@ export async function enrollCompaniesInApollo(
             p.name ||
             "(unnamed)";
           console.log(
-            `[Apollo] enrolled ${displayName} — title="${p.title ?? "(none)"}" company="${c.companyName}"`,
+            `[Apollo] enrolled ${displayName}: title="${p.title ?? "(none)"}" company="${c.companyName}"`,
           );
         }
       }
@@ -409,7 +409,7 @@ export async function enrollCompaniesInApollo(
         enrolledThisRun += 1;
         remaining -= 1;
         console.log(
-          `[Apollo] enrolled company-only placeholder — company="${c.companyName}" job="${c.jobTitle}"`,
+          `[Apollo] enrolled company-only placeholder: company="${c.companyName}" job="${c.jobTitle}"`,
         );
       }
     }

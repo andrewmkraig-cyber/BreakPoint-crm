@@ -51,7 +51,7 @@ export function RejectCandidateDialog({
     }
   }
 
-  const subject = jobTitle ? `${candidateName} — ${jobTitle}` : candidateName;
+  const subject = jobTitle ? `${candidateName}: ${jobTitle}` : candidateName;
 
   return (
     <div

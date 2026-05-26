@@ -57,7 +57,7 @@ export async function sendSms(
   // any deployment configured with the id-only env shape.
   if (!FROM && !PHONE_NUMBER_ID) {
     const msg =
-      'Both QUO_FROM_NUMBER and QUO_PHONE_NUMBER_ID are unset — at least one is required'
+      'Both QUO_FROM_NUMBER and QUO_PHONE_NUMBER_ID are unset. At least one is required'
     console.error('[lib/quo sendSms]', msg)
     return {
       ok: false,
@@ -69,7 +69,7 @@ export async function sendSms(
     }
   }
   if (!KEY) {
-    const msg = 'QUO_API_KEY env var is not set — cannot authenticate to OpenPhone'
+    const msg = 'QUO_API_KEY env var is not set. Cannot authenticate to OpenPhone'
     console.error('[lib/quo sendSms]', msg)
     return {
       ok: false,

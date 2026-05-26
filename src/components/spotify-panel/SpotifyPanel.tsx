@@ -1638,7 +1638,7 @@ export function SpotifyPanel() {
           toast.error("Spotify can't skip here", {
             description:
               json.error ??
-              "Skip blocked — Premium account, an active device, and the right scope are all required.",
+              "Skip blocked. Premium account, an active device, and the right scope are all required.",
           });
           return;
         }
@@ -1823,12 +1823,12 @@ export function SpotifyPanel() {
           <SpotifyGlyph className="h-4 w-4 shrink-0" style={{ color: COLOR_GREEN }} />
           <span
             title={
-              activeTrack ? `${activeTrack.name} — ${activeTrack.artist}` : ""
+              activeTrack ? `${activeTrack.name} - ${activeTrack.artist}` : ""
             }
             className="flex-1 truncate text-xs font-medium text-white"
           >
             {activeTrack
-              ? `${activeTrack.name} — ${activeTrack.artist}`
+              ? `${activeTrack.name} - ${activeTrack.artist}`
               : "Spotify"}
           </span>
           <button

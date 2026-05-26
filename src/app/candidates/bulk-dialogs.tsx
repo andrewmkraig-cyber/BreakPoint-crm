@@ -83,7 +83,7 @@ export function BulkApplyDialog({
       ]
         .filter(Boolean)
         .join(" · ");
-      toast.success(`Bulk apply complete${desc ? ` — ${desc}` : ""}`);
+      toast.success(`Bulk apply complete${desc ? `: ${desc}` : ""}`);
       onDone();
     } finally {
       setBusy(false);
@@ -232,7 +232,7 @@ export function BulkAddToListDialog({
           disabled={busy}
           className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
         >
-          <option value="">— pick a list —</option>
+          <option value="">Pick a list…</option>
           {lists.map((l) => (
             <option key={l.id} value={l.id}>
               {l.name} ({l.memberCount})
@@ -596,7 +596,7 @@ export function BulkEmailDialog({
       .filter(Boolean)
       .join(" · ");
     toast.success(
-      `Sent to ${res.sent} candidate${res.sent === 1 ? "" : "s"}${tail ? ` — ${tail}` : ""}`,
+      `Sent to ${res.sent} candidate${res.sent === 1 ? "" : "s"}${tail ? `: ${tail}` : ""}`,
       res.errors.length > 0
         ? { description: res.errors.slice(0, 3).join("\n") }
         : undefined,
@@ -869,7 +869,7 @@ export function BulkEmailDialog({
             AI prompt
             {aiPrompt.trim().length > 0 && !aiPanelOpen && (
               <span className="ml-1 normal-case tracking-normal text-court-fg">
-                — &ldquo;{aiPrompt.trim().slice(0, 60)}
+                : &ldquo;{aiPrompt.trim().slice(0, 60)}
                 {aiPrompt.trim().length > 60 ? "…" : ""}&rdquo;
               </span>
             )}

@@ -1612,7 +1612,7 @@ function ActionCardLabel({ card }: { card: ActionCard }) {
       <div className="text-sm leading-snug">
         Open mail composer to{" "}
         <span className="font-semibold">{r.to || "(no recipient)"}</span>{" "}
-        — subject:{" "}
+        with subject:{" "}
         <span className="italic">{r.subject || "(no subject)"}</span>
       </div>
     );
@@ -1630,14 +1630,14 @@ function ActionCardLabel({ card }: { card: ActionCard }) {
           : "Reactivate";
     const explainer =
       r.kind === "inactivate_job"
-        ? "mark inactive — removes from the Active tab"
+        ? "mark inactive (removes from the Active tab)"
         : r.kind === "privatize_job"
-          ? "hide from the Active tab — still searchable from Private"
+          ? "hide from the Active tab (still searchable from Private)"
           : "move back to the Active tab";
     return (
       <div className="text-sm leading-snug">
         {verb} <span className="font-semibold">{r.jobTitle}</span> at{" "}
-        <span className="font-medium">{r.clientName}</span> — {explainer}.
+        <span className="font-medium">{r.clientName}</span>: {explainer}.
         {r.noOp && (
           <span className="ml-1 text-xs italic text-court-fg-muted">
             (already {r.targetLifecycle})

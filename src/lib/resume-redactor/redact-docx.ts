@@ -139,7 +139,7 @@ export async function redactDocx(
 
   const doc = new Document({
     creator: "BreakPoint Talent",
-    title: candidateName ? `${candidateName} — BreakPoint Talent` : "Resume",
+    title: candidateName ? `${candidateName} - BreakPoint Talent` : "Resume",
     sections: [
       {
         properties: {

@@ -228,7 +228,7 @@ export function NewClientForm() {
           <div className="border-b border-court-border px-5 py-3">
             <h2 className="font-serif text-base font-semibold text-court-fg">Website</h2>
             <p className="text-xs text-court-fg-muted">
-              Paste a company URL — we&apos;ll read the homepage and pre-fill the fields on the right.
+              Paste a company URL. We&apos;ll read the homepage and pre-fill the fields on the right.
             </p>
           </div>
           <div className="space-y-3 p-5">
@@ -278,7 +278,7 @@ export function NewClientForm() {
                 </span>
               ) : parseSource === "claude" ? (
                 <span className="inline-flex items-center gap-1 text-brand-dark">
-                  <Sparkles className="h-3 w-3" /> Auto-filled — edit anything on the right.
+                  <Sparkles className="h-3 w-3" /> Auto-filled. Edit anything on the right.
                 </span>
               ) : (
                 <span className="text-court-fg-muted">Auto-fill runs a moment after you stop typing.</span>
@@ -296,7 +296,7 @@ export function NewClientForm() {
               <h2 className="font-serif text-base font-semibold text-court-fg">Client fields</h2>
               <p className="text-xs text-court-fg-muted">
                 {parseSource === "claude"
-                  ? "Pre-filled — review and edit before saving."
+                  ? "Pre-filled. Review and edit before saving."
                   : "Drop a URL on the left or fill in manually."}
               </p>
             </div>
@@ -307,7 +307,7 @@ export function NewClientForm() {
               disabled={isSaving || domainCheckStatus === "duplicate"}
               title={
                 domainCheckStatus === "duplicate"
-                  ? "This domain already exists in Ace — pick a different URL."
+                  ? "This domain already exists in Ace. Pick a different URL."
                   : undefined
               }
             >

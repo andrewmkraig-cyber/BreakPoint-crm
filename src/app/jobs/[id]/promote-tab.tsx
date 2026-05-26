@@ -95,7 +95,7 @@ export function PromoteTab({
         <div className="mt-3 divide-y divide-court-border overflow-hidden rounded-lg border border-court-border/40">
           {majors.length === 0 ? (
             <div className="px-4 py-3 text-xs text-court-fg-muted">
-              Major boards aren&apos;t seeded yet — refresh in a moment.
+              Major boards aren&apos;t seeded yet. Refresh in a moment.
             </div>
           ) : (
             majors.map((row) => (

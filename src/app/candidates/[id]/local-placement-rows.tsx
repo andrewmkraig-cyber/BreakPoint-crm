@@ -474,7 +474,7 @@ function LocalJobActionRow({
           return;
         }
         toast.success(
-          sendRejectionEmail ? "Rejected — email sent" : "Rejected",
+          sendRejectionEmail ? "Rejected. Email sent" : "Rejected",
         );
         setRejectOpen(false);
         onStageChange(job.jobRfId, "rejected");
@@ -548,7 +548,7 @@ function LocalJobActionRow({
               size="sm"
               variant="client-invite"
               onClick={onClientInvite}
-              title="Log an interview the client is scheduling themselves — adds to your calendar only"
+              title="Log an interview the client is scheduling themselves. Adds to your calendar only"
             >
               <CalendarPlus className="h-3 w-3" />
               <span className="hidden sm:inline">Client Sending Invite</span>
@@ -574,7 +574,7 @@ function LocalJobActionRow({
               variant="reapply"
               onClick={onReapply}
               disabled={isReapplying}
-              title="Reapply this candidate — deletes the disqualified placement row"
+              title="Reapply this candidate. Deletes the disqualified placement row"
             >
               {isReapplying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
               <span className="hidden sm:inline">Reapply</span>
@@ -885,7 +885,7 @@ function ClientInviteDialog({
     <ModalShell title="Client sending invite" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
       <p className="mb-3 text-xs text-court-fg-muted">
         Use this when the client is scheduling the interview themselves and will send the invite. We&apos;ll
-        log it for tracking and drop it on your calendar — no invite is sent to candidate or client.
+        log it for tracking and drop it on your calendar. No invite is sent to candidate or client.
       </p>
       <ScheduleFields
         scheduledAt={scheduledAt}

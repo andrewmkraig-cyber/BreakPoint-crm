@@ -619,7 +619,7 @@ export function EmailComposer({
           throw new Error("Generator returned a non-string response.");
         }
         if (/^<!DOCTYPE|^<html|<script\b|__next_f\.push\(/i.test(text.slice(0, 1000))) {
-          throw new Error("Generator returned a page instead of text. Reload the tab and try again — your session may have expired.");
+          throw new Error("Generator returned a page instead of text. Reload the tab and try again. Your session may have expired.");
         }
         // Generator output is marker-flavored plain text. In rich text mode
         // the editor needs HTML, so run it through the caller-supplied
@@ -1193,7 +1193,7 @@ function ContactSinglePicker({
       <option value="">Select a contact…</option>
       {options.map((c) => (
         <option key={c.id} value={c.email} disabled={!c.email}>
-          {c.name}{c.email ? ` — ${c.email}` : " — no email on file"}
+          {c.name}{c.email ? ` (${c.email})` : " (no email on file)"}
         </option>
       ))}
     </select>

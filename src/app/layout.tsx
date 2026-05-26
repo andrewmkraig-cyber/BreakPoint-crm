@@ -35,7 +35,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "Ace · BreakPoint Talent",
-  description: "Ace — BreakPoint Talent's internal recruiting CRM",
+  description: "Ace: BreakPoint Talent's internal recruiting CRM",
   // ?v=3 busts the manifest cache so installed PWAs pick up the real
   // Ace logo from P3 / refreshed metadata without users having to
   // uninstall + reinstall by hand. Bump this when the manifest
