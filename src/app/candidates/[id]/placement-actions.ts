@@ -627,15 +627,19 @@ export async function confirmStart(
       if (count >= 3 && placementForFire.inst3Amount != null) remindersSet += 1;
 
       try {
-        // (a) Installment 1 draft invoice. Idempotent: skip if a custom
-        // installment draft already exists for this placement so a re-fired
-        // Confirm Start can't stack duplicate drafts.
+        // (a) Installment 1 draft invoice. Idempotent: skip if THIS
+        // placement already has its installment-1 draft so a re-fired
+        // Confirm Start can't stack duplicates. The dedupe is keyed on
+        // the "Installment 1 of " note prefix specifically — the new
+        // future drafts (2 + 3) carry a "Future - Installment N of "
+        // prefix, so a broader "custom payment agreement" match would
+        // false-positive against them and silently skip installment 1.
         const existingInstallment = await prisma.invoice.findFirst({
           where: {
             placementId: input.placementId,
             organizationId: org.id,
             status: { not: "VOID" },
-            notes: { contains: "custom payment agreement" },
+            notes: { contains: "Installment 1 of " },
           },
           select: { id: true },
         });
@@ -677,6 +681,52 @@ export async function confirmStart(
             amount: placementForFire.inst3Amount,
             days: placementForFire.inst3DaysAfterStart ?? 0,
           });
+        }
+        // Future installment drafts (2 + 3) sit alongside the reminders:
+        // the reminder is the 9 AM ET nudge to send, the invoice is the
+        // pre-staged DRAFT it points to. isFuture=true keeps them out of
+        // the main Invoices list and routes them into the Future Invoices
+        // section on /finances. Idempotent per installment number via a
+        // stable note prefix so a re-fired Confirm Start can't duplicate.
+        for (const spec of reminderSpecs) {
+          const dueIso = new Date(
+            Date.UTC(baseY, baseM, baseD + spec.days),
+          ).toISOString();
+          const dueLabel = new Date(dueIso).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          });
+          const futureNote = `Future - Installment ${spec.n} of ${count} - do not send until ${dueLabel} - custom payment agreement`;
+          const existingFuture = await prisma.invoice.findFirst({
+            where: {
+              placementId: input.placementId,
+              organizationId: org.id,
+              status: { not: "VOID" },
+              notes: { contains: `Future - Installment ${spec.n} of ` },
+            },
+            select: { id: true },
+          });
+          if (!existingFuture) {
+            const futureRes = await createDraftInvoiceAction({
+              placementId: input.placementId,
+              candidateId: placementForFire.candidateId ?? null,
+              clientId: placementForFire.clientId ?? null,
+              roleTitle: placementForFire.offerTitle ?? null,
+              startDate: new Date(Date.UTC(baseY, baseM, baseD)).toISOString(),
+              dueDate: dueIso,
+              feeAmount: String(spec.amount),
+              notes: futureNote,
+              isFuture: true,
+            });
+            if (!futureRes.ok) {
+              // eslint-disable-next-line no-console
+              console.error(`[confirmStart] installment-${spec.n} future draft failed`, {
+                placementId: input.placementId,
+                error: futureRes.error,
+              });
+            }
+          }
         }
         for (const spec of reminderSpecs) {
           // AceReminder has no separate note field, so the amount + position

@@ -85,6 +85,10 @@ export type CreateDraftInvoiceInput = {
   billingContacts?: unknown;
   hiringContacts?: unknown;
   sendFromAlias?: string | null;
+  // Marks a pre-staged installment 2/3 draft so it lands in the
+  // Future Invoices section on /finances instead of the main list.
+  // Defaults to false. Used by the Confirm Start custom-payment trigger.
+  isFuture?: boolean;
 };
 
 // Creates a DRAFT invoice from the editor's field values. This is the ONLY
@@ -123,6 +127,7 @@ export async function createDraftInvoiceAction(
         hiringContacts: sanitizeContacts(input.hiringContacts) as unknown as Prisma.InputJsonValue,
         sendFromAlias: input.sendFromAlias?.trim() || null,
         status: "DRAFT",
+        isFuture: input.isFuture === true,
       },
       select: { id: true },
     });

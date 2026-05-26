@@ -6,9 +6,11 @@ import { PeriodTabs } from "@/app/dashboard/period-tabs";
 import { resolveDashboardPeriod } from "@/app/dashboard/period-tabs-shared";
 import { InvoiceRow } from "@/app/invoices/invoice-row";
 import { SendTestInvoiceButton } from "@/app/invoices/send-test-invoice-button";
+import { FutureInvoicesSection } from "@/app/finances/future-invoices-section";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
   getInvoiceSummary,
+  listFutureInvoices,
   listInvoices,
   parseInvoiceContacts,
   type InvoiceListFilter,
@@ -113,9 +115,10 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
     (f) => f.value === rawFilter,
   )?.value ?? "all") as InvoiceListFilter;
   const org = await getCurrentOrg();
-  const [invoices, summary] = await Promise.all([
+  const [invoices, summary, futureInvoices] = await Promise.all([
     listInvoices(org.id, filter),
     getInvoiceSummary(org.id),
+    listFutureInvoices(org.id),
   ]);
 
   return (
@@ -254,6 +257,88 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
       <div className="flex justify-end">
         <SendTestInvoiceButton />
       </div>
+
+      <FutureInvoicesSection count={futureInvoices.length}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-court-border bg-court-surface-subtle/50">
+                {[
+                  "Invoice",
+                  "Client",
+                  "Candidate / Role",
+                  "Amount",
+                  "Scheduled Date",
+                  "Status",
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="px-6 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted"
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {futureInvoices.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-6 py-14 text-center text-[13px] text-court-fg-muted"
+                  >
+                    No future installments scheduled.
+                  </td>
+                </tr>
+              ) : (
+                futureInvoices.map((inv) => {
+                  const billing = parseInvoiceContacts(inv.billingContacts);
+                  const primary = billing[0];
+                  const candName = inv.candidate
+                    ? orDash(
+                        `${inv.candidate.firstName ?? ""} ${inv.candidate.lastName ?? ""}`.trim(),
+                      )
+                    : "—";
+                  return (
+                    <InvoiceRow key={inv.id} href={`/invoices/${inv.id}`}>
+                      <td className="px-6 py-3 align-top">
+                        <span className="font-mono text-[12px] font-semibold text-court-fg">
+                          {orDash(inv.invoiceNumber)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3 align-top">
+                        <div className="font-medium text-court-fg">
+                          {orDash(inv.client?.name)}
+                        </div>
+                        <div className="text-[12px] text-court-fg-muted">
+                          {orDash(primary?.name)}
+                        </div>
+                      </td>
+                      <td className="px-6 py-3 align-top">
+                        <div className="font-medium text-court-fg">{candName}</div>
+                        <div className="text-[12px] text-court-fg-muted">
+                          {orDash(inv.roleTitle)}
+                        </div>
+                      </td>
+                      <td className="px-6 py-3 align-top tabular-nums">
+                        {formatUsdDecimal(inv.feeAmount)}
+                      </td>
+                      <td className="px-6 py-3 align-top text-court-fg-muted">
+                        {formatDate(inv.dueDate)}
+                      </td>
+                      <td className="px-6 py-3 align-top">
+                        <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-amber-800">
+                          Scheduled
+                        </span>
+                      </td>
+                    </InvoiceRow>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </FutureInvoicesSection>
     </div>
   );
 }

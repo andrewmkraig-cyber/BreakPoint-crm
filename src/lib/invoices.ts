@@ -189,9 +189,12 @@ export async function markInvoiceSent(
   });
   if (!invoice) throw new Error("Invoice not found");
   if (invoice.status === "SENT" || invoice.status === "PAID") return;
+  // Clear isFuture on transition so a previously-future installment
+  // joins the normal Sent list instead of staying hidden in the Future
+  // Invoices section forever.
   await prisma.invoice.update({
     where: { id: invoice.id },
-    data: { status: "SENT", sentAt: new Date() },
+    data: { status: "SENT", sentAt: new Date(), isFuture: false },
   });
   await logActivity({
     organizationId,
@@ -217,9 +220,12 @@ export async function markInvoicePaid(
   });
   if (!invoice) throw new Error("Invoice not found");
   if (invoice.status === "PAID") return;
+  // Clear isFuture on transition (covers a direct DRAFT→PAID path) so a
+  // previously-future installment doesn't stay hidden in the Future
+  // section after collection.
   await prisma.invoice.update({
     where: { id: invoice.id },
-    data: { status: "PAID", paidAt: new Date(), paymentMethod },
+    data: { status: "PAID", paidAt: new Date(), paymentMethod, isFuture: false },
   });
   if (invoice.placementId) {
     await prisma.placement.update({
@@ -286,7 +292,12 @@ export async function listInvoices(
   organizationId: string,
   filter: InvoiceListFilter = "all",
 ) {
-  const where: Prisma.InvoiceWhereInput = { organizationId };
+  // Future installment drafts (isFuture=true) are pre-staged for the
+  // Future Invoices section on /finances and must never show in the
+  // main All / Drafts / status lists. markInvoiceSent / markInvoicePaid
+  // flip isFuture back to false on transition, so a sent future invoice
+  // rejoins the normal lists automatically.
+  const where: Prisma.InvoiceWhereInput = { organizationId, isFuture: false };
   const today = new Date();
   if (filter === "drafts") where.status = "DRAFT";
   else if (filter === "sent") where.status = "SENT";
@@ -313,6 +324,30 @@ export async function listInvoices(
       createdAt: true,
       billingContacts: true,
       hiringContacts: true,
+      candidate: { select: { id: true, firstName: true, lastName: true } },
+      client: { select: { id: true, name: true } },
+      placement: { select: { id: true } },
+    },
+  });
+}
+
+// Pre-staged installment 2 / 3 drafts. Ordered by the scheduled date
+// (dueDate) ascending so the soonest-to-send row is on top. Status is
+// always DRAFT for rows in this set — a future invoice that ships
+// (SENT/PAID) has its isFuture cleared and graduates to listInvoices.
+export async function listFutureInvoices(organizationId: string) {
+  return prisma.invoice.findMany({
+    where: { organizationId, isFuture: true, status: "DRAFT" },
+    orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+    select: {
+      id: true,
+      invoiceNumber: true,
+      status: true,
+      roleTitle: true,
+      feeAmount: true,
+      dueDate: true,
+      createdAt: true,
+      billingContacts: true,
       candidate: { select: { id: true, firstName: true, lastName: true } },
       client: { select: { id: true, name: true } },
       placement: { select: { id: true } },
@@ -420,7 +455,12 @@ export async function getInvoiceSummary(organizationId: string): Promise<Invoice
         },
         select: { feeAmount: true },
       }),
-      prisma.invoice.count({ where: { organizationId, status: "DRAFT" } }),
+      prisma.invoice.count({
+        // Drafts KPI represents sendable drafts only; future installment
+        // drafts live in the separate Future Invoices section and would
+        // inflate this count otherwise.
+        where: { organizationId, status: "DRAFT", isFuture: false },
+      }),
       prisma.placement.findMany({
         where: {
           organizationId,

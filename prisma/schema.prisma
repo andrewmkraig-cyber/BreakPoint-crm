@@ -1193,12 +1193,20 @@ model Invoice {
   // fall back to the billing AR email if it's a verified alias, otherwise
   // the Gmail account's primary address.
   sendFromAlias   String?
+  // True when this draft is a pre-staged "future" installment that
+  // should NOT appear in the main Invoices list. Set on installment 2/3
+  // drafts created at Confirm Start for placements with custom payment
+  // terms; the Future Invoices section on /finances surfaces these.
+  // Cleared automatically when the invoice is marked SENT or PAID so it
+  // joins the normal lists from that point on.
+  isFuture        Boolean       @default(false)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId])
   @@index([clientId])
+  @@index([organizationId, isFuture])
 }
 
 enum InvoiceStatus {
