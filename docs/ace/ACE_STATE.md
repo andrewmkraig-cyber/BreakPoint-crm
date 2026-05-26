@@ -1,10 +1,21 @@
 # ACE_STATE.md
-Last updated: 2026-05-23 · Ace 66.0
+Last updated: 2026-05-26 · Ace 67.0
 
 ## Current Status
-Current Version: Ace 66.0
-Last Shipped: 2026-05-23
+Current Version: Ace 67.0
+Last Shipped: 2026-05-26
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.0 (2026-05-26)
+
+ATS consolidation: the standalone /applicants page was folded into /pipeline as the first two stage tabs so a candidate is followed from intake through hired without leaving the surface.
+
+- **Pipeline gains Applicants + Kept tabs (b144ad2).** Stage strip is now Applicants → Kept → Submitted → Interviewing → Offer → Pending Start → Hired so it reads in the chronological order a candidate moves through it. Submit / Keep / Reject (Applicants) and Submit / Remove (Kept) row actions carried over from the old /applicants page; bulk Reject works on both new tabs.
+- **Owner scope + deep-links extended.** The Mine / Theirs / All dropdown now scopes Applicants + Kept the same way it scopes the main stages, and the ?clientId / ?jobId deep-links emitted from client/job stat pills now also filter the two new tabs.
+- **/applicants page deleted; nav cleaned up.** Sidebar ATS group is now Candidates → Pipeline (the User lucide import dropped with it). mobile-nav and top-bar-page-title /applicants entries removed. candidate-profile-nav legacy "applicants" snapshot source routes to /pipeline?stage=applied so older sessionStorage entries still land somewhere.
+- **Server-action cleanup.** /app/applicants/actions.ts moved to /app/pipeline/applicants-actions.ts with revalidatePath('/applicants') retargeted to /pipeline. setApplicantStatus dropped (dead code). 9 redundant revalidatePath('/applicants') calls stripped from candidate-side placement-actions / local-placement-actions — each was already paired with a /pipeline revalidation.
+
+Next task: TBD — opens with Andrew's live verification of the new Applicants + Kept tabs (counts, row actions, owner scope, search) in production.
 
 ## What Shipped in Ace 66.0 (2026-05-23)
 
