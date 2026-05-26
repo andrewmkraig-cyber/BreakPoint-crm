@@ -65,7 +65,7 @@ export function RejectCandidateDialog({
         className="w-full max-w-md rounded-xl border border-court-border backdrop-blur-sm bg-court-surface/95 p-5 shadow-[0_24px_64px_rgba(0,0,0,0.25),0_4px_16px_rgba(0,0,0,0.15)]"
       >
         <div className="mb-3 flex items-start justify-between gap-3">
-          <h2 className="font-serif text-base font-semibold text-court-fg">
+          <h2 className="min-w-0 break-words font-serif text-base font-semibold text-court-fg">
             Reject {subject}?
           </h2>
           <button
@@ -73,16 +73,15 @@ export function RejectCandidateDialog({
             onClick={onClose}
             disabled={busy}
             aria-label="Close"
-            className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-60"
+            className="shrink-0 rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-60"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
-        <p className="mb-4 text-xs text-court-fg-muted">
-          This moves the placement to <span className="font-semibold">Rejected</span>{" "}
-          and removes the candidate from the active pipeline for this job. The
-          row stays in Ace for audit history — it just stops showing in the
-          live counts.
+        <p className="mb-4 break-words text-xs text-court-fg-muted">
+          Moves the placement to <span className="font-semibold">Rejected</span>{" "}
+          and pulls the candidate off the active pipeline. The row stays in Ace
+          for audit history.
         </p>
         <label className="flex cursor-pointer items-start gap-2 rounded-md border border-court-border bg-court-surface-subtle/40 p-3 text-sm">
           <input
@@ -90,15 +89,15 @@ export function RejectCandidateDialog({
             checked={sendEmail}
             onChange={(e) => setSendEmail(e.target.checked)}
             disabled={busy}
-            className="mt-0.5 h-4 w-4 cursor-pointer accent-brand"
+            className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-brand"
           />
-          <span className="min-w-0 flex-1">
+          <span className="min-w-0 flex-1 break-words">
             <span className="block text-court-fg">
               Send rejection email to the candidate
             </span>
             <span className="block text-[11px] text-court-fg-muted">
-              Fires the active <em>Candidate Rejected</em> template from
-              Settings → Email Templates. Off by default.
+              Fires the active <em>Candidate Rejected</em> template. Off by
+              default.
             </span>
           </span>
         </label>
