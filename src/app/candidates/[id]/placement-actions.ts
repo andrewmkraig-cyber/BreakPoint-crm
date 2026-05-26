@@ -464,6 +464,69 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
         select: { id: true, syncedToRf: true },
       });
     }
+
+    // Auto-update the candidate's displayed comp from the accepted salary.
+    // The profile's "Expected compensation" row reads from both the
+    // top-level Candidate.expectedSalary column AND raw.expected_salary
+    // (the snake_case mirror inside Candidate.raw — see actions.ts
+    // updateCandidate lines 129-131 + 144-150 for the canonical write
+    // shape), so we update both here to stay in parity with the manual
+    // edit flow.
+    //
+    // Guards: only fire when acceptedSalary is a positive number, and
+    // skip when the candidate's existing comp already matches that value
+    // so a no-op edit isn't a redundant write. A null/zero/missing
+    // acceptedSalary falls through entirely — the existing comp is never
+    // wiped by a placement save that didn't capture a salary.
+    if (
+      typeof input.acceptedSalary === "number" &&
+      input.acceptedSalary > 0
+    ) {
+      const candidateRow = await prisma.candidate.findFirst({
+        where: { rfId: input.candidateRfId, organizationId: org.id },
+        select: { id: true, raw: true, expectedSalary: true },
+      });
+      if (candidateRow) {
+        // Read the current displayed number off raw.expected_salary first
+        // (that's the source the profile actually renders); fall back to
+        // the top-level column if raw doesn't carry the key yet.
+        const rawObj =
+          (candidateRow.raw as Record<string, unknown> | null) ?? {};
+        const rawSalary = rawObj.expected_salary as
+          | { number?: number | null; currency?: string | null }
+          | null
+          | undefined;
+        const columnSalary = candidateRow.expectedSalary as
+          | { number?: number | null; currency?: string | null }
+          | null
+          | undefined;
+        const currentNumber =
+          (typeof rawSalary?.number === "number" ? rawSalary.number : null) ??
+          (typeof columnSalary?.number === "number"
+            ? columnSalary.number
+            : null);
+        if (currentNumber !== input.acceptedSalary) {
+          const newExpectedSalary = {
+            number: input.acceptedSalary,
+            currency: (input.acceptedCurrency || "USD")
+              .toUpperCase()
+              .slice(0, 3),
+          };
+          const nextRaw: Record<string, unknown> = {
+            ...rawObj,
+            expected_salary: newExpectedSalary,
+          };
+          await prisma.candidate.update({
+            where: { id: candidateRow.id },
+            data: {
+              expectedSalary: newExpectedSalary as Prisma.InputJsonValue,
+              raw: nextRaw as Prisma.InputJsonValue,
+            },
+          });
+        }
+      }
+    }
+
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/pipeline`);
     revalidatePath(`/dashboard`);
