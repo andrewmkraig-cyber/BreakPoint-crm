@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Send, Target } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { formatLocation } from "@/lib/utils";
+import { cn, formatLocation } from "@/lib/utils";
 import { extractCandidateFields } from "@/lib/candidate-fields";
 import { getCandidateByIdentifier, getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import {
@@ -617,66 +617,78 @@ export default async function CandidateProfilePage({
             containerId="resume-document-content"
           />
         )}
-        {/* Split-view only: mt-4 clears the chrome above the pills and
-            mb-4 opens a gap before the tab strip, matching the spacing the
-            full profile gets from its space-y-6 / pipeline section. */}
-        <div className="mb-4 mt-4">
-          <PlacementActionsIsland
-            candidateRfId={id}
-            candidateFirstName={extractedName.firstName}
-            candidateLastName={extractedName.lastName}
-            candidateEmail={extractedName.email}
-            candidatePhone={phoneValue}
-            candidateLocation={locationLabel ?? ""}
-            candidateCurrentTitle={c.current_designation ?? ""}
-            candidateCurrentEmployer={c.current_organization ?? ""}
-            recruiter={(() => {
-              const email = session?.user?.email ?? "";
-              const fullName = session?.user?.name ?? "";
-              const firstName = fullName.split(/\s+/)[0] ?? "";
-              const phone = email
-                ? prefs.recruiterPhones[email] ?? prefs.recruiterPhones[email.toLowerCase()] ?? ""
-                : "";
-              return { firstName, fullName, email, phone };
-            })()}
-            jobs={placementJobs}
-            openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)), jobCuidByRfId, clientCuidByRfId })}
-            aceTeam={aceTeam}
-          />
-        </div>
         <div className="flex h-[calc(100vh-3rem)] gap-4 md:h-[calc(100vh-4rem)]">
-          {/* Left column. Resume sits as high as possible — the action
-              row above it is the only thing between the iframe top and
-              the resume PDF. CompactOverview moved to the right rail
-              so it's not duplicated against the resume header. */}
+          {/* Left column. Resume sits as high as possible — only the
+              sticky pipeline + tabs + action bundle sits between the
+              iframe top and the resume PDF. CompactOverview moved to
+              the right rail so it's not duplicated against the resume
+              header. */}
           <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-            <UnderlineTabs tab={tab} candidateId={id} embed />
-            <div className="flex flex-wrap items-center gap-2">
-              <Link
-                href={`/candidates/${id}?embed=true&openSubmit=1`}
-                className={SUBMIT_LINK_CLASS}
-              >
-                <Send className="h-3 w-3" /> Submit to Job
-              </Link>
-              <Link
-                href={`/candidates/${id}?embed=true&openApply=1`}
-                className={APPLY_LINK_CLASS}
-              >
-                <Target className="h-3 w-3" /> Apply to Job
-              </Link>
-              <KeepCandidateButton
-                candidateId={candidate.id}
-                isKept={isKept}
-                // Border bumped to blue-400 so the chip reads at the
-                // same visual weight as Submit's brand border on the
-                // candidate-profile action row.
-                className="border-blue-400 text-sm dark:border-blue-500"
+            {/* Single sticky bundle pinned to the top of the scroll
+                container: job pill rows on top, then the tabs +
+                action row. Submit/Apply/Keep/Add-to-List stay in
+                view at every scroll position, and the job pill
+                headers stay visible alongside them so the recruiter
+                can act on an active placement without scrolling
+                back up. PlacementActionsIsland's own empty-state
+                handles the no-placements case in-line. */}
+            <div className="sticky top-0 z-10 -mx-1 mt-4 space-y-2 rounded-lg bg-court-bg/85 px-1 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
+              <PlacementActionsIsland
+                candidateRfId={id}
+                candidateFirstName={extractedName.firstName}
+                candidateLastName={extractedName.lastName}
+                candidateEmail={extractedName.email}
+                candidatePhone={phoneValue}
+                candidateLocation={locationLabel ?? ""}
+                candidateCurrentTitle={c.current_designation ?? ""}
+                candidateCurrentEmployer={c.current_organization ?? ""}
+                recruiter={(() => {
+                  const email = session?.user?.email ?? "";
+                  const fullName = session?.user?.name ?? "";
+                  const firstName = fullName.split(/\s+/)[0] ?? "";
+                  const phone = email
+                    ? prefs.recruiterPhones[email] ?? prefs.recruiterPhones[email.toLowerCase()] ?? ""
+                    : "";
+                  return { firstName, fullName, email, phone };
+                })()}
+                jobs={placementJobs}
+                openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)), jobCuidByRfId, clientCuidByRfId })}
+                aceTeam={aceTeam}
               />
-              <AddToListButton
-              candidateId={candidate.id}
-              candidateName={name}
-              className="border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
-            />
+              <div className="flex items-center justify-between gap-3">
+                <UnderlineTabs tab={tab} candidateId={id} embed />
+                <div className="flex min-w-0 shrink items-center gap-2">
+                  <Link
+                    href={`/candidates/${id}?embed=true&openSubmit=1`}
+                    className={cn(SUBMIT_LINK_CLASS, "min-w-0")}
+                    title="Submit to Job"
+                  >
+                    <Send className="h-3 w-3 shrink-0" />
+                    <span className="truncate">Submit</span>
+                  </Link>
+                  <Link
+                    href={`/candidates/${id}?embed=true&openApply=1`}
+                    className={cn(APPLY_LINK_CLASS, "min-w-0")}
+                    title="Apply to Job"
+                  >
+                    <Target className="h-3 w-3 shrink-0" />
+                    <span className="truncate">Apply to Job</span>
+                  </Link>
+                  <KeepCandidateButton
+                    candidateId={candidate.id}
+                    isKept={isKept}
+                    // Border bumped to blue-400 so the chip reads at the
+                    // same visual weight as Submit's brand border on the
+                    // candidate-profile action row.
+                    className="min-w-0 border-blue-400 text-sm dark:border-blue-500"
+                  />
+                  <AddToListButton
+                    candidateId={candidate.id}
+                    candidateName={name}
+                    className="min-w-0 border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
+                  />
+                </div>
+              </div>
             </div>
             {tab === "game-plan" ? (
               <AiWorkspace
@@ -750,78 +762,94 @@ export default async function CandidateProfilePage({
           page for SEO / a11y - it just renders inside the sidebar
           card now instead of as a floating header band. */}
 
-      {/* Pipeline section is always mounted so the header Submit to Job
-          link can open the Submit modal even when the candidate has no
-          placements yet. When jobs is empty, PlacementActions renders
-          its own dashed "click Submit to Job to add one" empty state. */}
-      <section id="pipeline">
-        <PlacementActionsIsland
-          candidateRfId={id}
-          candidateFirstName={extractedName.firstName}
-          candidateLastName={extractedName.lastName}
-          candidateEmail={extractedName.email}
-          candidatePhone={phoneValue}
-          candidateLocation={locationLabel ?? ""}
-          candidateCurrentTitle={c.current_designation ?? ""}
-          candidateCurrentEmployer={c.current_organization ?? ""}
-          recruiter={(() => {
-            const email = session?.user?.email ?? "";
-            const fullName = session?.user?.name ?? "";
-            const firstName = fullName.split(/\s+/)[0] ?? "";
-            const phone = email
-              ? prefs.recruiterPhones[email] ?? prefs.recruiterPhones[email.toLowerCase()] ?? ""
-              : "";
-            return { firstName, fullName, email, phone };
-          })()}
-          jobs={placementJobs}
-          openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)), jobCuidByRfId, clientCuidByRfId })}
-          aceTeam={aceTeam}
-        />
-      </section>
-
-      {/* Two-column layout. Left column is the working surface — the
-          Profile/Game Plan/Notes tab strip, then the action row, then
-          the tab content (Resume on Profile, AiWorkspace on Game Plan,
-          notes editor on Notes). The right column is a tight reference
-          rail (compact overview + skills + activity). The redundant
+      {/* Two-column layout. Left column is the working surface — a
+          single sticky bundle (pipeline + tab strip + action row),
+          then the tab content (Resume on Profile, AiWorkspace on
+          Game Plan, notes editor on Notes). The right column is a
+          tight reference rail (compact overview + skills + activity).
+          Pipeline section moved INTO the left column so it shares
+          a sticky wrapper with the tabs + action row — job pill
+          headers stay visible alongside Submit/Apply/Keep/Add when
+          the recruiter scrolls deep into the resume. The redundant
           large identity card was dropped in favor of the single
           CompactOverview box. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="space-y-4 lg:col-span-8">
-          <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center gap-3 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
-            <UnderlineTabs tab={tab} candidateId={id} />
-            {displayTags.slice(0, 3).map((t) => (
-              <span key={t} className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-medium text-court-fg-muted">
-                {t}
-              </span>
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href={`/candidates/${id}?openSubmit=1`}
-              className={SUBMIT_LINK_CLASS}
-            >
-              <Send className="h-3 w-3" /> Submit to Job
-            </Link>
-            <Link
-              href={`/candidates/${id}?openApply=1`}
-              className={APPLY_LINK_CLASS}
-            >
-              <Target className="h-3 w-3" /> Apply to Job
-            </Link>
-            <KeepCandidateButton
-              candidateId={candidate.id}
-              isKept={isKept}
-              // Border bumped to blue-400 so the chip reads at the
-              // same visual weight as Submit's brand border on the
-              // candidate-profile action row.
-              className="border-blue-400 text-sm dark:border-blue-500"
-            />
-            <AddToListButton
-              candidateId={candidate.id}
-              candidateName={name}
-              className="border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
-            />
+          {/* Single sticky bundle: job pill rows on top, then
+              Profile/Game Plan/Notes tabs aligned left + Submit/
+              Apply/Keep/Add-to-List right-aligned with the resume's
+              right edge. flex-nowrap + min-w-0 on the action group
+              ellipsizes labels at narrow widths instead of wrapping
+              to a second row. PlacementActionsIsland's empty-state
+              handles candidates with no placements yet in-line, so
+              the sticky bar still mounts here even pre-first-apply
+              (gives the header Submit link a live modal to open). */}
+          <div className="sticky top-20 z-10 -mx-2 space-y-2 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
+            <section id="pipeline">
+              <PlacementActionsIsland
+                candidateRfId={id}
+                candidateFirstName={extractedName.firstName}
+                candidateLastName={extractedName.lastName}
+                candidateEmail={extractedName.email}
+                candidatePhone={phoneValue}
+                candidateLocation={locationLabel ?? ""}
+                candidateCurrentTitle={c.current_designation ?? ""}
+                candidateCurrentEmployer={c.current_organization ?? ""}
+                recruiter={(() => {
+                  const email = session?.user?.email ?? "";
+                  const fullName = session?.user?.name ?? "";
+                  const firstName = fullName.split(/\s+/)[0] ?? "";
+                  const phone = email
+                    ? prefs.recruiterPhones[email] ?? prefs.recruiterPhones[email.toLowerCase()] ?? ""
+                    : "";
+                  return { firstName, fullName, email, phone };
+                })()}
+                jobs={placementJobs}
+                openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)), jobCuidByRfId, clientCuidByRfId })}
+                aceTeam={aceTeam}
+              />
+            </section>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <UnderlineTabs tab={tab} candidateId={id} />
+                {displayTags.slice(0, 3).map((t) => (
+                  <span key={t} className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-medium text-court-fg-muted">
+                    {t}
+                  </span>
+                ))}
+              </div>
+              <div className="flex min-w-0 shrink items-center gap-2">
+                <Link
+                  href={`/candidates/${id}?openSubmit=1`}
+                  className={cn(SUBMIT_LINK_CLASS, "min-w-0")}
+                  title="Submit to Job"
+                >
+                  <Send className="h-3 w-3 shrink-0" />
+                  <span className="truncate">Submit</span>
+                </Link>
+                <Link
+                  href={`/candidates/${id}?openApply=1`}
+                  className={cn(APPLY_LINK_CLASS, "min-w-0")}
+                  title="Apply to Job"
+                >
+                  <Target className="h-3 w-3 shrink-0" />
+                  <span className="truncate">Apply to Job</span>
+                </Link>
+                <KeepCandidateButton
+                  candidateId={candidate.id}
+                  isKept={isKept}
+                  // Border bumped to blue-400 so the chip reads at the
+                  // same visual weight as Submit's brand border on the
+                  // candidate-profile action row.
+                  className="min-w-0 border-blue-400 text-sm dark:border-blue-500"
+                />
+                <AddToListButton
+                  candidateId={candidate.id}
+                  candidateName={name}
+                  className="min-w-0 border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
+                />
+              </div>
+            </div>
           </div>
           {tab === "game-plan" ? (
             <AiWorkspace

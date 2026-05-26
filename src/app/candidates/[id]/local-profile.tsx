@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Target } from "lucide-react";
+import { Send, Target } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { getRfClientsForOrg, getRfContactsForOrg, getRfJobsForOrg } from "@/lib/candidates";
@@ -523,52 +523,67 @@ export async function LocalCandidateProfile({
               moved to the right rail so it's not duplicated against the
               resume header. */}
           <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-            {/* Always mounted: LocalPlacementRows renders null when there
-                are no placements but keeps its apply-event listener live so
-                the first Apply-to-Job shows its pill without a reload. */}
-            <LocalPlacementRows
-              candidateId={candidate.id}
-              candidateName={fullName}
-              candidateEmail={candidate.email}
-              candidatePhone={candidate.phone}
-              candidateLocation={candidate.location}
-              candidateCurrentTitle={candidate.currentDesignation}
-              candidateCurrentEmployer={candidate.currentOrganization}
-              recruiter={recruiter}
-              jobs={jobRows}
-              aceTeam={aceTeam}
-              className="mt-4"
-              embed
-            />
-            {/* Single sticky bar in the split-view scroll container —
-                tabs left, action buttons right-aligned with the resume's
-                right edge. sticky top-0 anchors to the scroll container
-                (the overflow-y-auto parent flex column) so the pipeline
-                strip above scrolls away while these stay pinned.
-                flex-nowrap + min-w-0 lets the action group ellipsize
-                button labels instead of wrapping to a second row when
-                the embed panel is narrow. */}
-            <div className="sticky top-0 z-10 -mx-1 flex items-center justify-between gap-3 rounded-lg bg-court-bg/85 px-1 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
-              <UnderlineTabs tab={tab} candidateId={candidate.id} embed />
-              <div className="flex min-w-0 shrink items-center gap-2">
-                <Link
-                  href={`/candidates/${candidate.id}?embed=true&openApply=1`}
-                  className={cn(APPLY_LINK_CLASS, "min-w-0")}
-                  title="Apply to Job"
-                >
-                  <Target className="h-3 w-3 shrink-0" />
-                  <span className="truncate">Apply to Job</span>
-                </Link>
-                <KeepCandidateButton
-                  candidateId={candidate.id}
-                  isKept={isKeptEmbed}
-                  className="min-w-0 border-blue-400 text-sm dark:border-blue-500"
-                />
-                <AddToListButton
-                  candidateId={candidate.id}
-                  candidateName={fullName}
-                  className="min-w-0 border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
-                />
+            {/* Single sticky bundle pinned to the top of the scroll
+                container: job pill rows on top, then the tabs +
+                action row. Submit/Apply/Keep/Add-to-List stay in
+                view at every scroll position, and the job pill
+                headers (with their per-row Submit/Schedule/etc.
+                affordances) stay visible alongside them so the
+                recruiter can act on the active placement without
+                scrolling back up. When the candidate has no jobs
+                LocalPlacementRows returns null and the sticky bar
+                collapses to just the tabs + action row. */}
+            <div className="sticky top-0 z-10 -mx-1 mt-4 space-y-2 rounded-lg bg-court-bg/85 px-1 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
+              {/* Always mounted: LocalPlacementRows renders null when there
+                  are no placements but keeps its apply-event listener live
+                  so the first Apply-to-Job shows its pill without a
+                  reload. */}
+              <LocalPlacementRows
+                candidateId={candidate.id}
+                candidateName={fullName}
+                candidateEmail={candidate.email}
+                candidatePhone={candidate.phone}
+                candidateLocation={candidate.location}
+                candidateCurrentTitle={candidate.currentDesignation}
+                candidateCurrentEmployer={candidate.currentOrganization}
+                recruiter={recruiter}
+                jobs={jobRows}
+                aceTeam={aceTeam}
+                embed
+              />
+              {/* flex-nowrap + min-w-0 lets the action group ellipsize
+                  button labels instead of wrapping to a second row when
+                  the embed panel is narrow. */}
+              <div className="flex items-center justify-between gap-3">
+                <UnderlineTabs tab={tab} candidateId={candidate.id} embed />
+                <div className="flex min-w-0 shrink items-center gap-2">
+                  <Link
+                    href={`/candidates/${candidate.id}?embed=true&openSubmit=1`}
+                    className={cn(SUBMIT_LINK_CLASS, "min-w-0")}
+                    title="Submit to Job"
+                  >
+                    <Send className="h-3 w-3 shrink-0" />
+                    <span className="truncate">Submit</span>
+                  </Link>
+                  <Link
+                    href={`/candidates/${candidate.id}?embed=true&openApply=1`}
+                    className={cn(APPLY_LINK_CLASS, "min-w-0")}
+                    title="Apply to Job"
+                  >
+                    <Target className="h-3 w-3 shrink-0" />
+                    <span className="truncate">Apply to Job</span>
+                  </Link>
+                  <KeepCandidateButton
+                    candidateId={candidate.id}
+                    isKept={isKeptEmbed}
+                    className="min-w-0 border-blue-400 text-sm dark:border-blue-500"
+                  />
+                  <AddToListButton
+                    candidateId={candidate.id}
+                    candidateName={fullName}
+                    className="min-w-0 border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
+                  />
+                </div>
               </div>
             </div>
             {tab === "game-plan" ? (
@@ -652,67 +667,80 @@ export async function LocalCandidateProfile({
         openJobs={openJobs}
         hideButtons
       />
-      {/* Pipeline section. LocalPlacementRows renders null when there are
-          no placements, so the section is empty until the candidate is
-          applied/submitted to a job. It stays mounted regardless so its
-          apply-event listener is live and the first Apply-to-Job shows its
-          pill immediately. Header was removed - the row card already shows
-          the job + stage chip. */}
-      <section id="pipeline">
-        <LocalPlacementRows
-          candidateId={candidate.id}
-          candidateName={fullName}
-          candidateEmail={candidate.email}
-          candidatePhone={candidate.phone}
-          candidateLocation={candidate.location}
-          candidateCurrentTitle={candidate.currentDesignation}
-          candidateCurrentEmployer={candidate.currentOrganization}
-          recruiter={recruiter}
-          jobs={jobRows}
-          aceTeam={aceTeam}
-        />
-      </section>
-
-      {/* Two-column layout. Left column is the working surface — the
-          Profile/Game Plan/Notes tab strip, then the action row, then
-          the tab content (Resume on Profile, AiWorkspace on Game Plan,
-          notes editor on Notes). The right column is a tight reference
-          rail (compact overview + skills + activity). The redundant
-          large identity card was dropped in favor of the single
-          CompactOverview box. */}
+      {/* Two-column layout. Left column is the working surface — a
+          single sticky bundle (pipeline + tab strip + action row),
+          then the tab content (Resume on Profile, AiWorkspace on
+          Game Plan, notes editor on Notes). The right column is a
+          tight reference rail (compact overview + skills + activity).
+          Pipeline section moved INTO the left column so it shares
+          a sticky wrapper with the tabs + action row — job pill
+          headers now stay visible alongside Submit/Apply/Keep/Add
+          when the recruiter scrolls deep into the resume. The
+          redundant large identity card was dropped in favor of the
+          single CompactOverview box. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="space-y-4 lg:col-span-8">
-          {/* Single sticky bar pinning Profile/Game Plan/Notes on the
-              left and Apply/Keep/Add-to-List on the right edge of the
-              resume column. Merging the two former rows keeps the action
-              buttons in view while scrolling the resume and tightens the
-              gap between the bar and the resume below from two rows to
-              one. flex-nowrap + min-w-0 lets the action group ellipsize
-              labels rather than wrap to a second row at narrow widths. */}
-          <div className="sticky top-20 z-10 -mx-2 flex items-center justify-between gap-3 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
-            <UnderlineTabs tab={tab} candidateId={candidate.id} />
-            <div className="flex min-w-0 shrink items-center gap-2">
-              <Link
-                href={`/candidates/${candidate.id}?openApply=1`}
-                className={cn(APPLY_LINK_CLASS, "min-w-0")}
-                title="Apply to Job"
-              >
-                <Target className="h-3 w-3 shrink-0" />
-                <span className="truncate">Apply to Job</span>
-              </Link>
-              <KeepCandidateButton
-                candidateId={candidate.id}
-                isKept={(candidate.tags ?? []).some((t) => {
-                  const lower = t.trim().toLowerCase();
-                  return lower === "kept" || lower === "keep";
-                })}
-                className="min-w-0 border-blue-400 text-sm dark:border-blue-500"
-              />
-              <AddToListButton
+          {/* Single sticky bundle: job pill rows on top, then
+              Profile/Game Plan/Notes tabs aligned left + Submit/
+              Apply/Keep/Add-to-List right-aligned with the resume's
+              right edge. When the candidate has no placements
+              LocalPlacementRows returns null and the sticky bar
+              collapses to just the tabs + action row. flex-nowrap
+              + min-w-0 on the action group ellipsizes labels rather
+              than wrapping to a second row at narrow widths. */}
+          <div className="sticky top-20 z-10 -mx-2 space-y-2 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
+            {/* Pipeline section. LocalPlacementRows renders null when
+                there are no placements, so the section is empty until
+                the candidate is applied/submitted to a job. It stays
+                mounted regardless so its apply-event listener is live
+                and the first Apply-to-Job shows its pill immediately. */}
+            <section id="pipeline">
+              <LocalPlacementRows
                 candidateId={candidate.id}
                 candidateName={fullName}
-                className="min-w-0 border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
+                candidateEmail={candidate.email}
+                candidatePhone={candidate.phone}
+                candidateLocation={candidate.location}
+                candidateCurrentTitle={candidate.currentDesignation}
+                candidateCurrentEmployer={candidate.currentOrganization}
+                recruiter={recruiter}
+                jobs={jobRows}
+                aceTeam={aceTeam}
               />
+            </section>
+            <div className="flex items-center justify-between gap-3">
+              <UnderlineTabs tab={tab} candidateId={candidate.id} />
+              <div className="flex min-w-0 shrink items-center gap-2">
+                <Link
+                  href={`/candidates/${candidate.id}?openSubmit=1`}
+                  className={cn(SUBMIT_LINK_CLASS, "min-w-0")}
+                  title="Submit to Job"
+                >
+                  <Send className="h-3 w-3 shrink-0" />
+                  <span className="truncate">Submit</span>
+                </Link>
+                <Link
+                  href={`/candidates/${candidate.id}?openApply=1`}
+                  className={cn(APPLY_LINK_CLASS, "min-w-0")}
+                  title="Apply to Job"
+                >
+                  <Target className="h-3 w-3 shrink-0" />
+                  <span className="truncate">Apply to Job</span>
+                </Link>
+                <KeepCandidateButton
+                  candidateId={candidate.id}
+                  isKept={(candidate.tags ?? []).some((t) => {
+                    const lower = t.trim().toLowerCase();
+                    return lower === "kept" || lower === "keep";
+                  })}
+                  className="min-w-0 border-blue-400 text-sm dark:border-blue-500"
+                />
+                <AddToListButton
+                  candidateId={candidate.id}
+                  candidateName={fullName}
+                  className="min-w-0 border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
+                />
+              </div>
             </div>
           </div>
           {tab === "game-plan" ? (
@@ -787,6 +815,14 @@ async function LocalNotesTab({ candidateId }: { candidateId: string }) {
 // every button).
 const APPLY_LINK_CLASS =
   "inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-400 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60";
+
+// Submit to Job chip — tinted brand green, rounded-md. Mirrors the
+// legacy RF-candidate page.tsx SUBMIT_LINK_CLASS so the affirmative
+// submittal action reads identically across both render paths.
+// Submit is wired through LocalCandidateActions' ?openSubmit=1
+// listener (mounted with hideButtons=true so its modals stay live).
+const SUBMIT_LINK_CLASS =
+  "inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25";
 
 function UnderlineTabs({
   tab,
