@@ -21,7 +21,6 @@ import {
   StickyNote,
   Sun,
   Trophy,
-  User,
   Users,
   X,
   type LucideIcon,
@@ -74,7 +73,6 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
     title: "ATS",
     items: [
       { href: "/pipeline", label: "Pipeline", icon: GitBranch },
-      { href: "/applicants", label: "Applicants", icon: User },
       { href: "/candidates", label: "Candidates", icon: Users },
     ],
   },

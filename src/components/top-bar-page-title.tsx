@@ -46,7 +46,6 @@ function resolveGroup(pathname: string): string | undefined {
   if (pathname === "/dashboard" || pathname.startsWith("/dashboard?")) return "Home";
   if (
     pathname.startsWith("/pipeline")
-    || pathname.startsWith("/applicants")
     || pathname.startsWith("/candidates")
   ) {
     return "ATS";
@@ -172,7 +171,6 @@ function resolveBaseSpec(
   }
 
   if (pathname === "/pipeline") return { title: { label: "Pipeline" } };
-  if (pathname === "/applicants") return { title: { label: "Applicants" } };
   if (pathname === "/notes") return { title: { label: "Notes" } };
   // BD module — title flips per active tab so the topbar mirrors the
   // section the recruiter is looking at, instead of a flat "BD" label.

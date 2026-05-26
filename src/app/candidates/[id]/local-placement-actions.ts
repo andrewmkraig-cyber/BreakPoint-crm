@@ -648,7 +648,6 @@ export async function reapplyLocalPlacement(input: {
       },
     });
     if (placement.candidateId) revalidatePath(`/candidates/${placement.candidateId}`);
-    revalidatePath(`/applicants`);
     revalidatePath(`/pipeline`);
     return { ok: true };
   } catch (e) {
@@ -701,7 +700,6 @@ export async function dismissPlacementFromProfile(input: {
     });
     if (placement.candidateId) revalidatePath(`/candidates/${placement.candidateId}`);
     if (placement.candidateRfId != null) revalidatePath(`/candidates/${placement.candidateRfId}`);
-    revalidatePath(`/applicants`);
     revalidatePath(`/pipeline`);
     return { ok: true };
   } catch (e) {

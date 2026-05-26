@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
-import { Bookmark, CalendarClock, CheckCircle2, ChevronDown, DollarSign, Edit3, Handshake, Loader2, Search, UserX, X } from "lucide-react";
+import { Bookmark, CalendarClock, CheckCircle2, ChevronDown, ChevronUp, DollarSign, Edit3, Handshake, Loader2, Search, Send, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { Pagination } from "@/components/pagination";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
@@ -20,6 +20,14 @@ import {
 } from "@/components/ui/data-table";
 import { TabStrip } from "@/components/ui/tab-strip";
 import { rejectLocalPlacement } from "@/app/candidates/[id]/local-placement-actions";
+import { rejectCandidateJob } from "@/app/candidates/[id]/placement-actions";
+import {
+  keepCandidateForJob,
+  keepLocalCandidateForJob,
+  rejectLocalCandidateJob,
+  removeKeptCandidate,
+  removeLocalKeptCandidate,
+} from "@/app/pipeline/applicants-actions";
 import { setCandidateNavList } from "@/lib/candidate-nav";
 import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
 import {
@@ -32,7 +40,18 @@ import {
 } from "@/components/placements/guarantee-period-table";
 import { resolveGuaranteeEnd } from "@/components/placements/guarantee-period-utils";
 
-type Stage = keyof typeof PIPELINE_LABELS;
+// Stage type now includes the two intake stages that used to live on
+// /applicants. PIPELINE_LABELS only covers the main 5 (its type
+// excludes applied/kept on purpose to keep counters that aren't pipeline-
+// progression-aware honest), so a local label override carries the
+// intake-stage labels.
+type Stage = "applied" | "kept" | keyof typeof PIPELINE_LABELS;
+
+const STAGE_LABEL: Record<Stage, string> = {
+  applied: "Applicants",
+  kept: "Kept",
+  ...PIPELINE_LABELS,
+};
 
 export type OwnerScope = "mine" | "theirs" | "all";
 
@@ -92,7 +111,7 @@ export type PipelineRow = {
   jobTitle: string;
   clientName: string;
   stageName: string;
-  bucket: Stage;
+  bucket: keyof typeof PIPELINE_LABELS;
   lastActionAt: string | null;
   daysInStage: number | null;
   isKept: boolean;
@@ -105,8 +124,39 @@ export type PipelineRow = {
   nextInterview: NextInterview | null;
 };
 
+// Intake-stage row shapes (Applicants + Kept). polymorphic ids match
+// PipelineRow — RF numeric for imported, cuid for Ace-native.
+export type AppliedRow = {
+  candidateId: number | string;
+  candidateName: string;
+  jobId: number | string;
+  jobTitle: string;
+  jobLocation: string;
+  clientRfId: number | null;
+  clientName: string;
+  appliedAt: string | null;
+  source: string | null;
+  // Owner of the parent client. Resolved server-side so the page-level
+  // owner-scope filter can apply the same Mine/Theirs/All cut here.
+  clientOwnerId: string | null;
+};
+
+export type KeptRow = {
+  candidateId: number | string;
+  candidateName: string;
+  jobId: number | string;
+  jobTitle: string;
+  jobLocation: string;
+  clientRfId: number | null;
+  clientName: string;
+  keptAt: string;
+  clientOwnerId: string | null;
+};
+
 type PipelineViewProps = {
   rows: PipelineRow[];
+  appliedRows: AppliedRow[];
+  keptRows: KeptRow[];
   total: number;
   page: number;
   totalPages: number;
@@ -119,7 +169,18 @@ type PipelineViewProps = {
   error: string | null;
 };
 
-const STAGE_ORDER: Stage[] = ["submitted", "interviewing", "offer", "pending_start", "hired"];
+// Intake stages render before the main-pipeline stages so the strip
+// reads in the order a candidate moves through it (Applicants → Kept →
+// Submitted → Interviewing → Offer → Pending Start → Hired).
+const STAGE_ORDER: Stage[] = [
+  "applied",
+  "kept",
+  "submitted",
+  "interviewing",
+  "offer",
+  "pending_start",
+  "hired",
+];
 
 // Stages where per-row Reject (and therefore bulk Reject) is offered.
 // Pending Start + Hired have their own custom action cells and aren't
@@ -128,6 +189,10 @@ const REJECTABLE_STAGES: Stage[] = ["submitted", "interviewing", "offer"];
 
 function isRejectableStage(s: Stage): boolean {
   return (REJECTABLE_STAGES as readonly Stage[]).includes(s);
+}
+
+function isIntakeStage(s: Stage): s is "applied" | "kept" {
+  return s === "applied" || s === "kept";
 }
 
 // Soft-green native dropdown matching the /clients OwnerScopeSelect
@@ -161,7 +226,7 @@ function OwnerScopeSelect({
   );
 }
 
-export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q, counts, owner, otherUserName, error }: PipelineViewProps) {
+export function PipelineView({ rows, appliedRows, keptRows, total, page, totalPages, pageSize, stage, q, counts, owner, otherUserName, error }: PipelineViewProps) {
   const router = useRouter();
   const params = useSearchParams();
   const [query, setQuery] = useState(q);
@@ -297,12 +362,16 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
     if (typeof window === "undefined") return;
     const params2 = new URLSearchParams(params?.toString() ?? "");
     const qs = params2.toString();
+    const backHref = qs ? `/pipeline?${qs}` : "/pipeline";
+    const visibleIds = isIntakeStage(stage)
+      ? (stage === "applied" ? appliedRows : keptRows).map((r) => String(r.candidateId))
+      : rows.map((r) => String(r.candidateId));
     setCandidateNavList({
       source: "pipeline",
-      backHref: qs ? `/pipeline?${qs}` : "/pipeline",
-      ids: rows.map((r) => String(r.candidateId)),
+      backHref,
+      ids: visibleIds,
     });
-  }, [rows, params]);
+  }, [rows, appliedRows, keptRows, stage, params]);
 
   // Hired-tab guarantee rows: surface every hired placement that has been
   // billed or paid, has a start date, and still has an active guarantee
@@ -390,282 +459,300 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
         </div>
       )}
 
-      {showCheckboxCol && selectedPlacementIds.size > 0 && (
-        <div className="flex items-center justify-between rounded-xl border border-court-accent/40 bg-court-accent-tint px-4 py-2 text-sm shadow-sm">
-          <div className="flex items-center gap-3">
-            <span className="font-semibold text-court-fg">
-              {selectedPlacementIds.size} selected
-            </span>
-            <button
-              type="button"
-              onClick={() => setSelectedPlacementIds(new Set())}
-              className="inline-flex items-center gap-1 text-xs text-court-fg-muted transition hover:text-court-fg"
-            >
-              <X className="h-3 w-3" /> Clear
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="reject"
-              size="sm"
-              onClick={() => setBulkRejectOpen(true)}
-              disabled={bulkBusy}
-              className="h-7 px-3 text-[11px]"
-            >
-              {bulkBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
-              Reject {selectedPlacementIds.size}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      <div className="overflow-hidden rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-left text-sm">
-            <DataTableHead>
-              <tr className="bg-court-surface border-b border-court-border/60">
-                {showCheckboxCol && (
-                  <DataTableHeaderCell align="center">
-                    <input
-                      ref={headerCheckboxRef}
-                      type="checkbox"
-                      aria-label="Select all rejectable rows on this page"
-                      checked={allSelected}
-                      disabled={selectableRows.length === 0}
-                      onChange={toggleAll}
-                      className="h-3.5 w-3.5 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40"
-                    />
-                  </DataTableHeaderCell>
-                )}
-                <DataTableHeaderCell>Candidate</DataTableHeaderCell>
-                <DataTableHeaderCell>Job</DataTableHeaderCell>
-                <DataTableHeaderCell>Client</DataTableHeaderCell>
-                {stage === "pending_start" ? (
-                  <>
-                    <DataTableHeaderCell align="center">Start Date</DataTableHeaderCell>
-                    <DataTableHeaderCell align="center">Days Until</DataTableHeaderCell>
-                    <DataTableHeaderCell align="right">Action</DataTableHeaderCell>
-                  </>
-                ) : stage === "hired" ? (
-                  <>
-                    <DataTableHeaderCell align="center">Salary</DataTableHeaderCell>
-                    <DataTableHeaderCell align="center">Fee</DataTableHeaderCell>
-                    <DataTableHeaderCell align="center">Start Date</DataTableHeaderCell>
-                    <DataTableHeaderCell>Billing Contact</DataTableHeaderCell>
-                    <DataTableHeaderCell align="center">Invoicing</DataTableHeaderCell>
-                  </>
-                ) : (
-                  <>
-                    <DataTableHeaderCell align="center">Stage</DataTableHeaderCell>
-                    <DataTableHeaderCell align="center">Last Action</DataTableHeaderCell>
-                    <DataTableHeaderCell align="center">Days in Stage</DataTableHeaderCell>
-                    <DataTableHeaderCell align="right" />
-                  </>
-                )}
-              </tr>
-            </DataTableHead>
-            <DataTableBody>
-              {rows.length === 0 && !error && (
-                <tr>
-                  <td
-                    colSpan={
-                      (stage === "hired" ? 8 : stage === "pending_start" ? 6 : 7) +
-                      (showCheckboxCol ? 1 : 0)
-                    }
-                    className="px-4 py-12 text-center text-sm text-court-fg-muted"
-                  >
-                    No candidates in {PIPELINE_LABELS[stage]}
-                    {q ? ` matching "${q}"` : ""}.
-                  </td>
-                </tr>
-              )}
-              {rows.map((r) => (
-                <DataTableRow
-                  key={`${r.candidateId}-${r.jobId}`}
-                  className="cursor-pointer"
-                  onClick={() => {
-                    // Hired-stage rows open the inline edit drawer; every
-                    // other stage keeps the existing candidate-profile
-                    // jump (action buttons / links inside the row already
-                    // stopPropagation, so their behaviour is unchanged).
-                    if (r.bucket === "hired" && r.placement && r.placementId) {
-                      openPlacementDrawer(r);
-                      return;
-                    }
-                    router.push(`/candidates/${r.candidateId}`);
-                  }}
+      {isIntakeStage(stage) ? (
+        stage === "applied" ? (
+          <IntakeTable
+            kind="applied"
+            applied={appliedRows}
+            kept={[]}
+          />
+        ) : (
+          <IntakeTable
+            kind="kept"
+            applied={[]}
+            kept={keptRows}
+          />
+        )
+      ) : (
+        <>
+          {showCheckboxCol && selectedPlacementIds.size > 0 && (
+            <div className="flex items-center justify-between rounded-xl border border-court-accent/40 bg-court-accent-tint px-4 py-2 text-sm shadow-sm">
+              <div className="flex items-center gap-3">
+                <span className="font-semibold text-court-fg">
+                  {selectedPlacementIds.size} selected
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPlacementIds(new Set())}
+                  className="inline-flex items-center gap-1 text-xs text-court-fg-muted transition hover:text-court-fg"
                 >
-                  {showCheckboxCol && (
-                    <td
-                      className="w-px px-3 py-3 align-top text-center"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {r.placementId && isRejectableStage(r.bucket) ? (
+                  <X className="h-3 w-3" /> Clear
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="reject"
+                  size="sm"
+                  onClick={() => setBulkRejectOpen(true)}
+                  disabled={bulkBusy}
+                  className="h-7 px-3 text-[11px]"
+                >
+                  {bulkBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
+                  Reject {selectedPlacementIds.size}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <div className="overflow-hidden rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[820px] text-left text-sm">
+                <DataTableHead>
+                  <tr className="bg-court-surface border-b border-court-border/60">
+                    {showCheckboxCol && (
+                      <DataTableHeaderCell align="center">
                         <input
+                          ref={headerCheckboxRef}
                           type="checkbox"
-                          aria-label={`Select ${r.candidateName}`}
-                          checked={selectedPlacementIds.has(r.placementId)}
-                          onChange={() => toggleRow(r.placementId as string)}
-                          className="h-3.5 w-3.5 cursor-pointer accent-brand"
+                          aria-label="Select all rejectable rows on this page"
+                          checked={allSelected}
+                          disabled={selectableRows.length === 0}
+                          onChange={toggleAll}
+                          className="h-3.5 w-3.5 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40"
                         />
-                      ) : null}
-                    </td>
+                      </DataTableHeaderCell>
+                    )}
+                    <DataTableHeaderCell>Candidate</DataTableHeaderCell>
+                    <DataTableHeaderCell>Job</DataTableHeaderCell>
+                    <DataTableHeaderCell>Client</DataTableHeaderCell>
+                    {stage === "pending_start" ? (
+                      <>
+                        <DataTableHeaderCell align="center">Start Date</DataTableHeaderCell>
+                        <DataTableHeaderCell align="center">Days Until</DataTableHeaderCell>
+                        <DataTableHeaderCell align="right">Action</DataTableHeaderCell>
+                      </>
+                    ) : stage === "hired" ? (
+                      <>
+                        <DataTableHeaderCell align="center">Salary</DataTableHeaderCell>
+                        <DataTableHeaderCell align="center">Fee</DataTableHeaderCell>
+                        <DataTableHeaderCell align="center">Start Date</DataTableHeaderCell>
+                        <DataTableHeaderCell>Billing Contact</DataTableHeaderCell>
+                        <DataTableHeaderCell align="center">Invoicing</DataTableHeaderCell>
+                      </>
+                    ) : (
+                      <>
+                        <DataTableHeaderCell align="center">Stage</DataTableHeaderCell>
+                        <DataTableHeaderCell align="center">Last Action</DataTableHeaderCell>
+                        <DataTableHeaderCell align="center">Days in Stage</DataTableHeaderCell>
+                        <DataTableHeaderCell align="right" />
+                      </>
+                    )}
+                  </tr>
+                </DataTableHead>
+                <DataTableBody>
+                  {rows.length === 0 && !error && (
+                    <tr>
+                      <td
+                        colSpan={
+                          (stage === "hired" ? 8 : stage === "pending_start" ? 6 : 7) +
+                          (showCheckboxCol ? 1 : 0)
+                        }
+                        className="px-4 py-12 text-center text-sm text-court-fg-muted"
+                      >
+                        No candidates in {STAGE_LABEL[stage]}
+                        {q ? ` matching "${q}"` : ""}.
+                      </td>
+                    </tr>
                   )}
-                  <td className="px-4 py-3 align-top">
-                    <div className="flex items-start gap-2">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-court-surface-subtle text-[11px] font-semibold text-court-fg-muted">
-                        {initials(r.candidateName)}
-                      </div>
-                      <div className="min-w-0">
-                        <Link
-                          href={`/candidates/${r.candidateId}`}
-                          className="inline-flex items-center gap-1 font-medium text-court-fg hover:text-court-accent-dark"
+                  {rows.map((r) => (
+                    <DataTableRow
+                      key={`${r.candidateId}-${r.jobId}`}
+                      className="cursor-pointer"
+                      onClick={() => {
+                        // Hired-stage rows open the inline edit drawer; every
+                        // other stage keeps the existing candidate-profile
+                        // jump (action buttons / links inside the row already
+                        // stopPropagation, so their behaviour is unchanged).
+                        if (r.bucket === "hired" && r.placement && r.placementId) {
+                          openPlacementDrawer(r);
+                          return;
+                        }
+                        router.push(`/candidates/${r.candidateId}`);
+                      }}
+                    >
+                      {showCheckboxCol && (
+                        <td
+                          className="w-px px-3 py-3 align-top text-center"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          {r.candidateName}
-                          {/* Kept badge sits in the Keep-button blue family
-                              but one step darker (blue-100/800 vs the Keep
-                              button's blue-50/700) so the bookmark indicator
-                              stays distinct from the interviewing stage
-                              chip, which already owns the lighter blue. */}
-                          {r.isKept && (
-                            <span
-                              className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-blue-800 dark:bg-blue-950/60 dark:text-blue-100"
-                              title="Kept candidate"
-                            >
-                              <Bookmark className="h-2.5 w-2.5" /> Kept
-                            </span>
-                          )}
-                        </Link>
-                        {r.candidateTitle && (
-                          <div className="truncate text-xs text-court-fg-muted">{r.candidateTitle}</div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <Link
-                      href={`/jobs/${r.jobId}`}
-                      className="text-[13px] font-normal text-court-fg hover:text-court-accent-dark"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {r.jobTitle || "—"}
-                    </Link>
-                    {r.bucket === "interviewing" && r.nextInterview && (
-                      <Link
-                        href={`/candidates/${r.candidateId}?edit=interview&interviewId=${encodeURIComponent(r.nextInterview.id)}`}
-                        onClick={(e) => e.stopPropagation()}
-                        title="Edit interview"
-                        aria-label="Edit interview"
-                        className="mt-0.5 inline-flex items-center gap-1 rounded text-[11px] text-court-fg-muted underline-offset-2 transition hover:text-court-fg hover:underline"
-                      >
-                        <CalendarClock className="h-3 w-3" />
-                        Next: {formatInterviewWhen(r.nextInterview.scheduledAt)} · {formatInterviewTypeShort(r.nextInterview.type)}
-                      </Link>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 align-top text-court-fg-muted">{r.clientName || "—"}</td>
-
-                  {stage === "pending_start" ? (
-                    <PendingStartCells row={r} />
-                  ) : stage === "hired" ? (
-                    <HiredCells row={r} />
-                  ) : (
-                    <>
-                      <td className="px-4 py-3 align-top text-center">
-                        <StageChip stageName={r.stageName} bucket={r.bucket} placement={r.placement} />
-                      </td>
-                      <td className="px-4 py-3 align-top text-center text-xs text-court-fg-muted">
-                        {formatDate(r.lastActionAt)}
-                      </td>
-                      <td className="px-4 py-3 align-top text-center">
-                        <StageAgePill value={r.daysInStage} />
-                      </td>
-                      <td className="w-px whitespace-nowrap px-4 py-3 align-top">
-                        {/* Schedule (submitted) + Offer (interviewing) sit
-                            left of Reject. Both deep-link to the candidate
-                            profile — the full modal flows live there.
-                            Labels collapse to icon-only below md so the
-                            action column stays visible when the page
-                            decompresses; w-px + whitespace-nowrap on the
-                            cell pins it to its natural width and forces
-                            other columns (Job/Client) to compress first. */}
-                        <div className="flex items-center justify-end gap-1.5">
-                          {r.bucket === "submitted" && (
-                            // Anchor-shaped twin of <Button variant="schedule">.
-                            // Token classes mirror the variant so the Schedule
-                            // link reads identically to other calendar actions
-                            // (e.g. Schedule Interview on the candidate
-                            // profile) without nesting a <button> in a Link.
+                          {r.placementId && isRejectableStage(r.bucket) ? (
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${r.candidateName}`}
+                              checked={selectedPlacementIds.has(r.placementId)}
+                              onChange={() => toggleRow(r.placementId as string)}
+                              className="h-3.5 w-3.5 cursor-pointer accent-brand"
+                            />
+                          ) : null}
+                        </td>
+                      )}
+                      <td className="px-4 py-3 align-top">
+                        <div className="flex items-start gap-2">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-court-surface-subtle text-[11px] font-semibold text-court-fg-muted">
+                            {initials(r.candidateName)}
+                          </div>
+                          <div className="min-w-0">
                             <Link
                               href={`/candidates/${r.candidateId}`}
+                              className="inline-flex items-center gap-1 font-medium text-court-fg hover:text-court-accent-dark"
                               onClick={(e) => e.stopPropagation()}
-                              className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2.5 text-[11px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
-                              title="Schedule interview on candidate profile"
-                              aria-label="Schedule interview"
                             >
-                              <CalendarClock className="h-3 w-3" />
-                              <span className="hidden md:inline">Schedule</span>
+                              {r.candidateName}
+                              {/* Kept badge sits in the Keep-button blue family
+                                  but one step darker (blue-100/800 vs the Keep
+                                  button's blue-50/700) so the bookmark indicator
+                                  stays distinct from the interviewing stage
+                                  chip, which already owns the lighter blue. */}
+                              {r.isKept && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-blue-800 dark:bg-blue-950/60 dark:text-blue-100"
+                                  title="Kept candidate"
+                                >
+                                  <Bookmark className="h-2.5 w-2.5" /> Kept
+                                </span>
+                              )}
                             </Link>
-                          )}
-                          {r.bucket === "interviewing" && (
-                            <Link
-                              href={`/candidates/${r.candidateId}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-purple-200 bg-purple-50 px-2.5 text-[11px] font-semibold text-purple-700 shadow-sm transition hover:bg-purple-100 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-950/60"
-                              title="Record offer on candidate profile"
-                              aria-label="Record offer"
-                            >
-                              <DollarSign className="h-3 w-3" />
-                              <span className="hidden md:inline">Offer</span>
-                            </Link>
-                          )}
-                          {r.bucket === "offer" && (
-                            // Green Placement link mirroring the
-                            // candidate-profile Placement button.
-                            // ?edit=placement&jobId=NN auto-opens the
-                            // PlacementDialog when jobId is the RF
-                            // numeric — Ace-native cuid rows just land
-                            // on the profile (still the same modal,
-                            // one extra click). The candidate page
-                            // strips the params after firing so
-                            // refreshes don't re-open the modal.
-                            <Link
-                              href={`/candidates/${r.candidateId}?edit=placement&jobId=${r.jobId}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-2.5 text-[11px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
-                              title="Record placement"
-                              aria-label="Record placement"
-                            >
-                              <Handshake className="h-3 w-3" />
-                              <span className="hidden md:inline">Placement</span>
-                            </Link>
-                          )}
-                          {(r.bucket === "submitted" ||
-                            r.bucket === "interviewing" ||
-                            r.bucket === "offer") &&
-                            r.placementId && (
-                              <RejectButton placementId={r.placementId} candidateName={r.candidateName} />
+                            {r.candidateTitle && (
+                              <div className="truncate text-xs text-court-fg-muted">{r.candidateTitle}</div>
                             )}
+                          </div>
                         </div>
                       </td>
-                    </>
-                  )}
-                </DataTableRow>
-              ))}
-            </DataTableBody>
-          </table>
-        </div>
-        <Pagination
-          page={page}
-          totalPages={totalPages}
-          total={total}
-          pageSize={pageSize}
-          buildHref={(p) => buildHref({ page: p })}
-          label="submittals"
-        />
-      </div>
+                      <td className="px-4 py-3 align-top">
+                        <Link
+                          href={`/jobs/${r.jobId}`}
+                          className="text-[13px] font-normal text-court-fg hover:text-court-accent-dark"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {r.jobTitle || "—"}
+                        </Link>
+                        {r.bucket === "interviewing" && r.nextInterview && (
+                          <Link
+                            href={`/candidates/${r.candidateId}?edit=interview&interviewId=${encodeURIComponent(r.nextInterview.id)}`}
+                            onClick={(e) => e.stopPropagation()}
+                            title="Edit interview"
+                            aria-label="Edit interview"
+                            className="mt-0.5 inline-flex items-center gap-1 rounded text-[11px] text-court-fg-muted underline-offset-2 transition hover:text-court-fg hover:underline"
+                          >
+                            <CalendarClock className="h-3 w-3" />
+                            Next: {formatInterviewWhen(r.nextInterview.scheduledAt)} · {formatInterviewTypeShort(r.nextInterview.type)}
+                          </Link>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 align-top text-court-fg-muted">{r.clientName || "—"}</td>
+
+                      {stage === "pending_start" ? (
+                        <PendingStartCells row={r} />
+                      ) : stage === "hired" ? (
+                        <HiredCells row={r} />
+                      ) : (
+                        <>
+                          <td className="px-4 py-3 align-top text-center">
+                            <StageChip stageName={r.stageName} bucket={r.bucket} placement={r.placement} />
+                          </td>
+                          <td className="px-4 py-3 align-top text-center text-xs text-court-fg-muted">
+                            {formatDate(r.lastActionAt)}
+                          </td>
+                          <td className="px-4 py-3 align-top text-center">
+                            <StageAgePill value={r.daysInStage} />
+                          </td>
+                          <td className="w-px whitespace-nowrap px-4 py-3 align-top">
+                            {/* Schedule (submitted) + Offer (interviewing) sit
+                                left of Reject. Both deep-link to the candidate
+                                profile — the full modal flows live there.
+                                Labels collapse to icon-only below md so the
+                                action column stays visible when the page
+                                decompresses; w-px + whitespace-nowrap on the
+                                cell pins it to its natural width and forces
+                                other columns (Job/Client) to compress first. */}
+                            <div className="flex items-center justify-end gap-1.5">
+                              {r.bucket === "submitted" && (
+                                // Anchor-shaped twin of <Button variant="schedule">.
+                                // Token classes mirror the variant so the Schedule
+                                // link reads identically to other calendar actions
+                                // (e.g. Schedule Interview on the candidate
+                                // profile) without nesting a <button> in a Link.
+                                <Link
+                                  href={`/candidates/${r.candidateId}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2.5 text-[11px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
+                                  title="Schedule interview on candidate profile"
+                                  aria-label="Schedule interview"
+                                >
+                                  <CalendarClock className="h-3 w-3" />
+                                  <span className="hidden md:inline">Schedule</span>
+                                </Link>
+                              )}
+                              {r.bucket === "interviewing" && (
+                                <Link
+                                  href={`/candidates/${r.candidateId}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-purple-200 bg-purple-50 px-2.5 text-[11px] font-semibold text-purple-700 shadow-sm transition hover:bg-purple-100 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-950/60"
+                                  title="Record offer on candidate profile"
+                                  aria-label="Record offer"
+                                >
+                                  <DollarSign className="h-3 w-3" />
+                                  <span className="hidden md:inline">Offer</span>
+                                </Link>
+                              )}
+                              {r.bucket === "offer" && (
+                                // Green Placement link mirroring the
+                                // candidate-profile Placement button.
+                                // ?edit=placement&jobId=NN auto-opens the
+                                // PlacementDialog when jobId is the RF
+                                // numeric — Ace-native cuid rows just land
+                                // on the profile (still the same modal,
+                                // one extra click). The candidate page
+                                // strips the params after firing so
+                                // refreshes don't re-open the modal.
+                                <Link
+                                  href={`/candidates/${r.candidateId}?edit=placement&jobId=${r.jobId}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-2.5 text-[11px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
+                                  title="Record placement"
+                                  aria-label="Record placement"
+                                >
+                                  <Handshake className="h-3 w-3" />
+                                  <span className="hidden md:inline">Placement</span>
+                                </Link>
+                              )}
+                              {(r.bucket === "submitted" ||
+                                r.bucket === "interviewing" ||
+                                r.bucket === "offer") &&
+                                r.placementId && (
+                                  <RejectButton placementId={r.placementId} candidateName={r.candidateName} />
+                                )}
+                            </div>
+                          </td>
+                        </>
+                      )}
+                    </DataTableRow>
+                  ))}
+                </DataTableBody>
+              </table>
+            </div>
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              pageSize={pageSize}
+              buildHref={(p) => buildHref({ page: p })}
+              label="submittals"
+            />
+          </div>
+        </>
+      )}
       {stage === "hired" && (
         <GuaranteePeriodTable rows={guaranteeRows} />
       )}
@@ -866,7 +953,7 @@ function StageTabs({
       activeId={stage}
       items={STAGE_ORDER.map((s) => ({
         id: s,
-        label: PIPELINE_LABELS[s],
+        label: STAGE_LABEL[s],
         count: counts[s],
         href: buildHref({ stage: s, page: 1 }),
       }))}
@@ -879,7 +966,7 @@ function StageChip({
   bucket,
 }: {
   stageName: string;
-  bucket: Stage;
+  bucket: keyof typeof PIPELINE_LABELS;
   placement?: PlacementDetails | null;
 }) {
   return <StageBadge bucket={bucket} label={stageName || PIPELINE_LABELS[bucket]} />;
@@ -969,4 +1056,646 @@ function initials(name: string): string {
     .slice(0, 2)
     .map((s) => s[0]?.toUpperCase() ?? "")
     .join("");
+}
+
+// ============================================================
+// Intake-stage table (Applicants + Kept) — formerly /applicants
+// ============================================================
+//
+// One <IntakeTable> handles both stages via `kind`. The shape is so
+// close (same header layout, same row click → candidate profile, same
+// bulk-reject pattern) that splitting into two components meant
+// duplicating ~250 lines of identical scaffolding.
+
+function rowKey(r: { candidateId: number | string; jobId: number | string }): string {
+  return `${r.candidateId}-${r.jobId}`;
+}
+
+// Render the Placement.source / RF source_name into a human label.
+function formatSourceLabel(raw: string | null): string {
+  if (!raw) return "—";
+  if (raw === "recruiter_applied") return "Recruiter Applied";
+  return raw;
+}
+
+function JobCell({
+  jobId,
+  jobTitle,
+  jobLocation,
+  clientName,
+}: {
+  jobId: number | string;
+  jobTitle: string;
+  jobLocation: string;
+  clientName: string;
+}) {
+  const headLine = jobLocation ? `${jobTitle} - ${jobLocation}` : jobTitle;
+  return (
+    <div>
+      <Link href={`/jobs/${jobId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
+        {headLine}
+      </Link>
+      {clientName && <div className="text-xs text-court-fg-muted">{clientName}</div>}
+    </div>
+  );
+}
+
+// Shared row-action chip styles. Mirrors the Applicants-page palette so
+// recruiters see the same Submit / Keep / Reject silhouettes after the
+// merge. Submit reuses the Court Mode brand tokens so the affirmative
+// action follows whichever Court Mode is active.
+const ROW_ACTION_BASE =
+  "inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border px-2.5 text-[11px] font-semibold shadow-sm transition disabled:opacity-60";
+
+const ROW_ACTION_CLASS = {
+  primary: cn(
+    ROW_ACTION_BASE,
+    "border-court-brand bg-court-brand-tint text-court-brand-dark hover:bg-court-brand/25",
+  ),
+  keep: cn(
+    ROW_ACTION_BASE,
+    "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60",
+  ),
+  reject: cn(
+    ROW_ACTION_BASE,
+    "border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60",
+  ),
+};
+
+function RowActionButton({
+  tone,
+  label,
+  icon,
+  onClick,
+  disabled,
+}: {
+  tone: "primary" | "keep" | "reject";
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      className={ROW_ACTION_CLASS[tone]}
+    >
+      {icon}
+      <span className="hidden sm:inline">{label}</span>
+    </button>
+  );
+}
+
+type IntakeSortKey = "name" | "job" | "when" | "source";
+type IntakeSortDir = "asc" | "desc";
+
+// Single source of truth for dispatching a per-row reject — used by
+// both the row-level Reject button (Applied tab) and the bulk handler.
+async function rejectOneApplicant(
+  r: { candidateId: number | string; jobId: number | string; clientRfId: number | null },
+  previousStage: "applied" | "kept",
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const isAceJob = typeof r.jobId === "string";
+  const jobRfId = isAceJob ? null : (r.jobId as number);
+  const jobId = isAceJob ? (r.jobId as string) : null;
+  const clientRfId = r.clientRfId;
+  if (typeof r.candidateId === "string") {
+    return rejectLocalCandidateJob({
+      candidateId: r.candidateId,
+      jobRfId,
+      clientRfId,
+      jobId,
+      previousStage,
+      reason: "",
+    });
+  }
+  return rejectCandidateJob({
+    candidateRfId: r.candidateId,
+    jobRfId: jobRfId ?? 0,
+    clientRfId: clientRfId ?? 0,
+    jobCuid: jobId,
+    previousStage,
+    reason: "",
+  });
+}
+
+function IntakeTable({
+  kind,
+  applied,
+  kept,
+}: {
+  kind: "applied" | "kept";
+  applied: AppliedRow[];
+  kept: KeptRow[];
+}) {
+  const router = useRouter();
+  const [sortKey, setSortKey] = useState<IntakeSortKey>("when");
+  const [sortDir, setSortDir] = useState<IntakeSortDir>("desc");
+
+  const sortedApplied = useMemo(
+    () => sortApplied(applied, sortKey, sortDir),
+    [applied, sortKey, sortDir],
+  );
+  const sortedKept = useMemo(() => sortKept(kept, sortKey, sortDir), [kept, sortKey, sortDir]);
+
+  // Bulk selection — keyed by `${candidateId}-${jobId}`. Cleared on
+  // stage flip via the parent component's key swap (each kind renders
+  // a fresh IntakeTable instance).
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
+  const [bulkRejectOpen, setBulkRejectOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const visibleRows: Array<AppliedRow | KeptRow> =
+    kind === "applied" ? sortedApplied : sortedKept;
+  const visibleKeys = useMemo(() => visibleRows.map((r) => rowKey(r)), [visibleRows]);
+  const allSelected =
+    visibleKeys.length > 0 && visibleKeys.every((k) => selectedKeys.has(k));
+  const someSelected = selectedKeys.size > 0 && !allSelected;
+  const headerCheckboxRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (headerCheckboxRef.current) {
+      headerCheckboxRef.current.indeterminate = someSelected;
+    }
+  }, [someSelected]);
+
+  function toggleRow(key: string) {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+  function toggleAll() {
+    setSelectedKeys((prev) => {
+      if (prev.size === visibleKeys.length && visibleKeys.length > 0) {
+        return new Set();
+      }
+      return new Set(visibleKeys);
+    });
+  }
+
+  async function onBulkRejectConfirm({ sendRejectionEmail: _sendRejectionEmail }: { sendRejectionEmail: boolean }) {
+    // Intake reject actions don't yet support a send-email toggle (only
+    // the placement-id-keyed pipeline reject does), so the dialog's
+    // checkbox is informational here. Underscored param documents the
+    // intentional drop.
+    void _sendRejectionEmail;
+    const keys = new Set(selectedKeys);
+    if (keys.size === 0) return;
+    setBulkBusy(true);
+    const previousStage: "applied" | "kept" = kind;
+    const targets = visibleRows.filter((r) => keys.has(rowKey(r)));
+    let ok = 0;
+    let fail = 0;
+    for (const r of targets) {
+      try {
+        const clientRfId = "clientRfId" in r ? r.clientRfId : null;
+        const res = await rejectOneApplicant(
+          {
+            candidateId: r.candidateId,
+            jobId: r.jobId,
+            clientRfId,
+          },
+          previousStage,
+        );
+        if (res.ok) ok += 1;
+        else fail += 1;
+      } catch {
+        fail += 1;
+      }
+    }
+    setBulkBusy(false);
+    setBulkRejectOpen(false);
+    setSelectedKeys(new Set());
+    if (fail === 0) {
+      toast.success(`Rejected ${ok}`);
+    } else if (ok === 0) {
+      toast.error(`Couldn't reject (${fail} failed)`);
+    } else {
+      toast.warning(`Rejected ${ok}, ${fail} failed`);
+    }
+    router.refresh();
+  }
+
+  function toggleSort(k: IntakeSortKey) {
+    if (sortKey === k) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(k);
+      setSortDir(k === "when" ? "desc" : "asc");
+    }
+  }
+
+  const colSpan = kind === "applied" ? 6 : 5;
+
+  return (
+    <div className="space-y-4">
+      {selectedKeys.size > 0 && (
+        <div className="flex items-center justify-between rounded-xl border border-court-accent/40 bg-court-accent-tint px-4 py-2 text-sm shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="font-semibold text-court-fg">
+              {selectedKeys.size} selected
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedKeys(new Set())}
+              className="inline-flex items-center gap-1 text-xs text-court-fg-muted transition hover:text-court-fg"
+            >
+              <X className="h-3 w-3" /> Clear
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="reject"
+              size="sm"
+              onClick={() => setBulkRejectOpen(true)}
+              disabled={bulkBusy}
+              className="h-7 px-3 text-[11px]"
+            >
+              {bulkBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
+              Reject {selectedKeys.size}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] text-left text-sm">
+            <DataTableHead>
+              <tr className="bg-court-surface border-b border-court-border/60">
+                <DataTableHeaderCell align="center">
+                  <input
+                    ref={headerCheckboxRef}
+                    type="checkbox"
+                    aria-label="Select all rows on this tab"
+                    checked={allSelected}
+                    disabled={visibleKeys.length === 0}
+                    onChange={toggleAll}
+                    className="h-3.5 w-3.5 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40"
+                  />
+                </DataTableHeaderCell>
+                <IntakeColHeader label="Candidate" active={sortKey === "name"} dir={sortDir} onClick={() => toggleSort("name")} />
+                <IntakeColHeader label="Job" active={sortKey === "job"} dir={sortDir} onClick={() => toggleSort("job")} />
+                <IntakeColHeader
+                  label={kind === "applied" ? "Date Applied" : "Kept Since"}
+                  active={sortKey === "when"}
+                  dir={sortDir}
+                  onClick={() => toggleSort("when")}
+                  align="center"
+                />
+                {kind === "applied" && (
+                  <IntakeColHeader label="Source" active={sortKey === "source"} dir={sortDir} onClick={() => toggleSort("source")} align="center" />
+                )}
+                <DataTableHeaderCell align="right">Actions</DataTableHeaderCell>
+              </tr>
+            </DataTableHead>
+            <DataTableBody>
+              {kind === "applied" ? (
+                sortedApplied.length === 0 ? (
+                  <IntakeEmptyRow label="No applicants in this view." colSpan={colSpan} />
+                ) : (
+                  sortedApplied.map((r) => {
+                    const key = rowKey(r);
+                    return (
+                      <AppliedRowView
+                        key={key}
+                        row={r}
+                        selected={selectedKeys.has(key)}
+                        onToggle={() => toggleRow(key)}
+                      />
+                    );
+                  })
+                )
+              ) : sortedKept.length === 0 ? (
+                <IntakeEmptyRow label="No kept candidates yet." colSpan={colSpan} />
+              ) : (
+                sortedKept.map((r) => {
+                  const key = rowKey(r);
+                  return (
+                    <KeptRowView
+                      key={key}
+                      row={r}
+                      selected={selectedKeys.has(key)}
+                      onToggle={() => toggleRow(key)}
+                    />
+                  );
+                })
+              )}
+            </DataTableBody>
+          </table>
+        </div>
+      </div>
+      {bulkRejectOpen && (
+        <RejectCandidateDialog
+          candidateName={`${selectedKeys.size} candidate${selectedKeys.size === 1 ? "" : "s"}`}
+          onClose={() => {
+            if (!bulkBusy) setBulkRejectOpen(false);
+          }}
+          onConfirm={onBulkRejectConfirm}
+        />
+      )}
+    </div>
+  );
+}
+
+function IntakeEmptyRow({ label, colSpan }: { label: string; colSpan: number }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="px-5 py-12 text-center text-sm text-court-fg-muted">
+        {label}
+      </td>
+    </tr>
+  );
+}
+
+function IntakeColHeader({
+  label,
+  active,
+  dir,
+  onClick,
+  align = "left",
+}: {
+  label: string;
+  active: boolean;
+  dir: IntakeSortDir;
+  onClick: () => void;
+  align?: "left" | "center" | "right";
+}) {
+  return (
+    <DataTableHeaderCell align={align}>
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "inline-flex items-center gap-1 uppercase tracking-wide",
+          active ? "text-court-fg" : "text-court-fg-muted hover:text-court-fg",
+        )}
+      >
+        {label}
+        {active && (dir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+      </button>
+    </DataTableHeaderCell>
+  );
+}
+
+function AppliedRowView({
+  row,
+  selected,
+  onToggle,
+}: {
+  row: AppliedRow;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  const router = useRouter();
+  const [isPending, startChange] = useTransition();
+
+  function runAction(fn: () => Promise<{ ok: true } | { ok: false; error: string }>, successMsg: string) {
+    startChange(async () => {
+      const result = await fn();
+      if (!result.ok) {
+        toast.error("Action failed", { description: result.error });
+        return;
+      }
+      toast.success(successMsg);
+      router.refresh();
+    });
+  }
+
+  return (
+    <DataTableRow>
+      <td className="w-px px-3 py-3 align-top text-center">
+        <input
+          type="checkbox"
+          aria-label={`Select ${row.candidateName}`}
+          checked={selected}
+          onChange={onToggle}
+          className="h-3.5 w-3.5 cursor-pointer accent-brand"
+        />
+      </td>
+      <td className="px-4 py-3 align-top">
+        <Link href={`/candidates/${row.candidateId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
+          {row.candidateName}
+        </Link>
+      </td>
+      <td className="px-4 py-3 align-top">
+        <JobCell
+          jobId={row.jobId}
+          jobTitle={row.jobTitle}
+          jobLocation={row.jobLocation}
+          clientName={row.clientName}
+        />
+      </td>
+      <td className="px-4 py-3 align-top text-center text-xs text-court-fg-muted">{formatDate(row.appliedAt)}</td>
+      <td className="px-4 py-3 align-top text-center text-sm text-court-fg-muted">{formatSourceLabel(row.source)}</td>
+      <td className="px-4 py-3 align-top">
+        <div className="flex flex-row flex-nowrap items-center justify-end gap-2">
+          {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
+          {/* Submit / Keep / Reject share the row-action chip style. */}
+          <Link
+            href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
+            className={ROW_ACTION_CLASS.primary}
+            title="Submit candidate"
+          >
+            <Send className="h-3 w-3" />
+            <span className="hidden sm:inline">Submit</span>
+          </Link>
+          <RowActionButton
+            tone="keep"
+            label="Keep"
+            icon={<Bookmark className="h-3 w-3" />}
+            disabled={isPending}
+            onClick={() => {
+              const isAceJob = typeof row.jobId === "string";
+              const jobRfId = isAceJob ? null : (row.jobId as number);
+              const jobId = isAceJob ? (row.jobId as string) : null;
+              const clientRfId = row.clientRfId;
+              runAction(
+                () =>
+                  typeof row.candidateId === "string"
+                    ? keepLocalCandidateForJob({
+                        candidateId: row.candidateId,
+                        jobRfId,
+                        clientRfId,
+                        jobId,
+                      })
+                    : keepCandidateForJob({
+                        candidateRfId: row.candidateId,
+                        jobRfId,
+                        clientRfId,
+                        jobId,
+                      }),
+                "Kept",
+              );
+            }}
+          />
+          <RowActionButton
+            tone="reject"
+            label="Reject"
+            icon={<UserX className="h-3 w-3" />}
+            disabled={isPending}
+            onClick={() => runAction(() => rejectOneApplicant(row, "applied"), "Rejected")}
+          />
+        </div>
+      </td>
+    </DataTableRow>
+  );
+}
+
+function KeptRowView({
+  row,
+  selected,
+  onToggle,
+}: {
+  row: KeptRow;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  const router = useRouter();
+  const [isPending, startChange] = useTransition();
+
+  function runAction(fn: () => Promise<{ ok: true } | { ok: false; error: string }>, successMsg: string) {
+    startChange(async () => {
+      const result = await fn();
+      if (!result.ok) {
+        toast.error("Action failed", { description: result.error });
+        return;
+      }
+      toast.success(successMsg);
+      router.refresh();
+    });
+  }
+
+  return (
+    <DataTableRow>
+      <td className="w-px px-3 py-3 align-top text-center">
+        <input
+          type="checkbox"
+          aria-label={`Select ${row.candidateName}`}
+          checked={selected}
+          onChange={onToggle}
+          className="h-3.5 w-3.5 cursor-pointer accent-brand"
+        />
+      </td>
+      <td className="px-4 py-3 align-top">
+        <Link href={`/candidates/${row.candidateId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
+          {row.candidateName}
+        </Link>
+      </td>
+      <td className="px-4 py-3 align-top">
+        <JobCell
+          jobId={row.jobId}
+          jobTitle={row.jobTitle}
+          jobLocation={row.jobLocation}
+          clientName={row.clientName}
+        />
+      </td>
+      <td className="px-4 py-3 align-top text-center text-xs text-court-fg-muted">{formatDate(row.keptAt)}</td>
+      <td className="px-4 py-3 align-top">
+        <div className="flex flex-row flex-nowrap items-center justify-end gap-2">
+          {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
+          <Link
+            href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
+            className={ROW_ACTION_CLASS.primary}
+            title="Submit candidate"
+          >
+            <Send className="h-3 w-3" />
+            <span className="hidden sm:inline">Submit</span>
+          </Link>
+          <RowActionButton
+            tone="reject"
+            label="Remove"
+            icon={<UserX className="h-3 w-3" />}
+            disabled={isPending}
+            onClick={() => {
+              const isAceJob = typeof row.jobId === "string";
+              const jobRfId = isAceJob ? null : (row.jobId as number);
+              const jobId = isAceJob ? (row.jobId as string) : null;
+              runAction(
+                () =>
+                  typeof row.candidateId === "string"
+                    ? removeLocalKeptCandidate({
+                        candidateId: row.candidateId,
+                        jobRfId,
+                        jobId,
+                      })
+                    : removeKeptCandidate({
+                        candidateRfId: row.candidateId,
+                        jobRfId,
+                        jobId,
+                      }),
+                "Removed",
+              );
+            }}
+          />
+        </div>
+      </td>
+    </DataTableRow>
+  );
+}
+
+function sortApplied(rows: AppliedRow[], key: IntakeSortKey, dir: IntakeSortDir): AppliedRow[] {
+  const out = [...rows];
+  out.sort((a, b) => {
+    const mul = dir === "asc" ? 1 : -1;
+    let va: string | number = "";
+    let vb: string | number = "";
+    switch (key) {
+      case "name":
+        va = a.candidateName.toLowerCase();
+        vb = b.candidateName.toLowerCase();
+        break;
+      case "job":
+        va = a.jobTitle.toLowerCase();
+        vb = b.jobTitle.toLowerCase();
+        break;
+      case "when":
+        va = a.appliedAt ? new Date(a.appliedAt).getTime() : 0;
+        vb = b.appliedAt ? new Date(b.appliedAt).getTime() : 0;
+        break;
+      case "source":
+        va = (a.source ?? "").toLowerCase();
+        vb = (b.source ?? "").toLowerCase();
+        break;
+    }
+    if (typeof va === "number" && typeof vb === "number") return (va - vb) * mul;
+    return String(va).localeCompare(String(vb)) * mul;
+  });
+  return out;
+}
+
+function sortKept(rows: KeptRow[], key: IntakeSortKey, dir: IntakeSortDir): KeptRow[] {
+  const out = [...rows];
+  out.sort((a, b) => {
+    const mul = dir === "asc" ? 1 : -1;
+    let va: string | number = "";
+    let vb: string | number = "";
+    switch (key) {
+      case "name":
+        va = a.candidateName.toLowerCase();
+        vb = b.candidateName.toLowerCase();
+        break;
+      case "job":
+        va = a.jobTitle.toLowerCase();
+        vb = b.jobTitle.toLowerCase();
+        break;
+      case "when":
+        va = new Date(a.keptAt).getTime();
+        vb = new Date(b.keptAt).getTime();
+        break;
+      case "source":
+        va = 0;
+        vb = 0;
+        break;
+    }
+    if (typeof va === "number" && typeof vb === "number") return (va - vb) * mul;
+    return String(va).localeCompare(String(vb)) * mul;
+  });
+  return out;
 }

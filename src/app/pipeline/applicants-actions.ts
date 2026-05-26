@@ -7,6 +7,13 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 
+// Keep / Remove-kept / Ace-native reject actions powering the Applicants
+// and Kept stage tabs on /pipeline. Formerly /app/applicants/actions.ts —
+// relocated when the Applicants page was merged into the Pipeline page so
+// the actions live next to the surface that owns them. revalidatePath
+// targets /pipeline (the only consumer surface now) plus the candidate
+// profile so both views refresh after a mutation.
+
 type Result = { ok: true } | { ok: false; error: string };
 
 async function requireUserId(): Promise<string | null> {
@@ -14,47 +21,6 @@ async function requireUserId(): Promise<string | null> {
   if (!s?.user?.email) return null;
   const u = await prisma.user.findUnique({ where: { email: s.user.email }, select: { id: true } });
   return u?.id ?? null;
-}
-
-export type ApplicantStatusValue = "new" | "reviewed" | "rejected" | "moved_to_pipeline";
-
-export type SetApplicantStatusInput = {
-  candidateRfId: number;
-  jobRfId: number;
-  status: ApplicantStatusValue;
-};
-
-const VALID: ReadonlySet<ApplicantStatusValue> = new Set<ApplicantStatusValue>([
-  "new",
-  "reviewed",
-  "rejected",
-  "moved_to_pipeline",
-]);
-
-// Applicants aren't their own Prisma model yet — we derive status from the
-// latest `applicant_status` ActionLog row for the candidate/job pair. New
-// applicants with no entry default to "new" on the page layer.
-export async function setApplicantStatus(input: SetApplicantStatusInput): Promise<Result> {
-  const userId = await requireUserId();
-  if (!userId) return { ok: false, error: "Not signed in." };
-  if (!VALID.has(input.status)) return { ok: false, error: "Invalid status." };
-  try {
-    await createActionLog({
-      userId,
-      actionType: "applicant_status",
-      subjectType: "candidate",
-      subjectId: String(input.candidateRfId),
-      metadata: {
-        jobRfId: input.jobRfId,
-        status: input.status,
-      },
-    });
-    revalidatePath("/applicants");
-    revalidatePath(`/candidates/${input.candidateRfId}`);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Failed to update applicant." };
-  }
 }
 
 // ---- Keep / Unkeep ----
@@ -145,9 +111,8 @@ export async function keepCandidateForJob(input: KeepCandidateInput): Promise<Re
       subjectId: String(input.candidateRfId),
       metadata: { jobRfId, clientRfId, jobId, clientId },
     });
-    revalidatePath("/applicants");
-    revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath("/pipeline");
+    revalidatePath(`/candidates/${input.candidateRfId}`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Keep failed." };
@@ -194,9 +159,8 @@ export async function removeKeptCandidate(input: RemoveKeptInput): Promise<Resul
       subjectId: String(input.candidateRfId),
       metadata: { jobRfId, jobId },
     });
-    revalidatePath("/applicants");
-    revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath("/pipeline");
+    revalidatePath(`/candidates/${input.candidateRfId}`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Remove failed." };
@@ -207,10 +171,10 @@ export async function removeKeptCandidate(input: RemoveKeptInput): Promise<Resul
 //
 // Mirror the three RF-keyed actions above but target Placement by the
 // candidateId (cuid) + jobRfId compound unique instead of candidateRfId +
-// jobRfId. These exist so the /applicants row actions can Keep / Remove /
-// Reject / (handoff) Submit on Ace-native candidates like Tyler Brennan
-// without ever touching RF. Called from AppliedRowView / KeptRowView when
-// the row's candidateId is a cuid string.
+// jobRfId. These exist so the Applicants / Kept row actions can Keep /
+// Remove / Reject on Ace-native candidates like Tyler Brennan without ever
+// touching RF. Called from the row components when candidateId is a cuid
+// string.
 
 export type KeepLocalCandidateInput = {
   candidateId: string;
@@ -266,9 +230,8 @@ export async function keepLocalCandidateForJob(input: KeepLocalCandidateInput): 
       subjectId: input.candidateId,
       metadata: { jobRfId, clientRfId, jobId, clientId, local: true },
     });
-    revalidatePath("/applicants");
-    revalidatePath(`/candidates/${input.candidateId}`);
     revalidatePath("/pipeline");
+    revalidatePath(`/candidates/${input.candidateId}`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Keep failed." };
@@ -308,9 +271,8 @@ export async function removeLocalKeptCandidate(input: RemoveLocalKeptInput): Pro
       subjectId: input.candidateId,
       metadata: { jobRfId, jobId, local: true },
     });
-    revalidatePath("/applicants");
-    revalidatePath(`/candidates/${input.candidateId}`);
     revalidatePath("/pipeline");
+    revalidatePath(`/candidates/${input.candidateId}`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Remove failed." };
@@ -382,9 +344,8 @@ export async function rejectLocalCandidateJob(input: RejectLocalCandidateInput):
         local: true,
       },
     });
-    revalidatePath("/applicants");
-    revalidatePath(`/candidates/${input.candidateId}`);
     revalidatePath("/pipeline");
+    revalidatePath(`/candidates/${input.candidateId}`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Reject failed." };

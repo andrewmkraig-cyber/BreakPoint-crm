@@ -8,9 +8,11 @@ import { getCandidateNavSnapshot } from "@/lib/candidate-nav";
 // Renders the candidate profile's "Back to all candidates" link plus
 // optional Prev / Next arrows. Reads sessionStorage for an ordered
 // list snapshot the source surface (candidates / pipeline /
-// applicants / list-detail) stashed before navigating in. Skipped
-// gracefully when no snapshot exists or the current candidate isn't
-// in it — the back link still works.
+// list-detail) stashed before navigating in. Skipped gracefully when
+// no snapshot exists or the current candidate isn't in it — the back
+// link still works. "applicants" is preserved as a legacy snapshot
+// source value so older sessionStorage entries from before the
+// Applicants→Pipeline merge route back to /pipeline?stage=applied.
 
 export function CandidateProfileNav({ currentId }: { currentId: string }) {
   // Initial server render uses null so the link reads "Back to all
@@ -130,7 +132,10 @@ function defaultBackHref(source: string): string {
     case "pipeline":
       return "/pipeline";
     case "applicants":
-      return "/applicants";
+      // Legacy snapshot source from before the Applicants page was
+      // merged into Pipeline. Route to the new Applicants stage tab
+      // so old sessionStorage entries still land somewhere sensible.
+      return "/pipeline?stage=applied";
     default:
       return "/candidates";
   }

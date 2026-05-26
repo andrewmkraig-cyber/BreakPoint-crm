@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Home,
-  User,
   Users,
   GitBranch,
   Briefcase,
@@ -31,7 +30,7 @@ import { usePhoneContext } from "@/lib/phone-context";
 // per-group order; the groups themselves stay in workflow order.
 //   Clubhouse (ungrouped overview at top — home/dashboard surface)
 //   Inbox — Mail → Phone (inbox check pinned high so unread badges read fast)
-//   ATS — Applicants → Candidates → Pipeline
+//   ATS — Candidates → Pipeline (Applicants folded into Pipeline as its first stage tab)
 //   CRM — BD → Clients → Jobs
 //   Ops — Calendar → Finances → Notes
 //   Scoreboard — Metrics → Placements (dashboard deep-links)
@@ -66,7 +65,6 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
   {
     title: "ATS",
     items: [
-      { href: "/applicants", label: "Applicants", icon: User, iconColor: "text-amber-400" },
       { href: "/candidates", label: "Candidates", icon: Users, iconColor: "text-violet-400" },
       { href: "/pipeline", label: "Pipeline", icon: GitBranch, iconColor: "text-sky-400" },
     ],
