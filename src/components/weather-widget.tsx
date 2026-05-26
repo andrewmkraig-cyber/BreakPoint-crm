@@ -39,7 +39,11 @@ import { fetchWithRetry } from "@/lib/retry-fetch";
 // keeps desktop and mobile showing the same place when GPS is off.
 
 const REFRESH_MS = 30 * 60 * 1000;
-const HOURS_AHEAD = 6;
+// 24-hour hourly window. The popover's hourly strip is horizontally
+// scrollable so the recruiter can scroll past the first 6 visible
+// columns to see the rest of the day; the daily forecast underneath
+// is untouched (still 7 days).
+const HOURS_AHEAD = 24;
 const DAYS_AHEAD = 7;
 // Chagrin Falls, OH - used when the browser hasn't granted geolocation
 // so weather still renders, and so desktop and mobile show the same
@@ -910,19 +914,35 @@ export function WeatherWidget() {
             </div>
           </div>
 
-          {/* HOURLY */}
+          {/* HOURLY — horizontally scrollable. 24 hourly buckets get
+              rendered into a single-row flex strip; the first ~6 fit
+              inside the popover's w-72 footprint at the cell's fixed
+              width (w-9 + gap-1 ≈ 40 px / col) and the rest reveal as
+              the recruiter scrolls right. shrink-0 on each cell keeps
+              every column at the same width regardless of how many
+              hours the upstream returns. -mx-4 + px-4 bleeds the
+              scrollable surface to the popover's edges so the
+              right-side fade isn't visually clipped by the parent's
+              p-4 padding.
+
+              `weather-hourly-scroll` (defined in globals.css) hides
+              the native scrollbar in Chromium / Safari / Firefox so
+              the strip reads as a clean row of chips, while the
+              underlying overflow-x-auto stays interactive (mouse
+              wheel + touchpad horizontal scroll + drag still work).
+              Daily forecast below is untouched. */}
           {data.hourly.length > 0 && (
             <div className="mt-4">
               <div className="text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
                 Next {data.hourly.length} Hours
               </div>
-              <div className="mt-2.5 flex justify-between gap-1">
+              <div className="weather-hourly-scroll mt-2.5 -mx-4 flex gap-1 overflow-x-auto px-4">
                 {data.hourly.map((h, i) => {
                   const showRain = h.precipPct >= 20;
                   return (
                     <div
                       key={`${i}-${h.time}`}
-                      className="flex flex-1 flex-col items-center gap-1"
+                      className="flex w-9 shrink-0 flex-col items-center gap-1"
                     >
                       <div className="text-[10px] text-court-fg-muted">
                         {i === 0 ? "Now" : formatHour(h.time)}

@@ -540,4 +540,20 @@ html[data-theme='light'] .ace-topbar-mark .ace-brand-disc {
   .court-input-control::placeholder {
     color: rgb(var(--court-fg-muted));
   }
+
+  /* Weather widget hourly strip — hides the horizontal scrollbar
+     while keeping the strip mouse-wheel / touchpad / drag
+     scrollable. The strip overflows beyond the popover's w-72
+     footprint to fit 24 hourly buckets; a visible scrollbar would
+     compete with the existing column rhythm under the strip. Scoped
+     to .weather-hourly-scroll so the rest of the app's
+     overflow-x-auto surfaces (mail thread list, pipeline, etc.)
+     keep their native scrollbars. */
+  .weather-hourly-scroll {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .weather-hourly-scroll::-webkit-scrollbar {
+    display: none;
+  }
 }

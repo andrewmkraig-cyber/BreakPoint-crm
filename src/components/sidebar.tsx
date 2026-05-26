@@ -25,15 +25,17 @@ import { SidebarProfileCard } from "@/components/sidebar-profile-card";
 import { useMailContext } from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
 
-// Main nav grouped into recruiter workflow sections. Items inside a
-// group are alphabetized so the eye doesn't have to learn a custom
-// per-group order; the groups themselves stay in workflow order.
-//   Clubhouse (ungrouped overview at top — home/dashboard surface)
-//   Inbox — Mail → Phone (inbox check pinned high so unread badges read fast)
-//   ATS — Candidates → Pipeline (Applicants folded into Pipeline as its first stage tab)
-//   CRM — BD → Clients → Jobs
-//   Ops — Calendar → Finances → Notes
-//   Scoreboard — Metrics → Placements (dashboard deep-links)
+// Main nav grouped into recruiter workflow sections, in the explicit
+// order Andrew wants the eye to scan (no alphabet rule — Pipeline
+// leads ATS because that's where the active deals live, Placements
+// leads Scoreboard because the dollar number is the headline KPI).
+// Settings + the profile card stay pinned at the bottom.
+//   Home — Clubhouse
+//   Communication — Mail → Phone → Calendar
+//   ATS — Pipeline → Candidates → Jobs (Applicants folded into Pipeline as its first stage tab)
+//   CRM — BD → Clients
+//   Ops — Finances → Notes
+//   Scoreboard — Placements → Metrics (dashboard deep-links)
 type NavGroup = {
   title: string | null;
   items: ReadonlyArray<{
@@ -50,23 +52,25 @@ type NavGroup = {
 // foreground so the lit-up state still reads.
 const NAV_GROUPS: ReadonlyArray<NavGroup> = [
   {
-    title: null,
+    title: "Home",
     items: [
       { href: "/dashboard", label: "Clubhouse", icon: Home, iconColor: "text-emerald-400" },
     ],
   },
   {
-    title: "Inbox",
+    title: "Communication",
     items: [
       { href: "/mail", label: "Mail", icon: Mail, iconColor: "text-red-400" },
       { href: "/phone", label: "Phone", icon: Phone, iconColor: "text-teal-400" },
+      { href: "/calendar", label: "Calendar", icon: Calendar, iconColor: "text-orange-400" },
     ],
   },
   {
     title: "ATS",
     items: [
-      { href: "/candidates", label: "Candidates", icon: Users, iconColor: "text-violet-400" },
       { href: "/pipeline", label: "Pipeline", icon: GitBranch, iconColor: "text-sky-400" },
+      { href: "/candidates", label: "Candidates", icon: Users, iconColor: "text-violet-400" },
+      { href: "/jobs", label: "Jobs", icon: Briefcase, iconColor: "text-indigo-400" },
     ],
   },
   {
@@ -74,13 +78,11 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
     items: [
       { href: "/bd", label: "BD", icon: Megaphone, iconColor: "text-rose-400" },
       { href: "/clients", label: "Clients", icon: Building2, iconColor: "text-cyan-400" },
-      { href: "/jobs", label: "Jobs", icon: Briefcase, iconColor: "text-indigo-400" },
     ],
   },
   {
     title: "Ops",
     items: [
-      { href: "/calendar", label: "Calendar", icon: Calendar, iconColor: "text-orange-400" },
       { href: "/finances", label: "Finances", icon: Receipt, iconColor: "text-lime-400" },
       { href: "/notes", label: "Notes", icon: StickyNote, iconColor: "text-yellow-400" },
     ],
@@ -88,8 +90,8 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
   {
     title: "Scoreboard",
     items: [
-      { href: "/dashboard?tab=scoreboard", label: "Metrics", icon: BarChart3, iconColor: "text-fuchsia-400" },
       { href: "/dashboard?tab=placements", label: "Placements", icon: Trophy, iconColor: "text-emerald-400" },
+      { href: "/dashboard?tab=scoreboard", label: "Metrics", icon: BarChart3, iconColor: "text-fuchsia-400" },
     ],
   },
 ];

@@ -99,14 +99,40 @@ function makeEnvelope() {
 function makePhone() {
   const png = newImg();
   makeBase(png);
-  // Simple handset L-shape, tilted slightly. Box from (6,6) to (13,9)
-  // is the earpiece; box (10,11) to (13,14) is the mouthpiece;
-  // diagonal bridge (8,9)→(11,12) connects them.
-  drawRectOutline(png, 6, 6, 13, 9, WHITE);
-  drawLine(png, 6, 7, 13, 7, WHITE);
-  drawRectOutline(png, 10, 11, 13, 14, WHITE);
-  drawLine(png, 11, 11, 11, 14, WHITE);
-  drawLine(png, 8, 9, 11, 12, WHITE);
+  // Tilted handset glyph: rounded earpiece bulb at upper-left,
+  // matching mouthpiece bulb at lower-right, thin 1-px diagonal
+  // handle joining them. Pad shapes are hand-pixeled (rather than
+  // filled rects) so each end reads as a soft oval, and the handle
+  // stays 1 px so the two bulbs remain visually distinct from the
+  // connector. The earlier outline+stripe design read as a key /
+  // arrow at the 20×20 signature display size.
+  function fill(x, y) {
+    setPx(png, x, y, WHITE[0], WHITE[1], WHITE[2], 255);
+  }
+  // Earpiece bulb — soft oval, ~4×4 pixels.
+  const earpiece = [
+    [5, 5], [6, 5], [7, 5],
+    [4, 6], [5, 6], [6, 6], [7, 6], [8, 6],
+    [4, 7], [5, 7], [6, 7], [7, 7], [8, 7],
+    [5, 8], [6, 8], [7, 8],
+  ];
+  for (const [x, y] of earpiece) fill(x, y);
+  // Mouthpiece bulb — mirror of the earpiece, ~4×4 pixels.
+  const mouthpiece = [
+    [12, 11], [13, 11], [14, 11],
+    [11, 12], [12, 12], [13, 12], [14, 12], [15, 12],
+    [11, 13], [12, 13], [13, 13], [14, 13], [15, 13],
+    [12, 14], [13, 14], [14, 14],
+  ];
+  for (const [x, y] of mouthpiece) fill(x, y);
+  // Thin diagonal handle — 1 px so the two bulbs stay visually
+  // separate.
+  fill(8, 9);
+  fill(9, 9);
+  fill(9, 10);
+  fill(10, 10);
+  fill(10, 11);
+  fill(11, 11);
   return png;
 }
 

@@ -59,14 +59,15 @@ type NavGroup = {
 
 const NAV_GROUPS: ReadonlyArray<NavGroup> = [
   {
-    title: null,
+    title: "Home",
     items: [{ href: "/dashboard", label: "Clubhouse", icon: Home }],
   },
   {
-    title: "Inbox",
+    title: "Communication",
     items: [
       { href: "/mail", label: "Mail", icon: Mail },
       { href: "/phone", label: "Phone", icon: Phone },
+      { href: "/calendar", label: "Calendar", icon: Calendar },
     ],
   },
   {
@@ -74,20 +75,19 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
     items: [
       { href: "/pipeline", label: "Pipeline", icon: GitBranch },
       { href: "/candidates", label: "Candidates", icon: Users },
+      { href: "/jobs", label: "Jobs", icon: Briefcase },
     ],
   },
   {
     title: "CRM",
     items: [
-      { href: "/jobs", label: "Jobs", icon: Briefcase },
-      { href: "/clients", label: "Clients", icon: Building2 },
       { href: "/bd", label: "BD", icon: Megaphone },
+      { href: "/clients", label: "Clients", icon: Building2 },
     ],
   },
   {
     title: "Ops",
     items: [
-      { href: "/calendar", label: "Calendar", icon: Calendar },
       { href: "/finances", label: "Finances", icon: Receipt },
       { href: "/notes", label: "Notes", icon: StickyNote },
     ],
@@ -95,8 +95,8 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
   {
     title: "Scoreboard",
     items: [
-      { href: "/dashboard?tab=scoreboard", label: "Metrics", icon: BarChart3 },
       { href: "/dashboard?tab=placements", label: "Placements", icon: Trophy },
+      { href: "/dashboard?tab=scoreboard", label: "Metrics", icon: BarChart3 },
     ],
   },
   {

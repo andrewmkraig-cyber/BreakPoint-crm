@@ -1,10 +1,60 @@
 # ACE_STATE.md
-Last updated: 2026-05-26 · Ace 67.1
+Last updated: 2026-05-26 · Ace 67.2
 
 ## Current Status
-Current Version: Ace 67.1
+Current Version: Ace 67.2
 Last Shipped: 2026-05-26
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.2 (2026-05-26)
+
+Three small UX/polish fixes: the email-signature phone icon redrawn into
+an actually-recognizable handset, the left sidebar nav reordered into
+Andrew's preferred workflow order, and the weather popover's hourly strip
+made horizontally scrollable so it can show past 6 hours.
+
+- **Email-signature phone icon → recognizable handset.** The phone icon
+  next to Andrew's phone number in the signature used to draw as a pair
+  of outlined rectangles connected by a 1-px diagonal (came out reading
+  as a key or pager, not a phone). Redrew `makePhone()` in
+  `scripts/generate-signature-icons.js` as a tilted-handset silhouette:
+  rounded ~4×4 earpiece bulb upper-left, mirror mouthpiece bulb
+  lower-right, thin 1-px diagonal handle joining them. Regenerated the
+  PNGs in `public/brand/` + the base64-baked constants in
+  `src/lib/signature-icons.ts` (the only constants the signature
+  renderer reads at runtime, since Vercel serverless can't fs-read
+  `/public`). Email + globe icons untouched.
+- **Left sidebar nav reorder.** Andrew's preferred workflow order
+  (no alphabet rule):
+    - Home — Clubhouse
+    - Communication — Mail → Phone → Calendar
+    - ATS — Pipeline → Candidates → Jobs
+    - CRM — BD → Clients
+    - Ops — Finances → Notes
+    - Scoreboard — Placements → Metrics
+    - Settings + profile card pinned at bottom (unchanged).
+  Calendar moved out of Ops into Communication so all three inbox-style
+  surfaces sit together. Jobs moved out of CRM into ATS so it lives
+  beside Pipeline + Candidates where it's actually used. Placements
+  now leads Scoreboard (it's the dollar headline). Both `sidebar.tsx`
+  and `mobile-nav.tsx` updated in lockstep — the mobile drawer mirrors
+  the desktop sidebar per the comment in mobile-nav.tsx.
+- **Weather hourly strip → horizontally scrollable.** Bumped
+  `HOURS_AHEAD` from 6 to 24 in `weather-widget.tsx` and converted the
+  hourly strip from `flex justify-between` (six equal columns) to
+  `flex gap-1 overflow-x-auto` with fixed-width `w-9 shrink-0` cells.
+  First ~6 columns fit inside the popover's `w-72` footprint at the
+  cell's natural width; the rest reveal as the recruiter scrolls right.
+  Added a `.weather-hourly-scroll` utility in `globals.css` that hides
+  the native scrollbar (Chromium/Safari/Firefox) so the strip reads as
+  a clean row of chips while staying mouse-wheel / touchpad / drag
+  scrollable. Daily forecast + current chip untouched. Strip header
+  updates dynamically: "Next 24 Hours" instead of "Next 6 Hours".
+
+Next task: TBD — opens with Andrew's live verification of the new phone
+icon (next send through Ace mail composer), the reordered sidebar on
+desktop + mobile drawer, and the hourly-strip scroll behavior in the
+weather popover.
 
 ## What Shipped in Ace 67.1 (2026-05-26)
 
