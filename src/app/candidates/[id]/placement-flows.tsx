@@ -56,7 +56,6 @@ import {
   type InterviewType,
   type MeetingProvider,
 } from "@/app/candidates/[id]/interview-actions";
-import { createClientContact } from "@/app/candidates/[id]/contact-actions";
 import { DismissPlacementButton } from "@/app/candidates/[id]/dismiss-placement-button";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { DateTime15Picker } from "@/components/datetime-15-picker";
@@ -2600,8 +2599,6 @@ function ScheduleInterviewDialog({
           </label>
         )}
         <InterviewerPicker
-          clientRfId={job.clientRfId}
-          clientName={job.clientName}
           initialContacts={job.clientContacts}
           name={interviewerName}
           email={interviewerEmail}
@@ -2931,8 +2928,6 @@ function EditInterviewDialog({
           </label>
         )}
         <InterviewerPicker
-          clientRfId={job.clientRfId}
-          clientName={job.clientName}
           initialContacts={job.clientContacts}
           name={interviewerName}
           email={interviewerEmail}
@@ -3868,14 +3863,20 @@ function Modal({
   if (typeof document === "undefined") return null;
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
+      {/* Flex-column shell capped at viewport height so header + scrollable
+          body together can never exceed the screen. Body gets flex-1 + min-h-0
+          so it shrinks (and scrolls) instead of pushing the modal off-screen
+          on short viewports. Replaces the older max-h-[70vh] / 85vh body cap
+          that only counted the body — the header sat above it, so total
+          height could exceed 100vh. */}
       <div
         className={cn(
-          "w-full overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl",
+          "flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl",
           wide ? "max-w-2xl" : "max-w-lg",
         )}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between border-b border-court-border px-5 py-3">
+        <div className="flex flex-none items-start justify-between border-b border-court-border px-5 py-3">
           <div>
             <h2 className="font-serif text-lg font-semibold text-court-fg">{title}</h2>
             {subtitle && <p className="mt-0.5 text-xs text-court-fg-muted">{subtitle}</p>}
@@ -3884,11 +3885,7 @@ function Modal({
             <X className="h-4 w-4" />
           </button>
         </div>
-        {/* Wider modals (placement editor) carry several sections, so
-            give them more vertical room before scrolling kicks in.
-            Narrow modals stay at 70vh — they're typically single-purpose
-            forms that fit comfortably. */}
-        <div className={cn("overflow-y-auto p-5", wide ? "max-h-[85vh]" : "max-h-[70vh]")}>{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
       </div>
     </div>,
     document.body,
@@ -4735,33 +4732,25 @@ function findClientContactsForJob(
 export type InterviewerContact = { id: number | string; name: string; title: string; email: string };
 
 export function InterviewerPicker({
-  clientRfId,
-  clientName,
   initialContacts,
   name,
   email,
   onChange,
 }: {
-  clientRfId: number;
-  clientName: string;
   initialContacts: InterviewerContact[];
   name: string;
   email: string;
   onChange: (name: string, email: string) => void;
 }) {
   const [mode, setMode] = useState<string>("");
-  const [contacts, setContacts] = useState<InterviewerContact[]>(initialContacts);
-  const [addFirstName, setAddFirstName] = useState("");
-  const [addLastName, setAddLastName] = useState("");
-  const [addEmail, setAddEmail] = useState("");
-  const [addTitle, setAddTitle] = useState("");
-  const [addErr, setAddErr] = useState<string | null>(null);
-  const [isAdding, startAdd] = useTransition();
+  // Contacts come from the parent (placement edit page) and aren't mutated
+  // here anymore now that the inline "+ Add new contact" flow has been
+  // removed — adding contacts lives on the client detail page.
+  const contacts = initialContacts;
 
   function setSelection(next: string) {
     setMode(next);
-    setAddErr(null);
-    if (next === "" || next === "custom" || next === "add") {
+    if (next === "" || next === "custom") {
       onChange("", "");
       return;
     }
@@ -4769,44 +4758,10 @@ export function InterviewerPicker({
     if (match) onChange(match.name, match.email ?? "");
   }
 
-  function onSaveContact() {
-    setAddErr(null);
-    const fn = addFirstName.trim();
-    if (!fn) {
-      setAddErr("First name is required.");
-      return;
-    }
-    startAdd(async () => {
-      const result = await createClientContact({
-        clientRfId,
-        firstName: fn,
-        lastName: addLastName.trim() || undefined,
-        email: addEmail.trim() || undefined,
-        title: addTitle.trim() || undefined,
-      });
-      if (!result.ok) {
-        setAddErr(result.error);
-        toast.error("Couldn't add contact", { description: result.error });
-        return;
-      }
-      const created = result.value;
-      setContacts((prev) => [...prev, created]);
-      setAddFirstName("");
-      setAddLastName("");
-      setAddEmail("");
-      setAddTitle("");
-      setMode(String(created.id));
-      onChange(created.name, created.email ?? "");
-      toast.success("Contact added", {
-        description: `${created.name} is now saved to ${clientName}.`,
-      });
-    });
-  }
-
   const nonceRef = useRef<string>(Math.random().toString(36).slice(2, 10));
   const nonce = nonceRef.current;
 
-  const showManualFields = mode === "custom" || (mode !== "" && mode !== "add");
+  const showManualFields = mode !== "";
 
   return (
     <div className="space-y-2">
@@ -4830,66 +4785,8 @@ export function InterviewerPicker({
             </option>
           ))}
           <option value="custom">Other (enter manually)</option>
-          <option value="add">+ Add new contact to {clientName || "this client"}…</option>
         </select>
       </label>
-
-      {mode === "add" && (
-        <div className="rounded-lg border border-brand/30 bg-brand-tint/30 p-3">
-          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-brand-dark">
-            New contact for {clientName}
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <BareInput
-              placeholder="First name *"
-              value={addFirstName}
-              onChange={setAddFirstName}
-              name={`ace-new-contact-first-${nonce}`}
-            />
-            <BareInput
-              placeholder="Last name"
-              value={addLastName}
-              onChange={setAddLastName}
-              name={`ace-new-contact-last-${nonce}`}
-            />
-            <BareInput
-              placeholder="Email"
-              type="email"
-              value={addEmail}
-              onChange={setAddEmail}
-              name={`ace-new-contact-email-${nonce}`}
-            />
-            <BareInput
-              placeholder="Title"
-              value={addTitle}
-              onChange={setAddTitle}
-              name={`ace-new-contact-title-${nonce}`}
-            />
-          </div>
-          {addErr && (
-            <div className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-[11px] text-red-800">{addErr}</div>
-          )}
-          <div className="mt-2 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setSelection("")}
-              disabled={isAdding}
-              className="rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg-muted hover:text-court-fg disabled:opacity-60"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onSaveContact}
-              disabled={isAdding}
-              className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm hover:bg-court-brand/25 disabled:opacity-60"
-            >
-              {isAdding ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
-              Save contact
-            </button>
-          </div>
-        </div>
-      )}
 
       {showManualFields && (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

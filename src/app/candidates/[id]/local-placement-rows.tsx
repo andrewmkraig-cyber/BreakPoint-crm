@@ -783,8 +783,6 @@ function ScheduleDialog({
         }
         interviewerSlot={
           <InterviewerPicker
-            clientRfId={job.clientRfId}
-            clientName={job.clientName}
             initialContacts={job.clientContacts}
             name={interviewerName}
             email={interviewerEmail}
@@ -900,8 +898,6 @@ function ClientInviteDialog({
         setNotes={setNotes}
         interviewerSlot={
           <InterviewerPicker
-            clientRfId={job.clientRfId}
-            clientName={job.clientName}
             initialContacts={job.clientContacts}
             name={interviewerName}
             email=""
@@ -1059,11 +1055,15 @@ function ModalShell({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
+      {/* Flex-column shell capped at viewport height so header + scrollable
+          body together can never exceed the screen. Body gets flex-1 + min-h-0
+          so it shrinks (and scrolls) instead of pushing the modal off-screen
+          on short viewports. */}
       <div
-        className="w-full max-w-lg overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between border-b border-court-border px-5 py-3">
+        <div className="flex flex-none items-start justify-between border-b border-court-border px-5 py-3">
           <div>
             <h2 className="font-serif text-lg font-semibold text-court-fg">{title}</h2>
             {subtitle && <p className="mt-0.5 text-xs text-court-fg-muted">{subtitle}</p>}
@@ -1072,7 +1072,7 @@ function ModalShell({
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="max-h-[70vh] overflow-y-auto p-5">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
       </div>
     </div>
   );
