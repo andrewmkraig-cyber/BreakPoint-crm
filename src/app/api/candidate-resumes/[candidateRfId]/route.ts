@@ -46,9 +46,37 @@ export async function GET(
   );
 
   const useRedacted = wantsRedacted && hasRedacted;
-  const bytes = useRedacted
-    ? await getResumeBytes({ blobUrl: resume.redactedBlobUrl, data: resume.redactedData })
-    : await getResumeBytes(resume);
+  // Same defensive wrap as the by-id route — a Vercel Blob 5xx /
+  // missing-blob / token-mismatch becomes a clean JSON 500 with a
+  // structured log instead of an unhandled exception. Host-only
+  // logging keeps signed tokens out of Sentry.
+  let bytes: Buffer;
+  try {
+    bytes = useRedacted
+      ? await getResumeBytes({ blobUrl: resume.redactedBlobUrl, data: resume.redactedData })
+      : await getResumeBytes(resume);
+  } catch (err) {
+    const failingUrl = useRedacted ? resume.redactedBlobUrl : resume.blobUrl;
+    let blobHost = "no-url";
+    if (failingUrl) {
+      try {
+        blobHost = new URL(failingUrl).hostname;
+      } catch {
+        blobHost = "malformed-url";
+      }
+    }
+    console.error("[candidate-resume by-rfid] blob fetch failed", {
+      resumeId: resume.id,
+      candidateId: candidate.id,
+      variant: useRedacted ? "redacted" : "original",
+      blobHost,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return NextResponse.json(
+      { error: "Failed to fetch resume from storage.", resumeId: resume.id },
+      { status: 500 },
+    );
+  }
   const mime = useRedacted ? (resume.redactedMimeType ?? "application/pdf") : resume.mimeType;
   const labelBase = (resume.displayName?.trim() || resume.filename).replace(/\.pdf$/i, "");
   const baseFilename = useRedacted

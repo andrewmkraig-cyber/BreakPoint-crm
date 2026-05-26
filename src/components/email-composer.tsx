@@ -639,11 +639,14 @@ export function EmailComposer({
         // Auto-populate the subject when the caller supplied a fallback and
         // the recruiter hasn't typed (or template-picked) one yet. Mirrors
         // the empty-subject substitution on the send path so a single
-        // Generate click yields a fully sendable email. We re-read subject
-        // from the closure (latest render) and treat whitespace-only as
-        // empty so a stray space doesn't block the fill.
-        if (generateFallbackSubject && subject.trim().length === 0) {
-          setSubject(generateFallbackSubject);
+        // Generate click yields a fully sendable email. Functional setter so
+        // the empty-check reads the live subject — not the closure captured
+        // when onGenerateClick was created, which could be stale by the time
+        // the await resolves (e.g. a template apply or hand-typed character
+        // landed in between). Whitespace-only counts as empty so a stray
+        // space doesn't block the fill.
+        if (generateFallbackSubject) {
+          setSubject((prev) => (prev.trim().length === 0 ? generateFallbackSubject : prev));
         }
         toast.success("Draft generated", { description: "Edit before sending if needed." });
       } catch (e) {

@@ -35,9 +35,38 @@ export async function GET(
     (resume.redactedBlobUrl || resume.redactedData) && resume.redactedAt,
   );
   const useRedacted = wantsRedacted && hasRedacted;
-  const bytes = useRedacted
-    ? await getResumeBytes({ blobUrl: resume.redactedBlobUrl, data: resume.redactedData })
-    : await getResumeBytes(resume);
+  // Wrap the blob read so a Vercel Blob outage / 5xx / token-mismatch
+  // surfaces as a clean JSON 500 instead of an unhandled exception that
+  // hits Sentry as "Vercel Blob: Failed to fetch blob: 500 …" with no
+  // context. Structured log captures the resumeId, variant, and blob
+  // *host* (not the full URL — keeps signed tokens out of logs) so we
+  // can triage by store / variant / id range without leaking creds.
+  let bytes: Buffer;
+  try {
+    bytes = useRedacted
+      ? await getResumeBytes({ blobUrl: resume.redactedBlobUrl, data: resume.redactedData })
+      : await getResumeBytes(resume);
+  } catch (err) {
+    const failingUrl = useRedacted ? resume.redactedBlobUrl : resume.blobUrl;
+    let blobHost = "no-url";
+    if (failingUrl) {
+      try {
+        blobHost = new URL(failingUrl).hostname;
+      } catch {
+        blobHost = "malformed-url";
+      }
+    }
+    console.error("[candidate-resume by-id] blob fetch failed", {
+      resumeId: resume.id,
+      variant: useRedacted ? "redacted" : "original",
+      blobHost,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return NextResponse.json(
+      { error: "Failed to fetch resume from storage.", resumeId: resume.id },
+      { status: 500 },
+    );
+  }
   const mime = useRedacted ? (resume.redactedMimeType ?? "application/pdf") : resume.mimeType;
   // Phase 5A.5.b (Ace 20.0): pick the extension off the actual mime
   // type rather than hardcoding .pdf — DOCX downloads were landing as

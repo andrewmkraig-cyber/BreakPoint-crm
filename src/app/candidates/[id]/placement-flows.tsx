@@ -3534,9 +3534,14 @@ function SubmittalEmailCompose({
   // by resolveTemplate below + EmailComposer's empty-subject auto-apply).
   // When no template is picked, the composer hands an empty subject to
   // onSend and we substitute this fallback so the email always ships with
-  // a sane subject. Centralizing the format here keeps the fallback in
-  // lock-step with the historical hardcoded value recruiters know.
-  const fallbackSubject = `Candidate Submittal - ${fullName} | ${job.jobTitle}`;
+  // a sane subject. Also passed through as `generateFallbackSubject` so the
+  // Generate-with-Claude click can auto-fill the subject in one shot.
+  // Format: "<Candidate Name> - <Job Title> for <Client Company Name>".
+  // clientName is *usually* set but the schema allows blank; drop the
+  // " for …" tail in that case rather than ship "for ".
+  const fallbackSubject = job.clientName
+    ? `${fullName} - ${job.jobTitle} for ${job.clientName}`
+    : `${fullName} - ${job.jobTitle}`;
   const contactOptions = job.clientContacts.map((c) => ({
     id: String(c.id),
     name: c.name,
