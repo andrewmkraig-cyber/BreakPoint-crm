@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
+import { Button } from "@/components/ui/button";
 import { cn, formatLocation } from "@/lib/utils";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 import { buildTokenColorMap } from "@/app/candidates/[id]/resume-matches-rail";
@@ -266,11 +267,13 @@ export function CandidateCompactOverview({
             >
               <X className="h-3 w-3" /> Cancel
             </button>
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="sm"
               onClick={commitEdit}
               disabled={isSaving}
-              className="inline-flex items-center gap-1 rounded-md bg-brand px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+              className="px-2.5 py-1 text-[11px]"
             >
               {isSaving ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -278,7 +281,7 @@ export function CandidateCompactOverview({
                 <Save className="h-3 w-3" />
               )}
               Save
-            </button>
+            </Button>
           </div>
         </div>
       ) : (

@@ -524,12 +524,13 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                           onClick={(e) => e.stopPropagation()}
                         >
                           {r.candidateName}
-                          {/* Kept badge keeps amber semantics across modes —
-                              a status cue should read the same regardless of
-                              palette. */}
+                          {/* Kept badge uses the same soft blue as the Keep
+                              button variant so the bookmark indicator reads
+                              as a single intent across every Keep surface
+                              (button, stage badge, pipeline indicator). */}
                           {r.isKept && (
                             <span
-                              className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-800 dark:bg-amber-950/50 dark:text-amber-200"
+                              className="inline-flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-blue-700 dark:bg-blue-950/40 dark:text-blue-200"
                               title="Kept candidate"
                             >
                               <Bookmark className="h-2.5 w-2.5" /> Kept

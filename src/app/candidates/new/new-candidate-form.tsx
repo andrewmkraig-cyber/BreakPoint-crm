@@ -435,7 +435,7 @@ export function NewCandidateForm({
               type="button"
               onClick={() => runParse()}
               disabled={isParsing || (!resume && !pastedText.trim() && !linkedinUrl.trim())}
-              className={cn(CLAUDE_PILL_CLASS, "w-full justify-center")}
+              className={cn(CLAUDE_PILL_CLASS, "self-start")}
             >
               {isParsing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
               {parseSource ? "Re-parse with Claude" : "Parse with Claude"}

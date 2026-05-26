@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { formatPhone, telHref } from "@/lib/rf-payload-shapes";
 import { updateClientCompany } from "@/app/clients/[id]/actions";
 import { LabeledField } from "@/app/candidates/[id]/editable-helpers";
+import { Button } from "@/components/ui/button";
 
 export const INDUSTRY_OPTIONS = [
   "Accounting",
@@ -250,19 +251,20 @@ export function EditableCompany({
             >
               <X className="h-3 w-3" /> Cancel
             </button>
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="sm"
               onClick={onSave}
               disabled={isPending}
-              className="inline-flex items-center gap-1 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
             >
               {isPending ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
               ) : (
                 <Save className="h-3 w-3" />
-              )}{" "}
+              )}
               Save
-            </button>
+            </Button>
           </div>
         </div>
       ) : (

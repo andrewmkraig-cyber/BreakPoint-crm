@@ -11,6 +11,7 @@ import {
 } from "@/app/candidates/[id]/brand-resume-actions";
 import { BRAND_LOGO_TRANSPARENT_BASE64 } from "@/lib/default-brand-logo";
 import { loadPdfjs } from "@/lib/pdfjs-loader";
+import { Button } from "@/components/ui/button";
 
 // Phase 5A.5.b — Edit Resume modal. The unified editor lets the
 // recruiter both place the BreakPoint logo AND draw redaction
@@ -348,15 +349,16 @@ export function ResumeEditor({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="sm"
               onClick={onSave}
               disabled={saving || loadingDoc || (!logo && rects.length === 0)}
-              className="inline-flex items-center gap-1 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
             >
               {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
               Save version
-            </button>
+            </Button>
             <button
               type="button"
               onClick={onClose}

@@ -1658,7 +1658,7 @@ export default function CandidatesPage() {
             </div>
             <Link
               href="/candidates/lists"
-              className="group inline-flex shrink-0 items-center gap-1.5 rounded-full border border-court-border bg-court-bg px-3 py-1.5 transition hover:border-court-accent/40 hover:bg-court-accent-tint"
+              className="group inline-flex shrink-0 items-center gap-1.5 rounded-md border border-court-border bg-court-bg px-3 py-1.5 transition hover:border-court-accent/40 hover:bg-court-accent-tint"
             >
               <ClipboardList className="h-3.5 w-3.5 text-court-accent-dark" strokeWidth={1.8} />
               <span className="text-xs font-semibold text-court-fg">Saved Lists</span>
