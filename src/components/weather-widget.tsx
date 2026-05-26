@@ -11,11 +11,20 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fetchWithRetry } from "@/lib/retry-fetch";
 
 // Topbar weather chip with a hover-only forecast popover. Reads the
 // browser's geolocation ONCE, caches the result in localStorage, and
 // hits Open-Meteo (free, no API key) for the current conditions plus
 // 6-hour hourly and 7-day daily slices, refreshing every 30 min.
+//
+// Both the Open-Meteo forecast and the BigDataCloud reverse-geocode go
+// through same-origin proxies (`/api/weather` + `/api/weather/geocode`).
+// Calling either upstream directly from the browser surfaces transient
+// Cloudflare 502s as CORS errors (the 502 response carries no CORS
+// headers), which left the chip blank for the whole session. The proxy
+// keeps the browser on its own origin so CORS is impossible and a
+// transient 502 is just a 502 we can retry.
 //
 // First visit: prompt the browser for geolocation. User's decision
 // (granted coords / denied) is persisted to localStorage so subsequent
@@ -482,18 +491,16 @@ function formatDayShort(iso: string, idx: number): string {
   );
 }
 
-// Reverse-geocode lat/lon into a "City, ST" label using BigDataCloud's
-// keyless client endpoint. CORS-enabled, no auth needed, fine for an
-// internal single-user dashboard. Returns null on any failure so the
+// Reverse-geocode lat/lon into a "City, ST" label via the same-origin
+// /api/weather/geocode proxy (which fronts BigDataCloud's keyless
+// client endpoint server-side). Returns null on any failure so the
 // popover can fall back to a generic header.
 async function reverseGeocode(
   lat: number,
   lon: number,
 ): Promise<string | null> {
   try {
-    const url =
-      `https://api.bigdatacloud.net/data/reverse-geocode-client` +
-      `?latitude=${lat}&longitude=${lon}&localityLanguage=en`;
+    const url = `/api/weather/geocode?lat=${lat}&lon=${lon}`;
     const res = await fetch(url);
     if (!res.ok) return null;
     const json = (await res.json()) as {
@@ -535,18 +542,16 @@ export function WeatherWidget() {
     let intervalId: number | undefined;
 
     async function fetchWeather(lat: number, lon: number) {
-      const url =
-        `https://api.open-meteo.com/v1/forecast` +
-        `?latitude=${lat}&longitude=${lon}` +
-        `&current=temperature_2m,apparent_temperature,weather_code` +
-        `&hourly=temperature_2m,precipitation_probability,weather_code` +
-        `&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset` +
-        `&temperature_unit=fahrenheit&wind_speed_unit=mph` +
-        `&timezone=auto&forecast_days=${DAYS_AHEAD}`;
+      // Same-origin proxy at /api/weather (server-side hits Open-Meteo
+      // and applies a 5-min CDN cache). fetchWithRetry rides through
+      // the proxy's 502 surfaces so a single upstream blip on a cold
+      // ET morning doesn't leave the chip empty for the rest of the
+      // session.
+      const url = `/api/weather?lat=${lat}&lon=${lon}`;
       try {
-        const res = await fetch(url);
+        const res = await fetchWithRetry(url);
         if (!res.ok) {
-          console.warn("[weather] open-meteo fetch failed", res.status);
+          console.warn("[weather] proxy fetch failed", res.status);
           return;
         }
         const json = (await res.json()) as {
@@ -660,7 +665,7 @@ export function WeatherWidget() {
           setData({ tempF, apparentF, code, hourly, daily, isCurrentDay });
         }
       } catch (e) {
-        console.warn("[weather] open-meteo fetch threw", e);
+        console.warn("[weather] proxy fetch threw", e);
       }
     }
 
