@@ -13,13 +13,19 @@ import {
 import { cn } from "@/lib/utils";
 
 // Topbar weather chip with a hover-only forecast popover. Reads the
-// browser's geolocation, hits Open-Meteo (free, no API key) for the
-// current conditions plus 6-hour hourly and 7-day daily slices,
-// refreshes every 30 min.
+// browser's geolocation ONCE, caches the result in localStorage, and
+// hits Open-Meteo (free, no API key) for the current conditions plus
+// 6-hour hourly and 7-day daily slices, refreshing every 30 min.
 //
-// If geolocation is unavailable or the user denied it, we fall back
-// to Chagrin Falls, OH so the chip always renders. The recruiter caught
-// it disappearing whenever the browser revoked the permission, and an
+// First visit: prompt the browser for geolocation. User's decision
+// (granted coords / denied) is persisted to localStorage so subsequent
+// sessions never re-prompt — the browser-level permission state alone
+// isn't enough because dismissed prompts ("X" without choosing) leave
+// the state at `prompt` and the OS would re-ask on every PWA launch.
+//
+// If geolocation is unavailable or denied, we fall back to Chagrin
+// Falls, OH so the chip always renders. The recruiter caught it
+// disappearing whenever the browser revoked the permission, and an
 // empty topbar slot looked like a regression. A fixed fallback also
 // keeps desktop and mobile showing the same place when GPS is off.
 
@@ -31,6 +37,50 @@ const DAYS_AHEAD = 7;
 // location when GPS isn't in use.
 const FALLBACK_LAT = 41.4312;
 const FALLBACK_LON = -81.3901;
+
+// localStorage key that holds the user's geolocation decision + last
+// captured coords. Bumping the version suffix invalidates every stored
+// cache (used if the shape below changes incompatibly later).
+const LOCATION_CACHE_KEY = "ace-weather-location-v1";
+// Coords are refreshed in the background once a day so a relocating
+// recruiter doesn't get stuck on stale lat/lon forever. The cache stays
+// usable past this age — we just kick off a silent re-fetch.
+const LOCATION_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+type LocationCache = {
+  // 'granted'  → coords resolved from geolocation; lat/lon present.
+  // 'denied'   → user declined; we use the Chagrin Falls fallback and
+  //              must NEVER prompt again on subsequent loads.
+  decision: "granted" | "denied";
+  lat?: number;
+  lon?: number;
+  capturedAt?: number;
+};
+
+function readLocationCache(): LocationCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(LOCATION_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LocationCache;
+    if (parsed.decision !== "granted" && parsed.decision !== "denied")
+      return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocationCache(cache: LocationCache): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LOCATION_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // localStorage can be unavailable (private mode, Safari quota) —
+    // we silently degrade to re-prompting on the next mount rather than
+    // crashing the chip.
+  }
+}
 
 type Hourly = { time: string; tempF: number; precipPct: number; code: number };
 type Daily = {
@@ -618,10 +668,13 @@ export function WeatherWidget() {
       console.log("[weather] starting fetch loop", { lat, lon, source });
       void fetchWeather(lat, lon);
       // Resolve the lat/lon into a human label for the popover header.
-      // Fallback source already has a known label so we skip the
+      // Fallback sources already have a known label so we skip the
       // network call to keep the popover header stable on permission
-      // denial.
-      if (source === "geolocation") {
+      // denial. Cached/live geolocation both reverse-geocode so the
+      // returning user sees their actual city, not "Your Location".
+      const isUserLocation =
+        source === "geolocation" || source === "geolocation-cached";
+      if (isUserLocation) {
         void reverseGeocode(lat, lon).then((label) => {
           if (cancelled) return;
           if (label) setLocation(label);
@@ -636,25 +689,117 @@ export function WeatherWidget() {
       );
     }
 
-    if (typeof navigator !== "undefined" && navigator.geolocation) {
+    // Silently re-capture coords in the background when our cached pair
+    // is older than LOCATION_CACHE_MAX_AGE_MS. The active fetch loop
+    // keeps running on the stale coords either way, so a denial here
+    // doesn't take the chip down — we just keep what we had.
+    function refreshCoordsIfStale(prev: LocationCache) {
+      if (!navigator.geolocation) return;
+      const stale =
+        !prev.capturedAt ||
+        Date.now() - prev.capturedAt > LOCATION_CACHE_MAX_AGE_MS;
+      if (!stale) return;
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          if (cancelled) return;
-          startWith(pos.coords.latitude, pos.coords.longitude, "geolocation");
+          writeLocationCache({
+            decision: "granted",
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude,
+            capturedAt: Date.now(),
+          });
         },
-        (err) => {
-          if (cancelled) return;
-          console.warn(
-            "[weather] geolocation denied or failed, using Chagrin Falls fallback",
-            err,
-          );
-          startWith(FALLBACK_LAT, FALLBACK_LON, "fallback");
+        () => {
+          // Background refresh failed (could be a transient denial or
+          // network issue); keep the stale coords so the chip stays up.
         },
         { timeout: 5000 },
       );
-    } else {
-      startWith(FALLBACK_LAT, FALLBACK_LON, "fallback-no-geolocation");
     }
+
+    async function bootstrap() {
+      // 1) localStorage cache wins over everything. A prior 'denied'
+      //    NEVER re-prompts; a prior 'granted' uses cached coords
+      //    immediately (and silently refreshes them once a day).
+      const cached = readLocationCache();
+      if (cached?.decision === "denied") {
+        startWith(FALLBACK_LAT, FALLBACK_LON, "fallback-cached-denied");
+        return;
+      }
+      if (
+        cached?.decision === "granted" &&
+        typeof cached.lat === "number" &&
+        typeof cached.lon === "number"
+      ) {
+        startWith(cached.lat, cached.lon, "geolocation-cached");
+        refreshCoordsIfStale(cached);
+        return;
+      }
+
+      // 2) No cache yet. Before triggering a prompt, peek at the
+      //    Permissions API — if the browser itself remembers a denial
+      //    (e.g. user blocked the site permanently in Site Settings),
+      //    cache that and skip the prompt entirely. Permissions API is
+      //    not universally available (older Safari), so failures here
+      //    fall through to the normal getCurrentPosition path.
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.permissions &&
+        typeof navigator.permissions.query === "function"
+      ) {
+        try {
+          const status = await navigator.permissions.query({
+            // TS lib.dom doesn't include 'geolocation' in PermissionName
+            // for every target — cast to keep the chip compiling across
+            // every TS target Next ships with.
+            name: "geolocation" as PermissionName,
+          });
+          if (cancelled) return;
+          if (status.state === "denied") {
+            writeLocationCache({ decision: "denied" });
+            startWith(FALLBACK_LAT, FALLBACK_LON, "fallback-permissions-denied");
+            return;
+          }
+          // 'granted' or 'prompt' — fall through. 'granted' won't show
+          // a system prompt; 'prompt' will (this is the once-ever ask).
+        } catch {
+          // Permissions API unsupported — fall through to prompt path.
+        }
+      }
+
+      // 3) First-ever visit: trigger the browser prompt exactly once and
+      //    persist whatever the user decides so we never bother them
+      //    again.
+      if (typeof navigator !== "undefined" && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            if (cancelled) return;
+            writeLocationCache({
+              decision: "granted",
+              lat: pos.coords.latitude,
+              lon: pos.coords.longitude,
+              capturedAt: Date.now(),
+            });
+            startWith(pos.coords.latitude, pos.coords.longitude, "geolocation");
+          },
+          (err) => {
+            if (cancelled) return;
+            // Persist the denial so the next mount short-circuits in
+            // step (1) without ever calling getCurrentPosition again.
+            writeLocationCache({ decision: "denied" });
+            console.warn(
+              "[weather] geolocation denied, caching denial and using Chagrin Falls fallback",
+              err,
+            );
+            startWith(FALLBACK_LAT, FALLBACK_LON, "fallback-denied-this-mount");
+          },
+          { timeout: 5000 },
+        );
+      } else {
+        startWith(FALLBACK_LAT, FALLBACK_LON, "fallback-no-geolocation");
+      }
+    }
+
+    void bootstrap();
 
     return () => {
       cancelled = true;
@@ -662,7 +807,26 @@ export function WeatherWidget() {
     };
   }, []);
 
-  if (!data) return null;
+  // Skeleton chip while the first Open-Meteo fetch is in flight. The
+  // chip used to render `null` until data arrived, which left the topbar
+  // slot empty for several seconds on cold loads and looked like the
+  // weather had been removed entirely. The skeleton holds the same
+  // w-[4.5rem] / h-10 footprint as the populated chip so nothing in the
+  // topbar shifts when data lands.
+  if (!data) {
+    return (
+      <div
+        className="inline-flex h-10 w-[4.5rem] items-center justify-center gap-1 rounded-xl border border-court-border bg-court-surface text-court-fg shadow-sm"
+        aria-label="Loading weather"
+        aria-busy="true"
+      >
+        <div className="h-5 w-5 animate-pulse rounded-full bg-court-surface-subtle" />
+        <span className="hidden min-[360px]:inline text-lg font-bold leading-none tabular-nums text-court-fg-muted">
+          —°
+        </span>
+      </div>
+    );
+  }
 
   const rounded = Math.round(data.tempF);
   const apparentRounded = Math.round(data.apparentF);
