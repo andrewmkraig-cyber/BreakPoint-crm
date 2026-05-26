@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Briefcase,
   ChevronDown,
+  ChevronUp,
   Edit3,
   Loader2,
   Plus,
@@ -16,6 +17,7 @@ import {
   UserX,
   X,
 } from "lucide-react";
+import { TabStrip } from "@/components/ui/tab-strip";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -232,6 +234,21 @@ export type PlacementSnapshot = {
   // Recruiter-tagged lead source. Seeded into the placement modal's
   // Lead Source dropdown and written back through recordPlacement.
   candidateSource: string | null;
+  // Custom Payment Agreement (Ace fix 2026-05-26 - PlacementDialog parity
+  // with placement-edit-drawer.tsx). When useCustomTerms is true the
+  // recruiter has overridden the default fee/guarantee handling with an
+  // explicit installment schedule (1-3 payments) and/or a custom
+  // guarantee end date. customGuaranteeDate is an ISO string at the
+  // client boundary, matching the expectedStartDate convention.
+  useCustomTerms: boolean;
+  installmentCount: number | null;
+  inst1Amount: number | null;
+  inst1DaysAfterStart: number | null;
+  inst2Amount: number | null;
+  inst2DaysAfterStart: number | null;
+  inst3Amount: number | null;
+  inst3DaysAfterStart: number | null;
+  customGuaranteeDate: string | null;
 };
 
 type Bucket = PipelineBucket;
@@ -273,6 +290,15 @@ function seedOptimisticPlacement(stage: string): PlacementSnapshot {
     placementNotes: null,
     startConfirmedAt: null,
     candidateSource: null,
+    useCustomTerms: false,
+    installmentCount: null,
+    inst1Amount: null,
+    inst1DaysAfterStart: null,
+    inst2Amount: null,
+    inst2DaysAfterStart: null,
+    inst3Amount: null,
+    inst3DaysAfterStart: null,
+    customGuaranteeDate: null,
   };
 }
 
@@ -462,6 +488,15 @@ export function PlacementActions({
           placementNotes: null,
           startConfirmedAt: null,
           candidateSource: null,
+          useCustomTerms: false,
+          installmentCount: null,
+          inst1Amount: null,
+          inst1DaysAfterStart: null,
+          inst2Amount: null,
+          inst2DaysAfterStart: null,
+          inst3Amount: null,
+          inst3DaysAfterStart: null,
+          customGuaranteeDate: null,
         },
         interviews: [],
       };
@@ -1400,6 +1435,52 @@ function PlacementDialog({
         : "",
   );
   const [notes, setNotes] = useState(job.placement?.placementNotes ?? "");
+
+  // Custom Payment Agreement section (Ace fix 2026-05-26 - parity with
+  // placement-edit-drawer.tsx). Collapsed by default; the fields below
+  // the toggle are grayed out and inert until useCustomTerms is on.
+  // customGuaranteeDate ISO is normalized to the "YYYY-MM-DD" shape the
+  // date input wants, matching expectedStartDate's convention.
+  const [termsOpen, setTermsOpen] = useState(false);
+  const [useCustomTerms, setUseCustomTerms] = useState(
+    job.placement?.useCustomTerms ?? false,
+  );
+  const seededInstallmentCount = job.placement?.installmentCount;
+  const [installmentCount, setInstallmentCount] = useState<1 | 2 | 3>(
+    seededInstallmentCount === 2 || seededInstallmentCount === 3
+      ? seededInstallmentCount
+      : 1,
+  );
+  const [inst1Amount, setInst1Amount] = useState(
+    job.placement?.inst1Amount != null ? String(job.placement.inst1Amount) : "",
+  );
+  const [inst1Days, setInst1Days] = useState(
+    job.placement?.inst1DaysAfterStart != null
+      ? String(job.placement.inst1DaysAfterStart)
+      : "",
+  );
+  const [inst2Amount, setInst2Amount] = useState(
+    job.placement?.inst2Amount != null ? String(job.placement.inst2Amount) : "",
+  );
+  const [inst2Days, setInst2Days] = useState(
+    job.placement?.inst2DaysAfterStart != null
+      ? String(job.placement.inst2DaysAfterStart)
+      : "",
+  );
+  const [inst3Amount, setInst3Amount] = useState(
+    job.placement?.inst3Amount != null ? String(job.placement.inst3Amount) : "",
+  );
+  const [inst3Days, setInst3Days] = useState(
+    job.placement?.inst3DaysAfterStart != null
+      ? String(job.placement.inst3DaysAfterStart)
+      : "",
+  );
+  const [guaranteeDate, setGuaranteeDate] = useState(
+    job.placement?.customGuaranteeDate
+      ? job.placement.customGuaranteeDate.slice(0, 10)
+      : "",
+  );
+
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
 
@@ -1544,6 +1625,34 @@ function PlacementDialog({
         expectedStartDate: startDate,
         notes: notes.trim(),
         candidateSource: leadSource.trim() ? leadSource.trim() : null,
+        // Custom Payment Agreement — sent unconditionally so an existing row
+        // can clear its terms by toggling the switch off and saving. The
+        // server-side termsLoaded gate (input.useCustomTerms !== undefined)
+        // sees this defined value and writes the full 9-field block, with
+        // installments 2/3 + customGuaranteeDate clearing to null when the
+        // toggle is off or the installmentCount drops them.
+        useCustomTerms,
+        installmentCount: useCustomTerms ? installmentCount : null,
+        inst1Amount: useCustomTerms ? parseNumberOrNull(inst1Amount) : null,
+        inst1DaysAfterStart: useCustomTerms ? parseIntOrNull(inst1Days) : null,
+        inst2Amount:
+          useCustomTerms && installmentCount >= 2
+            ? parseNumberOrNull(inst2Amount)
+            : null,
+        inst2DaysAfterStart:
+          useCustomTerms && installmentCount >= 2
+            ? parseIntOrNull(inst2Days)
+            : null,
+        inst3Amount:
+          useCustomTerms && installmentCount >= 3
+            ? parseNumberOrNull(inst3Amount)
+            : null,
+        inst3DaysAfterStart:
+          useCustomTerms && installmentCount >= 3
+            ? parseIntOrNull(inst3Days)
+            : null,
+        customGuaranteeDate:
+          useCustomTerms && guaranteeDate.trim() ? guaranteeDate.trim() : null,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -1877,6 +1986,135 @@ function PlacementDialog({
           className={`mt-1 resize-y ${PLACEMENT_INPUT_CLS}`}
         />
       </label>
+
+      {/* Custom Payment Agreement (Ace fix 2026-05-26 - parity with
+          placement-edit-drawer.tsx). Collapsible advanced section at the
+          bottom of the modal; the chevron toggles open/closed. Fields are
+          inert until the "Use custom payment terms" switch is on. */}
+      <div className="mt-5 border-t border-court-border pt-5">
+        <button
+          type="button"
+          onClick={() => setTermsOpen((o) => !o)}
+          aria-expanded={termsOpen}
+          className="flex w-full items-center justify-between text-left"
+        >
+          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
+            Custom Payment Agreement
+          </span>
+          {termsOpen ? (
+            <ChevronUp className="h-4 w-4 text-court-fg-muted" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-court-fg-muted" />
+          )}
+        </button>
+
+        {termsOpen ? (
+          <div className="mt-4 space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="text-sm font-semibold text-court-fg">
+                Use custom payment terms
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={useCustomTerms}
+                aria-label="Use custom payment terms"
+                onClick={() => setUseCustomTerms((v) => !v)}
+                className={cn(
+                  "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+                  useCustomTerms ? "bg-court-brand" : "bg-court-border",
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+                    useCustomTerms ? "translate-x-[22px]" : "translate-x-0.5",
+                  )}
+                />
+              </button>
+            </div>
+
+            <div
+              className={cn(
+                "space-y-4",
+                !useCustomTerms && "pointer-events-none opacity-50",
+              )}
+            >
+              <div>
+                <PlacementInputLabel>Number of installments</PlacementInputLabel>
+                <div className="mt-1">
+                  <TabStrip
+                    ariaLabel="Number of installments"
+                    items={[
+                      { id: "1", label: "1" },
+                      { id: "2", label: "2" },
+                      { id: "3", label: "3" },
+                    ]}
+                    activeId={String(installmentCount)}
+                    onChange={(id) =>
+                      setInstallmentCount(Number(id) as 1 | 2 | 3)
+                    }
+                  />
+                </div>
+              </div>
+
+              {[
+                { n: 1, amount: inst1Amount, setAmount: setInst1Amount, days: inst1Days, setDays: setInst1Days },
+                { n: 2, amount: inst2Amount, setAmount: setInst2Amount, days: inst2Days, setDays: setInst2Days },
+                { n: 3, amount: inst3Amount, setAmount: setInst3Amount, days: inst3Days, setDays: setInst3Days },
+              ]
+                .slice(0, installmentCount)
+                .map((f) => (
+                  <div key={f.n}>
+                    <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-court-fg">
+                      {`Installment ${f.n}`}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="block text-sm">
+                        <PlacementInputLabel>Amount ($)</PlacementInputLabel>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          value={f.amount}
+                          onChange={(e) => f.setAmount(e.target.value)}
+                          placeholder="0"
+                          className={`mt-1 ${PLACEMENT_INPUT_CLS}`}
+                        />
+                      </label>
+                      <label className="block text-sm">
+                        <PlacementInputLabel>Days after start</PlacementInputLabel>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          step={1}
+                          value={f.days}
+                          onChange={(e) => f.setDays(e.target.value)}
+                          placeholder="0"
+                          className={`mt-1 ${PLACEMENT_INPUT_CLS}`}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ))}
+
+              <label className="block text-sm">
+                <PlacementInputLabel>Guarantee end date (custom)</PlacementInputLabel>
+                <input
+                  type="date"
+                  value={guaranteeDate}
+                  onChange={(e) => setGuaranteeDate(e.target.value)}
+                  className={`mt-1 ${PLACEMENT_INPUT_CLS}`}
+                />
+                <div className="mt-1 text-[11px] text-court-fg-muted">
+                  Overrides the guarantee days field above when set.
+                </div>
+              </label>
+            </div>
+          </div>
+        ) : null}
+      </div>
 
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
       <ModalFooter
@@ -3736,6 +3974,23 @@ function parseCompensation(raw: string): number | null {
   if (m[2] === "k") n *= 1000;
   if (m[2] === "m") n *= 1_000_000;
   return Math.round(n);
+}
+
+// Plain-number parser for Custom Payment Agreement installment amount fields
+// (Float column in Prisma). Empty / non-numeric → null.
+function parseNumberOrNull(value: string): number | null {
+  const t = value.trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+// "Days after start" is an Int column, so coerce to a whole number.
+function parseIntOrNull(value: string): number | null {
+  const t = value.trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
 }
 
 function formatMoney(n: number | null, currency: string): string {

@@ -303,6 +303,21 @@ export type RecordPlacementInput = {
   // bucketing. Free-form so legacy values (Pin, Apollo BD) survive; the
   // modal renders a fixed dropdown for the canonical channels.
   candidateSource?: string | null;
+  // Custom Payment Agreement (Ace fix 2026-05-26 - PlacementDialog parity
+  // with placement-edit-drawer.tsx). All optional: a caller that doesn't
+  // know about custom terms can omit them and the existing default
+  // behavior (single-invoice, default guarantee window) is preserved.
+  // customGuaranteeDate is an ISO YYYY-MM-DD string; the server parses
+  // and stores it as a Date.
+  useCustomTerms?: boolean;
+  installmentCount?: number | null;
+  inst1Amount?: number | null;
+  inst1DaysAfterStart?: number | null;
+  inst2Amount?: number | null;
+  inst2DaysAfterStart?: number | null;
+  inst3Amount?: number | null;
+  inst3DaysAfterStart?: number | null;
+  customGuaranteeDate?: string | null;
 };
 
 export async function recordPlacement(input: RecordPlacementInput): Promise<Result<{ id: string; syncedToRf: boolean }>> {
@@ -361,6 +376,44 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
     const mirroredHiringName = primaryHiring?.name || input.hiringManagerName || null;
     const mirroredHiringEmail = primaryHiring?.email || input.hiringManagerEmail || null;
     const trimmedSource = input.candidateSource?.trim();
+    // Custom Payment Agreement payload. Only write the custom-term columns
+    // when the caller actually sent them, otherwise leave them untouched so
+    // an existing row that already has saved terms can't be wiped by a
+    // caller that doesn't know about them. Mirrors the placement-update
+    // action's conditional handling.
+    const termsLoaded = input.useCustomTerms !== undefined;
+    const useCustomTerms = input.useCustomTerms ?? false;
+    const customGuaranteeDateValue =
+      termsLoaded && useCustomTerms && input.customGuaranteeDate?.trim()
+        ? new Date(input.customGuaranteeDate)
+        : termsLoaded
+          ? null
+          : undefined;
+    const termsPayload = termsLoaded
+      ? {
+          useCustomTerms,
+          installmentCount: useCustomTerms ? input.installmentCount ?? null : null,
+          inst1Amount: useCustomTerms ? input.inst1Amount ?? null : null,
+          inst1DaysAfterStart: useCustomTerms ? input.inst1DaysAfterStart ?? null : null,
+          inst2Amount:
+            useCustomTerms && (input.installmentCount ?? 0) >= 2
+              ? input.inst2Amount ?? null
+              : null,
+          inst2DaysAfterStart:
+            useCustomTerms && (input.installmentCount ?? 0) >= 2
+              ? input.inst2DaysAfterStart ?? null
+              : null,
+          inst3Amount:
+            useCustomTerms && (input.installmentCount ?? 0) >= 3
+              ? input.inst3Amount ?? null
+              : null,
+          inst3DaysAfterStart:
+            useCustomTerms && (input.installmentCount ?? 0) >= 3
+              ? input.inst3DaysAfterStart ?? null
+              : null,
+          customGuaranteeDate: customGuaranteeDateValue,
+        }
+      : {};
     const commonData = {
       acceptedSalary: input.acceptedSalary,
       acceptedCurrency: input.acceptedCurrency || "USD",
@@ -378,6 +431,7 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
       placementNotes: input.notes || null,
       candidateSource: trimmedSource ? trimmedSource : null,
       syncedToRf: sync.synced,
+      ...termsPayload,
     };
     let row: { id: string; syncedToRf: boolean };
     if (!existing) {
