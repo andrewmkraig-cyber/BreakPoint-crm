@@ -727,7 +727,7 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
           <Link
             href={`/candidates/${row.candidateId}?edit=placement&jobId=${row.jobId}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-slate-200 bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800"
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-slate-400 bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:bg-slate-200 dark:border-slate-500 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800"
             title="Edit placement details"
           >
             <Edit3 className="h-3 w-3" />

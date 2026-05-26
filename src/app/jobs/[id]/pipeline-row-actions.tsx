@@ -466,8 +466,14 @@ type Tone =
 // the action chips don't pop bright off the page. Mirrors the dark
 // treatment on the shared Button primitive.
 const TONE_CLASS: Record<Tone, string> = {
+  // Border bumped from slate-200 → slate-400 so the default-tone chip
+  // (Edit Placement, Edit Offer, View) outlines at the same visual
+  // weight as the colored siblings — Andrew 2026-05-26: Edit
+  // Placement was reading borderless next to Confirm Start on both
+  // the candidate profile context bar and the /pipeline pending-start
+  // row.
   default:
-    "border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800",
+    "border-slate-400 bg-slate-100 text-slate-600 hover:bg-slate-200 dark:border-slate-500 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800",
   primary:
     "border-court-brand bg-court-brand-tint text-court-brand-dark hover:bg-court-brand/25",
   danger:

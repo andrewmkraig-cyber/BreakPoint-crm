@@ -1440,7 +1440,12 @@ function AddToAceButton({ phoneNumber }: { phoneNumber: string }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-court-accent hover:text-court-accent-dark"
+        // Mirrors the Quo button skin (rounded-md, px-3 py-1.5,
+        // text-xs, transparent bg, outlined) but in brand green so the
+        // thread-header action row reads as a sized + styled set of
+        // chips. Add to Ace is the "promote this number" affordance,
+        // hence green; Quo stays yellow.
+        className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-transparent px-3 py-1.5 text-xs font-semibold text-court-brand shadow-sm transition hover:bg-court-brand/10"
         aria-haspopup="menu"
         aria-expanded={open}
         title="Add this number to Ace"
