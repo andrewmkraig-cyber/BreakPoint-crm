@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CalendarDayView } from "@/components/calendar/day-view";
 import { CalendarEventDrawer } from "@/components/calendar/event-drawer";
+import type { EventTypeFilter } from "@/components/calendar/left-rail";
 import { GoogleGlyph } from "@/components/calendar/left-rail";
 import { CalendarLeftRail } from "@/components/calendar/left-rail";
 import { CalendarMonthView } from "@/components/calendar/month-view";
@@ -40,6 +41,7 @@ import {
 // default ("My Calendar") every time the user left and came back to
 // /calendar, since the component remounts on each navigation.
 const HIDDEN_MEMBERS_KEY = "ace.calendar.hiddenMembers";
+const SELECTED_EVENT_TYPES_KEY = "ace.calendar.selectedEventTypes";
 
 function readHiddenMembersFromStorage(
   teamMembers: CalendarTeamMember[],
@@ -59,6 +61,39 @@ function readHiddenMembersFromStorage(
     // Malformed JSON - fall through to the default.
   }
   return defaultHidden;
+}
+
+const EVENT_TYPE_FILTERS: ReadonlySet<EventTypeFilter> = new Set<EventTypeFilter>([
+  "interview",
+  "client",
+  "reminder",
+  "other",
+]);
+
+function readSelectedEventTypesFromStorage(): Set<EventTypeFilter> {
+  // Default: empty set = "no filter, show all events". Persisting is
+  // worth it because a recruiter who narrowed to just Interviews
+  // doesn't want the filter to reset every time they navigate away
+  // and come back.
+  const empty = new Set<EventTypeFilter>();
+  if (typeof window === "undefined") return empty;
+  try {
+    const raw = window.localStorage.getItem(SELECTED_EVENT_TYPES_KEY);
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw);
+    if (
+      Array.isArray(parsed) &&
+      parsed.every(
+        (s): s is EventTypeFilter =>
+          typeof s === "string" && EVENT_TYPE_FILTERS.has(s as EventTypeFilter),
+      )
+    ) {
+      return new Set(parsed);
+    }
+  } catch {
+    // Malformed JSON - fall through to empty.
+  }
+  return empty;
 }
 
 // Calendar surface owner. Holds view / scope / drawer / toast state and
@@ -103,6 +138,30 @@ export function CalendarView({
       JSON.stringify(Array.from(hiddenMembers)),
     );
   }, [hiddenMembers]);
+
+  // Event-type filter is a Set of chip ids the recruiter has clicked
+  // on in the left-rail legend. Empty Set = no filter (show all).
+  // Persists to localStorage on the same theory as hiddenMembers.
+  const [selectedEventTypes, setSelectedEventTypes] = useState<
+    Set<EventTypeFilter>
+  >(() => readSelectedEventTypesFromStorage());
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      SELECTED_EVENT_TYPES_KEY,
+      JSON.stringify(Array.from(selectedEventTypes)),
+    );
+  }, [selectedEventTypes]);
+
+  const toggleEventType = useCallback((type: EventTypeFilter) => {
+    setSelectedEventTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  }, []);
 
   // Master-tab state is derived, not stored. "me" only when every
   // non-self member is hidden AND self is visible; "team" only when
@@ -272,12 +331,23 @@ export function CalendarView({
     [router],
   );
 
-  // Events flow straight to the grid views - they all filter on
-  // hiddenMembers themselves, so no parent-level scope filter is
-  // needed. The grids hide an event only when EVERY owner key is
-  // hidden, so an event Andrew + Austin both own stays visible until
-  // both checkboxes are off.
-  const filteredEvents = events;
+  // Events flow to the grid views with a single parent-level filter
+  // pass for event types. Member-based hiding is still handled inside
+  // each grid (so a co-owned event stays visible until every owner is
+  // hidden). The grids check ownership against hiddenMembers; the
+  // event-type filter lives here because all three grids share the
+  // same answer and shouldn't each re-derive it.
+  const filteredEvents = useMemo(() => {
+    if (selectedEventTypes.size === 0) return events;
+    return events.filter((e) => {
+      // "candidate" doesn't have its own chip in the legend — fold it
+      // under "other" so a candidate call still shows when the user
+      // narrows to "Other", instead of vanishing into nowhere.
+      const effective: EventTypeFilter =
+        e.type === "candidate" ? "other" : e.type;
+      return selectedEventTypes.has(effective);
+    });
+  }, [events, selectedEventTypes]);
 
   const goPrev = () => {
     if (view === "day") setCurrentDate((d) => addDays(d, -1));
@@ -290,6 +360,19 @@ export function CalendarView({
     else setCurrentDate((d) => addDays(d, 7));
   };
   const goToday = () => setCurrentDate(today);
+
+  // Mini-cal day click → main view jumps to that date but stays in
+  // whatever view mode the user was in (matches Google Calendar's
+  // side-cal behavior). Week-view day-header click is a stronger
+  // signal — the user wants to focus on that day — so it both sets
+  // the date and switches to day view.
+  const goToDate = useCallback((date: Date) => {
+    setCurrentDate(date);
+  }, []);
+  const goToDay = useCallback((date: Date) => {
+    setCurrentDate(date);
+    setView("day");
+  }, []);
 
   return (
     <div className="flex min-h-[calc(100vh-6rem)] flex-col gap-5">
@@ -314,9 +397,12 @@ export function CalendarView({
           teamMembers={teamMembers}
           hiddenMembers={hiddenMembers}
           onToggleMember={toggleMember}
+          selectedEventTypes={selectedEventTypes}
+          onToggleEventType={toggleEventType}
           monthStart={currentMonthStart}
           currentWeekStart={currentWeekStart}
           today={today}
+          onSelectDate={goToDate}
         />
 
         <div className="min-w-0 flex-1">
@@ -334,6 +420,7 @@ export function CalendarView({
               onSlotClick={(dayIdx, hour) =>
                 openCreateAt(addDays(currentWeekStart, dayIdx), hour, 0)
               }
+              onDayHeaderClick={goToDay}
             />
           )}
           {view === "day" && (

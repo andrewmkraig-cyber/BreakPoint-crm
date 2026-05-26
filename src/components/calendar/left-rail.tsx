@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { CalendarTeamMember } from "@/lib/calendar/types";
 import {
@@ -14,6 +14,11 @@ import {
 } from "@/lib/calendar/week";
 import { cn } from "@/lib/utils";
 
+// The four filter chips users see in the legend. "candidate" events are
+// folded into "other" for filter purposes so candidate-call rows aren't
+// silently dropped when a filter is active — see calendar-view.tsx.
+export type EventTypeFilter = "interview" | "client" | "reminder" | "other";
+
 type Props = {
   teamMembers: CalendarTeamMember[];
   // Set of member ids whose events should be hidden from the grid.
@@ -22,9 +27,16 @@ type Props = {
   // into a no-op for the common single-recruiter case.
   hiddenMembers: Set<string>;
   onToggleMember: (id: string) => void;
+  // Set of event-type filters the recruiter has toggled on. Empty
+  // means "no filter" (show all). Non-empty means "show only these".
+  selectedEventTypes: Set<EventTypeFilter>;
+  onToggleEventType: (type: EventTypeFilter) => void;
   monthStart: Date;
   currentWeekStart: Date;
   today: Date;
+  // Mini-cal day click → main view jumps to that date (keeps the
+  // current view mode, mirroring Google Calendar's side-cal behavior).
+  onSelectDate: (date: Date) => void;
 };
 
 // Slim left rail. Three stacked cards (mini-cal, event-types legend,
@@ -35,9 +47,12 @@ export function CalendarLeftRail({
   teamMembers,
   hiddenMembers,
   onToggleMember,
+  selectedEventTypes,
+  onToggleEventType,
   monthStart,
   currentWeekStart,
   today,
+  onSelectDate,
 }: Props) {
   return (
     <aside className="hidden w-[200px] shrink-0 flex-col gap-4 xl:flex">
@@ -45,8 +60,12 @@ export function CalendarLeftRail({
         monthStart={monthStart}
         currentWeekStart={currentWeekStart}
         today={today}
+        onSelectDate={onSelectDate}
       />
-      <EventTypeLegend />
+      <EventTypeLegend
+        selectedTypes={selectedEventTypes}
+        onToggle={onToggleEventType}
+      />
       <TeamList
         teamMembers={teamMembers}
         hiddenMembers={hiddenMembers}
@@ -61,19 +80,36 @@ function MiniMonth({
   monthStart,
   currentWeekStart,
   today,
+  onSelectDate,
 }: {
   monthStart: Date;
   currentWeekStart: Date;
   today: Date;
+  onSelectDate: (date: Date) => void;
 }) {
   // Mini-cal owns its own displayed month so the recruiter can flip
   // through months in the rail without dragging the main grid along.
-  // Seeded from the parent's monthStart on first mount; subsequent
-  // changes to the parent's currentDate don't reseed this state —
-  // matches Google Calendar's behavior where the side cal is a
-  // standalone navigator. "Jump to today" lives in the main header's
-  // Today button; the rail intentionally has no analog.
+  // Seeded from the parent's monthStart on first mount; the effect
+  // below resyncs whenever the parent navigates to a date in a new
+  // month so the side cal follows along instead of going stale.
+  // "Jump to today" lives in the main header's Today button; the rail
+  // intentionally has no analog.
   const [viewMonth, setViewMonth] = useState<Date>(monthStart);
+
+  // Keep the mini-cal pointing at the same month as the main view's
+  // current date — so a Today click, or a day-header click in the main
+  // grid, also pulls the rail to that month.
+  useEffect(() => {
+    setViewMonth((cur) => {
+      if (
+        cur.getFullYear() === monthStart.getFullYear() &&
+        cur.getMonth() === monthStart.getMonth()
+      ) {
+        return cur;
+      }
+      return monthStart;
+    });
+  }, [monthStart]);
 
   // Mon-first 6×7 grid for the displayed month. Cells outside the
   // month fade to ~60% opacity; the current week is tinted; today
@@ -133,9 +169,12 @@ function MiniMonth({
           const inWeek =
             date >= currentWeekStart && date <= weekEnd && date.getDay() !== 0 && date.getDay() !== 6;
           return (
-            <div
+            <button
               key={date.toISOString()}
-              className="flex items-center justify-center py-0.5 text-[10.5px]"
+              type="button"
+              onClick={() => onSelectDate(date)}
+              aria-label={`Jump to ${date.toDateString()}`}
+              className="flex items-center justify-center rounded py-0.5 text-[10.5px] transition hover:bg-court-brand-tint/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-court-brand"
             >
               <span
                 className={cn(
@@ -151,7 +190,7 @@ function MiniMonth({
               >
                 {date.getDate()}
               </span>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -159,41 +198,88 @@ function MiniMonth({
   );
 }
 
-function EventTypeLegend() {
-  const items: Array<{ label: string; chip: string; ring: string }> = [
+function EventTypeLegend({
+  selectedTypes,
+  onToggle,
+}: {
+  selectedTypes: Set<EventTypeFilter>;
+  onToggle: (type: EventTypeFilter) => void;
+}) {
+  const items: Array<{
+    label: string;
+    type: EventTypeFilter;
+    chip: string;
+    ring: string;
+  }> = [
     {
       label: "Interview",
+      type: "interview",
       chip: "bg-court-brand-tint",
       ring: "border-court-brand",
     },
     {
       label: "Client Call",
+      type: "client",
       chip: "bg-blue-50 dark:bg-blue-950/40",
       ring: "border-blue-300 dark:border-blue-700",
     },
     {
       label: "Reminder",
+      type: "reminder",
       chip: "bg-amber-50 dark:bg-amber-950/40",
       ring: "border-amber-300 dark:border-amber-700",
     },
     {
       label: "Other",
+      type: "other",
       chip: "bg-court-surface-subtle",
       ring: "border-court-border",
     },
   ];
+  // No-filter mode is empty-set, not all-selected — that way a fresh
+  // page load still shows everything without us having to seed all
+  // four types into state. When at least one chip is on, only its
+  // type renders on the grid; clicking the last active chip clears
+  // the filter and brings everyone back.
+  const anySelected = selectedTypes.size > 0;
   return (
     <div className="rounded-2xl border border-court-border bg-court-surface p-3.5 shadow-sm">
       <div className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-court-fg-muted">
         Event types
       </div>
-      <ul className="space-y-1.5 text-[12px]">
-        {items.map((t) => (
-          <li key={t.label} className="flex items-center gap-2">
-            <span className={cn("h-3 w-3 rounded-sm border-[1.5px]", t.chip, t.ring)} />
-            <span className="text-court-fg">{t.label}</span>
-          </li>
-        ))}
+      <ul className="space-y-1 text-[12px]">
+        {items.map((t) => {
+          const active = selectedTypes.has(t.type);
+          // When nothing is selected (default), all chips read as
+          // "showing" — no dim. When something is selected, dim the
+          // chips that aren't part of the active filter so the
+          // recruiter can tell at a glance which types the grid is
+          // currently honoring.
+          const dim = anySelected && !active;
+          return (
+            <li key={t.type}>
+              <button
+                type="button"
+                onClick={() => onToggle(t.type)}
+                aria-pressed={active}
+                className={cn(
+                  "-mx-1.5 flex w-[calc(100%+0.75rem)] cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-left transition hover:bg-court-brand-tint/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-court-brand",
+                  active && "bg-court-brand-tint/50",
+                  dim && "opacity-50",
+                )}
+              >
+                <span
+                  className={cn(
+                    "h-3 w-3 rounded-sm border-[1.5px]",
+                    t.chip,
+                    t.ring,
+                  )}
+                />
+                <span className="text-court-fg">{t.label}</span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

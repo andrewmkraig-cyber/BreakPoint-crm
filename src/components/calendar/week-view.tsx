@@ -31,6 +31,10 @@ type Props = {
   now: Date;
   onEventClick: (event: CalendarEvent) => void;
   onSlotClick: (day: number, hour: number) => void;
+  // Clicking the column header (e.g. "MON 25") jumps the main view
+  // into day view focused on that date. Implemented at the parent so
+  // the week view stays a dumb renderer.
+  onDayHeaderClick: (date: Date) => void;
 };
 
 export function CalendarWeekView({
@@ -44,6 +48,7 @@ export function CalendarWeekView({
   now,
   onEventClick,
   onSlotClick,
+  onDayHeaderClick,
 }: Props) {
   const weekDays = useMemo(() => getWorkWeekDays(weekStart), [weekStart]);
 
@@ -73,10 +78,13 @@ export function CalendarWeekView({
         {weekDays.map((d) => {
           const isToday = isSameDay(d.fullDate, today);
           return (
-            <div
+            <button
               key={d.key}
+              type="button"
+              onClick={() => onDayHeaderClick(d.fullDate)}
+              aria-label={`Open ${d.label} ${d.date} in day view`}
               className={cn(
-                "border-b border-court-border py-3.5 text-center",
+                "block w-full cursor-pointer border-b border-court-border py-3.5 text-center transition hover:bg-court-brand-tint/30 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-court-brand",
                 isToday && "bg-court-brand-tint/40",
               )}
             >
@@ -98,7 +106,7 @@ export function CalendarWeekView({
                   {d.date}
                 </span>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
