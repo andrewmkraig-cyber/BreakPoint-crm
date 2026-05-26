@@ -99,40 +99,63 @@ function makeEnvelope() {
 function makePhone() {
   const png = newImg();
   makeBase(png);
-  // Tilted handset glyph: rounded earpiece bulb at upper-left,
-  // matching mouthpiece bulb at lower-right, thin 1-px diagonal
-  // handle joining them. Pad shapes are hand-pixeled (rather than
-  // filled rects) so each end reads as a soft oval, and the handle
-  // stays 1 px so the two bulbs remain visually distinct from the
-  // connector. The earlier outline+stripe design read as a key /
-  // arrow at the 20×20 signature display size.
+  // Classic telephone handset glyph. Two solid rounded-rectangle
+  // pads (earpiece top-left, mouthpiece bottom-right) joined by a
+  // bold curved arc handle that sweeps right-and-down between
+  // them. Designed at 20×20 to read as a phone at the signature's
+  // display size — bold filled shapes, no 1-px outlines, and a
+  // curved (not diagonal) handle so the silhouette can't be
+  // mistaken for a dumbbell or a key.
   function fill(x, y) {
     setPx(png, x, y, WHITE[0], WHITE[1], WHITE[2], 255);
   }
-  // Earpiece bulb — soft oval, ~4×4 pixels.
-  const earpiece = [
-    [5, 5], [6, 5], [7, 5],
-    [4, 6], [5, 6], [6, 6], [7, 6], [8, 6],
-    [4, 7], [5, 7], [6, 7], [7, 7], [8, 7],
-    [5, 8], [6, 8], [7, 8],
-  ];
-  for (const [x, y] of earpiece) fill(x, y);
-  // Mouthpiece bulb — mirror of the earpiece, ~4×4 pixels.
-  const mouthpiece = [
-    [12, 11], [13, 11], [14, 11],
-    [11, 12], [12, 12], [13, 12], [14, 12], [15, 12],
-    [11, 13], [12, 13], [13, 13], [14, 13], [15, 13],
-    [12, 14], [13, 14], [14, 14],
-  ];
-  for (const [x, y] of mouthpiece) fill(x, y);
-  // Thin diagonal handle — 1 px so the two bulbs stay visually
-  // separate.
-  fill(8, 9);
-  fill(9, 9);
-  fill(9, 10);
-  fill(10, 10);
-  fill(10, 11);
-  fill(11, 11);
+  // Rounded-rectangle pad helper. Fills [x0..x1] × [y0..y1], with
+  // the four outer corner pixels trimmed so each pad reads as a
+  // soft rounded rect rather than a hard square. Pads at this
+  // scale (5×4) only need single-pixel corner trimming to look
+  // rounded — anything heavier eats into the pad's body.
+  function roundedPad(x0, y0, x1, y1) {
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const isCorner =
+          (x === x0 && y === y0) ||
+          (x === x1 && y === y0) ||
+          (x === x0 && y === y1) ||
+          (x === x1 && y === y1);
+        if (isCorner) continue;
+        fill(x, y);
+      }
+    }
+  }
+  // Earpiece — 5×4 rounded rect, cols 3–7, rows 3–6.
+  roundedPad(3, 3, 7, 6);
+  // Mouthpiece — mirror, 5×4 rounded rect, cols 12–16, rows 13–16.
+  roundedPad(12, 13, 16, 16);
+  // Curved arc handle, joining the inside corners of the two
+  // pads. Drawn by sampling a quadratic Bezier
+  //   P0 = (6, 6) — inside the earpiece's bottom-right corner
+  //   P1 = (14, 8) — control point pulling the curve up and right
+  //                  so the arc bulges away from the diagonal line
+  //   P2 = (13, 13) — inside the mouthpiece's top-left corner
+  // and filling a 2×2 block at every sample. Dense sampling
+  // (80 steps) keeps the band continuous through the diagonal
+  // transition; the 2×2 block gives the handle a bold ~2–3 px
+  // depth so it matches the visual weight of the two pads.
+  // Endpoints sit *inside* each pad so the arc fuses cleanly
+  // with both, rather than leaving a 1-px diagonal gap.
+  const samples = 80;
+  for (let i = 0; i <= samples; i++) {
+    const t = i / samples;
+    const omt = 1 - t;
+    const cx = omt * omt * 6 + 2 * omt * t * 14 + t * t * 13;
+    const cy = omt * omt * 6 + 2 * omt * t * 8 + t * t * 13;
+    const px = Math.round(cx);
+    const py = Math.round(cy);
+    fill(px, py);
+    fill(px + 1, py);
+    fill(px, py + 1);
+    fill(px + 1, py + 1);
+  }
   return png;
 }
 
