@@ -70,10 +70,33 @@ export const authOptions: NextAuthOptions = {
       const hd = (profile as { hd?: string } | null | undefined)?.hd;
       return email.endsWith(`@${ALLOWED_DOMAIN}`) || hd === ALLOWED_DOMAIN;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: string }).role ?? "ADMIN";
+        // PrismaAdapter sets token.picture automatically from
+        // user.image on first sign-in; re-stamp it explicitly so the
+        // post-upload refresh path below always has a stable home for
+        // the latest URL.
+        if (user.image !== undefined) {
+          token.picture = user.image;
+        }
+      }
+      // useSession().update({ image: '/api/avatar/<userId>?v=...' })
+      // from the profile-picture uploader lands here as
+      // `trigger === "update"`. Accepting an image override here is
+      // how the topbar + sidebar avatar update instantly after upload,
+      // instead of forcing the user to sign out + back in.
+      if (
+        trigger === "update" &&
+        session &&
+        typeof session === "object" &&
+        "image" in session
+      ) {
+        const next = (session as { image?: string | null }).image;
+        if (next === null || typeof next === "string") {
+          token.picture = next;
+        }
       }
       return token;
     },
@@ -81,6 +104,13 @@ export const authOptions: NextAuthOptions = {
       if (session.user && token) {
         session.user.id = (token.id as string) ?? token.sub ?? "";
         session.user.role = (token.role as string) ?? "ADMIN";
+        // NextAuth usually lifts token.picture → session.user.image
+        // by default, but only when the picture also changed during
+        // sign-in. Setting it explicitly makes the update() path
+        // above reliable across all NextAuth versions/builds.
+        if (token.picture !== undefined) {
+          session.user.image = (token.picture as string | null) ?? null;
+        }
       }
       return session;
     },

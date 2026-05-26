@@ -234,11 +234,21 @@ export function CalendarWeekView({
                           {owners.map((m) => (
                             <span
                               key={m.id}
-                              className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-white text-[8px] font-bold text-white"
-                              style={{ background: m.color }}
+                              className="inline-flex h-3.5 w-3.5 items-center justify-center overflow-hidden rounded-full border border-white text-[8px] font-bold text-white"
+                              style={{ background: m.image ? undefined : m.color }}
                               title={m.name}
                             >
-                              {m.initials}
+                              {m.image ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={m.image}
+                                  alt={m.name}
+                                  referrerPolicy="no-referrer"
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                m.initials
+                              )}
                             </span>
                           ))}
                         </span>

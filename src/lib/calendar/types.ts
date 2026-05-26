@@ -69,6 +69,12 @@ export type CalendarTeamMember = {
   initials: string;
   color: string;
   self?: boolean;
+  // URL to the member's profile picture (uploaded /api/avatar/<id>
+  // path or their Google OAuth photo). Null when the user has
+  // neither uploaded a picture nor signed in via Google. Drives the
+  // avatar render in the calendar team list and on event-tile owner
+  // dots — when present, the initials fall back to a small overlay.
+  image?: string | null;
 };
 
 export type CalendarView = "day" | "week" | "month";

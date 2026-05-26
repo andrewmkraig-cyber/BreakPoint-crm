@@ -389,10 +389,26 @@ function TeamList({
                 {on && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
               </span>
               <span
-                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
-                style={{ background: m.color }}
+                className="inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full text-[9px] font-bold text-white"
+                style={{ background: m.image ? undefined : m.color }}
               >
-                {m.initials}
+                {m.image ? (
+                  // Plain <img> (not next/image) — these avatars are
+                  // 20px and either same-origin (/api/avatar) or
+                  // already optimized by the upstream provider
+                  // (googleusercontent). next/image would add an
+                  // optimizer hop without meaningful benefit at this
+                  // size. Initials show through if the image fails.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={m.image}
+                    alt={m.name}
+                    referrerPolicy="no-referrer"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  m.initials
+                )}
               </span>
               <span className="truncate text-[12px] text-court-fg">
                 {m.name.split(" ")[0]}

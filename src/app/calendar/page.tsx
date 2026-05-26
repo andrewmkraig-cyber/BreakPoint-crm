@@ -118,7 +118,11 @@ export default async function CalendarPage() {
     }),
     prisma.organizationMembership.findMany({
       where: { organizationId: org.id },
-      include: { user: { select: { id: true, name: true, email: true } } },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, image: true },
+        },
+      },
       orderBy: { joinedAt: "asc" },
     }),
     // Standalone panel reminders only (event/interview-linked rows
@@ -169,6 +173,10 @@ export default async function CalendarPage() {
     initials: initialsFor(m.user.name, m.user.email),
     color: colorFor(m.user.id),
     self: selfEmail !== null && m.user.email?.toLowerCase() === selfEmail,
+    // Carries User.image through to the calendar grid avatars. May be
+    // a /api/avatar/<userId> URL (the user uploaded one) or a Google
+    // googleusercontent URL (still on the Google OAuth picture).
+    image: m.user.image ?? null,
   }));
 
   // Self person hint for events whose calendar source carries no
