@@ -136,14 +136,34 @@ function ReminderRow({
         <Bell className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
-        {/* Line 1: title + (edit · delete) pinned top-right. The
-            countdown used to live up here too, but at the panel's
-            280px width that left the title only ~60px — short enough
-            to clip after 7 characters ("Justin Bieb…"). Pushing the
-            countdown to line 2 roughly doubles the title's room. */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-snug text-court-fg">
-            {r.title}
+        {/* Line 1: title owns the entire content width and may wrap
+            to a second line. Round 1 freed ~60px by pulling the
+            countdown off this row; this round pulls the edit/delete
+            buttons down to line 2 too, so a 21-char title like
+            "Justin Bieber Pilates" fits comfortably without
+            truncation. line-clamp-2 still caps anything pathological. */}
+        <div className="line-clamp-2 text-[13px] font-semibold leading-snug text-court-fg">
+          {r.title}
+        </div>
+        {/* Line 2: countdown · bell + lead times, with the edit and
+            delete buttons pinned to the right. Putting the buttons
+            here keeps them visually anchored to the time line they
+            modify, and leaves room for the title above to breathe. */}
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-court-fg-muted">
+            <span
+              className={cn(
+                "whitespace-nowrap font-medium",
+                r.urgent
+                  ? "text-amber-700 dark:text-amber-200"
+                  : "text-court-fg-muted",
+              )}
+            >
+              {r.when}
+            </span>
+            <span aria-hidden className="opacity-50">·</span>
+            <Bell className="h-3 w-3 shrink-0" />
+            <span>{leadsSummary(r.notifyLeadsMin)}</span>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <button
@@ -165,24 +185,6 @@ function ReminderRow({
               <Trash2 className="h-3 w-3" />
             </button>
           </div>
-        </div>
-        {/* Line 2: countdown (urgent styling preserved) · bell + lead
-            times. The countdown stays prominent — just no longer
-            competes with the title for horizontal space. */}
-        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-court-fg-muted">
-          <span
-            className={cn(
-              "whitespace-nowrap font-medium",
-              r.urgent
-                ? "text-amber-700 dark:text-amber-200"
-                : "text-court-fg-muted",
-            )}
-          >
-            {r.when}
-          </span>
-          <span aria-hidden className="opacity-50">·</span>
-          <Bell className="h-3 w-3 shrink-0" />
-          <span>{leadsSummary(r.notifyLeadsMin)}</span>
         </div>
         {/* Line 3: full date/time, e.g. "Wednesday, May 20 at 12:00 PM". */}
         <div className="mt-0.5 text-[11px] text-court-fg-muted">{r.abs}</div>

@@ -205,34 +205,44 @@ function EventTypeLegend({
   selectedTypes: Set<EventTypeFilter>;
   onToggle: (type: EventTypeFilter) => void;
 }) {
+  // `chip` is the tinted-background look used when the filter is off
+  // (matches the legend's original color samples). `fill` is the
+  // solid accent the box flips to when the user toggles it on, so the
+  // checkmark reads clearly inside. Keeping the same border in both
+  // states lets the chip retain its color identity even when unchecked.
   const items: Array<{
     label: string;
     type: EventTypeFilter;
     chip: string;
+    fill: string;
     ring: string;
   }> = [
     {
       label: "Interview",
       type: "interview",
       chip: "bg-court-brand-tint",
+      fill: "bg-court-brand",
       ring: "border-court-brand",
     },
     {
       label: "Client Call",
       type: "client",
       chip: "bg-blue-50 dark:bg-blue-950/40",
+      fill: "bg-blue-500 dark:bg-blue-600",
       ring: "border-blue-300 dark:border-blue-700",
     },
     {
       label: "Reminder",
       type: "reminder",
       chip: "bg-amber-50 dark:bg-amber-950/40",
+      fill: "bg-amber-500 dark:bg-amber-600",
       ring: "border-amber-300 dark:border-amber-700",
     },
     {
       label: "Other",
       type: "other",
       chip: "bg-court-surface-subtle",
+      fill: "bg-court-fg-muted",
       ring: "border-court-border",
     },
   ];
@@ -264,17 +274,24 @@ function EventTypeLegend({
                 aria-pressed={active}
                 className={cn(
                   "-mx-1.5 flex w-[calc(100%+0.75rem)] cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-left transition hover:bg-court-brand-tint/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-court-brand",
-                  active && "bg-court-brand-tint/50",
                   dim && "opacity-50",
                 )}
               >
+                {/* Checkbox: tinted bg when off, accent fill + white
+                    check when on. Mirrors the Team checkbox pattern
+                    immediately below so the two filter sections read
+                    as the same control. */}
                 <span
                   className={cn(
-                    "h-3 w-3 rounded-sm border-[1.5px]",
-                    t.chip,
+                    "inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm border-[1.5px]",
+                    active ? t.fill : t.chip,
                     t.ring,
                   )}
-                />
+                >
+                  {active && (
+                    <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />
+                  )}
+                </span>
                 <span className="text-court-fg">{t.label}</span>
               </button>
             </li>
