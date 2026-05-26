@@ -17,6 +17,7 @@ import {
   sendLocalSubmittalEmail,
 } from "@/app/candidates/[id]/local-placement-actions";
 import { formatOpenJobOption } from "@/app/candidates/[id]/placement-flows";
+import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
 import {
   LOCAL_PLACEMENT_APPLIED_EVENT,
   type LocalPlacementAppliedDetail,
@@ -157,6 +158,8 @@ export function LocalCandidateActions(props: {
         <SubmitModal
           candidateId={props.candidateId}
           candidateName={props.candidateName}
+          candidateFirstName={props.candidateFirstName}
+          candidateEmail={props.candidateEmail}
           openJobs={props.openJobs}
           initialJobRfId={submitInitialJobRfId}
           onClose={() => {
@@ -272,6 +275,8 @@ function ApplyModal(props: {
 function SubmitModal(props: {
   candidateId: string;
   candidateName: string;
+  candidateFirstName: string;
+  candidateEmail: string | null;
   openJobs: LocalOpenJob[];
   // The job to submit to. Every Submit entry point (job pill row,
   // applicants table, pipeline row) deep-links with the job id, so the
@@ -290,7 +295,20 @@ function SubmitModal(props: {
   // dead no-job entry point rather than rendering a broken form.
   if (!job) return null;
 
-  const subject = `Candidate Submittal - ${props.candidateName} | ${job.jobTitle}`;
+  // Last-name fallback for templates that interpolate {{candidateLastName}}.
+  // candidateFirstName comes through cleanly from upstream; for last name we
+  // derive from candidateName by stripping the first token rather than
+  // adding another prop drill for a field templates rarely reference.
+  const candidateLastName = (() => {
+    const parts = (props.candidateName ?? "").trim().split(/\s+/);
+    return parts.length > 1 ? parts.slice(1).join(" ") : "";
+  })();
+  // Subject defaults to whatever the selected template resolves to (handled
+  // by resolveTemplate below + EmailComposer's empty-subject auto-apply).
+  // When no template is picked, the composer hands an empty subject to
+  // onSend and we substitute this fallback so the email always ships with
+  // a sane subject. Same fallback format the RF submittal composer uses.
+  const fallbackSubject = `Candidate Submittal - ${props.candidateName} | ${job.jobTitle}`;
   const contactOptions = (job.clientContacts ?? []).map((c) => ({
     id: String(c.id),
     name: c.name,
@@ -302,7 +320,11 @@ function SubmitModal(props: {
       title="Submittal email"
       subtitle={`${props.candidateName} → ${job.jobTitle}${job.clientName ? ` · ${job.clientName}` : ""}`}
       draftKey={`local-submittal-${props.candidateId}-${job.jobRfId}`}
-      initial={{ to: [], cc: [], bcc: [], subject, body: "" }}
+      // Subject + body both start empty so the picked template wins the
+      // EmailComposer's empty-field auto-apply (no "replace?" prompt). The
+      // fallback subject lands in onSend below if the recruiter ships
+      // without picking a template.
+      initial={{ to: [], cc: [], bcc: [], subject: "", body: "" }}
       recipientOptions={contactOptions.length > 0 ? contactOptions : undefined}
       onClose={props.onClose}
       sendLabel="Send Submittal"
@@ -311,6 +333,28 @@ function SubmitModal(props: {
       showTemplatePicker
       templateFilter={(t) => t.audience !== "candidate"}
       showCandidateConfirmationToggle
+      resolveTemplate={(t) => {
+        // Mirror of the RF submittal composer's resolver — runs merge-field
+        // interpolation against the candidate + job + primary client
+        // contact so picked templates land with real values instead of
+        // raw {{candidateFullName}} / {{clientCompanyName}} tokens.
+        const primaryContact = (job.clientContacts ?? []).find((c) => c.email) ?? null;
+        const primaryContactFirst = primaryContact?.name?.trim().split(/\s+/)[0] ?? "";
+        const values = {
+          candidateFirstName: props.candidateFirstName,
+          candidateLastName,
+          candidateFullName: props.candidateName,
+          candidateEmail: props.candidateEmail ?? "",
+          clientCompanyName: job.clientName,
+          clientContactFullName: primaryContact?.name ?? "",
+          clientContactFirstName: primaryContactFirst,
+          jobTitle: job.jobTitle,
+        };
+        return {
+          subject: applyMergeFieldsClient(t.subject, values),
+          body: applyMergeFieldsClient(t.body, values),
+        };
+      }}
       onGenerate={async () => {
         const res = await generateLocalSubmittal({
           candidateId: props.candidateId,
@@ -330,7 +374,10 @@ function SubmitModal(props: {
           to: draft.to,
           cc: draft.cc,
           bcc: draft.bcc,
-          subject: draft.subject,
+          // Empty subject means no template was picked and the recruiter
+          // didn't type one either — drop in the hardcoded fallback so
+          // we never ship an empty-subject email.
+          subject: draft.subject.trim() || fallbackSubject,
           bodyText: draft.body,
           sendCandidateConfirmation: draft.sendCandidateConfirmation ?? true,
         });

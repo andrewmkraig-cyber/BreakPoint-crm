@@ -3535,7 +3535,13 @@ function SubmittalEmailCompose({
   onDone: () => void;
 }) {
   const fullName = [candidateFirstName, candidateLastName].filter(Boolean).join(" ") || candidateFirstName;
-  const subject = `Candidate Submittal - ${fullName} | ${job.jobTitle}`;
+  // Subject defaults to whatever the selected template resolves to (handled
+  // by resolveTemplate below + EmailComposer's empty-subject auto-apply).
+  // When no template is picked, the composer hands an empty subject to
+  // onSend and we substitute this fallback so the email always ships with
+  // a sane subject. Centralizing the format here keeps the fallback in
+  // lock-step with the historical hardcoded value recruiters know.
+  const fallbackSubject = `Candidate Submittal - ${fullName} | ${job.jobTitle}`;
   const contactOptions = job.clientContacts.map((c) => ({
     id: String(c.id),
     name: c.name,
@@ -3589,7 +3595,11 @@ function SubmittalEmailCompose({
         // is hard-locked to the single Austin Barnard entry so it's a
         // one-click loop-in when wanted and nothing else can sneak in.
         bcc: [],
-        subject,
+        // Subject + body both start empty so the picked template's values
+        // win without the EmailComposer "replace?" confirm dialog. If the
+        // recruiter ships without picking a template, onSend below
+        // substitutes the fallback subject.
+        subject: "",
         body: "",
       }}
       recipientOptions={contactOptions}
@@ -3685,7 +3695,10 @@ function SubmittalEmailCompose({
           to: draft.to,
           cc: draft.cc,
           bcc: draft.bcc,
-          subject: draft.subject,
+          // Empty subject means no template was picked and the recruiter
+          // didn't type one either — drop in the hardcoded fallback so
+          // we never ship an empty-subject email.
+          subject: draft.subject.trim() || fallbackSubject,
           body: draft.body,
           bodyHtml: draft.bodyHtml,
           attachment: resumeVariant ? { variant: resumeVariant } : null,
