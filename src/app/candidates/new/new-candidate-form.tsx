@@ -105,7 +105,7 @@ export function NewCandidateForm({
             {},
             {
               onProgress: (pct) => {
-                toast.loading(`Uploading resume — ${pct}%`, { id: toastId });
+                toast.loading(`Uploading resume: ${pct}%`, { id: toastId });
               },
             },
           );
@@ -297,13 +297,13 @@ export function NewCandidateForm({
       education: form.education,
     };
     if (!payload.email.trim()) {
-      const msg = "Email is required — every candidate must have an email on file.";
+      const msg = "Email is required. Every candidate must have an email on file.";
       setSaveError(msg);
       toast.error("Can't save yet", { description: msg });
       return;
     }
     if (!payload.first_name.trim()) {
-      const msg = "First name is required — resume parsing didn't fill it in, please type it manually.";
+      const msg = "First name is required. Resume parsing didn't fill it in, please type it manually.";
       setSaveError(msg);
       toast.error("Can't save yet", { description: msg });
       return;
@@ -426,7 +426,7 @@ export function NewCandidateForm({
                   value={pastedText}
                   onChange={(e) => setPastedText(e.target.value)}
                   rows={6}
-                  placeholder="Paste the LinkedIn About / Experience section here — included in the next parse."
+                  placeholder="Paste the LinkedIn About / Experience section here. Included in the next parse."
                   className={`${INPUT_CONTROL_CLASS} h-full resize-none font-sans text-sm leading-relaxed`}
                 />
               </div>
@@ -463,9 +463,9 @@ export function NewCandidateForm({
               <h2 className="font-serif text-base font-semibold text-court-fg">Candidate fields</h2>
               <p className="text-xs text-court-fg-muted">
                 {parseSource === "claude"
-                  ? "Pre-filled by Claude — review and edit before saving."
+                  ? "Pre-filled by Claude. Review and edit before saving."
                   : parseSource === "fallback"
-                    ? "Basic extraction only — please review every field."
+                    ? "Basic extraction only. Please review every field."
                     : "Drop a resume on the left or fill these in manually."}
               </p>
             </div>
@@ -508,7 +508,7 @@ export function NewCandidateForm({
             <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-900">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <div>
-                Claude parsing wasn&apos;t available — we fell back to regex-based extraction. Name, email, and phone are likely correct; title / employer / skills need manual entry.
+                Claude parsing wasn&apos;t available. We fell back to regex-based extraction. Name, email, and phone are likely correct; title / employer / skills need manual entry.
                 {claudeError && <div className="mt-1 font-mono text-[10px] opacity-70">Claude said: {claudeError}</div>}
               </div>
             </div>

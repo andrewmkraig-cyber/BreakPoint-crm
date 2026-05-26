@@ -1682,8 +1682,8 @@ export default function CandidatesPage() {
                   Apply a filter to start searching
                 </h3>
                 <p className="mt-1.5 text-sm text-court-fg-muted">
-                  Use the rail on the left to search the BreakPoint roster —
-                  accounting & finance candidates indexed across the desk.
+                  Use the rail on the left to search the BreakPoint roster.
+                  Accounting & finance candidates indexed across the desk.
                 </p>
                 {savedSearches.length > 0 ? (
                   <>
@@ -1706,7 +1706,7 @@ export default function CandidatesPage() {
                   </>
                 ) : (
                   <div className="mt-5 text-[11px] text-court-fg-muted/70">
-                    Tip — set some filters and hit Save search to park a
+                    Tip: set some filters and hit Save search to park a
                     quick pill here.
                   </div>
                 )}
