@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { formatDate } from "@/lib/utils";
 
 // Inputs the parent surface passes for each candidate guarantee-eligible row.
 // Each surface (Placements tab + Pipeline Hired tab) does its own status /
@@ -20,12 +21,6 @@ export type GuaranteePeriodRow = {
 };
 
 const MS_PER_DAY = 86_400_000;
-
-function formatYmd(iso: string): string {
-  // YYYY-MM-DD slice so the column stays compact + matches the
-  // placements ledger Start column (which also uses the ISO prefix).
-  return iso.slice(0, 10);
-}
 
 export function GuaranteePeriodTable({
   rows,
@@ -84,13 +79,10 @@ export function GuaranteePeriodTable({
         (className ?? "")
       }
     >
-      <div className="flex flex-col gap-2.5 px-4 pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="px-4 pt-4">
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
-          Guarantee Period
+          Candidates Still in Guarantee Period
         </p>
-        <span className="inline-flex items-center justify-center rounded-md bg-court-brand-tint px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-court-brand-dark">
-          {active.length}
-        </span>
       </div>
 
       <div className="mt-2.5 overflow-x-auto">
@@ -123,10 +115,10 @@ export function GuaranteePeriodTable({
                   {row.roleTitle ?? "-"}
                 </td>
                 <td className="px-3 py-1.5 align-middle tabular-nums text-court-fg-muted">
-                  {formatYmd(row.startDateIso)}
+                  {formatDate(row.startDateIso)}
                 </td>
                 <td className="px-3 py-1.5 align-middle tabular-nums text-court-fg-muted">
-                  {formatYmd(row.guaranteeEndIso)}
+                  {formatDate(row.guaranteeEndIso)}
                 </td>
                 <td className="px-3 py-1.5 text-right align-middle tabular-nums font-semibold text-court-fg">
                   {daysRemaining}

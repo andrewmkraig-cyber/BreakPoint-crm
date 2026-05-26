@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import type { PlacementsDashboardBillingStatus } from "@/lib/placements-dashboard";
 import { formatMoneyShort } from "@/lib/placements-map-geo";
+import { formatDate } from "@/lib/utils";
 import {
   PlacementEditDrawer,
   type PlacementDrawerContext,
@@ -279,7 +280,7 @@ function LedgerTableRow({
         {row.city ?? "—"}
       </td>
       <td className="px-3 py-1.5 align-middle tabular-nums text-court-fg-muted">
-        {row.startDateLabel ?? "—"}
+        {formatDate(row.startDateLabel)}
       </td>
       <td className="px-3 py-1.5 text-right align-middle tabular-nums font-medium text-court-fg">
         {row.feeAmount != null && row.feeAmount > 0
