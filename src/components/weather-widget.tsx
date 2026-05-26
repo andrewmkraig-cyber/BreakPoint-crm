@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Cloud,
   CloudLightning,
@@ -539,7 +539,15 @@ async function reverseGeocode(
 export function WeatherWidget() {
   const [data, setData] = useState<Weather | null>(null);
   const [location, setLocation] = useState<string | null>(null);
-  const [hovered, setHovered] = useState(false);
+  // Persistent open state. The popover used to track raw onMouseEnter
+  // / onMouseLeave on the wrapper, which closed the moment the cursor
+  // crossed the mt-2 gap between the chip and the panel — fatal for
+  // the new horizontally-scrollable hourly strip, where the recruiter
+  // needs to drag/scroll inside the panel without the cursor briefly
+  // exiting the wrapper's bounding box. The new behavior latches open
+  // on hover and only closes on a click outside (or Escape).
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -816,6 +824,31 @@ export function WeatherWidget() {
     };
   }, []);
 
+  // Click-outside + Escape dismissal. Only attached while the panel
+  // is open so we're not adding/removing document listeners on every
+  // render. mousedown fires before click, so clicking the chip a
+  // second time to toggle still works (the toggle handler runs after
+  // this effect resolves the outside-click as a no-op since the chip
+  // is inside wrapRef).
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e: MouseEvent) {
+      const root = wrapRef.current;
+      if (!root) return;
+      if (e.target instanceof Node && root.contains(e.target)) return;
+      setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   // Skeleton chip while the first Open-Meteo fetch is in flight. The
   // chip used to render `null` until data arrived, which left the topbar
   // slot empty for several seconds on cold loads and looked like the
@@ -843,13 +876,34 @@ export function WeatherWidget() {
 
   return (
     <div
+      ref={wrapRef}
       className="relative flex items-center"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      // Hover opens the popover and latches it open. No matching
+      // mouseleave handler — the cursor crossing the small mt-2 gap
+      // between the chip and the panel used to fire mouseleave and
+      // close instantly, which made the new scrollable hourly strip
+      // unreachable. Click-outside / Escape dismiss instead (see the
+      // useEffect above).
+      onMouseEnter={() => setOpen(true)}
     >
       <div
-        className="inline-flex h-10 w-[4.5rem] cursor-default items-center justify-center gap-1 rounded-xl border border-court-border bg-court-surface text-court-fg shadow-sm"
+        className="inline-flex h-10 w-[4.5rem] cursor-pointer items-center justify-center gap-1 rounded-xl border border-court-border bg-court-surface text-court-fg shadow-sm"
+        role="button"
+        tabIndex={0}
         aria-label={`Current temperature ${rounded} degrees Fahrenheit`}
+        aria-expanded={open}
+        // Click the chip to toggle (handy for keyboard / touch where
+        // hover isn't a thing). Enter / Space mirror the click for
+        // a11y. The outside-click listener in the open effect ignores
+        // anything inside wrapRef, so this toggle path is safe even
+        // while open.
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setOpen((o) => !o);
+          }
+        }}
       >
         <WeatherIcon
           code={data.code}
@@ -865,12 +919,14 @@ export function WeatherWidget() {
         <span className="hidden min-[360px]:inline text-lg font-bold leading-none tabular-nums">{rounded}°</span>
       </div>
 
-      {hovered && (
-        // Popover anchored directly under the chip, right-aligned so it
-        // never spills off the right edge of the topbar. mt-2 leaves a
-        // small visual gap; the parent's onMouseLeave still fires only
-        // when the cursor leaves both the chip AND the popover, so the
-        // gap doesn't dismiss it.
+      {open && (
+        // Popover anchored directly under the chip, right-aligned so
+        // it never spills off the right edge of the topbar. mt-2
+        // leaves a small visual gap to the chip; the panel stays open
+        // even when the cursor crosses that gap because dismissal is
+        // click-outside / Escape, not mouseleave. An invisible
+        // pt-2-tall bridge above the panel keeps it inside wrapRef so
+        // mousedown on the gap area doesn't read as an outside click.
         <div
           role="dialog"
           aria-label="Forecast"
