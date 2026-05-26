@@ -11,7 +11,7 @@ export default async function BillingSettingsPage() {
     <CollapsibleSection
       id="billing"
       title="Billing"
-      description="Identity on every invoice PDF + email. Bank details live inside the PDF — no pay links."
+      description="Identity on every invoice PDF + email. Bank details live inside the PDF, no pay links."
     >
       <BillingSettingsForm initial={settings} />
     </CollapsibleSection>

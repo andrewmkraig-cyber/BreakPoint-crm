@@ -22,6 +22,7 @@ export default async function PersonalInfoSettingsPage() {
 
   const safeInitial: PersonalInfoRow = initial ?? {
     birthday: null,
+    workAnniversary: null,
     address: { ...EMPTY_ADDRESS },
     tshirtSize: null,
   };
@@ -30,7 +31,7 @@ export default async function PersonalInfoSettingsPage() {
     <CollapsibleSection
       id="personal-info"
       title="Personal Info"
-      description="Your birthday, address, and t-shirt size — saved per user."
+      description="Your birthday, address, and t-shirt size, saved per user."
     >
       <PersonalInfoView
         initial={safeInitial}

@@ -35,6 +35,9 @@ export function PersonalInfoView({
   displayName: string;
 }) {
   const [birthday, setBirthday] = useState(initial.birthday ?? "");
+  const [workAnniversary, setWorkAnniversary] = useState(
+    initial.workAnniversary ?? "",
+  );
   const [address, setAddress] = useState<AddressFields>(initial.address);
   const [tshirtSize, setTshirtSize] = useState(initial.tshirtSize ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -154,6 +157,7 @@ export function PersonalInfoView({
     startTransition(async () => {
       const res = await savePersonalInfo({
         birthday: birthday || null,
+        workAnniversary: workAnniversary || null,
         address,
         tshirtSize: tshirtSize || null,
       });
@@ -241,12 +245,29 @@ export function PersonalInfoView({
         )}
       </fieldset>
 
-      <Field label="Birthday" hint="Drives your dashboard horoscope automatically.">
+      <Field label="Birthday">
         <input
           type="date"
           value={birthday}
           onChange={(e) => setBirthday(e.target.value)}
-          className="block w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
+          // Date inputs render their own fixed-width MM/DD/YYYY UI;
+          // there's no upside to letting the chrome span the full
+          // form width. Cap at ~180px so the field reads as a
+          // compact picker, matching how every other date picker in
+          // Ace is sized (event drawer, reminder form, etc.).
+          className="block w-[180px] rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
+        />
+      </Field>
+
+      <Field
+        label="Start date"
+        hint="When you joined BreakPoint. Drives future anniversary pills."
+      >
+        <input
+          type="date"
+          value={workAnniversary}
+          onChange={(e) => setWorkAnniversary(e.target.value)}
+          className="block w-[180px] rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
         />
       </Field>
 
@@ -309,7 +330,11 @@ export function PersonalInfoView({
         <select
           value={tshirtSize}
           onChange={(e) => setTshirtSize(e.target.value)}
-          className="block w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
+          // Sizes are at most "3XL" — three characters wide. A
+          // full-row select looked like a misuse of the form so it
+          // shrinks to a compact ~90px control that fits the value
+          // plus the disclosure arrow without empty space.
+          className="block w-[90px] rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
         >
           <option value="">—</option>
           {TSHIRT_SIZES.map((size) => (

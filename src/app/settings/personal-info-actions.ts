@@ -52,11 +52,17 @@ export async function getPersonalInfo(): Promise<PersonalInfoRow | null> {
   if (!userId) return null;
   const profile = await prisma.userProfile.findUnique({
     where: { userId },
-    select: { birthday: true, address: true, tshirtSize: true },
+    select: {
+      birthday: true,
+      workAnniversary: true,
+      address: true,
+      tshirtSize: true,
+    },
   });
   if (!profile) {
     return {
       birthday: null,
+      workAnniversary: null,
       address: { ...EMPTY_ADDRESS },
       tshirtSize: null,
     };
@@ -65,6 +71,9 @@ export async function getPersonalInfo(): Promise<PersonalInfoRow | null> {
     birthday: profile.birthday
       ? profile.birthday.toISOString().slice(0, 10)
       : null,
+    workAnniversary: profile.workAnniversary
+      ? profile.workAnniversary.toISOString().slice(0, 10)
+      : null,
     address: parseAddress(profile.address),
     tshirtSize: profile.tshirtSize,
   };
@@ -72,26 +81,41 @@ export async function getPersonalInfo(): Promise<PersonalInfoRow | null> {
 
 export async function savePersonalInfo(input: {
   birthday: string | null; // YYYY-MM-DD or empty
+  workAnniversary: string | null; // YYYY-MM-DD or empty
   address: AddressFields;
   tshirtSize: string | null;
 }): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
 
-  let birthday: Date | null = null;
-  if (input.birthday && input.birthday.trim() !== "") {
-    // YYYY-MM-DD → midnight UTC. Postgres `@db.Date` strips the time
-    // component, but normalizing here keeps zodiacFromDate's UTC math
-    // unambiguous when the same Date is read back in.
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.birthday)) {
-      return { ok: false, error: "Birthday must be in YYYY-MM-DD format." };
+  // Birthday + workAnniversary share the same YYYY-MM-DD parse path:
+  // both are calendar dates stored as @db.Date in Postgres, and both
+  // need to land on a deterministic midnight UTC so downstream year
+  // math (zodiac, anniversary count) doesn't drift across timezones.
+  function parseCalendarDate(
+    raw: string | null,
+    label: string,
+  ): { ok: true; value: Date | null } | { ok: false; error: string } {
+    if (!raw || raw.trim() === "") return { ok: true, value: null };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      return { ok: false, error: `${label} must be in YYYY-MM-DD format.` };
     }
-    const parsed = new Date(`${input.birthday}T00:00:00Z`);
+    const parsed = new Date(`${raw}T00:00:00Z`);
     if (Number.isNaN(parsed.getTime())) {
-      return { ok: false, error: "Birthday is not a valid date." };
+      return { ok: false, error: `${label} is not a valid date.` };
     }
-    birthday = parsed;
+    return { ok: true, value: parsed };
   }
+
+  const birthdayRes = parseCalendarDate(input.birthday, "Birthday");
+  if (!birthdayRes.ok) return birthdayRes;
+  const anniversaryRes = parseCalendarDate(
+    input.workAnniversary,
+    "Start date",
+  );
+  if (!anniversaryRes.ok) return anniversaryRes;
+  const birthday = birthdayRes.value;
+  const workAnniversary = anniversaryRes.value;
 
   const tshirtSize =
     input.tshirtSize && input.tshirtSize.trim() !== ""
@@ -109,8 +133,14 @@ export async function savePersonalInfo(input: {
   try {
     await prisma.userProfile.upsert({
       where: { userId },
-      create: { userId, birthday, address, tshirtSize },
-      update: { birthday, address, tshirtSize },
+      create: {
+        userId,
+        birthday,
+        workAnniversary,
+        address,
+        tshirtSize,
+      },
+      update: { birthday, workAnniversary, address, tshirtSize },
     });
     revalidatePath("/settings/personal-info");
     revalidatePath("/dashboard");

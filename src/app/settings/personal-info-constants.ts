@@ -14,6 +14,10 @@ export type AddressFields = {
 
 export type PersonalInfoRow = {
   birthday: string | null; // YYYY-MM-DD, calendar date, no timezone
+  // YYYY-MM-DD. Same calendar-date shape as birthday because the
+  // anniversary math (year-rollover, dashboard "1 yr ago today")
+  // shouldn't drift across timezones.
+  workAnniversary: string | null;
   address: AddressFields;
   tshirtSize: string | null;
 };
