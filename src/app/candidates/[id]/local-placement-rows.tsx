@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   Briefcase,
@@ -747,7 +748,12 @@ function ScheduleDialog({
   }
 
   return (
-    <ModalShell title="Schedule interview" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
+    <ModalShell
+      title="Schedule interview"
+      subtitle={`${job.jobTitle} · ${job.clientName}`}
+      onClose={onClose}
+      footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Schedule" />}
+    >
       <ScheduleFields
         scheduledAt={scheduledAt}
         setScheduledAt={setScheduledAt}
@@ -816,7 +822,6 @@ function ScheduleDialog({
           )}
         </div>
       )}
-      <Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Schedule" />
     </ModalShell>
   );
 }
@@ -880,7 +885,12 @@ function ClientInviteDialog({
   }
 
   return (
-    <ModalShell title="Client sending invite" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
+    <ModalShell
+      title="Client sending invite"
+      subtitle={`${job.jobTitle} · ${job.clientName}`}
+      onClose={onClose}
+      footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Log interview" />}
+    >
       <p className="mb-3 text-xs text-court-fg-muted">
         Use this when the client is scheduling the interview themselves and will send the invite. We&apos;ll
         log it for tracking and drop it on your calendar. No invite is sent to candidate or client.
@@ -906,7 +916,6 @@ function ClientInviteDialog({
         }
       />
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
-      <Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Log interview" />
     </ModalShell>
   );
 }
@@ -940,7 +949,11 @@ function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; o
   }
 
   return (
-    <ModalShell title="Reschedule interview" onClose={onClose}>
+    <ModalShell
+      title="Reschedule interview"
+      onClose={onClose}
+      footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Reschedule" />}
+    >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="block text-sm sm:col-span-2">
           <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
@@ -954,7 +967,6 @@ function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; o
         <DurationSelect value={durationMin} onChange={setDurationMin} />
       </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
-      <Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Reschedule" />
     </ModalShell>
   );
 }
@@ -1047,34 +1059,64 @@ function ModalShell({
   subtitle,
   onClose,
   children,
+  footer,
 }: {
   title: string;
   subtitle?: string;
   onClose: () => void;
   children: React.ReactNode;
+  footer?: React.ReactNode;
 }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
-      {/* Flex-column shell capped at viewport height so header + scrollable
-          body together can never exceed the screen. Body gets flex-1 + min-h-0
-          so it shrinks (and scrolls) instead of pushing the modal off-screen
-          on short viewports. */}
-      <div
-        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex flex-none items-start justify-between border-b border-court-border px-5 py-3">
-          <div>
-            <h2 className="font-serif text-lg font-semibold text-court-fg">{title}</h2>
-            {subtitle && <p className="mt-0.5 text-xs text-court-fg-muted">{subtitle}</p>}
+  // Portal to document.body. ModalShell is mounted inside LocalProfile's
+  // sticky pipeline wrapper, which uses `backdrop-blur` →
+  // `backdrop-filter: blur(...)`. Per spec, an element with
+  // `backdrop-filter !== none` (also transform / filter / perspective /
+  // will-change / contain) becomes the containing block for any
+  // `position: fixed` descendant — so without the portal, the overlay's
+  // `inset-0` resolved against that short sticky box instead of the
+  // viewport and the modal header sat above the screen top. Mirrors the
+  // pattern used by the shared Modal in placement-flows.tsx. SSR-safe.
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    // Two-layer overlay: outer fixed container handles the dim backdrop
+    // and provides a scroll fallback if the panel ever does exceed the
+    // viewport; inner min-h-full flex wrapper centers the panel inside
+    // the available space without single-layer flex pushing the top
+    // off-screen. p-4 sm:p-6 + responsive max-h give a guaranteed
+    // breathing margin from the viewport edge at both breakpoints.
+    <div
+      className="fixed inset-0 z-[200] overflow-y-auto bg-ink/40 p-4 sm:p-6"
+      onClick={onClose}
+    >
+      <div className="flex min-h-full items-center justify-center">
+        {/* Flex-column shell capped at viewport height so header +
+            scrollable body + footer together can never exceed the
+            screen. Header and footer are flex-none so the title and
+            action buttons stay pinned; the body gets flex-1 + min-h-0
+            so it shrinks and scrolls internally. */}
+        <div
+          className="flex w-full max-w-lg flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-3rem)]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex flex-none items-start justify-between border-b border-court-border px-5 py-3">
+            <div>
+              <h2 className="font-serif text-lg font-semibold text-court-fg">{title}</h2>
+              {subtitle && <p className="mt-0.5 text-xs text-court-fg-muted">{subtitle}</p>}
+            </div>
+            <button type="button" onClick={onClose} className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle">
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button type="button" onClick={onClose} className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle">
-            <X className="h-4 w-4" />
-          </button>
+          <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
+          {footer && (
+            <div className="flex flex-none items-center justify-end gap-2 border-t border-court-border bg-court-surface px-5 py-3">
+              {footer}
+            </div>
+          )}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -1089,8 +1131,13 @@ function Footer({
   saving: boolean;
   label: string;
 }) {
+  // Returns just the two buttons — the parent ModalShell's footer slot
+  // provides the wrapper (border-t, padding, justify-end, gap). Keeping
+  // this as a Fragment lets the slot pin the buttons as flex-none below
+  // the scrollable body, so action buttons stay visible regardless of
+  // how far the body has scrolled.
   return (
-    <div className="mt-5 flex items-center justify-end gap-2 border-t border-court-border pt-4">
+    <>
       <button
         type="button"
         onClick={onCancel}
@@ -1108,7 +1155,7 @@ function Footer({
         {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CalendarClock className="h-3 w-3" />}
         {label}
       </button>
-    </div>
+    </>
   );
 }
 
