@@ -130,6 +130,7 @@ export function LocalPlacementRows({
   jobs,
   aceTeam,
   className,
+  embed = false,
 }: {
   candidateId: string;
   candidateName: string;
@@ -145,6 +146,12 @@ export function LocalPlacementRows({
   // passes mt-4 so the pills row clears the chrome above it; the full
   // profile passes nothing.
   className?: string;
+  // True when this strip is rendered inside the /candidates split-view
+  // iframe. Per-row Submit links must carry embed=true through the deep
+  // link or the iframe navigates to the non-embed candidate page and
+  // stacks a second AppShell sidebar + topbar inside the right panel.
+  // Mirrors the embedPrefix pattern in UnderlineTabs.
+  embed?: boolean;
 }) {
   const [scheduleFor, setScheduleFor] = useState<LocalJobRow | null>(null);
   const [clientInviteFor, setClientInviteFor] = useState<LocalJobRow | null>(null);
@@ -258,6 +265,7 @@ export function LocalPlacementRows({
             onClientInvite={() => setClientInviteFor(j)}
             onEditInterview={(iv) => setRescheduleFor(iv)}
             onStageChange={handleStageChanged}
+            embed={embed}
           />
         ))}
       </div>
@@ -364,6 +372,7 @@ function LocalJobActionRow({
   onClientInvite,
   onEditInterview,
   onStageChange,
+  embed,
 }: {
   candidateId: string;
   candidateName: string;
@@ -372,6 +381,10 @@ function LocalJobActionRow({
   onClientInvite: () => void;
   onEditInterview: (interview: LocalInterview) => void;
   onStageChange: (jobRfId: number, stage: string) => void;
+  // Threaded from LocalPlacementRows so the per-row Submit href can
+  // preserve embed=true in the split-view iframe and avoid the
+  // double-sidebar / double-topbar re-render.
+  embed: boolean;
 }) {
   const router = useRouter();
   const [isRejecting, startRejecting] = useTransition();
@@ -386,6 +399,12 @@ function LocalJobActionRow({
   // Submit. The deep-link href opens the existing SubmitModal in
   // LocalCandidateActions with this job pre-selected (see the
   // ?submit= handler in that component).
+  //
+  // In split-view embed mode the href must also carry embed=true, or
+  // the iframe re-navigates to the non-embed page and stacks a second
+  // AppShell sidebar + topbar inside the right panel (the modal still
+  // pops, but on top of doubled chrome).
+  const submitHrefPrefix = embed ? "embed=true&" : "";
   const canSubmit =
     normalizedStage === "sourced" ||
     normalizedStage === "applied" ||
@@ -491,7 +510,7 @@ function LocalJobActionRow({
             // buttons so the affirmative submittal action reads
             // identically wherever it lands.
             <Link
-              href={`/candidates/${candidateId}?submit=${job.jobRfId}`}
+              href={`/candidates/${candidateId}?${submitHrefPrefix}submit=${job.jobRfId}`}
               className="inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
               title="Open submittal composer"
             >

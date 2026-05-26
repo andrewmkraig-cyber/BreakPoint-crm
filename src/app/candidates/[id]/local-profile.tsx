@@ -537,6 +537,7 @@ export async function LocalCandidateProfile({
               jobs={jobRows}
               aceTeam={aceTeam}
               className="mt-4"
+              embed
             />
             <UnderlineTabs tab={tab} candidateId={candidate.id} embed />
             <div className="flex flex-wrap items-center gap-2">
