@@ -3610,6 +3610,11 @@ function SubmittalEmailCompose({
       helperText="Pick a client contact, then Generate with Claude. Cmd+B / Cmd+U toggle bold and underline in the editor. Gmail renders them as real bold / underline."
       showTemplatePicker
       enableEditWithClaude
+      // After Generate fills the body, also drop in the same fallback
+      // subject the send path would substitute — but only if the
+      // subject field is still empty. A picked template's subject or
+      // a hand-typed subject is left alone.
+      generateFallbackSubject={fallbackSubject}
       richTextBody
       toEditorHtml={submittalMarkdownToEditorHtml}
       templateFilter={(t) => t.audience !== "candidate"}

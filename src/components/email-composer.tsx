@@ -77,6 +77,14 @@ export type EmailComposerProps = {
   // claude and replace the body with the response. Native Cmd+Z undo
   // works on the textarea path because we apply via execCommand.
   enableEditWithClaude?: boolean;
+  // When set, "Generate with Claude" also auto-populates the subject line
+  // with this string — but only if the subject field is currently empty.
+  // Lets flows like the submittal composer hand recruiters a sendable
+  // email in one click (body + subject) without overwriting any subject
+  // the recruiter already typed or that a picked template applied. The
+  // caller owns the format so the fallback stays in lock-step with what
+  // the send path falls back to for empty-subject sends.
+  generateFallbackSubject?: string;
   footerExtras?: ReactNode;
   // When enabled, the composer loads active templates and renders a
   // "Use Template" dropdown. Selecting one replaces subject + body with the
@@ -193,6 +201,7 @@ export function EmailComposer({
   generateLabel = "Generate with Claude",
   onGenerate,
   enableEditWithClaude = false,
+  generateFallbackSubject,
   footerExtras,
   showTemplatePicker = false,
   resolveTemplate,
@@ -627,6 +636,15 @@ export function EmailComposer({
         // dash bullets as real formatting.
         const nextBody = richTextBody && toEditorHtml ? toEditorHtml(text) : text;
         setBody(nextBody);
+        // Auto-populate the subject when the caller supplied a fallback and
+        // the recruiter hasn't typed (or template-picked) one yet. Mirrors
+        // the empty-subject substitution on the send path so a single
+        // Generate click yields a fully sendable email. We re-read subject
+        // from the closure (latest render) and treat whitespace-only as
+        // empty so a stray space doesn't block the fill.
+        if (generateFallbackSubject && subject.trim().length === 0) {
+          setSubject(generateFallbackSubject);
+        }
         toast.success("Draft generated", { description: "Edit before sending if needed." });
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to generate draft.";
