@@ -546,11 +546,15 @@ export async function LocalCandidateProfile({
               >
                 <Target className="h-3 w-3" /> Apply to Job
               </Link>
-              <KeepCandidateButton candidateId={candidate.id} isKept={isKeptEmbed} />
+              <KeepCandidateButton
+                candidateId={candidate.id}
+                isKept={isKeptEmbed}
+                className="border-blue-400 text-sm dark:border-blue-500"
+              />
               <AddToListButton
               candidateId={candidate.id}
               candidateName={fullName}
-              className="px-3 py-1.5 text-sm font-medium"
+              className="border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
             />
             </div>
             {tab === "game-plan" ? (
@@ -680,11 +684,12 @@ export async function LocalCandidateProfile({
                 const lower = t.trim().toLowerCase();
                 return lower === "kept" || lower === "keep";
               })}
+              className="border-blue-400 text-sm dark:border-blue-500"
             />
             <AddToListButton
               candidateId={candidate.id}
               candidateName={fullName}
-              className="px-3 py-1.5 text-sm font-medium"
+              className="border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
             />
           </div>
           {tab === "game-plan" ? (
@@ -753,8 +758,12 @@ async function LocalNotesTab({ candidateId }: { candidateId: string }) {
 // Anchor-shaped twin of <Button variant="apply">. Token classes mirror
 // the amber apply variant so the Apply to Job link renders identically
 // to the matching <Button> without nesting a <button> inside an <a>.
+// Border bumped from amber-200 → amber-400 so the chip sits at the
+// same visual border weight as Submit to Job (the candidate-profile
+// action row should read with the same border prominence across
+// every button).
 const APPLY_LINK_CLASS =
-  "inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60";
+  "inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-400 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60";
 
 function UnderlineTabs({
   tab,

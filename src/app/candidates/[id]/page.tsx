@@ -664,11 +664,18 @@ export default async function CandidateProfilePage({
               >
                 <Target className="h-3 w-3" /> Apply to Job
               </Link>
-              <KeepCandidateButton candidateId={candidate.id} isKept={isKept} />
+              <KeepCandidateButton
+                candidateId={candidate.id}
+                isKept={isKept}
+                // Border bumped to blue-400 so the chip reads at the
+                // same visual weight as Submit's brand border on the
+                // candidate-profile action row.
+                className="border-blue-400 text-sm dark:border-blue-500"
+              />
               <AddToListButton
               candidateId={candidate.id}
               candidateName={name}
-              className="px-3 py-1.5 text-sm font-medium"
+              className="border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
             />
             </div>
             {tab === "game-plan" ? (
@@ -802,11 +809,18 @@ export default async function CandidateProfilePage({
             >
               <Target className="h-3 w-3" /> Apply to Job
             </Link>
-            <KeepCandidateButton candidateId={candidate.id} isKept={isKept} />
+            <KeepCandidateButton
+              candidateId={candidate.id}
+              isKept={isKept}
+              // Border bumped to blue-400 so the chip reads at the
+              // same visual weight as Submit's brand border on the
+              // candidate-profile action row.
+              className="border-blue-400 text-sm dark:border-blue-500"
+            />
             <AddToListButton
               candidateId={candidate.id}
               candidateName={name}
-              className="px-3 py-1.5 text-sm font-medium"
+              className="border-court-fg-muted/50 px-3 py-1.5 text-sm font-medium"
             />
           </div>
           {tab === "game-plan" ? (
@@ -879,8 +893,13 @@ const SUBMIT_LINK_CLASS =
 // Anchor-shaped twin of <Button variant="apply">. Token classes mirror
 // the amber apply variant so the Apply to Job link renders identically
 // to the matching <Button> without nesting a <button> inside an <a>.
+// Border bumped from amber-200 → amber-400 (and amber-900 → amber-500
+// in dark) so the border reads at the same visual weight as the
+// Submit to Job button's brand border (Andrew 2026-05-26: every
+// action-row button must read with the same border prominence as
+// Submit).
 const APPLY_LINK_CLASS =
-  "inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60";
+  "inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-400 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60";
 
 function UnderlineTabs({
   tab,

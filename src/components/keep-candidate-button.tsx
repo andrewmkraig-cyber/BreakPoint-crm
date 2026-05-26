@@ -17,9 +17,16 @@ import { toggleCandidateKept } from "@/app/candidates/[id]/keep-actions";
 export function KeepCandidateButton({
   candidateId,
   isKept,
+  className,
 }: {
   candidateId: string;
   isKept: boolean;
+  // Optional class merge so callers (candidate-profile action row) can
+  // override the base "keep" variant's lighter blue-200 border with a
+  // stronger blue-400 — sits at the same visual border weight as the
+  // sibling Submit to Job button without affecting other Keep
+  // surfaces (matches-tab, candidates list).
+  className?: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -45,7 +52,7 @@ export function KeepCandidateButton({
       disabled={isPending}
       aria-pressed={isKept}
       title={isKept ? "Remove from Kept" : "Mark as Kept"}
-      className="text-sm"
+      className={className ?? "text-sm"}
     >
       {isPending ? (
         <Loader2 className="h-3 w-3 animate-spin" />

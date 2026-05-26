@@ -125,7 +125,10 @@ export function SmsComposer({
             type="button"
             onClick={onOpenInQuo}
             disabled={openInQuoDisabled}
-            className="inline-flex h-8 min-w-[48px] items-center justify-center whitespace-nowrap rounded-lg border border-court-border bg-court-surface px-3 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:border-court-accent hover:text-court-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
+            // Yellow-outlined transparent pill. Shape + height match the
+            // sibling Send button (Button size="sm" → px-3 py-1.5 text-xs
+            // rounded-md) so the two affordances read as a sized pair.
+            className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-yellow-400 bg-transparent px-3 py-1.5 text-xs font-semibold text-yellow-600 shadow-sm transition hover:bg-yellow-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-yellow-500 dark:text-yellow-400 dark:hover:bg-yellow-900/20"
             title="Open this conversation in Quo"
           >
             {openingQuo ? <Loader2 className="h-3 w-3 animate-spin" /> : "Quo"}

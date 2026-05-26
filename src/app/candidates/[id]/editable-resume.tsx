@@ -379,13 +379,18 @@ export function EditableResume({
                 Generate-with-Claude treatment elsewhere in the app
                 (mail composer, JD generator, etc.). Disabled while
                 an upload OR another generation is in flight so the
-                two paths can't race. */}
+                two paths can't race. Border override bumps the
+                secondary variant's faint court-border up to a
+                stronger neutral so the chip sits at the same visual
+                border weight as the Submit to Job button on the
+                candidate-profile action row above. */}
             <Button
               type="button"
               variant="secondary"
               size="sm"
               onClick={() => void onGenerate()}
               disabled={isUploading || isGenerating}
+              className="border-court-fg-muted/50"
             >
               {isGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
               Generate Resume

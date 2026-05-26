@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
-import { Bookmark, CalendarClock, ChevronDown, DollarSign, Handshake, Loader2, Search, UserX, X } from "lucide-react";
+import { Bookmark, CalendarClock, CheckCircle2, ChevronDown, DollarSign, Edit3, Handshake, Loader2, Search, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { Pagination } from "@/components/pagination";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
@@ -718,20 +718,29 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
         )}
       </td>
       <td className="px-4 py-3 align-top">
-        <div className="flex flex-row items-center justify-end gap-2">
-          <Link
-            href={`/candidates/${row.candidateId}?confirmStart=1&jobId=${row.jobId}`}
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex h-8 items-center justify-center whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-4 text-[12px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
-          >
-            Confirm Start
-          </Link>
+        {/* Edit Placement (left, slate) + Confirm Start (right, brand)
+            mirror the candidate-profile pending_start action row in
+            pipeline-row-actions.tsx so the two surfaces read as the
+            same control. Edit3 + CheckCircle2 icons match the
+            candidate-profile DialogOrNav chip pair. */}
+        <div className="flex flex-row items-center justify-end gap-1.5">
           <Link
             href={`/candidates/${row.candidateId}?edit=placement&jobId=${row.jobId}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex h-8 items-center justify-center whitespace-nowrap rounded-md border border-court-border bg-court-surface px-4 text-[12px] font-semibold text-court-fg-muted shadow-sm transition hover:border-court-accent/40 hover:text-court-fg"
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-slate-200 bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800"
+            title="Edit placement details"
           >
+            <Edit3 className="h-3 w-3" />
             Edit Placement
+          </Link>
+          <Link
+            href={`/candidates/${row.candidateId}?confirmStart=1&jobId=${row.jobId}`}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-2 py-1 text-[11px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
+            title="Confirm start"
+          >
+            <CheckCircle2 className="h-3 w-3" />
+            Confirm Start
           </Link>
         </div>
       </td>

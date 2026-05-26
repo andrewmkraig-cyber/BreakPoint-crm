@@ -1355,7 +1355,12 @@ function CallInQuoButton({ phoneNumber }: { phoneNumber: string }) {
       }}
       aria-disabled={disabled}
       className={
-        "inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg" +
+        // Yellow-outlined transparent — every Quo affordance across the
+        // app shares this skin so Quo reads as a single brand pill
+        // wherever it appears (sidebar SMS composer, /phone thread
+        // header, etc.). Sized to match the Send / action-row chips
+        // beside it.
+        "inline-flex items-center gap-1.5 rounded-md border border-yellow-400 bg-transparent px-3 py-1.5 text-xs font-semibold text-yellow-600 shadow-sm transition hover:bg-yellow-50 dark:border-yellow-500 dark:text-yellow-400 dark:hover:bg-yellow-900/20" +
         (disabled ? " pointer-events-none opacity-50" : "")
       }
       title="Place call from Quo Desktop"
@@ -1389,7 +1394,10 @@ function OpenInQuoButton({ phoneNumber }: { phoneNumber: string }) {
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-court-accent hover:text-court-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
+      // Same yellow-outlined transparent skin as CallInQuoButton + the
+      // sidebar SMS composer's Quo button. One Quo style across every
+      // surface.
+      className="inline-flex items-center gap-1.5 rounded-md border border-yellow-400 bg-transparent px-3 py-1.5 text-xs font-semibold text-yellow-600 shadow-sm transition hover:bg-yellow-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-yellow-500 dark:text-yellow-400 dark:hover:bg-yellow-900/20"
       title="Open this conversation in Quo"
     >
       {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
