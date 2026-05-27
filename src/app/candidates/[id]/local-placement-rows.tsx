@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -1253,18 +1253,31 @@ function OfferDialog({
       subtitle={`${job.jobTitle} · ${job.clientName}`}
       onClose={onClose}
       footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Record offer" />}
+      // Lock to X / Cancel close. Stray backdrop click or Escape press
+      // shouldn't be able to throw away half-filled offer fields.
+      dismissOnOverlay={false}
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {/* USD is the only allowed currency on offer rows (Ace fix 2026-05-27).
             The `currency` state still defaults to "USD" and is written to
             Placement.offerCurrency / acceptedCurrency on save — the dropdown
             is gone but the DB column stays populated. Negatives are blocked
-            at the input layer (strip "-") and rechecked on submit + server. */}
+            at the input layer (strip "-") and rechecked on submit + server.
+            "USD" now renders as an inert suffix on the salary input (Ace
+            fix 67.10): pointer-events-none + select-none + aria-hidden
+            so the recruiter can't click into it to edit or delete it —
+            replaced the in-label "($USD)" string that let clicks
+            forward focus into the salary input. Numeric placeholders
+            on every offer field were stripped — text-only ghost prompts
+            stay, but anything that visually looked like a real number
+            sitting in the input is gone, so a fresh Make Offer renders
+            all four fields visually empty. */}
         <OfferField
-          label="Offered salary ($USD)"
+          label="Offered salary"
           value={salary}
           onChange={(v) => setSalary(v.replace(/-/g, ""))}
-          placeholder="e.g. 120000 or 120k"
+          placeholder="Enter amount"
+          suffix="USD"
         />
         <div className="sm:col-span-2">
           <OfferField label="Offered title" value={title} onChange={setTitle} />
@@ -1274,14 +1287,14 @@ function OfferDialog({
           label="Fee %"
           value={feePct}
           onChange={(v) => setFeePct(v.replace(/-/g, ""))}
-          placeholder="25"
+          placeholder="Enter percent"
         />
-        <OfferField label="Min fee" value={minFee} onChange={setMinFee} placeholder="20000 (optional)" />
+        <OfferField label="Min fee" value={minFee} onChange={setMinFee} placeholder="Optional" />
         <OfferField
           label="Fee amount (flat, overrides calc)"
           value={feeAmountOverride}
           onChange={setFeeAmountOverride}
-          placeholder="7500 (wins over salary × fee %)"
+          placeholder="Optional flat amount"
         />
         <label className="block text-sm sm:col-span-2">
           <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Notes</span>
@@ -1550,13 +1563,55 @@ function OfferField({
   onChange,
   placeholder,
   type = "text",
+  suffix,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   type?: "text" | "date";
+  // Static chrome rendered after the input (e.g. "USD" on the salary
+  // field). pointer-events-none + select-none + aria-hidden + cursor-
+  // default make it visually look like a unit indicator but actually
+  // inert — clicking USD focuses NOTHING (not the input, not the
+  // suffix). The suffix branch swaps the wrapping <label> for a
+  // <div> + sibling <label htmlFor={id}> so a click on the suffix
+  // doesn't bubble into the native label-forwarding that would
+  // otherwise focus the input. Undefined keeps every existing call
+  // site byte-identical.
+  suffix?: ReactNode;
 }) {
+  // useId is always called (rules of hooks) but only consumed in the
+  // suffix branch.
+  const inputId = useId();
+  if (suffix !== undefined) {
+    return (
+      <div className="block text-sm">
+        <label
+          htmlFor={inputId}
+          className="text-[11px] uppercase tracking-wider text-court-fg-muted"
+        >
+          {label}
+        </label>
+        <div className="mt-1 flex w-full items-center rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus-within:border-brand focus-within:outline-none focus-within:ring-2 focus-within:ring-brand/20">
+          <input
+            id={inputId}
+            type={type}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            className="flex-1 bg-transparent outline-none placeholder:text-court-fg-muted/60"
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none ml-2 shrink-0 cursor-default select-none text-xs font-medium uppercase tracking-wider text-court-fg-muted"
+          >
+            {suffix}
+          </span>
+        </div>
+      </div>
+    );
+  }
   return (
     <label className="block text-sm">
       <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
@@ -1778,13 +1833,35 @@ function ModalShell({
   onClose,
   children,
   footer,
+  dismissOnOverlay = true,
 }: {
   title: string;
   subtitle?: string;
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  // Default true preserves existing "click outside to close" behavior
+  // for every consumer (Confirm Start, Extend Offer, Make Placement,
+  // …). Offer dialog passes false so half-filled offer fields can't
+  // be discarded by a stray backdrop click. Matches the same prop on
+  // the RF-side <Modal> in placement-flows.tsx.
+  dismissOnOverlay?: boolean;
 }) {
+  // Defensive Escape guard. Today's ModalShell has no Escape handler,
+  // so Escape already does nothing — but if this modal is ever nested
+  // inside a Radix Dialog ancestor in the future, Escape would close
+  // the ancestor and unmount us. Swallow Escape in the capture phase
+  // while dismissOnOverlay is off so the "Escape inert" guarantee
+  // survives that change.
+  useEffect(() => {
+    if (dismissOnOverlay) return;
+    function block(e: KeyboardEvent) {
+      if (e.key === "Escape") e.stopPropagation();
+    }
+    window.addEventListener("keydown", block, { capture: true });
+    return () => window.removeEventListener("keydown", block, { capture: true });
+  }, [dismissOnOverlay]);
+
   // Portal to document.body. ModalShell is mounted inside LocalProfile's
   // sticky pipeline wrapper, which uses `backdrop-blur` →
   // `backdrop-filter: blur(...)`. Per spec, an element with
@@ -1804,7 +1881,10 @@ function ModalShell({
     // breathing margin from the viewport edge at both breakpoints.
     <div
       className="fixed inset-0 z-[200] overflow-y-auto bg-ink/40 p-4 sm:p-6"
-      onClick={onClose}
+      // dismissOnOverlay=false: backdrop swallows clicks so the
+      // panel doesn't double-fire on the propagated event, but never
+      // calls onClose. Only the X (or Cancel footer button) closes.
+      onClick={dismissOnOverlay ? onClose : (e) => e.stopPropagation()}
     >
       <div className="flex min-h-full items-center justify-center">
         {/* Flex-column shell capped at viewport height so header +

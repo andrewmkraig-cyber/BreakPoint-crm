@@ -1,10 +1,30 @@
 # ACE_STATE.md
-Last updated: 2026-05-27 · Ace 67.9
+Last updated: 2026-05-27 · Ace 67.10
 
 ## Current Status
-Current Version: Ace 67.9
+Current Version: Ace 67.10
 Last Shipped: 2026-05-27
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.10 (2026-05-27)
+
+Offer modal hardening — three asks on the Make Offer / Edit Offer popup.
+
+- **Modal closes only via the X.** Both `OfferDialog` components (`placement-flows.tsx:1161` RF + `local-placement-rows.tsx:1166` Ace-native) now pass `dismissOnOverlay={false}` to their respective shells. The shells gained the new prop with default `true` so every other consumer (Confirm Start, Reject, Reapply, Edit Interview, Apply/Submit to Job, Cancel Placement, Extend Offer, Make Placement, …) keeps its existing backdrop-click-to-close behavior. When `false`: the outer backdrop `onClick` becomes `(e) => e.stopPropagation()` (swallows the click without calling `onClose`) and a capture-phase window `keydown` listener swallows `Escape` so the lock survives any future Radix Dialog ancestor.
+- **No numeric placeholders on the four offer fields.** Stripped the `e.g. 120000 or 120k` salary placeholder, the `25` Fee % placeholder, the `20000 (optional)` Min fee placeholder, and the `7500 (wins over salary × fee %)` Fee amount placeholder on BOTH OfferDialog instances. New text-only ghost prompts: `Enter amount`, `Enter percent`, `Optional`, `Optional flat amount`. Fresh Make Offer on a client with `feePct = null` now renders all four fields visually empty. Editing an existing offer still prefills from `placement?.*` snapshot; fee % auto-fill from `client.feePct` is untouched (still seeded at `placement-flows.tsx:1186` + `local-placement-rows.tsx:1196`).
+- **USD is inert chrome.** `LabeledField` (`editable-helpers.tsx`) and `OfferField` (`local-placement-rows.tsx`) both gained an optional `suffix?: ReactNode` prop. When set, the wrapping `<label>` is replaced with a `<div>` plus a sibling `<label htmlFor={useId()}>` so the native "click anywhere in the label forwards focus to the input" no longer fires when the user clicks on the suffix. The suffix span itself has `pointer-events-none select-none cursor-default aria-hidden="true"`. The salary label is now plain "Offered salary" with a "USD" suffix sitting inside the same input frame on the right edge. `Placement.offerCurrency` / `acceptedCurrency` still write `"USD"` on every save — column not dropped, server still defaults to `"USD"` if `currency` is falsy.
+
+Touches: `src/app/candidates/[id]/editable-helpers.tsx`, `src/app/candidates/[id]/placement-flows.tsx`, `src/app/candidates/[id]/local-placement-rows.tsx`. Build clean (`npm run build` exits 0; only existing unrelated react-hooks/exhaustive-deps warnings).
+
+Andrew browser-verify (6 steps, none I could run from this env):
+1. Open Make Offer. Click the dim overlay outside the dialog → modal stays open.
+2. Press Escape → modal stays open.
+3. Click the X → modal closes.
+4. Open Make Offer for a candidate whose client has `feePct = null` → all four fields visually empty.
+5. Open Edit Offer on a placement with stored values → real values prefill (salary, fee %, min fee, fee amount).
+6. Click "USD" next to the salary field → no focus shift, no selection, no typing affects USD; the cursor does NOT jump into the salary input from a USD click (sibling-label structure breaks the forward).
+
+Regression: Save still works for new + edit flows; existing offers in any pipeline stage still load with stored values; X still closes; previous-ship negative-salary / negative-fee-% input + submit + server checks all still fire.
 
 ## What Shipped in Ace 67.9 (2026-05-27)
 

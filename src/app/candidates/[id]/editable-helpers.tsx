@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 
@@ -31,6 +31,7 @@ export function LabeledField({
   type = "text",
   placeholder,
   disabled,
+  suffix,
 }: {
   label: string;
   value: string;
@@ -38,7 +39,52 @@ export function LabeledField({
   type?: string;
   placeholder?: string;
   disabled?: boolean;
+  // Static chrome rendered after the input (e.g. "USD" on the salary
+  // field). pointer-events-none + select-none + aria-hidden + cursor-
+  // default make it visually look like a unit indicator but actually
+  // inert — clicking it focuses NOTHING (not the input, not the
+  // suffix). The standard <label>-wraps-input pattern would forward a
+  // click on the suffix to focus the input; when suffix is set we
+  // bypass that by rendering the field's text-label as a separate
+  // <label htmlFor={id}> sibling and the frame as a plain <div>, so
+  // only the label-text region and the input itself receive focus on
+  // click. Pass `undefined` to opt out; that path stays byte-identical
+  // to the original implementation.
+  suffix?: ReactNode;
 }) {
+  // useId is always called (rules of hooks) but only consumed in the
+  // suffix branch — the suffix-less branch keeps its native
+  // <label>-wraps-input structure so existing callers see no DOM diff.
+  const inputId = useId();
+  if (suffix !== undefined) {
+    return (
+      <div className="block text-sm">
+        <label
+          htmlFor={inputId}
+          className="text-[11px] uppercase tracking-wider text-court-fg-muted"
+        >
+          {label}
+        </label>
+        <div className={cn(INPUT_FRAME_CLASS, "mt-1 w-full", disabled && "opacity-60")}>
+          <input
+            id={inputId}
+            type={type}
+            value={value}
+            disabled={disabled}
+            placeholder={placeholder}
+            onChange={(e) => onChange(e.target.value)}
+            className={`${INPUT_CONTROL_CLASS} text-sm`}
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none mr-3 shrink-0 cursor-default select-none text-xs font-medium uppercase tracking-wider text-court-fg-muted"
+          >
+            {suffix}
+          </span>
+        </div>
+      </div>
+    );
+  }
   return (
     <label className="block text-sm">
       <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>

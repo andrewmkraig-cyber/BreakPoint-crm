@@ -1311,31 +1311,50 @@ function OfferDialog({
   }
 
   return (
-    <Modal title="Offer received" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
+    <Modal
+      title="Offer received"
+      subtitle={`${job.jobTitle} · ${job.clientName}`}
+      onClose={onClose}
+      // Lock to X-only close. The offer dialog collects fee math and a
+      // candidate-facing acceptance email — a stray backdrop click or
+      // a reflexive Escape press shouldn't be able to throw the work
+      // away. Cancel-by-X / Cancel button stays the only path out.
+      dismissOnOverlay={false}
+    >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {/* USD is the only allowed currency on offer rows (Ace fix 2026-05-27).
             The `currency` state still defaults to "USD" and is written to
             Placement.offerCurrency / acceptedCurrency on save — the dropdown
             is gone but the DB column stays populated. Negative salaries are
             blocked at the input layer (strip "-" in onChange) and again on
-            submit (salaryNum < 0 check below) and once more server-side. */}
+            submit (salaryNum < 0 check below) and once more server-side.
+            "USD" renders as an inert suffix on the salary input (Ace
+            fix 67.10): pointer-events-none + select-none + aria-hidden
+            so the recruiter can't click into it to edit or delete it —
+            replaced the in-label "($USD)" string that LET clicks
+            forward focus into the salary input. Numeric placeholders
+            on every offer field were stripped — text-only ghost prompts
+            stay, but anything that visually looked like a real number
+            sitting in the input is gone, so a fresh Make Offer renders
+            all four fields visually empty. */}
         <LabeledField
-          label="Offered salary ($USD)"
+          label="Offered salary"
           value={salary}
           onChange={(v) => setSalary(v.replace(/-/g, ""))}
-          placeholder="e.g. 120000 or 120k"
+          placeholder="Enter amount"
+          suffix="USD"
         />
         <div className="sm:col-span-2">
           <LabeledField label="Offered title" value={title} onChange={setTitle} />
         </div>
         <LabeledField label="Proposed start date" type="date" value={startDate} onChange={setStartDate} />
-        <NumericField label="Fee %" value={feePct} onChange={setFeePct} placeholder="25" min={0} step="0.1" />
-        <NumericField label="Min fee" value={minFee} onChange={setMinFee} placeholder="20000 (optional)" min={0} />
+        <NumericField label="Fee %" value={feePct} onChange={setFeePct} placeholder="Enter percent" min={0} step="0.1" />
+        <NumericField label="Min fee" value={minFee} onChange={setMinFee} placeholder="Optional" min={0} />
         <NumericField
           label="Fee amount (flat, overrides calc)"
           value={feeAmountOverride}
           onChange={setFeeAmountOverride}
-          placeholder="7500 (wins over salary × fee %)"
+          placeholder="Optional flat amount"
           min={0}
         />
         <div className="sm:col-span-2">
@@ -3958,6 +3977,7 @@ function Modal({
   children,
   footer,
   wide,
+  dismissOnOverlay = true,
 }: {
   title: string;
   subtitle?: string;
@@ -3965,7 +3985,29 @@ function Modal({
   children: React.ReactNode;
   footer?: React.ReactNode;
   wide?: boolean;
+  // Default true preserves the original "click outside to close"
+  // behavior every existing consumer of <Modal> relies on. The Offer
+  // dialog passes false so the recruiter can only close via the X
+  // (or the Cancel button) — half-filled offer fields shouldn't get
+  // discarded by a stray click on the dim backdrop.
+  dismissOnOverlay?: boolean;
 }) {
+  // Defensive Escape guard. The custom Modal has no native Escape
+  // handler today, so Escape already does nothing — but if this modal
+  // is ever rendered inside a Radix Dialog ancestor in the future,
+  // Escape would close the ancestor and unmount us. Installing a
+  // capture-phase listener that swallows Escape while dismissOnOverlay
+  // is false makes the "Escape inert" guarantee resilient to that
+  // future change.
+  useEffect(() => {
+    if (dismissOnOverlay) return;
+    function block(e: KeyboardEvent) {
+      if (e.key === "Escape") e.stopPropagation();
+    }
+    window.addEventListener("keydown", block, { capture: true });
+    return () => window.removeEventListener("keydown", block, { capture: true });
+  }, [dismissOnOverlay]);
+
   // Portal to document.body so the overlay escapes the candidate
   // profile's React tree. Without the portal, ancestor stacking
   // contexts / containing blocks (e.g. backdrop-filter, transform,
@@ -3988,7 +4030,11 @@ function Modal({
     // breathing margin between the panel edge and the viewport edge.
     <div
       className="fixed inset-0 z-[200] overflow-y-auto bg-ink/40 p-4 sm:p-6"
-      onClick={onClose}
+      // When dismissOnOverlay is false the backdrop swallows clicks
+      // (still stopPropagation so the panel below doesn't double-fire)
+      // but never calls onClose. The X button in the header is the
+      // only close path in that mode.
+      onClick={dismissOnOverlay ? onClose : (e) => e.stopPropagation()}
     >
       <div className="flex min-h-full items-center justify-center">
         {/* Flex-column shell capped at viewport height so header +
