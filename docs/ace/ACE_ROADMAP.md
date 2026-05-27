@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-27 · Ace 67.12
+Last updated: 2026-05-27 · Ace 67.13
 
 ## Active Build Sequence
 
@@ -17,21 +17,12 @@ Notification toast polish (DONE Ace 59.0): SMS toast `MessageSquare` icon, actio
 ### Session 61.0 Status
 Profile / pipeline regression close-out + features (DONE Ace 61.0): split-view candidate Delete restored; Apply / Keep / Reject real-time stage pill (optimistic, holds until server confirm) + the flash-then-disappear follow-on fixed; Add Note button removed from all four candidate profile locations; stage button visibility aligned to spec in `pipeline-row-actions.tsx`; phone thread auto-scroll to bottom on open; CalendarEventDrawer reminder mode (hides Guests / Location / Meeting type / All day / Timezone, ET hard-coded with a comment to pull per-user tz when multi-user ships); scheduled send (Send Later) on every email surface (`ScheduledEmail` table + per-minute Vercel cron + Retry toast); dark luxury login redesign; PWA badge auto-fire fix (`2d0081e`, null badgeCount in `unread-counts.ts`, sw.js cache `v5`); Auto Night Mode (`0dd1e41`, `UserProfile.autoNightMode`, 7pm/7am ET flip). Favicon / tab counter verified already correct. Awaiting Andrew's browser verification of scheduled send, the PWA badge, and Auto Night Mode.
 
-### Next Up (after Ace 67.12)
+### Next Up (after Ace 67.13)
 
+- **Browser-verify the restored per-party interview invite model.** Schedule a fresh interview from the candidate profile/pipeline pill, send candidate invite, then client invite. Confirm Google Calendar shows two events at the same time with distinct bodies and the same Meet. Then test "Client will send invite" and confirm it creates one tracking event only with no candidate/client emails. Confirm the Jennifer duplicate is gone from the Clubhouse widget, and the schedule modal does not close on backdrop click, drags cleanly, resizes cleanly, and has readable dark-mode time options.
 - **Browser-verify the Make Placement modal hardening.** (1) Open Make Placement on an offer-stage row → click outside the dialog → modal stays open. (2) Press Escape → stays open. (3) Click X → closes. (4) Open Make Placement → Lead Source field shows "Select a source…" placeholder (disabled), then Network / Referral / LinkedIn / Inbound / Indeed / Other. (5) Try to save with Lead Source on the placeholder → red error banner reads "Lead Source is required." and save blocks. Regression: existing placements with `candidateSource` set still reopen with that value pre-selected; legacy values (Pin, Apollo BD, Cold Outreach) still preserved via the fallback option; Billing/Hiring multi-contact list + chip auto-fill untouched; Custom Payment Agreement untouched; Edit Placement drawer at `/pipeline` untouched.
-
-### Next Up (after Ace 67.11)
-
 - **Browser-verify the offer modal drag/resize + pipeline pagination removal.** (1) Drag offer modal header — modal stops the frame the pointer releases, no drift. (2) Resize from bottom-right corner — width/height update live, release stops cleanly. (3) Drag fast and release — no stuck-to-cursor. (4) Overlay click — still doesn't close (67.10 lock holds). (5) Non-offer modals (Reject, Confirm Start, etc.) — header is NOT draggable, no corner handle. (6) /pipeline Offer tab — Edit Offer chip visible alongside Placement + Reject. (7) Click Edit Offer on /pipeline — modal opens prefilled. (8) /pipeline Applicants/Kept/Submitted/Interviewing/Pending Start/Hired — "Showing X of N submittals" + Prev/Next gone from every tab. (9) /jobs/[id] Matched tab pager — still works (separate feature, untouched). (10) /candidates, /jobs, /clients — pagination intact.
-
-### Next Up (after Ace 67.10)
-
 - **Browser-verify the offer modal hardening.** (1) Make Offer overlay click → stays open. (2) Escape → stays open. (3) X → closes. (4) Fresh Make Offer on `feePct=null` client → four fields visually empty. (5) Edit Offer on existing placement → real values prefill. (6) Click "USD" → no focus shift, no selection, no typing affects it; the cursor does NOT jump into the salary input from a USD click. Regression: Save still works for new + edit; existing offers in any stage still load; negative-salary / negative-fee-% blocks still fire.
-
-### Next Up (after Ace 67.9)
-
-- **Browser-verify the interview calendar fix.** Schedule a fresh interview, send client invite, send candidate invite, edit/reschedule once, then cancel. Confirm: Google shows one current event; Clubhouse + This Week each show one row per interview; Austin doesn't get a candidate-bodied "event updated" notification on the second send; cancelled events drop out of the widget + /calendar immediately without waiting for a manual sync.
 - **Migrate Google `iCalUID` onto `CalendarEvent`.** Today's widget dedupe falls back to `title|start|end|meetLink` for cross-calendar duplicates because `iCalUID` isn't mirrored. Add `iCalUID String?` to `CalendarEvent`, populate it in `google-sync.ts`, then prefer it in `dedupeCalendarRows`. Once stable, drop the fallback key.
 
 ### Next Up (after Ace 67.8)

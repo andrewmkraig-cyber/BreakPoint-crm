@@ -1,10 +1,25 @@
 # ACE_STATE.md
-Last updated: 2026-05-27 · Ace 67.12
+Last updated: 2026-05-27 · Ace 67.13
 
 ## Current Status
-Current Version: Ace 67.12
+Current Version: Ace 67.13
 Last Shipped: 2026-05-27
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.13 (2026-05-27)
+
+Interview invite model restored to Andrew's intended workflow, plus schedule-modal polish.
+
+- **Client and candidate now get separate Google Calendar invite events again.** `sendInterviewInvite` no longer appends both parties to one shared event. The first invite reuses the organizer-only tracking event created by `scheduleInterview`; the second invite creates its own Google event and attaches the same Meet conference data when the interview uses Google Meet. Each party event keeps its own subject/body, so the candidate invite body no longer overwrites the client invite body (or vice versa). Existing old shared rows are handled defensively: if both per-party columns point at the same Google event, a resend/edit for either party routes back through the create path and splits that party into a distinct event.
+- **Client-scheduled stays tracking-only.** The "Client will send invite" branch still creates a single no-attendee tracking event on Andrew's calendar and skips both client/candidate invite composers. No candidate/client email is sent from Ace in that branch.
+- **Invite edits respect per-party privacy.** `updateInterview` still patches date/time/location across all related Google events, but new interviewer attendees are only added to the client-side invite event. Candidate invite events stay candidate-only.
+- **Stale cancelled interview rows are filtered even when Google never replays the cancellation.** The Calendar page and Clubhouse This Week widget now exclude `CalendarEvent` rows whose Google event id belongs to a cancelled `Interview` in the same date window. This covers the existing Jennifer Cole duplicate where the old `CalendarEvent` row was still `CONFIRMED` locally.
+- **Schedule/edit/reschedule interview modals no longer close on backdrop click and now opt into drag/resize.** The modals use the Ace 67.11 shared `useDraggableResizable` hook with `dismissOnOverlay={false}`, so X/Cancel still close, the header drags cleanly, and the bottom-right resize handle uses the same pointer-capture release behavior as the offer modal.
+- **Dark-mode time dropdown contrast fixed.** The selected 15-minute time option now uses Court brand tint with `text-court-brand-dark`, so selected times are readable in dark mode.
+
+Touches: `src/app/candidates/[id]/interview-actions.ts`, `src/lib/google-calendar.ts`, `src/app/dashboard/interview-invite-actions.ts`, `src/app/dashboard/this-week-widget.tsx`, `src/app/calendar/page.tsx`, `src/components/datetime-15-picker.tsx`, `src/app/candidates/[id]/local-placement-rows.tsx`, `src/app/candidates/[id]/placement-flows.tsx`. Build clean (`npm run build` exits 0; only the existing react-hooks/exhaustive-deps warnings in `mail-view.tsx` and `event-drawer.tsx`).
+
+Regression check for Andrew: schedule a fresh Ace-scheduled video interview from the candidate profile/pipeline pill, send the candidate invite, then send the client invite. Google Calendar should show two events at the same time, one per party, with separate descriptions and the same Meet. Then use "Client will send invite" and confirm it creates one tracking event only, with no invite emails. Confirm the Jennifer duplicate is gone from the Clubhouse widget after deploy. Confirm the schedule modal stays open on outside click, can be dragged by its header, can be resized, and the time dropdown selected row is readable in dark mode.
 
 ## What Shipped in Ace 67.12 (2026-05-27)
 
