@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-05-27 · Ace 67.6
+Last updated: 2026-05-27 · Ace 67.7
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.

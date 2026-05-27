@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { useComposerManager } from "@/lib/composer-manager";
@@ -91,6 +91,13 @@ export type InvoiceDetailProps = {
 
 export function InvoiceDetail(props: InvoiceDetailProps) {
   const router = useRouter();
+  // 2026-05-27: ?compose=1 (set by the Confirm Start hand-off in
+  // ConfirmStartDialog) auto-opens the invoice email composer once on
+  // mount. The autoComposeDoneRef guard prevents a re-fire if the
+  // component re-renders for any reason while the param is still in the
+  // URL (React strict mode double-effects, Next router rehydration, etc).
+  const searchParams = useSearchParams();
+  const autoComposeDoneRef = useRef(false);
   const composer = useComposerManager();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -268,14 +275,18 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
     setError(null);
     setDraftingEmail(true);
     try {
-      const lastName = props.candidateName
-        ? (props.candidateName.split(" ").slice(-1)[0] ?? "placement")
-        : "placement";
+      // Andrew 2026-05-27: subject reads the candidate's full first +
+      // last name instead of only the last name. "Invoice from BreakPoint
+      // Talent - Jennifer Cole placement (INV-1053)" replaces the older
+      // "Cole placement" form so a client opening multiple invoices can
+      // tell candidates apart at a glance.
+      const candidateFullName = props.candidateName?.trim() ?? "";
+      const candidateClause = candidateFullName ? `${candidateFullName} ` : "";
       const firstName = billingPrimary?.name?.split(" ")[0] ?? "team";
       const startLabel = startDate ? new Date(startDate).toLocaleDateString() : "TBD";
       const dueLabel = dueDate ? new Date(dueDate).toLocaleDateString() : "TBD";
       const signer = props.accountExecName || "Andrew";
-      const subject = `Invoice from ${props.billingCompanyName} - ${lastName} placement (${props.invoiceNumber})`;
+      const subject = `Invoice from ${props.billingCompanyName} - ${candidateClause}placement (${props.invoiceNumber})`;
       // Suppress the "of $X" clause when the fee isn't captured so we
       // don't ship a "for the placement fee of —" sentence. formatUsd
       // returns an em dash for missing/zero amounts; the clause comes
@@ -352,6 +363,27 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
       setDraftingEmail(false);
     }
   }
+
+  // Confirm Start hand-off auto-pop. The Confirm Start dialog navigates
+  // to /invoices/[id]?compose=1 on success; we land here, detect the
+  // param, and fire handleEmailDraft once so the composer pops without
+  // a manual click. We strip the param via router.replace afterward so a
+  // hard refresh or back/forward doesn't re-trigger the composer. Gated
+  // on props.id !== null because handleEmailDraft itself requires a
+  // saved invoice row.
+  useEffect(() => {
+    if (autoComposeDoneRef.current) return;
+    if (props.id === null) return;
+    if (searchParams?.get("compose") !== "1") return;
+    autoComposeDoneRef.current = true;
+    void handleEmailDraft();
+    // Replace removes ?compose=1 from the URL without pushing a history
+    // entry so the back button still returns to the candidate page.
+    router.replace(`/invoices/${props.id}`);
+    // handleEmailDraft is a stable closure for the lifetime of this
+    // render; the ref guard above prevents re-runs from re-firing it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, props.id]);
 
   function addContact(setter: typeof setBillingContacts) {
     setter((prev) => [...prev, { name: "", email: "" }]);

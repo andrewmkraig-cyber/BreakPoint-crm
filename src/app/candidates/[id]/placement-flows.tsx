@@ -2291,11 +2291,21 @@ export function ConfirmStartDialog({
         });
       } else {
         toast.success("Start confirmed. Candidate moved to Hired", {
-          description: "Draft invoice created. Open Invoicing to review and send.",
+          description: "Opening invoice email composer…",
         });
       }
       onClose();
-      router.refresh();
+      // 2026-05-27: Confirm Start now hands off to the invoice email
+      // composer instead of leaving the recruiter on the candidate page.
+      // ?compose=1 tells the invoice page to auto-pop handleEmailDraft on
+      // mount so Andrew lands in a ready-to-review-and-send composer
+      // without an extra click. Falls back to router.refresh() when the
+      // draft creation failed and we have no invoice id to navigate to.
+      if (result.value?.invoiceId) {
+        router.push(`/invoices/${result.value.invoiceId}?compose=1`);
+      } else {
+        router.refresh();
+      }
     });
   }
 

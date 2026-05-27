@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-27 · Ace 67.6
+Last updated: 2026-05-27 · Ace 67.7
 
 ## Active Build Sequence
 
@@ -16,6 +16,12 @@ Notification toast polish (DONE Ace 59.0): SMS toast `MessageSquare` icon, actio
 
 ### Session 61.0 Status
 Profile / pipeline regression close-out + features (DONE Ace 61.0): split-view candidate Delete restored; Apply / Keep / Reject real-time stage pill (optimistic, holds until server confirm) + the flash-then-disappear follow-on fixed; Add Note button removed from all four candidate profile locations; stage button visibility aligned to spec in `pipeline-row-actions.tsx`; phone thread auto-scroll to bottom on open; CalendarEventDrawer reminder mode (hides Guests / Location / Meeting type / All day / Timezone, ET hard-coded with a comment to pull per-user tz when multi-user ships); scheduled send (Send Later) on every email surface (`ScheduledEmail` table + per-minute Vercel cron + Retry toast); dark luxury login redesign; PWA badge auto-fire fix (`2d0081e`, null badgeCount in `unread-counts.ts`, sw.js cache `v5`); Auto Night Mode (`0dd1e41`, `UserProfile.autoNightMode`, 7pm/7am ET flip). Favicon / tab counter verified already correct. Awaiting Andrew's browser verification of scheduled send, the PWA badge, and Auto Night Mode.
+
+### Next Up (after Ace 67.7)
+
+- **Wire invoice-detail to consume the seeded "Invoice Email" template.** Today the DB template row is visible + editable in /settings/templates, but `handleEmailDraft` still uses a literal in invoice-detail.tsx. Add `[Invoice Number]` / `[Fee Amount]` / `[Invoice Due Date]` to the merge-field system; have the invoice page server component fetch + merge the active template; pass to the client; fall back to the literal when the row is missing.
+- **Editable trigger metadata (Event Name / Audience / Dispatch).** Currently read-only in the modal — code-coupled to the call-site, but the human-readable Event Name + Audience are pure DB metadata. A separate save action that accepts those fields would land cleanly without touching call-sites.
+- **Create-new-trigger from the UI.** "+ New trigger" affordance on /settings/triggers that lets Andrew define a TriggerRule + tag a template without going through code. Note: the new trigger key still needs a code call-site somewhere to actually fire — UI-only creation produces a documentary row.
 
 ### Next Up (after Ace 67.6)
 

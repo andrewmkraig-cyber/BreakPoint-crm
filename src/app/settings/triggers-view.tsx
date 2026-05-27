@@ -455,9 +455,20 @@ function TriggerEditDialog({
 
         {/* Read-only event identity card. These fields aren't editable
             because the trigger is wired to a specific code call-site —
-            changing them in the DB wouldn't change what actually fires. */}
-        <div className="mb-4 grid grid-cols-1 gap-2 rounded-lg border border-court-border bg-court-surface-subtle/40 p-3 text-[11px] sm:grid-cols-3">
-          <Meta label="Trigger key" value={<code className="text-[11px]">{rule.triggerKey}</code>} />
+            changing them in the DB wouldn't change what actually fires.
+            Layout (2026-05-27): mobile = 1 col, tablet = 2 col, desktop
+            = 4 col so the long trigger key never overlaps the Event
+            value on the same row. The code <code> gets break-all so an
+            extra-long key wraps instead of bleeding into the next cell. */}
+        <div className="mb-4 grid grid-cols-1 gap-3 rounded-lg border border-court-border bg-court-surface-subtle/40 p-3 text-[11px] sm:grid-cols-2 lg:grid-cols-4">
+          <Meta
+            label="Trigger key"
+            value={
+              <code className="block break-all text-[11px] leading-snug">
+                {rule.triggerKey}
+              </code>
+            }
+          />
           <Meta label="Event" value={rule.eventName} />
           <Meta label="Audience" value={audienceLabel(rule.audience)} />
           <Meta label="Dispatch" value={dispatchLabel(rule.dispatch)} />
@@ -574,9 +585,11 @@ function StatusPill({ enabled, customized }: { enabled: boolean; customized: boo
 
 function Meta({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex flex-col">
-      <dt className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">{label}</dt>
-      <dd className="mt-0.5 text-xs text-court-fg">{value}</dd>
+    <div className="flex min-w-0 flex-col">
+      <dt className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+        {label}
+      </dt>
+      <dd className="mt-0.5 min-w-0 text-xs text-court-fg">{value}</dd>
     </div>
   );
 }

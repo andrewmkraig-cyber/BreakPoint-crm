@@ -1,10 +1,30 @@
 # ACE_STATE.md
-Last updated: 2026-05-27 · Ace 67.6
+Last updated: 2026-05-27 · Ace 67.7
 
 ## Current Status
-Current Version: Ace 67.6
+Current Version: Ace 67.7
 Last Shipped: 2026-05-27
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.7 (2026-05-27)
+
+Three asks from Andrew rolled into one ship: invoice email subject uses the candidate's full name; trigger-edit modal overlap fixed; Confirm Start now hands off to the invoice email composer + the new "Invoice Email" template + "Confirmed Start: Invoice Draft" trigger are seeded into Settings.
+
+- **Invoice subject reads "first + last name placement."** `src/app/invoices/[id]/invoice-detail.tsx` switched from the last-name-only "Cole placement" form to the full `${candidateFullName} placement` form so a client opening multiple invoices can tell candidates apart at a glance. Falls back to a bare "placement" clause if the placement somehow has no candidate name on file.
+- **Edit-trigger modal layout fix.** The read-only event-identity card was a `sm:grid-cols-3` with 4 cells, so the long `candidate_applied_confirmation` trigger key bled into the Event column. Layout is now `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4` and the code value gets `break-all` so an extra-long key wraps instead of overlapping. `Meta` cells gained `min-w-0` so children truncate cleanly inside the grid. Trigger key + Event + Audience + Dispatch stay read-only this prompt (changing the key would silently desync from the code call-site that fires it).
+- **`confirmed_start_invoice` trigger registered.** New constant in `template-constants.ts` + a `TRIGGER_OPTIONS` entry with `dispatch: "compose-prefill"` and `audience: "client"` so it shows up in Settings → Templates + Triggers immediately. Recruiter can pin a template or pause the auto-pop from there.
+- **"Invoice Email" template seeded.** New `CONFIRMED_START_INVOICE_DEFAULT` in `templates-actions.ts` flows through `ensureDefaultTemplates` (which already runs on every settings-page load), so the row appears in Settings → Templates as a `category: "invoice"` template with merge-field-style body: `[Client Contact First Name]`, `[Candidate Full Name]`, `[Job Title]`, `[Client Company Name]`, `[Start Date]`. The seed is idempotent against the trigger key.
+- **Confirm Start hands off to the composer.** `confirmStart` now captures the just-created invoice id from both `createInvoiceForPlacement` (non-custom-terms path) and `createDraftInvoiceAction` (custom installment-1 path) and returns it in `ConfirmStartResult.invoiceId`. `ConfirmStartDialog.onSave` routes the recruiter to `/invoices/[invoiceId]?compose=1` on success instead of `router.refresh()`. The invoice page reads the `compose` param with `useSearchParams`, fires `handleEmailDraft` once on mount behind a `useRef` re-fire guard, then strips the param via `router.replace` so a back/forward or hard refresh doesn't re-pop the composer.
+
+### Known follow-up (NOT shipped this prompt)
+The seeded "Invoice Email" template body is **visible and editable in Settings → Templates** but **does not yet drive the actual send**. The composer body comes from the literal in `invoice-detail.tsx#handleEmailDraft` (with the first+last subject fix applied). To wire the DB template into the send path properly, a follow-up needs to:
+1. Add `[Invoice Number]`, `[Fee Amount]`, `[Invoice Due Date]` to the merge-field system (`src/lib/merge-fields.ts` + `src/lib/merge-context.ts`).
+2. Fetch the active `confirmed_start_invoice` template in the invoice page's server component, apply merges, pass merged subject + body to `<InvoiceDetail>` as props.
+3. Have `handleEmailDraft` consume those props, fall back to the hardcoded literal when the template row is missing/deleted.
+
+Touches: `src/app/invoices/[id]/invoice-detail.tsx`, `src/app/settings/triggers-view.tsx`, `src/app/settings/template-constants.ts`, `src/app/settings/templates-actions.ts`, `src/app/candidates/[id]/placement-actions.ts`, `src/app/candidates/[id]/placement-flows.tsx`. Build clean.
+
+Next task: Andrew browser-verifies — (1) Settings → Templates shows "Invoice Email" + Settings → Triggers shows "Confirmed Start: Invoice Draft" with dispatch "compose-prefill"; (2) the edit-trigger modal no longer has overlapping columns; (3) Confirm Start on a placement immediately routes to /invoices/[id] with the invoice email composer already open; (4) the composer subject reads "Invoice from BreakPoint Talent - [first] [last] placement (INV-####)". Regression: existing Confirm Start side-effects (Hired stage flip, candidate welcome trigger, RF sync, custom-terms installments + reminders) all still fire from `confirmStart`; the only behavior change is the navigation target on success.
 
 ## What Shipped in Ace 67.6 (2026-05-27)
 

@@ -550,9 +550,15 @@ export type ConfirmStartInput = {
 // customTermsFired is true when the placement carried a custom payment
 // agreement (so an installment-1 draft was created); remindersSet is the
 // number of later-installment reminders (2 + 3) that apply.
+// invoiceId is the just-created draft invoice's id (full-fee on the
+// non-custom path, installment-1 on the custom path) so the client can
+// pop the invoice email composer pre-loaded against that invoice. null
+// when the draft creation failed (already logged server-side; the
+// Confirm Start itself still succeeded).
 export type ConfirmStartResult = {
   customTermsFired: boolean;
   remindersSet: number;
+  invoiceId: string | null;
 };
 
 export async function confirmStart(
@@ -662,12 +668,18 @@ export async function confirmStart(
     // case the custom-payment block below creates an installment-1 draft
     // instead, and a full-fee draft would double-bill. When useCustomTerms
     // is false or null this fires exactly as before.
+    //
+    // 2026-05-27: capture the resulting invoice id (or the existing one
+    // when idempotent) so the Confirm Start UI can navigate the recruiter
+    // straight to the composer-pop flow on /invoices/[id]?compose=1.
+    let invoiceId: string | null = null;
     if (!existing.useCustomTerms) {
       try {
-        await createInvoiceForPlacement({
+        const created = await createInvoiceForPlacement({
           placementId: input.placementId,
           organizationId: org.id,
         });
+        invoiceId = created.id;
       } catch (e) {
         // eslint-disable-next-line no-console
         console.error("[confirmStart] invoice draft failed", {
@@ -787,7 +799,11 @@ export async function confirmStart(
           },
           select: { id: true },
         });
-        if (!existingInstallment) {
+        if (existingInstallment) {
+          // Re-fired Confirm Start with an existing installment-1 draft:
+          // keep that id so the composer pop still lands on a real invoice.
+          invoiceId = existingInstallment.id;
+        } else {
           const draftRes = await createDraftInvoiceAction({
             placementId: input.placementId,
             candidateId: placementForFire.candidateId ?? null,
@@ -806,6 +822,8 @@ export async function confirmStart(
               placementId: input.placementId,
               error: draftRes.error,
             });
+          } else {
+            invoiceId = draftRes.data.id;
           }
         }
 
@@ -901,7 +919,7 @@ export async function confirmStart(
       }
     }
 
-    return { ok: true, value: { customTermsFired, remindersSet } };
+    return { ok: true, value: { customTermsFired, remindersSet, invoiceId } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to confirm start." };
   }

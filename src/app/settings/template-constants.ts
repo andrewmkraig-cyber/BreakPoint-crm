@@ -18,6 +18,11 @@ export const CANDIDATE_INTERVIEW_PREP_TRIGGER = "candidate_interview_prep";
 export const OFFER_EXTENDED_TRIGGER = "offer_extended";
 export const OFFER_ACCEPTANCE_TRIGGER = "offer_acceptance";
 export const CANDIDATE_HIRED_WELCOME_TRIGGER = "candidate_hired_welcome";
+// 2026-05-27: Confirm Start now opens the client-facing invoice email
+// composer in addition to firing the candidate welcome trigger. The
+// invoice trigger pre-populates the composer (compose-prefill, never
+// auto-sends) so the recruiter reviews and hits Send manually.
+export const CONFIRMED_START_INVOICE_TRIGGER = "confirmed_start_invoice";
 export const CANDIDATE_REJECTION_TRIGGER = "candidate_rejection";
 export const REFERENCE_CHECK_REQUEST_TRIGGER = "reference_check_request";
 
@@ -122,6 +127,15 @@ export const TRIGGER_OPTIONS: ReadonlyArray<TriggerOption> = [
     audience: "candidate",
     eventName: "Confirm Start",
     dispatch: "auto-send",
+  },
+  {
+    value: CONFIRMED_START_INVOICE_TRIGGER,
+    label: "Confirmed Start: Invoice Draft",
+    description:
+      "Pops the client-facing invoice email composer (with the invoice PDF attached) when you Confirm Start. Does NOT auto-send. You review and hit Send manually.",
+    audience: "client",
+    eventName: "Confirm Start",
+    dispatch: "compose-prefill",
   },
   {
     value: CANDIDATE_REJECTION_TRIGGER,

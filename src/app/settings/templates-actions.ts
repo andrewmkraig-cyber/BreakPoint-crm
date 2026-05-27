@@ -12,6 +12,7 @@ import {
   CANDIDATE_REJECTION_TRIGGER,
   CLIENT_INTERVIEW_SCHEDULED_TRIGGER,
   CLIENT_SUBMITTAL_TRIGGER,
+  CONFIRMED_START_INVOICE_TRIGGER,
   OFFER_ACCEPTANCE_TRIGGER,
   OFFER_EXTENDED_TRIGGER,
   REFERENCE_CHECK_REQUEST_TRIGGER,
@@ -300,6 +301,31 @@ const CANDIDATE_HIRED_WELCOME_DEFAULT = {
     "Excited for you. Best of luck!",
 } as const;
 
+// 2026-05-27: client-facing invoice email seeded as a DB template so the
+// "Invoice Email" row shows up in Settings -> Templates and can be edited
+// in-app instead of code. The active send path in
+// src/app/invoices/[id]/invoice-detail.tsx still computes its subject +
+// body from a literal (with merge fields resolved client-side) -- wiring
+// invoice-detail to actually consume this template body + apply the new
+// [Invoice Number] / [Fee Amount] / [Invoice Due Date] merge fields lands
+// in a follow-up. Until then this row is editable and visible but doesn't
+// drive sends; keep that caveat in mind when changing the body here.
+const CONFIRMED_START_INVOICE_DEFAULT = {
+  name: "Invoice Email",
+  subject:
+    "Invoice from [Client Company Name] - [Candidate Full Name] placement",
+  trigger: CONFIRMED_START_INVOICE_TRIGGER,
+  audience: "client",
+  category: "invoice",
+  body:
+    "Hi [Client Contact First Name],\n\n" +
+    "Congratulations again on bringing [Candidate Full Name] onto the team as [Job Title].\n\n" +
+    "Attached is the invoice for the placement fee, with a start date of [Start Date].\n\n" +
+    "ACH, wire, and check details are inside the PDF. If anything looks off or you need a different billing contact on file, just reply here and we'll sort it out.\n\n" +
+    "We appreciate you trusting [Client Company Name] with this search, and we hope to continue to support your hiring needs in the future.\n\n" +
+    "Best,",
+} as const;
+
 const CLIENT_INTERVIEW_SCHEDULED_DEFAULT = {
   name: "Interview Scheduled - Client Confirmation",
   subject: "Interview Confirmed - [Candidate Full Name] for [Job Title]",
@@ -373,6 +399,7 @@ export async function ensureDefaultTemplates(): Promise<void> {
     OFFER_EXTENDED_DEFAULT,
     OFFER_ACCEPTANCE_DEFAULT,
     CANDIDATE_HIRED_WELCOME_DEFAULT,
+    CONFIRMED_START_INVOICE_DEFAULT,
     CANDIDATE_REJECTION_DEFAULT,
     REFERENCE_CHECK_DEFAULT,
   ] as const;
