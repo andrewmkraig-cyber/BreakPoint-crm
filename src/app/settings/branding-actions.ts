@@ -26,7 +26,7 @@ const GMAIL_SIGNATURE_ASSETS: SignatureAssetUrls = {
   iconEmail: `${GMAIL_SIGNATURE_ASSET_HOST}/brand/icon-email.png`,
   iconPhone: `${GMAIL_SIGNATURE_ASSET_HOST}/brand/icon-phone.png`,
   iconGlobe: `${GMAIL_SIGNATURE_ASSET_HOST}/brand/icon-globe.png`,
-  logo: `${GMAIL_SIGNATURE_ASSET_HOST}/brand/breakpoint-logo.png`,
+  logo: `${GMAIL_SIGNATURE_ASSET_HOST}/brand/breakpoint_logo_signature.png`,
 };
 
 // Hard ceiling per Gmail API docs. If the rendered signature ever
