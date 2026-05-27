@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Building2,
   Download,
@@ -199,12 +199,20 @@ export function MessageBlock({
   onAction,
   showReplyAll = true,
   isLatest,
+  headerActions,
 }: {
   msg: MailThreadMessage;
   isFirst: boolean;
   onAction?: (mode: MessageBlockAction) => void;
   showReplyAll?: boolean;
   isLatest: boolean;
+  // Thread-level toolbar (Reply / Reply All / Forward / 3-dot) rendered
+  // in the top-right of the header card when provided. ThreadDetail
+  // passes this to the latest message only — older messages keep the
+  // per-message onAction buttons in the same slot. When both are
+  // supplied, headerActions wins (the latest message gets the thread
+  // toolbar; per-message buttons would be duplicate chrome).
+  headerActions?: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(isLatest);
   // Body rendering moved out of this component on 2026-05-07: rich
@@ -288,61 +296,78 @@ export function MessageBlock({
           </div>
           <div
             onClick={(e) => e.stopPropagation()}
-            className="flex shrink-0 flex-col items-end gap-1.5"
+            className="flex shrink-0 items-center gap-1"
           >
-            <span className="whitespace-nowrap text-[11px] text-court-fg-muted">
-              {msg.dateIso ? new Date(msg.dateIso).toLocaleString() : ""}
-            </span>
-            {onAction && (
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => onAction("reply")}
-                  aria-label="Reply to this message"
-                  title="Reply to this message"
-                  className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
-                >
-                  <Reply className="h-3 w-3" /> Reply
-                </button>
-                {showReplyAll && (
-                  <button
-                    type="button"
-                    onClick={() => onAction("replyAll")}
-                    aria-label="Reply all to this message"
-                    title="Reply all to this message"
-                    className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
-                  >
-                    <ReplyAll className="h-3 w-3" /> Reply All
-                  </button>
+            {/* Latest message → thread-level toolbar from ThreadDetail.
+                Older messages → per-message Reply / Reply All / Forward
+                buttons. Same slot, mutually exclusive — never duplicate
+                chrome. Timestamp moved out of this row (now lives at
+                the right edge of the To/Cc metadata row below) so the
+                action buttons get a clean horizontal lane. */}
+            {headerActions
+              ? headerActions
+              : onAction && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onAction("reply")}
+                      aria-label="Reply to this message"
+                      title="Reply to this message"
+                      className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+                    >
+                      <Reply className="h-3 w-3" /> Reply
+                    </button>
+                    {showReplyAll && (
+                      <button
+                        type="button"
+                        onClick={() => onAction("replyAll")}
+                        aria-label="Reply all to this message"
+                        title="Reply all to this message"
+                        className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+                      >
+                        <ReplyAll className="h-3 w-3" /> Reply All
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onAction("forward")}
+                      aria-label="Forward this message"
+                      title="Forward this message"
+                      className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+                    >
+                      <Forward className="h-3 w-3" /> Forward
+                    </button>
+                  </>
                 )}
-                <button
-                  type="button"
-                  onClick={() => onAction("forward")}
-                  aria-label="Forward this message"
-                  title="Forward this message"
-                  className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
-                >
-                  <Forward className="h-3 w-3" /> Forward
-                </button>
-              </div>
-            )}
           </div>
         </header>
-        {(msg.to || msg.cc) && (
+        {(msg.to || msg.cc || msg.dateIso) && (
+          // Metadata row: To · Cc on the left, timestamp pinned to the
+          // right of the same line. justify-between handles the split;
+          // the inner left group wraps if To/Cc are long, and the
+          // timestamp stays a single-line whitespace-nowrap anchor on
+          // the right.
           <div
             onClick={(e) => e.stopPropagation()}
-            className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-court-border px-4 py-2 text-[11px] text-court-fg-muted"
+            className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t border-court-border px-4 py-2 text-[11px] text-court-fg-muted"
           >
-            {msg.to && (
-              <span className="min-w-0 truncate">
-                <span className="font-semibold text-court-fg">To</span>{" "}
-                {msg.to}
-              </span>
-            )}
-            {msg.cc && (
-              <span className="min-w-0 truncate">
-                <span className="font-semibold text-court-fg">Cc</span>{" "}
-                {msg.cc}
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+              {msg.to && (
+                <span className="min-w-0 truncate">
+                  <span className="font-semibold text-court-fg">To</span>{" "}
+                  {msg.to}
+                </span>
+              )}
+              {msg.cc && (
+                <span className="min-w-0 truncate">
+                  <span className="font-semibold text-court-fg">Cc</span>{" "}
+                  {msg.cc}
+                </span>
+              )}
+            </div>
+            {msg.dateIso && (
+              <span className="whitespace-nowrap">
+                {new Date(msg.dateIso).toLocaleString()}
               </span>
             )}
           </div>

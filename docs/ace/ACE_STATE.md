@@ -1,10 +1,22 @@
 # ACE_STATE.md
-Last updated: 2026-05-27 · Ace 67.5
+Last updated: 2026-05-27 · Ace 67.6
 
 ## Current Status
-Current Version: Ace 67.5
+Current Version: Ace 67.6
 Last Shipped: 2026-05-27
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.6 (2026-05-27)
+
+Reading-pane chrome follow-up after Andrew's 67.5 screenshot review — the long subject line was getting truncated and the action toolbar was eating subject-row width.
+
+- **Subject row is now subject only.** `ThreadDetail`'s top row dropped the Reply / Reply All / Forward / 3-dot buttons. The `<h2>` lost its `truncate` and gained `break-words` + `leading-snug` so a long subject (e.g. "Invoice from BreakPoint Talent - Cole placement (INV-1053)") wraps to a second line instead of getting cut off at "Cole plac...".
+- **Thread-level toolbar moved into the latest message's header card.** New `headerActions` prop on `MessageBlock` accepts the Reply / Reply All / Forward / 3-dot node from `ThreadDetail` and renders it in the top-right of the latest message's header — the slot the message timestamp used to occupy. Older messages still get the per-message `onAction` buttons in the same slot, so the two paths never duplicate chrome.
+- **Timestamp moved to the right of Cc.** The To/Cc metadata row inside the header card now also carries the timestamp, right-aligned on the same line as To/Cc. The metadata row's render condition expanded to `(to || cc || dateIso)` so a message with no recipients still surfaces its timestamp.
+
+Touches: `src/app/mail/mail-view.tsx`, `src/components/mail/message-block.tsx`. Build clean.
+
+Next task: Andrew browser-verifies — confirm the full Cole-placement subject is visible (no `...` truncation), Reply / Reply All / Forward / 3-dot sit in the top-right of the AK header card, and `5/27/2026, 2:59:31 PM` is to the right of `Cc Austin@breakpointtalent.com` on the same metadata line. Regression: per-message action buttons on older messages in a multi-message thread, floating-window title bar actions, attachment download, thread collapse.
 
 ## What Shipped in Ace 67.5 (2026-05-27)
 

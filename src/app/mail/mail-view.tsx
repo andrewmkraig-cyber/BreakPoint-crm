@@ -2295,6 +2295,72 @@ export function ThreadDetail({
   // ThreadDetail's redundant chrome row entirely.
   const renderOwnHeader = !(isFloating && isControlled);
 
+  // Thread-level toolbar — Reply / Reply All / Forward / 3-dot overflow.
+  // 2026-05-27 follow-up: this used to sit on the subject row in the
+  // ThreadDetail chrome. Andrew asked for the subject row to be subject-
+  // only (so a long subject can wrap to full width) and the toolbar to
+  // move down into the latest message's header card. Passed as the
+  // `headerActions` prop on the latest MessageBlock; suppressed in the
+  // floating window (its own title bar carries these).
+  const threadLevelActions =
+    renderOwnHeader && !isFloating ? (
+      <>
+        <button
+          type="button"
+          onClick={() => setComposerMode("reply")}
+          disabled={composerOpen}
+          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+        >
+          <Reply className="h-3 w-3" /> Reply
+        </button>
+        {/* Reply All only renders when the latest message has at least
+            one recipient besides the current user — DMs from a single
+            person to only me collapse to "Reply" since Reply All would
+            send to the same single recipient. */}
+        {showReplyAllForLatest && (
+          <button
+            type="button"
+            onClick={() => setComposerMode("replyAll")}
+            disabled={composerOpen}
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+          >
+            <ReplyAll className="h-3 w-3" /> Reply All
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => setComposerMode("forward")}
+          disabled={composerOpen}
+          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+        >
+          <Forward className="h-3 w-3" /> Forward
+        </button>
+        <ThreadActionsMenu
+          archiving={archiving}
+          markingUnread={markingUnread}
+          moving={moving}
+          labels={labels}
+          isFloating={isFloating}
+          onArchive={onArchive}
+          onMarkUnread={onMarkUnread}
+          onMove={onMove}
+          onCreateAndApplyLabel={onCreateAndApplyLabel}
+          onPopOut={
+            !isFloating
+              ? () =>
+                  floatingThread.open(detail.id, {
+                    labels,
+                    templates,
+                    currentUserEmail,
+                    currentUserFirstName,
+                    currentUserFullName,
+                  })
+              : undefined
+          }
+        />
+      </>
+    ) : null;
+
   // Composer node lifted out of JSX so the same instance can render in
   // one of two layout slots: above the messages region (Gmail-style
   // body-first reply, used by FloatingThreadWindow) or below it
@@ -2402,82 +2468,18 @@ export function ThreadDetail({
         "flex flex-col " + (isFloating ? "h-full" : "h-full")
       }
     >
-      {renderOwnHeader && (
-      // Reading-pane top row (2026-05-27 redesign): subject large+bold
-      // on the left, Reply / Reply All / Forward / 3-dot overflow on
-      // the right — all on ONE line. Archive / Mark Unread / Move To /
-      // Pop Out collapsed into the 3-dot menu so the top row reads as a
-      // clean primary-action bar.
-      <div className="flex items-center justify-between gap-3 border-b border-court-border px-5 py-3">
-        {!isFloating && (
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate font-serif text-lg font-semibold leading-tight text-court-fg">
-              {detail.subject}
-            </h2>
-          </div>
-        )}
-        <div className="flex shrink-0 items-center gap-1.5">
-          {/* "Reply to: latest" picker removed — the per-message
-              Reply / Reply All / Forward buttons rendered inside each
-              MessageBlock are the dedicated path for replying to a
-              specific older message in a long thread. Top-toolbar
-              Reply still defaults to the most recent message. */}
-          <button
-            type="button"
-            onClick={() => setComposerMode("reply")}
-            disabled={composerOpen}
-            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
-          >
-            <Reply className="h-3 w-3" /> Reply
-          </button>
-          {/* Reply All only renders when the latest message has at
-              least one recipient besides the current user — DMs from
-              a single person to only me collapse to "Reply" since
-              Reply All would send to the same single recipient and
-              read as duplicated chrome. */}
-          {showReplyAllForLatest && (
-            <button
-              type="button"
-              onClick={() => setComposerMode("replyAll")}
-              disabled={composerOpen}
-              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
-            >
-              <ReplyAll className="h-3 w-3" /> Reply All
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setComposerMode("forward")}
-            disabled={composerOpen}
-            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
-          >
-            <Forward className="h-3 w-3" /> Forward
-          </button>
-          <ThreadActionsMenu
-            archiving={archiving}
-            markingUnread={markingUnread}
-            moving={moving}
-            labels={labels}
-            isFloating={isFloating}
-            onArchive={onArchive}
-            onMarkUnread={onMarkUnread}
-            onMove={onMove}
-            onCreateAndApplyLabel={onCreateAndApplyLabel}
-            onPopOut={
-              !isFloating
-                ? () =>
-                    floatingThread.open(detail.id, {
-                      labels,
-                      templates,
-                      currentUserEmail,
-                      currentUserFirstName,
-                      currentUserFullName,
-                    })
-                : undefined
-            }
-          />
+      {renderOwnHeader && !isFloating && (
+        // Reading-pane subject row (2026-05-27, follow-up): subject only,
+        // no actions. break-words + no truncate so even a long subject
+        // (the Cole-placement invoice ran past the column when truncated)
+        // is fully visible without the user having to hover a tooltip.
+        // The thread-level action toolbar moved down into the latest
+        // message's header card — see threadLevelActions below.
+        <div className="border-b border-court-border px-5 py-3">
+          <h2 className="font-serif text-lg font-semibold leading-snug text-court-fg break-words">
+            {detail.subject}
+          </h2>
         </div>
-      </div>
       )}
       {/* Floating window: Gmail-style body-first layout — composer on
           top, quoted history scrollable below. Inline /mail keeps the
@@ -2536,14 +2538,13 @@ export function ThreadDetail({
                 //   - rendered inside FloatingThreadWindow (isFloating) —
                 //     popups opened from notifications get one toolbar only
                 //   - a composer is already open
-                //   - the message is the latest one — the top toolbar
-                //     already handles it, so per-message buttons there
-                //     are pure duplication. A single-message thread
-                //     therefore renders zero per-message buttons (the
-                //     only message IS the latest). Older messages in a
-                //     chain keep their buttons so the recruiter can
-                //     scroll down and reply to a specific earlier
-                //     message in the conversation.
+                //   - the message is the latest one — the thread-level
+                //     toolbar (headerActions below) takes that slot.
+                //     A single-message thread therefore renders zero
+                //     per-message buttons (the only message IS the
+                //     latest). Older messages in a chain keep their
+                //     buttons so the recruiter can scroll down and
+                //     reply to a specific earlier message.
                 onAction={
                   isFloating || composerOpen || isLatest
                     ? undefined
@@ -2555,6 +2556,11 @@ export function ThreadDetail({
                 // toolbar doesn't offer two buttons that produce
                 // identical sends.
                 showReplyAll={hasMultipleRecipients(m)}
+                // Latest message gets the thread-level toolbar in its
+                // header card's action slot — replaces the four-button
+                // row that used to live on the subject line. Older
+                // messages keep their per-message buttons via onAction.
+                headerActions={isLatest ? threadLevelActions : undefined}
               />
             </div>
           );
