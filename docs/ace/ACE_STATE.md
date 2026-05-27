@@ -1,10 +1,21 @@
 # ACE_STATE.md
-Last updated: 2026-05-27 · Ace 67.15
+Last updated: 2026-05-27 · Ace 67.16
 
 ## Current Status
-Current Version: Ace 67.15
+Current Version: Ace 67.16
 Last Shipped: 2026-05-27
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.16 (2026-05-27)
+
+Calendar display follow-up for the per-party interview invite model.
+
+- **Both Google invite copies now render as Interviews inside Ace.** `/calendar` now builds a map from active `Interview.googleEventIdMine/client/candidate` values to the owning `Interview.id`. Any Google `CalendarEvent` row whose event id belongs to an active Interview renders with `type: "interview"` even if the Google title looks like a generic event (for example the candidate-facing "You're confirmed..." title).
+- **Clubhouse This Week collapses client/candidate invite copies to one logical interview.** The widget keeps the existing Google-event dedupe, then additionally collapses all CalendarEvent rows that map to the same `Interview.id`. It prefers the row whose title/type already reads like an interview, then sorts the final list by start time. Result: two real Google events can exist on Andrew's calendar, but the Clubhouse widget shows one interview row.
+
+Touches: `src/app/calendar/page.tsx`, `src/app/dashboard/this-week-widget.tsx`. Build clean (`npm run build` exits 0; only the two pre-existing react-hooks/exhaustive-deps warnings in `mail-view.tsx` + `event-drawer.tsx`, unrelated).
+
+Andrew browser-verify: after scheduling and sending both candidate + client invites, `/calendar` should show both blocks as Interview-colored/labeled events. Clubhouse This Week should show only one row/chip for that interview.
 
 ## What Shipped in Ace 67.15 (2026-05-27)
 
