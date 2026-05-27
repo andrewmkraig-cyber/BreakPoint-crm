@@ -92,6 +92,32 @@ function strokeLine(png, x0, y0, x1, y1, thickness, color) {
   }
 }
 
+// Filled rounded rectangle. (x, y) is the top-left corner; (w, h) is
+// the size; r is the corner radius. A pixel's coverage is computed
+// from its distance to the inner rect [x+r, x+w-r] × [y+r, y+h-r]:
+// d ≤ r is inside, anti-aliased over a 1-px band at the boundary.
+function fillRoundedRect(png, x, y, w, h, r, color) {
+  const x0 = Math.max(0, Math.floor(x - 1));
+  const x1 = Math.min(SIZE - 1, Math.ceil(x + w + 1));
+  const y0 = Math.max(0, Math.floor(y - 1));
+  const y1 = Math.min(SIZE - 1, Math.ceil(y + h + 1));
+  for (let py = y0; py <= y1; py++) {
+    for (let px = x0; px <= x1; px++) {
+      const pxc = px + 0.5;
+      const pyc = py + 0.5;
+      const ix = Math.max(x + r, Math.min(pxc, x + w - r));
+      const iy = Math.max(y + r, Math.min(pyc, y + h - r));
+      const dx = pxc - ix;
+      const dy = pyc - iy;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      let a = 0;
+      if (d <= r - 0.5) a = 255;
+      else if (d <= r + 0.5) a = Math.round(255 * (r + 0.5 - d));
+      if (a > 0) blendPx(png, px, py, color[0], color[1], color[2], Math.max(0, Math.min(255, a)));
+    }
+  }
+}
+
 // Stroke a ring (annulus) — distance band from radius `rInner` to
 // `rOuter`, anti-aliased at both edges.
 function strokeRing(png, cx, cy, rInner, rOuter, color) {
@@ -143,33 +169,22 @@ function makeEnvelope() {
 function makePhone() {
   const png = newImg();
   makeBase(png);
-  // Classic tilted telephone handset — the silhouette emoji
-  // renderers and icon sets converge on: two round bulbs (earpiece
-  // upper-left, mouthpiece lower-right) connected by a curved
-  // handle that bulges toward the lower-left, giving the receiver
-  // its characteristic banana shape. The bulge is what reads as
-  // "phone" rather than "dumbbell" or "diagonal line".
+  // Smartphone silhouette — white rounded-rect body with a green
+  // screen knockout, a green earpiece slot in the top bezel, and a
+  // white home-indicator bar near the bottom of the screen. Replaces
+  // the earlier tilted-handset Bézier: at the signature's 20×20
+  // display size the bulbs+curved-handle muddied into a vague
+  // diagonal blob, whereas the smartphone silhouette reads as a
+  // phone even when downscaled.
   //
-  // Earpiece bulb — filled disk, radius 5, centered at (13, 13).
-  // Mouthpiece bulb — filled disk, radius 5, centered at (27, 27).
-  //
-  // Handle — quadratic Bezier from earpiece center → control point
-  // (14, 26) → mouthpiece center. The control point sits below the
-  // straight-line midpoint (20, 20), which pulls the curve into
-  // the lower-left half-plane and produces the handset bulge.
-  // Stroke width is 4 px (radius 2), dense-sampled so the band is
-  // continuous along the curve. Endpoints are the bulb centers, so
-  // the handle blends into each bulb without a visible seam.
-  fillCircle(png, 13, 13, 5, WHITE);
-  fillCircle(png, 27, 27, 5, WHITE);
-  const samples = 120;
-  for (let i = 0; i <= samples; i++) {
-    const t = i / samples;
-    const omt = 1 - t;
-    const cx = omt * omt * 13 + 2 * omt * t * 14 + t * t * 27;
-    const cy = omt * omt * 13 + 2 * omt * t * 26 + t * t * 27;
-    fillCircle(png, cx, cy, 2, WHITE);
-  }
+  //   Body            — 13w × 23h at (13, 8),    r=3.
+  //   Screen knockout — 10w × 15h at (14.5, 12.5), r=1.
+  //   Earpiece slot   — 4w × 1.2h at (17.5, 9.7), r=0.6.
+  //   Home indicator  — 4w × 1.2h at (17.5, 25.6), r=0.6.
+  fillRoundedRect(png, 13, 8, 13, 23, 3, WHITE);
+  fillRoundedRect(png, 14.5, 12.5, 10, 15, 1, GREEN);
+  fillRoundedRect(png, 17.5, 9.7, 4, 1.2, 0.6, GREEN);
+  fillRoundedRect(png, 17.5, 25.6, 4, 1.2, 0.6, WHITE);
   return png;
 }
 
