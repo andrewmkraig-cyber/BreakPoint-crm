@@ -11,7 +11,9 @@ import { cn } from "@/lib/utils";
 // Connectors panel, then BD Engine right after it, then the workflow
 // and housekeeping panels (rarely visited ones last). Email Preferences
 // was removed; phone + signature are owned by Branding now, and the
-// auto-send trigger moved into Templates/Triggers.
+// auto-send trigger moved into Templates/Triggers. "Personal Info" and
+// "Branding" merged into one entry — both forms now render on the
+// /settings/personal-info page with brand below personal info.
 export const SETTINGS_CATEGORIES = [
   { slug: "appearance",        label: "Appearance" },
   { slug: "notifications",     label: "Notifications" },
@@ -20,8 +22,7 @@ export const SETTINGS_CATEGORIES = [
   { slug: "personal-trainer",  label: "Personal Trainer" },
   { slug: "templates",         label: "Templates + Triggers" },
   { slug: "billing",           label: "Billing" },
-  { slug: "branding",          label: "Branding" },
-  { slug: "personal-info",     label: "Personal Info" },
+  { slug: "personal-info",     label: "Personal Info + Brand" },
   { slug: "history",           label: "Claude History" },
 ] as const;
 

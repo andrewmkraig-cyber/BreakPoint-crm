@@ -276,7 +276,12 @@ export function PersonalInfoView({
           Address
         </legend>
         <SubField label="Street">
-          <div className={`${INPUT_FRAME_CLASS} w-full`}>
+          {/* Street/city were sized w-full, leaving a huge empty bar
+              next to short values like "123 Main St" / "Solon". Cap
+              both to widths that match the actual content range —
+              ~w-80 fits a long street, ~w-56 fits a long city. State
+              and ZIP already use the same fixed-width pattern below. */}
+          <div className={`${INPUT_FRAME_CLASS} w-80 max-w-full`}>
             <input
               type="text"
               value={address.street}
@@ -286,9 +291,9 @@ export function PersonalInfoView({
             />
           </div>
         </SubField>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto] sm:gap-3">
+        <div className="flex flex-wrap items-end gap-3">
           <SubField label="City">
-            <div className={`${INPUT_FRAME_CLASS} w-full`}>
+            <div className={`${INPUT_FRAME_CLASS} w-56 max-w-full`}>
               <input
                 type="text"
                 value={address.city}
