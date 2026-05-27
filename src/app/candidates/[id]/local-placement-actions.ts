@@ -15,6 +15,7 @@ import {
   CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
   CANDIDATE_CONFIRMATION_TRIGGER,
   CANDIDATE_REJECTION_TRIGGER,
+  OFFER_ACCEPTANCE_TRIGGER,
   OFFER_EXTENDED_TRIGGER,
 } from "@/app/settings/template-constants";
 
@@ -990,5 +991,156 @@ export async function recordLocalOffer(
     return { ok: true, value: { id: row.id } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to record offer." };
+  }
+}
+
+// ---- Record Placement (Ace-native, offer accepted) ----
+//
+// Ace-native counterpart to recordPlacement (placement-actions.ts).
+// Keys the update off placement.id rather than the (candidateRfId,
+// jobRfId) composite because Ace-native rows carry candidateRfId: null.
+// Slimmer than the RF version: just the essential fields needed to
+// move the row to pending_start (accepted salary + fee + start date +
+// billing/hiring contacts + notes). The multi-contact + custom-payment-
+// terms drawer is still RF-only; Ace-native recruiters can edit those
+// later via the /pipeline placement-edit row drawer once needed.
+export type RecordLocalPlacementInput = {
+  placementId: string;
+  acceptedSalary: number;
+  acceptedCurrency: string;
+  feePercentage: number | null;
+  feeTotal: number;
+  minFee: number | null;
+  guaranteePeriodDays: number | null;
+  billingContactName: string;
+  billingContactEmail: string;
+  hiringManagerName: string;
+  hiringManagerEmail: string;
+  expectedStartDate: string; // ISO YYYY-MM-DD
+  notes: string;
+  // Recruiter-tagged lead source. Free-form so legacy seed values
+  // (Pin, Apollo BD) keep working; the dialog renders a fixed
+  // dropdown of canonical channels but stores free text.
+  candidateSource?: string | null;
+};
+
+export async function recordLocalPlacement(
+  input: RecordLocalPlacementInput,
+): Promise<Result<{ id: string }>> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  if (!input.expectedStartDate) {
+    return { ok: false, error: "Expected start date is required." };
+  }
+  if (input.feeTotal == null || input.feeTotal <= 0) {
+    return { ok: false, error: "Fee amount is required at this stage." };
+  }
+  const org = await getCurrentOrg();
+  try {
+    const placement = await prisma.placement.findFirst({
+      where: { id: input.placementId, organizationId: org.id },
+      select: {
+        id: true,
+        stage: true,
+        placedAt: true,
+        candidateId: true,
+        candidateRfId: true,
+        jobId: true,
+        jobRfId: true,
+        clientId: true,
+        clientRfId: true,
+      },
+    });
+    if (!placement) return { ok: false, error: "Placement not found." };
+    const previousStage = placement.stage;
+    const trimmedSource = input.candidateSource?.trim();
+
+    const row = await prisma.placement.update({
+      where: { id: input.placementId },
+      data: {
+        stage: "pending_start",
+        // Stamp placedAt only on first transition into pending_start so
+        // re-edits don't keep bumping the timestamp forward. Same rule
+        // the RF recordPlacement uses.
+        placedAt: placement.placedAt ?? new Date(),
+        acceptedSalary: input.acceptedSalary,
+        acceptedCurrency: input.acceptedCurrency || "USD",
+        feePercentage: input.feePercentage,
+        feeTotal: input.feeTotal,
+        minFee: input.minFee,
+        guaranteePeriodDays: input.guaranteePeriodDays,
+        billingContactName: input.billingContactName.trim() || null,
+        billingContactEmail: input.billingContactEmail.trim() || null,
+        hiringManagerName: input.hiringManagerName.trim() || null,
+        hiringManagerEmail: input.hiringManagerEmail.trim() || null,
+        expectedStartDate: new Date(input.expectedStartDate),
+        placementNotes: input.notes.trim() || null,
+        candidateSource: trimmedSource || null,
+        // Ace-native placements never round-trip to RF; keep the flag
+        // pinned to false so the pill's source-of-truth indicator is
+        // accurate (no false "synced" banner).
+        syncedToRf: false,
+      },
+      select: { id: true },
+    });
+
+    await logActivity({
+      organizationId: org.id,
+      userId: user.id,
+      actionType: "placement_recorded",
+      targetType: "placement",
+      targetId: row.id,
+      metadata: {
+        acceptedSalary: input.acceptedSalary,
+        currency: input.acceptedCurrency || "USD",
+        feeTotal: input.feeTotal,
+        feePercentage: input.feePercentage,
+        startDate: input.expectedStartDate,
+        candidateId: placement.candidateId,
+        jobId: placement.jobId,
+        jobRfId: placement.jobRfId,
+        clientId: placement.clientId,
+        clientRfId: placement.clientRfId,
+        previousStage,
+        local: true,
+      },
+    });
+
+    if (placement.candidateId) revalidatePath(`/candidates/${placement.candidateId}`);
+    if (placement.candidateRfId != null) revalidatePath(`/candidates/${placement.candidateRfId}`);
+    revalidatePath(`/pipeline`);
+    revalidatePath(`/dashboard`);
+
+    // Auto-fire the Offer Accepted template to the client (with the
+    // candidate CCed by template wiring). Mirrors the RF recordPlacement
+    // tail. The fire helper is identity-agnostic — pass both ids and it
+    // picks the right channel.
+    if (placement.candidateId) {
+      const startDateLabel = new Date(input.expectedStartDate).toLocaleDateString();
+      await fireTriggerAndLog({
+        trigger: OFFER_ACCEPTANCE_TRIGGER,
+        ref: {
+          candidateId: placement.candidateId,
+          candidateRfId: placement.candidateRfId,
+          jobId: placement.jobId,
+          jobRfId: placement.jobRfId,
+          clientId: placement.clientId,
+          clientRfId: placement.clientRfId,
+        },
+        actionType: "offer_acceptance_email",
+        organizationId: org.id,
+        overrides: { startDate: startDateLabel },
+        metadata: {
+          placementId: row.id,
+          startDate: startDateLabel,
+          previousStage,
+          local: true,
+        },
+      });
+    }
+
+    return { ok: true, value: { id: row.id } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to record placement." };
   }
 }

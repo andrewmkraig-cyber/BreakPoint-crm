@@ -411,9 +411,35 @@ export async function LocalCandidateProfile({
       : [];
     const rawDescription = typeof rfJob?.description === "string" ? rfJob.description : "";
     const interviewKey = p.jobRfId != null ? `rf:${p.jobRfId}` : p.jobId ? `ace:${p.jobId}` : "";
+    // Slim placement snapshot — drives the late-stage dialogs (Edit
+    // Offer / Make Placement / Edit Placement) so they can seed their
+    // form fields without an extra round trip. Dates are ISO strings
+    // (not Date) so the client component doesn't have to thread the
+    // Date class through React's serialization boundary.
+    const placementSnapshot = {
+      offerSalary: p.offerSalary,
+      offerCurrency: p.offerCurrency,
+      offerTitle: p.offerTitle,
+      offerStartDate: p.offerStartDate?.toISOString() ?? null,
+      offerNotes: p.offerNotes,
+      acceptedSalary: p.acceptedSalary,
+      acceptedCurrency: p.acceptedCurrency,
+      feePercentage: p.feePercentage,
+      feeTotal: p.feeTotal,
+      minFee: p.minFee,
+      guaranteePeriodDays: p.guaranteePeriodDays,
+      billingContactName: p.billingContactName,
+      billingContactEmail: p.billingContactEmail,
+      hiringManagerName: p.hiringManagerName,
+      hiringManagerEmail: p.hiringManagerEmail,
+      expectedStartDate: p.expectedStartDate?.toISOString() ?? null,
+      placementNotes: p.placementNotes,
+      candidateSource: p.candidateSource,
+    };
     return {
       placementId: p.id,
       jobRfId: p.jobRfId ?? (rfJob?.id ?? 0),
+      jobCuid: p.jobId,
       jobTitle: job?.title ?? "(job)",
       jobLocation: job?.location ?? "",
       jobDescription:
@@ -421,12 +447,14 @@ export async function LocalCandidateProfile({
         rawDescription,
       jobSalaryRange: job?.compensation ?? "",
       clientRfId: p.clientRfId ?? 0,
+      clientCuid: p.clientId,
       clientName: client?.name ?? job?.company ?? "",
       clientWebsite: client?.website ?? "",
       clientLinkedIn: client?.linkedIn ?? "",
       clientContacts,
       stage: p.stage,
       interviews: interviewsByJob.get(interviewKey) ?? [],
+      placement: placementSnapshot,
     };
   });
 

@@ -2179,7 +2179,12 @@ function seedHiringContactList(
 
 // ---------------- Confirm Start dialog ----------------
 
-function ConfirmStartDialog({
+// Exported so the Ace-native flow (local-placement-rows.tsx) can reuse
+// the same dropzone + screenshot + confirmStart() round-trip without
+// duplicating the file-upload UI. The underlying confirmStart action
+// is keyed by placementId so it already works for either candidate
+// identity shape.
+export function ConfirmStartDialog({
   placementId,
   jobTitle,
   onClose,

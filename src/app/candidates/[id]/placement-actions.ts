@@ -578,7 +578,15 @@ export async function confirmStart(
   }
 
   try {
-    const placement = await prisma.placement.findUnique({ where: { id: input.placementId }, select: { candidateRfId: true } });
+    const placement = await prisma.placement.findUnique({
+      where: { id: input.placementId },
+      // candidateId added so the revalidatePath tail below can refresh
+      // Ace-native candidate profiles (where candidateRfId is null).
+      // Without this, confirming start on a local candidate leaves the
+      // profile cached with the prior pending_start state — the pill
+      // stays on "Confirm Start" until a hard reload.
+      select: { candidateRfId: true, candidateId: true },
+    });
     if (!placement) return { ok: false, error: "Placement not found." };
 
     const existing = await prisma.placement.findUnique({
@@ -635,7 +643,12 @@ export async function confirmStart(
       },
     });
 
-    revalidatePath(`/candidates/${placement.candidateRfId}`);
+    // Refresh both candidate-profile URL shapes. RF-imported placements
+    // carry candidateRfId; Ace-native ones carry candidateId. We hit
+    // whichever is populated so the pill on the profile picks up the
+    // new "hired" stage without a hard reload.
+    if (placement.candidateRfId != null) revalidatePath(`/candidates/${placement.candidateRfId}`);
+    if (placement.candidateId) revalidatePath(`/candidates/${placement.candidateId}`);
     revalidatePath(`/pipeline`);
 
     // Auto-create a DRAFT invoice keyed to this placement so the

@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Briefcase,
   CalendarClock,
+  CheckCircle2,
   DollarSign,
+  Edit3,
+  Handshake,
   Loader2,
   RotateCcw,
   Send,
@@ -17,6 +20,7 @@ import {
 import {
   reapplyLocalPlacement,
   recordLocalOffer,
+  recordLocalPlacement,
   rejectLocalPlacement,
 } from "@/app/candidates/[id]/local-placement-actions";
 import { DismissPlacementButton } from "@/app/candidates/[id]/dismiss-placement-button";
@@ -38,6 +42,7 @@ import { DateTime15Picker } from "@/components/datetime-15-picker";
 import { MeetingProviderSelect } from "@/components/meeting-provider-select";
 import {
   CcBccPicker,
+  ConfirmStartDialog,
   DurationSelect,
   InterviewerPicker,
   buildCcBccOptions,
@@ -89,20 +94,54 @@ export type LocalInterview = {
   attendees: { name: string; email: string }[];
 };
 
+// Slim snapshot of the placement row's seed values used by the
+// late-pipeline dialogs (Edit Offer / Make Placement / Edit Placement).
+// Optional + nullable across the board because most fields are only
+// populated once the candidate has actually moved past the early
+// stages — early-stage rows (sourced / applied / kept / submitted)
+// carry no offer or placement data yet.
+export type LocalPlacementSnapshot = {
+  offerSalary: number | null;
+  offerCurrency: string | null;
+  offerTitle: string | null;
+  offerStartDate: string | null;
+  offerNotes: string | null;
+  acceptedSalary: number | null;
+  acceptedCurrency: string | null;
+  feePercentage: number | null;
+  feeTotal: number | null;
+  minFee: number | null;
+  guaranteePeriodDays: number | null;
+  billingContactName: string | null;
+  billingContactEmail: string | null;
+  hiringManagerName: string | null;
+  hiringManagerEmail: string | null;
+  expectedStartDate: string | null;
+  placementNotes: string | null;
+  candidateSource: string | null;
+};
+
 export type LocalJobRow = {
   placementId: string;
   jobRfId: number;
+  jobCuid?: string | null;
   jobTitle: string;
   jobLocation: string;
   jobDescription: string;
   jobSalaryRange: string;
   clientRfId: number;
+  clientCuid?: string | null;
   clientName: string;
   clientWebsite: string;
   clientLinkedIn: string;
   clientContacts: { id: number; name: string; title: string; email: string }[];
   stage: string;
   interviews: LocalInterview[];
+  // Populated once the placement has been through offer / placement
+  // edits so the late-stage dialogs can seed their form fields. null
+  // for early-stage rows (sourced / applied / kept / submitted) where
+  // none of these columns have been written yet.
+  placement?: LocalPlacementSnapshot | null;
 };
 
 type LocalInviteFlow = {
@@ -173,9 +212,17 @@ export function LocalPlacementRows({
 }) {
   const [scheduleFor, setScheduleFor] = useState<LocalJobRow | null>(null);
   const [offerFor, setOfferFor] = useState<LocalJobRow | null>(null);
+  // Make Placement modal (offer → pending_start) + Confirm Start
+  // (pending_start → hired). Both keyed by the LocalJobRow so the
+  // dialog can seed from job.placement and revalidatePath knows
+  // which candidate URL to refresh.
+  const [placementFor, setPlacementFor] = useState<LocalJobRow | null>(null);
+  const [confirmFor, setConfirmFor] = useState<LocalJobRow | null>(null);
   const [rescheduleFor, setRescheduleFor] = useState<LocalInterview | null>(null);
   const [inviteFlow, setInviteFlow] = useState<LocalInviteFlow | null>(null);
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   // Mirror the jobs prop into local state so the optimistic Apply (event
   // below) and Reject (handleStageChanged) paths can flip a pill instantly.
@@ -262,6 +309,50 @@ export function LocalPlacementRows({
     setTimeout(() => router.refresh(), 500);
   }
 
+  // Deep-link handlers for the /pipeline page's per-row Make Placement
+  // and Confirm Start buttons. Format mirrors the RF candidate-profile
+  // flow:
+  //   ?edit=placement&jobId=<rfId-or-zero>
+  //   ?confirmStart=1&jobId=<rfId-or-zero>
+  // We match jobs by jobRfId so the RF + Ace-native deep links share
+  // one handler. If the recruiter lands on a candidate whose row isn't
+  // at the expected stage (e.g. the page cache is stale), the dialog
+  // still opens — recordLocalPlacement / confirmStart validate stage
+  // server-side and surface a clean toast on mismatch.
+  useEffect(() => {
+    const edit = searchParams?.get("edit");
+    const jobIdRaw = searchParams?.get("jobId");
+    if (edit !== "placement" || !jobIdRaw) return;
+    const jobId = Number(jobIdRaw);
+    if (!Number.isFinite(jobId)) return;
+    const target = jobsState.find((j) => j.jobRfId === jobId);
+    if (!target) return;
+    setPlacementFor(target);
+    // Strip the params so a back-nav / refresh doesn't re-fire the
+    // modal — same scrub pattern the RF flow uses.
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    next.delete("edit");
+    next.delete("jobId");
+    const qs = next.toString();
+    router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+  }, [searchParams, pathname, router, jobsState]);
+
+  useEffect(() => {
+    const flag = searchParams?.get("confirmStart");
+    const jobIdRaw = searchParams?.get("jobId");
+    if (flag !== "1" || !jobIdRaw) return;
+    const jobId = Number(jobIdRaw);
+    if (!Number.isFinite(jobId)) return;
+    const target = jobsState.find((j) => j.jobRfId === jobId);
+    if (!target) return;
+    setConfirmFor(target);
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    next.delete("confirmStart");
+    next.delete("jobId");
+    const qs = next.toString();
+    router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+  }, [searchParams, pathname, router, jobsState]);
+
   // Mounted even with zero placements so the apply listener above is live
   // for the candidate's first apply. Render nothing until there's a row.
   if (jobsState.length === 0) return null;
@@ -281,6 +372,8 @@ export function LocalPlacementRows({
             job={j}
             onSchedule={() => setScheduleFor(j)}
             onOffer={() => setOfferFor(j)}
+            onPlacement={() => setPlacementFor(j)}
+            onConfirmStart={() => setConfirmFor(j)}
             onEditInterview={(iv) => setRescheduleFor(iv)}
             onStageChange={handleStageChanged}
             embed={embed}
@@ -311,6 +404,32 @@ export function LocalPlacementRows({
           onRecorded={() => {
             handleStageChanged(offerFor.jobRfId, "offer");
             setOfferFor(null);
+          }}
+        />
+      )}
+      {placementFor && (
+        <LocalPlacementDialog
+          job={placementFor}
+          onClose={() => setPlacementFor(null)}
+          onSaved={() => {
+            handleStageChanged(placementFor.jobRfId, "pending_start");
+            setPlacementFor(null);
+          }}
+        />
+      )}
+      {confirmFor && (
+        // ConfirmStartDialog is shared with the RF flow — it operates
+        // on placementId, so it Just Works for Ace-native rows too.
+        // onEditPlacement chains into our local PlacementDialog (the
+        // RF-side dialog won't open Ace-native placements correctly).
+        <ConfirmStartDialog
+          placementId={confirmFor.placementId}
+          jobTitle={confirmFor.jobTitle}
+          onClose={() => setConfirmFor(null)}
+          onEditPlacement={() => {
+            const job = confirmFor;
+            setConfirmFor(null);
+            setPlacementFor(job);
           }}
         />
       )}
@@ -390,6 +509,8 @@ function LocalJobActionRow({
   job,
   onSchedule,
   onOffer,
+  onPlacement,
+  onConfirmStart,
   onEditInterview,
   onStageChange,
   embed,
@@ -399,6 +520,15 @@ function LocalJobActionRow({
   job: LocalJobRow;
   onSchedule: () => void;
   onOffer: () => void;
+  // Opens LocalPlacementDialog. Used by:
+  //   - Make Placement on a stage="offer" row (recruiter is recording
+  //     the offer acceptance → moves to pending_start).
+  //   - Edit Placement on a stage="pending_start" or "hired" row
+  //     (recruiter is amending fee / start date / billing contacts).
+  onPlacement: () => void;
+  // Opens ConfirmStartDialog (the screenshot dropzone). Used by Confirm
+  // Start on stage="pending_start" rows.
+  onConfirmStart: () => void;
   onEditInterview: (interview: LocalInterview) => void;
   onStageChange: (jobRfId: number, stage: string) => void;
   // Threaded from LocalPlacementRows so the per-row Submit href can
@@ -411,7 +541,18 @@ function LocalJobActionRow({
   const [isReapplying, startReapplying] = useTransition();
   const [rejectOpen, setRejectOpen] = useState(false);
   const normalizedStage = (job.stage ?? "sourced").trim().toLowerCase();
-  const canSchedule = normalizedStage !== "hired" && normalizedStage !== "cancelled" && normalizedStage !== "rejected";
+  // Schedule disappears once the candidate is past the interviewing
+  // window — offer / pending_start / hired rows surface their own
+  // forward-action buttons (Make Placement / Confirm Start / Edit
+  // Placement) and re-scheduling from those stages is unusual. Earlier
+  // stages (sourced / applied / kept / submitted / interviewing) keep
+  // Schedule as the natural next action.
+  const canSchedule =
+    normalizedStage === "sourced" ||
+    normalizedStage === "applied" ||
+    normalizedStage === "kept" ||
+    normalizedStage === "submitted" ||
+    normalizedStage === "interviewing";
   // Submit is the primary action for pre-submittal stages. Candidates
   // who are already Submitted, Interviewing, Offer, Hired, Rejected,
   // or Cancelled shouldn't resurface the submittal composer on this
@@ -433,13 +574,14 @@ function LocalJobActionRow({
   // Reject available on the active mid-pipeline stages plus Applied
   // so the recruiter can dismiss an applicant who isn't a fit without
   // having to formally Submit them first. Hired, cancelled, sourced,
-  // kept, and already-rejected rows don't show it.
+  // kept, and already-rejected rows don't show it. Pending Start
+  // intentionally drops Reject too — rejecting a placed candidate
+  // happens via the Cancel-Placement flow, not a stage flip.
   const canReject =
     normalizedStage === "applied" ||
     normalizedStage === "submitted" ||
     normalizedStage === "interviewing" ||
-    normalizedStage === "offer" ||
-    normalizedStage === "pending_start";
+    normalizedStage === "offer";
 
   // Extend Offer is interviewing-only: the recruiter has met the
   // client + candidate, and the offer is the next forward action.
@@ -448,6 +590,19 @@ function LocalJobActionRow({
   // Sending Invite" shortcut that used to live here is now folded
   // into the schedule modal as a "Client will send invite" checkbox.
   const canExtendOffer = normalizedStage === "interviewing";
+
+  // Late-pipeline forward-action buttons. Mirrors PipelineRowActions
+  // cases "offer" / "pending_start" / "hired" so the pill on the
+  // candidate profile matches what /jobs/[id] and /pipeline render
+  // for the same stage. Without these the Ace-native pill silently
+  // dead-ended at "Schedule Interview / Reject" once the candidate
+  // hit the offer stage — the user couldn't record a placement at
+  // all.
+  const canEditOffer = normalizedStage === "offer";
+  const canMakePlacement = normalizedStage === "offer";
+  const canEditPlacement =
+    normalizedStage === "pending_start" || normalizedStage === "hired";
+  const canConfirmStart = normalizedStage === "pending_start";
 
   // Reapply is the inverse of Reject — visible only on already-rejected
   // rows. Moves the row back to "applied" stage so the candidate
@@ -579,6 +734,69 @@ function LocalJobActionRow({
             >
               <DollarSign className="h-3 w-3" />
               <span className="hidden sm:inline">Offer</span>
+            </Button>
+          )}
+          {canEditOffer && (
+            // Edit Offer surfaces on stage=offer so the recruiter can
+            // amend salary / fee / start date before recording the
+            // placement. Reuses the OfferDialog (same upsert path) so
+            // there's no second editor to maintain.
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={onOffer}
+              title="Edit offered salary, title, or start date"
+              className={CHIP_BTN_CLS}
+            >
+              <Edit3 className="h-3 w-3" />
+              <span className="hidden sm:inline">Edit Offer</span>
+            </Button>
+          )}
+          {canMakePlacement && (
+            // Make Placement = offer accepted → stage=pending_start.
+            // Opens LocalPlacementDialog which captures the accepted
+            // salary + fee + start date + billing/hiring contacts that
+            // the invoicing pipeline downstream needs. The user can't
+            // proceed past offer without this button — every later
+            // stage (Confirm Start, Hired, invoice generation) reads
+            // off the fields this dialog writes.
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              onClick={onPlacement}
+              title="Record this candidate as placed"
+              className={CHIP_BTN_CLS}
+            >
+              <Handshake className="h-3 w-3" />
+              <span className="hidden sm:inline">Make Placement</span>
+            </Button>
+          )}
+          {canEditPlacement && (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={onPlacement}
+              title="Edit placement details"
+              className={CHIP_BTN_CLS}
+            >
+              <Edit3 className="h-3 w-3" />
+              <span className="hidden sm:inline">Edit Placement</span>
+            </Button>
+          )}
+          {canConfirmStart && (
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              onClick={onConfirmStart}
+              title="Upload a Day-1 screenshot to confirm the candidate started"
+              className={CHIP_BTN_CLS}
+            >
+              <CheckCircle2 className="h-3 w-3" />
+              <span className="hidden sm:inline">Confirm Start</span>
             </Button>
           )}
           {canReject && (
@@ -1040,6 +1258,229 @@ function OfferDialog({
         ) : (
           <div className="mt-1 text-xs text-court-fg-muted">
             Enter salary + fee % to calculate, or type a flat fee amount above.
+          </div>
+        )}
+      </div>
+      {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
+    </ModalShell>
+  );
+}
+
+// Make Placement / Edit Placement modal for Ace-native rows. Drives the
+// offer → pending_start transition (and later edits while in pending_
+// start or hired). Slimmer than the RF PlacementDialog — single
+// billing contact, single hiring manager, no custom-payment-terms
+// drawer. The recruiter can still edit those advanced fields via the
+// /pipeline row's full edit drawer once needed.
+function LocalPlacementDialog({
+  job,
+  onClose,
+  onSaved,
+}: {
+  job: LocalJobRow;
+  onClose: () => void;
+  // Fired after recordLocalPlacement resolves so the parent can flip the
+  // pill's optimistic stage to "pending_start" without waiting on the
+  // revalidatePath round trip.
+  onSaved: () => void;
+}) {
+  const router = useRouter();
+  const snap = job.placement ?? null;
+  // Seed every field off the placement snapshot when present — the
+  // offer dialog wrote most of these at offer time, so the recruiter
+  // shouldn't have to re-type them. Fall back to job-level defaults
+  // (offerTitle / jobTitle / "USD") only for fresh rows.
+  const [acceptedSalary, setAcceptedSalary] = useState(
+    snap?.acceptedSalary != null
+      ? String(snap.acceptedSalary)
+      : snap?.offerSalary != null
+        ? String(snap.offerSalary)
+        : "",
+  );
+  const [currency, setCurrency] = useState(
+    snap?.acceptedCurrency ?? snap?.offerCurrency ?? "USD",
+  );
+  const [feePct, setFeePct] = useState(
+    snap?.feePercentage != null ? String(snap.feePercentage) : "",
+  );
+  const [minFee, setMinFee] = useState(
+    snap?.minFee != null ? String(snap.minFee) : "",
+  );
+  const [feeAmountOverride, setFeeAmountOverride] = useState(
+    snap?.feeTotal != null ? String(snap.feeTotal) : "",
+  );
+  const [guaranteeDays, setGuaranteeDays] = useState(
+    snap?.guaranteePeriodDays != null ? String(snap.guaranteePeriodDays) : "",
+  );
+  // expectedStartDate seeds from the existing placement snapshot first,
+  // then falls back to the offerStartDate the OfferDialog stamped — so
+  // the recruiter sees the date they originally proposed without
+  // re-typing it. ISO comes in as a full timestamp; slice the date
+  // portion for the <input type="date"> value.
+  const [startDate, setStartDate] = useState(() => {
+    const iso = snap?.expectedStartDate ?? snap?.offerStartDate ?? null;
+    return iso ? iso.slice(0, 10) : "";
+  });
+  const [billingName, setBillingName] = useState(snap?.billingContactName ?? "");
+  const [billingEmail, setBillingEmail] = useState(snap?.billingContactEmail ?? "");
+  const [hiringName, setHiringName] = useState(snap?.hiringManagerName ?? "");
+  const [hiringEmail, setHiringEmail] = useState(snap?.hiringManagerEmail ?? "");
+  const [notes, setNotes] = useState(snap?.placementNotes ?? snap?.offerNotes ?? "");
+  const [source, setSource] = useState(snap?.candidateSource ?? "");
+  const [err, setErr] = useState<string | null>(null);
+  const [isPending, startSave] = useTransition();
+
+  const salaryNum = parseAmount(acceptedSalary);
+  const pctNum = parseFloat(feePct) || 0;
+  const minFeeNum = parseAmount(minFee);
+  const overrideNum = parseAmount(feeAmountOverride);
+  const rawFee = salaryNum && pctNum ? Math.round(salaryNum * (pctNum / 100)) : 0;
+  const calcFee = minFeeNum && rawFee < minFeeNum ? minFeeNum : rawFee;
+  const feeTotal = overrideNum != null ? overrideNum : calcFee;
+  const guaranteeDaysNum = parseAmount(guaranteeDays);
+  const usedMinFee = overrideNum == null && minFeeNum != null && rawFee < minFeeNum;
+  const usedOverride = overrideNum != null;
+
+  function onSave() {
+    setErr(null);
+    if (salaryNum == null || salaryNum <= 0) {
+      return setErr("Accepted salary is required.");
+    }
+    if (!startDate) {
+      return setErr("Expected start date is required.");
+    }
+    if (feeTotal <= 0) {
+      return setErr("Fee amount is required — enter salary + fee %, or a flat fee.");
+    }
+    startSave(async () => {
+      const result = await recordLocalPlacement({
+        placementId: job.placementId,
+        acceptedSalary: salaryNum,
+        acceptedCurrency: currency.toUpperCase().slice(0, 3),
+        feePercentage: pctNum > 0 ? pctNum : null,
+        feeTotal,
+        minFee: minFeeNum,
+        guaranteePeriodDays: guaranteeDaysNum,
+        billingContactName: billingName,
+        billingContactEmail: billingEmail,
+        hiringManagerName: hiringName,
+        hiringManagerEmail: hiringEmail,
+        expectedStartDate: startDate,
+        notes,
+        candidateSource: source.trim() || null,
+      });
+      if (!result.ok) {
+        setErr(result.error);
+        toast.error("Couldn't record placement", { description: result.error });
+        return;
+      }
+      toast.success("Placement recorded", {
+        description: "Candidate moved to Pending Start. Confirm Start when they begin.",
+      });
+      onSaved();
+      router.refresh();
+    });
+  }
+
+  const editing = job.stage === "pending_start" || job.stage === "hired";
+
+  return (
+    <ModalShell
+      title={editing ? "Edit placement" : "Make placement"}
+      subtitle={`${job.jobTitle} · ${job.clientName}`}
+      onClose={onClose}
+      footer={
+        <Footer
+          onCancel={onClose}
+          onSave={onSave}
+          saving={isPending}
+          label={editing ? "Save changes" : "Record placement"}
+        />
+      }
+    >
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <OfferField
+          label="Accepted salary"
+          value={acceptedSalary}
+          onChange={setAcceptedSalary}
+          placeholder="e.g. 120000 or 120k"
+        />
+        <OfferField label="Currency" value={currency} onChange={setCurrency} />
+        <OfferField label="Fee %" value={feePct} onChange={setFeePct} placeholder="25" />
+        <OfferField label="Min fee" value={minFee} onChange={setMinFee} placeholder="20000 (optional)" />
+        <OfferField
+          label="Fee amount (flat, overrides calc)"
+          value={feeAmountOverride}
+          onChange={setFeeAmountOverride}
+          placeholder="7500 (wins over salary × fee %)"
+        />
+        <OfferField
+          label="Guarantee period (days)"
+          value={guaranteeDays}
+          onChange={setGuaranteeDays}
+          placeholder="90 (optional)"
+        />
+        <OfferField
+          label="Expected start date"
+          type="date"
+          value={startDate}
+          onChange={setStartDate}
+        />
+        <OfferField label="Lead source" value={source} onChange={setSource} placeholder="LinkedIn, Pin, Apollo, …" />
+        <div className="sm:col-span-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 p-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+            Billing contact
+          </div>
+          <p className="mt-0.5 text-[11px] text-court-fg-muted">
+            Used as the To: on the auto-drafted invoice when you Confirm Start. Pick the AP / finance contact at the client.
+          </p>
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <OfferField label="Name" value={billingName} onChange={setBillingName} />
+            <OfferField label="Email" value={billingEmail} onChange={setBillingEmail} placeholder="ap@example.com" />
+          </div>
+        </div>
+        <div className="sm:col-span-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 p-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+            Hiring manager
+          </div>
+          <p className="mt-0.5 text-[11px] text-court-fg-muted">
+            Referenced on the invoice notes + the candidate-hired welcome email so both sides know who the manager is.
+          </p>
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <OfferField label="Name" value={hiringName} onChange={setHiringName} />
+            <OfferField label="Email" value={hiringEmail} onChange={setHiringEmail} placeholder="hm@example.com" />
+          </div>
+        </div>
+        <label className="block text-sm sm:col-span-2">
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Notes</span>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            className="mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          />
+        </label>
+      </div>
+      <div className="mt-3 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 p-3">
+        <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+          {usedOverride ? "Fee (flat override)" : "Calculated fee"}
+        </div>
+        <div className="mt-1 font-serif text-2xl font-semibold text-court-fg">
+          {formatMoney(feeTotal, currency)}
+          {usedMinFee && <span className="ml-2 text-xs text-amber-700">(min fee applied)</span>}
+          {usedOverride && <span className="ml-2 text-xs text-brand-dark">(flat override)</span>}
+        </div>
+        {usedOverride ? (
+          <div className="mt-1 text-xs text-court-fg-muted">
+            Flat-fee amount; salary × fee % calc is ignored while this is set.
+          </div>
+        ) : salaryNum && pctNum ? (
+          <div className="mt-1 text-xs text-court-fg-muted">
+            {formatMoney(salaryNum, currency)} × {pctNum}% = {formatMoney(rawFee, currency)}
+          </div>
+        ) : (
+          <div className="mt-1 text-xs text-court-fg-muted">
+            Enter accepted salary + fee % to calculate, or type a flat fee amount above.
           </div>
         )}
       </div>
