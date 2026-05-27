@@ -384,6 +384,11 @@ export async function getInvoice(id: string, organizationId: string) {
 }
 
 export type InvoiceSummary = {
+  // All-time SENT and unpaid. Powers the /finances Outstanding KPI,
+  // which intentionally has no date bound — a SENT invoice with a
+  // far-future due date is still outstanding from the recruiter's
+  // perspective. The billing tower uses the quarter-bounded variant
+  // below instead.
   outstandingCents: number;
   outstandingCount: number;
   overdueCents: number;
@@ -392,22 +397,14 @@ export type InvoiceSummary = {
   billedThisQuarterCount: number;
   collectedThisQuarterCents: number;
   collectedThisQuarterCount: number;
-  // Placements with a locked fee (stage = pending_start | hired,
-  // feeTotal > 0) that don't have an invoice row yet. Surfaced
-  // alongside SENT invoices in the Clubhouse Billing Tower so a
-  // freshly-recorded placement isn't invisible until the invoice
-  // flow runs. Kept as separate fields (rather than rolled into
-  // outstandingCents) so the Finances page's invoice-focused KPIs
-  // stay strictly invoice-driven.
-  pendingBillingCents: number;
-  pendingBillingCount: number;
-  // Subset of the pendingBilling bucket where placedAt landed inside
-  // the current quarter. Powers the Clubhouse Revenue column, which
-  // sums PAID invoices this quarter + this-quarter uninvoiced
-  // placements so "$15K" reads as "I closed $15K of work in Q2"
-  // even before the invoice flow runs on the second placement.
-  pendingBillingThisQuarterCents: number;
-  pendingBillingThisQuarterCount: number;
+  // Billing tower's Outstanding column — DRAFT or SENT invoices that
+  // are due by the end of the current quarter (past-due + due-this-
+  // quarter), with isFuture=false so pre-staged installment 2/3
+  // drafts don't inflate the tile before their due date. Marking
+  // an invoice PAID drops its feeAmount out of this bucket without
+  // affecting the rest of the placement's outstanding installments.
+  currentQuarterOutstandingCents: number;
+  currentQuarterOutstandingCount: number;
   draftCount: number;
 };
 
@@ -422,53 +419,60 @@ export async function getInvoiceSummary(organizationId: string): Promise<Invoice
   const now = new Date();
   const { start: qStart, endExclusive: qEnd } = periodRange("THIS_QUARTER", now);
 
-  const [outstanding, overdue, billedQ, collectedQ, draftCount, uninvoicedPlacements] =
-    await Promise.all([
-      prisma.invoice.findMany({
-        where: { organizationId, status: "SENT" },
-        select: { feeAmount: true },
-      }),
-      prisma.invoice.findMany({
-        where: { organizationId, status: "SENT", dueDate: { lt: now } },
-        select: { feeAmount: true },
-      }),
-      prisma.invoice.findMany({
-        where: {
-          organizationId,
-          status: { in: ["SENT", "PAID"] },
-          sentAt: { gte: qStart, lt: qEnd },
-        },
-        select: { feeAmount: true },
-      }),
-      prisma.invoice.findMany({
-        where: {
-          organizationId,
-          status: "PAID",
-          paidAt: { gte: qStart, lt: qEnd },
-        },
-        select: { feeAmount: true },
-      }),
-      prisma.invoice.count({
-        // Drafts KPI represents sendable drafts only; future installment
-        // drafts live in the separate Future Invoices section and would
-        // inflate this count otherwise.
-        where: { organizationId, status: "DRAFT", isFuture: false },
-      }),
-      prisma.placement.findMany({
-        where: {
-          organizationId,
-          stage: { in: ["pending_start", "hired"] },
-          feeTotal: { gt: 0 },
-          invoices: { none: {} },
-        },
-        select: { feeTotal: true, placedAt: true },
-      }),
-    ]);
-
-    const uninvoicedThisQuarter = uninvoicedPlacements.filter(
-      (p) =>
-        p.placedAt != null && p.placedAt >= qStart && p.placedAt < qEnd,
-    );
+  const [
+    outstanding,
+    overdue,
+    billedQ,
+    collectedQ,
+    draftCount,
+    currentQuarterOutstanding,
+  ] = await Promise.all([
+    prisma.invoice.findMany({
+      where: { organizationId, status: "SENT" },
+      select: { feeAmount: true },
+    }),
+    prisma.invoice.findMany({
+      where: { organizationId, status: "SENT", dueDate: { lt: now } },
+      select: { feeAmount: true },
+    }),
+    prisma.invoice.findMany({
+      where: {
+        organizationId,
+        status: { in: ["SENT", "PAID"] },
+        sentAt: { gte: qStart, lt: qEnd },
+      },
+      select: { feeAmount: true },
+    }),
+    prisma.invoice.findMany({
+      where: {
+        organizationId,
+        status: "PAID",
+        paidAt: { gte: qStart, lt: qEnd },
+      },
+      select: { feeAmount: true },
+    }),
+    prisma.invoice.count({
+      // Drafts KPI represents sendable drafts only; future installment
+      // drafts live in the separate Future Invoices section and would
+      // inflate this count otherwise.
+      where: { organizationId, status: "DRAFT", isFuture: false },
+    }),
+    // Billing tower's Outstanding column — DRAFT or SENT invoices due
+    // by the end of the current quarter, with isFuture=false so
+    // pre-staged installment 2/3 drafts (which already carry next-
+    // quarter due dates) don't inflate the tile until they're ready
+    // to send. Marking inst-2 PAID removes its feeAmount from this
+    // bucket cleanly without touching the rest of the placement.
+    prisma.invoice.findMany({
+      where: {
+        organizationId,
+        status: { in: ["DRAFT", "SENT"] },
+        isFuture: false,
+        dueDate: { lt: qEnd },
+      },
+      select: { feeAmount: true },
+    }),
+  ]);
 
   return {
     outstandingCents: outstanding.reduce((s, r) => s + toCents(r.feeAmount), 0),
@@ -479,19 +483,11 @@ export async function getInvoiceSummary(organizationId: string): Promise<Invoice
     billedThisQuarterCount: billedQ.length,
     collectedThisQuarterCents: collectedQ.reduce((s, r) => s + toCents(r.feeAmount), 0),
     collectedThisQuarterCount: collectedQ.length,
-    // feeTotal is whole dollars (per the Placement schema convention,
-    // mirroring offerSalary). Multiply by 100 to align with the cents-
-    // based fields above.
-    pendingBillingCents: uninvoicedPlacements.reduce(
-      (s, p) => s + (p.feeTotal ?? 0) * 100,
+    currentQuarterOutstandingCents: currentQuarterOutstanding.reduce(
+      (s, r) => s + toCents(r.feeAmount),
       0,
     ),
-    pendingBillingCount: uninvoicedPlacements.length,
-    pendingBillingThisQuarterCents: uninvoicedThisQuarter.reduce(
-      (s, p) => s + (p.feeTotal ?? 0) * 100,
-      0,
-    ),
-    pendingBillingThisQuarterCount: uninvoicedThisQuarter.length,
+    currentQuarterOutstandingCount: currentQuarterOutstanding.length,
     draftCount,
   };
 }

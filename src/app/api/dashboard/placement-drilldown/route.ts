@@ -239,13 +239,24 @@ const PLACEMENT_SELECT = {
 async function fetchPlacements(args: FetchArgs): Promise<PlacementRow[]> {
   const { kind, id, orgId, start, endExclusive } = args;
   if (kind === "billed_revenue") {
-    // Same definition the Billing Tower tile uses: pending_start + hired
-    // placements whose expected start lands inside the window.
+    // Mirror the Scoreboard Billed tile: placements (pending_start +
+    // hired) that have at least one SENT or PAID invoice whose dueDate
+    // lands inside the window. Switched from filtering by
+    // Placement.expectedStartDate so split-payment placements correctly
+    // surface in the quarter their installment is due — a Jun-10 start
+    // with a $3,750 inst-2 due in Q3 now shows up under the Q3 Billed
+    // drill-down, where previously it only ever appeared under Q2.
     return prisma.placement.findMany({
       where: {
         organizationId: orgId,
         stage: { in: ["pending_start", "hired"] },
-        expectedStartDate: { gte: start, lt: endExclusive },
+        invoices: {
+          some: {
+            organizationId: orgId,
+            status: { in: ["SENT", "PAID"] },
+            dueDate: { gte: start, lt: endExclusive },
+          },
+        },
       },
       select: PLACEMENT_SELECT,
     });

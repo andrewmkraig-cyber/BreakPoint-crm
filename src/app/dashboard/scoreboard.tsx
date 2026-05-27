@@ -324,7 +324,7 @@ function CashForecastCard({ cash }: { cash: Cash }) {
   // Bar widths show each row's share of the largest cash bucket so the
   // four lines compare visually instead of all reading full-width.
   const maxAmount = Math.max(
-    cash.pendingStartUsd,
+    cash.pendingInvoicesUsd,
     cash.billedUsd,
     cash.collectedUsd,
     0,
@@ -338,16 +338,16 @@ function CashForecastCard({ cash }: { cash: Cash }) {
       <p className="text-xs text-court-fg-muted">What&apos;s expected to land where.</p>
       <div className="mt-3 space-y-2">
         <ForecastRow
-          label="Pending Start"
-          amount={cash.pendingStartCount > 0 ? formatMoneyShort(cash.pendingStartUsd) : "—"}
-          hint={cash.pendingStartCount > 0 ? `${cash.pendingStartCount} placement${cash.pendingStartCount === 1 ? "" : "s"}` : "No pending starts"}
-          pct={cash.pendingStartCount > 0 ? widthPct(cash.pendingStartUsd) : 0}
+          label="Pending Invoices"
+          amount={cash.pendingInvoicesCount > 0 ? formatMoneyShort(cash.pendingInvoicesUsd) : "—"}
+          hint={cash.pendingInvoicesCount > 0 ? `${cash.pendingInvoicesCount} invoice${cash.pendingInvoicesCount === 1 ? "" : "s"}` : "No pending invoices"}
+          pct={cash.pendingInvoicesCount > 0 ? widthPct(cash.pendingInvoicesUsd) : 0}
           accent="bg-court-brand"
         />
         <ForecastRow
           label="Billed"
           amount={cash.billedUsd > 0 ? formatMoneyShort(cash.billedUsd) : "—"}
-          hint="Fees on Q2 placements (Pending Start + Hired)"
+          hint="Invoices due this quarter (Sent + Paid)"
           pct={widthPct(cash.billedUsd)}
           accent="bg-court-brand/40"
         />

@@ -10,12 +10,14 @@ import { cn } from "@/lib/utils";
 
 // Billing Tower summary strip. One big-panel card with a header row
 // ("Billing Tower" eyebrow + period selector) and a 3-column metrics
-// row underneath: Revenue / Outstanding / Goal Progress. Billed and
-// Collected used to be separate columns but always read identically in
-// practice (one placement → one invoice → one PAID), so we fold them
-// into a single Revenue column whose meta line carries "X placement ·
-// Y% collected" so no information is lost. The Revenue column keeps
-// the click-to-drilldown behavior the previous Billing Tower had.
+// row underneath: Revenue / Outstanding / Goal Progress. Both columns
+// are now strictly invoice-keyed (Revenue = PAID invoices in quarter,
+// Outstanding = DRAFT/SENT invoices due this quarter with
+// isFuture=false), so split-payment placements move each tile by
+// installment amount, not by full placement value. The Revenue column
+// keeps the click-to-drilldown behavior the previous Billing Tower
+// had — the drilldown points at cash_collected, which is also
+// invoice-keyed.
 type PeriodKey = "current" | "previous" | "ytd";
 
 export function FinancialStrip({
@@ -27,13 +29,17 @@ export function FinancialStrip({
   goalPct,
   currentQuarterLabel,
 }: {
-  // Revenue = PAID invoices this quarter + uninvoiced placements this
-  // quarter (locked fee, no invoice attached). Read as "fees earned in
-  // the current period" rather than "cash in hand." Goal Progress's
+  // Revenue = sum of PAID invoice feeAmount where paidAt landed in
+  // the selected quarter. "Cash in hand this quarter." Goal Progress's
   // "to go" math reads off this same value so the three tiles stay
   // numerically consistent.
   revenueUsd: number;
   revenueCount: number;
+  // Outstanding = sum of DRAFT + SENT invoice feeAmount with
+  // isFuture=false and dueDate <= end of current quarter. Excludes
+  // pre-staged installment 2/3 drafts whose due dates are later
+  // quarters; they'll roll into Outstanding when their quarter
+  // becomes current.
   outstandingUsd: number;
   outstandingCount: number;
   goalUsd: number;
@@ -51,12 +57,13 @@ export function FinancialStrip({
     revenueCount > 0
       ? `${revenueCount} placement${revenueCount === 1 ? "" : "s"}`
       : "No placements yet";
-  // Outstanding now mixes SENT invoices and uninvoiced placements, so
-  // "open invoices" is too narrow — drop to a generic "open" count.
+  // Outstanding is now strictly invoice-keyed (DRAFT + SENT, isFuture
+  // false, dueDate ≤ end of quarter), so an invoice-level count reads
+  // honestly here.
   const outstandingMeta =
     outstandingCount > 0
-      ? `${outstandingCount} open`
-      : "No open billing";
+      ? `${outstandingCount} open invoice${outstandingCount === 1 ? "" : "s"}`
+      : "No open invoices";
   const remainingUsd = Math.max(0, goalUsd - revenueUsd);
 
   return (

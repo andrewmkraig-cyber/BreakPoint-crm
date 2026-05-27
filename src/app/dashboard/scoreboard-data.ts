@@ -46,8 +46,13 @@ export type ScoreboardData = {
     interviewCoveragePct: number | null;
   };
   cashForecast: {
-    pendingStartUsd: number;
-    pendingStartCount: number;
+    // Pending Invoices — DRAFT invoices with isFuture=false. The
+    // recruiter-facing read is "invoices ready to send" (or sitting
+    // unsent past due). Replaces the previous "Pending Start" tile
+    // which was placement-stage scoped and conflated pre-start
+    // placements with their actual invoice obligations.
+    pendingInvoicesUsd: number;
+    pendingInvoicesCount: number;
     billedUsd: number;
     collectedUsd: number;
   };
@@ -95,8 +100,7 @@ export async function getScoreboardData(
     offersLast90,
     placedAggLast90,
     pipelineValueAgg,
-    pendingStartUnpaidAgg,
-    pendingStartPlacementCount,
+    pendingInvoicesAgg,
     billedInPeriodAgg,
     invoiceSummary,
     rfClients,
@@ -191,48 +195,35 @@ export async function getScoreboardData(
         },
       },
     }),
-    // Pending Start cash forecast — sum of UNPAID invoices for
-    // placements stuck in pending_start. Switched from
-    // sum(Placement.feeTotal) to sum(Invoice.feeAmount) so a custom-
-    // terms placement's installments time-shift correctly: collecting
-    // installment 1 drops the forecast by inst1Amount immediately
-    // rather than waiting for the whole placement to graduate to hired.
+    // Pending Invoices — DRAFT invoices that aren't pre-staged
+    // installments. Sum AND count come from the same query so the
+    // tile's "$X · N invoices" sub-label can't drift. Decoupled from
+    // Placement.stage entirely: an invoice belongs to the recruiter's
+    // billing inbox the moment it's a real (non-future) draft,
+    // regardless of where the underlying placement sits.
     prisma.invoice.aggregate({
       _sum: { feeAmount: true },
+      _count: { _all: true },
       where: {
         organizationId: org.id,
-        status: { notIn: ["PAID", "VOID"] },
-        placement: {
-          organizationId: org.id,
-          stage: "pending_start",
-        },
-      },
-    }),
-    // Pending Start COUNT — number of placements in pending_start
-    // (not invoices). Drives the "N placements" sub-label on the
-    // forecast tile; deliberately a placement-level count rather than
-    // an invoice-level count so a 3-installment deal reads as one
-    // pending placement, not three.
-    prisma.placement.count({
-      where: {
-        organizationId: org.id,
-        stage: "pending_start",
+        status: "DRAFT",
+        isFuture: false,
       },
     }),
     // Billed in window — sum of invoice fees whose dueDate lands in
-    // the selected quarter, scoped to placements still in
-    // pending_start or hired. Switched from grouping by
-    // Placement.expectedStartDate (which attributed 100% of a custom-
-    // terms placement's fee to its start quarter) to grouping by
-    // Invoice.dueDate (which lets each installment land in its own
-    // quarter). VOID invoices are excluded; PAID stays in because
-    // "billed in Q2" is a historical measure that shouldn't shrink as
-    // we collect.
+    // the selected quarter, restricted to SENT or PAID (an invoice
+    // that hasn't been issued isn't "billed" yet — it's in the
+    // Pending bucket above). PAID stays in because "billed in Q2" is
+    // a historical measure that shouldn't shrink as we collect.
+    // Switched from grouping by Placement.expectedStartDate (which
+    // attributed 100% of a custom-terms placement's fee to its start
+    // quarter) to grouping by Invoice.dueDate so each installment
+    // lands in its own quarter.
     prisma.invoice.aggregate({
       _sum: { feeAmount: true },
       where: {
         organizationId: org.id,
-        status: { not: "VOID" },
+        status: { in: ["SENT", "PAID"] },
         dueDate: { gte: periodStart, lt: periodEnd },
         placement: {
           organizationId: org.id,
@@ -308,7 +299,8 @@ export async function getScoreboardData(
   // since the count column below distinguishes "no deals" from "deals
   // but no invoices yet".
   const pipelineValueUsd = pipelineValueUsdRaw > 0 ? pipelineValueUsdRaw : null;
-  const pendingStartUsd = decimalToDollars(pendingStartUnpaidAgg._sum.feeAmount);
+  const pendingInvoicesUsd = decimalToDollars(pendingInvoicesAgg._sum.feeAmount);
+  const pendingInvoicesCount = pendingInvoicesAgg._count._all;
   const billedUsd = decimalToDollars(billedInPeriodAgg._sum.feeAmount);
   const placedFees = placedLast90
     .map((p) => p.feeTotal)
@@ -496,8 +488,8 @@ export async function getScoreboardData(
       interviewCoveragePct,
     },
     cashForecast: {
-      pendingStartUsd,
-      pendingStartCount: pendingStartPlacementCount,
+      pendingInvoicesUsd,
+      pendingInvoicesCount,
       billedUsd,
       collectedUsd: invoiceSummary.collectedThisQuarterCents / 100,
     },

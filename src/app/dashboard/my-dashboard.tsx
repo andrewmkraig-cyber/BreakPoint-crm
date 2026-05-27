@@ -78,25 +78,24 @@ export async function MyDashboard({
     getInvoiceSummary(org.id),
   ]);
 
-  // Revenue is "total fees earned this quarter" — PAID invoices this
-  // quarter plus this-quarter uninvoiced placements (locked fee, no
-  // invoice yet). An invoiced placement only ever shows up on the
-  // invoice side; an uninvoiced placement appears both here (earned
-  // work) and in Outstanding (uncollected work) without contradicting
-  // itself.
-  const revenueUsd =
-    (invoiceSummary.collectedThisQuarterCents +
-      invoiceSummary.pendingBillingThisQuarterCents) /
-    100;
-  const revenueCount =
-    invoiceSummary.collectedThisQuarterCount +
-    invoiceSummary.pendingBillingThisQuarterCount;
-  // Outstanding stays "money earned but not yet collected" — SENT
-  // invoices + all uninvoiced placements (any quarter).
-  const outstandingUsd =
-    (invoiceSummary.outstandingCents + invoiceSummary.pendingBillingCents) / 100;
-  const outstandingCount =
-    invoiceSummary.outstandingCount + invoiceSummary.pendingBillingCount;
+  // Revenue is cash actually collected this quarter — PAID invoices
+  // whose paidAt landed in the window. Strictly invoice-level so a
+  // $3,750 inst-2 collection moves Revenue by exactly $3,750, not by
+  // the full placement value. Previously this also folded in
+  // "uninvoiced placements" (placements with feeTotal but no Invoice
+  // row), but the recruiter-side flow now creates Invoice rows at
+  // Confirm Start (one per installment for custom-terms placements),
+  // so the uninvoiced bucket is empty in practice and inflated the
+  // tile when present.
+  const revenueUsd = invoiceSummary.collectedThisQuarterCents / 100;
+  const revenueCount = invoiceSummary.collectedThisQuarterCount;
+  // Outstanding is invoice-level: DRAFT + SENT invoices due by end of
+  // the current quarter, with isFuture=false so pre-staged inst-2/3
+  // drafts don't show until they're ready to send. Collecting inst-2
+  // subtracts exactly inst2Amount from this tile, leaving the rest of
+  // the placement's installments in place.
+  const outstandingUsd = invoiceSummary.currentQuarterOutstandingCents / 100;
+  const outstandingCount = invoiceSummary.currentQuarterOutstandingCount;
 
   const Q2_GOAL_USD = 125_000;
   // Goal Progress denominator mirrors the Revenue tile so all three
