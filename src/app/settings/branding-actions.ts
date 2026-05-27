@@ -7,8 +7,33 @@ import {
   MAX_LOGO_BYTES,
   getUserBrandingProfile,
   renderSignatureHtml,
+  type SignatureAssetUrls,
 } from "@/lib/signature";
 import { getFreshAccessToken } from "@/lib/gmail";
+
+// Gmail's users.settings.sendAs API caps the `signature` field at
+// 10,000 chars. The Ace-rendered base64 signature is ~85 KB (logo
+// ~80 KB + three icons + markup), well over the cap. We host the
+// same PNGs in /public/brand/ so the Gmail-push variant of the
+// signature can reference them as plain HTTPS URLs instead, which
+// drops the rendered HTML to ~1.5 KB. Production domain is the
+// canonical asset host — Vercel preview URLs aren't stable, and
+// Gmail caches the image bytes once it fetches them, so a stable
+// URL matters more than matching whichever deploy the user was on
+// when they hit Push.
+const GMAIL_SIGNATURE_ASSET_HOST = "https://ace.breakpointtalent.com";
+const GMAIL_SIGNATURE_ASSETS: SignatureAssetUrls = {
+  iconEmail: `${GMAIL_SIGNATURE_ASSET_HOST}/brand/icon-email.png`,
+  iconPhone: `${GMAIL_SIGNATURE_ASSET_HOST}/brand/icon-phone.png`,
+  iconGlobe: `${GMAIL_SIGNATURE_ASSET_HOST}/brand/icon-globe.png`,
+  logo: `${GMAIL_SIGNATURE_ASSET_HOST}/brand/breakpoint-logo.png`,
+};
+
+// Hard ceiling per Gmail API docs. If the rendered signature ever
+// crosses this we abort before calling Google (better error than
+// a 400 from sendAs.update) — also surfaces a regression early if
+// somebody re-introduces a base64 asset on the push path.
+const GMAIL_SIGNATURE_MAX_CHARS = 10000;
 
 type ActionResult<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -161,11 +186,29 @@ export async function pushSignatureToGmail(): Promise<ActionResult<{ targetEmail
   let signatureHtml: string;
   try {
     const profile = await getUserBrandingProfile(user.id);
-    signatureHtml = renderSignatureHtml(profile);
+    // Push variant: every image is a hosted HTTPS URL, not base64.
+    // This is the *only* code path that drops the inline assets —
+    // every inbox-bound render (preview / /send / /reply / gmail.ts
+    // withSignature) still embeds base64.
+    signatureHtml = renderSignatureHtml(profile, GMAIL_SIGNATURE_ASSETS);
   } catch (e) {
     return {
       ok: false,
       error: e instanceof Error ? e.message : "Couldn't render the signature.",
+    };
+  }
+
+  // Diag log + guard. Length is the JS string length (UTF-16 code
+  // units); for the all-ASCII signature this matches Gmail's char
+  // count. Logged before the API call so we can verify in Vercel
+  // logs that the trimmed signature stays well under 10K.
+  console.log(
+    `[push-signature] rendered=${signatureHtml.length} chars (limit=${GMAIL_SIGNATURE_MAX_CHARS})`,
+  );
+  if (signatureHtml.length > GMAIL_SIGNATURE_MAX_CHARS) {
+    return {
+      ok: false,
+      error: `Rendered signature is ${signatureHtml.length} characters — Gmail's API caps the signature field at ${GMAIL_SIGNATURE_MAX_CHARS}. Trim the signature or fall back to a smaller asset set.`,
     };
   }
 

@@ -133,21 +133,51 @@ type ContactRow = {
   href: string;
 };
 
-function buildContactRows(p: UserProfileRecord): ContactRow[] {
+// Asset-URL overrides for callers that can't use base64 data: URIs
+// because the embedding target caps signature size — Gmail's
+// users.settings.sendAs API enforces a 10,000-char `signature` limit,
+// and the default logo alone is ~80 KB base64 (well over the cap).
+// When `assetUrls` is provided every `<img src>` in the rendered
+// signature points at the public HTTPS asset instead of an inline
+// data: URI. When omitted (the default, used by every inbox-bound
+// path — preview, /reply, /send, gmail.ts withSignature) icons and
+// logo stay base64 so recipients see them without a "Load remote
+// images" prompt.
+export type SignatureAssetUrls = {
+  iconEmail: string;
+  iconPhone: string;
+  iconGlobe: string;
+  // When provided, replaces the profile's base64-embedded logo.
+  // When undefined, the rendered signature still embeds the user's
+  // logo as a data: URI (preserves custom-logo support on inbox
+  // paths). Callers that need a small signature (Gmail settings)
+  // should pass the hosted default-logo URL here.
+  logo?: string;
+};
+
+function buildContactRows(p: UserProfileRecord, assetUrls?: SignatureAssetUrls): ContactRow[] {
   const rows: ContactRow[] = [];
   if (p.email) {
-    rows.push({ iconSrc: envelopeIcon(), text: p.email, href: `mailto:${p.email}` });
+    rows.push({
+      iconSrc: assetUrls?.iconEmail ?? envelopeIcon(),
+      text: p.email,
+      href: `mailto:${p.email}`,
+    });
   }
   if (p.phone) {
     rows.push({
-      iconSrc: phoneIcon(),
+      iconSrc: assetUrls?.iconPhone ?? phoneIcon(),
       text: p.phone,
       href: `tel:${p.phone.replace(/[^+0-9]/g, "")}`,
     });
   }
   if (p.website) {
     const href = /^https?:\/\//i.test(p.website) ? p.website : `https://${p.website}`;
-    rows.push({ iconSrc: globeIcon(), text: p.website, href });
+    rows.push({
+      iconSrc: assetUrls?.iconGlobe ?? globeIcon(),
+      text: p.website,
+      href,
+    });
   }
   return rows;
 }
@@ -164,12 +194,26 @@ export const ACE_SIGNATURE_MARKER = "<!--ace-signature-->";
 
 // Render the signature as an HTML-table block. Returns just the inner
 // HTML (no <html><body>) so callers can splice it into any email body.
-export function renderSignatureHtml(profile: UserProfileRecord): string {
-  const logoSrc =
-    profile.logoDataBase64.length > 0
+//
+// `assetUrls` is an optional override for callers that can't afford
+// inline base64 image bytes (see SignatureAssetUrls). Inbox-bound
+// callers (composer, preview, /send, /reply) pass nothing and get
+// the default base64-embedded output. The Push-to-Gmail action
+// passes hosted URLs so the resulting signature fits inside Gmail
+// API's 10,000-char `signature` limit.
+export function renderSignatureHtml(
+  profile: UserProfileRecord,
+  assetUrls?: SignatureAssetUrls,
+): string {
+  // Logo: prefer the caller-provided hosted URL when given (Gmail
+  // push). Otherwise fall back to the profile's base64-embedded
+  // bytes — the inbox-side behavior that ships with every Ace email.
+  const logoSrc = assetUrls?.logo
+    ? assetUrls.logo
+    : profile.logoDataBase64.length > 0
       ? `data:${profile.logoMimeType};base64,${profile.logoDataBase64}`
       : "";
-  const contactRows = buildContactRows(profile);
+  const contactRows = buildContactRows(profile, assetUrls);
   const nameLine = profile.fullName
     ? `<div style="font-family: Georgia, 'Cormorant Garamond', serif; font-weight: 700; font-size: 18px; color: ${SIGNATURE_DARK}; line-height: 1.2;">${escape(profile.fullName)}</div>`
     : "";
