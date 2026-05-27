@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
@@ -7,6 +8,11 @@ import {
   getRfJobsForOrg,
 } from "@/lib/candidates";
 import { normalizeClient, normalizeJob } from "@/lib/rf-payload-shapes";
+import {
+  BILLING_EVENT_PLACEMENT_SELECT,
+  placementTotalDollars,
+  type PlacementForBilling,
+} from "@/lib/billing-events";
 
 export const dynamic = "force-dynamic";
 
@@ -119,15 +125,21 @@ export async function GET(req: NextRequest) {
       (p.jobRfId != null ? rfJobTitle.get(p.jobRfId) ?? "" : "") ??
       "";
 
-    const latestInvoice = (p.invoices ?? []).reduce<
-      | { id: string; status: "DRAFT" | "SENT" | "PAID" | "VOID"; dueDate: Date | null; paidAt: Date | null }
-      | null
-    >((acc, inv) => {
-      if (!acc) return inv;
-      const a = acc.paidAt ?? acc.dueDate ?? new Date(0);
-      const b = inv.paidAt ?? inv.dueDate ?? new Date(0);
-      return b.getTime() > a.getTime() ? inv : acc;
-    }, null);
+    // Pick the most-recent invoice for billing-status derivation +
+    // primary-href targeting. Reducer accumulator stays at the wider
+    // shape returned by Prisma (the invoice select now pulls every
+    // column the billing-events helper needs), but we only read id /
+    // status / dueDate / paidAt below.
+    type InvoiceForReduce = (typeof p.invoices)[number];
+    const latestInvoice = (p.invoices ?? []).reduce<InvoiceForReduce | null>(
+      (acc, inv) => {
+        if (!acc) return inv;
+        const a = acc.paidAt ?? acc.dueDate ?? new Date(0);
+        const b = inv.paidAt ?? inv.dueDate ?? new Date(0);
+        return b.getTime() > a.getTime() ? inv : acc;
+      },
+      null,
+    );
 
     const startDate = p.expectedStartDate ?? p.placedAt ?? null;
     const billingStatus = deriveBillingStatus({
@@ -147,7 +159,11 @@ export async function GET(req: NextRequest) {
       candidateHref,
       clientName,
       roleTitle,
-      feeAmount: typeof p.feeTotal === "number" ? p.feeTotal : null,
+      // Routed through the billing-events helper so custom-terms placements
+      // without Invoice rows yet (Ethan) read their installment sum
+      // instead of feeTotal=null → "—". Truly fee-unset placements
+      // (no invoices, no custom terms, no feeTotal) still return null.
+      feeAmount: placementTotalDollars(p as PlacementForBilling),
       startDateIso: startDate ? startDate.toISOString() : null,
       billingStatus,
       primaryHref,
@@ -205,35 +221,49 @@ type PlacementRow = {
   stage: string;
   placedAt: Date | null;
   expectedStartDate: Date | null;
+  // Billing-event helper fields. Required by placementTotalDollars
+  // so custom-terms placements without Invoice rows yet render their
+  // installment sum in the drilldown's fee column.
+  startConfirmedAt: Date | null;
+  useCustomTerms: boolean;
+  inst1Amount: number | null;
+  inst1DaysAfterStart: number | null;
+  inst2Amount: number | null;
+  inst2DaysAfterStart: number | null;
+  inst3Amount: number | null;
+  inst3DaysAfterStart: number | null;
   candidate: { firstName: string; lastName: string | null } | null;
   client: { id: string; name: string } | null;
   job: { id: string; title: string } | null;
   invoices: Array<{
     id: string;
     status: "DRAFT" | "SENT" | "PAID" | "VOID";
+    feeAmount: Prisma.Decimal | null;
     dueDate: Date | null;
+    sentAt: Date | null;
     paidAt: Date | null;
+    isFuture: boolean;
+    createdAt: Date;
   }>;
 };
 
 const PLACEMENT_SELECT = {
-  id: true,
+  // Spread the billing-event select first so its invoice sub-select
+  // (with every column placementTotalDollars needs) wins over the
+  // narrower invoice select the drilldown used to declare. Display-only
+  // fields layer on top.
+  ...BILLING_EVENT_PLACEMENT_SELECT,
   candidateId: true,
   candidateRfId: true,
   clientId: true,
   clientRfId: true,
   jobId: true,
   jobRfId: true,
-  feeTotal: true,
   stage: true,
   placedAt: true,
-  expectedStartDate: true,
   candidate: { select: { firstName: true, lastName: true } },
   client: { select: { id: true, name: true } },
   job: { select: { id: true, title: true } },
-  invoices: {
-    select: { id: true, status: true, dueDate: true, paidAt: true },
-  },
 } as const;
 
 async function fetchPlacements(args: FetchArgs): Promise<PlacementRow[]> {

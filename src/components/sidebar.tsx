@@ -2,7 +2,7 @@
 
 import type React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   Home,
   Users,
@@ -24,6 +24,11 @@ import { BrandMark } from "@/components/brand-mark";
 import { SidebarProfileCard } from "@/components/sidebar-profile-card";
 import { useMailContext } from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
+import {
+  isNavItemActive,
+  resolveDashboardTab,
+  type DashboardTab,
+} from "@/components/nav-active";
 
 // Main nav grouped into recruiter workflow sections, in the explicit
 // order Andrew wants the eye to scan (no alphabet rule — Pipeline
@@ -106,6 +111,12 @@ const FOOTER_NAV = [
 
 export function Sidebar({ width }: { width?: number } = {}) {
   const pathname = usePathname();
+  // /dashboard?tab=scoreboard and ?tab=placements share the pathname /dashboard
+  // with Clubhouse — a pathname-only active check lights up all three at once.
+  // Reading the resolved dashboard tab here lets isNavItemActive() pick the
+  // right row. See src/components/nav-active.ts for the discrimination logic.
+  const searchParams = useSearchParams();
+  const resolvedDashboardTab = resolveDashboardTab(searchParams?.get("tab"));
   const { unreadCount } = useMailContext();
   const { unreadCount: phoneUnreadCount } = usePhoneContext();
 
@@ -169,6 +180,7 @@ export function Sidebar({ width }: { width?: number } = {}) {
                   key={item.href}
                   item={item}
                   pathname={pathname}
+                  resolvedDashboardTab={resolvedDashboardTab}
                   badge={
                     item.href === "/mail"
                       ? unreadCount
@@ -184,7 +196,13 @@ export function Sidebar({ width }: { width?: number } = {}) {
       </nav>
       <nav className="shrink-0 space-y-1 px-1.5 pb-1 pt-0.5">
         {FOOTER_NAV.map((item) => (
-          <NavLink key={item.href} item={item} pathname={pathname} badge={0} />
+          <NavLink
+            key={item.href}
+            item={item}
+            pathname={pathname}
+            resolvedDashboardTab={resolvedDashboardTab}
+            badge={0}
+          />
         ))}
       </nav>
       <div className="shrink-0 px-1.5 pb-1.5 pt-0.5">
@@ -204,13 +222,19 @@ type NavItem = {
 function NavLink({
   item,
   pathname,
+  resolvedDashboardTab,
   badge = 0,
 }: {
   item: NavItem;
   pathname: string;
+  resolvedDashboardTab: DashboardTab;
   badge?: number;
 }) {
-  const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+  const active = isNavItemActive({
+    href: item.href,
+    pathname,
+    resolvedDashboardTab,
+  });
   const Icon = item.icon;
   const showBadge = badge > 0;
   return (

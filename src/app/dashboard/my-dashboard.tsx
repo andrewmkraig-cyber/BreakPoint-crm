@@ -7,7 +7,7 @@ import { ThisWeekWidget } from "@/app/dashboard/this-week-widget";
 import { NewsFeed } from "@/components/news-feed";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
-import { getInvoiceSummary } from "@/lib/invoices";
+import { getCurrentQuarterBillingSummary } from "@/lib/billing-events";
 import {
   clubhousePeriodRange,
   type ClubhousePeriod,
@@ -55,7 +55,7 @@ export async function MyDashboard({
     offersExtendedCount,
     placementsMadeCount,
     agreementsSignedCount,
-    invoiceSummary,
+    billingSummary,
   ] = await Promise.all([
     prisma.client.count({
       where: { organizationId: org.id, createdAt: { gte: activityStart, lt: activityEnd } },
@@ -75,34 +75,38 @@ export async function MyDashboard({
     prisma.clientAgreement.count({
       where: { organizationId: org.id, uploadedAt: { gte: activityStart, lt: activityEnd } },
     }),
-    getInvoiceSummary(org.id),
+    getCurrentQuarterBillingSummary(org.id, now, prisma),
   ]);
 
-  // Revenue is cash actually collected this quarter — PAID invoices
-  // whose paidAt landed in the window. Strictly invoice-level so a
-  // $3,750 inst-2 collection moves Revenue by exactly $3,750, not by
-  // the full placement value. Previously this also folded in
-  // "uninvoiced placements" (placements with feeTotal but no Invoice
-  // row), but the recruiter-side flow now creates Invoice rows at
-  // Confirm Start (one per installment for custom-terms placements),
-  // so the uninvoiced bucket is empty in practice and inflated the
-  // tile when present.
-  const revenueUsd = invoiceSummary.collectedThisQuarterCents / 100;
-  const revenueCount = invoiceSummary.collectedThisQuarterCount;
-  // Outstanding is invoice-level: DRAFT + SENT invoices due by end of
-  // the current quarter, with isFuture=false so pre-staged inst-2/3
-  // drafts don't show until they're ready to send. Collecting inst-2
-  // subtracts exactly inst2Amount from this tile, leaving the rest of
-  // the placement's installments in place.
-  const outstandingUsd = invoiceSummary.currentQuarterOutstandingCents / 100;
-  const outstandingCount = invoiceSummary.currentQuarterOutstandingCount;
+  // Revenue is cash actually collected this quarter — paid billing
+  // events bucketed by paidAt. Routed through the billing-events helper
+  // for consistency with Outstanding + Goal Progress below; numerically
+  // identical to the old getInvoiceSummary.collectedThisQuarterCents
+  // read because only invoice-backed events ever reach status="paid".
+  const revenueUsd = billingSummary.revenueCents / 100;
+  const revenueCount = billingSummary.revenueCount;
+  // Outstanding is unpaid $ coming due by end of quarter, INCLUDING
+  // scheduled installments on custom-terms placements that haven't
+  // had Confirm Start fire yet (Ethan's inst1=$3,750 lands here even
+  // with zero Invoice rows). Collecting inst1 flips its event to
+  // status="paid" → subtracts $3,750 from this tile and adds it to
+  // Revenue above, leaving the rest of the placement's installments
+  // in place.
+  const outstandingUsd = billingSummary.outstandingCents / 100;
+  const outstandingCount = billingSummary.outstandingCount;
 
   const Q2_GOAL_USD = 125_000;
-  // Goal Progress denominator mirrors the Revenue tile so all three
-  // tiles read off the same "earned this quarter" figure — switching
-  // to billedThisQuarter (SENT + PAID) would let Goal % drift below
-  // Revenue the moment an uninvoiced placement lands.
-  const q2RevenuePct = Q2_GOAL_USD > 0 ? (revenueUsd / Q2_GOAL_USD) * 100 : 0;
+  // Goal Progress reads "booked this quarter" — every billing event
+  // (paid + scheduled + drafted + sent) bucketed by scheduledAt in
+  // [qStart, qEnd). That's Revenue + the portion of Outstanding that
+  // schedules within this quarter (excludes Outstanding amounts that
+  // belong to a past quarter and just haven't been collected yet),
+  // so the recruiter's read is "what work did I earn in this
+  // quarter?" not "what cash came in?". Ethan's Q2 inst1 contributes
+  // here even though Revenue doesn't move (he isn't paid yet).
+  const bookedThisQuarterUsd = billingSummary.bookedCents / 100;
+  const q2RevenuePct =
+    Q2_GOAL_USD > 0 ? (bookedThisQuarterUsd / Q2_GOAL_USD) * 100 : 0;
   const currentQuarterLabel = `Q${Math.floor(now.getMonth() / 3) + 1} ${now.getFullYear()}`;
 
   return (

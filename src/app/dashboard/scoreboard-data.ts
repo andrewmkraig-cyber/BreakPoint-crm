@@ -6,6 +6,12 @@ import { getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { getInvoiceSummary } from "@/lib/invoices";
 import { periodRange, type DashboardPeriod } from "@/lib/period-utils";
 import { normalizeClient, normalizeJob } from "@/lib/rf-payload-shapes";
+import {
+  BILLING_EVENT_PLACEMENT_SELECT,
+  placementTotalDollars,
+  sumEventsCents,
+  type PlacementForBilling,
+} from "@/lib/billing-events";
 
 // Stages observed on Placement.stage today: offer | pending_start | hired.
 // Anything earlier than "offer" lives outside this table — submitted /
@@ -99,7 +105,7 @@ export async function getScoreboardData(
     interviewsLast90Rows,
     offersLast90,
     placedAggLast90,
-    pipelineValueAgg,
+    pipelinePlacementsForValue,
     pendingInvoicesAgg,
     billedInPeriodAgg,
     invoiceSummary,
@@ -176,24 +182,21 @@ export async function getScoreboardData(
         placedAt: { gte: ninetyDaysAgo, lte: now },
       },
     }),
-    // Pipeline VALUE — unpaid invoice $ for placements still in open
-    // stages (offer + pending_start). Switched from Placement.feeTotal
-    // to Invoice.feeAmount so split-payment placements only contribute
-    // what's actually still owed: collecting installment 1 should drop
-    // the pipeline value by inst1Amount, not nothing. Offer-stage
-    // placements typically have no invoices yet (invoices are created
-    // at Confirm Start), so they read $0 here — the count column above
-    // is what surfaces them.
-    prisma.invoice.aggregate({
-      _sum: { feeAmount: true },
+    // Pipeline VALUE — unpaid $ across every open placement (offer +
+    // pending_start). Was a pure Invoice.aggregate, but that missed
+    // pending_start placements with custom installment terms and no
+    // Invoice rows yet — Ethan's case 2026-05-26 (inst1+inst2 set on
+    // the placement, zero invoices, $0 pipeline). Routed through the
+    // billing-events helper so custom-terms-without-invoices contribute
+    // their scheduled installments alongside the actual invoice rows.
+    // Collecting installment 1 still drops the pipeline value by exactly
+    // inst1Amount (the corresponding event flips to status="paid").
+    prisma.placement.findMany({
       where: {
         organizationId: org.id,
-        status: { notIn: ["PAID", "VOID"] },
-        placement: {
-          organizationId: org.id,
-          stage: { in: [...IN_PIPELINE_STAGES] },
-        },
+        stage: { in: [...IN_PIPELINE_STAGES] },
       },
+      select: BILLING_EVENT_PLACEMENT_SELECT,
     }),
     // Pending Invoices — DRAFT invoices that aren't pre-staged
     // installments. Sum AND count come from the same query so the
@@ -239,11 +242,14 @@ export async function getScoreboardData(
     getRfJobsForOrg().catch(() => []),
     // Ace-native client + job names — pulled via the relations on the
     // momentum-row query below; this one is just for top-clients/top-roles.
+    // Includes BILLING_EVENT_PLACEMENT_SELECT so per-placement deal size
+    // (clientAgg feeUsd / roleAgg avgFeeUsd) reads sum-of-events instead
+    // of bare feeTotal — Ethan's $7,500 custom-terms placement now shows
+    // up in his client's column instead of contributing $0.
     prisma.placement.findMany({
       where: { organizationId: org.id },
       select: {
-        id: true,
-        feeTotal: true,
+        ...BILLING_EVENT_PLACEMENT_SELECT,
         placedAt: true,
         clientId: true,
         clientRfId: true,
@@ -258,6 +264,10 @@ export async function getScoreboardData(
     // Rejected placements drop out at the query level — a stale
     // offerReceivedAt on a since-rejected row was leaking into Recent
     // deal moves as "Offer extended" long after the deal died.
+    // Includes BILLING_EVENT_PLACEMENT_SELECT so the "Placed · $X fee"
+    // label uses placementTotalDollars instead of bare feeTotal —
+    // custom-terms placements (Ethan) render their installment sum
+    // rather than just "Placed" with no $.
     prisma.placement.findMany({
       where: {
         organizationId: org.id,
@@ -268,11 +278,9 @@ export async function getScoreboardData(
         ],
       },
       select: {
-        id: true,
+        ...BILLING_EVENT_PLACEMENT_SELECT,
         stage: true,
-        placedAt: true,
         offerReceivedAt: true,
-        feeTotal: true,
         candidateId: true,
         candidateRfId: true,
         clientId: true,
@@ -294,7 +302,16 @@ export async function getScoreboardData(
     const n = Number(amount.toString());
     return Number.isFinite(n) ? Math.round(n) : 0;
   };
-  const pipelineValueUsdRaw = decimalToDollars(pipelineValueAgg._sum.feeAmount);
+  // Pipeline VALUE — sum of every unpaid billing event across open
+  // placements. paid events drop out (collected money isn't "pipeline").
+  // future_draft + scheduled events count because the recruiter has
+  // committed to those amounts even if the invoice isn't sendable yet —
+  // this is the dollars-still-to-collect read.
+  const pipelineValueCents = sumEventsCents(
+    pipelinePlacementsForValue as PlacementForBilling[],
+    (e) => e.status !== "paid",
+  );
+  const pipelineValueUsdRaw = Math.round(pipelineValueCents / 100);
   // Tile still wants null (renders "—") when there's nothing to show,
   // since the count column below distinguishes "no deals" from "deals
   // but no invoices yet".
@@ -369,6 +386,15 @@ export async function getScoreboardData(
     const isPlaced = !!p.placedAt;
     if (!isPlaced) continue;
 
+    // Per-placement deal size routed through the billing-events helper so
+    // custom-terms placements (Ethan) read their installment sum
+    // ($7,500) instead of feeTotal (null → $0). Returns null when the
+    // placement truly has no fee captured yet — those still skip the
+    // roleAgg fee accumulator (avg-fee math stays clean) but DO count
+    // for the placements tally (the recruiter shipped a deal regardless
+    // of whether the fee was logged).
+    const placementFeeUsd = placementTotalDollars(p as PlacementForBilling);
+
     const clientKey = p.client?.id
       ? `c:${p.client.id}`
       : p.clientRfId != null
@@ -387,7 +413,7 @@ export async function getScoreboardData(
           feeUsd: 0,
         };
       prev.placements += 1;
-      prev.feeUsd += p.feeTotal ?? 0;
+      prev.feeUsd += placementFeeUsd ?? 0;
       clientAgg.set(clientKey, prev);
     }
 
@@ -396,8 +422,8 @@ export async function getScoreboardData(
     if (roleTitle) {
       const prev = roleAgg.get(roleTitle) ?? { title: roleTitle, placements: 0, feeSum: 0, feeCount: 0 };
       prev.placements += 1;
-      if (typeof p.feeTotal === "number" && p.feeTotal > 0) {
-        prev.feeSum += p.feeTotal;
+      if (typeof placementFeeUsd === "number" && placementFeeUsd > 0) {
+        prev.feeSum += placementFeeUsd;
         prev.feeCount += 1;
       }
       roleAgg.set(roleTitle, prev);
@@ -448,9 +474,13 @@ export async function getScoreboardData(
         ?? (p.clientRfId != null ? rfClientName.get(p.clientRfId) ?? "" : "");
       const placed = p.placedAt;
       const kind: "win" | "up" = placed ? "win" : "up";
+      // Deal-size label uses the billing-events helper so a custom-terms
+      // placement with no invoices yet (Ethan) still renders its
+      // installment sum next to "Placed", not bare "Placed".
+      const placementFeeUsd = placementTotalDollars(p as PlacementForBilling);
       const eventLabel = placed
-        ? p.feeTotal && p.feeTotal > 0
-          ? `Placed · ${formatMoneyShort(p.feeTotal)} fee`
+        ? placementFeeUsd != null && placementFeeUsd > 0
+          ? `Placed · ${formatMoneyShort(placementFeeUsd)} fee`
           : "Placed"
         : "Offer extended";
       return {

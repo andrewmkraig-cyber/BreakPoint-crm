@@ -1,4 +1,9 @@
 import { prisma } from "@/lib/prisma";
+import {
+  BILLING_EVENT_PLACEMENT_SELECT,
+  expandPlacementBillingEvents,
+  type PlacementForBilling,
+} from "@/lib/billing-events";
 
 const USD_NO_CENTS = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -53,13 +58,15 @@ export type GoalPacingCardData = {
 // the counter ticks at midnight ET, not 8pm.
 //
 // Revenue source (Ace fix 2026-05-26): BILLED revenue, not collected.
-// We sum Placement.feeTotal over rows where stage IN (pending_start, hired)
-// and (expectedStartDate ?? placedAt) lands inside the window. Same logic
-// as the Placements tab's "Billed This Quarter" total (see
-// src/lib/placements-dashboard.ts) - Pending Start + Billed + Paid combined,
-// not just paid invoices. Previously this card read from
-// Invoice.status IN (SENT, PAID) which excluded Pending Start placements
-// with no invoice row yet, dragging the goal pacing % below the real number.
+// Sums billing events for placements in (pending_start, hired), bucketed
+// by event scheduledAt — invoice rows by dueDate, custom-terms
+// installments by start+instNDays, and feeTotal-only placements by
+// expectedStartDate/placedAt. This is what fixes custom-terms placements
+// without Invoice rows yet (Ethan): inst1 lands in Q2, inst2 lands in
+// Q3, instead of his whole feeTotal (null) reading $0 for both quarters.
+// Per-quarter pacing now tracks the recruiter's intent ("I billed
+// $3,750 worth of Ethan in Q2") not just whatever Placement.feeTotal
+// happens to be on the row.
 export async function getGoalPacingData(
   organizationId: string,
   now: Date = new Date(),
@@ -72,27 +79,25 @@ export async function getGoalPacingData(
   const qEnd = new Date(year, qIndex * 3 + 3, 1);
 
   const [yearPlacements, placementsYtd] = await Promise.all([
-    // Same shape as getPlacementsDashboardData: rows with a locked stage
-    // (pending_start or hired) whose start lands inside the window.
-    // expectedStartDate is the primary pivot; placedAt is the fallback for
-    // rows that have an accepted offer but no committed start date yet, so
-    // they don't fall off the year just because the recruiter hasn't typed
-    // a start date in.
+    // Rows with a locked stage (pending_start or hired) where ANY billing
+    // event might land in the year window. We don't pre-filter by
+    // expectedStartDate/placedAt at the query level any more because a
+    // custom-terms inst3 might be scheduled for next year even if the
+    // placement's expectedStartDate is in this one (or vice-versa).
+    // Year-bucket filtering happens after expandPlacementBillingEvents
+    // below — open-stage placement counts are small enough that pulling
+    // the wider set is fine.
     prisma.placement.findMany({
       where: {
         organizationId,
         stage: { in: ["pending_start", "hired"] },
         OR: [
           { expectedStartDate: { gte: yearStart, lt: yearEnd } },
-          {
-            AND: [
-              { expectedStartDate: null },
-              { placedAt: { gte: yearStart, lt: yearEnd } },
-            ],
-          },
+          { placedAt: { gte: yearStart, lt: yearEnd } },
+          { startConfirmedAt: { gte: yearStart, lt: yearEnd } },
         ],
       },
-      select: { feeTotal: true, expectedStartDate: true, placedAt: true },
+      select: BILLING_EVENT_PLACEMENT_SELECT,
     }),
     prisma.placement.count({
       where: {
@@ -102,18 +107,25 @@ export async function getGoalPacingData(
     }),
   ]);
 
-  let ytdRevenueUsd = 0;
-  let quarterRevenueUsd = 0;
+  let ytdRevenueCents = 0;
+  let quarterRevenueCents = 0;
   for (const p of yearPlacements) {
-    const amt = p.feeTotal ?? 0;
-    ytdRevenueUsd += amt;
-    // Quarter window pivots on the same date the placements tab uses:
-    // expectedStartDate when set, placedAt otherwise.
-    const ref = p.expectedStartDate ?? p.placedAt;
-    if (ref && ref >= qStart && ref < qEnd) {
-      quarterRevenueUsd += amt;
+    for (const e of expandPlacementBillingEvents(p as PlacementForBilling)) {
+      // Goal Pacing buckets by scheduledAt for every status — even
+      // paid events should land in the quarter they were billed for,
+      // not the quarter they were collected in. The recruiter's read
+      // is "did I earn enough work this quarter to hit goal?", not
+      // "did the cash arrive?".
+      if (e.scheduledAt >= yearStart && e.scheduledAt < yearEnd) {
+        ytdRevenueCents += e.amountCents;
+      }
+      if (e.scheduledAt >= qStart && e.scheduledAt < qEnd) {
+        quarterRevenueCents += e.amountCents;
+      }
     }
   }
+  const ytdRevenueUsd = ytdRevenueCents / 100;
+  const quarterRevenueUsd = quarterRevenueCents / 100;
 
   const ET_DAY_MS = 86_400_000;
   const etParts = new Intl.DateTimeFormat("en-US", {

@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { periodRange } from "@/lib/period-utils";
+import { placementTotalDollars } from "@/lib/billing-events";
 
 // Data layer for the placements dashboard. Pulls every Placement in the
 // pending_start / hired stages within the requested period, joined with
@@ -111,12 +112,6 @@ type ClientLocationJson = {
   city?: string | null;
   state?: string | null;
 } | null;
-
-function toDollars(amount: Prisma.Decimal | null | undefined): number | null {
-  if (amount == null) return null;
-  const n = Number(amount.toString());
-  return Number.isFinite(n) ? n : null;
-}
 
 function cityFromClientLocation(location: Prisma.JsonValue | null | undefined): string | null {
   if (!location || typeof location !== "object" || Array.isArray(location)) return null;
@@ -228,14 +223,34 @@ export async function getPlacementsDashboardData(
         inst3DaysAfterStart: true,
         customGuaranteeDate: true,
         guaranteePeriodDays: true,
+        // startConfirmedAt is the most authoritative date anchor for
+        // custom-terms installment expansion (Branch 2 in billing-events).
+        // We already select it indirectly through the placement model
+        // but the explicit select keeps this query readable.
+        startConfirmedAt: true,
         candidate: { select: { firstName: true, lastName: true } },
         client: { select: { name: true, industry: true, location: true } },
         job: { select: { title: true, employmentType: true } },
+        // All non-VOID invoices (not just the most recent), with every
+        // column the billing-events helper needs. The row layer below
+        // still picks invoices[0] for `invoiceId` / billing status
+        // display, but the feeAmount column now sums across all
+        // invoices via placementTotalDollars so a placement with three
+        // SENT installment invoices reads its full total instead of
+        // only the most recent invoice's amount.
         invoices: {
           where: { status: { not: "VOID" } },
           orderBy: { createdAt: "desc" },
-          take: 1,
-          select: { id: true, status: true, feeAmount: true, dueDate: true },
+          select: {
+            id: true,
+            status: true,
+            feeAmount: true,
+            dueDate: true,
+            sentAt: true,
+            paidAt: true,
+            isFuture: true,
+            createdAt: true,
+          },
         },
       },
       orderBy: [{ expectedStartDate: "asc" }],
@@ -293,7 +308,14 @@ export async function getPlacementsDashboardData(
       startDate: p.expectedStartDate,
       city: cityOverride ? cityOverride : fallbackCity,
       cityOverride: cityOverride ? cityOverride : null,
-      feeAmount: toDollars(invoice?.feeAmount ?? null) ?? (p.feeTotal != null ? p.feeTotal : null),
+      // Routed through the shared billing-events helper so:
+      //   - custom-terms placements with no invoices yet (Ethan) read
+      //     the sum of inst1+inst2+inst3 instead of "—"
+      //   - placements with multiple installment invoices read the full
+      //     sum instead of just the most recent invoice's amount
+      //   - truly fee-unset placements (no invoices, no custom terms,
+      //     no feeTotal) still read null → ledger renders "—"
+      feeAmount: placementTotalDollars(p),
       billingStatus: deriveBillingStatus({
         startDate: p.expectedStartDate,
         invoiceStatus: invoice?.status ?? null,

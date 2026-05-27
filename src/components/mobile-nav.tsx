@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -30,6 +30,7 @@ import { BrandDisc } from "@/components/brand-mark";
 import { useMailContext } from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
 import { useCourtMode } from "@/lib/court-mode";
+import { isNavItemActive, resolveDashboardTab } from "@/components/nav-active";
 
 // Mobile / narrow-viewport nav drawer. Below md the sidebar is
 // `hidden md:flex` so there's no nav at all — this hamburger fills
@@ -105,15 +106,14 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
   },
 ];
 
-function isActive(pathname: string, href: string): boolean {
-  if (pathname === href) return true;
-  if (href !== "/" && pathname.startsWith(href + "/")) return true;
-  return false;
-}
-
 export function MobileNav() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  // Mirror the desktop sidebar's tab-aware active state. /dashboard?tab=
+  // routes all share the pathname /dashboard, so we discriminate via the
+  // resolved dashboard tab — see src/components/nav-active.ts.
+  const searchParams = useSearchParams();
+  const resolvedDashboardTab = resolveDashboardTab(searchParams?.get("tab"));
   // Live unread counts, same context the desktop sidebar reads. Mail =
   // unread Gmail threads; Phone = unread inbound text threads (calls do
   // not contribute — CallLog has no read state). Total drives the
@@ -239,7 +239,11 @@ export function MobileNav() {
                   <ul className="flex flex-col gap-0.5">
                     {group.items.map((item) => {
                       const Icon = item.icon;
-                      const active = isActive(pathname ?? "", item.href);
+                      const active = isNavItemActive({
+                        href: item.href,
+                        pathname: pathname ?? "",
+                        resolvedDashboardTab,
+                      });
                       // Same badge wiring as the desktop sidebar: Mail
                       // shows unread threads, Phone shows unread texts,
                       // everything else has no badge.
