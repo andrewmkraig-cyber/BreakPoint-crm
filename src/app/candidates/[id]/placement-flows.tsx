@@ -629,6 +629,28 @@ export function PlacementActions({
     router.replace(`${pathname}${queryString ? `?${queryString}` : ""}`, { scroll: false });
   }, [searchParams, pathname, router, jobs]);
 
+  // Deep-link for the Pipeline page's Edit Offer button (Ace fix 2026-05-27).
+  // Format is ?edit=offer&jobId=NN — same shape as ?edit=placement above.
+  // We find the matching offer-stage job and open OfferDialog pre-filled
+  // (OfferDialog seeds every field off job.placement?.* when present so the
+  // recruiter sees the saved offer values without re-typing). Same param-
+  // strip so refreshes / back-nav don't re-fire the modal.
+  useEffect(() => {
+    const edit = searchParams?.get("edit");
+    const jobIdRaw = searchParams?.get("jobId");
+    if (edit !== "offer" || !jobIdRaw) return;
+    const jobId = Number(jobIdRaw);
+    if (!Number.isFinite(jobId)) return;
+    const target = jobs.find((j) => j.jobRfId === jobId);
+    if (!target) return;
+    setOfferFor(target);
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    next.delete("edit");
+    next.delete("jobId");
+    const queryString = next.toString();
+    router.replace(`${pathname}${queryString ? `?${queryString}` : ""}`, { scroll: false });
+  }, [searchParams, pathname, router, jobs]);
+
   // Deep-link for the Pipeline page's Confirm Start button. Format is
   // ?confirmStart=1&jobId=NN — finds the matching pending_start row
   // (which always has a Placement attached) and auto-opens the
@@ -1147,7 +1169,12 @@ function OfferDialog({
 }) {
   const router = useRouter();
   const [salary, setSalary] = useState(job.placement?.offerSalary ? String(job.placement.offerSalary) : "");
-  const [currency, setCurrency] = useState(job.placement?.offerCurrency ?? "USD");
+  // USD is the only allowed currency on offer rows (Ace fix 2026-05-27).
+  // The dropdown was removed but offerCurrency / acceptedCurrency are still
+  // written to the DB on save — held as a const here so save payloads + the
+  // formatMoney calls in this dialog keep their "USD" arg without leaving an
+  // unused useState setter behind.
+  const currency = "USD";
   const [title, setTitle] = useState(job.placement?.offerTitle ?? job.jobTitle);
   const [startDate, setStartDate] = useState(
     job.placement?.offerStartDate ? job.placement.offerStartDate.slice(0, 10) : "",
@@ -1286,8 +1313,18 @@ function OfferDialog({
   return (
     <Modal title="Offer received" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <LabeledField label="Offered salary" value={salary} onChange={setSalary} placeholder="e.g. 120000 or 120k" />
-        <LabeledField label="Currency" value={currency} onChange={setCurrency} />
+        {/* USD is the only allowed currency on offer rows (Ace fix 2026-05-27).
+            The `currency` state still defaults to "USD" and is written to
+            Placement.offerCurrency / acceptedCurrency on save — the dropdown
+            is gone but the DB column stays populated. Negative salaries are
+            blocked at the input layer (strip "-" in onChange) and again on
+            submit (salaryNum < 0 check below) and once more server-side. */}
+        <LabeledField
+          label="Offered salary ($USD)"
+          value={salary}
+          onChange={(v) => setSalary(v.replace(/-/g, ""))}
+          placeholder="e.g. 120000 or 120k"
+        />
         <div className="sm:col-span-2">
           <LabeledField label="Offered title" value={title} onChange={setTitle} />
         </div>

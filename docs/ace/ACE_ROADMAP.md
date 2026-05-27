@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-27 · Ace 67.7
+Last updated: 2026-05-27 · Ace 67.8
 
 ## Active Build Sequence
 
@@ -16,6 +16,10 @@ Notification toast polish (DONE Ace 59.0): SMS toast `MessageSquare` icon, actio
 
 ### Session 61.0 Status
 Profile / pipeline regression close-out + features (DONE Ace 61.0): split-view candidate Delete restored; Apply / Keep / Reject real-time stage pill (optimistic, holds until server confirm) + the flash-then-disappear follow-on fixed; Add Note button removed from all four candidate profile locations; stage button visibility aligned to spec in `pipeline-row-actions.tsx`; phone thread auto-scroll to bottom on open; CalendarEventDrawer reminder mode (hides Guests / Location / Meeting type / All day / Timezone, ET hard-coded with a comment to pull per-user tz when multi-user ships); scheduled send (Send Later) on every email surface (`ScheduledEmail` table + per-minute Vercel cron + Retry toast); dark luxury login redesign; PWA badge auto-fire fix (`2d0081e`, null badgeCount in `unread-counts.ts`, sw.js cache `v5`); Auto Night Mode (`0dd1e41`, `UserProfile.autoNightMode`, 7pm/7am ET flip). Favicon / tab counter verified already correct. Awaiting Andrew's browser verification of scheduled send, the PWA badge, and Auto Night Mode.
+
+### Next Up (after Ace 67.8)
+
+- **Browser-verify the offer popup + Edit Offer ship.** Confirm negative-salary / negative-fee-% rejection at input + submit; `($USD)` static label is visible and the dropdown is gone; fee % prefill is correct for clients with / without `feePct`; Edit Offer chip on /pipeline opens the popup prefilled and Save updates the same Placement row (count check); the chip only appears in the offer stage.
 
 ### Next Up (after Ace 67.7)
 

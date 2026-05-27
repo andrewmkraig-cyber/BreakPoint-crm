@@ -888,6 +888,14 @@ export async function recordLocalOffer(
 ): Promise<Result<{ id: string }>> {
   const user = await requireUser();
   if (!user) return { ok: false, error: "Not signed in." };
+  // Server-side guard so the dialog's input-layer + submit checks can't be
+  // bypassed (Ace fix 2026-05-27). Same rule as the RF recordOffer twin.
+  if (input.salary != null && input.salary < 0) {
+    return { ok: false, error: "Salary can't be negative." };
+  }
+  if (input.feePercentage != null && input.feePercentage < 0) {
+    return { ok: false, error: "Fee percentage can't be negative." };
+  }
   if (input.feeTotal == null || input.feeTotal <= 0) {
     return { ok: false, error: "Fee amount is required at this stage." };
   }

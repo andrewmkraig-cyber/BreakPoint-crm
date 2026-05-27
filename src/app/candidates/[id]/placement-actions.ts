@@ -140,6 +140,18 @@ export type RecordOfferInput = {
 export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id: string; syncedToRf: boolean }>> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
+  // Server-side guard so the dialog's input-layer + submit checks can't be
+  // bypassed (Ace fix 2026-05-27). Salary and feePercentage are the two
+  // recruiter-typed numerics that show up downstream on invoices / KPIs —
+  // a stray negative would silently break the Pipeline Value sum and the
+  // invoice math. minFee / feeTotal are derived from the same inputs and
+  // are already gated by the feeTotal > 0 check below.
+  if (input.salary != null && input.salary < 0) {
+    return { ok: false, error: "Salary can't be negative." };
+  }
+  if (input.feePercentage != null && input.feePercentage < 0) {
+    return { ok: false, error: "Fee percentage can't be negative." };
+  }
   if (input.feeTotal == null || input.feeTotal <= 0) {
     return { ok: false, error: "Fee amount is required at this stage." };
   }

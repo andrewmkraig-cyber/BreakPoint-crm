@@ -1,10 +1,22 @@
 # ACE_STATE.md
-Last updated: 2026-05-27 · Ace 67.7
+Last updated: 2026-05-27 · Ace 67.8
 
 ## Current Status
-Current Version: Ace 67.7
+Current Version: Ace 67.8
 Last Shipped: 2026-05-27
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.8 (2026-05-27)
+
+Three asks shipped together — all on the offer popup + pipeline offer stage.
+
+- **Offer popup field constraints.** Negative numbers are now blocked on the Offered salary and Fee % inputs at three layers: (1) input-layer — the salary `onChange` strips any `-` before reaching state; the fee % field is a `NumericField` with `min={0}` that ignores out-of-range strokes; (2) submit-side — `OfferDialog.onSave` returns the existing `"Salary can't be negative."` / `"Fee percentage can't be negative."` errors before calling the server; (3) server-side — `recordOffer` (RF) and `recordLocalOffer` (Ace-native) reject `salary < 0` / `feePercentage < 0` with a clear error message so the dialog's checks can't be bypassed. The Currency dropdown was removed from the UI entirely — USD is the only allowed value, displayed as a static `($USD)` suffix on the salary label. The `currency` state is kept as a `const "USD"` so the save payload still writes `offerCurrency` / `acceptedCurrency = "USD"` to the DB; the column is **not** removed.
+- **Fee % auto-fill from client agreement — verified.** The existing seed at `placement-flows.tsx:1159` (`seedFeePct = job.placement?.feePercentage ?? job.clientFeePct ?? null`) already prefills the fee % from the client's `feePct` when present, and leaves the field blank when null. Every read feeding `clientFeePct` is tenant-scoped by `organizationId`: `getRfClientsForOrg` (`src/lib/candidates.ts:363-366`), `getRfJobsForOrg` (`src/lib/candidates.ts:292-296`), `getPlacementsForOrg` (`src/lib/placements.ts:42-43`), plus the direct `prisma.client.findMany({ where: { organizationId } })` in `candidates/[id]/page.tsx:367-370`. No code change needed — verify-only per Andrew's clarification.
+- **Edit Offer button on /pipeline offer-stage rows.** New chip in the pipeline offer-stage action column at `pipeline-view.tsx:718`, anchor-shaped twin of `<Button variant="secondary">` (border-court-border + bg-court-surface-subtle + text-court-fg). Reads as neutral grayish, distinct from the green Placement chip beside it and the red Reject after it — matches Andrew's "grayish, match color coding" spec. Deep-links to `/candidates/${id}?edit=offer&jobId=NN`, which is handled by two new `useEffect`s (one in `placement-flows.tsx` for RF rows, one in `local-placement-rows.tsx` for Ace-native rows) that find the matching offer-stage job, call `setOfferFor(target)`, and strip the params via `router.replace` so refreshes don't re-fire. Save updates the existing Placement row via the same `recordOffer` / `recordLocalOffer` upsert that the original offer used — no duplicate row created. The Ace-native `OfferDialog` (which previously seeded every field with `""`) now seeds from `job.placement?.*` so Edit Offer opens with the saved values prefilled instead of a blank form. The button only renders inside the `r.bucket === "offer"` block, so it never appears on sourced / applied / submitted / interviewing / pending_start / hired rows.
+
+Touches: `src/app/candidates/[id]/placement-flows.tsx`, `src/app/candidates/[id]/local-placement-rows.tsx`, `src/app/candidates/[id]/placement-actions.ts`, `src/app/candidates/[id]/local-placement-actions.ts`, `src/app/pipeline/pipeline-view.tsx`. Build clean.
+
+Next task: Andrew browser-verifies — (1) salary / fee % inputs reject negatives at input + submit; (2) currency dropdown is gone, `($USD)` shows on the salary label; (3) offer popup opens with fee % prefilled for clients whose `feePct` is set and blank otherwise; (4) Edit Offer chip on offer-stage rows opens the popup with existing values, save updates the same Placement row (`SELECT COUNT(*) FROM "Placement" WHERE id = X` identical before/after); (5) Edit Offer never appears on rows outside the offer stage. Regression: existing offers in other stages still load + edit; the Make Placement flow downstream of save still ingests salary / fee values; `offerCurrency` / `acceptedCurrency` continue to read/write "USD" for both new and existing rows.
 
 ## What Shipped in Ace 67.7 (2026-05-27)
 

@@ -716,25 +716,48 @@ export function PipelineView({ rows, appliedRows, keptRows, total, page, totalPa
                                 </Link>
                               )}
                               {r.bucket === "offer" && (
-                                // Green Placement link mirroring the
-                                // candidate-profile Placement button.
-                                // ?edit=placement&jobId=NN auto-opens the
-                                // PlacementDialog when jobId is the RF
-                                // numeric — Ace-native cuid rows just land
-                                // on the profile (still the same modal,
-                                // one extra click). The candidate page
-                                // strips the params after firing so
-                                // refreshes don't re-open the modal.
-                                <Link
-                                  href={`/candidates/${r.candidateId}?edit=placement&jobId=${r.jobId}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-2.5 text-[11px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
-                                  title="Record placement"
-                                  aria-label="Record placement"
-                                >
-                                  <Handshake className="h-3 w-3" />
-                                  <span className="hidden md:inline">Placement</span>
-                                </Link>
+                                <>
+                                  {/* Edit Offer (Ace fix 2026-05-27): anchor-
+                                      shaped twin of <Button variant="secondary">.
+                                      Token classes mirror the variant so the
+                                      chip reads as neutral grayish — distinct
+                                      from the green Placement chip beside it
+                                      and the red Reject after it. Deep-links
+                                      to the candidate profile's OfferDialog
+                                      in edit mode (?edit=offer&jobId=NN) so
+                                      the recruiter can revise salary / fee /
+                                      start date without dropping out of the
+                                      pipeline view. */}
+                                  <Link
+                                    href={`/candidates/${r.candidateId}?edit=offer&jobId=${r.jobId}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-border bg-court-surface-subtle px-2.5 text-[11px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface"
+                                    title="Edit offer details"
+                                    aria-label="Edit offer"
+                                  >
+                                    <Edit3 className="h-3 w-3" />
+                                    <span className="hidden md:inline">Edit Offer</span>
+                                  </Link>
+                                  {/* Green Placement link mirroring the
+                                      candidate-profile Placement button.
+                                      ?edit=placement&jobId=NN auto-opens the
+                                      PlacementDialog when jobId is the RF
+                                      numeric — Ace-native cuid rows just land
+                                      on the profile (still the same modal,
+                                      one extra click). The candidate page
+                                      strips the params after firing so
+                                      refreshes don't re-open the modal. */}
+                                  <Link
+                                    href={`/candidates/${r.candidateId}?edit=placement&jobId=${r.jobId}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-2.5 text-[11px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
+                                    title="Record placement"
+                                    aria-label="Record placement"
+                                  >
+                                    <Handshake className="h-3 w-3" />
+                                    <span className="hidden md:inline">Placement</span>
+                                  </Link>
+                                </>
                               )}
                               {(r.bucket === "submitted" ||
                                 r.bucket === "interviewing" ||

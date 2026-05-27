@@ -353,6 +353,27 @@ export function LocalPlacementRows({
     router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
   }, [searchParams, pathname, router, jobsState]);
 
+  // Deep-link for the Pipeline page's Edit Offer button (Ace fix 2026-05-27).
+  // Format is ?edit=offer&jobId=NN — mirrors the ?edit=placement handler above
+  // so Ace-native rows in the offer stage can be edited from /pipeline. The
+  // OfferDialog seeds every field off job.placement?.* when present, so the
+  // recruiter sees the saved offer values without re-typing.
+  useEffect(() => {
+    const edit = searchParams?.get("edit");
+    const jobIdRaw = searchParams?.get("jobId");
+    if (edit !== "offer" || !jobIdRaw) return;
+    const jobId = Number(jobIdRaw);
+    if (!Number.isFinite(jobId)) return;
+    const target = jobsState.find((j) => j.jobRfId === jobId);
+    if (!target) return;
+    setOfferFor(target);
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    next.delete("edit");
+    next.delete("jobId");
+    const qs = next.toString();
+    router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+  }, [searchParams, pathname, router, jobsState]);
+
   // Mounted even with zero placements so the apply listener above is live
   // for the candidate's first apply. Render nothing until there's a row.
   if (jobsState.length === 0) return null;
@@ -1152,14 +1173,34 @@ function OfferDialog({
   onRecorded: () => void;
 }) {
   const router = useRouter();
-  const [salary, setSalary] = useState("");
-  const [currency, setCurrency] = useState("USD");
-  const [title, setTitle] = useState(job.jobTitle);
-  const [startDate, setStartDate] = useState("");
-  const [notes, setNotes] = useState("");
-  const [feePct, setFeePct] = useState("");
-  const [minFee, setMinFee] = useState("");
-  const [feeAmountOverride, setFeeAmountOverride] = useState("");
+  // Seed from placement snapshot so Edit Offer (Ace fix 2026-05-27: now
+  // surfaced as a chip on /pipeline) reopens with the saved values instead
+  // of a blank form. Fresh-offer flow still gets "" / job.jobTitle defaults
+  // because pre-offer rows carry placement=null. Mirrors how the RF
+  // OfferDialog (placement-flows.tsx) seeds its state.
+  const snap = job.placement ?? null;
+  const [salary, setSalary] = useState(
+    snap?.offerSalary != null ? String(snap.offerSalary) : "",
+  );
+  // USD is the only allowed currency on offer rows (Ace fix 2026-05-27).
+  // The dropdown was removed but offerCurrency / acceptedCurrency are still
+  // written to the DB on save — held as a const here so the save payload and
+  // formatMoney calls keep their "USD" arg without an unused setter.
+  const currency = "USD";
+  const [title, setTitle] = useState(snap?.offerTitle ?? job.jobTitle);
+  const [startDate, setStartDate] = useState(
+    snap?.offerStartDate ? snap.offerStartDate.slice(0, 10) : "",
+  );
+  const [notes, setNotes] = useState(snap?.offerNotes ?? "");
+  const [feePct, setFeePct] = useState(
+    snap?.feePercentage != null ? String(snap.feePercentage) : "",
+  );
+  const [minFee, setMinFee] = useState(
+    snap?.minFee != null ? String(snap.minFee) : "",
+  );
+  const [feeAmountOverride, setFeeAmountOverride] = useState(
+    snap?.feeTotal != null ? String(snap.feeTotal) : "",
+  );
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
 
@@ -1214,13 +1255,27 @@ function OfferDialog({
       footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Record offer" />}
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <OfferField label="Offered salary" value={salary} onChange={setSalary} placeholder="e.g. 120000 or 120k" />
-        <OfferField label="Currency" value={currency} onChange={setCurrency} />
+        {/* USD is the only allowed currency on offer rows (Ace fix 2026-05-27).
+            The `currency` state still defaults to "USD" and is written to
+            Placement.offerCurrency / acceptedCurrency on save — the dropdown
+            is gone but the DB column stays populated. Negatives are blocked
+            at the input layer (strip "-") and rechecked on submit + server. */}
+        <OfferField
+          label="Offered salary ($USD)"
+          value={salary}
+          onChange={(v) => setSalary(v.replace(/-/g, ""))}
+          placeholder="e.g. 120000 or 120k"
+        />
         <div className="sm:col-span-2">
           <OfferField label="Offered title" value={title} onChange={setTitle} />
         </div>
         <OfferField label="Proposed start date" type="date" value={startDate} onChange={setStartDate} />
-        <OfferField label="Fee %" value={feePct} onChange={setFeePct} placeholder="25" />
+        <OfferField
+          label="Fee %"
+          value={feePct}
+          onChange={(v) => setFeePct(v.replace(/-/g, ""))}
+          placeholder="25"
+        />
         <OfferField label="Min fee" value={minFee} onChange={setMinFee} placeholder="20000 (optional)" />
         <OfferField
           label="Fee amount (flat, overrides calc)"
