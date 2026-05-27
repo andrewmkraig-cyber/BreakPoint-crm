@@ -26,8 +26,11 @@ type Period = "quarter" | "annual";
 
 const STATUS_LABEL = {
   PENDING_START: "Pending",
-  INVOICED: "Invoiced",
-  BILLED: "Billed",
+  INVOICE_DRAFT: "Invoice Draft",
+  // Single- and split-payment "invoice out the door" rows share the
+  // same Invoice Sent label — see placements-ledger for the parent map.
+  INVOICED: "Invoice Sent",
+  BILLED: "Invoice Sent",
   PARTIALLY_PAID: "Partial",
   COLLECTED: "Paid",
   OVERDUE: "Overdue",
@@ -36,10 +39,15 @@ const STATUS_LABEL = {
 const STATUS_PILL = {
   PENDING_START:
     "rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900",
-  // Split-payment INVOICED → neutral slate chip (distinct from amber
-  // Pending Start so confirmStart progression is visible at a glance).
-  INVOICED:
+  // INVOICE_DRAFT → neutral slate chip; the invoice exists but the
+  // recruiter hasn't sent it yet, so it sits quieter than the blue
+  // Invoice Sent chip below.
+  INVOICE_DRAFT:
     "rounded-full bg-slate-50 text-slate-700 border border-slate-200 dark:bg-slate-900/60 dark:text-slate-200 dark:border-slate-700",
+  // INVOICED (split-payment, all DRAFT/SENT, none paid) shares the
+  // blue Invoice Sent chip with BILLED so the eye reads one bucket.
+  INVOICED:
+    "rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
   BILLED:
     "rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
   // Split-payment PARTIALLY_PAID → yellow chip in the amber/yellow

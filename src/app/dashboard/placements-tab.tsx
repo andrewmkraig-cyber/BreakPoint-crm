@@ -66,10 +66,14 @@ function toGuaranteeRows(rows: LedgerRow[]): GuaranteePeriodRow[] {
     // guarantee-period table. BILLED/COLLECTED cover the single-invoice
     // path; INVOICED/PARTIALLY_PAID are the split-payment equivalents
     // (invoices exist as DRAFT/SENT, or some have already paid).
+    // INVOICE_DRAFT (single-invoice DRAFT, added 2026-05-27) also
+    // qualifies — confirmStart has fired so the candidate is in their
+    // guarantee window even though the draft invoice hasn't been sent.
     if (
       r.billingStatus !== "BILLED" &&
       r.billingStatus !== "COLLECTED" &&
       r.billingStatus !== "INVOICED" &&
+      r.billingStatus !== "INVOICE_DRAFT" &&
       r.billingStatus !== "PARTIALLY_PAID"
     ) {
       continue;

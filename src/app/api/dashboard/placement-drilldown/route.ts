@@ -44,6 +44,7 @@ export type DrilldownRow = {
   startDateIso: string | null;
   billingStatus:
     | "PENDING_START"
+    | "INVOICE_DRAFT"
     | "INVOICED"
     | "BILLED"
     | "PARTIALLY_PAID"
@@ -407,6 +408,12 @@ function deriveBillingStatus(args: {
     if (invoiceDueDate && invoiceDueDate.getTime() < now.getTime()) return "OVERDUE";
     return "BILLED";
   }
+  // INVOICE_DRAFT (2026-05-27) — confirmStart has fired and a draft
+  // invoice exists, but the recruiter hasn't sent it yet. Mirror of the
+  // same branch in src/lib/placements-dashboard.ts so both surfaces
+  // agree on what a post-confirmStart-pre-send single-invoice row looks
+  // like (previously fell through to PENDING_START on this path too).
+  if (invoiceStatus === "DRAFT") return "INVOICE_DRAFT";
   if (!invoiceStatus && startDate && startDate.getTime() > now.getTime()) {
     return "PENDING_START";
   }

@@ -236,15 +236,58 @@ export async function updateInvoiceSendFromAliasAction(
   }
 }
 
+// Every surface that renders an invoice-status pill needs to refresh
+// when DRAFT → SENT, SENT → PAID, or anything → VOID fires. Without
+// this the Placements ledger (/dashboard), the Pipeline Hired tab pill
+// (/pipeline + /candidates/[id]/pipeline rows), per-client placements
+// (/clients/[id]), and the Future Invoices / billing-events feed on
+// /finances all kept reading the prior-status cached server render
+// until the next manual hit. We look up the invoice's linked
+// candidateId / clientId / placementId so the dynamic candidate +
+// client routes revalidate against the specific row instead of the
+// route template (cheaper, surgical). When the link is missing we
+// fall back to "page"-scoped revalidations of /candidates/[id] +
+// /clients/[id] so anonymous-row invoices still refresh everywhere.
+// Org-scoped on the lookup so a hostile caller can't probe ids from
+// other tenants. Errors here are swallowed — the underlying status
+// flip already succeeded, the worst case is a slightly stale pill
+// that resolves on next navigation.
+async function revalidateInvoiceSurfaces(id: string, orgId: string): Promise<void> {
+  revalidatePath("/invoices");
+  revalidatePath(`/invoices/${id}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/pipeline");
+  revalidatePath("/finances");
+  try {
+    const invoice = await prisma.invoice.findFirst({
+      where: { id, organizationId: orgId },
+      select: { candidateId: true, clientId: true, placementId: true },
+    });
+    if (invoice?.candidateId) {
+      revalidatePath(`/candidates/${invoice.candidateId}`);
+    } else {
+      revalidatePath("/candidates/[id]", "page");
+    }
+    if (invoice?.clientId) {
+      revalidatePath(`/clients/${invoice.clientId}`);
+    } else {
+      revalidatePath("/clients/[id]", "page");
+    }
+  } catch {
+    // Lookup failed — fall back to template-scoped revalidations so
+    // every candidate + client page still refreshes.
+    revalidatePath("/candidates/[id]", "page");
+    revalidatePath("/clients/[id]", "page");
+  }
+}
+
 export async function markInvoiceSentAction(id: string): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return fail("Not signed in");
   const org = await getCurrentOrg();
   try {
     await markInvoiceSent(id, org.id, userId);
-    revalidatePath("/invoices");
-    revalidatePath(`/invoices/${id}`);
-    revalidatePath("/dashboard");
+    await revalidateInvoiceSurfaces(id, org.id);
     return ok(undefined);
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Failed to mark sent");
@@ -263,9 +306,7 @@ export async function markInvoicePaidAction(
   const org = await getCurrentOrg();
   try {
     await markInvoicePaid(id, org.id, userId, paymentMethod);
-    revalidatePath("/invoices");
-    revalidatePath(`/invoices/${id}`);
-    revalidatePath("/dashboard");
+    await revalidateInvoiceSurfaces(id, org.id);
     return ok(undefined);
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Failed to mark paid");
@@ -278,9 +319,7 @@ export async function markInvoiceVoidAction(id: string): Promise<Result> {
   const org = await getCurrentOrg();
   try {
     await markInvoiceVoid(id, org.id, userId);
-    revalidatePath("/invoices");
-    revalidatePath(`/invoices/${id}`);
-    revalidatePath("/dashboard");
+    await revalidateInvoiceSurfaces(id, org.id);
     return ok(undefined);
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Failed to void");

@@ -39,6 +39,7 @@ const STATUS_ORDER: PlacementsDashboardBillingStatus[] = [
   "PARTIALLY_PAID",
   "BILLED",
   "INVOICED",
+  "INVOICE_DRAFT",
   "PENDING_START",
   "OVERDUE",
 ];

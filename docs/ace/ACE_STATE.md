@@ -1,10 +1,45 @@
 # ACE_STATE.md
-Last updated: 2026-05-27 · Ace 67.13
+Last updated: 2026-05-27 · Ace 67.14
 
 ## Current Status
-Current Version: Ace 67.13
+Current Version: Ace 67.14
 Last Shipped: 2026-05-27
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.14 (2026-05-27)
+
+Confirm Start → Invoice flow hardening — two of the three items in the brief; Item A skipped after Step 0 grep showed the Confirm-Start → invoice-composer hand-off was already shipped earlier today (placement-flows.tsx:2386-2396 navigates to `/invoices/[id]?compose=1`; invoice-detail.tsx:374-386 consumes the param and auto-fires `handleEmailDraft()`). Andrew confirmed he was seeing stale prod (per the `live-deploy-diverges-from-repo` memory); no Item-A code change needed.
+
+- **Invoice mark-status actions revalidate every status-bearing surface.** `src/app/invoices/actions.ts` now routes `markInvoiceSentAction`, `markInvoicePaidAction`, and `markInvoiceVoidAction` through a single `revalidateInvoiceSurfaces(id, orgId)` helper. The helper unconditionally invalidates `/invoices`, `/invoices/[id]`, `/dashboard`, `/pipeline`, and `/finances`, then looks up `Invoice.{candidateId, clientId, placementId}` org-scoped and invalidates the specific `/candidates/[id]` + `/clients/[id]` dynamic routes (falls back to `revalidatePath("/candidates/[id]", "page")` / `("/clients/[id]", "page")` when those fields are null or the lookup throws). Closes the bug where the Pipeline Hired tab pill and per-client placements list kept reading the prior status until manual navigation.
+- **New billing status: `INVOICE_DRAFT`.** Single-invoice placements no longer fall through to `"PENDING_START"` after `confirmStart` fires. New union member in `src/lib/placements-dashboard.ts` PlacementsDashboardBillingStatus; `deriveBillingStatus` single-invoice branch now returns `"INVOICE_DRAFT"` when `latest.status === "DRAFT"`. Same fix mirrored in the standalone `deriveBillingStatus` copy inside `src/app/api/dashboard/placement-drilldown/route.ts` so the drilldown dialog and the dashboard ledger never disagree on what a post-confirmStart-pre-send row looks like.
+- **`BILLED` + `INVOICED` both display as "Invoice Sent".** Per Andrew's call on the second batch question — the recruiter shouldn't have to track single-vs-split-payment as separate terminology. The underlying enum values stay distinct so split-payment-only logic (`PARTIALLY_PAID` resolution, future-invoice ordering, guarantee-period inclusion) keeps the signal it needs; only the display label, filter tab label, and pill tone change. New `"Invoice Draft"` filter tab + slate chip slots between Pending Start and Invoice Sent in the ledger. Pipeline hired tab's own `InvoiceStatusPill` (`pipeline-view.tsx:930`) is left alone per Andrew's call — that pill renders raw Invoice.status with "Draft" / "Sent" / "Paid" / "No invoice" labels.
+- **Guarantee-period table includes `INVOICE_DRAFT` rows.** `src/app/dashboard/placements-tab.tsx` `toGuaranteeRows` previously gated on `BILLED | COLLECTED | INVOICED | PARTIALLY_PAID`; added `INVOICE_DRAFT` so a placement whose draft invoice hasn't been sent yet still appears in the live guarantee-window countdown (confirmStart has fired, so the candidate is in their guarantee window).
+
+Touches (8 source files):
+- `src/app/invoices/actions.ts` (`revalidateInvoiceSurfaces` helper + wired into 3 mark-status actions)
+- `src/lib/placements-dashboard.ts` (`PlacementsDashboardBillingStatus` union + `deriveBillingStatus` DRAFT branch)
+- `src/lib/placements-map-geo.ts` (`STATUS_COLORS`, `STATUS_LABELS`, `dominantStatus` order, `aggregateByCity` statusMix initializer)
+- `src/components/placements/placements-ledger.tsx` (`FILTERS`, `STATUS_LABEL`, `STATUS_PILL`, `counts` initializer)
+- `src/components/placements/placements-map-card.tsx` (`STATUS_ORDER`)
+- `src/app/dashboard/placements-tab.tsx` (`toGuaranteeRows` inclusion list)
+- `src/app/api/dashboard/placement-drilldown/route.ts` (`DrilldownRow.billingStatus` union + local `deriveBillingStatus` DRAFT branch)
+- `src/components/dashboard/placement-drilldown-dialog.tsx` (`STATUS_LABEL`, `STATUS_PILL` — caught on a second sweep; the dialog has its own maps independent of the ledger and would have rendered `undefined` for INVOICE_DRAFT rows without this)
+
+Build clean (`npm run build` exits 0; only the two pre-existing react-hooks/exhaustive-deps warnings, unrelated). Note: a parallel Andrew session shipped Ace 67.13 (interview-invite restoration) while this work was in flight; my code base rebased cleanly onto that ship (different files), no merge conflicts.
+
+Item A skipped on Andrew's call after AskUserQuestion surfaced that the Confirm-Start → composer auto-pop is already wired in main (shipped in an earlier session today, dated 2026-05-27 in source comments). The live deploy on ace.breakpointtalent.com had not picked up that ship yet — same pattern as the `live-deploy-diverges-from-repo` memory. No code change needed; once the next Vercel deploy lands, Andrew should see Confirm Start route him to `/invoices/[id]` with the composer auto-popping.
+
+Andrew browser-verify (after deploy lands — 8 steps):
+1. Confirm Start a pending-start placement → land on `/invoices/[id]` → invoice email composer pops automatically with the invoice PDF attached. (Item A — should already be live or land on next deploy.)
+2. Click Send on the invoice draft → toast confirms send.
+3. Go to `/pipeline` Hired tab → invoice-status pill on that row reads "Sent" (not "Draft" or "No invoice").
+4. Go to the dashboard placements ledger → row's billing pill reads "Invoice Sent".
+5. Open the candidate's profile (`/candidates/[id]`) → pipeline rows reflect the new status without a hard refresh.
+6. Confirm Start a fresh placement → before clicking Send anywhere, navigate to the dashboard placements ledger → that row reads "Invoice Draft" (not "Pending Start").
+7. The new "Invoice Draft" filter tab on the ledger has a count of ≥1 and clicking it shows the row.
+8. Mark an existing invoice as Paid from `/invoices/[id]` → /pipeline + dashboard + the client's `/clients/[id]` page all reflect the COLLECTED / "Paid" status without a refresh.
+
+Regression: Existing placements at any status (PENDING_START / BILLED / INVOICED / COLLECTED / OVERDUE / PARTIALLY_PAID) still render with their existing pill — only the BILLED and INVOICED labels swapped from "Billed" / "Invoiced" to "Invoice Sent". `markInvoiceSentAction` still actually flips the row to SENT (the existing `markInvoiceSent` helper call is unchanged; only the post-success revalidations expanded). Confirm Start still records the start date and creates the DRAFT invoice. Pipeline Hired tab still renders every hired placement — INVOICE_DRAFT is purely additive on the ledger surface and doesn't filter rows out anywhere. `InvoiceStatusPill` on `/pipeline` left alone per Andrew's scope call.
 
 ## What Shipped in Ace 67.13 (2026-05-27)
 

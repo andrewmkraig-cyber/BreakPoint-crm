@@ -66,20 +66,33 @@ const STAGE_LABEL: Record<LedgerRow["stage"], string> = {
 
 type FilterId = "ALL" | PlacementsDashboardBillingStatus;
 
+// Filter tabs across the top of the ledger. Order: pre-start → invoice
+// drafted → invoice sent (single + split) → partially paid → paid →
+// overdue. "Invoice Sent" intentionally appears twice in the filter
+// model (BILLED + INVOICED) under the same display label because the
+// recruiter shouldn't have to track single-vs-split-payment as separate
+// terminology; the counts are summed visually by the eye.
 const FILTERS: ReadonlyArray<{ id: FilterId; label: string }> = [
   { id: "ALL", label: "All" },
   { id: "PENDING_START", label: "Pending Start" },
-  { id: "INVOICED", label: "Invoiced" },
-  { id: "BILLED", label: "Billed" },
+  { id: "INVOICE_DRAFT", label: "Invoice Draft" },
+  { id: "INVOICED", label: "Invoice Sent" },
+  { id: "BILLED", label: "Invoice Sent" },
   { id: "PARTIALLY_PAID", label: "Partially Paid" },
   { id: "COLLECTED", label: "Paid" },
   { id: "OVERDUE", label: "Overdue" },
 ];
 
+// Row-pill labels: BILLED and INVOICED both surface as "Invoice Sent" —
+// the recruiter's mental model only cares whether the invoice is out the
+// door, not whether the placement is single- or split-payment. The
+// underlying enum stays distinct so split-only logic (PARTIALLY_PAID
+// resolution, future-invoice ordering) still has the signal it needs.
 const STATUS_LABEL: Record<PlacementsDashboardBillingStatus, string> = {
   PENDING_START: "Pending Start",
-  INVOICED: "Invoiced",
-  BILLED: "Billed",
+  INVOICE_DRAFT: "Invoice Draft",
+  INVOICED: "Invoice Sent",
+  BILLED: "Invoice Sent",
   PARTIALLY_PAID: "Partially Paid",
   COLLECTED: "Paid",
   OVERDUE: "Overdue",
@@ -88,11 +101,17 @@ const STATUS_LABEL: Record<PlacementsDashboardBillingStatus, string> = {
 const STATUS_PILL: Record<PlacementsDashboardBillingStatus, string> = {
   PENDING_START:
     "rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900",
-  // INVOICED reuses the existing neutral/slate chip family — distinct
-  // from the amber Pending Start chip so the eye can tell at a glance
-  // whether confirmStart has fired yet.
-  INVOICED:
+  // INVOICE_DRAFT reuses the neutral/slate chip family — the invoice
+  // exists but no money is in flight yet, so the chip is intentionally
+  // quieter than the BILLED blue. Same tone as the split-payment
+  // INVOICED chip below since they're the same conceptual state.
+  INVOICE_DRAFT:
     "rounded-full bg-slate-50 text-slate-700 border border-slate-200 dark:bg-slate-900/60 dark:text-slate-200 dark:border-slate-700",
+  // INVOICED (split-payment "all DRAFT/SENT, none paid yet"). Shares
+  // the blue Invoice Sent chip family with BILLED so the eye reads one
+  // surface for both single- and split-payment "out the door" rows.
+  INVOICED:
+    "rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
   BILLED:
     "rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
   // PARTIALLY_PAID uses the yellow palette — sibling of (but visually
@@ -154,6 +173,7 @@ export function PlacementsLedger({
     const c: Record<FilterId, number> = {
       ALL: rows.length,
       PENDING_START: 0,
+      INVOICE_DRAFT: 0,
       INVOICED: 0,
       BILLED: 0,
       PARTIALLY_PAID: 0,

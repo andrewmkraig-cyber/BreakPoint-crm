@@ -130,6 +130,7 @@ export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[]
           PARTIALLY_PAID: 0,
           BILLED: 0,
           INVOICED: 0,
+          INVOICE_DRAFT: 0,
           PENDING_START: 0,
           OVERDUE: 0,
         },
@@ -215,20 +216,29 @@ export function formatMoneyShort(n: number): string {
 // consume raw color strings at render time and can't read Court Mode CSS
 // tokens. The chip components elsewhere stick to slate/yellow Tailwind
 // utility classes. PARTIALLY_PAID → yellow-600, INVOICED → slate-600.
+// INVOICE_DRAFT reuses INVOICED's slate-600 — both mean "invoice exists
+// but no money in yet"; the single-vs-split distinction isn't worth a
+// separate map color.
 export const STATUS_COLORS: Record<PlacementsDashboardBillingStatus, string> = {
   COLLECTED: "#3F7030",
   PARTIALLY_PAID: "#CA8A04",
   BILLED: "#1E40AF",
   INVOICED: "#475569",
+  INVOICE_DRAFT: "#475569",
   PENDING_START: "#92400E",
   OVERDUE: "#B91C1C",
 };
 
+// Display labels for the placement map legend + tooltip. Note: BILLED
+// and INVOICED both surface as "Invoice Sent" so the recruiter sees one
+// consistent term whether the placement is single- or split-payment.
+// INVOICE_DRAFT is the post-confirmStart-pre-send single-invoice state.
 export const STATUS_LABELS: Record<PlacementsDashboardBillingStatus, string> = {
   COLLECTED: "Paid",
   PARTIALLY_PAID: "Partially paid",
-  BILLED: "Billed",
-  INVOICED: "Invoiced",
+  BILLED: "Invoice Sent",
+  INVOICED: "Invoice Sent",
+  INVOICE_DRAFT: "Invoice Draft",
   PENDING_START: "Pending start",
   OVERDUE: "Overdue",
 };
@@ -250,16 +260,18 @@ export function dominantStatus(
 ): PlacementsDashboardBillingStatus {
   // Tiebreak with a stable priority order so the border color is
   // deterministic when counts tie. Urgency-first: Overdue > Partially
-  // Paid > Billed > Invoiced > Pending Start > Collected. Split-payment
-  // INVOICED sits between BILLED and PENDING_START because invoices
-  // exist (more progressed than Pending) but none paid yet (less than
-  // Billed/Partial); PARTIALLY_PAID lifts above BILLED since at least
-  // one installment has cleared.
+  // Paid > Billed > Invoiced > Invoice Draft > Pending Start > Collected.
+  // Split-payment INVOICED sits between BILLED and INVOICE_DRAFT because
+  // invoices exist and at least one is SENT (more progressed than a pure
+  // draft); INVOICE_DRAFT sits between INVOICED and PENDING_START because
+  // the invoice row exists but nothing has been sent yet. PARTIALLY_PAID
+  // lifts above BILLED since at least one installment has cleared.
   const order: PlacementsDashboardBillingStatus[] = [
     "OVERDUE",
     "PARTIALLY_PAID",
     "BILLED",
     "INVOICED",
+    "INVOICE_DRAFT",
     "PENDING_START",
     "COLLECTED",
   ];

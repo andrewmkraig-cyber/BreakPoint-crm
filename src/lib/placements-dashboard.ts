@@ -24,6 +24,14 @@ export type PlacementsDashboardPeriod =
 
 export type PlacementsDashboardBillingStatus =
   | "PENDING_START"
+  // INVOICE_DRAFT is the single-invoice equivalent of the split-payment
+  // INVOICED bucket: confirmStart has fired and an Invoice row exists
+  // (Invoice.status = DRAFT) but the recruiter hasn't sent it yet.
+  // Before this existed the single-invoice deriveBillingStatus fell
+  // through to PENDING_START for DRAFT invoices, so the row kept reading
+  // "Pending Start" on the dashboard after the candidate had officially
+  // started. Display label: "Invoice Draft" (see placements-ledger).
+  | "INVOICE_DRAFT"
   | "BILLED"
   | "COLLECTED"
   | "OVERDUE"
@@ -32,7 +40,7 @@ export type PlacementsDashboardBillingStatus =
   // exist as DRAFT/SENT. PARTIALLY_PAID kicks in once at least one of
   // those invoices is PAID but at least one is still outstanding. Single-
   // invoice placements never produce either value — their flow remains
-  // PENDING_START → BILLED → COLLECTED (or OVERDUE) as before.
+  // PENDING_START → INVOICE_DRAFT → BILLED → COLLECTED (or OVERDUE).
   | "INVOICED"
   | "PARTIALLY_PAID";
 
@@ -206,7 +214,10 @@ function deriveBillingStatus(args: {
 
   // Single-invoice (or pre-confirmStart split with no invoices yet):
   // preserve the original latest-invoice behavior so nothing changes for
-  // the existing flow PENDING_START → BILLED → COLLECTED / OVERDUE.
+  // the existing flow PENDING_START → INVOICE_DRAFT → BILLED → COLLECTED
+  // / OVERDUE. The DRAFT branch is the 2026-05-27 addition — without it a
+  // post-confirmStart row kept falling through to PENDING_START even
+  // though the candidate had already started.
   const latest = live[0] ?? null;
   const invoiceStatus = latest?.status ?? null;
   const invoiceDueDate = latest?.dueDate ?? null;
@@ -215,6 +226,7 @@ function deriveBillingStatus(args: {
     if (invoiceDueDate && invoiceDueDate.getTime() < now.getTime()) return "OVERDUE";
     return "BILLED";
   }
+  if (invoiceStatus === "DRAFT") return "INVOICE_DRAFT";
   if (!invoiceStatus && startDate && startDate.getTime() > now.getTime()) {
     return "PENDING_START";
   }
