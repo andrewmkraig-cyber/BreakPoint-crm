@@ -1,10 +1,20 @@
 # ACE_STATE.md
-Last updated: 2026-05-27 · Ace 67.3
+Last updated: 2026-05-27 · Ace 67.4
 
 ## Current Status
-Current Version: Ace 67.3
+Current Version: Ace 67.4
 Last Shipped: 2026-05-27
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.4 (2026-05-27)
+
+Gmail-native signature logo fix after the phone-icon pass exposed that Gmail was still holding a stale black-background BreakPoint logo in its SendAs signature settings.
+
+- **Push to Gmail now uses compact public image URLs.** The Gmail settings action renders the signature with the hosted `SignatureAssetUrls` asset set instead of base64 data URIs, keeping the HTML under Gmail's 10,000-character SendAs limit. Ace-sent and copied signatures still use inline base64 artwork for normal email-client reliability.
+- **White logo is explicit for Gmail settings.** The Gmail hosted asset set now points the logo at `/brand/breakpoint_logo_signature.png`, the white-background signature mark, rather than the older black-background brand asset.
+- **Gmail was repaired live.** Andrew's primary SendAs signature (`andrew@breakpointtalent.com`) was updated with the compact white-logo HTML so new Gmail-composed test emails should show the correct white-background BreakPoint logo immediately.
+
+Next task: Andrew should send one fresh Gmail.com test email after deploy/refresh and confirm the signature logo is white-background, with the updated phone icon still crisp.
 
 ## What Shipped in Ace 67.3 (2026-05-27)
 
