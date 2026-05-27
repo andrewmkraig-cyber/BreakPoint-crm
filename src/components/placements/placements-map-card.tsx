@@ -36,7 +36,9 @@ const PlacementsLeafletMap = dynamic(
 
 const STATUS_ORDER: PlacementsDashboardBillingStatus[] = [
   "COLLECTED",
+  "PARTIALLY_PAID",
   "BILLED",
+  "INVOICED",
   "PENDING_START",
   "OVERDUE",
 ];

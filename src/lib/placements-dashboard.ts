@@ -26,7 +26,15 @@ export type PlacementsDashboardBillingStatus =
   | "PENDING_START"
   | "BILLED"
   | "COLLECTED"
-  | "OVERDUE";
+  | "OVERDUE"
+  // Split-payment-only statuses (installmentCount > 1). INVOICED replaces
+  // PENDING_START once confirmStart has fired and the installment invoices
+  // exist as DRAFT/SENT. PARTIALLY_PAID kicks in once at least one of
+  // those invoices is PAID but at least one is still outstanding. Single-
+  // invoice placements never produce either value — their flow remains
+  // PENDING_START → BILLED → COLLECTED (or OVERDUE) as before.
+  | "INVOICED"
+  | "PARTIALLY_PAID";
 
 export type PlacementsDashboardPlacementType = "SALARY" | "CONTRACT";
 
@@ -153,11 +161,55 @@ function derivePlacementType(args: {
 
 function deriveBillingStatus(args: {
   startDate: Date | null;
-  invoiceStatus: "DRAFT" | "SENT" | "PAID" | "VOID" | null;
-  invoiceDueDate: Date | null;
+  installmentCount: number | null;
+  // Full non-VOID invoice set for the placement. The split-payment branch
+  // needs to see every installment to decide INVOICED vs PARTIALLY_PAID;
+  // the single-invoice branch falls back to invoices[0] (the most-recent
+  // by createdAt, matching the prior single-invoice behavior).
+  invoices: ReadonlyArray<{
+    status: "DRAFT" | "SENT" | "PAID" | "VOID";
+    dueDate: Date | null;
+  }>;
   now: Date;
 }): PlacementsDashboardBillingStatus {
-  const { startDate, invoiceStatus, invoiceDueDate, now } = args;
+  const { startDate, installmentCount, invoices, now } = args;
+  const live = invoices.filter((iv) => iv.status !== "VOID");
+  const isSplit = (installmentCount ?? 0) > 1;
+
+  if (isSplit && live.length > 0) {
+    const paidCount = live.filter((iv) => iv.status === "PAID").length;
+    const unpaid = live.filter(
+      (iv) => iv.status === "DRAFT" || iv.status === "SENT",
+    );
+
+    // All paid — same terminal state as a single-invoice COLLECTED.
+    if (paidCount > 0 && unpaid.length === 0) return "COLLECTED";
+
+    // Any past-due SENT installment outranks both INVOICED and
+    // PARTIALLY_PAID. Mirrors the single-invoice precedence
+    // (SENT + past dueDate → OVERDUE).
+    const anyOverdue = unpaid.some(
+      (iv) =>
+        iv.status === "SENT" &&
+        iv.dueDate &&
+        iv.dueDate.getTime() < now.getTime(),
+    );
+    if (anyOverdue) return "OVERDUE";
+
+    // Some paid, some still DRAFT/SENT → partially paid.
+    if (paidCount > 0) return "PARTIALLY_PAID";
+
+    // All DRAFT/SENT, none paid yet — replaces the old PENDING_START
+    // display once confirmStart has materialized the installment rows.
+    return "INVOICED";
+  }
+
+  // Single-invoice (or pre-confirmStart split with no invoices yet):
+  // preserve the original latest-invoice behavior so nothing changes for
+  // the existing flow PENDING_START → BILLED → COLLECTED / OVERDUE.
+  const latest = live[0] ?? null;
+  const invoiceStatus = latest?.status ?? null;
+  const invoiceDueDate = latest?.dueDate ?? null;
   if (invoiceStatus === "PAID") return "COLLECTED";
   if (invoiceStatus === "SENT") {
     if (invoiceDueDate && invoiceDueDate.getTime() < now.getTime()) return "OVERDUE";
@@ -318,8 +370,8 @@ export async function getPlacementsDashboardData(
       feeAmount: placementTotalDollars(p),
       billingStatus: deriveBillingStatus({
         startDate: p.expectedStartDate,
-        invoiceStatus: invoice?.status ?? null,
-        invoiceDueDate: invoice?.dueDate ?? null,
+        installmentCount: p.installmentCount ?? null,
+        invoices: p.invoices,
         now,
       }),
       feeTotal: p.feeTotal ?? null,

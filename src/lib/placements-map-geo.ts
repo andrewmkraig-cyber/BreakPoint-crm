@@ -125,7 +125,14 @@ export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[]
         count: 0,
         totalFee: 0,
         clientFees: new Map(),
-        statusMix: { COLLECTED: 0, BILLED: 0, PENDING_START: 0, OVERDUE: 0 },
+        statusMix: {
+          COLLECTED: 0,
+          PARTIALLY_PAID: 0,
+          BILLED: 0,
+          INVOICED: 0,
+          PENDING_START: 0,
+          OVERDUE: 0,
+        },
       };
       buckets.set(key, bucket);
     }
@@ -204,16 +211,24 @@ export function formatMoneyShort(n: number): string {
   return `${sign}$${Math.round(abs)}`;
 }
 
+// Hardcoded hexes are an accepted exception in this file: Leaflet markers
+// consume raw color strings at render time and can't read Court Mode CSS
+// tokens. The chip components elsewhere stick to slate/yellow Tailwind
+// utility classes. PARTIALLY_PAID → yellow-600, INVOICED → slate-600.
 export const STATUS_COLORS: Record<PlacementsDashboardBillingStatus, string> = {
   COLLECTED: "#3F7030",
+  PARTIALLY_PAID: "#CA8A04",
   BILLED: "#1E40AF",
+  INVOICED: "#475569",
   PENDING_START: "#92400E",
   OVERDUE: "#B91C1C",
 };
 
 export const STATUS_LABELS: Record<PlacementsDashboardBillingStatus, string> = {
   COLLECTED: "Paid",
+  PARTIALLY_PAID: "Partially paid",
   BILLED: "Billed",
+  INVOICED: "Invoiced",
   PENDING_START: "Pending start",
   OVERDUE: "Overdue",
 };
@@ -234,10 +249,17 @@ export function dominantStatus(
   statusMix: Record<PlacementsDashboardBillingStatus, number>,
 ): PlacementsDashboardBillingStatus {
   // Tiebreak with a stable priority order so the border color is
-  // deterministic when counts tie (Overdue > Billed > Pending > Collected).
+  // deterministic when counts tie. Urgency-first: Overdue > Partially
+  // Paid > Billed > Invoiced > Pending Start > Collected. Split-payment
+  // INVOICED sits between BILLED and PENDING_START because invoices
+  // exist (more progressed than Pending) but none paid yet (less than
+  // Billed/Partial); PARTIALLY_PAID lifts above BILLED since at least
+  // one installment has cleared.
   const order: PlacementsDashboardBillingStatus[] = [
     "OVERDUE",
+    "PARTIALLY_PAID",
     "BILLED",
+    "INVOICED",
     "PENDING_START",
     "COLLECTED",
   ];

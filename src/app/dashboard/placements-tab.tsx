@@ -62,7 +62,16 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
 function toGuaranteeRows(rows: LedgerRow[]): GuaranteePeriodRow[] {
   const out: GuaranteePeriodRow[] = [];
   for (const r of rows) {
-    if (r.billingStatus !== "BILLED" && r.billingStatus !== "COLLECTED") {
+    // Any status that implies confirmStart has fired qualifies for the
+    // guarantee-period table. BILLED/COLLECTED cover the single-invoice
+    // path; INVOICED/PARTIALLY_PAID are the split-payment equivalents
+    // (invoices exist as DRAFT/SENT, or some have already paid).
+    if (
+      r.billingStatus !== "BILLED" &&
+      r.billingStatus !== "COLLECTED" &&
+      r.billingStatus !== "INVOICED" &&
+      r.billingStatus !== "PARTIALLY_PAID"
+    ) {
       continue;
     }
     if (!r.expectedStartDateIso) continue;

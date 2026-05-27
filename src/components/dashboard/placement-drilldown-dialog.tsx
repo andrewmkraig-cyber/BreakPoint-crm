@@ -26,7 +26,9 @@ type Period = "quarter" | "annual";
 
 const STATUS_LABEL = {
   PENDING_START: "Pending",
+  INVOICED: "Invoiced",
   BILLED: "Billed",
+  PARTIALLY_PAID: "Partial",
   COLLECTED: "Paid",
   OVERDUE: "Overdue",
 } as const;
@@ -34,8 +36,16 @@ const STATUS_LABEL = {
 const STATUS_PILL = {
   PENDING_START:
     "rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900",
+  // Split-payment INVOICED → neutral slate chip (distinct from amber
+  // Pending Start so confirmStart progression is visible at a glance).
+  INVOICED:
+    "rounded-full bg-slate-50 text-slate-700 border border-slate-200 dark:bg-slate-900/60 dark:text-slate-200 dark:border-slate-700",
   BILLED:
     "rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
+  // Split-payment PARTIALLY_PAID → yellow chip in the amber/yellow
+  // "in-flight" family; brighter than amber Pending Start.
+  PARTIALLY_PAID:
+    "rounded-full bg-yellow-50 text-yellow-800 border border-yellow-200 dark:bg-yellow-950/40 dark:text-yellow-200 dark:border-yellow-900",
   COLLECTED:
     "rounded-md border border-court-brand bg-transparent text-court-brand",
   OVERDUE:

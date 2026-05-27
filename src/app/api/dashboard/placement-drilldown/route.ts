@@ -42,7 +42,13 @@ export type DrilldownRow = {
   roleTitle: string;
   feeAmount: number | null;
   startDateIso: string | null;
-  billingStatus: "PENDING_START" | "BILLED" | "COLLECTED" | "OVERDUE";
+  billingStatus:
+    | "PENDING_START"
+    | "INVOICED"
+    | "BILLED"
+    | "PARTIALLY_PAID"
+    | "COLLECTED"
+    | "OVERDUE";
   primaryHref: string | null;
 };
 
@@ -142,10 +148,14 @@ export async function GET(req: NextRequest) {
     );
 
     const startDate = p.expectedStartDate ?? p.placedAt ?? null;
+    // Pass the full invoice set + installmentCount so split-payment
+    // placements can resolve to INVOICED / PARTIALLY_PAID. The
+    // single-invoice branch inside deriveBillingStatus still falls back
+    // to invoices[0] semantics.
     const billingStatus = deriveBillingStatus({
       startDate,
-      invoiceStatus: latestInvoice?.status ?? null,
-      invoiceDueDate: latestInvoice?.dueDate ?? null,
+      installmentCount: p.installmentCount ?? null,
+      invoices: p.invoices ?? [],
       now,
     });
 
@@ -226,6 +236,9 @@ type PlacementRow = {
   // installment sum in the drilldown's fee column.
   startConfirmedAt: Date | null;
   useCustomTerms: boolean;
+  // Drives the split-payment branch in deriveBillingStatus (INVOICED /
+  // PARTIALLY_PAID only fire when installmentCount > 1).
+  installmentCount: number | null;
   inst1Amount: number | null;
   inst1DaysAfterStart: number | null;
   inst2Amount: number | null;
@@ -261,6 +274,9 @@ const PLACEMENT_SELECT = {
   jobRfId: true,
   stage: true,
   placedAt: true,
+  // Read alongside the invoice list so the split-payment branch of
+  // deriveBillingStatus below can decide INVOICED vs PARTIALLY_PAID.
+  installmentCount: true,
   candidate: { select: { firstName: true, lastName: true } },
   client: { select: { id: true, name: true } },
   job: { select: { id: true, title: true } },
@@ -349,13 +365,43 @@ async function fetchPlacements(args: FetchArgs): Promise<PlacementRow[]> {
   });
 }
 
+// Mirrors src/lib/placements-dashboard.ts deriveBillingStatus. Kept inline
+// here because the drilldown route ships its own DrilldownRow shape and
+// doesn't import from the server-only dashboard module. Any change to one
+// MUST land in the other in the same commit (see Regression Check).
 function deriveBillingStatus(args: {
   startDate: Date | null;
-  invoiceStatus: "DRAFT" | "SENT" | "PAID" | "VOID" | null;
-  invoiceDueDate: Date | null;
+  installmentCount: number | null;
+  invoices: ReadonlyArray<{
+    status: "DRAFT" | "SENT" | "PAID" | "VOID";
+    dueDate: Date | null;
+  }>;
   now: Date;
-}): "PENDING_START" | "BILLED" | "COLLECTED" | "OVERDUE" {
-  const { startDate, invoiceStatus, invoiceDueDate, now } = args;
+}): DrilldownRow["billingStatus"] {
+  const { startDate, installmentCount, invoices, now } = args;
+  const live = invoices.filter((iv) => iv.status !== "VOID");
+  const isSplit = (installmentCount ?? 0) > 1;
+
+  if (isSplit && live.length > 0) {
+    const paidCount = live.filter((iv) => iv.status === "PAID").length;
+    const unpaid = live.filter(
+      (iv) => iv.status === "DRAFT" || iv.status === "SENT",
+    );
+    if (paidCount > 0 && unpaid.length === 0) return "COLLECTED";
+    const anyOverdue = unpaid.some(
+      (iv) =>
+        iv.status === "SENT" &&
+        iv.dueDate &&
+        iv.dueDate.getTime() < now.getTime(),
+    );
+    if (anyOverdue) return "OVERDUE";
+    if (paidCount > 0) return "PARTIALLY_PAID";
+    return "INVOICED";
+  }
+
+  const latest = live[0] ?? null;
+  const invoiceStatus = latest?.status ?? null;
+  const invoiceDueDate = latest?.dueDate ?? null;
   if (invoiceStatus === "PAID") return "COLLECTED";
   if (invoiceStatus === "SENT") {
     if (invoiceDueDate && invoiceDueDate.getTime() < now.getTime()) return "OVERDUE";

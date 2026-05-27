@@ -69,14 +69,18 @@ type FilterId = "ALL" | PlacementsDashboardBillingStatus;
 const FILTERS: ReadonlyArray<{ id: FilterId; label: string }> = [
   { id: "ALL", label: "All" },
   { id: "PENDING_START", label: "Pending Start" },
+  { id: "INVOICED", label: "Invoiced" },
   { id: "BILLED", label: "Billed" },
+  { id: "PARTIALLY_PAID", label: "Partially Paid" },
   { id: "COLLECTED", label: "Paid" },
   { id: "OVERDUE", label: "Overdue" },
 ];
 
 const STATUS_LABEL: Record<PlacementsDashboardBillingStatus, string> = {
   PENDING_START: "Pending Start",
+  INVOICED: "Invoiced",
   BILLED: "Billed",
+  PARTIALLY_PAID: "Partially Paid",
   COLLECTED: "Paid",
   OVERDUE: "Overdue",
 };
@@ -84,8 +88,18 @@ const STATUS_LABEL: Record<PlacementsDashboardBillingStatus, string> = {
 const STATUS_PILL: Record<PlacementsDashboardBillingStatus, string> = {
   PENDING_START:
     "rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900",
+  // INVOICED reuses the existing neutral/slate chip family — distinct
+  // from the amber Pending Start chip so the eye can tell at a glance
+  // whether confirmStart has fired yet.
+  INVOICED:
+    "rounded-full bg-slate-50 text-slate-700 border border-slate-200 dark:bg-slate-900/60 dark:text-slate-200 dark:border-slate-700",
   BILLED:
     "rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
+  // PARTIALLY_PAID uses the yellow palette — sibling of (but visually
+  // brighter than) the amber Pending Start chip, keeping it in the
+  // amber/yellow "in-flight" family without colliding.
+  PARTIALLY_PAID:
+    "rounded-full bg-yellow-50 text-yellow-800 border border-yellow-200 dark:bg-yellow-950/40 dark:text-yellow-200 dark:border-yellow-900",
   COLLECTED:
     "rounded-md border border-court-brand bg-transparent text-court-brand",
   OVERDUE:
@@ -140,7 +154,9 @@ export function PlacementsLedger({
     const c: Record<FilterId, number> = {
       ALL: rows.length,
       PENDING_START: 0,
+      INVOICED: 0,
       BILLED: 0,
+      PARTIALLY_PAID: 0,
       COLLECTED: 0,
       OVERDUE: 0,
     };
