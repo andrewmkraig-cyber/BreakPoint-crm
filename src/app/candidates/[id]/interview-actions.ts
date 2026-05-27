@@ -10,6 +10,7 @@ import {
   createCalendarEvent,
   deleteCalendarEvent,
   getCalendarEventAttendees,
+  getEventConferenceData,
   patchCalendarEventDetails,
   updateCalendarEvent,
   updateEventAsInvite,
@@ -260,6 +261,28 @@ async function updateLocalCalendarEventsTime(args: {
   }
 }
 
+async function updateLocalCalendarEventDetails(args: {
+  organizationId: string;
+  googleEventId: string | null;
+  title: string;
+  description: string;
+}): Promise<void> {
+  if (!args.googleEventId) return;
+  try {
+    await prisma.calendarEvent.updateMany({
+      where: { organizationId: args.organizationId, googleEventId: args.googleEventId },
+      data: {
+        title: args.title,
+        description: args.description,
+        status: "CONFIRMED",
+        syncedAt: new Date(),
+      },
+    });
+  } catch {
+    // best-effort; Google remains the source of truth.
+  }
+}
+
 function calendarSummary(input: ScheduleInterviewInput): string {
   const who = input.candidateName || "Candidate";
   const job = input.jobTitle || "role";
@@ -284,6 +307,10 @@ function calendarDescription(input: ScheduleInterviewInput): string {
   return lines.join("\n");
 }
 
+function isGoogleMeetLink(link: string | null | undefined): boolean {
+  return Boolean(link && /meet\.google\.com\//i.test(link));
+}
+
 export async function scheduleInterview(input: ScheduleInterviewInput): Promise<ScheduleInterviewResult> {
   const user = await requireUser();
   if (!user) return { ok: false, error: "Not signed in." };
@@ -300,12 +327,10 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
   }
 
   // Calendar behavior:
-  // - ace_scheduled: create one event on the creator's primary calendar
-  //   with ONLY the organizer (no attendees yet) + a Meet for video
-  //   interviews. The candidate and client are added later via their
-  //   respective Send Invite composers — each Send patches THIS event
-  //   to add the attendee with sendUpdates="all", so Google ships the
-  //   native ICS invite (Accept / Maybe / Decline) per party.
+  // - ace_scheduled: create one organizer-only tracking event on the
+  //   creator's primary calendar. The first Send Invite reuses that event
+  //   for that party; the second Send Invite creates a separate event with
+  //   the same Meet link, so client and candidate keep unique invite bodies.
   // - client_scheduled: the client is sending their own invite. We put a
   //   tracking event on the creator's calendar (no attendees, no Meet),
   //   and no emails go out.
@@ -506,12 +531,10 @@ export async function cancelInterview(interviewId: string): Promise<Result> {
     if (!existing) return { ok: false, error: "Interview not found." };
     if (existing.status === "cancelled") return { ok: true };
 
-    // Delete every Google event tied to this interview. After the
-    // native-invites refactor, ace_scheduled interviews keep one shared
-    // event (googleEventIdMine == googleEventIdClient/Candidate after
-    // each Send Invite), so dedupe here to avoid double DELETEs.
-    // Notify when ANY party was added (i.e. an invite went out) — Google
-    // emails the cancellation to the attendees in that case.
+    // Delete every Google event tied to this interview. Ace-scheduled
+    // interviews can have an organizer tracking event plus one event per
+    // party; dedupe so reusing the tracking event for the first party does
+    // not double-delete. Notify when any party invite went out.
     const allEventIds = [
       existing.googleEventIdMine,
       existing.googleEventIdClient,
@@ -615,11 +638,9 @@ export async function rescheduleInterview(input: RescheduleInterviewInput): Prom
 
     const durationMin = input.durationMin && input.durationMin > 0 ? input.durationMin : existing.durationMin;
 
-    // Push the new time to every related Google event. After the native-
-    // invites refactor, ace_scheduled interviews keep one shared event
-    // across the three googleEventId* columns, so dedupe to avoid
-    // PATCHing it more than once (each PATCH with sendUpdates=all would
-    // re-notify attendees). Notify when ANY party was invited.
+    // Push the new time to every related Google event. The first party can
+    // reuse googleEventIdMine, so dedupe before PATCHing to avoid duplicate
+    // attendee notifications.
     const allEventIds = [
       existing.googleEventIdMine,
       existing.googleEventIdClient,
@@ -761,9 +782,9 @@ export async function updateInterview(input: UpdateInterviewInput): Promise<Resu
   // canonical. Description tweaks happen via the dashboard's edit-and-
   // resend popup, which already round-trips through the live event.
 
-  // De-dupe the per-party event-id columns: ace_scheduled interviews
-  // share one event across all three columns after invite delivery, so
-  // PATCHing the same id three times would trigger three notifications.
+  // De-dupe the per-party event-id columns: the first invite can reuse the
+  // schedule-time tracking event, so PATCHing every column naively could
+  // notify the same attendees more than once.
   const allEventIds = [
     existing.googleEventIdMine,
     existing.googleEventIdClient,
@@ -803,10 +824,13 @@ export async function updateInterview(input: UpdateInterviewInput): Promise<Resu
         });
       }
 
-      // Compute new attendees and add them with sendUpdates="all" so
-      // only the newly-added attendees receive an invitation. Skip
-      // empty / malformed entries.
-      if (input.attendees && input.attendees.length > 0) {
+      // The edit modal's attendees are client-side interviewer contacts.
+      // With separate client/candidate invite events, only the client event
+      // should receive those attendees; the candidate event stays private.
+      const isClientInviteEvent = existing.googleEventIdClient
+        ? eventId === existing.googleEventIdClient
+        : eventId === existing.googleEventIdMine && !existing.googleEventIdCandidate;
+      if (isClientInviteEvent && input.attendees && input.attendees.length > 0) {
         const currentAttendees = await getCalendarEventAttendees({
           userId: user.id,
           eventId,
@@ -909,16 +933,12 @@ export async function updateInterview(input: UpdateInterviewInput): Promise<Resu
 
 // ---- Send native Google Calendar invite (replaces Gmail send) ----
 //
-// The "email composer" UI is really a calendar event editor in disguise:
-// the subject field writes to event.summary, the body field writes to
-// event.description, and sending PATCHes the event while adding the
-// attendee with sendUpdates="all" so Google ships the native ICS invite
-// (Accept / Maybe / Decline) instead of a free-form email.
-//
-// One event, two invites: when the client invite sends, both the
-// existing creator and the newly-added client get updated; when the
-// candidate invite sends, the client + candidate + creator all get the
-// final version. Google handles the diff.
+// The composer fields become a Google Calendar event title + description.
+// Ace-scheduled interviews intentionally keep two per-party events: one
+// client invite and one candidate invite. The first party reuses the
+// organizer-only tracking event created at schedule time; the second party
+// gets a new event with the same Meet attached. That keeps invite bodies
+// separate while avoiding a third duplicate event on Andrew's calendar.
 
 export type SendInvitePartyInput = {
   interviewId: string;
@@ -957,9 +977,10 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   if (!input.attendeeEmail.trim()) return { ok: false, error: "Attendee email required." };
   if (!input.subject.trim()) return { ok: false, error: "Event title required." };
   if (!input.bodyText.trim()) return { ok: false, error: "Event description required." };
+  const org = await getCurrentOrg();
 
-  const interview = await prisma.interview.findUnique({
-    where: { id: input.interviewId },
+  const interview = await prisma.interview.findFirst({
+    where: { id: input.interviewId, organizationId: org.id },
     select: {
       id: true,
       scheduledAt: true,
@@ -978,9 +999,6 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
     },
   });
   if (!interview) return { ok: false, error: "Interview not found." };
-  if (!interview.googleEventIdMine) {
-    return { ok: false, error: "No calendar event on this interview. Re-schedule to create one." };
-  }
 
   // Server-side safety net for [Job Description] — fetch the latest
   // JobOverride and re-resolve any leftover `[Job Description]` tokens
@@ -1024,43 +1042,127 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
     newAttendees.push(a);
   }
 
-  // First-send-only body bootstrap. The shared event is created with a
-  // neutral schedule-time summary/description (calendarSummary +
-  // calendarDescription in scheduleInterview), so the FIRST Send Invite
-  // is allowed to replace those with the composer's party-specific copy
-  // — there's no other attendee yet to be confused by it. Once either
-  // party is on the event, subsequent sends ONLY add the new attendee
-  // and leave the body untouched. Otherwise sending the candidate invite
-  // would clobber the client-facing description and Google would mail
-  // every prior attendee a "this event was updated" notification with
-  // the candidate-targeted text — that was the "Austin gets a confusing
-  // second invite" symptom.
-  const isFirstInvite =
-    !interview.googleEventIdClient && !interview.googleEventIdCandidate;
+  const existingPartyEventId =
+    input.party === "client" ? interview.googleEventIdClient : interview.googleEventIdCandidate;
+  const otherPartyEventId =
+    input.party === "client" ? interview.googleEventIdCandidate : interview.googleEventIdClient;
+  const sharedPartyEvent =
+    Boolean(existingPartyEventId && otherPartyEventId && existingPartyEventId === otherPartyEventId);
+  const partyEventId = sharedPartyEvent ? null : existingPartyEventId;
+  const title = resolvedSubject.trim();
+  const description = resolvedBodyText;
+  const googleMeetStored = isGoogleMeetLink(interview.meetLink);
+  const calendarLocation =
+    interview.location ||
+    (interview.type === "video" && interview.meetLink && !googleMeetStored
+      ? interview.meetLink
+      : undefined);
 
-  try {
-    await updateEventAsInvite({
-      userId: user.id,
-      eventId: interview.googleEventIdMine,
-      ...(isFirstInvite
-        ? { summary: resolvedSubject.trim(), description: resolvedBodyText }
-        : {}),
-      newAttendees,
+  let googleEventId: string;
+  let effectiveMeetLink = interview.meetLink ?? null;
+  let createdMeetLink: string | null = null;
+  let createdMeetingCode: string | null = null;
+
+  // If this party already has its own event, update that event in place.
+  // If no party invite has shipped yet, reuse the schedule-time tracking
+  // event so the first send does not create an extra duplicate block.
+  const reusableTrackingEventId =
+    !partyEventId && !otherPartyEventId ? interview.googleEventIdMine : null;
+  const eventToPatch = partyEventId ?? reusableTrackingEventId;
+
+  if (eventToPatch) {
+    try {
+      await updateEventAsInvite({
+        userId: user.id,
+        eventId: eventToPatch,
+        summary: title,
+        description,
+        newAttendees,
+      });
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? `Calendar invite failed: ${e.message}` : "Calendar invite failed.",
+      };
+    }
+    googleEventId = eventToPatch;
+    await updateLocalCalendarEventDetails({
+      organizationId: org.id,
+      googleEventId,
+      title,
+      description,
     });
-  } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof Error ? `Calendar invite failed: ${e.message}` : "Calendar invite failed.",
-    };
+  } else {
+    const sourceEventId = otherPartyEventId ?? interview.googleEventIdMine;
+    let attachConferenceData: Record<string, unknown> | undefined;
+    if (googleMeetStored && sourceEventId) {
+      try {
+        const src = await getEventConferenceData({ userId: user.id, eventId: sourceEventId });
+        if (src) attachConferenceData = src;
+      } catch {
+        // Fall through to the meeting-code attach path below.
+      }
+    }
+
+    const createMeet =
+      interview.type === "video" &&
+      !effectiveMeetLink &&
+      !attachConferenceData;
+    const attachMeetConferenceId =
+      interview.type === "video" && googleMeetStored && !attachConferenceData
+        ? interview.meetConferenceId ?? undefined
+        : undefined;
+    const attachMeetLink =
+      interview.type === "video" && googleMeetStored && !attachConferenceData
+        ? interview.meetLink ?? undefined
+        : undefined;
+
+    try {
+      const created = await createCalendarEvent({
+        userId: user.id,
+        summary: title,
+        description,
+        startISO: interview.scheduledAt.toISOString(),
+        durationMin: interview.durationMin,
+        attendees: newAttendees,
+        createMeet,
+        attachConferenceData,
+        attachMeetConferenceId,
+        attachMeetLink,
+        sendUpdates: true,
+        location: calendarLocation || undefined,
+        timeZone: input.timeZone,
+      });
+      googleEventId = created.eventId;
+      createdMeetLink = created.meetLink;
+      createdMeetingCode = created.meetingCode;
+      effectiveMeetLink = effectiveMeetLink ?? created.meetLink ?? attachMeetLink ?? null;
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? `Calendar invite failed: ${e.message}` : "Calendar invite failed.",
+      };
+    }
   }
 
-  // Mark this party as invited by mirroring the event id into the per-
-  // party column. Cancel/reschedule still iterate these columns and
-  // dedupe by event id so the same event is only deleted/updated once.
-  const updateData: { googleEventIdClient?: string; googleEventIdCandidate?: string } = {};
-  if (input.party === "client") updateData.googleEventIdClient = interview.googleEventIdMine;
-  else updateData.googleEventIdCandidate = interview.googleEventIdMine;
-  await prisma.interview.update({ where: { id: input.interviewId }, data: updateData });
+  const updateData: {
+    googleEventIdMine?: string;
+    googleEventIdClient?: string;
+    googleEventIdCandidate?: string;
+    meetLink?: string | null;
+    meetConferenceId?: string | null;
+  } = {};
+  if (!interview.googleEventIdMine) updateData.googleEventIdMine = googleEventId;
+  if (input.party === "client") updateData.googleEventIdClient = googleEventId;
+  else updateData.googleEventIdCandidate = googleEventId;
+  if (!interview.meetLink && createdMeetLink) {
+    updateData.meetLink = createdMeetLink;
+    updateData.meetConferenceId = createdMeetingCode;
+  }
+  await prisma.interview.updateMany({
+    where: { id: input.interviewId, organizationId: org.id },
+    data: updateData,
+  });
 
   const subjectId =
     interview.candidateRfId != null ? String(interview.candidateRfId) : interview.candidateId!;
@@ -1073,8 +1175,8 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
       interviewId: interview.id,
       attendeeEmail: input.attendeeEmail,
       eventSummary: input.subject,
-      googleEventId: interview.googleEventIdMine,
-      meetLink: interview.meetLink,
+      googleEventId,
+      meetLink: effectiveMeetLink,
       deliveredVia: "calendar",
     },
   });
@@ -1086,7 +1188,6 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   // "interview" (the invite hangs off an Interview row); metadata
   // carries the recipient + subject so per-user activity feeds can
   // render "invited {email} to {subject}" without a join.
-  const org = await getCurrentOrg();
   await logActivity({
     organizationId: org.id,
     userId: user.id,
@@ -1098,7 +1199,7 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
       party: input.party,
       recipientEmail: input.attendeeEmail,
       subject: input.subject,
-      googleEventId: interview.googleEventIdMine,
+      googleEventId,
       deliveredVia: "calendar",
     },
   });
@@ -1106,7 +1207,7 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   revalidateForCandidate({ candidateRfId: interview.candidateRfId, candidateId: interview.candidateId });
   return {
     ok: true,
-    value: { googleEventId: interview.googleEventIdMine, meetLink: interview.meetLink ?? null },
+    value: { googleEventId, meetLink: effectiveMeetLink },
   };
 }
 

@@ -224,7 +224,7 @@ function TimeSelect({
                   className={cn(
                     "block w-full px-3 py-1.5 text-left text-sm transition",
                     isSelected
-                      ? "bg-brand-tint text-court-fg"
+                      ? "bg-court-brand-tint text-court-brand-dark"
                       : "text-court-fg hover:bg-court-surface-subtle",
                   )}
                 >

@@ -370,11 +370,13 @@ export async function updateInterviewInvite(
 
   const existingEventId =
     input.party === "client" ? interview.googleEventIdClient : interview.googleEventIdCandidate;
+  const otherEventId =
+    input.party === "client" ? interview.googleEventIdCandidate : interview.googleEventIdClient;
 
   // No event yet for this party — fall through to the canonical create
   // path so we get the same Meet attach + per-party event id persistence
   // the candidate-page flow uses.
-  if (!existingEventId) {
+  if (!existingEventId || existingEventId === otherEventId) {
     return sendInterviewInvite({
       interviewId: input.interviewId,
       party: input.party,

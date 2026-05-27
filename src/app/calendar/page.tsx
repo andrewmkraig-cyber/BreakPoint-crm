@@ -104,7 +104,7 @@ export default async function CalendarPage() {
   const now = new Date();
   const windowMs = 90 * 24 * 60 * 60 * 1000;
 
-  const [rows, memberships, reminderRows, eventLinkedReminders] = await Promise.all([
+  const [rowsRaw, memberships, reminderRows, eventLinkedReminders, cancelledInterviews] = await Promise.all([
     prisma.calendarEvent.findMany({
       where: {
         organizationId: org.id,
@@ -155,7 +155,33 @@ export default async function CalendarPage() {
       },
       select: { calendarEventId: true },
     }),
+    prisma.interview.findMany({
+      where: {
+        organizationId: org.id,
+        status: "cancelled",
+        scheduledAt: {
+          gte: new Date(now.getTime() - windowMs),
+          lte: new Date(now.getTime() + windowMs),
+        },
+        OR: [
+          { googleEventIdMine: { not: null } },
+          { googleEventIdClient: { not: null } },
+          { googleEventIdCandidate: { not: null } },
+        ],
+      },
+      select: {
+        googleEventIdMine: true,
+        googleEventIdClient: true,
+        googleEventIdCandidate: true,
+      },
+    }),
   ]);
+  const cancelledGoogleEventIds = new Set(
+    cancelledInterviews
+      .flatMap((iv) => [iv.googleEventIdMine, iv.googleEventIdClient, iv.googleEventIdCandidate])
+      .filter((id): id is string => Boolean(id)),
+  );
+  const rows = rowsRaw.filter((row) => !cancelledGoogleEventIds.has(row.googleEventId));
 
   const eventsWithReminders = new Set(
     eventLinkedReminders

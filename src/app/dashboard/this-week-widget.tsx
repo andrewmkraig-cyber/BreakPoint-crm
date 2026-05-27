@@ -130,7 +130,7 @@ export async function ThisWeekWidget({
   // Saturday 00:00 ET - exclusive end of the Mon-Fri window.
   const weekEnd = new Date(weekStart.getTime() + 5 * 24 * 60 * 60 * 1000);
 
-  const [rowsAll, eventLinkedReminders, standaloneReminders] = await Promise.all([
+  const [rowsAll, eventLinkedReminders, standaloneReminders, cancelledInterviews] = await Promise.all([
     prisma.calendarEvent.findMany({
       where: {
         organizationId: orgId,
@@ -163,7 +163,30 @@ export async function ThisWeekWidget({
       orderBy: { reminderAt: "asc" },
       select: { id: true, title: true, reminderAt: true },
     }),
+    prisma.interview.findMany({
+      where: {
+        organizationId: orgId,
+        status: "cancelled",
+        scheduledAt: { gte: weekStart, lt: weekEnd },
+        OR: [
+          { googleEventIdMine: { not: null } },
+          { googleEventIdClient: { not: null } },
+          { googleEventIdCandidate: { not: null } },
+        ],
+      },
+      select: {
+        googleEventIdMine: true,
+        googleEventIdClient: true,
+        googleEventIdCandidate: true,
+      },
+    }),
   ]);
+  const cancelledGoogleEventIds = new Set(
+    cancelledInterviews
+      .flatMap((iv) => [iv.googleEventIdMine, iv.googleEventIdClient, iv.googleEventIdCandidate])
+      .filter((id): id is string => Boolean(id)),
+  );
+  const activeRowsAll = rowsAll.filter((row) => !cancelledGoogleEventIds.has(row.googleEventId));
   const eventsWithReminders = new Set(
     eventLinkedReminders
       .map((r) => r.calendarEventId)
@@ -173,7 +196,7 @@ export async function ThisWeekWidget({
   // Clubhouse widget is Andrew's view - strip any row whose owner key
   // resolves to anything other than "ak". Austin's events stay on
   // /calendar (team view) but never appear on this dashboard tile.
-  const akRows = rowsAll.filter(
+  const akRows = activeRowsAll.filter(
     (r) =>
       ownerKeyForCalendar(
         { calendarId: r.calendarId, calendarName: r.calendarName },

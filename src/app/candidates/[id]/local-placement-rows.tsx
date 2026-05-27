@@ -493,7 +493,13 @@ export function LocalPlacementRows({
               }
             });
           }}
-          onSent={() => setInviteFlow({ ...inviteFlow, step: "client" })}
+          onSent={(meetLink) =>
+            setInviteFlow({
+              ...inviteFlow,
+              meetLink: meetLink ?? inviteFlow.meetLink,
+              step: "client",
+            })
+          }
         />
       )}
       {inviteFlow && inviteFlow.step === "client" && (
@@ -1055,6 +1061,9 @@ function ScheduleDialog({
       title="Schedule interview"
       subtitle={`${job.jobTitle} · ${job.clientName}`}
       onClose={onClose}
+      dismissOnOverlay={false}
+      draggable
+      resizable
       footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Schedule" />}
     >
       <ScheduleFields
@@ -1699,6 +1708,9 @@ function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; o
     <ModalShell
       title="Reschedule interview"
       onClose={onClose}
+      dismissOnOverlay={false}
+      draggable
+      resizable
       footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Reschedule" />}
     >
       <div className="flex flex-wrap items-end gap-3">
@@ -2150,7 +2162,7 @@ function LocalClientInviteComposer({
   aceTeam: AceTeamContact[];
   onClose: () => void;
   onBack?: () => void;
-  onSent: () => void;
+  onSent: (meetLink?: string | null) => void;
 }) {
   void candidateEmail;
   const values = buildValues({ invite, candidate, recruiter });
@@ -2221,6 +2233,7 @@ function LocalClientInviteComposer({
           bccEmails: draft.bcc,
           subject: draft.subject,
           bodyText: draft.body,
+          timeZone: invite.timeZone,
         });
         if (!result.ok) {
           toast.error("Client invite failed", { description: result.error });
@@ -2229,7 +2242,7 @@ function LocalClientInviteComposer({
         toast.success("Client calendar invite sent", {
           description: "They'll see Accept / Maybe / Decline in their inbox.",
         });
-        onSent();
+        onSent(result.value.meetLink);
       }}
     />
   );
@@ -2262,7 +2275,7 @@ function LocalCandidateInviteComposer({
   aceTeam: AceTeamContact[];
   onClose: () => void;
   onBack?: () => void;
-  onSent: () => void;
+  onSent: (meetLink?: string | null) => void;
 }) {
   void candidateName;
   const values = buildValues({ invite, candidate, recruiter });
@@ -2329,6 +2342,7 @@ function LocalCandidateInviteComposer({
           bccEmails: draft.bcc,
           subject: draft.subject,
           bodyText: draft.body,
+          timeZone: invite.timeZone,
         });
         if (!result.ok) {
           toast.error("Candidate invite failed", { description: result.error });
@@ -2337,7 +2351,7 @@ function LocalCandidateInviteComposer({
         toast.success("Candidate calendar invite sent", {
           description: "They'll see Accept / Maybe / Decline in their inbox.",
         });
-        onSent();
+        onSent(result.value.meetLink);
       }}
     />
   );

@@ -821,7 +821,13 @@ export function PlacementActions({
               }
             });
           }}
-          onSent={() => setInviteFlow({ ...inviteFlow, step: "client" })}
+          onSent={(meetLink) =>
+            setInviteFlow({
+              ...inviteFlow,
+              meetLink: meetLink ?? inviteFlow.meetLink,
+              step: "client",
+            })
+          }
         />
       )}
       {inviteFlow && inviteFlow.step === "client" && (
@@ -2632,6 +2638,9 @@ function ScheduleInterviewDialog({
       title="Schedule interview"
       subtitle={`${job.jobTitle} · ${job.clientName}`}
       onClose={onClose}
+      dismissOnOverlay={false}
+      draggable
+      resizable
       // Pin Cancel/Schedule to a flex-none footer slot so they remain
       // visible on short laptop viewports — inside the body they used
       // to scroll out of view alongside the form fields. Mirrors
@@ -2844,6 +2853,9 @@ function ClientInviteDialog({
       title="Client sending invite"
       subtitle={`${job.jobTitle} · ${job.clientName}`}
       onClose={onClose}
+      dismissOnOverlay={false}
+      draggable
+      resizable
     >
       <p className="mb-3 text-xs text-court-fg-muted">
         Use this when the client is scheduling the interview themselves and will send the invite. We&apos;ll
@@ -3015,7 +3027,15 @@ function EditInterviewDialog({
   }
 
   return (
-    <Modal title="Edit interview" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose} wide>
+    <Modal
+      title="Edit interview"
+      subtitle={`${job.jobTitle} · ${job.clientName}`}
+      onClose={onClose}
+      wide
+      dismissOnOverlay={false}
+      draggable
+      resizable
+    >
       <div className="grid grid-cols-1 gap-3">
         {/* Same single-row layout as the Schedule dialog: date+time |
             timezone | duration. Keeps the two surfaces visually
@@ -4454,7 +4474,7 @@ function ClientInviteComposer({
   onBack?: () => void;
   // Fired only after Send Invite succeeded — the parent advances to
   // the next step (or closes the whole flow on the final composer).
-  onSent: () => void;
+  onSent: (meetLink?: string | null) => void;
 }) {
   const candidateFullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ");
   const values = buildInterviewMergeValues({ invite, candidate, recruiter });
@@ -4522,7 +4542,7 @@ function ClientInviteComposer({
         toast.success("Client calendar invite sent", {
           description: "They'll see Accept / Maybe / Decline in their inbox.",
         });
-        onSent();
+        onSent(result.value.meetLink);
       }}
     />
   );
@@ -4552,7 +4572,7 @@ function CandidateInviteComposer({
   onBack?: () => void;
   // Fired only after Send Invite succeeded — the parent advances to
   // the Client composer.
-  onSent: () => void;
+  onSent: (meetLink?: string | null) => void;
 }) {
   const candidateFullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ");
   const candidateEmail = candidate.email;
@@ -4618,7 +4638,7 @@ function CandidateInviteComposer({
         toast.success("Candidate calendar invite sent", {
           description: "They'll see Accept / Maybe / Decline in their inbox.",
         });
-        onSent();
+        onSent(result.value.meetLink);
       }}
     />
   );

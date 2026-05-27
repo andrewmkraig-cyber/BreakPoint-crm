@@ -363,19 +363,11 @@ export async function updateCalendarEvent(params: {
   }
 }
 
-// Used by the interview invite flow: APPEND one or more new attendees
-// to the shared event with sendUpdates="all" so Google emails the
-// native invite (Accept / Maybe / Decline) only to the newly-added
-// parties — existing attendees aren't re-notified because their
-// attendee record is unchanged.
-//
-// summary + description are OPTIONAL and default to "leave as-is".
-// Pass them only when bootstrapping the event's neutral body on the
-// first send; subsequent sends MUST omit them or Google will mail an
-// "event updated" notification to every prior attendee carrying the
-// new party's composer text (e.g. the candidate-facing description
-// reaching the client). The interview-actions layer enforces this
-// "first send only" rule.
+// Used by the interview invite flow to update a single per-party event:
+// append one or more attendees, optionally replace summary/description,
+// and let Google send the native invite/update with RSVP buttons.
+// Client and candidate invite events are intentionally separate; callers
+// choose which event id to patch.
 export type UpdateEventAsInviteInput = {
   userId: string;
   eventId: string;
