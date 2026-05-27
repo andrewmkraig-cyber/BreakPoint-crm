@@ -583,14 +583,34 @@ export async function buildCandidateContext(
   if (recruiterNotes.length === 0) {
     lines.push("  (none on file)");
   } else {
+    // Surfaced verbatim — pasted email threads, meeting recaps, and
+    // outreach drafts routinely run multiple thousands of chars, and
+    // truncating mid-sentence makes "read me her notes" answers
+    // useless (Claude literally reports the cut: "The note cuts off
+    // there with M..."). Bound by a total-block char budget rather
+    // than per-note so one long note can't silently push later notes
+    // off the prompt; the upstream `take: 20` row limit is the
+    // secondary safety net. 50k chars ≈ 12.5k tokens, well under the
+    // 200k context window for either Sonnet or Opus.
+    const NOTES_TOTAL_CHAR_BUDGET = 50_000;
+    let notesCharsUsed = 0;
+    let notesDropped = 0;
     for (const n of recruiterNotes) {
+      if (notesCharsUsed >= NOTES_TOTAL_CHAR_BUDGET) {
+        notesDropped += 1;
+        continue;
+      }
       const when = n.updatedAt.toLocaleDateString();
       const pinned = n.pinned ? "pinned · " : "";
       const titlePart = n.title?.trim() ? ` - ${n.title.trim()}` : "";
       lines.push(`  [${pinned}${when}]${titlePart}`);
-      const capped =
-        n.body.length > 800 ? `${n.body.slice(0, 800)}…` : n.body;
-      for (const nLine of capped.split("\n")) lines.push(`    ${nLine}`);
+      for (const nLine of n.body.split("\n")) lines.push(`    ${nLine}`);
+      notesCharsUsed += n.body.length;
+    }
+    if (notesDropped > 0) {
+      lines.push(
+        `  (${notesDropped} older note${notesDropped === 1 ? "" : "s"} omitted to fit prompt budget; ask for a specific date if you need them)`,
+      );
     }
   }
   lines.push("");
