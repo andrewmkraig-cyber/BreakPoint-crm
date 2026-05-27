@@ -358,6 +358,27 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
         // recruiter picked). The composer falls back to its own default
         // selection when this is null.
         defaultSendAsEmail: selectedFromAlias,
+        // Ace 67.18: flip DRAFT → SENT in Neon when the recruiter
+        // actually clicks Send inside the floating composer. Before
+        // this, the composer sent the Gmail message but never touched
+        // the Invoice row, so the Placements ledger stayed on
+        // "Invoice Draft" forever even after the email was out the
+        // door. MailComposer fires this callback only after Gmail
+        // confirms the send (Cancel/X close path never reaches here),
+        // so an aborted compose still leaves the invoice as DRAFT for
+        // a follow-up Send. markInvoiceSentAction is the same action
+        // the "Mark as sent" button uses — it handles the DB flip plus
+        // revalidateInvoiceSurfaces, which already refreshes
+        // /pipeline, /dashboard, /finances, /candidates/[id],
+        // /clients/[id], and the invoice detail page in lockstep.
+        // props.id is guaranteed non-null here by the early return at
+        // line 274 above.
+        onSent: () => {
+          void markInvoiceSentAction(props.id!).then((r) => {
+            if (r.ok) router.refresh();
+            else setError(r.error);
+          });
+        },
       });
     } finally {
       setDraftingEmail(false);

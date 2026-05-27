@@ -1,8 +1,32 @@
 # ACE_STATE.md
-Last updated: 2026-05-27 · Ace 67.17
-Current Version: Ace 67.17
+Last updated: 2026-05-27 · Ace 67.18
+Current Version: Ace 67.18
 Last Shipped: 2026-05-27
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.18 (2026-05-27)
+
+Batch 3 Item B regression closed — Placements ledger flipped from "Invoice Draft" to "Invoice Sent" after the recruiter actually clicks Send inside the floating invoice composer.
+
+**Root cause (caught on a Step-0 trace, no code changed until Andrew confirmed):** The invoice page has two distinct "Send" paths. `handleSend` (wired to the "Mark as sent" button at `invoice-detail.tsx:524`) calls `markInvoiceSentAction` and flips DRAFT → SENT in Neon. `handleEmailDraft` (wired to the "Draft Email" button AND auto-fired by the Confirm-Start `?compose=1` hand-off) opens the floating Gmail composer via `composer.open(...)` but never touched the Invoice row. The MailComposer's send handler emitted email through Gmail and called the composer's `onSent` callback — but `handleEmailDraft` never passed an `onSent`. Result: the email went out, the Invoice stayed `DRAFT` in Neon, and the Placements ledger correctly displayed "Invoice Draft" against that unchanged DB state. Not a deriveBillingStatus bug, not a revalidatePath bug, not a denormalized-column bug — a missing callback wire on a single composer.open call.
+
+- **`handleEmailDraft` in `src/app/invoices/[id]/invoice-detail.tsx` now passes `onSent` to `composer.open({...})`.** The callback awaits `markInvoiceSentAction(props.id!)` → `router.refresh()` on success or `setError(r.error)` on failure. `props.id` is non-null at the call site (guarded by the early-return at line 274). The composer-manager already wires `onSent` through to the MailComposer (`src/lib/composer-manager.tsx:69, 120`), and the MailComposer only fires it after Gmail confirms the send — so a Cancel/X close leaves the invoice as DRAFT for a follow-up Send.
+
+- **`markInvoiceSentAction` is the same action `handleSend` uses**, so the DB flip semantics are identical (DRAFT → SENT, stamps `sentAt`, clears `isFuture`), and `revalidateInvoiceSurfaces` (added Ace 67.14) already refreshes `/invoices`, `/invoices/[id]`, `/dashboard`, `/pipeline`, `/finances`, and the specific `/candidates/[id]` + `/clients/[id]` routes the invoice is linked to — no parallel revalidation list to maintain.
+
+Touches (1 source file): `src/app/invoices/[id]/invoice-detail.tsx` — six new lines inside an existing `composer.open(...)` call.
+
+Build clean (`npm run build` exits 0; only the two pre-existing react-hooks/exhaustive-deps warnings, unrelated).
+
+Andrew browser-verify (3 steps, after deploy):
+1. Confirm Start a fresh placement → invoice composer auto-pops → click Send → toast confirms email sent → navigate to the dashboard placements ledger → row reads **"Invoice Sent"** (not "Invoice Draft").
+2. Same on the `/pipeline` Hired tab → invoice pill flips to "Sent" without a manual refresh.
+3. Open a draft invoice → click the "Draft Email" button → cancel out of the composer with X → return to the placements ledger → row still reads "Invoice Draft" (no premature flip on aborted compose).
+
+Regression check (per Andrew's brief, verified in code):
+- "Mark as sent" button path (`handleSend`) unchanged — still calls `markInvoiceSentAction` directly, still works independently of the composer path.
+- Composer closed without sending (X / Cancel) → `onSent` never fires → Invoice stays DRAFT in Neon → ledger keeps reading "Invoice Draft" as intended.
+- Sending the email via the composer → DRAFT → SENT → ledger reflects "Invoice Sent" on next render across every status-bearing surface (covered by the existing `revalidateInvoiceSurfaces` helper from 67.14).
 
 ## What Shipped in Ace 67.17 (2026-05-27)
 
