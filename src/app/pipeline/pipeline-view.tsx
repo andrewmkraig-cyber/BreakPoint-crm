@@ -7,7 +7,6 @@ import { Bookmark, CalendarClock, CheckCircle2, ChevronDown, ChevronUp, DollarSi
 import { toast } from "sonner";
 import { Pagination } from "@/components/pagination";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
-import { StageBadge } from "@/components/stage-badge";
 import { StageAgePill } from "@/components/ui/stage-age-pill";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn, formatDate } from "@/lib/utils";
@@ -525,7 +524,6 @@ export function PipelineView({ rows, appliedRows, keptRows, total, page, totalPa
                     )}
                     <DataTableHeaderCell>Candidate</DataTableHeaderCell>
                     <DataTableHeaderCell>Job</DataTableHeaderCell>
-                    <DataTableHeaderCell>Client</DataTableHeaderCell>
                     {stage === "pending_start" ? (
                       <>
                         <DataTableHeaderCell align="center">Start Date</DataTableHeaderCell>
@@ -542,7 +540,8 @@ export function PipelineView({ rows, appliedRows, keptRows, total, page, totalPa
                       </>
                     ) : (
                       <>
-                        <DataTableHeaderCell align="center">Stage</DataTableHeaderCell>
+                        <DataTableHeaderCell align="center">Offer Amount</DataTableHeaderCell>
+                        <DataTableHeaderCell align="center">Placement Fee</DataTableHeaderCell>
                         <DataTableHeaderCell align="center">Last Action</DataTableHeaderCell>
                         <DataTableHeaderCell align="center">Days in Stage</DataTableHeaderCell>
                         <DataTableHeaderCell align="right" />
@@ -555,7 +554,7 @@ export function PipelineView({ rows, appliedRows, keptRows, total, page, totalPa
                     <tr>
                       <td
                         colSpan={
-                          (stage === "hired" ? 8 : stage === "pending_start" ? 6 : 7) +
+                          (stage === "hired" ? 7 : stage === "pending_start" ? 5 : 7) +
                           (showCheckboxCol ? 1 : 0)
                         }
                         className="px-4 py-12 text-center text-sm text-court-fg-muted"
@@ -630,27 +629,31 @@ export function PipelineView({ rows, appliedRows, keptRows, total, page, totalPa
                         </div>
                       </td>
                       <td className="px-4 py-3 align-top">
-                        <Link
-                          href={`/jobs/${r.jobId}`}
-                          className="text-[13px] font-normal text-court-fg hover:text-court-accent-dark"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {r.jobTitle || "—"}
-                        </Link>
-                        {r.bucket === "interviewing" && r.nextInterview && (
+                        <div className="min-w-0">
                           <Link
-                            href={`/candidates/${r.candidateId}?edit=interview&interviewId=${encodeURIComponent(r.nextInterview.id)}`}
+                            href={`/jobs/${r.jobId}`}
+                            className="font-medium text-court-fg hover:text-court-accent-dark"
                             onClick={(e) => e.stopPropagation()}
-                            title="Edit interview"
-                            aria-label="Edit interview"
-                            className="mt-0.5 inline-flex items-center gap-1 rounded text-[11px] text-court-fg-muted underline-offset-2 transition hover:text-court-fg hover:underline"
                           >
-                            <CalendarClock className="h-3 w-3" />
-                            Next: {formatInterviewWhen(r.nextInterview.scheduledAt)} · {formatInterviewTypeShort(r.nextInterview.type)}
+                            {r.jobTitle || "—"}
                           </Link>
-                        )}
+                          {r.clientName && (
+                            <div className="truncate text-xs text-court-fg-muted">{r.clientName}</div>
+                          )}
+                          {r.bucket === "interviewing" && r.nextInterview && (
+                            <Link
+                              href={`/candidates/${r.candidateId}?edit=interview&interviewId=${encodeURIComponent(r.nextInterview.id)}`}
+                              onClick={(e) => e.stopPropagation()}
+                              title="Edit interview"
+                              aria-label="Edit interview"
+                              className="mt-0.5 inline-flex items-center gap-1 rounded text-[11px] text-court-fg-muted underline-offset-2 transition hover:text-court-fg hover:underline"
+                            >
+                              <CalendarClock className="h-3 w-3" />
+                              Next: {formatInterviewWhen(r.nextInterview.scheduledAt)} · {formatInterviewTypeShort(r.nextInterview.type)}
+                            </Link>
+                          )}
+                        </div>
                       </td>
-                      <td className="px-4 py-3 align-top text-court-fg-muted">{r.clientName || "—"}</td>
 
                       {stage === "pending_start" ? (
                         <PendingStartCells row={r} />
@@ -658,8 +661,14 @@ export function PipelineView({ rows, appliedRows, keptRows, total, page, totalPa
                         <HiredCells row={r} />
                       ) : (
                         <>
-                          <td className="px-4 py-3 align-top text-center">
-                            <StageChip stageName={r.stageName} bucket={r.bucket} placement={r.placement} />
+                          <td className="px-4 py-3 align-top text-center text-sm text-court-fg">
+                            {formatMoney(r.placement?.acceptedSalary ?? null, r.placement?.acceptedCurrency)}
+                          </td>
+                          <td className="px-4 py-3 align-top text-center text-sm text-court-fg">
+                            {formatMoney(r.placement?.feeTotal ?? null, r.placement?.acceptedCurrency)}
+                            {r.placement?.feePercentage != null && (
+                              <span className="ml-1 text-[11px] text-court-fg-muted">({r.placement.feePercentage}%)</span>
+                            )}
                           </td>
                           <td className="px-4 py-3 align-top text-center text-xs text-court-fg-muted">
                             {formatDate(r.lastActionAt)}
@@ -959,17 +968,6 @@ function StageTabs({
       }))}
     />
   );
-}
-
-function StageChip({
-  stageName,
-  bucket,
-}: {
-  stageName: string;
-  bucket: keyof typeof PIPELINE_LABELS;
-  placement?: PlacementDetails | null;
-}) {
-  return <StageBadge bucket={bucket} label={stageName || PIPELINE_LABELS[bucket]} />;
 }
 
 // Inline Reject button for the per-row Action cell. stopPropagation on
