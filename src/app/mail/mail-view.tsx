@@ -21,6 +21,7 @@ import {
   Loader2,
   Mail as MailIcon,
   Menu,
+  MoreHorizontal,
   MoreVertical,
   Pencil,
   Plus,
@@ -1501,8 +1502,13 @@ function ThreadRow({
       }}
       onDragEnd={() => setDragging(false)}
       className={
+        // Selected row gets a soft green active background via the Court
+        // brand-tint token (the same green-tint used on the unread
+        // counter pill) so the active thread reads clearly without a
+        // hardcoded hex. Hover state drops to a neutral surface-subtle
+        // so it visually contrasts with selection instead of competing.
         "group relative flex items-stretch transition " +
-        (selected ? "bg-court-accent-tint/60" : "hover:bg-court-accent-tint/30") +
+        (selected ? "bg-court-brand-tint" : "hover:bg-court-surface-subtle") +
         (dragging ? " opacity-50" : "")
       }
     >
@@ -1808,6 +1814,167 @@ export function MoveToMenu({
 // each older MessageBlock are now the dedicated path for targeting a
 // specific message in a long thread; the latest message is always
 // addressed by the toolbar's plain Reply button.)
+
+// 2026-05-27 reading-pane redesign: a single overflow menu replaces
+// the four visible Archive / Mark Unread / Move To / Pop Out buttons
+// that used to sit beside Reply / Reply All / Forward. Same actions,
+// same handlers — just folded behind a single MoreHorizontal trigger
+// so the top row reads as one clean line of primary actions.
+//
+// Move-to-label expands inline within the same dropdown (chevron
+// reveals the label list) rather than opening a nested popover, so a
+// recruiter labeling threads from this menu stays in one click-target.
+// Click-outside the wrapper closes the menu and resets the label
+// expansion. Pop Out is suppressed entirely when isFloating (the
+// floating window doesn't need to spawn another copy of itself).
+function ThreadActionsMenu({
+  archiving,
+  markingUnread,
+  moving,
+  labels,
+  isFloating,
+  onArchive,
+  onMarkUnread,
+  onMove,
+  onCreateAndApplyLabel,
+  onPopOut,
+}: {
+  archiving: boolean;
+  markingUnread: boolean;
+  moving: boolean;
+  labels: Array<{ id: string; name: string }> | null;
+  isFloating: boolean;
+  onArchive: () => void;
+  onMarkUnread: () => void;
+  onMove: (labelId: string, labelName: string) => void;
+  onCreateAndApplyLabel?: (name: string) => void;
+  onPopOut?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [showLabels, setShowLabels] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (!wrapRef.current?.contains(e.target as Node)) {
+        setOpen(false);
+        setShowLabels(false);
+      }
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  const hasLabels = !!labels && labels.length > 0;
+  return (
+    <div className="relative" ref={wrapRef}>
+      <button
+        type="button"
+        onClick={() => {
+          setOpen((v) => !v);
+          setShowLabels(false);
+        }}
+        aria-label="More thread actions"
+        title="More actions"
+        className="inline-flex items-center justify-center rounded-md border border-court-border bg-court-surface p-1 text-court-fg-muted shadow-sm transition hover:text-court-fg"
+      >
+        <MoreHorizontal className="h-4 w-4" />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-md border border-court-border bg-court-surface shadow-lg"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onArchive();
+            }}
+            disabled={archiving}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-court-fg transition hover:bg-court-accent-tint/40 disabled:opacity-60"
+          >
+            {archiving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Archive className="h-3.5 w-3.5" />
+            )}
+            Archive
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onMarkUnread();
+            }}
+            disabled={markingUnread}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-court-fg transition hover:bg-court-accent-tint/40 disabled:opacity-60"
+          >
+            {markingUnread ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <MailIcon className="h-3.5 w-3.5" />
+            )}
+            Mark unread
+          </button>
+          {(hasLabels || onCreateAndApplyLabel) && (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowLabels((v) => !v)}
+                disabled={moving}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-court-fg transition hover:bg-court-accent-tint/40 disabled:opacity-60"
+              >
+                {moving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <FolderInput className="h-3.5 w-3.5" />
+                )}
+                <span className="flex-1">Move to label</span>
+                <ChevronDown
+                  className={
+                    "h-3 w-3 transition " +
+                    (showLabels ? "rotate-180" : "")
+                  }
+                />
+              </button>
+              {showLabels && hasLabels && (
+                <div className="max-h-56 overflow-y-auto border-t border-court-border">
+                  {labels!.map((l) => (
+                    <button
+                      key={l.id}
+                      type="button"
+                      onClick={() => {
+                        setOpen(false);
+                        setShowLabels(false);
+                        onMove(l.id, l.name);
+                      }}
+                      className="block w-full truncate px-3 py-1.5 pl-9 text-left text-xs text-court-fg hover:bg-court-accent-tint/40"
+                    >
+                      {l.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+          {!isFloating && onPopOut && (
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onPopOut();
+              }}
+              className="hidden w-full items-center gap-2 border-t border-court-border px-3 py-2 text-left text-xs text-court-fg transition hover:bg-court-accent-tint/40 md:flex"
+            >
+              <SquareArrowOutUpRight className="h-3.5 w-3.5" />
+              Pop out
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Shared interface so ThreadDetail can be rendered both inline in
 // MailView and inside the popped-out FloatingThreadWindow with the
@@ -2236,29 +2403,20 @@ export function ThreadDetail({
       }
     >
       {renderOwnHeader && (
-      <div
-        className={
-          "border-b border-court-border px-5 py-3 " +
-          (isFloating ? "flex items-center justify-end gap-2" : "flex flex-col gap-2")
-        }
-      >
+      // Reading-pane top row (2026-05-27 redesign): subject large+bold
+      // on the left, Reply / Reply All / Forward / 3-dot overflow on
+      // the right — all on ONE line. Archive / Mark Unread / Move To /
+      // Pop Out collapsed into the 3-dot menu so the top row reads as a
+      // clean primary-action bar.
+      <div className="flex items-center justify-between gap-3 border-b border-court-border px-5 py-3">
         {!isFloating && (
-          <div className="min-w-0">
-            <h2 className="font-serif text-base font-semibold leading-tight text-court-fg break-words">
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate font-serif text-lg font-semibold leading-tight text-court-fg">
               {detail.subject}
             </h2>
-            <p className="mt-0.5 text-xs text-court-fg-muted">
-              {detail.messages.length}{" "}
-              {detail.messages.length === 1 ? "message" : "messages"}
-            </p>
           </div>
         )}
-        <div
-          className={
-            "flex items-center gap-2 " +
-            (isFloating ? "shrink-0" : "flex-wrap justify-end")
-          }
-        >
+        <div className="flex shrink-0 items-center gap-1.5">
           {/* "Reply to: latest" picker removed — the per-message
               Reply / Reply All / Forward buttons rendered inside each
               MessageBlock are the dedicated path for replying to a
@@ -2295,59 +2453,29 @@ export function ThreadDetail({
           >
             <Forward className="h-3 w-3" /> Forward
           </button>
-          <button
-            type="button"
-            onClick={onArchive}
-            disabled={archiving}
-            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
-          >
-            {archiving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
-            Archive
-          </button>
-          <button
-            type="button"
-            onClick={onMarkUnread}
-            disabled={markingUnread}
-            title="Mark this thread unread"
-            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
-          >
-            {markingUnread ? <Loader2 className="h-3 w-3 animate-spin" /> : <MailIcon className="h-3 w-3" />}
-            Mark Unread
-          </button>
-          <MoveToMenu
+          <ThreadActionsMenu
+            archiving={archiving}
+            markingUnread={markingUnread}
+            moving={moving}
             labels={labels}
-            busy={moving}
-            onPick={onMove}
-            onCreateAndApply={onCreateAndApplyLabel}
-            buttonContent={
-              <>
-                {moving ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <FolderInput className="h-3 w-3" />
-                )}
-                Move
-              </>
+            isFloating={isFloating}
+            onArchive={onArchive}
+            onMarkUnread={onMarkUnread}
+            onMove={onMove}
+            onCreateAndApplyLabel={onCreateAndApplyLabel}
+            onPopOut={
+              !isFloating
+                ? () =>
+                    floatingThread.open(detail.id, {
+                      labels,
+                      templates,
+                      currentUserEmail,
+                      currentUserFirstName,
+                      currentUserFullName,
+                    })
+                : undefined
             }
           />
-          {!isFloating && (
-            <button
-              type="button"
-              onClick={() =>
-                floatingThread.open(detail.id, {
-                  labels,
-                  templates,
-                  currentUserEmail,
-                  currentUserFirstName,
-                  currentUserFullName,
-                })
-              }
-              aria-label="Pop out thread into a floating window"
-              className="hidden md:flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
-            >
-              <SquareArrowOutUpRight className="h-3 w-3" /> Pop out
-            </button>
-          )}
         </div>
       </div>
       )}

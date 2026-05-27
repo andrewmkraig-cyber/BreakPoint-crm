@@ -1,10 +1,24 @@
 # ACE_STATE.md
-Last updated: 2026-05-27 · Ace 67.4
+Last updated: 2026-05-27 · Ace 67.5
 
 ## Current Status
-Current Version: Ace 67.4
+Current Version: Ace 67.5
 Last Shipped: 2026-05-27
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.5 (2026-05-27)
+
+Mail reading-pane redesign — Andrew's screenshot-driven pass on the right-pane chrome to make the conversation header read like a native mail client.
+
+- **Subject + actions on one row.** `ThreadDetail`'s top bar now puts the subject (large, bold, `font-serif text-lg`) on the left and Reply / Reply All / Forward + a single overflow button on the right, all on the same line. The old "subject + message-count stacked over a wrapped row of six buttons" layout is gone.
+- **3-dot overflow menu replaces four visible buttons.** Archive, Mark Unread, Move to label, and Pop out collapsed into a new `ThreadActionsMenu` component behind a `MoreHorizontal` trigger. Move-to-label expands inline within the same dropdown via a chevron toggle so labeling stays one click-target.
+- **Message header is now an avatar card.** `MessageBlock`'s expanded header is wrapped in a rounded card (border + subtle shadow) above the email body. Layout: avatar/initials circle (Court brand-tint background) on the left, sender name bold + sender email muted directly underneath, timestamp far right. New `SenderAvatar` component derives initials from `fromName` first, then the local part of `fromEmail`.
+- **To/Cc metadata row below a divider.** The card carries a separator under the avatar row and a metadata row showing `To <addr>` and `Cc <addr>` with bold field labels. Sender email + To + Cc are all visible without any hover or expand interaction.
+- **Thread row active state is soft green.** The center-column selected row now reads `bg-court-brand-tint` (the same brand-tint token used on the unread counter pill) instead of `bg-court-accent-tint/60`. Hover dropped to `bg-court-surface-subtle` so it visually contrasts with selection. All changes use Court Mode tokens — no hardcoded hex per CLAUDE.md rule 12.
+
+Touches: `src/app/mail/mail-view.tsx`, `src/components/mail/message-block.tsx`. Build clean.
+
+Next task: Andrew browser-verifies on `/mail` — confirm subject + action row read clean, the 3-dot menu opens with Archive/Mark Unread/Move to label/Pop out, message header card shows avatar + name + email + timestamp + To/Cc row, and the selected thread row is soft-green. Regression: confirm Reply, Reply All, Forward, Archive, Mark Unread, Move to label, Pop out, thread collapse, attachment download all still work.
 
 ## What Shipped in Ace 67.4 (2026-05-27)
 

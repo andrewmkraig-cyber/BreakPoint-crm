@@ -96,6 +96,46 @@ function AttachmentPill({
 
 export type MessageBlockAction = "reply" | "replyAll" | "forward";
 
+// Initials avatar for the message header card. Pulls from fromName when
+// present (first letter of first + last token), otherwise the first
+// letter of the local part of the email. Falls back to "?" when neither
+// is usable so the card layout doesn't shift on weirdly-formed senders.
+// Tinted with Court brand tokens so the badge skins correctly across
+// every Court Mode palette — no hardcoded hexes per CLAUDE.md rule 12.
+function SenderAvatar({
+  name,
+  email,
+}: {
+  name: string | null;
+  email: string | null;
+}) {
+  const initials = (() => {
+    const trimmedName = (name ?? "").trim();
+    if (trimmedName) {
+      const parts = trimmedName.split(/\s+/).filter(Boolean);
+      if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    const trimmedEmail = (email ?? "").trim();
+    if (trimmedEmail) {
+      const local = trimmedEmail.split("@")[0] || trimmedEmail;
+      const parts = local.split(/[.\-_+]/).filter(Boolean);
+      if (parts.length === 0) return local.slice(0, 2).toUpperCase();
+      if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return "?";
+  })();
+  return (
+    <div
+      aria-hidden
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-court-brand-tint text-xs font-semibold text-court-brand-dark"
+    >
+      {initials}
+    </div>
+  );
+}
+
 // Strip HTML tags + collapse whitespace so we can derive a one-line
 // preview snippet for the collapsed-row state. The body is already
 // sanitized server-side, so we're only concerned with stripping markup
@@ -205,84 +245,109 @@ export function MessageBlock({
         (isFirst ? "" : "border-t border-court-border")
       }
     >
-      {/* Single tight header row: sender + date + per-message actions
-          all on one line, "to ..." line underneath in muted small.
-          Clicking the header (anywhere outside the inline links / action
-          buttons) collapses the message back to the one-line summary. */}
-      <header
+      {/* Message header card: avatar + name/email stack on the left,
+          per-message actions + timestamp on the right, a thin divider,
+          then a To/Cc metadata row beneath. Wraps in a rounded card with
+          a subtle border + shadow so it visually sits above the email
+          body. Sender email is always visible (no hover/expand) per
+          Andrew's reading-pane redesign 2026-05-27. */}
+      <div
         onClick={() => setExpanded(false)}
         title="Click to collapse"
-        className="mb-2 flex cursor-pointer flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5"
+        className="mb-3 cursor-pointer rounded-lg border border-court-border bg-court-surface shadow-sm"
       >
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-          <span className="truncate text-sm font-medium text-court-fg">
-            {msg.fromName || msg.fromEmail || "(unknown sender)"}
-          </span>
-          {msg.senderClient && (
-            // Sender's address resolved to a Contact whose Client we
-            // know — surface a one-click jump to that profile so the
-            // recruiter can land on the company without leaving the
-            // thread first. stopPropagation so the click navigates
-            // instead of collapsing the message body.
-            <Link
-              href={`/clients/${msg.senderClient.slug}`}
-              onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-0.5 text-[11px] font-medium text-court-accent-dark hover:underline"
-              title={`Open ${msg.senderClient.name}`}
-            >
-              <Building2 className="h-3 w-3" />
-              {msg.senderClient.name}
-            </Link>
-          )}
-          {msg.to && (
-            <span className="truncate text-[11px] text-court-fg-muted">
-              to {msg.to}
-              {msg.cc ? ` · cc ${msg.cc}` : ""}
+        <header className="flex items-start gap-3 px-4 py-3">
+          <SenderAvatar name={msg.fromName} email={msg.fromEmail} />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <span className="truncate text-sm font-semibold text-court-fg">
+                {msg.fromName || msg.fromEmail || "(unknown sender)"}
+              </span>
+              {msg.senderClient && (
+                // Sender's address resolved to a Contact whose Client
+                // we know — surface a one-click jump to that profile so
+                // the recruiter can land on the company without leaving
+                // the thread first. stopPropagation so the click
+                // navigates instead of collapsing the message body.
+                <Link
+                  href={`/clients/${msg.senderClient.slug}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-0.5 text-[11px] font-medium text-court-accent-dark hover:underline"
+                  title={`Open ${msg.senderClient.name}`}
+                >
+                  <Building2 className="h-3 w-3" />
+                  {msg.senderClient.name}
+                </Link>
+              )}
+            </div>
+            {msg.fromEmail && (
+              <div className="mt-0.5 truncate text-xs text-court-fg-muted">
+                {msg.fromEmail}
+              </div>
+            )}
+          </div>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex shrink-0 flex-col items-end gap-1.5"
+          >
+            <span className="whitespace-nowrap text-[11px] text-court-fg-muted">
+              {msg.dateIso ? new Date(msg.dateIso).toLocaleString() : ""}
             </span>
-          )}
-        </div>
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className="flex shrink-0 items-center gap-2"
-        >
-          {onAction && (
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => onAction("reply")}
-                aria-label="Reply to this message"
-                title="Reply to this message"
-                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
-              >
-                <Reply className="h-3 w-3" /> Reply
-              </button>
-              {showReplyAll && (
+            {onAction && (
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => onAction("replyAll")}
-                  aria-label="Reply all to this message"
-                  title="Reply all to this message"
+                  onClick={() => onAction("reply")}
+                  aria-label="Reply to this message"
+                  title="Reply to this message"
                   className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
                 >
-                  <ReplyAll className="h-3 w-3" /> Reply All
+                  <Reply className="h-3 w-3" /> Reply
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={() => onAction("forward")}
-                aria-label="Forward this message"
-                title="Forward this message"
-                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
-              >
-                <Forward className="h-3 w-3" /> Forward
-              </button>
-            </div>
-          )}
-          <span className="text-[11px] text-court-fg-muted">
-            {msg.dateIso ? new Date(msg.dateIso).toLocaleString() : ""}
-          </span>
-        </div>
-      </header>
+                {showReplyAll && (
+                  <button
+                    type="button"
+                    onClick={() => onAction("replyAll")}
+                    aria-label="Reply all to this message"
+                    title="Reply all to this message"
+                    className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+                  >
+                    <ReplyAll className="h-3 w-3" /> Reply All
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onAction("forward")}
+                  aria-label="Forward this message"
+                  title="Forward this message"
+                  className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+                >
+                  <Forward className="h-3 w-3" /> Forward
+                </button>
+              </div>
+            )}
+          </div>
+        </header>
+        {(msg.to || msg.cc) && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-court-border px-4 py-2 text-[11px] text-court-fg-muted"
+          >
+            {msg.to && (
+              <span className="min-w-0 truncate">
+                <span className="font-semibold text-court-fg">To</span>{" "}
+                {msg.to}
+              </span>
+            )}
+            {msg.cc && (
+              <span className="min-w-0 truncate">
+                <span className="font-semibold text-court-fg">Cc</span>{" "}
+                {msg.cc}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
       {/* Iframe-isolated email body. The previous inline render layered
           Ace's typography rules over the email's own design which
           collapsed dark-themed marketing emails into a flattened
@@ -293,7 +358,7 @@ export function MessageBlock({
         <EmailHtmlViewer html={msg.bodyHtml} />
       </div>
       {msg.attachments && msg.attachments.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
           {msg.attachments.map((att) => (
             <AttachmentPill
               key={att.attachmentId}
