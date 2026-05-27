@@ -39,6 +39,18 @@ function deriveType(title: string, calendarName: string): CalendarEventType {
   return "other";
 }
 
+function interviewRowPreference(row: {
+  title: string;
+  calendarName: string;
+  typeOverride?: string | null;
+}): number {
+  const override = row.typeOverride as CalendarEventType | null;
+  if (override === "interview") return 0;
+  const derived = deriveType(row.title, row.calendarName);
+  if (derived === "interview") return 1;
+  return 2;
+}
+
 function formatYMD(d: Date): string {
   // YYYY-MM-DD in ET - used to bucket events by day. formatToParts
   // avoids depending on en-US's default M/D/Y string ordering.
@@ -130,7 +142,13 @@ export async function ThisWeekWidget({
   // Saturday 00:00 ET - exclusive end of the Mon-Fri window.
   const weekEnd = new Date(weekStart.getTime() + 5 * 24 * 60 * 60 * 1000);
 
-  const [rowsAll, eventLinkedReminders, standaloneReminders, cancelledInterviews] = await Promise.all([
+  const [
+    rowsAll,
+    eventLinkedReminders,
+    standaloneReminders,
+    cancelledInterviews,
+    activeInterviews,
+  ] = await Promise.all([
     prisma.calendarEvent.findMany({
       where: {
         organizationId: orgId,
@@ -180,6 +198,24 @@ export async function ThisWeekWidget({
         googleEventIdCandidate: true,
       },
     }),
+    prisma.interview.findMany({
+      where: {
+        organizationId: orgId,
+        status: { not: "cancelled" },
+        scheduledAt: { gte: weekStart, lt: weekEnd },
+        OR: [
+          { googleEventIdMine: { not: null } },
+          { googleEventIdClient: { not: null } },
+          { googleEventIdCandidate: { not: null } },
+        ],
+      },
+      select: {
+        id: true,
+        googleEventIdMine: true,
+        googleEventIdClient: true,
+        googleEventIdCandidate: true,
+      },
+    }),
   ]);
   const cancelledGoogleEventIds = new Set(
     cancelledInterviews
@@ -187,6 +223,12 @@ export async function ThisWeekWidget({
       .filter((id): id is string => Boolean(id)),
   );
   const activeRowsAll = rowsAll.filter((row) => !cancelledGoogleEventIds.has(row.googleEventId));
+  const interviewIdByGoogleEventId = new Map<string, string>();
+  for (const iv of activeInterviews) {
+    for (const id of [iv.googleEventIdMine, iv.googleEventIdClient, iv.googleEventIdCandidate]) {
+      if (id) interviewIdByGoogleEventId.set(id, iv.id);
+    }
+  }
   const eventsWithReminders = new Set(
     eventLinkedReminders
       .map((r) => r.calendarEventId)
@@ -210,7 +252,29 @@ export async function ThisWeekWidget({
   // the same invite — until CalendarEvent.iCalUID is available the
   // composite key is our defense against the duplicate-row symptom on
   // the "This Week" strip.
-  const rows = dedupeCalendarRows(akRows);
+  const dedupedRows = dedupeCalendarRows(akRows);
+
+  // Ace-scheduled interviews intentionally create separate Google
+  // events for the candidate and client so each party gets the right
+  // invite body. The Clubhouse widget should still show one logical
+  // interview, so collapse all Google event ids that belong to the same
+  // Interview row.
+  const bestInterviewRows = new Map<string, (typeof dedupedRows)[number]>();
+  const nonInterviewRows: typeof dedupedRows = [];
+  for (const row of dedupedRows) {
+    const interviewId = interviewIdByGoogleEventId.get(row.googleEventId);
+    if (!interviewId) {
+      nonInterviewRows.push(row);
+      continue;
+    }
+    const existing = bestInterviewRows.get(interviewId);
+    if (!existing || interviewRowPreference(row) < interviewRowPreference(existing)) {
+      bestInterviewRows.set(interviewId, row);
+    }
+  }
+  const rows = [...nonInterviewRows, ...Array.from(bestInterviewRows.values())].sort(
+    (a, b) => a.startTime.getTime() - b.startTime.getTime(),
+  );
 
   // Full CalendarEvent objects in the same shape the /calendar page
   // produces - passed through to the drawer when a chip or row is
@@ -223,13 +287,14 @@ export async function ThisWeekWidget({
           .filter((s) => s.length > 0)
       : undefined;
     const overrideType = row.typeOverride as CalendarEventType | null;
+    const linkedInterview = interviewIdByGoogleEventId.has(row.googleEventId);
     return {
       id: row.id,
       title: row.title,
       startTime: row.startTime,
       endTime: row.endTime,
       allDay: row.allDay,
-      type: overrideType ?? deriveType(row.title, row.calendarName),
+      type: linkedInterview ? "interview" : overrideType ?? deriveType(row.title, row.calendarName),
       meta: row.description ?? undefined,
       guests,
       location: row.location ?? undefined,

@@ -104,7 +104,14 @@ export default async function CalendarPage() {
   const now = new Date();
   const windowMs = 90 * 24 * 60 * 60 * 1000;
 
-  const [rowsRaw, memberships, reminderRows, eventLinkedReminders, cancelledInterviews] = await Promise.all([
+  const [
+    rowsRaw,
+    memberships,
+    reminderRows,
+    eventLinkedReminders,
+    cancelledInterviews,
+    activeInterviews,
+  ] = await Promise.all([
     prisma.calendarEvent.findMany({
       where: {
         organizationId: org.id,
@@ -175,6 +182,27 @@ export default async function CalendarPage() {
         googleEventIdCandidate: true,
       },
     }),
+    prisma.interview.findMany({
+      where: {
+        organizationId: org.id,
+        status: { not: "cancelled" },
+        scheduledAt: {
+          gte: new Date(now.getTime() - windowMs),
+          lte: new Date(now.getTime() + windowMs),
+        },
+        OR: [
+          { googleEventIdMine: { not: null } },
+          { googleEventIdClient: { not: null } },
+          { googleEventIdCandidate: { not: null } },
+        ],
+      },
+      select: {
+        id: true,
+        googleEventIdMine: true,
+        googleEventIdClient: true,
+        googleEventIdCandidate: true,
+      },
+    }),
   ]);
   const cancelledGoogleEventIds = new Set(
     cancelledInterviews
@@ -182,6 +210,12 @@ export default async function CalendarPage() {
       .filter((id): id is string => Boolean(id)),
   );
   const rows = rowsRaw.filter((row) => !cancelledGoogleEventIds.has(row.googleEventId));
+  const interviewIdByGoogleEventId = new Map<string, string>();
+  for (const iv of activeInterviews) {
+    for (const id of [iv.googleEventIdMine, iv.googleEventIdClient, iv.googleEventIdCandidate]) {
+      if (id) interviewIdByGoogleEventId.set(id, iv.id);
+    }
+  }
 
   const eventsWithReminders = new Set(
     eventLinkedReminders
@@ -274,13 +308,14 @@ export default async function CalendarPage() {
     const overrideType = groupRows
       .map((r) => r.typeOverride as CalendarEventType | null)
       .find((t): t is CalendarEventType => t != null);
+    const linkedInterview = groupRows.some((r) => interviewIdByGoogleEventId.has(r.googleEventId));
     return {
       id: row.id,
       title: row.title,
       startTime: row.startTime,
       endTime: row.endTime,
       allDay: row.allDay,
-      type: overrideType ?? deriveType(row.title, row.calendarName),
+      type: linkedInterview ? "interview" : overrideType ?? deriveType(row.title, row.calendarName),
       meta: row.description ?? undefined,
       guests,
       location: row.location ?? undefined,
