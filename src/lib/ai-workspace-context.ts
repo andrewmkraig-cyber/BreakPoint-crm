@@ -1,4 +1,7 @@
+import { Prisma } from "@prisma/client";
+
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { getNotesForEntity } from "@/lib/notes/queries";
 import { prisma } from "@/lib/prisma";
 import { canonicalStage } from "@/lib/rf-payload-shapes";
 import { getResumeBytes } from "@/lib/resume-bytes";
@@ -354,38 +357,92 @@ export async function buildCandidateContext(
     return "You are an AI recruiting assistant for BreakPoint Talent. No candidate was found for the requested record.";
   }
 
-  const [smsMessages, callLogs, transcripts, placements] = await Promise.all([
-    prisma.smsMessage.findMany({
-      where: { candidateId: candidate.id, organizationId: org.id },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-    }),
-    prisma.callLog.findMany({
-      where: { candidateId: candidate.id, organizationId: org.id },
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      include: { transcript: true },
-    }),
-    prisma.callTranscript.findMany({
-      where: { callLog: { candidateId: candidate.id } },
-      orderBy: { createdAt: "desc" },
-      take: 3,
-    }),
-    prisma.placement.findMany({
-      where: { candidateId: candidate.id, organizationId: org.id },
-      include: {
-        job: {
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            override: { select: { description: true } },
+  const [smsMessages, callLogs, transcripts, placements, interviews, recruiterNotes] =
+    await Promise.all([
+      prisma.smsMessage.findMany({
+        where: { candidateId: candidate.id, organizationId: org.id },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      }),
+      prisma.callLog.findMany({
+        where: { candidateId: candidate.id, organizationId: org.id },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        include: { transcript: true },
+      }),
+      prisma.callTranscript.findMany({
+        where: { callLog: { candidateId: candidate.id } },
+        orderBy: { createdAt: "desc" },
+        take: 3,
+      }),
+      prisma.placement.findMany({
+        where: { candidateId: candidate.id, organizationId: org.id },
+        include: {
+          job: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              override: { select: { description: true } },
+            },
           },
+          client: { select: { id: true, name: true } },
         },
-        client: { select: { id: true, name: true } },
-      },
-    }),
-  ]);
+      }),
+      prisma.interview.findMany({
+        where: { candidateId: candidate.id, organizationId: org.id },
+        orderBy: { scheduledAt: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          scheduledAt: true,
+          durationMin: true,
+          type: true,
+          status: true,
+          location: true,
+          notes: true,
+          job: { select: { title: true } },
+          client: { select: { name: true } },
+        },
+      }),
+      // Notes from the new Note table (the modern multi-row recruiter
+      // notes panel — distinct from the legacy `candidate.notes` text
+      // column rendered as "PROFILE NOTES" further down). Already
+      // scoped by organizationId + the requesting user's createdById
+      // inside getNotesForEntity, matching the privacy model of the
+      // /notes page.
+      getNotesForEntity("candidate", candidate.id),
+    ]);
+
+  // Activity feed: ActivityLog rows targeted at this candidate, plus
+  // child rows logged against this candidate's placements or
+  // interviews. Mirrors the per-entity feed at
+  // /api/activity/[entityType]/[entityId]/route.ts so the assistant
+  // and the on-screen activity panel agree about "what happened on
+  // this candidate." Bounded to 30 most-recent rows so the prompt
+  // doesn't blow up for chatty candidates.
+  const placementIds = placements.map((p) => p.id);
+  const interviewIds = interviews.map((i) => i.id);
+  const activityOr: Prisma.ActivityLogWhereInput[] = [
+    { targetType: "candidate", targetId: candidate.id },
+  ];
+  if (placementIds.length > 0) {
+    activityOr.push({ targetType: "placement", targetId: { in: placementIds } });
+  }
+  if (interviewIds.length > 0) {
+    activityOr.push({ targetType: "interview", targetId: { in: interviewIds } });
+  }
+  const activityRows = await prisma.activityLog.findMany({
+    where: { organizationId: org.id, OR: activityOr },
+    orderBy: { timestamp: "desc" },
+    take: 30,
+    select: {
+      actionType: true,
+      timestamp: true,
+      targetType: true,
+      metadata: true,
+    },
+  });
 
   const fullName =
     [candidate.firstName, candidate.lastName].filter(Boolean).join(" ") ||
@@ -426,10 +483,36 @@ export async function buildCandidateContext(
   lines.push(`COMP TARGET: ${compTarget || "(not set)"}`);
   lines.push(`CONTACT: ${email || "(no email)"} | ${phone || "(no phone)"}`);
   if (skills.length > 0) lines.push(`SKILLS: ${skills.join(", ")}`);
+  // PROFILE NOTES — the legacy `candidate.notes` single-string column
+  // (typically an RF-imported bio / intake paragraph). Distinct from
+  // the RECRUITER NOTES block below, which is the modern multi-row
+  // Note table that powers the on-screen notes panel.
   if (notes)
     lines.push(
-      `NOTES: ${notes.slice(0, 300)}${notes.length > 300 ? "…" : ""}`,
+      `PROFILE NOTES: ${notes.slice(0, 300)}${notes.length > 300 ? "…" : ""}`,
     );
+  lines.push("");
+
+  // Work history + education promoted to their own labeled blocks so
+  // Claude can retrieve them directly without parsing the RESUME
+  // narrative below. Same data the resume block embeds — duplication
+  // is intentional, the prompt is cheap, retrieval clarity is the win.
+  const workHistoryLines = renderExperienceBlock(candidate.experience);
+  lines.push("WORK HISTORY:");
+  if (workHistoryLines.length > 0) {
+    for (const wLine of workHistoryLines) lines.push(`  ${wLine}`);
+  } else {
+    lines.push("  (none on file)");
+  }
+  lines.push("");
+
+  const educationLines = renderEducationBlock(candidate.education);
+  lines.push("EDUCATION:");
+  if (educationLines.length > 0) {
+    for (const eLine of educationLines) lines.push(`  ${eLine}`);
+  } else {
+    lines.push("  (none on file)");
+  }
   lines.push("");
 
   // Resume sections. UPLOADED RESUME is the pdf-parsed text from the
@@ -471,6 +554,60 @@ export async function buildCandidateContext(
       lines.push("");
     }
   }
+
+  lines.push("INTERVIEWS:");
+  if (interviews.length === 0) {
+    lines.push("  (none on file)");
+  } else {
+    for (const iv of interviews) {
+      const when = iv.scheduledAt.toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+      const jobTitle = iv.job?.title ?? "(unknown role)";
+      const clientName = iv.client?.name ?? "(unknown client)";
+      const loc = iv.location?.trim() ? ` @ ${iv.location.trim()}` : "";
+      lines.push(
+        `  ${when} - ${iv.type} - ${iv.status} - ${jobTitle} at ${clientName} (${iv.durationMin}min)${loc}`,
+      );
+      if (iv.notes?.trim()) {
+        const capped =
+          iv.notes.length > 240 ? `${iv.notes.slice(0, 240)}…` : iv.notes;
+        for (const nLine of capped.split("\n")) lines.push(`    ${nLine}`);
+      }
+    }
+  }
+  lines.push("");
+
+  lines.push("RECRUITER NOTES:");
+  if (recruiterNotes.length === 0) {
+    lines.push("  (none on file)");
+  } else {
+    for (const n of recruiterNotes) {
+      const when = n.updatedAt.toLocaleDateString();
+      const pinned = n.pinned ? "pinned · " : "";
+      const titlePart = n.title?.trim() ? ` - ${n.title.trim()}` : "";
+      lines.push(`  [${pinned}${when}]${titlePart}`);
+      const capped =
+        n.body.length > 800 ? `${n.body.slice(0, 800)}…` : n.body;
+      for (const nLine of capped.split("\n")) lines.push(`    ${nLine}`);
+    }
+  }
+  lines.push("");
+
+  lines.push("ACTIVITY FEED:");
+  if (activityRows.length === 0) {
+    lines.push("  (no logged activity)");
+  } else {
+    for (const a of activityRows) {
+      const when = a.timestamp.toISOString().slice(0, 10);
+      const metaStr = renderActivityMetadata(a.metadata);
+      lines.push(
+        `  ${when} ${a.actionType} (${a.targetType})${metaStr ? ` - ${metaStr}` : ""}`,
+      );
+    }
+  }
+  lines.push("");
 
   lines.push("RECENT CALLS:");
   if (callLogs.length === 0) {
@@ -539,6 +676,89 @@ type AceCandidateLite = {
   experience: unknown;
   education: unknown;
 };
+
+// Renders Candidate.experience (Json column carrying an AceExp[]
+// shape, RF-imported) into the lines used by the WORK HISTORY block.
+// Returns [] when the column is null / empty / not an array so the
+// caller can render the "(none on file)" fallback.
+function renderExperienceBlock(experience: Prisma.JsonValue | null): string[] {
+  if (!Array.isArray(experience)) return [];
+  type AceExp = {
+    designation?: string;
+    organization?: string;
+    description?: string;
+    from_year?: number | string | null;
+    to_year?: number | string | null;
+  };
+  const out: string[] = [];
+  for (const raw of experience as AceExp[]) {
+    if (!raw || typeof raw !== "object") continue;
+    const header =
+      [raw.designation, raw.organization].filter((s): s is string => !!s?.trim()).join(" · ") ||
+      "(role)";
+    const range = [raw.from_year, raw.to_year ?? "present"]
+      .filter((x) => x != null && x !== "")
+      .join(" – ");
+    out.push(`- ${header}${range ? ` (${range})` : ""}`);
+    if (raw.description?.trim()) {
+      const capped =
+        raw.description.length > 400
+          ? `${raw.description.slice(0, 400)}…`
+          : raw.description;
+      out.push(`    ${capped.trim().replace(/\n+/g, " ")}`);
+    }
+  }
+  return out;
+}
+
+// Same shape pattern for Candidate.education.
+function renderEducationBlock(education: Prisma.JsonValue | null): string[] {
+  if (!Array.isArray(education)) return [];
+  type AceEdu = {
+    school?: string;
+    degree?: string;
+    description?: string;
+    from_year?: number | string | null;
+    to_year?: number | string | null;
+  };
+  const out: string[] = [];
+  for (const raw of education as AceEdu[]) {
+    if (!raw || typeof raw !== "object") continue;
+    const header =
+      [raw.degree, raw.school].filter((s): s is string => !!s?.trim()).join(" · ") ||
+      "(degree)";
+    const range = [raw.from_year, raw.to_year]
+      .filter((x) => x != null && x !== "")
+      .join(" – ");
+    out.push(`- ${header}${range ? ` (${range})` : ""}`);
+  }
+  return out;
+}
+
+// ActivityLog.metadata is a free-form Json column whose shape depends
+// on actionType (oldStage/newStage for stage_change, subject for
+// email_sent, etc.). Render a compact `k=v` line, capped, so the
+// assistant can read the change without us hand-coding every
+// actionType. Returns "" when there's nothing meaningful to display.
+function renderActivityMetadata(meta: Prisma.JsonValue | null): string {
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return "";
+  const entries = Object.entries(meta as Record<string, unknown>)
+    .filter(([, v]) => v != null && v !== "")
+    .map(([k, v]) => {
+      const value =
+        typeof v === "string"
+          ? v.length > 80
+            ? `${v.slice(0, 80)}…`
+            : v
+          : typeof v === "number" || typeof v === "boolean"
+            ? String(v)
+            : JSON.stringify(v).slice(0, 80);
+      return `${k}=${value}`;
+    });
+  if (entries.length === 0) return "";
+  const joined = entries.join(" ");
+  return joined.length > 200 ? `${joined.slice(0, 200)}…` : joined;
+}
 
 function assembleResumeFromAce(c: AceCandidateLite | null): string {
   if (!c) return "";
