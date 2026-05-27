@@ -3,7 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { BrandingView, type BrandingInitial } from "@/app/settings/branding-view";
 import { CollapsibleSection } from "@/components/settings/collapsible-section";
-import { getUserBrandingProfile, renderSignatureHtml } from "@/lib/signature";
+import { getUserBrandingProfile, renderSignatureHtml, renderSignatureText } from "@/lib/signature";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +16,7 @@ export default async function BrandingSettingsPage() {
   const session = await getServerSession(authOptions);
   let brandingInitial: BrandingInitial | null = null;
   let signaturePreviewHtml = "";
+  let signaturePreviewText = "";
   if (session?.user?.email) {
     const userRow = await prisma.user.findUnique({
       where: { email: session.user.email },
@@ -37,8 +38,11 @@ export default async function BrandingSettingsPage() {
       };
       // Render the actual signature HTML on the server using the same
       // function /reply and /send go through, so the preview block
-      // matches inbox-rendered output exactly.
+      // matches inbox-rendered output exactly. Plain-text variant is
+      // the clipboard fallback so paste-into-non-HTML targets (e.g.
+      // a plain-text email composer) still get something readable.
       signaturePreviewHtml = renderSignatureHtml(profile);
+      signaturePreviewText = renderSignatureText(profile);
     }
   }
 
@@ -60,7 +64,11 @@ export default async function BrandingSettingsPage() {
       title="Branding & Signature"
       description="Used on every email you send from Ace."
     >
-      <BrandingView initial={brandingInitial} signaturePreviewHtml={signaturePreviewHtml} />
+      <BrandingView
+        initial={brandingInitial}
+        signaturePreviewHtml={signaturePreviewHtml}
+        signaturePreviewText={signaturePreviewText}
+      />
     </CollapsibleSection>
   );
 }

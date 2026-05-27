@@ -2,8 +2,9 @@
 
 import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Loader2, Save, Upload, Trash2 } from "lucide-react";
+import { Loader2, Save, Upload, Trash2, Copy, Mail } from "lucide-react";
 import {
+  pushSignatureToGmail,
   resetBrandingLogo,
   saveBrandingFields,
   uploadBrandingLogo,
@@ -27,9 +28,11 @@ export type BrandingInitial = {
 export function BrandingView({
   initial,
   signaturePreviewHtml,
+  signaturePreviewText,
 }: {
   initial: BrandingInitial;
   signaturePreviewHtml?: string;
+  signaturePreviewText?: string;
 }) {
   const [fullName, setFullName] = useState(initial.fullName);
   const [jobTitle, setJobTitle] = useState(initial.jobTitle);
@@ -40,6 +43,8 @@ export function BrandingView({
   const [saving, startSaving] = useTransition();
   const [uploading, startUploading] = useTransition();
   const [resetting, startResetting] = useTransition();
+  const [copying, setCopying] = useState(false);
+  const [pushing, startPushing] = useTransition();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   function onSave() {
@@ -84,6 +89,53 @@ export function BrandingView({
       setLogoPreview(dataUri);
       setHasCustomLogo(true);
       toast.success("Logo updated");
+    });
+  }
+
+  // Write both HTML and plain-text to the clipboard so Gmail compose
+  // (which reads text/html) pastes the formatted signature, while
+  // plain-text targets (text editors, signal-style chat) still get
+  // a legible fallback. navigator.clipboard.write is the modern
+  // multi-MIME path; we fall back to writeText(text) on older
+  // browsers that don't support it.
+  async function onCopy() {
+    if (!signaturePreviewHtml) return;
+    setCopying(true);
+    try {
+      if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+        const item = new ClipboardItem({
+          "text/html": new Blob([signaturePreviewHtml], { type: "text/html" }),
+          "text/plain": new Blob([signaturePreviewText ?? ""], { type: "text/plain" }),
+        });
+        await navigator.clipboard.write([item]);
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(signaturePreviewText ?? signaturePreviewHtml);
+      } else {
+        throw new Error("Clipboard API not available in this browser.");
+      }
+      toast.success("Signature copied", {
+        description: "Paste it into Gmail's compose window (⌘V).",
+      });
+    } catch (e) {
+      toast.error("Copy failed", {
+        description: e instanceof Error ? e.message : "Browser blocked the clipboard write.",
+      });
+    } finally {
+      setCopying(false);
+    }
+  }
+
+  function onPushToGmail() {
+    startPushing(async () => {
+      const res = await pushSignatureToGmail();
+      if (!res.ok) {
+        toast.error("Couldn't push to Gmail", { description: res.error });
+        return;
+      }
+      toast.success(`Saved to Gmail (${res.value.targetEmail})`, {
+        description:
+          "Gmail's compose window will use this signature on new emails. Existing drafts aren't touched.",
+      });
     });
   }
 
@@ -187,12 +239,37 @@ export function BrandingView({
 
       {signaturePreviewHtml && (
         <div className="border-t border-court-border pt-5">
-          <div className="mb-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
-            Signature preview
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+              Signature preview
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onCopy}
+                disabled={copying}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg shadow-sm transition hover:text-brand-dark disabled:opacity-60"
+              >
+                {copying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
+                Copy signature
+              </button>
+              <button
+                type="button"
+                onClick={onPushToGmail}
+                disabled={pushing}
+                className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+              >
+                {pushing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                Push to Gmail
+              </button>
+            </div>
           </div>
           <div className="text-xs text-court-fg-muted">
-            What recipients see at the bottom of every email Ace sends. Save
-            branding above to refresh.
+            What recipients see at the bottom of every email Ace sends. Copy
+            pastes formatted HTML into Gmail compose; Push writes the
+            signature into your Gmail settings so it appears when you
+            compose directly in gmail.com too. Save branding above to
+            refresh either output.
           </div>
           <div
             className="mt-3 rounded-lg border border-court-border bg-white p-4"

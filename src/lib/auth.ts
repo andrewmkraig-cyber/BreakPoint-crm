@@ -24,6 +24,14 @@ export const GOOGLE_SCOPES: readonly string[] = [
   // Scoped to the signed-in user's own mailbox — no cross-user writes.
   // Requires a re-auth the first time, same as the readonly scope.
   "https://www.googleapis.com/auth/gmail.modify",
+  // Push-to-Gmail signature button (Settings → Branding): writes the
+  // Ace-rendered signature into the user's Gmail SendAs settings so it
+  // appears when they compose directly in gmail.com (not just on
+  // mail Ace sends). Users granted before this scope was added must
+  // sign out and back in once for Google to re-prompt consent — the
+  // /settings/branding push action surfaces a clear toast and points
+  // them at the re-auth path on 403.
+  "https://www.googleapis.com/auth/gmail.settings.basic",
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/meetings.space.settings",
