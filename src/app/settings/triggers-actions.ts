@@ -6,7 +6,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import { TRIGGER_OPTIONS } from "@/app/settings/template-constants";
+import {
+  TRIGGER_OPTIONS,
+  type TriggerAudience,
+  type TriggerDispatch,
+} from "@/app/settings/template-constants";
 
 export type TriggerRuleRow = {
   triggerKey: string;
@@ -17,8 +21,19 @@ export type TriggerRuleRow = {
   templateId: string | null;
   templateName: string | null;
   // True when these values come from a real TriggerRule row; false when
-  // they're synthesized defaults because no row exists yet.
+  // they're synthesized defaults because no row exists yet. The UI uses
+  // this to render a "Customized for your org" vs "System default" pill
+  // and to enable the Reset-to-default action only when there's a row
+  // to delete.
   hasRule: boolean;
+  // Built-in metadata threaded through from TRIGGER_OPTIONS so the
+  // Triggers tab can render real "Event" / "Audience" / "Dispatch"
+  // fields instead of scraping the description prose. None of these
+  // are editable — they identify the built-in event that fires this
+  // trigger from a code call-site.
+  audience: TriggerAudience;
+  eventName: string;
+  dispatch: TriggerDispatch;
 };
 
 export type TemplateOption = {
@@ -71,6 +86,9 @@ export async function getTriggerRules(): Promise<TriggerRuleRow[]> {
       templateId: rule?.templateId ?? null,
       templateName: rule?.template?.name ?? null,
       hasRule: !!rule,
+      audience: t.audience,
+      eventName: t.eventName,
+      dispatch: t.dispatch,
     };
   });
 }
@@ -156,4 +174,42 @@ export async function getTemplatesForTrigger(
     return a.matchesTrigger ? -1 : 1;
   });
   return options;
+}
+
+// Reset-to-default: remove the per-org TriggerRule override row so the
+// trigger reverts to the system default (most-recently-updated active
+// template matching the trigger key, send mode per caller). The
+// built-in trigger itself is code-emitted from a fixed call-site and
+// cannot be removed; this action only deletes the customization.
+//
+// Returns ok=true even if no row existed (idempotent: already at
+// default). validKeys gate matches upsertTriggerRule so a stale
+// client can't poke at unknown keys.
+export async function deleteTriggerRule(input: {
+  triggerKey: string;
+}): Promise<ActionResult> {
+  const auth = await requireSession();
+  if (auth !== true) return auth;
+
+  const validKeys = new Set(
+    TRIGGER_OPTIONS.filter((o) => o.value !== "").map((o) => o.value),
+  );
+  if (!validKeys.has(input.triggerKey)) {
+    return { ok: false, error: "Unknown trigger key." };
+  }
+
+  try {
+    const { id: organizationId } = await getCurrentOrg();
+    // deleteMany (not delete) so the no-row case is a no-op instead of
+    // throwing P2025. Recruiter clicking Reset-to-default twice in a
+    // row shouldn't surface an error.
+    await prisma.triggerRule.deleteMany({
+      where: { organizationId, triggerKey: input.triggerKey },
+    });
+    revalidatePath("/settings");
+    revalidatePath("/settings/templates");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to reset trigger." };
+  }
 }

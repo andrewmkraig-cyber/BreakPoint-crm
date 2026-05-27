@@ -1,22 +1,48 @@
 "use client";
 
-import { AlertTriangle, Link2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  FileEdit,
+  Info,
+  Link2,
+  Loader2,
+  Pause,
+  Pencil,
+  Play,
+  RotateCcw,
+  Send,
+  X,
+} from "lucide-react";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { setAutoSendCandidateConfirmation } from "@/app/settings/preferences-actions";
-import { upsertTriggerRule } from "@/app/settings/triggers-actions";
+import {
+  deleteTriggerRule,
+  upsertTriggerRule,
+} from "@/app/settings/triggers-actions";
 import type {
   TriggerRuleRow,
   TemplateOption,
 } from "@/app/settings/triggers-actions";
 
 // Triggers panel — top: the legacy autoSendCandidateConfirmation
-// preference (wired separately, still consumed by placement-actions).
-// Below: one row per auto-fire trigger key, each with enable / template
-// override / approve-before-send controls backed by TriggerRule.
+// preference (still consumed by the placement-actions submittal flow,
+// pre-dates the TriggerRule model). Below: one card per built-in
+// trigger with Edit / Pause / Reset-to-default actions.
+//
+// Design note: the trigger taxonomy is hardcoded in TRIGGER_OPTIONS
+// because every fire path is a literal `trigger: "<key>"` call in the
+// action layer. There's no event registry that a runtime-created
+// trigger could attach to, so the UI deliberately does NOT expose an
+// "Add Custom Trigger" affordance — adding a row to TriggerRule with
+// an unknown key would never fire from any code path. The info banner
+// at the top of the list explains this so the absence is intentional,
+// not an oversight.
 export function TriggersView({
   autoSendCandidateConfirmation,
   rules,
@@ -29,36 +55,66 @@ export function TriggersView({
   rules: TriggerRuleRow[];
   templateOptionsByKey: Record<string, TemplateOption[]>;
   gmailConnected: boolean;
-  // Brief ring highlight + scrollIntoView target on the trigger row
+  // Brief ring highlight + scrollIntoView target on the trigger card
   // whose triggerKey matches. Cleared by the parent after the pulse.
   highlightedKey?: string | null;
   // Fires when a recruiter clicks the linked template chip so the
   // parent can jump back to the Templates tab and highlight that card.
   onTemplateLinkClick?: (templateId: string) => void;
 }) {
+  const [editing, setEditing] = useState<string | null>(null);
+
   return (
     <div className="space-y-6">
       <AutoSendCandidateConfirmationRow initial={autoSendCandidateConfirmation} />
 
       <div className="space-y-3">
         <div>
-          <h3 className="text-sm font-semibold text-court-fg">Per-trigger rules</h3>
+          <h3 className="text-sm font-semibold text-court-fg">Pipeline triggers</h3>
           <p className="mt-1 text-xs text-court-fg-muted">
-            Pick which template each pipeline action sends, route any of them through Gmail Drafts for approval, or pause a trigger entirely. Leaving everything default keeps the current behavior.
+            Each card maps a built-in pipeline event to the template that fires when it happens. Edit to change the template or send behavior, Pause to stop a trigger temporarily, or Reset to drop your customization and return to defaults.
           </p>
         </div>
-        <div className="divide-y divide-court-border rounded-md border border-court-border">
+
+        <BuiltInsNote />
+
+        <div className="space-y-2">
           {rules.map((rule) => (
-            <TriggerRuleRowEditor
+            <TriggerCard
               key={rule.triggerKey}
               rule={rule}
               templates={templateOptionsByKey[rule.triggerKey] ?? []}
               gmailConnected={gmailConnected}
               highlighted={highlightedKey === rule.triggerKey}
               onTemplateLinkClick={onTemplateLinkClick}
+              onEdit={() => setEditing(rule.triggerKey)}
             />
           ))}
         </div>
+      </div>
+
+      {editing && (
+        <TriggerEditDialog
+          rule={rules.find((r) => r.triggerKey === editing)!}
+          templates={templateOptionsByKey[editing] ?? []}
+          gmailConnected={gmailConnected}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Persistent explainer card sitting above the trigger list. Lives here
+// (not as floating help docs) so a recruiter looking for "Add Trigger"
+// finds the answer in-place instead of filing a support question.
+function BuiltInsNote() {
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-[12px] text-court-fg-muted">
+      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-court-fg-muted" aria-hidden />
+      <div>
+        <span className="font-semibold text-court-fg">Built-in triggers only.</span>{" "}
+        Each trigger is bound to a fixed pipeline action in code (Apply, Submit, Schedule Interview, Record Offer, Confirm Start, Reject, Request References). You can change which template fires, pause a trigger, or hand-approve drafts — but custom event keys can&apos;t be added from settings because no code path would emit them.
       </div>
     </div>
   );
@@ -98,152 +154,339 @@ function AutoSendCandidateConfirmationRow({ initial }: { initial: boolean }) {
   );
 }
 
-function TriggerRuleRowEditor({
+// One card per built-in trigger. Shows status + metadata + the linked
+// template, with Edit / Pause-Resume / Reset-to-default actions on the
+// right. Reset uses a two-click inline confirm (not window.confirm) so
+// the destructive path matches the per-row reset pattern used elsewhere
+// in settings.
+function TriggerCard({
   rule,
   templates,
   gmailConnected,
   highlighted,
   onTemplateLinkClick,
+  onEdit,
 }: {
   rule: TriggerRuleRow;
   templates: TemplateOption[];
   gmailConnected: boolean;
   highlighted?: boolean;
   onTemplateLinkClick?: (templateId: string) => void;
+  onEdit: () => void;
 }) {
   const router = useRouter();
-  const [enabled, setEnabled] = useState(rule.enabled);
-  const [sendAsDraft, setSendAsDraft] = useState(rule.sendAsDraft);
-  const [templateId, setTemplateId] = useState<string | "">(rule.templateId ?? "");
+  const [confirmReset, setConfirmReset] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  function save(patch: {
-    enabled?: boolean;
-    sendAsDraft?: boolean;
-    templateId?: string | null;
-  }, successMsg: string) {
+  // Linked template chip resolves to the explicit override first, then
+  // falls back to whatever the System default would pick — that
+  // mirrors the runtime resolution in fireTriggerAndLog and means the
+  // card always tells the recruiter which template a fire would land
+  // on right now.
+  const explicit = templates.find((t) => t.id === rule.templateId);
+  const fallback = templates.find((t) => t.matchesTrigger);
+  const effectiveTemplate = explicit ?? fallback ?? null;
+  const usingDefault = !rule.templateId;
+
+  function onPauseResume() {
+    const next = !rule.enabled;
     startTransition(async () => {
-      const res = await upsertTriggerRule({ triggerKey: rule.triggerKey, ...patch });
+      const res = await upsertTriggerRule({ triggerKey: rule.triggerKey, enabled: next });
       if (!res.ok) {
-        // Revert local state on failure.
-        setEnabled(rule.enabled);
-        setSendAsDraft(rule.sendAsDraft);
-        setTemplateId(rule.templateId ?? "");
         toast.error("Couldn't save trigger", { description: res.error });
         return;
       }
-      toast.success(successMsg);
+      toast.success(next ? "Trigger enabled" : "Trigger paused");
       router.refresh();
     });
   }
 
-  function onToggleEnabled() {
-    const next = !enabled;
-    setEnabled(next);
-    save({ enabled: next }, next ? "Trigger enabled" : "Trigger paused");
+  function onReset() {
+    startTransition(async () => {
+      const res = await deleteTriggerRule({ triggerKey: rule.triggerKey });
+      if (!res.ok) {
+        toast.error("Couldn't reset trigger", { description: res.error });
+        return;
+      }
+      toast.success("Reset to default", {
+        description: `${rule.label} now uses System default behavior.`,
+      });
+      setConfirmReset(false);
+      router.refresh();
+    });
   }
 
-  function onToggleDraft() {
-    const next = !sendAsDraft;
-    setSendAsDraft(next);
-    save(
-      { sendAsDraft: next },
-      next ? "Now sending to Drafts" : "Sending live",
-    );
-  }
-
-  function onTemplateChange(value: string) {
-    setTemplateId(value);
-    save(
-      { templateId: value === "" ? null : value },
-      value === "" ? "Reverted to default template" : "Template assigned",
-    );
-  }
-
-  const hasNoTemplates = templates.length === 0;
-  // System Default fallback resolves to the most-recently-updated
-  // active template whose `trigger` column matches this row's key.
-  // The dropdown now surfaces every active template so the recruiter
-  // can always pick an override, but the warning still fires when
-  // the System Default has nothing to land on so they know why the
-  // row would silently no-op.
-  const hasMatchingDefault = templates.some((t) => t.matchesTrigger);
-
-  // Warnings reflect *current* (optimistic) row state, not the saved
-  // rule, so toggling enabled/draft immediately shows or hides the
-  // banner the user is reasoning about.
+  // Diagnostic banner over each card. Mirrors the legacy inline warning
+  // set but reads off rule state directly so a paused / default-only /
+  // no-Gmail row surfaces the right call-to-action.
   const warnings: string[] = [];
-  if (enabled) {
-    if (templateId && !templates.some((t) => t.id === templateId)) {
-      warnings.push("Assigned template is missing or inactive - this trigger won't send until you reassign it.");
-    } else if (!templateId && hasNoTemplates) {
-      warnings.push("No active templates in the library - nothing will send until one is published.");
-    } else if (!templateId && !hasMatchingDefault) {
-      warnings.push("No template is tagged for this trigger, so System default won't fire. Pick an explicit template above.");
+  if (rule.enabled) {
+    if (rule.templateId && !explicit) {
+      warnings.push("Assigned template is missing or inactive — this trigger won't send until you reassign it.");
+    } else if (!rule.templateId && !fallback) {
+      warnings.push("No template is tagged for this trigger, so System default has nothing to send. Edit and pick one.");
     }
   }
-  if (sendAsDraft && !gmailConnected) {
-    warnings.push("Approve-before-sending is on but Gmail isn't connected - drafts can't be created.");
+  if (rule.sendAsDraft && !gmailConnected) {
+    warnings.push("Approve-before-sending is on but Gmail isn't connected — drafts can't be created.");
   }
-
-  // Linked template chip resolves the currently saved templateId
-  // (override) first, falling back to the rule's snapshot for the
-  // "system default" case. Clicking jumps back to the Templates tab.
-  const linkedTemplate = templates.find((t) => t.id === templateId)
-    ?? (rule.templateId && rule.templateName
-      ? { id: rule.templateId, name: rule.templateName }
-      : null);
 
   return (
     <div
       data-trigger-row-key={rule.triggerKey}
       className={cn(
-        "flex flex-col gap-3 p-3 transition-shadow",
+        "rounded-lg border border-court-border bg-court-surface p-4 transition-shadow",
         highlighted && "shadow-[inset_0_0_0_2px_var(--court-brand)]",
       )}
     >
-      {warnings.length > 0 && (
-        <div
-          role="alert"
-          className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-900"
-        >
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-          <ul className="space-y-1">
-            {warnings.map((w) => (
-              <li key={w}>{w}</li>
-            ))}
-          </ul>
-        </div>
-      )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 sm:flex-1">
-          <div className="text-sm font-semibold text-court-fg">{rule.label}</div>
-          <div className="mt-1 text-xs text-court-fg-muted">{rule.description}</div>
-          {linkedTemplate && (
-            <button
-              type="button"
-              onClick={() => onTemplateLinkClick?.(linkedTemplate.id)}
-              className="mt-2 inline-flex items-center gap-1 rounded-full border border-court-brand/40 bg-court-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-court-brand-dark transition hover:bg-court-brand/15"
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill enabled={rule.enabled} customized={rule.hasRule} />
+            <span className="text-sm font-semibold text-court-fg">{rule.label}</span>
+          </div>
+          <p className="mt-1 text-xs text-court-fg-muted">{rule.description}</p>
+
+          <dl className="mt-3 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-3">
+            <Meta label="Event" value={rule.eventName} />
+            <Meta label="Audience" value={audienceLabel(rule.audience)} />
+            <Meta label="Dispatch" value={dispatchLabel(rule.dispatch)} />
+          </dl>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-medium uppercase tracking-wider text-court-fg-muted">
+              Template:
+            </span>
+            {effectiveTemplate ? (
+              <button
+                type="button"
+                onClick={() => onTemplateLinkClick?.(effectiveTemplate.id)}
+                className="inline-flex items-center gap-1 rounded-full border border-court-brand/40 bg-court-brand-tint px-2 py-0.5 text-[11px] font-medium text-court-brand-dark transition hover:bg-court-brand/15"
+                title="Open this template"
+              >
+                <Link2 className="h-2.5 w-2.5" /> {effectiveTemplate.name}
+              </button>
+            ) : (
+              <span className="text-[11px] italic text-court-fg-muted">
+                None — fire will skip
+              </span>
+            )}
+            {usingDefault && effectiveTemplate && (
+              <span className="text-[11px] italic text-court-fg-muted">
+                (System default)
+              </span>
+            )}
+            {rule.sendAsDraft && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-court-fg-muted">
+                <FileEdit className="h-2.5 w-2.5" />
+                Approve in drafts
+              </span>
+            )}
+          </div>
+
+          {warnings.length > 0 && (
+            <div
+              role="alert"
+              className="mt-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-900"
             >
-              <Link2 className="h-2.5 w-2.5" /> Template: {linkedTemplate.name}
-            </button>
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+              <ul className="space-y-1">
+                {warnings.map((w) => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
 
-        <div className="flex flex-col gap-2 sm:w-72 sm:shrink-0">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-medium text-court-fg">Enabled</span>
-            <Toggle checked={enabled} pending={pending} onToggle={onToggleEnabled} />
-          </div>
+        <div className="flex shrink-0 flex-row items-start gap-1.5 sm:flex-col sm:items-end">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={onEdit}
+            disabled={pending}
+            title="Edit this trigger"
+          >
+            <Pencil className="h-3 w-3" /> Edit
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={onPauseResume}
+            disabled={pending}
+            title={rule.enabled ? "Pause this trigger" : "Resume this trigger"}
+          >
+            {rule.enabled ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+            {rule.enabled ? "Pause" : "Resume"}
+          </Button>
+          {!confirmReset ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setConfirmReset(true)}
+              disabled={pending || !rule.hasRule}
+              title={
+                rule.hasRule
+                  ? "Drop your customization and return to System default"
+                  : "Already at System default"
+              }
+            >
+              <RotateCcw className="h-3 w-3" /> Reset
+            </Button>
+          ) : (
+            <div className="flex items-center gap-1 rounded-md border border-red-300 bg-red-50 px-2 py-1">
+              <span className="text-[11px] font-medium text-red-800">Reset?</span>
+              <button
+                type="button"
+                onClick={onReset}
+                disabled={pending}
+                className="rounded px-1.5 py-0.5 text-[11px] font-semibold text-red-800 hover:bg-red-100 disabled:opacity-60"
+              >
+                {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Confirm"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmReset(false)}
+                disabled={pending}
+                className="rounded px-1.5 py-0.5 text-[11px] text-red-700 hover:bg-red-100 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-court-fg">Template</span>
+// Edit modal — the deliberate editor surface. Mirrors the per-trigger
+// controls the legacy inline editor exposed (template, enabled,
+// approve-before-sending) but adds: read-only event/audience/dispatch
+// header so the recruiter sees what the trigger actually does;
+// "compose-prefill" dispatch hides the approve-before-sending toggle
+// since those triggers never auto-send (calendar invite ships, the
+// composer opens for the recruiter to send manually). All saves go
+// through a single Save action — no per-field optimistic writes — so
+// Cancel actually rolls back unsaved changes.
+function TriggerEditDialog({
+  rule,
+  templates,
+  gmailConnected,
+  onClose,
+}: {
+  rule: TriggerRuleRow;
+  templates: TemplateOption[];
+  gmailConnected: boolean;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [enabled, setEnabled] = useState(rule.enabled);
+  const [sendAsDraft, setSendAsDraft] = useState(rule.sendAsDraft);
+  const [templateId, setTemplateId] = useState<string>(rule.templateId ?? "");
+  const [pending, startTransition] = useTransition();
+
+  const hasNoTemplates = templates.length === 0;
+  const hasMatchingDefault = templates.some((t) => t.matchesTrigger);
+  const supportsDraft = rule.dispatch === "auto-send";
+
+  function onSave() {
+    startTransition(async () => {
+      const res = await upsertTriggerRule({
+        triggerKey: rule.triggerKey,
+        enabled,
+        sendAsDraft: supportsDraft ? sendAsDraft : false,
+        templateId: templateId === "" ? null : templateId,
+      });
+      if (!res.ok) {
+        toast.error("Couldn't save trigger", { description: res.error });
+        return;
+      }
+      toast.success("Trigger saved");
+      router.refresh();
+      onClose();
+    });
+  }
+
+  // Warnings reflect the in-flight (un-saved) form values so the
+  // recruiter sees the consequences of their picks before they commit.
+  const warnings: string[] = [];
+  if (enabled) {
+    if (templateId && !templates.some((t) => t.id === templateId)) {
+      warnings.push("Selected template is missing or inactive.");
+    } else if (!templateId && hasNoTemplates) {
+      warnings.push("No active templates in the library yet — publish one first or this trigger will skip.");
+    } else if (!templateId && !hasMatchingDefault) {
+      warnings.push("No template is tagged for this trigger, so System default would skip. Pick an explicit template above.");
+    }
+  }
+  if (supportsDraft && sendAsDraft && !gmailConnected) {
+    warnings.push("Approve-before-sending is on but Gmail isn't connected — drafts can't be created.");
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !pending) onClose();
+      }}
+    >
+      <div className="w-full max-w-lg rounded-2xl border border-court-border bg-court-surface p-5 shadow-xl">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-court-fg">Edit trigger</h2>
+            <p className="mt-0.5 text-xs text-court-fg-muted">{rule.label}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            aria-label="Close"
+            className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-60"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Read-only event identity card. These fields aren't editable
+            because the trigger is wired to a specific code call-site —
+            changing them in the DB wouldn't change what actually fires. */}
+        <div className="mb-4 grid grid-cols-1 gap-2 rounded-lg border border-court-border bg-court-surface-subtle/40 p-3 text-[11px] sm:grid-cols-3">
+          <Meta label="Trigger key" value={<code className="text-[11px]">{rule.triggerKey}</code>} />
+          <Meta label="Event" value={rule.eventName} />
+          <Meta label="Audience" value={audienceLabel(rule.audience)} />
+          <Meta label="Dispatch" value={dispatchLabel(rule.dispatch)} />
+        </div>
+
+        <p className="mb-4 text-xs text-court-fg-muted">{rule.description}</p>
+
+        <div className="space-y-4">
+          <label className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium text-court-fg">Enabled</div>
+              <div className="text-[11px] text-court-fg-muted">
+                When off, this trigger short-circuits without sending.
+              </div>
+            </div>
+            <Toggle checked={enabled} pending={pending} onToggle={() => setEnabled((p) => !p)} />
+          </label>
+
+          <label className="block">
+            <div className="text-sm font-medium text-court-fg">Template</div>
+            <div className="mt-0.5 text-[11px] text-court-fg-muted">
+              Pin a specific template for this org, or leave on System default to use the most-recently-updated template tagged for this trigger.
+            </div>
             <select
               value={templateId}
-              onChange={(e) => onTemplateChange(e.target.value)}
+              onChange={(e) => setTemplateId(e.target.value)}
               disabled={pending || hasNoTemplates}
               className={cn(
-                "w-full rounded-md border border-court-border bg-court-bg px-2 py-1 text-xs text-court-fg",
+                "mt-2 w-full rounded-md border border-court-border bg-court-bg px-3 py-2 text-sm text-court-fg",
                 "focus:outline-none focus:ring-2 focus:ring-brand/40",
                 (pending || hasNoTemplates) && "opacity-60",
               )}
@@ -255,25 +498,111 @@ function TriggerRuleRowEditor({
                 </option>
               ))}
             </select>
-            {hasNoTemplates ? (
-              <span className="text-[11px] text-court-fg-muted">
-                No active templates in your library yet.
-              </span>
-            ) : !hasMatchingDefault ? (
-              <span className="text-[11px] text-court-fg-muted">
-                No template is tagged for this trigger. Pick one above to use it as the override.
-              </span>
-            ) : null}
           </label>
 
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-medium text-court-fg">Approve before sending</span>
-            <Toggle checked={sendAsDraft} pending={pending} onToggle={onToggleDraft} />
-          </div>
+          {supportsDraft ? (
+            <label className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium text-court-fg">Approve before sending</div>
+                <div className="text-[11px] text-court-fg-muted">
+                  When on, fires land in your Gmail Drafts for review instead of sending immediately.
+                </div>
+              </div>
+              <Toggle
+                checked={sendAsDraft}
+                pending={pending}
+                onToggle={() => setSendAsDraft((p) => !p)}
+              />
+            </label>
+          ) : (
+            <div className="rounded-md border border-court-border bg-court-surface-subtle/40 p-3 text-[11px] text-court-fg-muted">
+              <Send className="-mt-0.5 mr-1 inline h-3 w-3" />
+              Compose-prefill triggers never auto-send. The composer opens with your template already filled in; you hit Send manually. There&apos;s nothing to route through Drafts.
+            </div>
+          )}
+
+          {warnings.length > 0 && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-900"
+            >
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+              <ul className="space-y-1">
+                {warnings.map((w) => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={pending}>
+            Cancel
+          </Button>
+          <Button type="button" variant="primary" size="sm" onClick={onSave} disabled={pending}>
+            {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+            <span>Save</span>
+          </Button>
         </div>
       </div>
     </div>
   );
+}
+
+function StatusPill({ enabled, customized }: { enabled: boolean; customized: boolean }) {
+  if (!enabled) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-800">
+        <Pause className="h-2.5 w-2.5" /> Paused
+      </span>
+    );
+  }
+  if (customized) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-court-brand/40 bg-court-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-court-brand-dark">
+        <CheckCircle2 className="h-2.5 w-2.5" /> Active · customized
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+      <CheckCircle2 className="h-2.5 w-2.5" /> Active · default
+    </span>
+  );
+}
+
+function Meta({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex flex-col">
+      <dt className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">{label}</dt>
+      <dd className="mt-0.5 text-xs text-court-fg">{value}</dd>
+    </div>
+  );
+}
+
+function audienceLabel(a: TriggerRuleRow["audience"]): string {
+  switch (a) {
+    case "candidate":
+      return "Candidate";
+    case "client":
+      return "Client";
+    case "client+candidate":
+      return "Client (cc candidate)";
+    default:
+      return a;
+  }
+}
+
+function dispatchLabel(d: TriggerRuleRow["dispatch"]): string {
+  switch (d) {
+    case "auto-send":
+      return "Auto-send";
+    case "compose-prefill":
+      return "Compose prefill";
+    default:
+      return d;
+  }
 }
 
 function Toggle({

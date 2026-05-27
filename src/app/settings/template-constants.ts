@@ -32,54 +32,112 @@ export const CLIENT_SUBMITTAL_TRIGGER = "client_submittal";
 // is read at runtime by an action callsite (apply / submit /
 // schedule-interview / record-offer / confirm-start / reject /
 // reference-check) to decide whether to fire the matching template.
-export const TRIGGER_OPTIONS: ReadonlyArray<{ value: string; label: string; description: string }> = [
-  { value: "", label: "Manual only", description: "Not auto-sent. Pick this template by hand from the composer." },
+//
+// audience + eventName are surfaced in the Triggers tab as read-only
+// "who gets it" / "what fires it" fields so the manager UI doesn't have
+// to parse them out of the description prose. dispatch describes how
+// the trigger actually ships:
+//   - "auto-send": fireTemplatedEmail sends immediately (default mode).
+//   - "compose-prefill": the template's subject/body seed an open
+//     composer; nothing leaves Ace until the recruiter hits Send. The
+//     two interview-scheduled triggers use this path — the calendar
+//     invite is the only thing that ships automatically.
+// "compose-prefill" rows expose template + enabled (so a recruiter can
+// pause the seeding) but hide approve-before-sending in the editor —
+// there's nothing to draft.
+export type TriggerDispatch = "auto-send" | "compose-prefill";
+export type TriggerAudience = "candidate" | "client" | "client+candidate";
+export type TriggerOption = {
+  value: string;
+  label: string;
+  description: string;
+  audience: TriggerAudience;
+  eventName: string;
+  dispatch: TriggerDispatch;
+};
+
+export const TRIGGER_OPTIONS: ReadonlyArray<TriggerOption> = [
+  {
+    value: "",
+    label: "Manual only",
+    description: "Not auto-sent. Pick this template by hand from the composer.",
+    audience: "candidate",
+    eventName: "Manual",
+    dispatch: "auto-send",
+  },
   {
     value: CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
     label: "Candidate Applied: Confirmation",
     description: "Auto-sends to the candidate when you click Apply to Job (sets stage = Applied).",
+    audience: "candidate",
+    eventName: "Apply to Job",
+    dispatch: "auto-send",
   },
   {
     value: CANDIDATE_CONFIRMATION_TRIGGER,
     label: "Candidate Submitted: Confirmation",
     description: "Auto-sends to the candidate after a submittal email goes out to the client (stage = Submitted).",
+    audience: "candidate",
+    eventName: "Submittal sent",
+    dispatch: "auto-send",
   },
   {
     value: CLIENT_INTERVIEW_SCHEDULED_TRIGGER,
     label: "Interview Scheduled: Client Confirmation",
     description:
       "Pre-populates the Send Client Invite composer when you Schedule Interview. Does NOT auto-send. The calendar invite is the only thing that ships.",
+    audience: "client",
+    eventName: "Schedule Interview",
+    dispatch: "compose-prefill",
   },
   {
     value: CANDIDATE_INTERVIEW_PREP_TRIGGER,
     label: "Interview Scheduled: Candidate Prep",
     description:
       "Pre-populates the Send Candidate Invite composer when you Schedule Interview. Does NOT auto-send. The calendar invite is the only thing that ships.",
+    audience: "candidate",
+    eventName: "Schedule Interview",
+    dispatch: "compose-prefill",
   },
   {
     value: OFFER_EXTENDED_TRIGGER,
     label: "Offer Extended",
     description: "Auto-sends to the candidate when you mark an offer extended (stage = Offer).",
+    audience: "candidate",
+    eventName: "Record Offer",
+    dispatch: "auto-send",
   },
   {
     value: OFFER_ACCEPTANCE_TRIGGER,
     label: "Offer Accepted",
     description: "Auto-sends to the client (CC candidate) when you record offer acceptance (stage = Pending Start).",
+    audience: "client+candidate",
+    eventName: "Record Placement",
+    dispatch: "auto-send",
   },
   {
     value: CANDIDATE_HIRED_WELCOME_TRIGGER,
     label: "Hired: Welcome / Next Steps",
     description: "Auto-sends to the candidate when you Confirm Start Date (stage = Hired).",
+    audience: "candidate",
+    eventName: "Confirm Start",
+    dispatch: "auto-send",
   },
   {
     value: CANDIDATE_REJECTION_TRIGGER,
     label: "Candidate Rejected",
     description: "Auto-sends to the candidate when you click Reject on a candidate-job pairing.",
+    audience: "candidate",
+    eventName: "Reject Candidate",
+    dispatch: "auto-send",
   },
   {
     value: REFERENCE_CHECK_REQUEST_TRIGGER,
     label: "Reference Check Request",
     description: "Auto-sends to the candidate when you click Request References on a candidate profile.",
+    audience: "candidate",
+    eventName: "Request References",
+    dispatch: "auto-send",
   },
 ];
 
