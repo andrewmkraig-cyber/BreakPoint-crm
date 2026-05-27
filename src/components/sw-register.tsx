@@ -1,5 +1,6 @@
 "use client";
 import { useEffect } from "react";
+import { syncGrantedPushSubscription } from "@/lib/push-client";
 
 export function SwRegister() {
   useEffect(() => {
@@ -31,27 +32,17 @@ export function SwRegister() {
         // waiting for the browser's periodic (~24h) sw.js poll.
         registration.update().catch(() => {});
         // No auto-prompt. If the user has already granted permission on a
-        // previous visit, the existing subscription is silently re-POSTed
-        // so the server row stays fresh after a wipe / re-login. Default
-        // and denied states do nothing here — opt-in flows through the
-        // settings page button.
+        // previous visit, the existing subscription is silently re-POSTed;
+        // if iOS expired it while the PWA was idle, recreate it without
+        // making Andrew tap Enable again. Default and denied states still
+        // do nothing here - opt-in flows through the settings page button.
         if (
           "Notification" in window &&
           Notification.permission === "granted"
         ) {
-          const sub = await registration.pushManager.getSubscription();
-          if (sub) {
-            void fetch("/api/push/subscribe", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({
-                ...sub.toJSON(),
-                userAgent: navigator.userAgent,
-              }),
-            }).catch(() => {
-              // Non-fatal — next opt-in / settings visit will retry.
-            });
-          }
+          await syncGrantedPushSubscription(registration).catch(() => {
+            // Non-fatal - next app launch / settings visit will retry.
+          });
         }
       } catch (err) {
         console.error("[sw-register]", err);

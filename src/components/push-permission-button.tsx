@@ -3,28 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  postPushSubscription,
+  subscribeToPush,
+  syncGrantedPushSubscription,
+  writePushDeviceIntent,
+} from "@/lib/push-client";
 import { toast } from "sonner";
 
 // Permission status drives copy and which action runs on click. We don't
 // auto-prompt anywhere — opting in is always explicit (a tap on this
 // button), which matches Chrome's UX rules (auto-prompts get throttled).
 type Status = "loading" | "unsupported" | "default" | "granted" | "denied";
-
-// URL-base64 → Uint8Array. Web Push wants applicationServerKey as a
-// byte array; the VAPID public key we expose is the URL-safe base64
-// string (RFC 4648 §5: `-` and `_` instead of `+` and `/`, no padding).
-// Standard atob() only accepts canonical base64, so we re-pad and
-// flip the URL-safe chars back before decoding.
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; i++) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}
 
 export function PushPermissionButton({
   onStatusChange,
@@ -77,16 +67,16 @@ export function PushPermissionButton({
     navigator.serviceWorker.ready
       .then((reg) => {
         registrationRef.current = reg;
-        // Backfill: if permission is already granted on this device,
-        // check whether a live subscription exists so the granted
-        // branch renders "Enabled + Disable" rather than the Enable
-        // button again.
+        // Backfill/self-heal: if permission is already granted on this
+        // device, re-post the live subscription or repair a missing one
+        // so iOS PWA subscription expiry does not make the button drift
+        // back to "Enable notifications" after idle/app close.
         if (Notification.permission === "granted") {
-          return reg.pushManager.getSubscription();
+          return syncGrantedPushSubscription(reg);
         }
-        return null;
+        return { subscription: null, repaired: false };
       })
-      .then((sub) => {
+      .then(({ subscription: sub }) => {
         setHasSubscription(!!sub);
         onStatusChangeRef.current?.(
           Notification.permission === "granted" && !!sub,
@@ -108,21 +98,7 @@ export function PushPermissionButton({
   function enable() {
     setBusy(true);
     setErrored(false);
-    // Trim aggressively. The InvalidCharacterError that this codepath
-    // used to throw was almost always a Vercel env var with a trailing
-    // newline or wrapping quotes — atob() chokes on whitespace and on
-    // `"`, neither of which are base64 chars. Stripping them up front
-    // is cheaper than chasing it down in Vercel UI each redeploy.
-    const vapidKey = (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "")
-      .trim()
-      .replace(/^"|"$/g, "");
     const reg = registrationRef.current;
-    if (!vapidKey) {
-      toast.error("VAPID public key missing. Push not configured.");
-      setErrored(true);
-      setBusy(false);
-      return;
-    }
     if (!reg) {
       // useEffect populates this within a few ms of mount; landing
       // here usually means the user tapped before the SW finished
@@ -137,30 +113,15 @@ export function PushPermissionButton({
     // That collapsed flow is what Safari's user-gesture check wants:
     // one synchronous call from the click → permission prompt → push
     // subscription, all in one promise chain.
-    reg.pushManager
-      .subscribe({
-        userVisibleOnly: true,
-        // Cast: DOM lib types want Uint8Array<ArrayBuffer> here but
-        // our helper returns Uint8Array<ArrayBufferLike>. The runtime
-        // value is identical; the lib types just narrowed too tightly.
-        applicationServerKey: urlBase64ToUint8Array(
-          vapidKey,
-        ) as unknown as BufferSource,
-      })
+    subscribeToPush(reg)
       .then((subscription) =>
-        fetch("/api/push/subscribe", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            ...subscription.toJSON(),
-            userAgent: navigator.userAgent,
-          }),
-        }).then((res) => {
+        postPushSubscription(subscription).then((res) => {
           if (!res.ok) {
             throw new Error(`/api/push/subscribe ${res.status}`);
           }
           setStatus("granted");
           setHasSubscription(true);
+          writePushDeviceIntent("enabled");
           onStatusChangeRef.current?.(true);
           toast.success("Notifications enabled.");
           // Re-read permission state explicitly so the console log
@@ -202,6 +163,7 @@ export function PushPermissionButton({
   async function disable() {
     setBusy(true);
     try {
+      writePushDeviceIntent("disabled");
       const reg = registrationRef.current ?? (await navigator.serviceWorker.ready);
       const subscription = await reg.pushManager.getSubscription();
       if (subscription) {
