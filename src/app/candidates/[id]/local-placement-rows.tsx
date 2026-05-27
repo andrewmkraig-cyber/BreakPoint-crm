@@ -41,13 +41,22 @@ import {
   DurationSelect,
   InterviewerPicker,
   buildCcBccOptions,
-  extractMeetCode,
   parseEmailCsv,
-  surfaceMeetSettingsLink,
   type AceTeamContact,
 } from "@/app/candidates/[id]/placement-flows";
 import { triggerCalendarSync } from "@/lib/calendar/trigger-sync";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
+import {
+  INTERVIEW_TIMEZONES,
+  DEFAULT_INTERVIEW_TIMEZONE,
+  abbrForTimeZone,
+  wallClockInZoneToUTC,
+} from "@/lib/timezones";
+import {
+  formatInterviewDate,
+  formatInterviewTime,
+  formatInterviewWhen,
+} from "@/lib/interview-format";
 import { StageBadge } from "@/components/stage-badge";
 import type { PipelineBucket } from "@/lib/rf-payload-shapes";
 
@@ -116,6 +125,10 @@ type LocalInviteFlow = {
   clientContactEmail: string;
   ccEmails: string[];
   bccEmails: string[];
+  // IANA timezone the recruiter picked on the schedule dialog.
+  // Threaded into the invite composers so candidate-facing copy can
+  // tag every time with the picked zone's abbreviation (ET/CT/MT/PT).
+  timeZone: string;
   // Pre-fetched interview-scheduled templates; null per side means the
   // composer falls back to its hardcoded default. Mirrors the RF flow's
   // InviteFlowState shape so both surfaces stay in sync.
@@ -648,11 +661,8 @@ function ScheduleDialog({
   const router = useRouter();
   const [scheduledAt, setScheduledAt] = useState("");
   const [durationMin, setDurationMin] = useState(30);
+  const [timeZone, setTimeZone] = useState<string>(DEFAULT_INTERVIEW_TIMEZONE);
   const [type, setType] = useState<InterviewType>("video");
-  // Defaults ON: matches Andrew's typical "anyone with the link can
-  // join" Meet for client/candidate convenience. Off locks the Meet to
-  // the invited attendees only.
-  const [openMeeting, setOpenMeeting] = useState(true);
   const [meetingType, setMeetingType] = useState<MeetingProvider>("google");
   const [microsoftConnected, setMicrosoftConnected] = useState(false);
   const [interviewerName, setInterviewerName] = useState("");
@@ -696,7 +706,12 @@ function ScheduleDialog({
       return setErr("Address required for in-person interviews.");
     }
     startSave(async () => {
-      const snapped = snapTo15Minutes(scheduledAt);
+      // Interpret the wall-clock string in the PICKED zone — not the
+      // browser's local zone. The picker already enforces 15-min
+      // boundaries so no extra snap is needed. The prior
+      // `new Date(scheduledAt).toISOString()` parse was the root of
+      // the "EST event lands 4 hours earlier" bug on non-ET browsers.
+      const snapped = wallClockInZoneToUTC(scheduledAt, timeZone);
       const attendees = interviewerName.trim()
         ? [{ name: interviewerName.trim(), email: interviewerEmail.trim() }]
         : [];
@@ -717,11 +732,11 @@ function ScheduleDialog({
         clientName: job.clientName,
         candidateName,
         location: type === "in_person" ? location.trim() : undefined,
-        // openMeeting + meetingType only matter for ace_scheduled (we
-        // create the Meet on Andrew's behalf). For client_scheduled
-        // the client is creating the calendar event themselves, so
-        // skip both — no Meet link is generated.
-        openMeeting: clientWillSendInvite ? undefined : openMeeting,
+        timeZone,
+        // meetingType only matters for ace_scheduled (we create the
+        // Meet on Andrew's behalf). For client_scheduled the client
+        // creates the event themselves, so skip — no Meet link is
+        // generated either way.
         meetingType:
           clientWillSendInvite ? undefined : type === "video" ? meetingType : undefined,
       });
@@ -762,10 +777,8 @@ function ScheduleDialog({
       } catch {
         // ignore
       }
-      if (type === "video" && result.value.meetLink) {
-        const meetCode = extractMeetCode(result.value.meetLink);
-        if (meetCode) surfaceMeetSettingsLink();
-      }
+      // Meet "Trusted by default" follow-up toast retired — see
+      // placement-flows.tsx scheduler for the rationale.
       onScheduled({
         interviewId: result.value.interviewId,
         scheduledAtISO: snapped.toISOString(),
@@ -785,6 +798,7 @@ function ScheduleDialog({
         clientContactEmail: interviewerEmail.trim(),
         ccEmails: parseEmailCsv(ccCsv),
         bccEmails: parseEmailCsv(bccCsv),
+        timeZone,
         candidateTemplate: templates.candidate,
         clientTemplate: templates.client,
       });
@@ -803,6 +817,8 @@ function ScheduleDialog({
         setScheduledAt={setScheduledAt}
         durationMin={durationMin}
         setDurationMin={setDurationMin}
+        timeZone={timeZone}
+        setTimeZone={setTimeZone}
         type={type}
         setType={setType}
         location={location}
@@ -810,31 +826,18 @@ function ScheduleDialog({
         notes={notes}
         setNotes={setNotes}
         typeExtras={
-          // Open-Meet toggle only matters on the ace_scheduled path
-          // (we mint the Meet on Andrew's behalf there). The
-          // client-scheduled toggle below routes scheduling to the
-          // tracking-only path, which never creates a Meet link —
-          // hide the open-meeting checkbox in that case so its state
-          // isn't misleading.
+          // Meeting-provider picker only matters on the ace_scheduled
+          // path (we mint the Meet on Andrew's behalf there). The
+          // client-scheduled tracking path doesn't create any join
+          // link, so hide the picker in that case. The Open-Meeting
+          // checkbox that used to live here was retired — Andrew's
+          // Workspace defaults Meet access to Open org-wide.
           type === "video" && !clientWillSendInvite ? (
-            <div className="space-y-2">
-              <MeetingProviderSelect
-                value={meetingType}
-                onChange={setMeetingType}
-                teamsConnected={microsoftConnected}
-              />
-              {meetingType === "google" && (
-                <label className="flex cursor-pointer items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={openMeeting}
-                    onChange={(e) => setOpenMeeting(e.target.checked)}
-                    className="h-4 w-4 rounded border-court-border accent-brand-dark"
-                  />
-                  <span className="text-court-fg">Open meeting (anyone can join)</span>
-                </label>
-              )}
-            </div>
+            <MeetingProviderSelect
+              value={meetingType}
+              onChange={setMeetingType}
+              teamsConnected={microsoftConnected}
+            />
           ) : null
         }
         interviewerSlot={
@@ -1101,6 +1104,7 @@ function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; o
   const router = useRouter();
   const [scheduledAt, setScheduledAt] = useState(toDatetimeLocalValue(interview.scheduledAt));
   const [durationMin, setDurationMin] = useState(interview.durationMin);
+  const [timeZone, setTimeZone] = useState<string>(DEFAULT_INTERVIEW_TIMEZONE);
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
 
@@ -1110,8 +1114,10 @@ function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; o
     startSave(async () => {
       const result = await rescheduleInterview({
         interviewId: interview.id,
-        scheduledAt: snapTo15Minutes(scheduledAt).toISOString(),
+        // Same wall-clock-in-zone → UTC fix as the Schedule path.
+        scheduledAt: wallClockInZoneToUTC(scheduledAt, timeZone).toISOString(),
         durationMin,
+        timeZone,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -1131,8 +1137,8 @@ function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; o
       onClose={onClose}
       footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Reschedule" />}
     >
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <label className="block text-sm sm:col-span-2">
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="block min-w-[16rem] flex-1 text-sm">
           <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
           <DateTime15Picker
             value={scheduledAt}
@@ -1141,7 +1147,21 @@ function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; o
             blockPast
           />
         </label>
-        <DurationSelect value={durationMin} onChange={setDurationMin} />
+        <label className="block w-32 text-sm">
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Time zone</span>
+          <select
+            value={timeZone}
+            onChange={(e) => setTimeZone(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          >
+            {INTERVIEW_TIMEZONES.map((z) => (
+              <option key={z.iana} value={z.iana}>
+                {z.abbr}
+              </option>
+            ))}
+          </select>
+        </label>
+        <DurationSelect value={durationMin} onChange={setDurationMin} compact />
       </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
     </ModalShell>
@@ -1157,6 +1177,13 @@ function ScheduleFields(props: {
   setScheduledAt: (v: string) => void;
   durationMin: number;
   setDurationMin: (n: number) => void;
+  // IANA timezone state lives in the parent so the save path can pass
+  // it to scheduleInterview AND the wall-clock-to-UTC converter.
+  // Required (not optional) because every scheduling surface now
+  // honors a recruiter-picked zone — the prior browser-zone default
+  // caused the "EST event lands 4 hours earlier" bug.
+  timeZone: string;
+  setTimeZone: (v: string) => void;
   type: InterviewType;
   setType: (t: InterviewType) => void;
   location: string;
@@ -1166,15 +1193,19 @@ function ScheduleFields(props: {
   interviewerSlot?: React.ReactNode;
   ccBccSlot?: React.ReactNode;
   // Renders directly under the Type select. Used by the schedule flow
-  // to surface the "Open meeting (anyone can join)" checkbox only when
-  // type === "video"; the client-scheduled tracking flow leaves it
-  // empty since no Meet is created on its behalf.
+  // to surface the meeting-provider picker only when type === "video"
+  // AND the client-scheduled tracking flow is off.
   typeExtras?: React.ReactNode;
 }) {
   return (
     <div className="grid grid-cols-1 gap-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <label className="block text-sm sm:col-span-2">
+      {/* Single-row layout — date+time | timezone | duration — so the
+          three time-related controls live on one line. Duration's
+          previous w-full layout on a 3-col grid produced ~50%
+          whitespace next to "30 min"; compact mode shrinks it to the
+          natural option width. */}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="block min-w-[16rem] flex-1 text-sm">
           <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
           {/* blockPast keeps past dates out of the picker — past
               interviews are scheduled via Reschedule from the activity
@@ -1186,7 +1217,21 @@ function ScheduleFields(props: {
             blockPast
           />
         </label>
-        <DurationSelect value={props.durationMin} onChange={props.setDurationMin} />
+        <label className="block w-32 text-sm">
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Time zone</span>
+          <select
+            value={props.timeZone}
+            onChange={(e) => props.setTimeZone(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          >
+            {INTERVIEW_TIMEZONES.map((z) => (
+              <option key={z.iana} value={z.iana}>
+                {z.abbr}
+              </option>
+            ))}
+          </select>
+        </label>
+        <DurationSelect value={props.durationMin} onChange={props.setDurationMin} compact />
       </div>
       <label className="block text-sm">
         <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Type</span>
@@ -1344,27 +1389,10 @@ function formatType(t: InterviewType): string {
   return "In-Person";
 }
 
-function formatWhen(d: Date): string {
-  const sameYear = d.getFullYear() === new Date().getFullYear();
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: sameYear ? undefined : "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 function toDatetimeLocalValue(iso: string): string {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function snapTo15Minutes(datetimeLocal: string): Date {
-  const d = new Date(datetimeLocal);
-  const ms = 15 * 60 * 1000;
-  return new Date(Math.round(d.getTime() / ms) * ms);
 }
 
 // ---- invite composers ----
@@ -1384,6 +1412,13 @@ function buildValues(args: {
 }) {
   const candidateFullName = [args.candidate.firstName, args.candidate.lastName].filter(Boolean).join(" ");
   const when = new Date(args.invite.scheduledAtISO);
+  // Render every interview time in the picked zone with the
+  // ET/CT/MT/PT abbreviation appended so the candidate's email body
+  // never has an ambiguous "3:00 PM" — the prior toLocaleString path
+  // formatted in the recruiter's browser zone, which differed from
+  // the picked zone every time a recruiter scheduled outside their
+  // home timezone.
+  const tz = args.invite.timeZone || undefined;
   return {
     // Candidate
     candidateFirstName: args.candidate.firstName,
@@ -1407,9 +1442,10 @@ function buildValues(args: {
     jobDescription: args.invite.jobDescription,
     jobSalaryRange: args.invite.jobSalaryRange,
     // Interview
-    interviewDate: when.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" }),
-    interviewTime: when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }),
-    interviewDateTime: formatWhen(when),
+    interviewDate: formatInterviewDate(when, tz),
+    interviewTime: formatInterviewTime(when, tz),
+    interviewDateTime: formatInterviewWhen(when, tz),
+    interviewTimeZone: abbrForTimeZone(args.invite.timeZone),
     interviewDuration: `${args.invite.durationMin} min`,
     interviewType: formatType(args.invite.type),
     interviewLocation: args.invite.interviewLocation,

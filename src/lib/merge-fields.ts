@@ -30,6 +30,7 @@ export const MERGE_FIELDS = [
   { token: "[Interview Date]", label: "Interview Date", group: "Interview" },
   { token: "[Interview Time]", label: "Interview Time", group: "Interview" },
   { token: "[Interview Date Time]", label: "Interview Date Time", group: "Interview" },
+  { token: "[Interview Time Zone]", label: "Interview Time Zone (ET/CT/MT/PT)", group: "Interview" },
   { token: "[Interview Duration]", label: "Interview Duration", group: "Interview" },
   { token: "[Interview Type]", label: "Interview Type", group: "Interview" },
   { token: "[Interview Format]", label: "Interview Format (alias for Interview Type)", group: "Interview" },
@@ -77,6 +78,14 @@ export type MergeFieldValues = {
   interviewDate?: string;
   interviewTime?: string;
   interviewDateTime?: string;
+  // Short abbreviation (ET/CT/MT/PT). Source of truth lives in
+  // src/lib/timezones.ts; abbrForTimeZone() maps the IANA name picked
+  // by the scheduler to this short label. Always surfaced alongside
+  // interviewTime / interviewDateTime so candidates know "1:00 PM"
+  // means 1:00 PM in WHICH zone — the prior templates dropped this
+  // information and candidates from a different zone showed up an
+  // hour off.
+  interviewTimeZone?: string;
   interviewDuration?: string;
   interviewType?: string;
   interviewLocation?: string;
@@ -149,6 +158,7 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
     "[Interview Date]": values.interviewDate ?? "",
     "[Interview Time]": values.interviewTime ?? "",
     "[Interview Date Time]": values.interviewDateTime ?? "",
+    "[Interview Time Zone]": values.interviewTimeZone ?? "",
     "[Interview Duration]": values.interviewDuration ?? "",
     "[Interview Type]": values.interviewType ?? "",
     "[Interview Format]": values.interviewType ?? "",

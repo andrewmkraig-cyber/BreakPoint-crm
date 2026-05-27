@@ -91,10 +91,6 @@ export type CreateCalendarEventInput = {
   location?: string;
   // IANA timezone for the event's start/end. Defaults to America/New_York.
   timeZone?: string;
-  // When false, guests can NOT invite others or see the guest list — used
-  // for "locked" meetings. Defaults to true, matching the recruiter's
-  // expectation that anyone on the invite can pull others in.
-  openMeeting?: boolean;
 };
 
 export type CreateCalendarEventResult = {
@@ -111,19 +107,19 @@ export async function createCalendarEvent(
   const start = new Date(input.startISO);
   const end = new Date(start.getTime() + input.durationMin * 60 * 1000);
   const tz = input.timeZone || "America/New_York";
-  const openMeeting = input.openMeeting ?? true;
 
   const body: Record<string, unknown> = {
     summary: input.summary,
     description: input.description ?? "",
     start: { dateTime: start.toISOString(), timeZone: tz },
     end: { dateTime: end.toISOString(), timeZone: tz },
-    // Guest controls: when openMeeting is on (default), invitees can pull
-    // others in + see the guest list. When off, the meeting is locked to
-    // the explicit invitees only — used when the recruiter wants tighter
-    // control over who joins.
-    guestsCanInviteOthers: openMeeting,
-    guestsCanSeeOtherGuests: openMeeting,
+    // Guests can pull others in + see the guest list by default. The
+    // previous per-event "Open meeting" toggle on the scheduler was
+    // retired in favor of the org-wide Google Calendar / Meet setting
+    // — Andrew's workspace is now "Open" globally so there is no need
+    // to flip this on a per-interview basis.
+    guestsCanInviteOthers: true,
+    guestsCanSeeOtherGuests: true,
     guestsCanModify: false,
   };
   if (input.attendees && input.attendees.length > 0) {

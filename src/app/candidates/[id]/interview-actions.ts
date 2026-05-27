@@ -82,9 +82,6 @@ export type ScheduleInterviewInput = {
   // the tracking event (client_scheduled) and forwarded back to the
   // invite flow so the per-party events use the same zone.
   timeZone?: string;
-  // When true (default), the Meet is created with Open access + guests
-  // can invite others. When false, guests are locked to the invite list.
-  openMeeting?: boolean;
   // Provider used to mint the join link for video interviews. Defaults
   // to "google". Only consulted when type === "video" AND source ===
   // "ace_scheduled"; the client-scheduled path never mints a link
@@ -279,7 +276,6 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
       sendUpdates: false,
       location: input.location || undefined,
       timeZone: input.timeZone,
-      openMeeting: input.openMeeting ?? true,
     });
     googleEventIdMine = ev.eventId;
     meetLink = ev.meetLink;
@@ -852,9 +848,6 @@ export type SendInvitePartyInput = {
   // Reserved for future use — the event timezone is set on creation
   // so the per-party patch does not need to refresh it.
   timeZone?: string;
-  // Reserved for future use — Meet access is set on event creation via
-  // conferenceData createRequest; no per-party flip.
-  openMeeting?: boolean;
 };
 
 export type SendInvitePartyResult =

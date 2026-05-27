@@ -68,6 +68,12 @@ import {
   formatInterviewWhen as formatInterviewWhenShared,
   formatInterviewNextLine,
 } from "@/lib/interview-format";
+import {
+  INTERVIEW_TIMEZONES,
+  DEFAULT_INTERVIEW_TIMEZONE,
+  abbrForTimeZone,
+  wallClockInZoneToUTC,
+} from "@/lib/timezones";
 import { PipelineRowActions } from "@/app/jobs/[id]/pipeline-row-actions";
 import { LEAD_SOURCES } from "@/lib/lead-sources";
 
@@ -170,12 +176,9 @@ type InviteFlowState = {
   ccEmails: string[];
   bccEmails: string[];
   // IANA timezone the recruiter picked on the schedule dialog. Passed
-  // through to the per-party invite events.
+  // through to the per-party invite events + into the merge values so
+  // candidate-facing copy tags every time with the right abbreviation.
   timeZone: string;
-  // When true, the Meet is created with Open access. Passed through to
-  // both invite composers so the toggle decision on the schedule dialog
-  // applies to both events.
-  openMeeting: boolean;
   // Pre-fetched active templates for the two interview-scheduled
   // triggers. When non-null the composers use the template's
   // subject/body as the seed (with merge fields resolved against the
@@ -2387,8 +2390,7 @@ function ScheduleInterviewDialog({
   const router = useRouter();
   const [scheduledAt, setScheduledAt] = useState<string>("");
   const [durationMin, setDurationMin] = useState<number>(30);
-  const [timeZone, setTimeZone] = useState<string>("America/New_York");
-  const [openMeeting, setOpenMeeting] = useState<boolean>(true);
+  const [timeZone, setTimeZone] = useState<string>(DEFAULT_INTERVIEW_TIMEZONE);
   const [type, setType] = useState<InterviewType>("video");
   const [meetingType, setMeetingType] = useState<MeetingProvider>("google");
   const [microsoftConnected, setMicrosoftConnected] = useState<boolean>(false);
@@ -2437,7 +2439,14 @@ function ScheduleInterviewDialog({
       return;
     }
     startSave(async () => {
-      const snapped = snapTo15Minutes(scheduledAt);
+      // Interpret the wall-clock string in the PICKED time zone, not
+      // the browser's local zone. The prior path did
+      // `new Date(scheduledAt).toISOString()` which silently used the
+      // browser's zone for the parse — picking 1:00 PM ET from a PT
+      // laptop landed a 4 PM ET instant on Google. The picker already
+      // emits a 15-min-aligned wall clock so no extra snapping is
+      // needed.
+      const snapped = wallClockInZoneToUTC(scheduledAt, timeZone);
       const attendees = interviewerName.trim()
         ? [{ name: interviewerName.trim(), email: interviewerEmail.trim() }]
         : [];
@@ -2457,7 +2466,6 @@ function ScheduleInterviewDialog({
         candidateName,
         location: type === "in_person" ? location.trim() : undefined,
         timeZone,
-        openMeeting,
         meetingType: type === "video" ? meetingType : undefined,
       });
       if (!result.ok) {
@@ -2487,14 +2495,10 @@ function ScheduleInterviewDialog({
       } catch {
         // ignore — composers fall back to defaults
       }
-      // Surface the Meet "Trusted by default" caveat in a sticky
-      // toast with a one-click link to the Meet settings page so the
-      // recruiter can flip it to Open without leaving the flow. Only
-      // applies to Video interviews where Calendar minted a Meet.
-      if (type === "video" && result.value.meetLink) {
-        const meetCode = extractMeetCode(result.value.meetLink);
-        if (meetCode) surfaceMeetSettingsLink();
-      }
+      // The Meet "Trusted by default" follow-up toast was retired —
+      // Andrew's workspace is now Open by default in Google Calendar,
+      // so the one-click bounce to the settings page is no longer
+      // worth the interruption.
       onScheduled({
         interviewId: result.value.interviewId,
         scheduledAtISO: snapped.toISOString(),
@@ -2514,7 +2518,6 @@ function ScheduleInterviewDialog({
         ccEmails: parseEmailCsv(ccCsv),
         bccEmails: parseEmailCsv(bccCsv),
         timeZone,
-        openMeeting,
         candidateTemplate: templates.candidate,
         clientTemplate: templates.client,
       });
@@ -2554,8 +2557,13 @@ function ScheduleInterviewDialog({
       }
     >
       <div className="grid grid-cols-1 gap-3">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <label className="block text-sm sm:col-span-2">
+        {/* One row: date+time on the left, timezone in the middle,
+            duration on the right. Date+time flex-grows to take the
+            remaining space; tz and duration sit at fixed widths so
+            the dropdowns size to their content (the prior 3-col grid
+            stretched Duration's "30 min" option to ~50% whitespace). */}
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block min-w-[16rem] flex-1 text-sm">
             <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
             <DateTime15Picker
               value={scheduledAt}
@@ -2564,36 +2572,25 @@ function ScheduleInterviewDialog({
               blockPast
             />
           </label>
-          <DurationSelect value={durationMin} onChange={setDurationMin} />
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <label className="block text-sm sm:col-span-2">
-            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Timezone</span>
+          <label className="block w-32 text-sm">
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Time zone</span>
             <select
               value={timeZone}
               onChange={(e) => setTimeZone(e.target.value)}
               className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
             >
-              <option value="America/New_York">Eastern (ET)</option>
-              <option value="America/Chicago">Central (CT)</option>
-              <option value="America/Denver">Mountain (MT)</option>
-              <option value="America/Los_Angeles">Pacific (PT)</option>
-              <option value="America/Anchorage">Alaska (AKT)</option>
-              <option value="Pacific/Honolulu">Hawaii (HT)</option>
+              {INTERVIEW_TIMEZONES.map((z) => (
+                <option key={z.iana} value={z.iana}>
+                  {z.abbr}
+                </option>
+              ))}
             </select>
           </label>
+          <DurationSelect value={durationMin} onChange={setDurationMin} compact />
         </div>
-        {type === "video" && meetingType === "google" && (
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={openMeeting}
-              onChange={(e) => setOpenMeeting(e.target.checked)}
-              className="h-4 w-4 rounded border-court-border accent-brand-dark"
-            />
-            <span className="text-court-fg">Open meeting (anyone can join)</span>
-          </label>
-        )}
+        {/* Open-meeting checkbox retired — Andrew's Google Workspace
+            Meet access is now configured org-wide to Open so the
+            per-event flip was redundant. */}
         <label className="block text-sm">
           <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Type</span>
           <select
@@ -2665,15 +2662,10 @@ function ScheduleInterviewDialog({
 }
 
 // Snaps a datetime-local value (YYYY-MM-DDTHH:mm in local time) to the
-// nearest 15-minute boundary. Defense in depth: the `step={900}` attribute
-// forces browsers to expose only 15-min slots, but users can still type
-// arbitrary values in some browsers, and the payload reaches the server
-// regardless. This guarantees the stored time is always aligned.
-function snapTo15Minutes(datetimeLocal: string): Date {
-  const d = new Date(datetimeLocal);
-  const ms = 15 * 60 * 1000;
-  return new Date(Math.round(d.getTime() / ms) * ms);
-}
+// snapTo15Minutes was retired alongside the wallClockInZoneToUTC fix —
+// DateTime15Picker already enforces 15-min boundaries on its dropdown
+// (no free-text path remains), and the zone-aware converter handles the
+// only remaining "snap the string and convert to UTC" responsibility.
 
 function ClientInviteDialog({
   candidateRef,
@@ -2689,6 +2681,7 @@ function ClientInviteDialog({
   const router = useRouter();
   const [scheduledAt, setScheduledAt] = useState<string>("");
   const [durationMin, setDurationMin] = useState<number>(30);
+  const [timeZone, setTimeZone] = useState<string>(DEFAULT_INTERVIEW_TIMEZONE);
   const [type, setType] = useState<InterviewType>("video");
   const [interviewerName, setInterviewerName] = useState("");
   const [location, setLocation] = useState("");
@@ -2713,7 +2706,11 @@ function ClientInviteDialog({
         candidateId: candidateRef.candidateId ?? null,
         jobRfId: job.jobRfId,
         clientRfId: job.clientRfId,
-        scheduledAt: snapTo15Minutes(scheduledAt).toISOString(),
+        // Wall-clock-in-zone → UTC; same fix as the ace-scheduled path
+        // above. Without this the client-scheduled tracking event
+        // lands on the wrong instant when the recruiter's browser is
+        // in a different zone than the picked time zone.
+        scheduledAt: wallClockInZoneToUTC(scheduledAt, timeZone).toISOString(),
         durationMin,
         type,
         attendees,
@@ -2723,6 +2720,7 @@ function ClientInviteDialog({
         clientName: job.clientName,
         candidateName,
         location: type === "in_person" ? location.trim() : undefined,
+        timeZone,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -2749,12 +2747,30 @@ function ClientInviteDialog({
         log it for tracking and drop it on your calendar. No invite is sent to the candidate or client.
       </p>
       <div className="grid grid-cols-1 gap-3">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <label className="block text-sm sm:col-span-2">
+        {/* Date+time | timezone | duration — same single-row layout as
+            the ace-scheduled Schedule dialog. Timezone matters here
+            too: the recruiter is recording WHEN the client said the
+            interview is, not when their own machine thinks it is. */}
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block min-w-[16rem] flex-1 text-sm">
             <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
             <DateTime15Picker value={scheduledAt} onChange={setScheduledAt} className="mt-1" blockPast />
           </label>
-          <DurationSelect value={durationMin} onChange={setDurationMin} />
+          <label className="block w-32 text-sm">
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Time zone</span>
+            <select
+              value={timeZone}
+              onChange={(e) => setTimeZone(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            >
+              {INTERVIEW_TIMEZONES.map((z) => (
+                <option key={z.iana} value={z.iana}>
+                  {z.abbr}
+                </option>
+              ))}
+            </select>
+          </label>
+          <DurationSelect value={durationMin} onChange={setDurationMin} compact />
         </div>
         <label className="block text-sm">
           <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Type</span>
@@ -2834,7 +2850,7 @@ function EditInterviewDialog({
   const router = useRouter();
   const [scheduledAt, setScheduledAt] = useState<string>(() => toDatetimeLocalValue(interview.scheduledAt));
   const [durationMin, setDurationMin] = useState<number>(interview.durationMin);
-  const [timeZone, setTimeZone] = useState<string>("America/New_York");
+  const [timeZone, setTimeZone] = useState<string>(DEFAULT_INTERVIEW_TIMEZONE);
   const [type, setType] = useState<InterviewType>(interview.type);
   const initialInterviewer = interview.attendees[0] ?? { name: "", email: "" };
   const [interviewerName, setInterviewerName] = useState(initialInterviewer.name);
@@ -2860,7 +2876,11 @@ function EditInterviewDialog({
       const attendees = interviewerName.trim() || interviewerEmail.trim()
         ? [{ name: interviewerName.trim(), email: interviewerEmail.trim() }]
         : [];
-      const snapped = snapTo15Minutes(scheduledAt);
+      // Interpret the wall-clock string in the picked zone so editing
+      // an interview from a non-ET browser doesn't shift the saved
+      // instant relative to the ET-default firing path. See the
+      // schedule dialog comment for the prior bug.
+      const snapped = wallClockInZoneToUTC(scheduledAt, timeZone);
       const result = await updateInterview({
         interviewId: interview.id,
         scheduledAt: snapped.toISOString(),
@@ -2894,8 +2914,12 @@ function EditInterviewDialog({
   return (
     <Modal title="Edit interview" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose} wide>
       <div className="grid grid-cols-1 gap-3">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <label className="block text-sm sm:col-span-2">
+        {/* Same single-row layout as the Schedule dialog: date+time |
+            timezone | duration. Keeps the two surfaces visually
+            consistent and frees up the second row Edit used to spend
+            on a half-empty timezone select. */}
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="block min-w-[16rem] flex-1 text-sm">
             <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
             <DateTime15Picker
               value={scheduledAt}
@@ -2905,25 +2929,22 @@ function EditInterviewDialog({
               blockPast
             />
           </label>
-          <DurationSelect value={durationMin} onChange={setDurationMin} />
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <label className="block text-sm sm:col-span-2">
-            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Timezone</span>
+          <label className="block w-32 text-sm">
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Time zone</span>
             <select
               value={timeZone}
               onChange={(e) => setTimeZone(e.target.value)}
               disabled={saving}
               className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
             >
-              <option value="America/New_York">Eastern (ET)</option>
-              <option value="America/Chicago">Central (CT)</option>
-              <option value="America/Denver">Mountain (MT)</option>
-              <option value="America/Los_Angeles">Pacific (PT)</option>
-              <option value="America/Anchorage">Alaska (AKT)</option>
-              <option value="Pacific/Honolulu">Hawaii (HT)</option>
+              {INTERVIEW_TIMEZONES.map((z) => (
+                <option key={z.iana} value={z.iana}>
+                  {z.abbr}
+                </option>
+              ))}
             </select>
           </label>
+          <DurationSelect value={durationMin} onChange={setDurationMin} compact />
         </div>
         <label className="block text-sm">
           <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Type</span>
@@ -3014,18 +3035,22 @@ function formatInterviewType(t: InterviewType): string {
   return "In-Person";
 }
 
-// Locale-explicit ET formatters live in src/lib/interview-format.ts so SSR
-// and hydration always produce byte-identical strings.
-function formatInterviewWhen(d: Date): string {
-  return formatInterviewWhenShared(d);
+// Locale-explicit formatters live in src/lib/interview-format.ts so SSR
+// and hydration always produce byte-identical strings. The optional tz
+// arg renders the wall-clock in the recruiter-picked zone AND appends
+// the abbreviation (ET/CT/MT/PT) — callers that already know the zone
+// of an interview pass it through so candidate-facing copy never has
+// to scrape a zone out of a hardcoded ET string.
+function formatInterviewWhen(d: Date, tz?: string): string {
+  return formatInterviewWhenShared(d, tz);
 }
 
-function formatInterviewDate(d: Date): string {
-  return formatInterviewDateShared(d);
+function formatInterviewDate(d: Date, tz?: string): string {
+  return formatInterviewDateShared(d, tz);
 }
 
-function formatInterviewTime(d: Date): string {
-  return formatInterviewTimeShared(d);
+function formatInterviewTime(d: Date, tz?: string): string {
+  return formatInterviewTimeShared(d, tz);
 }
 
 function toDatetimeLocalValue(iso: string): string {
@@ -4082,38 +4107,14 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-// Extract the meeting code from a Meet URL — `meetCode` is the
-// dash-separated slug Google uses for the meeting room (e.g.
-// https://meet.google.com/abc-defg-hij → "abc-defg-hij"). Returns null
-// when the URL doesn't match the Meet shape so callers can skip the
-// follow-up settings link cleanly.
-export function extractMeetCode(meetLink: string | null | undefined): string | null {
-  if (!meetLink) return null;
-  const m = meetLink.match(/meet\.google\.com\/([a-z0-9-]+)/i);
-  return m?.[1] ?? null;
-}
-
-// Sticky info toast surfacing the Meet "Trusted by default" caveat.
-// The direct https://meet.google.com/<code>/settings deep link 404s
-// for organizers who haven't visited the room yet, so we point at
-// Google Calendar (where the event + its Meet are already open) and
-// let the recruiter flip access from there. No params — callers
-// gate on having a Meet by checking the link separately.
-export function surfaceMeetSettingsLink(): void {
-  toast.info("Meeting access is set to Trusted by default.", {
-    description: (
-      <a
-        href="https://calendar.google.com"
-        target="_blank"
-        rel="noreferrer"
-        className="text-brand-dark underline underline-offset-2 hover:text-brand"
-      >
-        Open in Google Calendar to change access →
-      </a>
-    ),
-    duration: 15_000,
-  });
-}
+// extractMeetCode + surfaceMeetSettingsLink were retired (Ace 44.0):
+// Andrew's Google Workspace now defaults Meet access to "Open" so the
+// post-schedule "Trusted by default" toast that bounced the recruiter
+// to calendar.google.com was no longer useful — it just interrupted
+// the schedule → invite → invite flow with a notification no one
+// needed to act on. If the org default ever flips back to Trusted the
+// toast should be reintroduced as a one-time settings hint rather
+// than a per-interview interruption.
 
 // ---------------- Interview invite composers ----------------
 
@@ -4124,6 +4125,12 @@ function buildInterviewMergeValues(args: {
 }) {
   const candidateFullName = [args.candidate.firstName, args.candidate.lastName].filter(Boolean).join(" ");
   const when = new Date(args.invite.scheduledAtISO);
+  // Render every interview-time merge value in the picked zone + tag
+  // the abbreviation (ET/CT/MT/PT) so candidate-facing copy never
+  // leaves the reader guessing which "3:00 PM" they're on. Falls back
+  // to the formatters' hardcoded ET default when timeZone is missing
+  // (shouldn't happen post-schedule but the formatters tolerate it).
+  const tz = args.invite.timeZone || undefined;
   return {
     // Candidate
     candidateFirstName: args.candidate.firstName,
@@ -4147,9 +4154,10 @@ function buildInterviewMergeValues(args: {
     jobDescription: args.invite.jobDescription,
     jobSalaryRange: args.invite.jobSalaryRange,
     // Interview
-    interviewDate: formatInterviewDate(when),
-    interviewTime: formatInterviewTime(when),
-    interviewDateTime: formatInterviewWhen(when),
+    interviewDate: formatInterviewDate(when, tz),
+    interviewTime: formatInterviewTime(when, tz),
+    interviewDateTime: formatInterviewWhen(when, tz),
+    interviewTimeZone: abbrForTimeZone(args.invite.timeZone),
     interviewDuration: `${args.invite.durationMin} min`,
     interviewType: formatInterviewType(args.invite.type),
     interviewLocation: args.invite.interviewLocation,
@@ -4181,7 +4189,12 @@ function fallbackCandidateSubject(invite: InviteFlowState): string {
 }
 
 function fallbackBody(invite: InviteFlowState, who: "client" | "candidate", candidateFull: string): string {
-  const when = formatInterviewWhen(new Date(invite.scheduledAtISO));
+  // formatInterviewWhen renders the wall-clock in the picked zone and
+  // appends the abbreviation ("Wed, May 27, 2026, 1:00 PM PT"), so the
+  // reader never has to guess which zone the time is in. The hardcoded
+  // ET fallback path only fires when invite.timeZone is empty, which
+  // shouldn't happen post-schedule.
+  const when = formatInterviewWhen(new Date(invite.scheduledAtISO), invite.timeZone);
   const type = formatInterviewType(invite.type);
   const addr = invite.type === "in_person" && invite.interviewLocation
     ? `\n• Location: ${invite.interviewLocation}`
@@ -4297,7 +4310,6 @@ function ClientInviteComposer({
           subject: draft.subject,
           bodyText: draft.body,
           timeZone: invite.timeZone,
-          openMeeting: invite.openMeeting,
         });
         if (!result.ok) {
           toast.error("Client invite failed", { description: result.error });
@@ -4394,7 +4406,6 @@ function CandidateInviteComposer({
           subject: draft.subject,
           bodyText: draft.body,
           timeZone: invite.timeZone,
-          openMeeting: invite.openMeeting,
         });
         if (!result.ok) {
           toast.error("Candidate invite failed", { description: result.error });
@@ -4426,13 +4437,20 @@ export function DurationSelect({
   value,
   onChange,
   label = "Duration",
+  compact = false,
 }: {
   value: number;
   onChange: (n: number) => void;
   label?: string;
+  // When true the picker sizes to its content (a tight ~7rem pill)
+  // instead of stretching to fill its parent. Used in the schedule
+  // dialog row where date+time | timezone | duration share one line;
+  // the previous w-full layout made "30 min" sit alone in a column
+  // wide enough to fit "120 min" with ~50% whitespace to the right.
+  compact?: boolean;
 }) {
   return (
-    <label className="block text-sm">
+    <label className={compact ? "block w-28 text-sm" : "block text-sm"}>
       <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
       <select
         value={value}
