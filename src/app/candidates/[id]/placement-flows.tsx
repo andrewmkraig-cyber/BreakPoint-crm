@@ -21,6 +21,11 @@ import { TabStrip } from "@/components/ui/tab-strip";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  useDraggableResizable,
+  MODAL_MIN_W,
+  MODAL_MIN_H,
+} from "@/lib/use-draggable-resizable";
 import { submittalMarkdownToEditorHtml } from "@/lib/submittal-format";
 import { type PipelineBucket } from "@/lib/rf-payload-shapes";
 import { StageBadge } from "@/components/stage-badge";
@@ -1320,6 +1325,13 @@ function OfferDialog({
       // a reflexive Escape press shouldn't be able to throw the work
       // away. Cancel-by-X / Cancel button stays the only path out.
       dismissOnOverlay={false}
+      // Ace 67.11: draggable header + bottom-right corner resize so the
+      // recruiter can move the offer popup off the pipeline row it
+      // belongs to (e.g. to copy a quoted salary out of the candidate
+      // profile underneath) and widen the panel past the default
+      // 32rem cap when typing a long acceptance email.
+      draggable
+      resizable
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {/* USD is the only allowed currency on offer rows (Ace fix 2026-05-27).
@@ -3978,6 +3990,8 @@ function Modal({
   footer,
   wide,
   dismissOnOverlay = true,
+  draggable = false,
+  resizable = false,
 }: {
   title: string;
   subtitle?: string;
@@ -3991,6 +4005,12 @@ function Modal({
   // (or the Cancel button) — half-filled offer fields shouldn't get
   // discarded by a stray click on the dim backdrop.
   dismissOnOverlay?: boolean;
+  // Opt-in drag (header) + resize (bottom-right corner). Ace 67.11 — the
+  // OfferDialog passes both true so the recruiter can move/resize the
+  // offer popup without losing the row underneath. Every other Modal
+  // consumer leaves these false and behaves exactly as before.
+  draggable?: boolean;
+  resizable?: boolean;
 }) {
   // Defensive Escape guard. The custom Modal has no native Escape
   // handler today, so Escape already does nothing — but if this modal
@@ -4007,6 +4027,19 @@ function Modal({
     window.addEventListener("keydown", block, { capture: true });
     return () => window.removeEventListener("keydown", block, { capture: true });
   }, [dismissOnOverlay]);
+
+  // Opt-in drag + resize. Default width when resizable matches the prior
+  // max-w-lg / max-w-2xl Tailwind cap (32rem / 42rem = 512 / 672 px) so the
+  // panel's first paint is visually identical to the pre-67.11 layout —
+  // the recruiter only notices the difference when they grab the header
+  // or the corner. State lives in the hook; component unmount on close
+  // resets it, so reopening the modal snaps back to centered + default.
+  const { position, size, isDragging, isResizing, headerHandlers, resizeHandlers } =
+    useDraggableResizable({
+      enableDrag: draggable,
+      enableResize: resizable,
+      initialWidth: resizable ? (wide ? 672 : 512) : null,
+    });
 
   // Portal to document.body so the overlay escapes the candidate
   // profile's React tree. Without the portal, ancestor stacking
@@ -4042,16 +4075,46 @@ function Modal({
             screen. Header and footer are flex-none so the title and
             action buttons stay pinned; the middle body gets flex-1 +
             min-h-0 so it shrinks and scrolls internally instead of
-            pushing the modal off-screen. */}
+            pushing the modal off-screen.
+
+            When resizable, the max-w-lg / max-h-... Tailwind caps come
+            off and we govern the panel size via inline width/height +
+            inline 90vw/90vh maxes so the corner handle can drag past
+            the old 32rem ceiling. relative anchors the corner handle
+            inside the panel rect. */}
         <div
           className={cn(
             "flex w-full flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl",
-            "max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-3rem)]",
-            wide ? "max-w-2xl" : "max-w-lg",
+            !resizable && "max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-3rem)]",
+            !resizable && (wide ? "max-w-2xl" : "max-w-lg"),
+            (draggable || resizable) && "relative",
+            (isDragging || isResizing) && "select-none",
           )}
+          style={
+            draggable || resizable
+              ? {
+                  width: size.w ?? undefined,
+                  height: size.h ?? undefined,
+                  minWidth: resizable ? MODAL_MIN_W : undefined,
+                  minHeight: resizable ? MODAL_MIN_H : undefined,
+                  maxWidth: resizable ? "90vw" : undefined,
+                  maxHeight: resizable ? "90vh" : undefined,
+                  transform:
+                    draggable && (position.x !== 0 || position.y !== 0)
+                      ? `translate3d(${position.x}px, ${position.y}px, 0)`
+                      : undefined,
+                }
+              : undefined
+          }
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex flex-none items-start justify-between border-b border-court-border px-5 py-3">
+          <div
+            className={cn(
+              "flex flex-none items-start justify-between border-b border-court-border px-5 py-3",
+              draggable && "cursor-move touch-none",
+            )}
+            {...headerHandlers}
+          >
             <div>
               <h2 className="font-serif text-lg font-semibold text-court-fg">{title}</h2>
               {subtitle && <p className="mt-0.5 text-xs text-court-fg-muted">{subtitle}</p>}
@@ -4064,6 +4127,29 @@ function Modal({
           {footer && (
             <div className="flex flex-none items-center justify-end gap-2 border-t border-court-border bg-court-surface px-5 py-3">
               {footer}
+            </div>
+          )}
+          {resizable && (
+            // Corner resize handle. cursor-nwse-resize matches the
+            // OS-standard SE-corner cursor; touch-none disables the
+            // browser's default touch-scroll on this hit area so the
+            // resize gesture starts cleanly on tablets. The two diagonal
+            // ticks reuse the same currentColor / muted token the Notes
+            // textarea's native resize affordance reads as.
+            <div
+              {...resizeHandlers}
+              aria-hidden
+              className="absolute bottom-0 right-0 z-10 h-4 w-4 cursor-nwse-resize touch-none"
+            >
+              <svg viewBox="0 0 16 16" className="h-full w-full text-court-fg-muted/70">
+                <path
+                  d="M13 7v6h-6M13 11v2h-2"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
             </div>
           )}
         </div>

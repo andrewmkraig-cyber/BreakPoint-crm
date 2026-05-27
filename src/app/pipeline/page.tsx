@@ -51,12 +51,14 @@ const STAGES: Stage[] = [
 // the signed-in user's own book, scoped by the parent client's owner.
 type OwnerScope = "mine" | "theirs" | "all";
 
-const PAGE_SIZE = 25;
+// Pagination removed Ace 67.11 — pipeline tabs render the full filtered
+// set and the list grows downward. The shared <Pagination> component
+// stays alive for /candidates, /jobs, /clients.
 
 export default async function PipelinePage({
   searchParams,
 }: {
-  searchParams?: { stage?: string; q?: string; page?: string; clientId?: string; jobId?: string; owner?: string };
+  searchParams?: { stage?: string; q?: string; clientId?: string; jobId?: string; owner?: string };
 }) {
   const stage: Stage = (STAGES as string[]).includes(searchParams?.stage ?? "")
     ? (searchParams!.stage as Stage)
@@ -75,8 +77,6 @@ export default async function PipelinePage({
   // (same rationale as the clientId filter — those rows aren't in Neon).
   const jobIdRaw = searchParams?.jobId?.trim();
   const jobFilter = jobIdRaw && /^\d+$/.test(jobIdRaw) ? Number(jobIdRaw) : null;
-  const pageParam = parseInt(searchParams?.page ?? "1", 10);
-  const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
 
   // Owner scope (Step 4). Default to the signed-in user's own book.
   // Exception: when the page is deep-linked from a client/job stat pill
@@ -715,19 +715,11 @@ export default async function PipelinePage({
     });
   }
 
-  // Pagination only applies to the main-pipeline stages. Applied/Kept
-  // render their full filtered set the same way /applicants always did.
-  const isIntakeStage = stage === "applied" || stage === "kept";
-  const total = isIntakeStage
-    ? stage === "applied"
-      ? appliedRows.length
-      : keptRows.length
-    : rows.length;
-  const totalPages = isIntakeStage ? 1 : Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const safePage = isIntakeStage ? 1 : Math.min(Math.max(1, page), totalPages);
-  const pageRows = isIntakeStage
-    ? []
-    : rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  // Ace 67.11: pagination dropped on every pipeline tab. The main-
+  // pipeline buckets (submitted / interviewing / offer / pending_start /
+  // hired) render the full filtered set; intake buckets (applied / kept)
+  // were already non-paginated, so this is now uniform.
+  const pageRows = stage === "applied" || stage === "kept" ? [] : rows;
 
   // When the page is reached via a stage-pill on a client profile, render
   // a "← Back to <client>" affordance so the recruiter can return without
@@ -764,10 +756,6 @@ export default async function PipelinePage({
         rows={pageRows}
         appliedRows={appliedRows}
         keptRows={keptRows}
-        total={total}
-        page={safePage}
-        totalPages={totalPages}
-        pageSize={PAGE_SIZE}
         stage={stage}
         q={q}
         counts={counts}

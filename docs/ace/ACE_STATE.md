@@ -1,10 +1,34 @@
 # ACE_STATE.md
-Last updated: 2026-05-27 · Ace 67.10
+Last updated: 2026-05-27 · Ace 67.11
 
 ## Current Status
-Current Version: Ace 67.10
+Current Version: Ace 67.11
 Last Shipped: 2026-05-27
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.11 (2026-05-27)
+
+Offer modal drag/resize + pipeline pagination removal + Edit-Offer-chip verification.
+
+- **Offer modal is draggable + resizable.** New shared hook `src/lib/use-draggable-resizable.ts` exposes pointer-capture-based drag (translate3d from the centered flex slot) and bottom-right corner resize (inline width/height overriding the default `max-w-lg` cap). Min 480x400, max 90vw/90vh. Both `Modal` (`placement-flows.tsx:3977`) and `ModalShell` (`local-placement-rows.tsx:1837`) gained opt-in `draggable?: boolean` / `resizable?: boolean` props (default false). Both `OfferDialog` instances pass both `true`. Every other modal consumer (Confirm Start, Reject, Reapply, Edit Interview, Apply/Submit to Job, Cancel Placement, Extend Offer, Make Placement, Local Placement, Local Confirm Start — 13 in total) leaves them false and renders identically to 67.10. setPointerCapture + onLostPointerCapture + onPointerCancel cover the clean-release guarantee even if the pointer leaves the window. The `dismissOnOverlay={false}` lock from 67.10 stays — header pointer events don't propagate to the overlay's onClick.
+- **Pagination footer dropped from every pipeline tab.** `<Pagination>` JSX + `total / page / totalPages / pageSize` props + the `PAGE_SIZE = 25` slice in `pipeline/page.tsx` are gone. Applicants / Kept / Submitted / Interviewing / Offer / Pending Start / Hired all render the full filtered set and grow downward. `?page=` URL param is no longer parsed (passing it is harmless — it's just ignored). The shared `src/components/pagination.tsx` component stays alive (still used by `/candidates`, `/jobs`, `/clients`). The Matched candidates pager on `/jobs/[id]` (`pipeline-summary.tsx:373`) is a separate feature and was not touched.
+- **Edit Offer chip on /pipeline — verified, no code change.** Step 0 grep confirmed the chip already exists at `pipeline-view.tsx:731-740` gated on `r.bucket === "offer"`, deep-linking `?edit=offer&jobId=NN`. Both deep-link handlers are wired: RF at `placement-flows.tsx:638-652`, Ace-native at `local-placement-rows.tsx:361-375` (both shipped in commit `093ed75`, Ace 67.8). If the chip looked missing on prod, the cause is Vercel deploy lag (per the `live-deploy-diverges-from-repo` memory), not a code bug.
+
+Touches: `src/lib/use-draggable-resizable.ts` (new), `src/app/candidates/[id]/placement-flows.tsx`, `src/app/candidates/[id]/local-placement-rows.tsx`, `src/app/pipeline/page.tsx`, `src/app/pipeline/pipeline-view.tsx`. Build clean (`npm run build` exits 0; only the same two pre-existing react-hooks/exhaustive-deps warnings).
+
+Andrew browser-verify (10 steps, none I could run from this env):
+1. Open offer modal. Click and hold the header. Drag across the screen. Release. Modal stays put where released. No drift, no flicker.
+2. Open offer modal. Grab the bottom-right corner. Resize bigger and smaller. Release. No lag, no continued resize after release.
+3. Open offer modal. Drag fast and release. Modal stops the frame the pointer releases.
+4. Open offer modal. Click overlay outside. Modal stays open (regression check on 67.10 ship).
+5. Open a non-offer modal (e.g. Reject). Header is NOT draggable. No resize handle in corner.
+6. Go to /pipeline. Find an offer-stage row. Edit Offer chip visible on the right next to Placement and Reject.
+7. Click Edit Offer on /pipeline. Modal opens prefilled with the existing offer values.
+8. Go to /pipeline. Applicants, Kept, Submitted, Interviewing, Pending Start, Hired tabs: "Showing 1-1 of N submittals" + Prev/Next gone from every one.
+9. Go to /jobs/[id] (single-job pipeline buckets). No regression — Matched tab pager (separate feature) still works.
+10. /candidates, /jobs, /clients — pagination still intact (shared component untouched).
+
+Regression: Existing OfferDialog open/close/save still works; X-only close survives; `dismissOnOverlay={false}` survives; the other 13 modals are non-draggable and non-resizable; list rendering at 50+ rows works (no LIMIT/OFFSET to break); Edit Offer on candidate page still works.
 
 ## What Shipped in Ace 67.10 (2026-05-27)
 

@@ -64,6 +64,12 @@ import {
 } from "@/lib/interview-format";
 import { StageBadge } from "@/components/stage-badge";
 import type { PipelineBucket } from "@/lib/rf-payload-shapes";
+import { cn } from "@/lib/utils";
+import {
+  useDraggableResizable,
+  MODAL_MIN_W,
+  MODAL_MIN_H,
+} from "@/lib/use-draggable-resizable";
 
 // Fired by the Apply-to-Job modal (LocalCandidateActions) the moment a
 // placement write resolves. LocalPlacementRows listens and optimistically
@@ -1256,6 +1262,13 @@ function OfferDialog({
       // Lock to X / Cancel close. Stray backdrop click or Escape press
       // shouldn't be able to throw away half-filled offer fields.
       dismissOnOverlay={false}
+      // Ace 67.11: draggable header + bottom-right corner resize so the
+      // recruiter can move the offer popup off the candidate row
+      // underneath and widen the panel past the default 32rem cap.
+      // Matches the RF OfferDialog in placement-flows.tsx so both code
+      // paths feel identical.
+      draggable
+      resizable
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {/* USD is the only allowed currency on offer rows (Ace fix 2026-05-27).
@@ -1834,6 +1847,8 @@ function ModalShell({
   children,
   footer,
   dismissOnOverlay = true,
+  draggable = false,
+  resizable = false,
 }: {
   title: string;
   subtitle?: string;
@@ -1846,6 +1861,13 @@ function ModalShell({
   // be discarded by a stray backdrop click. Matches the same prop on
   // the RF-side <Modal> in placement-flows.tsx.
   dismissOnOverlay?: boolean;
+  // Opt-in drag (header) + resize (bottom-right corner). Ace 67.11 — the
+  // Ace-native OfferDialog passes both true so it behaves the same as the
+  // RF OfferDialog. Every other ModalShell consumer (Extend Offer, Local
+  // Placement, Local Confirm Start) leaves these false and renders
+  // identically to pre-67.11.
+  draggable?: boolean;
+  resizable?: boolean;
 }) {
   // Defensive Escape guard. Today's ModalShell has no Escape handler,
   // so Escape already does nothing — but if this modal is ever nested
@@ -1861,6 +1883,17 @@ function ModalShell({
     window.addEventListener("keydown", block, { capture: true });
     return () => window.removeEventListener("keydown", block, { capture: true });
   }, [dismissOnOverlay]);
+
+  // Drag + resize (Ace 67.11). Same hook the RF <Modal> uses so both
+  // OfferDialog implementations get the same gesture behavior. Initial
+  // width matches the prior max-w-lg cap (32rem = 512px) so the first
+  // paint is visually identical to pre-67.11. State resets on unmount.
+  const { position, size, isDragging, isResizing, headerHandlers, resizeHandlers } =
+    useDraggableResizable({
+      enableDrag: draggable,
+      enableResize: resizable,
+      initialWidth: resizable ? 512 : null,
+    });
 
   // Portal to document.body. ModalShell is mounted inside LocalProfile's
   // sticky pipeline wrapper, which uses `backdrop-blur` →
@@ -1891,12 +1924,44 @@ function ModalShell({
             scrollable body + footer together can never exceed the
             screen. Header and footer are flex-none so the title and
             action buttons stay pinned; the body gets flex-1 + min-h-0
-            so it shrinks and scrolls internally. */}
+            so it shrinks and scrolls internally.
+
+            When resizable, the max-w-lg / max-h-... Tailwind caps come
+            off and we govern the panel size via inline width/height +
+            inline 90vw/90vh maxes so the corner handle can drag past
+            the old 32rem ceiling. relative anchors the corner handle. */}
         <div
-          className="flex w-full max-w-lg flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-3rem)]"
+          className={cn(
+            "flex w-full flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl",
+            !resizable && "max-w-lg max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-3rem)]",
+            (draggable || resizable) && "relative",
+            (isDragging || isResizing) && "select-none",
+          )}
+          style={
+            draggable || resizable
+              ? {
+                  width: size.w ?? undefined,
+                  height: size.h ?? undefined,
+                  minWidth: resizable ? MODAL_MIN_W : undefined,
+                  minHeight: resizable ? MODAL_MIN_H : undefined,
+                  maxWidth: resizable ? "90vw" : undefined,
+                  maxHeight: resizable ? "90vh" : undefined,
+                  transform:
+                    draggable && (position.x !== 0 || position.y !== 0)
+                      ? `translate3d(${position.x}px, ${position.y}px, 0)`
+                      : undefined,
+                }
+              : undefined
+          }
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex flex-none items-start justify-between border-b border-court-border px-5 py-3">
+          <div
+            className={cn(
+              "flex flex-none items-start justify-between border-b border-court-border px-5 py-3",
+              draggable && "cursor-move touch-none",
+            )}
+            {...headerHandlers}
+          >
             <div>
               <h2 className="font-serif text-lg font-semibold text-court-fg">{title}</h2>
               {subtitle && <p className="mt-0.5 text-xs text-court-fg-muted">{subtitle}</p>}
@@ -1909,6 +1974,27 @@ function ModalShell({
           {footer && (
             <div className="flex flex-none items-center justify-end gap-2 border-t border-court-border bg-court-surface px-5 py-3">
               {footer}
+            </div>
+          )}
+          {resizable && (
+            // Corner resize handle (Ace 67.11). cursor-nwse-resize gives
+            // the OS-standard SE-corner cursor; touch-none disables the
+            // browser's default touch-scroll on this hit area so the
+            // resize gesture starts cleanly on tablets.
+            <div
+              {...resizeHandlers}
+              aria-hidden
+              className="absolute bottom-0 right-0 z-10 h-4 w-4 cursor-nwse-resize touch-none"
+            >
+              <svg viewBox="0 0 16 16" className="h-full w-full text-court-fg-muted/70">
+                <path
+                  d="M13 7v6h-6M13 11v2h-2"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
             </div>
           )}
         </div>

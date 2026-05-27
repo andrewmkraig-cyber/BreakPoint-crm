@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-27 · Ace 67.10
+Last updated: 2026-05-27 · Ace 67.11
 
 ## Active Build Sequence
 
@@ -16,6 +16,10 @@ Notification toast polish (DONE Ace 59.0): SMS toast `MessageSquare` icon, actio
 
 ### Session 61.0 Status
 Profile / pipeline regression close-out + features (DONE Ace 61.0): split-view candidate Delete restored; Apply / Keep / Reject real-time stage pill (optimistic, holds until server confirm) + the flash-then-disappear follow-on fixed; Add Note button removed from all four candidate profile locations; stage button visibility aligned to spec in `pipeline-row-actions.tsx`; phone thread auto-scroll to bottom on open; CalendarEventDrawer reminder mode (hides Guests / Location / Meeting type / All day / Timezone, ET hard-coded with a comment to pull per-user tz when multi-user ships); scheduled send (Send Later) on every email surface (`ScheduledEmail` table + per-minute Vercel cron + Retry toast); dark luxury login redesign; PWA badge auto-fire fix (`2d0081e`, null badgeCount in `unread-counts.ts`, sw.js cache `v5`); Auto Night Mode (`0dd1e41`, `UserProfile.autoNightMode`, 7pm/7am ET flip). Favicon / tab counter verified already correct. Awaiting Andrew's browser verification of scheduled send, the PWA badge, and Auto Night Mode.
+
+### Next Up (after Ace 67.11)
+
+- **Browser-verify the offer modal drag/resize + pipeline pagination removal.** (1) Drag offer modal header — modal stops the frame the pointer releases, no drift. (2) Resize from bottom-right corner — width/height update live, release stops cleanly. (3) Drag fast and release — no stuck-to-cursor. (4) Overlay click — still doesn't close (67.10 lock holds). (5) Non-offer modals (Reject, Confirm Start, etc.) — header is NOT draggable, no corner handle. (6) /pipeline Offer tab — Edit Offer chip visible alongside Placement + Reject. (7) Click Edit Offer on /pipeline — modal opens prefilled. (8) /pipeline Applicants/Kept/Submitted/Interviewing/Pending Start/Hired — "Showing X of N submittals" + Prev/Next gone from every tab. (9) /jobs/[id] Matched tab pager — still works (separate feature, untouched). (10) /candidates, /jobs, /clients — pagination intact.
 
 ### Next Up (after Ace 67.10)
 

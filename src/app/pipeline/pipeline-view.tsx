@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
 import { Bookmark, CalendarClock, CheckCircle2, ChevronDown, ChevronUp, DollarSign, Edit3, Handshake, Loader2, Search, Send, UserX, X } from "lucide-react";
 import { toast } from "sonner";
-import { Pagination } from "@/components/pagination";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
 import { StageAgePill } from "@/components/ui/stage-age-pill";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
@@ -156,10 +155,6 @@ type PipelineViewProps = {
   rows: PipelineRow[];
   appliedRows: AppliedRow[];
   keptRows: KeptRow[];
-  total: number;
-  page: number;
-  totalPages: number;
-  pageSize: number;
   stage: Stage;
   q: string;
   counts: Record<Stage, number>;
@@ -225,7 +220,7 @@ function OwnerScopeSelect({
   );
 }
 
-export function PipelineView({ rows, appliedRows, keptRows, total, page, totalPages, pageSize, stage, q, counts, owner, otherUserName, error }: PipelineViewProps) {
+export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, owner, otherUserName, error }: PipelineViewProps) {
   const router = useRouter();
   const params = useSearchParams();
   const [query, setQuery] = useState(q);
@@ -237,9 +232,11 @@ export function PipelineView({ rows, appliedRows, keptRows, total, page, totalPa
 
   // Bulk selection — rejectable rows only. Stores Placement.id so the
   // bulk handler can call rejectLocalPlacement directly without
-  // re-deriving the id from row keys. Cleared when the stage/search/
-  // page slice changes so a stale selection can't bulk-reject the
-  // wrong rows after navigation.
+  // re-deriving the id from row keys. Cleared when the stage/search
+  // changes so a stale selection can't bulk-reject the wrong rows
+  // after navigation. (Pagination dropped Ace 67.11 — pipeline tabs
+  // now scroll the full filtered set, so there's no per-page slice
+  // to invalidate selection against.)
   const [selectedPlacementIds, setSelectedPlacementIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -281,7 +278,7 @@ export function PipelineView({ rows, appliedRows, keptRows, total, page, totalPa
   }
   useEffect(() => {
     setSelectedPlacementIds(new Set());
-  }, [stage, q, page]);
+  }, [stage, q]);
 
   const showCheckboxCol = isRejectableStage(stage);
   const selectableRows = useMemo(
@@ -355,8 +352,8 @@ export function PipelineView({ rows, appliedRows, keptRows, total, page, totalPa
   // Stash the visible row ids so the candidate profile's Prev/Next
   // nav can walk through this exact stage's slice in the user's
   // current sort/filter order. Re-runs whenever the rendered rows
-  // change (page, stage, search). String() coerces both numeric
-  // RF ids and cuids into the routing form /candidates/[id] expects.
+  // change (stage, search). String() coerces both numeric RF ids and
+  // cuids into the routing form /candidates/[id] expects.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params2 = new URLSearchParams(params?.toString() ?? "");
@@ -415,7 +412,7 @@ export function PipelineView({ rows, appliedRows, keptRows, total, page, totalPa
   function onSubmitSearch(e: FormEvent) {
     e.preventDefault();
     startTransition(() => {
-      router.push(buildHref({ q: query, page: 1 }));
+      router.push(buildHref({ q: query }));
     });
   }
 
@@ -429,7 +426,7 @@ export function PipelineView({ rows, appliedRows, keptRows, total, page, totalPa
             otherName={otherUserName}
             onChange={(s) => {
               startTransition(() => {
-                router.push(buildHref({ owner: s, page: 1 }));
+                router.push(buildHref({ owner: s }));
               });
             }}
           />
@@ -774,14 +771,11 @@ export function PipelineView({ rows, appliedRows, keptRows, total, page, totalPa
                 </DataTableBody>
               </table>
             </div>
-            <Pagination
-              page={page}
-              totalPages={totalPages}
-              total={total}
-              pageSize={pageSize}
-              buildHref={(p) => buildHref({ page: p })}
-              label="submittals"
-            />
+            {/* Pagination footer dropped Ace 67.11 — pipeline tabs render
+                the full filtered set and the list grows downward. The
+                Showing/Prev/Next row that used to live here mapped to
+                the shared <Pagination> component (still used by
+                /candidates, /jobs, /clients). */}
           </div>
         </>
       )}
@@ -987,7 +981,7 @@ function StageTabs({
         id: s,
         label: STAGE_LABEL[s],
         count: counts[s],
-        href: buildHref({ stage: s, page: 1 }),
+        href: buildHref({ stage: s }),
       }))}
     />
   );
