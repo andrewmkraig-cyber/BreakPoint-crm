@@ -1523,7 +1523,13 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
       select: { id: true, stage: true, source: true },
     });
     if (existing) {
-      if (existing.stage !== "applied" && existing.stage !== "sourced") {
+      // Pre-pipeline stages (sourced / applied / kept) can all transition
+      // to "applied" here — Apply is the natural promotion path off Kept
+      // and a no-op refresh off Applied/Sourced. Anything past Applied
+      // (submitted / interviewing / offer / hired / etc.) is a real
+      // pipeline state we won't silently downgrade.
+      const PRE_PIPELINE_STAGES = new Set(["sourced", "applied", "kept"]);
+      if (!PRE_PIPELINE_STAGES.has(existing.stage)) {
         return {
           ok: false,
           error: `Candidate is already linked to this job at stage "${existing.stage}". Use the existing record instead.`,

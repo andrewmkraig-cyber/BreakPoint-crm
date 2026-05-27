@@ -95,26 +95,37 @@ export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<
           where: { candidateId_jobRfId: { candidateId: input.candidateId, jobRfId: jobRfId! } },
           select: { id: true, stage: true },
         });
-    if (existing) {
-      return { ok: false, error: `Candidate already linked to this job (stage: ${existing.stage}).` };
-    }
-
     const org = await getCurrentOrg();
-    await prisma.placement.create({
-      data: {
-        candidateId: input.candidateId,
-        candidateRfId: null,
-        jobRfId,
-        jobId,
-        clientRfId,
-        clientId,
-        stage: "applied",
-        source: "recruiter_applied",
-        createdById: user.id,
-        organizationId: org.id,
-        syncedToRf: false,
-      },
-    });
+    if (existing) {
+      // Pre-pipeline stages (sourced / applied / kept) can all transition
+      // to "applied" — Apply is the natural promotion path off Kept and
+      // a no-op refresh off Applied/Sourced. Anything past Applied is a
+      // real pipeline state we won't silently downgrade.
+      const PRE_PIPELINE_STAGES = new Set(["sourced", "applied", "kept"]);
+      if (!PRE_PIPELINE_STAGES.has(existing.stage)) {
+        return { ok: false, error: `Candidate already linked to this job (stage: ${existing.stage}).` };
+      }
+      await prisma.placement.update({
+        where: { id: existing.id },
+        data: { stage: "applied", syncedToRf: false },
+      });
+    } else {
+      await prisma.placement.create({
+        data: {
+          candidateId: input.candidateId,
+          candidateRfId: null,
+          jobRfId,
+          jobId,
+          clientRfId,
+          clientId,
+          stage: "applied",
+          source: "recruiter_applied",
+          createdById: user.id,
+          organizationId: org.id,
+          syncedToRf: false,
+        },
+      });
+    }
 
     await createActionLog({
       userId: user.id,
@@ -170,6 +181,148 @@ export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Apply failed." };
+  }
+}
+
+// ---- Keep (Ace-native candidate ↔ Job) ----
+//
+// Mirrors the RF-side keepCandidate (placement-actions.ts) but uses
+// candidateId (cuid) instead of candidateRfId. Writes Placement.stage="kept"
+// so the candidate surfaces in the job's Kept tab on /jobs/[id]. The
+// candidate-level Candidate.tags["kept"] marker stays out of this path —
+// Placement.stage is the source of truth (CLAUDE.md rule 13). At least one
+// of {jobRfId, jobId} must be set, mirroring applyLocalCandidateToJob.
+
+export type KeepLocalForJobInput = {
+  candidateId: string;
+  jobRfId?: number | null;
+  jobId?: string | null;
+  clientRfId?: number | null;
+  clientId?: string | null;
+};
+
+export async function keepLocalCandidateForJob(input: KeepLocalForJobInput): Promise<Result> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const jobRfId = input.jobRfId ?? null;
+  const jobId = input.jobId ?? null;
+  const clientRfId = input.clientRfId ?? null;
+  const clientId = input.clientId ?? null;
+  if (jobRfId == null && !jobId) return { ok: false, error: "Missing job reference." };
+
+  const org = await getCurrentOrg();
+  try {
+    // Two unique indexes back the upsert path — (candidateId, jobId) for
+    // Ace-native Jobs and (candidateId, jobRfId) for RF-imported Jobs. We
+    // pick whichever identity the caller supplied so the same row is
+    // updated whether the recruiter is on the legacy or the cuid path.
+    if (jobId) {
+      await prisma.placement.upsert({
+        where: { candidateId_jobId: { candidateId: input.candidateId, jobId } },
+        create: {
+          candidateId: input.candidateId,
+          candidateRfId: null,
+          jobRfId,
+          jobId,
+          clientRfId,
+          clientId,
+          stage: "kept",
+          // No source stamp — mirrors RF keepCandidate's create branch.
+          // Source is only stamped on first Apply so Applicants can render
+          // "Recruiter Applied"; Kept rows leave it null and the column
+          // shows "—" for them.
+          createdById: user.id,
+          organizationId: org.id,
+          syncedToRf: false,
+        },
+        update: { stage: "kept", syncedToRf: false },
+      });
+    } else {
+      await prisma.placement.upsert({
+        where: { candidateId_jobRfId: { candidateId: input.candidateId, jobRfId: jobRfId! } },
+        create: {
+          candidateId: input.candidateId,
+          candidateRfId: null,
+          jobRfId,
+          jobId,
+          clientRfId,
+          clientId,
+          stage: "kept",
+          // No source stamp — mirrors RF keepCandidate's create branch.
+          // Source is only stamped on first Apply so Applicants can render
+          // "Recruiter Applied"; Kept rows leave it null and the column
+          // shows "—" for them.
+          createdById: user.id,
+          organizationId: org.id,
+          syncedToRf: false,
+        },
+        update: { stage: "kept", syncedToRf: false },
+      });
+    }
+
+    await createActionLog({
+      userId: user.id,
+      actionType: "keep",
+      subjectType: "candidate",
+      subjectId: input.candidateId,
+      metadata: { jobRfId, jobId, clientRfId, clientId, local: true },
+    });
+
+    revalidatePath(`/candidates/${input.candidateId}`);
+    if (jobId) revalidatePath(`/jobs/${jobId}`);
+    if (jobRfId != null) revalidatePath(`/jobs/${jobRfId}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Keep failed." };
+  }
+}
+
+// Stage reversion for an Ace-native candidate: flip an existing kept
+// Placement back to "applied". Used by the profile Keep button when the
+// recruiter removes a candidate from Kept. Mirrors RF moveToApplied but
+// scoped by placement.id (cuid) so it works for either job-identity shape.
+export type RevertLocalKeepInput = {
+  candidateId: string;
+  placementId: string;
+};
+
+export async function revertLocalKeepToApplied(input: RevertLocalKeepInput): Promise<Result> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const org = await getCurrentOrg();
+  try {
+    // Org-scope the update so cross-tenant placement ids can't be flipped
+    // by a stale client. updateMany returns count=0 if the row doesn't
+    // belong to the caller's org; we surface that as a not-found error
+    // rather than silently succeeding.
+    const result = await prisma.placement.updateMany({
+      where: {
+        id: input.placementId,
+        candidateId: input.candidateId,
+        organizationId: org.id,
+        stage: "kept",
+      },
+      data: { stage: "applied", syncedToRf: false },
+    });
+    if (result.count === 0) {
+      return { ok: false, error: "Kept placement not found for this candidate." };
+    }
+
+    await createActionLog({
+      userId: user.id,
+      actionType: "revert_to_applied",
+      subjectType: "candidate",
+      subjectId: input.candidateId,
+      metadata: { placementId: input.placementId, fromStage: "kept", toStage: "applied", local: true },
+    });
+
+    revalidatePath(`/candidates/${input.candidateId}`);
+    revalidatePath("/pipeline");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Revert failed." };
   }
 }
 

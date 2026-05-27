@@ -256,7 +256,11 @@ export default async function CandidateProfilePage({
     const name = t.toLowerCase().trim();
     if (name) tagSet.add(name);
   }
-  const isKept = tagSet.has("kept") || tagSet.has("keep");
+  // Tag-chip strip beside the tabs continues to filter "kept" / "keep" out
+  // of the display set — the canonical Kept signal lives on Placement.stage
+  // and is rendered by KeepCandidateButton. Any legacy "kept" tag entries
+  // from the pre-placement-aware era stay in the column for filter / search
+  // compatibility but don't surface here as a redundant chip.
   const displayTags = Array.from(tagSet).filter((t) => t !== "kept" && t !== "keep");
 
   const expectedSalary = c.expected_salary as { number?: number | null; currency?: string | null } | null | undefined;
@@ -554,6 +558,51 @@ export default async function CandidateProfilePage({
     });
   placementJobs.push(...localOnlyJobs);
 
+  // Hoisted so KeepCandidateButton and PlacementActionsIsland share one
+  // OpenJobOption build. Previously this expression was inlined at two
+  // sibling render sites which meant the dropdown was computed twice
+  // per page render — small but the bigger win is the Keep dialog now
+  // sees the exact same picker set as the Apply / Submit dialogs.
+  const openJobOptions = buildOpenJobOptions({
+    allJobs,
+    clients,
+    contacts,
+    linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)),
+    jobCuidByRfId,
+    clientCuidByRfId,
+  });
+
+  // KeepCandidateButton consumes a slim per-job summary keyed by the
+  // existing PlacementContextJob shape. placementId is empty string when
+  // the row has no local Placement yet (pure RF c.jobs[] entry — the
+  // upsert in keepCandidate will create one on first Keep). The "stage"
+  // we report prefers the local Placement.stage over the RF-derived
+  // rfStageBucket so a placement freshly flipped to kept/applied via
+  // the per-row actions reflects in the Keep dialog without a refresh.
+  const keepPlacementSummaries = placementJobs.map((j) => ({
+    placementId: j.placement?.id ?? "",
+    jobRfId: j.jobRfId,
+    jobCuid: j.jobCuid,
+    jobTitle: j.jobTitle,
+    clientRfId: j.clientRfId,
+    clientCuid: j.clientCuid,
+    clientName: j.clientName,
+    stage: j.placement?.stage ?? j.rfStageBucket ?? "sourced",
+  }));
+  // Only un-linked open jobs feed the Keep dialog's "add a new job"
+  // dropdown — anything already in placementJobs surfaces in the
+  // existing-job sections above the dropdown.
+  const keepOpenJobs = openJobOptions
+    .filter((j) => !j.alreadyLinked)
+    .map((j) => ({
+      jobRfId: j.jobRfId,
+      jobCuid: j.jobCuid,
+      jobTitle: j.jobTitle,
+      clientRfId: j.clientRfId,
+      clientCuid: j.clientCuid,
+      clientName: j.clientName,
+    }));
+
   const phoneValue = normalizePhone(c.phone_number);
 
   // Embed = split-view iframe. Mirrors the non-embed left column
@@ -652,7 +701,7 @@ export default async function CandidateProfilePage({
                   return { firstName, fullName, email, phone };
                 })()}
                 jobs={placementJobs}
-                openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)), jobCuidByRfId, clientCuidByRfId })}
+                openJobs={openJobOptions}
                 aceTeam={aceTeam}
               />
               <div className="flex items-center justify-between gap-3">
@@ -673,8 +722,9 @@ export default async function CandidateProfilePage({
                     <span className="truncate">Apply to Job</span>
                   </Link>
                   <KeepCandidateButton
-                    candidateId={candidate.id}
-                    isKept={isKept}
+                    candidate={{ kind: "rf", rfId: id }}
+                    placements={keepPlacementSummaries}
+                    openJobs={keepOpenJobs}
                     // Tab-chip size: px-2.5 py-1 text-[13px] gap-1
                     // matches the Profile/Game Plan/Notes tabs sitting
                     // beside this button. twMerge picks the later
@@ -810,7 +860,7 @@ export default async function CandidateProfilePage({
                   return { firstName, fullName, email, phone };
                 })()}
                 jobs={placementJobs}
-                openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)), jobCuidByRfId, clientCuidByRfId })}
+                openJobs={openJobOptions}
                 aceTeam={aceTeam}
               />
             </section>
@@ -836,8 +886,9 @@ export default async function CandidateProfilePage({
                   <span className="truncate">Apply to Job</span>
                 </Link>
                 <KeepCandidateButton
-                  candidateId={candidate.id}
-                  isKept={isKept}
+                  candidate={{ kind: "rf", rfId: id }}
+                  placements={keepPlacementSummaries}
+                  openJobs={keepOpenJobs}
                   // Tab-chip size — matches the embed-view sibling above
                   // (see comment there).
                   className="min-w-0 gap-1 border-blue-400 px-2.5 py-1 text-[13px] dark:border-blue-500"

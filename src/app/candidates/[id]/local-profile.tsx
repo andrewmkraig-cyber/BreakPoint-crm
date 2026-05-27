@@ -440,6 +440,48 @@ export async function LocalCandidateProfile({
     return { firstName, fullName: fullName2, email, phone };
   })();
 
+  // KeepCandidateButton consumes a slim placement summary + an open-jobs
+  // picker. Both are derived from the same `placements` / `openJobs`
+  // already in scope, just narrowed to the fields the dialog needs.
+  // Ace-native jobs carry their cuid (p.jobId / p.clientId); RF-imported
+  // jobs carry the numeric ids on jobRfId / clientRfId. The dialog +
+  // keepLocalCandidateForJob action handle either identity shape, so we
+  // forward both whenever present.
+  const keepPlacementSummaries = placements.map((p) => {
+    const rfJob = p.jobRfId != null
+      ? allJobs.find((j) => j.id === p.jobRfId) ?? null
+      : p.jobId
+        ? allJobs.find((j) => (j as { _aceJobId?: string })._aceJobId === p.jobId) ?? null
+        : null;
+    const job = rfJob ? normalizeJob(rfJob) : null;
+    const clientRaw = p.clientRfId != null ? clientById.get(p.clientRfId) ?? null : null;
+    const client = clientRaw ? normalizeClient(clientRaw) : null;
+    return {
+      placementId: p.id,
+      jobRfId: p.jobRfId,
+      jobCuid: p.jobId,
+      jobTitle: job?.title ?? "(job)",
+      clientRfId: p.clientRfId,
+      clientCuid: p.clientId,
+      clientName: client?.name ?? job?.company ?? "",
+      stage: p.stage,
+    };
+  });
+  const keepOpenJobs = openJobs
+    .filter((j) => !j.alreadyLinked)
+    .map((j) => ({
+      // openJobs synthesizes a negative numeric jobRfId for Ace-native
+      // rows (djb2 of the cuid). Forward the real cuid as the identity
+      // and leave jobRfId null in that case so the server action picks
+      // the cuid path. RF-imported jobs flip the other way.
+      jobRfId: j.jobCuid ? null : j.jobRfId,
+      jobCuid: j.jobCuid ?? null,
+      jobTitle: j.jobTitle,
+      clientRfId: j.clientCuid ? null : j.clientRfId,
+      clientCuid: j.clientCuid ?? null,
+      clientName: j.clientName,
+    }));
+
   // Embed = split-view iframe. Renders the same left column as the full
   // profile (compact overview + action row + resume) and a 280px right
   // rail with skills + activity. The action row is the single source of
@@ -485,10 +527,6 @@ export async function LocalCandidateProfile({
       rawHighlightTokens,
       candidateHaystack,
     );
-    const isKeptEmbed = (candidate.tags ?? []).some((t) => {
-      const lower = t.trim().toLowerCase();
-      return lower === "kept" || lower === "keep";
-    });
     // openJobs / jobRows / interviewsByJob were lifted above the
     // embed/non-embed split so both surfaces share the same shaped
     // data. LocalCandidateActions takes the same openJobs in both
@@ -569,8 +607,9 @@ export async function LocalCandidateProfile({
                     <span className="truncate">Apply to Job</span>
                   </Link>
                   <KeepCandidateButton
-                    candidateId={candidate.id}
-                    isKept={isKeptEmbed}
+                    candidate={{ kind: "local", cuid: candidate.id }}
+                    placements={keepPlacementSummaries}
+                    openJobs={keepOpenJobs}
                     // Tab-chip size: px-2.5 py-1 text-[13px] gap-1
                     // matches the Profile/Game Plan/Notes tabs sitting
                     // beside this button. twMerge picks the later
@@ -728,11 +767,9 @@ export async function LocalCandidateProfile({
                   <span className="truncate">Apply to Job</span>
                 </Link>
                 <KeepCandidateButton
-                  candidateId={candidate.id}
-                  isKept={(candidate.tags ?? []).some((t) => {
-                    const lower = t.trim().toLowerCase();
-                    return lower === "kept" || lower === "keep";
-                  })}
+                  candidate={{ kind: "local", cuid: candidate.id }}
+                  placements={keepPlacementSummaries}
+                  openJobs={keepOpenJobs}
                   // Tab-chip size — matches the embed-view sibling above
                   // (see comment there).
                   className="min-w-0 gap-1 border-blue-400 px-2.5 py-1 text-[13px] dark:border-blue-500"
