@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-23 · Ace 66.0
+Last updated: 2026-05-27 · Ace 67.3
 
 ## Active Build Sequence
 
@@ -17,7 +17,7 @@ Notification toast polish (DONE Ace 59.0): SMS toast `MessageSquare` icon, actio
 ### Session 61.0 Status
 Profile / pipeline regression close-out + features (DONE Ace 61.0): split-view candidate Delete restored; Apply / Keep / Reject real-time stage pill (optimistic, holds until server confirm) + the flash-then-disappear follow-on fixed; Add Note button removed from all four candidate profile locations; stage button visibility aligned to spec in `pipeline-row-actions.tsx`; phone thread auto-scroll to bottom on open; CalendarEventDrawer reminder mode (hides Guests / Location / Meeting type / All day / Timezone, ET hard-coded with a comment to pull per-user tz when multi-user ships); scheduled send (Send Later) on every email surface (`ScheduledEmail` table + per-minute Vercel cron + Retry toast); dark luxury login redesign; PWA badge auto-fire fix (`2d0081e`, null badgeCount in `unread-counts.ts`, sw.js cache `v5`); Auto Night Mode (`0dd1e41`, `UserProfile.autoNightMode`, 7pm/7am ET flip). Favicon / tab counter verified already correct. Awaiting Andrew's browser verification of scheduled send, the PWA badge, and Auto Night Mode.
 
-### Next Up (after Ace 66.0)
+### Next Up (after Ace 67.3)
 
 1. ~~**iOS-style input field pass.**~~ **DONE Ace 66.0** - shipped as the `court-input-frame` / `court-input-rect` system (pill on the search bar / SMS composer / Ace Assistant, rectangular on forms). See ACE_DESIGN.md, Input Field Treatment.
 2. ~~**Liquid Glass floating-surface pass.**~~ **DONE Ace 66.0** - translucency + glass shadow stacks on the topbar, dropdowns, popovers, and modals (floating surfaces only).
@@ -86,6 +86,10 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 67.3 PWA push notification self-heal (May 27, 2026)
+
+Shipped the mobile PWA notification repair path. `src/lib/push-client.ts` now owns the client-side VAPID key conversion, push subscribe call, `/api/push/subscribe` POST, and granted-permission sync. `SwRegister` re-posts an existing PushSubscription on launch and auto-recreates a missing one when browser notification permission is already granted, which covers iOS PWA subscription expiry after idle/app close. `PushPermissionButton` uses the same sync so Settings > Connectors reflects the repaired state. A local per-device intent flag preserves explicit Disable and an in-flight guard prevents double-subscribe races between global registration and the Settings row.
 
 ## Completed - Ace 66.0 UI polish: input field treatment + Liquid Glass + New Job restructure + dark-mode buttons + list/table polish (May 23, 2026)
 

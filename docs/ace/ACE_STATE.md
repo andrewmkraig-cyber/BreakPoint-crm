@@ -1,10 +1,21 @@
 # ACE_STATE.md
-Last updated: 2026-05-26 · Ace 67.2
+Last updated: 2026-05-27 · Ace 67.3
 
 ## Current Status
-Current Version: Ace 67.2
-Last Shipped: 2026-05-26
+Current Version: Ace 67.3
+Last Shipped: 2026-05-27
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.3 (2026-05-27)
+
+PWA push notification self-heal for mobile installs where browser permission stayed granted but the underlying PushSubscription expired after idle/app close, making Settings > Connectors show Enable notifications again.
+
+- **Granted push subscriptions now repair on launch.** New `src/lib/push-client.ts` centralizes the client-side VAPID key conversion, `/api/push/subscribe` POST, manual subscribe call, and granted-permission sync. `<SwRegister />` now re-posts the existing subscription on every app launch and, when permission is already granted but the browser subscription is missing, recreates it automatically without making Andrew tap Enable again.
+- **Settings button uses the same repair path.** `PushPermissionButton` now runs the granted-permission sync when it mounts, so Settings reflects the repaired state instead of drifting back to the Enable button after iOS PWA subscription expiry.
+- **Explicit Disable is honored.** The device writes a local intent flag when Enable or Disable is clicked. Disable stores `disabled` and unsubscribes any lingering browser subscription so the launch self-heal does not immediately turn notifications back on after Andrew intentionally turns them off.
+- **Race guard added.** The shared helper dedupes simultaneous repair attempts from global app registration and the Settings row, avoiding double-subscribe races on the same launch.
+
+Next task: Andrew should verify on the installed mobile PWA after deploy: open Ace, confirm Push Notifications stays CONNECTED/Disable in Settings > Connectors, then leave the PWA closed/idle and confirm it no longer repeatedly flips back to Enable notifications.
 
 ## What Shipped in Ace 67.2 (2026-05-26)
 
@@ -121,7 +132,6 @@ ATS consolidation: the standalone /applicants page was folded into /pipeline as 
 - **Server-action cleanup.** /app/applicants/actions.ts moved to /app/pipeline/applicants-actions.ts with revalidatePath('/applicants') retargeted to /pipeline. setApplicantStatus dropped (dead code). 9 redundant revalidatePath('/applicants') calls stripped from candidate-side placement-actions / local-placement-actions — each was already paired with a /pipeline revalidation.
 
 Next task: TBD — opens with Andrew's live verification of the new Applicants + Kept tabs (counts, row actions, owner scope, search) in production.
-
 ## What Shipped in Ace 66.0 (2026-05-23)
 
 A full UI-polish session: the input field treatment pass landed the `court-input-frame` / `court-input-rect` system, the Liquid Glass pass added translucency to floating surfaces, the New Job page was restructured, and a long sweep of dark-mode button fixes, Court Mode token migrations, and list-page / table polish shipped across the app.
