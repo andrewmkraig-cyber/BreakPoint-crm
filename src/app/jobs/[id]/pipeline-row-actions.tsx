@@ -482,12 +482,18 @@ const TONE_CLASS: Record<Tone, string> = {
     "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60",
   apply:
     "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60",
-  // Keep / Move to Kept render as soft light blue to match the shared
-  // Button "keep" variant — sits as a hair-lighter sibling to schedule
-  // blue so the two pipeline-state intents read as related without
-  // crowding primary green.
+  // Keep / Move to Kept renders as cyan to match the shared Button
+  // "keep" variant (src/components/ui/button.tsx) — when that variant
+  // migrated off the soft-blue wash onto cyan to disambiguate from the
+  // INTERVIEWING stage badge, this row's tone was left behind on the
+  // old blue ramp. That left Keep reading as text-blue-700 inside
+  // PipelineRowActions but text-cyan-700 on the candidate-profile
+  // action toolbar's KeepCandidateButton — two visually different Keep
+  // buttons could appear on a single screen (sourced placement row +
+  // candidate-profile chip). Re-aligned to cyan so every Keep across
+  // Ace reads as the same hue.
   keep:
-    "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60",
+    "border-cyan-200 bg-cyan-50 text-cyan-700 hover:bg-cyan-100 dark:border-cyan-900 dark:bg-cyan-950/40 dark:text-cyan-200 dark:hover:bg-cyan-950/60",
   offer:
     "border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-950/60",
   unreject:
