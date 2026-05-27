@@ -51,6 +51,13 @@ import {
 } from "@/app/candidates/[id]/placement-flows";
 import { triggerCalendarSync } from "@/lib/calendar/trigger-sync";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
+// Canonical Lead Source options — shared with the RF PlacementDialog,
+// the /pipeline placement-edit-drawer, and the Financial Performance
+// By Source widget so all four surfaces agree on the bucket set. Added
+// to LocalPlacementDialog 2026-05-27 (Ace 67.17) — the 67.12 dropdown
+// shipped to the wrong file (placement-flows.tsx PlacementDialog, RF
+// flow); this file is the modal the recruiter actually uses.
+import { LEAD_SOURCES } from "@/lib/lead-sources";
 import {
   INTERVIEW_TIMEZONES,
   DEFAULT_INTERVIEW_TIMEZONE,
@@ -1442,6 +1449,12 @@ function LocalPlacementDialog({
     if (feeTotal <= 0) {
       return setErr("Fee amount is required — enter salary + fee %, or a flat fee.");
     }
+    // Lead Source required (Ace 67.17) so the Financial Performance
+    // By Source widget never has to bucket placements as "Unknown".
+    // Mirrors the same check the RF PlacementDialog got in 67.12.
+    if (!source.trim()) {
+      return setErr("Lead Source is required.");
+    }
     startSave(async () => {
       const result = await recordLocalPlacement({
         placementId: job.placementId,
@@ -1479,6 +1492,18 @@ function LocalPlacementDialog({
       title={editing ? "Edit placement" : "Make placement"}
       subtitle={`${job.jobTitle} · ${job.clientName}`}
       onClose={onClose}
+      // Ace 67.17: lock to X-only close + draggable header + bottom-right
+      // resize corner, matching the OfferDialog precedent from 67.10/67.11.
+      // The modal collects accepted salary, fee math, billing/hiring, and
+      // required Lead Source — a stray backdrop click or reflexive Escape
+      // press can't throw that work away. Drag/resize means the recruiter
+      // can move the panel off the pipeline row underneath or widen it past
+      // the default ~512px cap when typing longer notes. These props were
+      // shipped on the RF PlacementDialog in 67.12 but the wrong file got
+      // edited; this is the corrected version on the Ace-native dialog.
+      dismissOnOverlay={false}
+      draggable
+      resizable
       footer={
         <Footer
           onCancel={onClose}
@@ -1488,7 +1513,12 @@ function LocalPlacementDialog({
         />
       }
     >
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {/* 7-field core grid + Lead Source in the same 2-col layout.
+          Lead Source is a <select> sourced from LEAD_SOURCES (Ace 67.17);
+          previously a free-text input that the recruiter could leave
+          blank, so the Financial Performance By Source widget couldn't
+          bucket the placement cleanly. Required on save (see onSave). */}
+      <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2">
         <OfferField
           label="Accepted salary"
           value={acceptedSalary}
@@ -1516,64 +1546,108 @@ function LocalPlacementDialog({
           value={startDate}
           onChange={setStartDate}
         />
-        <OfferField label="Lead source" value={source} onChange={setSource} placeholder="LinkedIn, Pin, Apollo, …" />
-        <div className="sm:col-span-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 p-3">
+        <label className="block text-sm">
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+            Lead Source *
+          </span>
+          <select
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            required
+            aria-required="true"
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          >
+            {/* Disabled placeholder so the browser can't auto-fall-through
+                to the first real option on an unselected state. */}
+            <option value="" disabled>
+              Select a source…
+            </option>
+            {LEAD_SOURCES.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+            {/* Preserve any legacy free-text value (e.g. "Pin", "Apollo BD",
+                "Cold Outreach") so an existing placement reopens with its
+                saved source still selected instead of silently reverting
+                to the placeholder. */}
+            {source &&
+              !LEAD_SOURCES.some(
+                (o) => o.toLowerCase() === source.toLowerCase(),
+              ) && <option value={source}>{source}</option>}
+          </select>
+        </label>
+      </div>
+
+      {/* Fee summary card hoisted ABOVE billing/hiring (Ace 67.17) so the
+          fee total is visible on first open without scrolling. Single
+          horizontal row: label + breakdown left, big total right. */}
+      <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 px-3 py-2">
+        <div className="min-w-0">
+          <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+            {usedOverride ? "Fee (flat override)" : "Calculated fee"}
+          </div>
+          <div className="truncate text-[11px] text-court-fg-muted">
+            {usedOverride
+              ? "Flat-fee amount; salary × fee % ignored."
+              : salaryNum && pctNum
+                ? `${formatMoney(salaryNum, currency)} × ${pctNum}% = ${formatMoney(rawFee, currency)}`
+                : "Enter salary + fee % to calculate, or type a flat fee above."}
+          </div>
+        </div>
+        <div className="shrink-0 text-right">
+          <div className="font-serif text-xl font-semibold leading-none text-court-fg">
+            {formatMoney(feeTotal, currency)}
+          </div>
+          {(usedMinFee || usedOverride) && (
+            <div className="mt-1 text-[10px]">
+              {usedMinFee && <span className="text-amber-700">(min fee applied)</span>}
+              {usedOverride && <span className="text-brand-dark">(flat override)</span>}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Billing + Hiring placed side-by-side (Ace 67.17) instead of
+          stacked full-width. Was sm:col-span-2 on each card (~280px
+          combined); now sm:grid-cols-2 (~140px). Falls back to single
+          column on narrow screens. */}
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-court-border/40 bg-court-surface-subtle/40 px-3 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
             Billing contact
           </div>
           <p className="mt-0.5 text-[11px] text-court-fg-muted">
-            Used as the To: on the auto-drafted invoice when you Confirm Start. Pick the AP / finance contact at the client.
+            To: on the auto-drafted invoice when you Confirm Start. Pick the AP / finance contact.
           </p>
-          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="mt-1.5 grid grid-cols-1 gap-2">
             <OfferField label="Name" value={billingName} onChange={setBillingName} />
             <OfferField label="Email" value={billingEmail} onChange={setBillingEmail} placeholder="ap@example.com" />
           </div>
         </div>
-        <div className="sm:col-span-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 p-3">
+        <div className="rounded-lg border border-court-border/40 bg-court-surface-subtle/40 px-3 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
             Hiring manager
           </div>
           <p className="mt-0.5 text-[11px] text-court-fg-muted">
-            Referenced on the invoice notes + the candidate-hired welcome email so both sides know who the manager is.
+            Invoice notes + hired-welcome email so both sides know the manager.
           </p>
-          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="mt-1.5 grid grid-cols-1 gap-2">
             <OfferField label="Name" value={hiringName} onChange={setHiringName} />
             <OfferField label="Email" value={hiringEmail} onChange={setHiringEmail} placeholder="hm@example.com" />
           </div>
         </div>
-        <label className="block text-sm sm:col-span-2">
-          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Notes</span>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={3}
-            className="mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-          />
-        </label>
       </div>
-      <div className="mt-3 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 p-3">
-        <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
-          {usedOverride ? "Fee (flat override)" : "Calculated fee"}
-        </div>
-        <div className="mt-1 font-serif text-2xl font-semibold text-court-fg">
-          {formatMoney(feeTotal, currency)}
-          {usedMinFee && <span className="ml-2 text-xs text-amber-700">(min fee applied)</span>}
-          {usedOverride && <span className="ml-2 text-xs text-brand-dark">(flat override)</span>}
-        </div>
-        {usedOverride ? (
-          <div className="mt-1 text-xs text-court-fg-muted">
-            Flat-fee amount; salary × fee % calc is ignored while this is set.
-          </div>
-        ) : salaryNum && pctNum ? (
-          <div className="mt-1 text-xs text-court-fg-muted">
-            {formatMoney(salaryNum, currency)} × {pctNum}% = {formatMoney(rawFee, currency)}
-          </div>
-        ) : (
-          <div className="mt-1 text-xs text-court-fg-muted">
-            Enter accepted salary + fee % to calculate, or type a flat fee amount above.
-          </div>
-        )}
-      </div>
+
+      <label className="mt-3 block text-sm">
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Notes</span>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={2}
+          className="mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        />
+      </label>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
     </ModalShell>
   );

@@ -1,10 +1,40 @@
 # ACE_STATE.md
-Last updated: 2026-05-27 · Ace 67.16
-
-## Current Status
-Current Version: Ace 67.16
+Last updated: 2026-05-27 · Ace 67.17
+Current Version: Ace 67.17
 Last Shipped: 2026-05-27
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.17 (2026-05-27)
+
+LocalPlacementDialog correction ship — Ace 67.12 (Make Placement X-only close + Lead Source dropdown + required) and 67.15 (Make Placement modal density pass) were both applied to the wrong file (`placement-flows.tsx` PlacementDialog, RF flow). Since RecruiterFlow is removed per rule 1, the recruiter actually opens `LocalPlacementDialog` in `src/app/candidates/[id]/local-placement-rows.tsx` (line 1365). Andrew's screenshot showed the prior layout intact on prod because none of those changes ever reached the right modal. Audit triggered by his "did you miss anything else?" prompt — answer was yes, 67.12 + 67.15 both. This ship re-applies them to the correct file, plus adds the drag/resize parity he asked for in the same prompt.
+
+- **`LocalPlacementDialog` ModalShell now passes `dismissOnOverlay={false}`, `draggable`, `resizable`** — matches the OfferDialog precedent from 67.10/67.11. Backdrop click and Escape are inert; X / Cancel are the only close paths. Header drags via the same `useDraggableResizable` hook the OfferDialog uses; bottom-right corner resizes between MODAL_MIN_W/MIN_H and 90vw/90vh.
+- **Lead Source converted from free-text `<OfferField>` to a `<select>`** sourced from `LEAD_SOURCES` (`src/lib/lead-sources.ts`) — the same canonical list the RF PlacementDialog, the pipeline placement-edit-drawer, and the Financial Performance By Source widget all read. Disabled placeholder ("Select a source…"), `required` + `aria-required="true"`, and a legacy-value preservation pass so existing placements with free-text sources like "Pin" / "Apollo BD" / "Cold Outreach" reopen with the saved value still selected.
+- **`onSave` validate now blocks blank Lead Source** with `"Lead Source is required."` — the existing red error banner above the footer surfaces it like every other validation miss.
+- **Density pass on the same modal:**
+  - Lead Source moved into the main 7-field grid (now an 8-field 2-col grid using `gap-x-3 gap-y-2`).
+  - Fee summary card hoisted ABOVE billing/hiring (was at the bottom of the modal — now sits right after the field grid). Re-laid as a single horizontal row: label + breakdown left, big total right. Drops `p-3 text-2xl` to `px-3 py-2 text-xl`.
+  - Billing contact + Hiring manager cards placed side-by-side via `grid-cols-1 sm:grid-cols-2` (each card `px-3 py-2`). Was `sm:col-span-2` on each card (stacked full-width); now ~140px combined instead of ~280px.
+  - Notes textarea `rows={3}` → `rows={2}`.
+  - Helper copy on Billing/Hiring section descriptions tightened to single-line phrasing.
+
+Combined effect: ~250–300px shaved off total modal height. Fee summary card is now visible above the fold on first open on a 13" laptop, AND the modal is draggable + resizable so Andrew can move it off whatever it sits on top of.
+
+Touches (1 source file): `src/app/candidates/[id]/local-placement-rows.tsx`. New import: `LEAD_SOURCES` from `@/lib/lead-sources`. Build clean (`npm run build` exits 0; only the two pre-existing react-hooks/exhaustive-deps warnings, unrelated).
+
+Audit follow-up: every UX change from 67.10 onward has been cross-checked against both files. 67.10 OfferDialog dismiss + 67.11 OfferDialog drag/resize both shipped to RF AND Ace-native (placement-flows.tsx OfferDialog + local-placement-rows.tsx LocalOfferDialog). 67.8 Offer popup constraints shipped to both. ConfirmStartDialog is an exported shared component used by both flows, so 67.7 Confirm-Start → composer pop worked on both. Only the Make Placement modal had a parallel implementation that was missed in 67.12 + 67.15.
+
+Open question for Andrew (raised after this ship): `placement-flows.tsx` is RF-flavored code per rule 1's "RecruiterFlow is removed." Worth scheduling its removal (or stub-out) so future UX changes can't end up in the wrong file again? Will raise as a separate next-up after browser-verify.
+
+Andrew browser-verify (6 steps, after deploy lands):
+1. Open Make Placement on an offer-stage candidate. Click outside the modal → modal stays open. Press Escape → stays open. Click X → closes.
+2. Grab the title-bar area and drag the modal across the screen → modal moves with the cursor and stops cleanly on release.
+3. Drag the bottom-right corner → modal resizes between the min (480x400) and 90vw/90vh.
+4. Lead Source field is a dropdown showing Network / Referral / LinkedIn / Inbound / Indeed / Other with a disabled "Select a source…" placeholder. Try to save with Lead Source on the placeholder → red error banner "Lead Source is required." and save blocks.
+5. Fee summary card (left label + big total on the right) visible without scrolling on first open.
+6. Billing contact + Hiring manager render side-by-side as two columns; Notes textarea is shorter (2 rows).
+
+Regression: Existing placements with legacy candidateSource strings ("Pin", "Apollo BD", "Cold Outreach") still reopen with that value pre-selected via the fallback option. recordLocalPlacement server action unchanged. Confirm Start, Reject, Reapply, Schedule Interview, Edit Interview, Extend Offer modals all untouched.
 
 ## What Shipped in Ace 67.16 (2026-05-27)
 

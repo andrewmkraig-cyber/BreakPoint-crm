@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-27 · Ace 67.16
+Last updated: 2026-05-27 · Ace 67.17
 
 ## Active Build Sequence
 
@@ -16,6 +16,11 @@ Notification toast polish (DONE Ace 59.0): SMS toast `MessageSquare` icon, actio
 
 ### Session 61.0 Status
 Profile / pipeline regression close-out + features (DONE Ace 61.0): split-view candidate Delete restored; Apply / Keep / Reject real-time stage pill (optimistic, holds until server confirm) + the flash-then-disappear follow-on fixed; Add Note button removed from all four candidate profile locations; stage button visibility aligned to spec in `pipeline-row-actions.tsx`; phone thread auto-scroll to bottom on open; CalendarEventDrawer reminder mode (hides Guests / Location / Meeting type / All day / Timezone, ET hard-coded with a comment to pull per-user tz when multi-user ships); scheduled send (Send Later) on every email surface (`ScheduledEmail` table + per-minute Vercel cron + Retry toast); dark luxury login redesign; PWA badge auto-fire fix (`2d0081e`, null badgeCount in `unread-counts.ts`, sw.js cache `v5`); Auto Night Mode (`0dd1e41`, `UserProfile.autoNightMode`, 7pm/7am ET flip). Favicon / tab counter verified already correct. Awaiting Andrew's browser verification of scheduled send, the PWA badge, and Auto Night Mode.
+
+### Next Up (after Ace 67.17)
+
+- **Browser-verify Make Placement modal corrections (Ace-native).** (1) Open Make Placement on an offer-stage candidate → click outside / press Escape → modal stays open; X closes. (2) Drag the title bar → modal moves with the cursor and stops cleanly. (3) Resize from the bottom-right corner → modal grows/shrinks between the min and 90vw/90vh. (4) Lead Source is a dropdown with Network / Referral / LinkedIn / Inbound / Indeed / Other; the "Select a source…" placeholder is selected and disabled. (5) Try to save with Lead Source unselected → red error "Lead Source is required." (6) Fee summary card visible above the fold on first open. (7) Billing + Hiring side-by-side, not stacked. Regression: existing placements with legacy candidateSource ("Pin", "Apollo BD", etc.) reopen with that value pre-selected.
+- **Schedule RF cleanup (placement-flows.tsx removal).** After browser-verify above passes, schedule a separate ship to either delete or stub `src/app/candidates/[id]/placement-flows.tsx`. The file is RF-flavored code per rule 1 ("RecruiterFlow is removed") and was the source of the 67.12 / 67.15 dual-file misses. Audit imports (`local-placement-rows.tsx` imports `AceTeamContact` from it; ConfirmStartDialog is exported and shared) before removing — anything still needed gets hoisted to a neutral lib module first.
 
 ### Next Up (after Ace 67.16)
 
