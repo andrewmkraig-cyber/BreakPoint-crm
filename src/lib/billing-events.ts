@@ -293,62 +293,57 @@ export function sumEventsCents(
   return total;
 }
 
-// Clubhouse Billing Tower's three numbers, sourced from the helper so
-// custom-terms placements without Invoice rows yet (Ethan) contribute
-// the right amount to Outstanding and Goal Progress.
+// Clubhouse Billing Tower numbers, sourced from the helper so custom-
+// terms placements without Invoice rows yet (Ethan) contribute the
+// right amount to Revenue / Outstanding / Goal Progress.
 //
-// Revenue        — paid events bucketed by paidAt in the quarter.
-//                  Unchanged for Ethan (he isn't paid). Same semantics
-//                  as getInvoiceSummary.collectedThisQuarterCents but
-//                  routed through the helper for consistency.
+// Revenue        — every event (paid + unpaid) bucketed by scheduledAt
+//                  in [start, end). "Booked placement revenue for this
+//                  period" — what the recruiter earned in the window,
+//                  not just what cash hit the bank. Q2 with a paid
+//                  $7,500 placement + Ethan's unpaid $3,750 inst1 reads
+//                  $11,250.
 // Outstanding    — unpaid events (sent/draft/future_draft/scheduled)
-//                  with scheduledAt < qEnd. Adds Ethan's inst1=$3,750
-//                  even though no Invoice row exists.
-// Booked         — every event (paid + unpaid) bucketed by scheduledAt
-//                  in [qStart, qEnd). Drives Goal Progress so the
-//                  tile reflects "what I earned this quarter," not
-//                  just "what I collected."
+//                  with scheduledAt in [start, end). Period-bounded so
+//                  selecting Next Quarter shows the unpaid portion of
+//                  next-quarter revenue, not the all-time backlog.
+// bookedCents    — alias for revenueCents kept on the return shape so
+//                  callers wiring Goal Progress against booked revenue
+//                  don't have to refactor. Numerically identical.
 //
 // We import prisma lazily so this module can stay client-importable
 // (it's used by server actions only, but the type imports are safe
 // either way).
 type PrismaLike = typeof import("@/lib/prisma").prisma;
 
-export async function getCurrentQuarterBillingSummary(
-  organizationId: string,
-  now: Date,
-  prisma: PrismaLike,
-): Promise<{
+export type BillingSummary = {
   revenueCents: number;
   revenueCount: number;
   outstandingCents: number;
   outstandingCount: number;
   bookedCents: number;
-}> {
-  // Quarter window in local time, matching periodRange("THIS_QUARTER", now)
-  // shape — we re-derive here so the helper stays self-contained instead
-  // of importing periodRange (which would cross a "server-only" boundary
-  // and circle back through @/lib).
-  const qIndex = Math.floor(now.getMonth() / 3);
-  const qStart = new Date(now.getFullYear(), qIndex * 3, 1);
-  const qEnd = new Date(now.getFullYear(), qIndex * 3 + 3, 1);
+};
 
-  // Pull every placement whose events COULD land in this quarter. The
-  // OR-window here is wide on purpose — a custom-terms placement
-  // started a month ago might have inst2 falling this quarter, so we
-  // can't filter on expectedStartDate alone. Open-stage placement
-  // counts in this CRM are dozens, not millions, so pulling a 12-month
-  // lookback set is cheap and the per-event bucketing below does the
-  // precise filtering.
-  const aYearAgo = new Date(qStart.getTime() - 365 * MS_PER_DAY);
+// Generalized period-bounded variant. Pulls every placement that COULD
+// have an event landing in [start, end) — same 12-month lookback the
+// quarter-specific helper used, kept wide so installments anchored to
+// a placement that started up to a year before the window can still
+// be picked up. Per-event bucketing below does the precise filtering.
+export async function getBillingSummaryForRange(
+  organizationId: string,
+  start: Date,
+  endExclusive: Date,
+  prisma: PrismaLike,
+): Promise<BillingSummary> {
+  const aYearBeforeStart = new Date(start.getTime() - 365 * MS_PER_DAY);
   const placements = await prisma.placement.findMany({
     where: {
       organizationId,
       stage: { in: ["offer", "pending_start", "hired"] },
       OR: [
-        { expectedStartDate: { gte: aYearAgo, lt: qEnd } },
-        { placedAt: { gte: aYearAgo, lt: qEnd } },
-        { startConfirmedAt: { gte: aYearAgo, lt: qEnd } },
+        { expectedStartDate: { gte: aYearBeforeStart, lt: endExclusive } },
+        { placedAt: { gte: aYearBeforeStart, lt: endExclusive } },
+        { startConfirmedAt: { gte: aYearBeforeStart, lt: endExclusive } },
       ],
     },
     select: BILLING_EVENT_PLACEMENT_SELECT,
@@ -358,25 +353,17 @@ export async function getCurrentQuarterBillingSummary(
   let revenueCount = 0;
   let outstandingCents = 0;
   let outstandingCount = 0;
-  let bookedCents = 0;
 
   for (const p of placements) {
     for (const e of expandPlacementBillingEvents(p as PlacementForBilling)) {
-      // Booked — every event whose schedule lands this quarter, regardless
-      // of payment status. Drives Goal Progress.
-      if (e.scheduledAt >= qStart && e.scheduledAt < qEnd) {
-        bookedCents += e.amountCents;
-      }
-      // Revenue — paid events bucketed by paidAt (collection date).
-      if (e.status === "paid" && e.paidAt && e.paidAt >= qStart && e.paidAt < qEnd) {
-        revenueCents += e.amountCents;
-        revenueCount += 1;
-      }
-      // Outstanding — unpaid $ that comes due by end of quarter.
-      // Includes scheduled installments (no invoice yet) so Ethan's
-      // inst1 contributes. Excludes paid (already collected) and
-      // anything scheduled past quarter end (next quarter's problem).
-      if (e.status !== "paid" && e.scheduledAt < qEnd) {
+      const inWindow = e.scheduledAt >= start && e.scheduledAt < endExclusive;
+      if (!inWindow) continue;
+      // Revenue — booked, period-bucketed by scheduledAt. Counts every
+      // event regardless of payment status.
+      revenueCents += e.amountCents;
+      revenueCount += 1;
+      // Outstanding — the unpaid subset of Revenue.
+      if (e.status !== "paid") {
         outstandingCents += e.amountCents;
         outstandingCount += 1;
       }
@@ -388,6 +375,22 @@ export async function getCurrentQuarterBillingSummary(
     revenueCount,
     outstandingCents,
     outstandingCount,
-    bookedCents,
+    // bookedCents kept as an alias for revenueCents — older callers
+    // (my-dashboard's Goal Progress math) reference this field name.
+    bookedCents: revenueCents,
   };
+}
+
+// Backward-compat wrapper. Computes the current-quarter window in
+// local time (matching the periodRange("THIS_QUARTER") shape) and
+// delegates to the period-bounded variant.
+export async function getCurrentQuarterBillingSummary(
+  organizationId: string,
+  now: Date,
+  prisma: PrismaLike,
+): Promise<BillingSummary> {
+  const qIndex = Math.floor(now.getMonth() / 3);
+  const qStart = new Date(now.getFullYear(), qIndex * 3, 1);
+  const qEnd = new Date(now.getFullYear(), qIndex * 3 + 3, 1);
+  return getBillingSummaryForRange(organizationId, qStart, qEnd, prisma);
 }

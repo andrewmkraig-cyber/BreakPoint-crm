@@ -1,13 +1,11 @@
-import { Prisma } from "@prisma/client";
-
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
-import { getInvoiceSummary } from "@/lib/invoices";
 import { periodRange, type DashboardPeriod } from "@/lib/period-utils";
 import { normalizeClient, normalizeJob } from "@/lib/rf-payload-shapes";
 import {
   BILLING_EVENT_PLACEMENT_SELECT,
+  expandPlacementBillingEvents,
   placementTotalDollars,
   sumEventsCents,
   type PlacementForBilling,
@@ -52,14 +50,23 @@ export type ScoreboardData = {
     interviewCoveragePct: number | null;
   };
   cashForecast: {
-    // Pending Invoices — DRAFT invoices with isFuture=false. The
-    // recruiter-facing read is "invoices ready to send" (or sitting
-    // unsent past due). Replaces the previous "Pending Start" tile
-    // which was placement-stage scoped and conflated pre-start
-    // placements with their actual invoice obligations.
+    // Pending Invoices — every unsent billing obligation: DRAFT
+    // invoices (isFuture=false) PLUS scheduled custom-term events that
+    // have no Invoice row yet. Status filter only, no period filter —
+    // the recruiter's "still to send" inbox is the full unsent
+    // backlog, not just this quarter's. Ethan pre-Confirm-Start: both
+    // installments are "scheduled" events with no invoice rows, so
+    // this bucket reads $7.5K. After inst1 is Sent, only inst2 is
+    // left scheduled → $3.75K.
     pendingInvoicesUsd: number;
     pendingInvoicesCount: number;
+    // Billed — SENT invoice events with dueDate in the selected
+    // period. PAID is intentionally OUT: an invoice that's been paid
+    // belongs to Collected, not Billed. The same $3.75K can never
+    // simultaneously appear in both columns.
     billedUsd: number;
+    // Collected — PAID invoice events bucketed by paidAt in the
+    // selected period.
     collectedUsd: number;
   };
   topClients: Array<{
@@ -106,9 +113,7 @@ export async function getScoreboardData(
     offersLast90,
     placedAggLast90,
     pipelinePlacementsForValue,
-    pendingInvoicesAgg,
-    billedInPeriodAgg,
-    invoiceSummary,
+    cashForecastPlacements,
     rfClients,
     rfJobs,
     aceCandidates,
@@ -198,43 +203,19 @@ export async function getScoreboardData(
       },
       select: BILLING_EVENT_PLACEMENT_SELECT,
     }),
-    // Pending Invoices — DRAFT invoices that aren't pre-staged
-    // installments. Sum AND count come from the same query so the
-    // tile's "$X · N invoices" sub-label can't drift. Decoupled from
-    // Placement.stage entirely: an invoice belongs to the recruiter's
-    // billing inbox the moment it's a real (non-future) draft,
-    // regardless of where the underlying placement sits.
-    prisma.invoice.aggregate({
-      _sum: { feeAmount: true },
-      _count: { _all: true },
+    // Cash Forecast — single placement query, then expand to billing
+    // events and bucket in-process. Replaces the two raw Invoice
+    // aggregates (which missed scheduled custom-term events with no
+    // invoice row) plus the separate getInvoiceSummary call (which
+    // double-counted SENT+PAID into Billed). Open placements + hired
+    // (which still have outstanding installments to send/collect).
+    prisma.placement.findMany({
       where: {
         organizationId: org.id,
-        status: "DRAFT",
-        isFuture: false,
+        stage: { in: ["offer", "pending_start", "hired"] },
       },
+      select: BILLING_EVENT_PLACEMENT_SELECT,
     }),
-    // Billed in window — sum of invoice fees whose dueDate lands in
-    // the selected quarter, restricted to SENT or PAID (an invoice
-    // that hasn't been issued isn't "billed" yet — it's in the
-    // Pending bucket above). PAID stays in because "billed in Q2" is
-    // a historical measure that shouldn't shrink as we collect.
-    // Switched from grouping by Placement.expectedStartDate (which
-    // attributed 100% of a custom-terms placement's fee to its start
-    // quarter) to grouping by Invoice.dueDate so each installment
-    // lands in its own quarter.
-    prisma.invoice.aggregate({
-      _sum: { feeAmount: true },
-      where: {
-        organizationId: org.id,
-        status: { in: ["SENT", "PAID"] },
-        dueDate: { gte: periodStart, lt: periodEnd },
-        placement: {
-          organizationId: org.id,
-          stage: { in: ["pending_start", "hired"] },
-        },
-      },
-    }),
-    getInvoiceSummary(org.id),
     // Pull RF client + job context so we can name Top Clients/Roles even
     // for RF-rooted placements. The MyDashboard tab already pays for the
     // same fetches; future opportunity is to share via a request cache.
@@ -294,14 +275,6 @@ export async function getScoreboardData(
   ]);
 
   // --- KPI assembly ---
-  // Sum-of-Decimal columns come back as Prisma.Decimal | null; coerce
-  // to whole dollars (fee amounts are recorded in whole dollars, so
-  // sub-cent rounding noise from the Decimal coercion is just noise).
-  const decimalToDollars = (amount: Prisma.Decimal | null): number => {
-    if (amount == null) return 0;
-    const n = Number(amount.toString());
-    return Number.isFinite(n) ? Math.round(n) : 0;
-  };
   // Pipeline VALUE — sum of every unpaid billing event across open
   // placements. paid events drop out (collected money isn't "pipeline").
   // future_draft + scheduled events count because the recruiter has
@@ -316,9 +289,47 @@ export async function getScoreboardData(
   // since the count column below distinguishes "no deals" from "deals
   // but no invoices yet".
   const pipelineValueUsd = pipelineValueUsdRaw > 0 ? pipelineValueUsdRaw : null;
-  const pendingInvoicesUsd = decimalToDollars(pendingInvoicesAgg._sum.feeAmount);
-  const pendingInvoicesCount = pendingInvoicesAgg._count._all;
-  const billedUsd = decimalToDollars(billedInPeriodAgg._sum.feeAmount);
+
+  // Cash Forecast buckets, walked once over the placement set so the
+  // same $3.75K never lands in two columns. See cashForecast comment
+  // on the return type for the per-bucket contract.
+  let pendingCents = 0;
+  let pendingCount = 0;
+  let billedCents = 0;
+  let collectedCents = 0;
+  for (const p of cashForecastPlacements) {
+    for (const e of expandPlacementBillingEvents(p as PlacementForBilling)) {
+      // Pending: unsent obligations. status=draft (real DRAFT invoice
+      // row, isFuture=false — future_draft is excluded by the helper)
+      // or status=scheduled (custom-terms installment with no invoice
+      // row yet, OR feeTotal fallback). No date filter — the recruiter
+      // wants the full unsent backlog.
+      if (e.status === "draft" || e.status === "scheduled") {
+        pendingCents += e.amountCents;
+        pendingCount += 1;
+      }
+      // Billed: SENT invoices whose dueDate (scheduledAt for invoice
+      // events) lands in the selected period. PAID intentionally
+      // excluded — those graduated to Collected.
+      if (e.status === "sent" && e.scheduledAt >= periodStart && e.scheduledAt < periodEnd) {
+        billedCents += e.amountCents;
+      }
+      // Collected: PAID invoices bucketed by paidAt in the selected
+      // period.
+      if (
+        e.status === "paid" &&
+        e.paidAt &&
+        e.paidAt >= periodStart &&
+        e.paidAt < periodEnd
+      ) {
+        collectedCents += e.amountCents;
+      }
+    }
+  }
+  const pendingInvoicesUsd = Math.round(pendingCents / 100);
+  const pendingInvoicesCount = pendingCount;
+  const billedUsd = Math.round(billedCents / 100);
+  const collectedUsd = Math.round(collectedCents / 100);
   const placedFees = placedLast90
     .map((p) => p.feeTotal)
     .filter((v): v is number => typeof v === "number" && v > 0);
@@ -521,7 +532,7 @@ export async function getScoreboardData(
       pendingInvoicesUsd,
       pendingInvoicesCount,
       billedUsd,
-      collectedUsd: invoiceSummary.collectedThisQuarterCents / 100,
+      collectedUsd,
     },
     topClients,
     topRoles,

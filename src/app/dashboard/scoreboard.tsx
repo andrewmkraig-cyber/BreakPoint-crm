@@ -347,7 +347,7 @@ function CashForecastCard({ cash }: { cash: Cash }) {
         <ForecastRow
           label="Billed"
           amount={cash.billedUsd > 0 ? formatMoneyShort(cash.billedUsd) : "—"}
-          hint="Invoices due this quarter (Sent + Paid)"
+          hint="Invoices sent this quarter (not yet paid)"
           pct={widthPct(cash.billedUsd)}
           accent="bg-court-brand/40"
         />

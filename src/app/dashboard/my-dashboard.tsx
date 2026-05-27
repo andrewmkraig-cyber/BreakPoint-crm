@@ -7,7 +7,7 @@ import { ThisWeekWidget } from "@/app/dashboard/this-week-widget";
 import { NewsFeed } from "@/components/news-feed";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
-import { getCurrentQuarterBillingSummary } from "@/lib/billing-events";
+import { getBillingTowerData } from "@/app/dashboard/billing-tower-actions";
 import {
   clubhousePeriodRange,
   type ClubhousePeriod,
@@ -55,7 +55,7 @@ export async function MyDashboard({
     offersExtendedCount,
     placementsMadeCount,
     agreementsSignedCount,
-    billingSummary,
+    billingTowerInitial,
   ] = await Promise.all([
     prisma.client.count({
       where: { organizationId: org.id, createdAt: { gte: activityStart, lt: activityEnd } },
@@ -75,38 +75,14 @@ export async function MyDashboard({
     prisma.clientAgreement.count({
       where: { organizationId: org.id, uploadedAt: { gte: activityStart, lt: activityEnd } },
     }),
-    getCurrentQuarterBillingSummary(org.id, now, prisma),
+    // Initial Billing Tower payload, rendered as Current Quarter.
+    // FinancialStrip reuses this on first paint and only refetches
+    // when the user picks a different period from the dropdown.
+    // Calling the same server action the client uses keeps the
+    // shape + math in one place.
+    getBillingTowerData("current"),
   ]);
 
-  // Revenue is cash actually collected this quarter — paid billing
-  // events bucketed by paidAt. Routed through the billing-events helper
-  // for consistency with Outstanding + Goal Progress below; numerically
-  // identical to the old getInvoiceSummary.collectedThisQuarterCents
-  // read because only invoice-backed events ever reach status="paid".
-  const revenueUsd = billingSummary.revenueCents / 100;
-  const revenueCount = billingSummary.revenueCount;
-  // Outstanding is unpaid $ coming due by end of quarter, INCLUDING
-  // scheduled installments on custom-terms placements that haven't
-  // had Confirm Start fire yet (Ethan's inst1=$3,750 lands here even
-  // with zero Invoice rows). Collecting inst1 flips its event to
-  // status="paid" → subtracts $3,750 from this tile and adds it to
-  // Revenue above, leaving the rest of the placement's installments
-  // in place.
-  const outstandingUsd = billingSummary.outstandingCents / 100;
-  const outstandingCount = billingSummary.outstandingCount;
-
-  const Q2_GOAL_USD = 125_000;
-  // Goal Progress reads "booked this quarter" — every billing event
-  // (paid + scheduled + drafted + sent) bucketed by scheduledAt in
-  // [qStart, qEnd). That's Revenue + the portion of Outstanding that
-  // schedules within this quarter (excludes Outstanding amounts that
-  // belong to a past quarter and just haven't been collected yet),
-  // so the recruiter's read is "what work did I earn in this
-  // quarter?" not "what cash came in?". Ethan's Q2 inst1 contributes
-  // here even though Revenue doesn't move (he isn't paid yet).
-  const bookedThisQuarterUsd = billingSummary.bookedCents / 100;
-  const q2RevenuePct =
-    Q2_GOAL_USD > 0 ? (bookedThisQuarterUsd / Q2_GOAL_USD) * 100 : 0;
   const currentQuarterLabel = `Q${Math.floor(now.getMonth() / 3) + 1} ${now.getFullYear()}`;
 
   return (
@@ -129,12 +105,7 @@ export async function MyDashboard({
       </div>
 
       <FinancialStrip
-        revenueUsd={revenueUsd}
-        revenueCount={revenueCount}
-        outstandingUsd={outstandingUsd}
-        outstandingCount={outstandingCount}
-        goalUsd={Q2_GOAL_USD}
-        goalPct={q2RevenuePct}
+        initial={billingTowerInitial}
         currentQuarterLabel={currentQuarterLabel}
       />
 
