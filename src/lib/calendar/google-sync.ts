@@ -150,7 +150,28 @@ export async function syncGoogleCalendars(
 
     for (const ev of events) {
       if (!ev.id) continue;
-      if (ev.status === "cancelled") continue;
+      // Google may still surface a cancelled event in a window-scoped
+      // list (status === "cancelled"). Don't skip — that left stale
+      // CONFIRMED mirror rows around for events we'd deleted via the
+      // interview cancel flow, which is what put a "second" Jennifer
+      // Cole interview on the Clubhouse / This Week widget. Flip any
+      // matching local row to CANCELLED so it falls out of the widget
+      // + /calendar queries (both filter status != CANCELLED).
+      if (ev.status === "cancelled") {
+        try {
+          await prisma.calendarEvent.updateMany({
+            where: {
+              organizationId,
+              googleEventId: ev.id,
+              calendarId: cal.id,
+            },
+            data: { status: "CANCELLED", syncedAt: new Date() },
+          });
+        } catch {
+          // best-effort
+        }
+        continue;
+      }
 
       const startSource = ev.start?.dateTime ?? ev.start?.date;
       const endSource = ev.end?.dateTime ?? ev.end?.date;

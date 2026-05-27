@@ -203,6 +203,61 @@ function revalidateForCandidate(ref: { candidateRfId: number | null; candidateId
   if (ref.candidateId != null) revalidatePath(`/candidates/${ref.candidateId}`);
   revalidatePath("/pipeline");
   revalidatePath("/dashboard");
+  revalidatePath("/calendar");
+}
+
+// CalendarEvent (the local Google-mirror used by /calendar + the
+// Clubhouse "This Week" widget) is normally rebuilt by the on-demand
+// sync route. That sync only runs when the page loads, so cancel /
+// reschedule / update need to keep the mirror in step with the live
+// Google PATCH/DELETE we just made — otherwise stale CONFIRMED rows
+// keep showing up alongside the new event (the Jennifer Cole bug).
+//
+// Scope by organizationId so a stray same-id event on another tenant
+// can't get clobbered. Returns silently if no mirror rows exist (the
+// event was created off-cycle and a sync hasn't pulled it in yet);
+// the next sync pass will pick up the cancellation.
+async function markLocalCalendarEventsCancelled(args: {
+  organizationId: string;
+  googleEventIds: string[];
+}): Promise<void> {
+  const ids = Array.from(new Set(args.googleEventIds.filter((id): id is string => Boolean(id))));
+  if (ids.length === 0) return;
+  try {
+    await prisma.calendarEvent.updateMany({
+      where: { organizationId: args.organizationId, googleEventId: { in: ids } },
+      data: { status: "CANCELLED", syncedAt: new Date() },
+    });
+  } catch {
+    // best-effort — the next /api/calendar/sync run will reconcile.
+  }
+}
+
+async function updateLocalCalendarEventsTime(args: {
+  organizationId: string;
+  googleEventIds: string[];
+  startTime: Date;
+  endTime: Date;
+  location?: string | null;
+}): Promise<void> {
+  const ids = Array.from(new Set(args.googleEventIds.filter((id): id is string => Boolean(id))));
+  if (ids.length === 0) return;
+  try {
+    await prisma.calendarEvent.updateMany({
+      where: { organizationId: args.organizationId, googleEventId: { in: ids } },
+      data: {
+        startTime: args.startTime,
+        endTime: args.endTime,
+        ...(args.location !== undefined ? { location: args.location ?? null } : {}),
+        // A rescheduled event is canonically scheduled again — flip
+        // any prior CANCELLED row back to CONFIRMED.
+        status: "CONFIRMED",
+        syncedAt: new Date(),
+      },
+    });
+  } catch {
+    // best-effort
+  }
 }
 
 function calendarSummary(input: ScheduleInterviewInput): string {
@@ -479,6 +534,16 @@ export async function cancelInterview(interviewId: string): Promise<Result> {
       data: { status: "cancelled" },
     });
 
+    const org = await getCurrentOrg();
+    // Keep the /calendar + dashboard CalendarEvent mirror in step with
+    // the live Google delete — without this the row stays CONFIRMED
+    // until the next on-demand sync, and the widget renders it next
+    // to any replacement interview as a "second" event.
+    await markLocalCalendarEventsCancelled({
+      organizationId: org.id,
+      googleEventIds: uniqueEventIds,
+    });
+
     const subjectId = existing.candidateRfId != null ? String(existing.candidateRfId) : existing.candidateId!;
     await createActionLog({
       userId: user.id,
@@ -492,7 +557,6 @@ export async function cancelInterview(interviewId: string): Promise<Result> {
     // reason field today (single-click cancel from the activity panel);
     // metadata carries the calendar-event delete tally + source so the
     // activity feed can render "cancelled by {user}" without a join.
-    const org = await getCurrentOrg();
     const eventDeletions = uniqueEventIds.length;
     await logActivity({
       organizationId: org.id,
@@ -586,6 +650,18 @@ export async function rescheduleInterview(input: RescheduleInterviewInput): Prom
     await prisma.interview.update({
       where: { id: input.interviewId },
       data: { scheduledAt: when, durationMin, status: "scheduled" },
+    });
+
+    // Push the new time onto the local CalendarEvent mirror so the
+    // /calendar grid + Clubhouse widget show the rescheduled time
+    // immediately, without waiting for the next on-demand Google sync.
+    const orgForReschedule = await getCurrentOrg();
+    const endTime = new Date(when.getTime() + durationMin * 60 * 1000);
+    await updateLocalCalendarEventsTime({
+      organizationId: orgForReschedule.id,
+      googleEventIds: uniqueEventIds,
+      startTime: when,
+      endTime,
     });
 
     const subjectId = existing.candidateRfId != null ? String(existing.candidateRfId) : existing.candidateId!;
@@ -780,6 +856,19 @@ export async function updateInterview(input: UpdateInterviewInput): Promise<Resu
     },
   });
 
+  // Mirror sync — same rationale as the reschedule path: the
+  // /calendar grid + Clubhouse widget read CalendarEvent rows, not
+  // Interview rows, so the post-edit time has to land there too.
+  const orgForUpdate = await getCurrentOrg();
+  const endTimeUpdate = new Date(when.getTime() + input.durationMin * 60 * 1000);
+  await updateLocalCalendarEventsTime({
+    organizationId: orgForUpdate.id,
+    googleEventIds: uniqueEventIds,
+    startTime: when,
+    endTime: endTimeUpdate,
+    location: input.location ?? null,
+  });
+
   const subjectId =
     existing.candidateRfId != null ? String(existing.candidateRfId) : existing.candidateId!;
   await createActionLog({
@@ -797,9 +886,8 @@ export async function updateInterview(input: UpdateInterviewInput): Promise<Resu
     },
   });
 
-  const org = await getCurrentOrg();
   await logActivity({
-    organizationId: org.id,
+    organizationId: orgForUpdate.id,
     userId: user.id,
     actionType: "interview_updated",
     targetType: "interview",
@@ -936,12 +1024,27 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
     newAttendees.push(a);
   }
 
+  // First-send-only body bootstrap. The shared event is created with a
+  // neutral schedule-time summary/description (calendarSummary +
+  // calendarDescription in scheduleInterview), so the FIRST Send Invite
+  // is allowed to replace those with the composer's party-specific copy
+  // — there's no other attendee yet to be confused by it. Once either
+  // party is on the event, subsequent sends ONLY add the new attendee
+  // and leave the body untouched. Otherwise sending the candidate invite
+  // would clobber the client-facing description and Google would mail
+  // every prior attendee a "this event was updated" notification with
+  // the candidate-targeted text — that was the "Austin gets a confusing
+  // second invite" symptom.
+  const isFirstInvite =
+    !interview.googleEventIdClient && !interview.googleEventIdCandidate;
+
   try {
     await updateEventAsInvite({
       userId: user.id,
       eventId: interview.googleEventIdMine,
-      summary: resolvedSubject.trim(),
-      description: resolvedBodyText,
+      ...(isFirstInvite
+        ? { summary: resolvedSubject.trim(), description: resolvedBodyText }
+        : {}),
       newAttendees,
     });
   } catch (e) {

@@ -1,10 +1,23 @@
 # ACE_STATE.md
-Last updated: 2026-05-27 · Ace 67.8
+Last updated: 2026-05-27 · Ace 67.9
 
 ## Current Status
-Current Version: Ace 67.8
+Current Version: Ace 67.9
 Last Shipped: 2026-05-27
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.9 (2026-05-27)
+
+Interview calendar duplicate/update behavior — three bugs the Jennifer Cole reschedule surfaced.
+
+- **Stale CalendarEvent rows now sync on cancel/reschedule/update.** `cancelInterview`, `rescheduleInterview`, and `updateInterview` in `src/app/candidates/[id]/interview-actions.ts` now write the matching `CalendarEvent` mirror rows immediately after the Google PATCH/DELETE — `status=CANCELLED` on cancel, new `startTime/endTime/location/status=CONFIRMED` on reschedule + update. Scoped by `organizationId + googleEventId IN (...)` with a best-effort try/catch (the next on-demand sync is the safety net). Previously the local mirror only refreshed when `syncGoogleCalendars` next ran, so a cancelled Google event left a `CONFIRMED` row that kept rendering on the Clubhouse / This Week widget alongside any replacement interview. New helpers `markLocalCalendarEventsCancelled` + `updateLocalCalendarEventsTime` live in the same file (server-action module, so no extra exports). `revalidateForCandidate` also revalidates `/calendar` now.
+- **Google sync no longer skips cancelled events.** `src/lib/calendar/google-sync.ts` was hard-skipping any event with `status === "cancelled"` from the Google API. That left orphan rows the cancel-flow couldn't reach (event id not in the Interview row). The sync now upserts those into the local table with `status=CANCELLED, syncedAt=now()` so any cancelled Google event eventually falls out of the widget + `/calendar` queries (both filter `status: { not: "CANCELLED" }`).
+- **`sendInterviewInvite` only sets summary/description on the first send.** Previously every send PATCHed `event.summary + event.description` from the per-party composer body — so sending the candidate invite overwrote the client-facing description that Austin already received, and Google mailed every prior attendee a confusing "this event was updated" notification with the candidate-targeted text. Now: if neither `googleEventIdClient` nor `googleEventIdCandidate` is set (first invite), the composer subject/body still flows into `event.summary/description`. On subsequent sends those fields are omitted and only the new attendee is appended via `updateEventAsInvite` (which now accepts optional summary/description and short-circuits no-op PATCHes that would have no new attendee AND no header changes). Per-party composer messaging that needs to differ between client and candidate should land via Gmail/templates as a follow-up; the shared calendar event keeps the neutral first-send body.
+- **Widget dedupe defense.** New shared helper `src/lib/calendar/dedupe.ts` collapses CalendarEvent rows by `googleEventId` and a `title|start|end|meetLink` fallback (for the cross-calendar case where Google mints distinct event ids for the same invite — `iCalUID` mirror is a TODO that would replace the fallback). `this-week-widget.tsx` runs Andrew-scoped rows through this helper before rendering, so the worst-case effect of any remaining mirror drift is one row per logical interview instead of two.
+
+Touches: `src/lib/google-calendar.ts`, `src/app/candidates/[id]/interview-actions.ts`, `src/lib/calendar/google-sync.ts`, `src/app/dashboard/this-week-widget.tsx`, `src/lib/calendar/dedupe.ts` (new). Build clean (`npm run build` exits 0; only existing react-hooks/exhaustive-deps warnings unrelated to this change).
+
+Regression check: schedule an interview, send client invite, send candidate invite, edit/reschedule once, cancel/recreate if needed. Confirm Google Calendar shows one current event, Clubhouse + This Week show one row per interview, Austin no longer receives a candidate-facing description on the second invite, cancelled events disappear from Ace immediately. Open follow-up: store Google `iCalUID` on `CalendarEvent` + a `prisma db push` migration, then prefer iCalUID over the title/start/end/meetLink fallback in the dedupe helper.
 
 ## What Shipped in Ace 67.8 (2026-05-27)
 

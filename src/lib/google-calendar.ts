@@ -363,17 +363,24 @@ export async function updateCalendarEvent(params: {
   }
 }
 
-// Used by the interview invite flow: PATCH the event to update
-// summary (= composer subject) + description (= composer body) and APPEND
-// one or more new attendees. sendUpdates="all" so Google emails the
-// native invite with ICS attachment to the newly-added attendees — they
-// get Accept / Maybe / Decline buttons native to Gmail / iCal /
-// whatever client they use, not a second free-form email.
+// Used by the interview invite flow: APPEND one or more new attendees
+// to the shared event with sendUpdates="all" so Google emails the
+// native invite (Accept / Maybe / Decline) only to the newly-added
+// parties — existing attendees aren't re-notified because their
+// attendee record is unchanged.
+//
+// summary + description are OPTIONAL and default to "leave as-is".
+// Pass them only when bootstrapping the event's neutral body on the
+// first send; subsequent sends MUST omit them or Google will mail an
+// "event updated" notification to every prior attendee carrying the
+// new party's composer text (e.g. the candidate-facing description
+// reaching the client). The interview-actions layer enforces this
+// "first send only" rule.
 export type UpdateEventAsInviteInput = {
   userId: string;
   eventId: string;
-  summary: string;
-  description: string;
+  summary?: string;
+  description?: string;
   newAttendees: { email: string; displayName?: string }[];
 };
 
@@ -394,11 +401,24 @@ export async function updateEventAsInvite(input: UpdateEventAsInviteInput): Prom
   const existing = ev.attendees ?? [];
   const seen = new Set(existing.map((a) => (a.email ?? "").toLowerCase()));
   const next = [...existing];
+  let added = 0;
   for (const a of input.newAttendees) {
     const key = (a.email ?? "").toLowerCase();
     if (!key || seen.has(key)) continue;
     seen.add(key);
     next.push({ email: a.email, displayName: a.displayName });
+    added += 1;
+  }
+
+  const patchBody: Record<string, unknown> = { attendees: next };
+  if (input.summary !== undefined) patchBody.summary = input.summary;
+  if (input.description !== undefined) patchBody.description = input.description;
+
+  // Nothing to write — no new attendees AND no header changes. Avoid a
+  // no-op PATCH that would still mail every existing attendee a
+  // pointless "updated" notification.
+  if (added === 0 && input.summary === undefined && input.description === undefined) {
+    return;
   }
 
   const patchUrl = new URL(
@@ -411,11 +431,7 @@ export async function updateEventAsInvite(input: UpdateEventAsInviteInput): Prom
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      summary: input.summary,
-      description: input.description,
-      attendees: next,
-    }),
+    body: JSON.stringify(patchBody),
     cache: "no-store",
   });
   if (!patchRes.ok) {

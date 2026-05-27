@@ -1,3 +1,4 @@
+import { dedupeCalendarRows } from "@/lib/calendar/dedupe";
 import { ownerKeyForCalendar } from "@/lib/calendar/owner-key";
 import type { CalendarEvent, CalendarEventType } from "@/lib/calendar/types";
 import { prisma } from "@/lib/prisma";
@@ -172,7 +173,7 @@ export async function ThisWeekWidget({
   // Clubhouse widget is Andrew's view - strip any row whose owner key
   // resolves to anything other than "ak". Austin's events stay on
   // /calendar (team view) but never appear on this dashboard tile.
-  const rows = rowsAll.filter(
+  const akRows = rowsAll.filter(
     (r) =>
       ownerKeyForCalendar(
         { calendarId: r.calendarId, calendarName: r.calendarName },
@@ -180,10 +181,17 @@ export async function ThisWeekWidget({
       ) === "ak",
   );
 
+  // Dedupe by googleEventId (same event mirrored on multiple of
+  // Andrew's calendars) and by a title|start|end|meetLink fallback for
+  // the cross-calendar case where Google minted distinct event ids for
+  // the same invite — until CalendarEvent.iCalUID is available the
+  // composite key is our defense against the duplicate-row symptom on
+  // the "This Week" strip.
+  const rows = dedupeCalendarRows(akRows);
+
   // Full CalendarEvent objects in the same shape the /calendar page
   // produces - passed through to the drawer when a chip or row is
-  // clicked. Andrew-only here, so no need to dedupe googleEventId
-  // across calendars.
+  // clicked.
   const events: CalendarEvent[] = rows.map((row) => {
     const attendees = (row.attendees as AttendeeJson[] | null) ?? null;
     const guests = attendees
