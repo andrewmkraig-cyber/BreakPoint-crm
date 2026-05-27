@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { periodRange } from "@/lib/period-utils";
 
 // Data layer for the placements dashboard. Pulls every Placement in the
 // pending_start / hired stages within the requested period, joined with
@@ -111,40 +112,6 @@ type ClientLocationJson = {
   state?: string | null;
 } | null;
 
-function periodRange(period: PlacementsDashboardPeriod, now: Date): { start: Date; end: Date } {
-  const year = now.getFullYear();
-  const currentQuarter = Math.floor(now.getMonth() / 3);
-  if (period === "YTD") {
-    return {
-      start: new Date(year, 0, 1),
-      end: new Date(year + 1, 0, 1),
-    };
-  }
-  if (period === "LAST_QUARTER") {
-    const startMonth = currentQuarter * 3 - 3;
-    const startYear = startMonth < 0 ? year - 1 : year;
-    const m = ((startMonth % 12) + 12) % 12;
-    return {
-      start: new Date(startYear, m, 1),
-      end: new Date(startYear, m + 3, 1),
-    };
-  }
-  if (period === "NEXT_QUARTER") {
-    const startMonth = currentQuarter * 3 + 3;
-    const startYear = startMonth >= 12 ? year + 1 : year;
-    const m = startMonth % 12;
-    return {
-      start: new Date(startYear, m, 1),
-      end: new Date(startYear, m + 3, 1),
-    };
-  }
-  const startMonth = currentQuarter * 3;
-  return {
-    start: new Date(year, startMonth, 1),
-    end: new Date(year, startMonth + 3, 1),
-  };
-}
-
 function toDollars(amount: Prisma.Decimal | null | undefined): number | null {
   if (amount == null) return null;
   const n = Number(amount.toString());
@@ -212,7 +179,7 @@ export async function getPlacementsDashboardData(
   period: PlacementsDashboardPeriod,
 ): Promise<PlacementsDashboardRow[]> {
   const now = new Date();
-  const { start, end } = periodRange(period, now);
+  const { start, endExclusive: end } = periodRange(period, now);
 
   // Prior-year window for the repeat-client KPI. Calendar-year-based
   // ("did this client place with us in 2025?") regardless of the

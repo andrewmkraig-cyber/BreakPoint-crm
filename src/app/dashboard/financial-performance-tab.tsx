@@ -24,10 +24,7 @@ import {
   type OneTimeRow,
   type MoneyInRow,
 } from "@/app/dashboard/subscriptions-list";
-import {
-  dashboardPeriodRange,
-  type DashboardPeriod,
-} from "@/app/dashboard/period-tabs-shared";
+import { periodRange, type DashboardPeriod } from "@/lib/period-utils";
 import { buildPnlData, PnlCard, type PnlData } from "@/app/dashboard/pnl-card";
 import { QUARTERLY_REVENUE_GOAL_USD } from "@/app/dashboard/goal-pacing";
 
@@ -88,7 +85,7 @@ export async function FinancialPerformanceTab({
   // structure (catalog rows + YTD aggregates) and no period selector.
   const range = mode === "expenses"
     ? { start: yearStart, endExclusive: yearEnd, label: `YTD ${year}` }
-    : dashboardPeriodRange(period, now);
+    : periodRange(period, now);
   const revStart = range.start;
   const revEnd = range.endExclusive;
 

@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { periodRange } from "@/lib/period-utils";
 
 // Server-side invoice library — single source of truth for invoice
 // lifecycle transitions and the merge data the PDF + email need.
@@ -410,14 +411,6 @@ export type InvoiceSummary = {
   draftCount: number;
 };
 
-function quarterRange(now: Date): { start: Date; end: Date } {
-  const month = now.getMonth();
-  const startMonth = Math.floor(month / 3) * 3;
-  const start = new Date(now.getFullYear(), startMonth, 1);
-  const end = new Date(now.getFullYear(), startMonth + 3, 1);
-  return { start, end };
-}
-
 function toCents(amount: Prisma.Decimal | null): number {
   if (amount == null) return 0;
   const n = Number(amount.toString());
@@ -427,7 +420,7 @@ function toCents(amount: Prisma.Decimal | null): number {
 
 export async function getInvoiceSummary(organizationId: string): Promise<InvoiceSummary> {
   const now = new Date();
-  const { start: qStart, end: qEnd } = quarterRange(now);
+  const { start: qStart, endExclusive: qEnd } = periodRange("THIS_QUARTER", now);
 
   const [outstanding, overdue, billedQ, collectedQ, draftCount, uninvoicedPlacements] =
     await Promise.all([

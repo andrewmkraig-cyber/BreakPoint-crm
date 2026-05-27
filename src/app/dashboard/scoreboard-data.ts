@@ -1,12 +1,11 @@
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { getInvoiceSummary } from "@/lib/invoices";
+import { periodRange, type DashboardPeriod } from "@/lib/period-utils";
 import { normalizeClient, normalizeJob } from "@/lib/rf-payload-shapes";
-import {
-  dashboardPeriodRange,
-  type DashboardPeriod,
-} from "@/app/dashboard/period-tabs-shared";
 
 // Stages observed on Placement.stage today: offer | pending_start | hired.
 // Anything earlier than "offer" lives outside this table — submitted /
@@ -83,7 +82,7 @@ export async function getScoreboardData(
   const org = await getCurrentOrg();
   const now = new Date();
   const ninetyDaysAgo = new Date(now.getTime() - 90 * DAYS);
-  const range = dashboardPeriodRange(period, now);
+  const range = periodRange(period, now);
   const periodStart = range.start;
   const periodEnd = range.endExclusive;
 
@@ -95,27 +94,35 @@ export async function getScoreboardData(
     interviewsLast90Rows,
     offersLast90,
     placedAggLast90,
-    pendingStartAgg,
-    q2BilledAgg,
+    pipelineValueAgg,
+    pendingStartUnpaidAgg,
+    pendingStartPlacementCount,
+    billedInPeriodAgg,
     invoiceSummary,
     rfClients,
     rfJobs,
     aceCandidates,
     momentumRowsRaw,
   ] = await Promise.all([
-    // Pipeline value — every active deal (offer + pending_start) carries
-    // a feeTotal once the recruiter has logged it. Show the honest sum;
-    // we don't track a separate stage-probability weighting yet.
+    // Pipeline COUNT — every active deal (offer + pending_start). The
+    // dollar value comes from `pipelineValueAgg` below (sum of unpaid
+    // invoices). We keep the placement-count read so the KPI tile can
+    // still distinguish "no deals" from "deals exist but no invoice
+    // rows yet" — `pipelineValueUsd == null && pipelineCount > 0` is
+    // what surfaces the "fee unset" sub-label.
     prisma.placement.findMany({
       where: {
         organizationId: org.id,
         stage: { in: [...IN_PIPELINE_STAGES] },
       },
-      select: { id: true, feeTotal: true, stage: true },
+      select: { id: true },
     }),
     // Placed in the last 90 days — for Avg Fee Size and Days to Fill.
     // job.createdAtRf is the original RF posting date for backfilled rows;
     // job.createdAt falls back to when the Job row was created in Ace.
+    // (Avg Fee Size intentionally still reads Placement.feeTotal: a
+    // recruiter wants "what's a typical deal size?", a single value per
+    // placement, not the sum of split-payment installments.)
     prisma.placement.findMany({
       where: {
         organizationId: org.id,
@@ -165,25 +172,72 @@ export async function getScoreboardData(
         placedAt: { gte: ninetyDaysAgo, lte: now },
       },
     }),
-    // Pending Start cash forecast — fees on placements where the start
-    // is locked and we're waiting for day-1. Same shape MyDashboard uses
-    // for Q2 billed revenue but scoped by stage instead of date.
-    prisma.placement.aggregate({
-      _sum: { feeTotal: true },
-      _count: { _all: true },
+    // Pipeline VALUE — unpaid invoice $ for placements still in open
+    // stages (offer + pending_start). Switched from Placement.feeTotal
+    // to Invoice.feeAmount so split-payment placements only contribute
+    // what's actually still owed: collecting installment 1 should drop
+    // the pipeline value by inst1Amount, not nothing. Offer-stage
+    // placements typically have no invoices yet (invoices are created
+    // at Confirm Start), so they read $0 here — the count column above
+    // is what surfaces them.
+    prisma.invoice.aggregate({
+      _sum: { feeAmount: true },
+      where: {
+        organizationId: org.id,
+        status: { notIn: ["PAID", "VOID"] },
+        placement: {
+          organizationId: org.id,
+          stage: { in: [...IN_PIPELINE_STAGES] },
+        },
+      },
+    }),
+    // Pending Start cash forecast — sum of UNPAID invoices for
+    // placements stuck in pending_start. Switched from
+    // sum(Placement.feeTotal) to sum(Invoice.feeAmount) so a custom-
+    // terms placement's installments time-shift correctly: collecting
+    // installment 1 drops the forecast by inst1Amount immediately
+    // rather than waiting for the whole placement to graduate to hired.
+    prisma.invoice.aggregate({
+      _sum: { feeAmount: true },
+      where: {
+        organizationId: org.id,
+        status: { notIn: ["PAID", "VOID"] },
+        placement: {
+          organizationId: org.id,
+          stage: "pending_start",
+        },
+      },
+    }),
+    // Pending Start COUNT — number of placements in pending_start
+    // (not invoices). Drives the "N placements" sub-label on the
+    // forecast tile; deliberately a placement-level count rather than
+    // an invoice-level count so a 3-installment deal reads as one
+    // pending placement, not three.
+    prisma.placement.count({
       where: {
         organizationId: org.id,
         stage: "pending_start",
       },
     }),
-    // Mirror the Clubhouse Billing Tower so Scoreboard Billed/Collected
-    // read the same numbers (see src/app/dashboard/my-dashboard.tsx).
-    prisma.placement.aggregate({
-      _sum: { feeTotal: true },
+    // Billed in window — sum of invoice fees whose dueDate lands in
+    // the selected quarter, scoped to placements still in
+    // pending_start or hired. Switched from grouping by
+    // Placement.expectedStartDate (which attributed 100% of a custom-
+    // terms placement's fee to its start quarter) to grouping by
+    // Invoice.dueDate (which lets each installment land in its own
+    // quarter). VOID invoices are excluded; PAID stays in because
+    // "billed in Q2" is a historical measure that shouldn't shrink as
+    // we collect.
+    prisma.invoice.aggregate({
+      _sum: { feeAmount: true },
       where: {
         organizationId: org.id,
-        stage: { in: ["pending_start", "hired"] },
-        expectedStartDate: { gte: periodStart, lt: periodEnd },
+        status: { not: "VOID" },
+        dueDate: { gte: periodStart, lt: periodEnd },
+        placement: {
+          organizationId: org.id,
+          stage: { in: ["pending_start", "hired"] },
+        },
       },
     }),
     getInvoiceSummary(org.id),
@@ -241,10 +295,21 @@ export async function getScoreboardData(
   ]);
 
   // --- KPI assembly ---
-  const pipelineValueUsd = pipelinePlacementsRaw.reduce(
-    (sum, p) => sum + (p.feeTotal ?? 0),
-    0,
-  );
+  // Sum-of-Decimal columns come back as Prisma.Decimal | null; coerce
+  // to whole dollars (fee amounts are recorded in whole dollars, so
+  // sub-cent rounding noise from the Decimal coercion is just noise).
+  const decimalToDollars = (amount: Prisma.Decimal | null): number => {
+    if (amount == null) return 0;
+    const n = Number(amount.toString());
+    return Number.isFinite(n) ? Math.round(n) : 0;
+  };
+  const pipelineValueUsdRaw = decimalToDollars(pipelineValueAgg._sum.feeAmount);
+  // Tile still wants null (renders "—") when there's nothing to show,
+  // since the count column below distinguishes "no deals" from "deals
+  // but no invoices yet".
+  const pipelineValueUsd = pipelineValueUsdRaw > 0 ? pipelineValueUsdRaw : null;
+  const pendingStartUsd = decimalToDollars(pendingStartUnpaidAgg._sum.feeAmount);
+  const billedUsd = decimalToDollars(billedInPeriodAgg._sum.feeAmount);
   const placedFees = placedLast90
     .map((p) => p.feeTotal)
     .filter((v): v is number => typeof v === "number" && v > 0);
@@ -412,7 +477,7 @@ export async function getScoreboardData(
   return {
     period: { label: range.label, start: periodStart, endExclusive: periodEnd },
     kpis: {
-      pipelineValueUsd: pipelineValueUsd > 0 ? pipelineValueUsd : null,
+      pipelineValueUsd,
       pipelineCount: pipelinePlacementsRaw.length,
       avgFeeSizeUsd,
       placementsQtd: placementsQtdCount,
@@ -431,9 +496,9 @@ export async function getScoreboardData(
       interviewCoveragePct,
     },
     cashForecast: {
-      pendingStartUsd: pendingStartAgg._sum.feeTotal ?? 0,
-      pendingStartCount: pendingStartAgg._count._all,
-      billedUsd: q2BilledAgg._sum.feeTotal ?? 0,
+      pendingStartUsd,
+      pendingStartCount: pendingStartPlacementCount,
+      billedUsd,
       collectedUsd: invoiceSummary.collectedThisQuarterCents / 100,
     },
     topClients,
