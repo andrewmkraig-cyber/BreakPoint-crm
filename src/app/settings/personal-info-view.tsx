@@ -10,12 +10,19 @@ import {
   uploadProfilePicture,
   type ProfilePictureStatus,
 } from "@/app/settings/personal-info-actions";
-import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import {
   TSHIRT_SIZES,
   type AddressFields,
   type PersonalInfoRow,
 } from "@/app/settings/personal-info-constants";
+
+// Address inputs deliberately match BrandingView's <Field>: rounded-lg
+// outlined rectangle, subtle court-surface fill, brand focus ring.
+// The earlier pattern (INPUT_FRAME_CLASS pill + grey fill) made the
+// Address row look like a different control family from the Branding
+// row directly below it. One settings page, one input style.
+const ADDRESS_INPUT_CLASS =
+  "block rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20";
 
 // File picker is fed by a hidden <input type="file">. We read the file
 // via FileReader as a base64 data URL on the client, strip the prefix,
@@ -276,57 +283,48 @@ export function PersonalInfoView({
           Address
         </legend>
         <SubField label="Street">
-          {/* Street/city were sized w-full, leaving a huge empty bar
-              next to short values like "123 Main St" / "Solon". Cap
-              both to widths that match the actual content range —
-              ~w-80 fits a long street, ~w-56 fits a long city. State
-              and ZIP already use the same fixed-width pattern below. */}
-          <div className={`${INPUT_FRAME_CLASS} w-80 max-w-full`}>
-            <input
-              type="text"
-              value={address.street}
-              onChange={(e) => setAddressField("street", e.target.value)}
-              placeholder="123 Main St"
-              className={`${INPUT_CONTROL_CLASS} text-sm`}
-            />
-          </div>
+          {/* Street/city kept at w-80 / w-56 from the prior pass so
+              short values like "123 Main St" / "Solon" don't sit next
+              to a giant empty bar. Styling now mirrors BrandingView
+              (rounded-lg + outlined, not pill + grey-filled). */}
+          <input
+            type="text"
+            value={address.street}
+            onChange={(e) => setAddressField("street", e.target.value)}
+            placeholder="123 Main St"
+            className={`${ADDRESS_INPUT_CLASS} w-80 max-w-full`}
+          />
         </SubField>
         <div className="flex flex-wrap items-end gap-3">
           <SubField label="City">
-            <div className={`${INPUT_FRAME_CLASS} w-56 max-w-full`}>
-              <input
-                type="text"
-                value={address.city}
-                onChange={(e) => setAddressField("city", e.target.value)}
-                placeholder="Solon"
-                className={`${INPUT_CONTROL_CLASS} text-sm`}
-              />
-            </div>
+            <input
+              type="text"
+              value={address.city}
+              onChange={(e) => setAddressField("city", e.target.value)}
+              placeholder="Solon"
+              className={`${ADDRESS_INPUT_CLASS} w-56 max-w-full`}
+            />
           </SubField>
           <SubField label="State">
-            <div className={`${INPUT_FRAME_CLASS} w-20`}>
-              <input
-                type="text"
-                value={address.state}
-                onChange={(e) => setAddressField("state", e.target.value)}
-                placeholder="OH"
-                maxLength={32}
-                className={`${INPUT_CONTROL_CLASS} uppercase text-sm`}
-              />
-            </div>
+            <input
+              type="text"
+              value={address.state}
+              onChange={(e) => setAddressField("state", e.target.value)}
+              placeholder="OH"
+              maxLength={32}
+              className={`${ADDRESS_INPUT_CLASS} w-20 uppercase`}
+            />
           </SubField>
           <SubField label="ZIP">
-            <div className={`${INPUT_FRAME_CLASS} w-28`}>
-              <input
-                type="text"
-                value={address.zip}
-                onChange={(e) => setAddressField("zip", e.target.value)}
-                placeholder="44139"
-                inputMode="numeric"
-                maxLength={10}
-                className={`${INPUT_CONTROL_CLASS} tabular-nums text-sm`}
-              />
-            </div>
+            <input
+              type="text"
+              value={address.zip}
+              onChange={(e) => setAddressField("zip", e.target.value)}
+              placeholder="44139"
+              inputMode="numeric"
+              maxLength={10}
+              className={`${ADDRESS_INPUT_CLASS} w-28 tabular-nums`}
+            />
           </SubField>
         </div>
       </fieldset>
