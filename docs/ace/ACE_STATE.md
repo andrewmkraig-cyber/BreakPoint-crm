@@ -1,10 +1,30 @@
 # ACE_STATE.md
-Last updated: 2026-05-27 · Ace 67.11
+Last updated: 2026-05-27 · Ace 67.12
 
 ## Current Status
-Current Version: Ace 67.11
+Current Version: Ace 67.12
 Last Shipped: 2026-05-27
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.12 (2026-05-27)
+
+Make Placement modal hardening — two of the three items in the original brief; Item C dropped after Step 0 grep showed the picker pattern was already richer than the Edit Placement drawer's (the drawer has no billing/hiring picker at all).
+
+- **PlacementDialog locks to X-only close.** `placement-flows.tsx:1741` now passes `dismissOnOverlay={false}` to the `Modal` wrapper, matching the OfferDialog precedent at `:1327`. Backdrop click + Escape press both inert; Cancel button + X are the only paths out. The dialog collects accepted salary, fee math, billing/hiring contacts, custom payment terms, and now a required Lead Source — a reflexive Escape can't be allowed to throw that work away. No other modal consumer is touched (Confirm Start, Reject, Reapply, Edit Interview, Apply/Submit to Job, Cancel Placement, Extend Offer keep their backdrop-click-to-close behavior). Comment in source ties this to the OfferDialog ship in 67.10.
+- **Lead Source is required on save.** The dropdown already exists (`placement-flows.tsx:1867-1898`, sourced from `src/lib/lead-sources.ts` which is also imported by `placement-edit-drawer.tsx:13` so the two screens cannot drift). Two changes: (1) the leading `<option value="">—</option>` is now `<option value="" disabled>Select a source…</option>` plus the `<select>` has `required` + `aria-required="true"`, so the browser can't auto-fall-through to "Network" on an unselected state; (2) `validate()` at `placement-flows.tsx:1646-1649` returns `"Lead Source is required."` when `leadSource.trim()` is empty, so the existing red error banner above ModalFooter surfaces it like every other validation miss. All six `LEAD_SOURCES` entries (Network / Referral / LinkedIn / Inbound / Indeed / Other) stay — the legacy-value preservation pass below the canonical list still renders any saved string ("Pin", "Apollo BD", "Cold Outreach") so existing placements reopen with their source pre-selected.
+
+Touches: `src/app/candidates/[id]/placement-flows.tsx`. Build clean (`npm run build` exits 0; no new errors or warnings).
+
+Item C dropped on the user's call after Step 0 grep contradicted the brief's premise: the Make Placement modal already had a multi-row billing/hiring contact list with one-click chip auto-fill from `job.clientContacts` (`placement-flows.tsx:1903-2048`) AND name+email datalist suggestions; the Edit Placement drawer (`src/app/pipeline/placement-edit-drawer.tsx`) has NO billing/hiring picker at all. The brief's "copy the Edit Placement pattern" was inverted — Make Placement is the richer screen, not the simpler one. Confirmed scope reduction to two items via AskUserQuestion before any edit.
+
+Andrew browser-verify (5 steps, none I could run from this env):
+1. Open Make Placement on an offer-stage row. Click the dim overlay outside the dialog → modal stays open.
+2. Press Escape → modal stays open.
+3. Click the X → modal closes.
+4. Open Make Placement. Lead Source field shows "Select a source…" as a disabled placeholder, then Network / Referral / LinkedIn / Inbound / Indeed / Other.
+5. Try to save with Lead Source left on the placeholder → red error banner reads "Lead Source is required." and the save is blocked. Pick a source → save proceeds.
+
+Regression: Existing placements with `candidateSource` set still reopen with that value pre-selected (including legacy values like "Pin" or "Apollo BD" via the preservation pass). Billing/Hiring multi-contact list + chip auto-fill UNTOUCHED — the existing richer picker survives. Custom Payment Agreement section UNTOUCHED. Edit Placement drawer at `/pipeline` UNTOUCHED. Submit path (`recordPlacement`) field set UNCHANGED — no new required server-side fields beyond what the client-side validate() now blocks. Financial Performance "By Source" widget reads whatever `candidateSource` was saved, so the require-on-save change only affects rows created from 67.12 onwards.
 
 ## What Shipped in Ace 67.11 (2026-05-27)
 

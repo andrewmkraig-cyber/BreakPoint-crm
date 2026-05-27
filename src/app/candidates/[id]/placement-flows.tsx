@@ -1644,6 +1644,10 @@ function PlacementDialog({
     // Final guard so a 0% fee or a salary-only entry can't sneak a zero
     // through — the Scoreboard Pipeline Value KPI relies on this.
     if (feeTotal <= 0) return "Fee amount is required at this stage.";
+    // Lead Source is required so the Financial Performance By Source
+    // widget never has to bucket placements as "Unknown". Trim before
+    // checking so a single-space entry doesn't slip through.
+    if (!leadSource.trim()) return "Lead Source is required.";
     return null;
   }
 
@@ -1743,6 +1747,12 @@ function PlacementDialog({
       subtitle={`${job.jobTitle} · ${job.clientName}`}
       onClose={onClose}
       wide
+      // Lock to X-only close (matches OfferDialog at :1327). The placement
+      // modal collects accepted salary, fee math, billing/hiring contacts,
+      // and now a required Lead Source — a stray backdrop click or a
+      // reflexive Escape press can't be allowed to throw that work away.
+      // Cancel-by-X / Cancel button stays the only path out.
+      dismissOnOverlay={false}
     >
       <div className="rounded-lg border border-brand/30 bg-brand-tint/20 p-3 text-xs text-brand-dark">
         <div className="flex items-start gap-2">
@@ -1865,13 +1875,22 @@ function PlacementDialog({
       </div>
 
       <label className="mt-4 block text-sm">
-        <PlacementInputLabel>Lead Source</PlacementInputLabel>
+        <PlacementInputLabel>Lead Source *</PlacementInputLabel>
         <select
           value={leadSource}
           onChange={(e) => setLeadSource(e.target.value)}
+          required
+          aria-required="true"
           className={`mt-1 ${PLACEMENT_INPUT_CLS}`}
         >
-          <option value="">—</option>
+          {/* Disabled placeholder rather than a selectable "—" so the
+              recruiter can't save a blank source. The validate() guard
+              above is the actual gate; this just signals "unselected"
+              without letting the browser auto-fall-through to the first
+              real option (Network). */}
+          <option value="" disabled>
+            Select a source…
+          </option>
           {LEAD_SOURCES.map((opt) => (
             <option key={opt} value={opt}>
               {opt}
@@ -1879,7 +1898,8 @@ function PlacementDialog({
           ))}
           {/* Preserve any legacy value (e.g. "Pin", "Apollo BD",
               "Cold Outreach") that isn't in the canonical option list
-              so it shows selected instead of silently reverting to "—". */}
+              so an existing placement reopens with its source selected
+              instead of silently reverting to the placeholder. */}
           {leadSource &&
             !LEAD_SOURCES.some(
               (o) => o.toLowerCase() === leadSource.toLowerCase(),

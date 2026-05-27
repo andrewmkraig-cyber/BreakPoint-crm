@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-27 · Ace 67.11
+Last updated: 2026-05-27 · Ace 67.12
 
 ## Active Build Sequence
 
@@ -16,6 +16,10 @@ Notification toast polish (DONE Ace 59.0): SMS toast `MessageSquare` icon, actio
 
 ### Session 61.0 Status
 Profile / pipeline regression close-out + features (DONE Ace 61.0): split-view candidate Delete restored; Apply / Keep / Reject real-time stage pill (optimistic, holds until server confirm) + the flash-then-disappear follow-on fixed; Add Note button removed from all four candidate profile locations; stage button visibility aligned to spec in `pipeline-row-actions.tsx`; phone thread auto-scroll to bottom on open; CalendarEventDrawer reminder mode (hides Guests / Location / Meeting type / All day / Timezone, ET hard-coded with a comment to pull per-user tz when multi-user ships); scheduled send (Send Later) on every email surface (`ScheduledEmail` table + per-minute Vercel cron + Retry toast); dark luxury login redesign; PWA badge auto-fire fix (`2d0081e`, null badgeCount in `unread-counts.ts`, sw.js cache `v5`); Auto Night Mode (`0dd1e41`, `UserProfile.autoNightMode`, 7pm/7am ET flip). Favicon / tab counter verified already correct. Awaiting Andrew's browser verification of scheduled send, the PWA badge, and Auto Night Mode.
+
+### Next Up (after Ace 67.12)
+
+- **Browser-verify the Make Placement modal hardening.** (1) Open Make Placement on an offer-stage row → click outside the dialog → modal stays open. (2) Press Escape → stays open. (3) Click X → closes. (4) Open Make Placement → Lead Source field shows "Select a source…" placeholder (disabled), then Network / Referral / LinkedIn / Inbound / Indeed / Other. (5) Try to save with Lead Source on the placeholder → red error banner reads "Lead Source is required." and save blocks. Regression: existing placements with `candidateSource` set still reopen with that value pre-selected; legacy values (Pin, Apollo BD, Cold Outreach) still preserved via the fallback option; Billing/Hiring multi-contact list + chip auto-fill untouched; Custom Payment Agreement untouched; Edit Placement drawer at `/pipeline` untouched.
 
 ### Next Up (after Ace 67.11)
 
