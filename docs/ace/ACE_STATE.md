@@ -1,10 +1,38 @@
 # ACE_STATE.md
-Last updated: 2026-05-27 · Ace 67.14
+Last updated: 2026-05-27 · Ace 67.15
 
 ## Current Status
-Current Version: Ace 67.14
+Current Version: Ace 67.15
 Last Shipped: 2026-05-27
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.15 (2026-05-27)
+
+Two visual-density fixes — recruiter screenshot showed (a) Pipeline columns scrolling sideways on a 13" laptop and (b) the Make Placement modal forcing a scroll just to see the fee summary.
+
+- **Pipeline + recruiter-facing list tables tightened to fit a 13" laptop.** Cell padding dropped from `px-4 py-3` to `px-3 py-2` across the body cells in `src/app/pipeline/pipeline-view.tsx` (24 hits, replace_all). Checkbox columns dropped from `px-3 py-3` to `px-2 py-2` (3 hits). Table `min-w-[820px]` → `min-w-[720px]` on the active-stage table and `min-w-[900px]` → `min-w-[820px]` on the Applicants/Kept/Rejected table so the Hired tab's 7 columns + optional checkbox slot inside a ~960px usable viewport without horizontal scroll. Shared `DataTableHeaderCell` in `src/components/ui/data-table.tsx` got the same `px-3 py-2` update so headers stay vertically aligned with the new body rows — this cross-cuts into Jobs / Candidates / Applicants / Clients list pages too per the shared component's "centralize tweaks in one file instead of five" comment. Andrew confirmed this scope on AskUserQuestion before the edit landed.
+- **Make Placement modal compressed so the fee summary sits above the fold.** Three changes inside `PlacementDialog` in `src/app/candidates/[id]/placement-flows.tsx`:
+  1. Brand-tint client-default banner from `p-3 text-xs` to `px-2.5 py-1.5 text-[11px]` (~30px saved).
+  2. Fee summary card re-laid as a single horizontal row (label + breakdown on the left, total on the right) instead of a three-line vertical stack — drops `text-2xl` to `text-xl`, drops `p-3` to `px-3 py-2`, ~40px saved.
+  3. Biggest win: Billing contacts + Hiring managers sections placed side-by-side via a `grid-cols-1 sm:grid-cols-2` wrapper. Previously stacked vertically (~280px combined) → now ~140px on `sm:` viewports and up, falling back to a single stack on narrow screens. Section headers, "Add" button labels, and inter-row spacing all tightened in parallel.
+  
+  Combined effect: ~150–200px shaved off total modal height. On a 13" laptop the fee summary now sits inside the visible viewport on first open instead of forcing a scroll to find it. Custom Payment Agreement collapsed-header margin/padding also dropped from `mt-5 pt-5` to `mt-4 pt-4` so the bottom of the modal doesn't have stale breathing room.
+
+Touches (3 source files):
+- `src/app/pipeline/pipeline-view.tsx` (body cell padding + table min-widths)
+- `src/components/ui/data-table.tsx` (shared `DataTableHeaderCell` padding)
+- `src/app/candidates/[id]/placement-flows.tsx` (PlacementDialog banner + fee summary + Billing/Hiring side-by-side + tightened section margins)
+
+Build clean (`npm run build` exits 0; only the two pre-existing react-hooks/exhaustive-deps warnings in `mail-view.tsx` + `event-drawer.tsx`, unrelated).
+
+Andrew browser-verify (5 steps):
+1. Go to `/pipeline` Hired tab on a 13" laptop. All columns (Candidate / Job / Salary / Fee / Start Date / Billing Contact / Invoicing) visible without horizontal scroll.
+2. Same check on Submitted / Interviewing / Offer / Pending Start tabs.
+3. Other list pages (Jobs / Candidates / Applicants / Clients): row heights slightly tighter, headers still vertically aligned with body rows.
+4. Open Make Placement on an offer-stage candidate. The fee summary card (left-label + total on the right) visible without scrolling on a 13" laptop.
+5. Billing contacts + Hiring managers visible side-by-side as two columns instead of stacked vertically.
+
+Regression: No data-shape changes. Existing Pipeline / Jobs / Candidates / Applicants / Clients table contents render identically (only paddings shrunk). PlacementDialog field set / save behavior unchanged — Lead Source still required (from 67.12), dismissOnOverlay still false (from 67.12), all input handlers wired the same way. Custom Payment Agreement still collapsed by default, opens with the same field set. On narrow / mobile viewports the Billing+Hiring 2-col grid falls back to single-column stack so nothing crowds.
 
 ## What Shipped in Ace 67.14 (2026-05-27)
 

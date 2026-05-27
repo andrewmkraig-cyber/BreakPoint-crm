@@ -4,9 +4,18 @@ import { cn } from "@/lib/utils";
 // Shared table styling for the recruiter-facing list views
 // (Pipeline, Jobs, Candidates, Applicants, Clients). Centralized so the
 // next round of tweaks lands in one file instead of five.
+//
+// Cell padding tightened 2026-05-27 (Ace 67.15) from px-4 py-3 to px-3
+// py-2 so the Pipeline Hired tab + Jobs/Candidates/Applicants/Clients
+// list rows all fit more columns on a 13" laptop without horizontal
+// scroll. Body cells in pipeline-view.tsx got the same px-3 py-2 update
+// so headers and rows stay vertically aligned; other list pages that
+// hand-roll their own <td> classes can opt in by replacing px-4 py-3
+// with px-3 py-2 there too (no regression today — the shared header is
+// the only place this is enforced).
 const HEAD_CLS = "bg-court-surface-subtle";
 const HEAD_CELL_CLS =
-  "whitespace-nowrap px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted";
+  "whitespace-nowrap px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted";
 const BODY_CLS = "divide-y divide-court-border-soft";
 const ROW_CLS = "transition-colors hover:bg-court-surface-subtle/60";
 

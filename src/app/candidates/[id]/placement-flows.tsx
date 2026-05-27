@@ -1760,13 +1760,17 @@ function PlacementDialog({
       // Cancel-by-X / Cancel button stays the only path out.
       dismissOnOverlay={false}
     >
-      <div className="rounded-lg border border-brand/30 bg-brand-tint/20 p-3 text-xs text-brand-dark">
+      {/* Brand-tint client-default banner tightened 2026-05-27 (Ace
+          67.15) from p-3 + text-xs to py-1.5 px-2.5 + text-[11px]. The
+          banner is a contextual reminder, not a primary surface — it
+          shouldn't eat ~50px of modal height before the recruiter sees
+          the first input. */}
+      <div className="rounded-lg border border-brand/30 bg-brand-tint/20 px-2.5 py-1.5 text-[11px] text-brand-dark">
         <div className="flex items-start gap-2">
-          <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <Sparkles className="mt-0.5 h-3 w-3 shrink-0" />
           <div>
             Client agreement default:{" "}
-            <strong>{job.clientFeePct != null ? `${job.clientFeePct}% fee` : "no fee % on file"}</strong>. Override
-            below if this placement has different terms.
+            <strong>{job.clientFeePct != null ? `${job.clientFeePct}% fee` : "no fee % on file"}</strong>. Override below.
           </div>
         </div>
       </div>
@@ -1774,8 +1778,10 @@ function PlacementDialog({
           Currency, Fee %, Min Fee, Fee Amount, Guarantee Period, and
           Expected Start Date all read as one visual family. No mix of
           court-input-frame / rounded-md / rounded-lg variants here — that
-          was the regression we just closed. */}
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          was the regression we just closed.
+          Ace 67.15: gap-y tightened (2 instead of 3) so the 4-row stack
+          is ~30px shorter without crowding the labels. */}
+      <div className="mt-2 grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2">
         <label className="block text-sm">
           <PlacementInputLabel>Accepted salary</PlacementInputLabel>
           <input
@@ -1856,31 +1862,38 @@ function PlacementDialog({
         </label>
       </div>
 
-      <div className="mt-3 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 p-3">
-        <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
-          {usedOverride ? "Fee (flat override)" : "Calculated fee"}
+      {/* Fee summary card compressed 2026-05-27 (Ace 67.15) so it lives
+          inside one ~60px row instead of three ~30px rows: label + total
+          + breakdown stack collapses into a single horizontal flex (label
+          left, total + breakdown right). Drops ~40px of modal height and
+          makes the fee visible without scrolling on a 13" laptop. */}
+      <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 px-3 py-2">
+        <div className="min-w-0">
+          <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+            {usedOverride ? "Fee (flat override)" : "Calculated fee"}
+          </div>
+          <div className="truncate text-[11px] text-court-fg-muted">
+            {usedOverride
+              ? "Flat-fee amount; salary × fee % ignored."
+              : salaryNum && pctNum
+                ? `${formatMoney(salaryNum, acceptedCurrency)} × ${pctNum}% = ${formatMoney(rawFee, acceptedCurrency)}`
+                : "Enter salary + fee % to calculate, or type a flat fee above."}
+          </div>
         </div>
-        <div className="mt-1 font-serif text-2xl font-semibold text-court-fg">
-          {formatMoney(feeTotal, acceptedCurrency)}
-          {usedMinFee && <span className="ml-2 text-xs text-amber-700">(min fee applied)</span>}
-          {usedOverride && <span className="ml-2 text-xs text-brand-dark">(flat override)</span>}
+        <div className="shrink-0 text-right">
+          <div className="font-serif text-xl font-semibold leading-none text-court-fg">
+            {formatMoney(feeTotal, acceptedCurrency)}
+          </div>
+          {(usedMinFee || usedOverride) && (
+            <div className="mt-1 text-[10px]">
+              {usedMinFee && <span className="text-amber-700">(min fee applied)</span>}
+              {usedOverride && <span className="text-brand-dark">(flat override)</span>}
+            </div>
+          )}
         </div>
-        {usedOverride ? (
-          <div className="mt-1 text-xs text-court-fg-muted">
-            Flat-fee amount; salary × fee % calc is ignored while this is set.
-          </div>
-        ) : salaryNum && pctNum ? (
-          <div className="mt-1 text-xs text-court-fg-muted">
-            {formatMoney(salaryNum, acceptedCurrency)} × {pctNum}% = {formatMoney(rawFee, acceptedCurrency)}
-          </div>
-        ) : (
-          <div className="mt-1 text-xs text-court-fg-muted">
-            Enter salary + fee % to calculate, or type a flat fee amount above.
-          </div>
-        )}
       </div>
 
-      <label className="mt-4 block text-sm">
+      <label className="mt-3 block text-sm">
         <PlacementInputLabel>Lead Source *</PlacementInputLabel>
         <select
           value={leadSource}
@@ -1913,19 +1926,27 @@ function PlacementDialog({
         </select>
       </label>
 
-      <div className="mt-4 flex items-end justify-between gap-3">
+      {/* Billing + Hiring sections placed side-by-side on sm+ (Ace
+          67.15). Previously stacked vertically and ate ~280px combined;
+          the 2-col layout cuts that to ~140px so the Notes textarea +
+          Custom Payment Agreement row stay above the modal fold on a
+          13" laptop. On narrow screens the grid falls back to a single
+          column so both cards still render full-width. */}
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div>
+      <div className="flex items-end justify-between gap-3">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
           Billing contacts
         </h3>
         <button
           type="button"
           onClick={addContactRow}
-          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-semibold text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
+          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-0.5 text-[11px] font-semibold text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
         >
-          <Plus className="h-3 w-3" /> Add Contact
+          <Plus className="h-3 w-3" /> Add
         </button>
       </div>
-      <div className="mt-2 space-y-2">
+      <div className="mt-1.5 space-y-1.5">
         {billingContacts.map((row) => (
           <div
             key={row.key}
@@ -1994,24 +2015,28 @@ function PlacementDialog({
           </div>
         ))}
       </div>
+      </div> {/* end Billing column */}
+      <div>
       {/* Hiring managers - same add/remove pattern as Billing contacts.
           Persisted via Placement.hiringContacts (JSON, Ace fix 2026-05-26);
           the first entry mirrors into the legacy hiringManagerName /
           hiringManagerEmail columns server-side so single-contact readers
-          (Pipeline table, invoice flow, gmail-recipients) stay correct. */}
-      <div className="mt-4 flex items-end justify-between gap-3">
+          (Pipeline table, invoice flow, gmail-recipients) stay correct.
+          Ace 67.15: hoisted into the side-by-side 2-col grid with Billing
+          (see grid opener above the Billing section header). */}
+      <div className="flex items-end justify-between gap-3">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
           Hiring managers
         </h3>
         <button
           type="button"
           onClick={addHiringContactRow}
-          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-semibold text-court-fg-muted shadow-sm transition hover:border-court-brand/40 hover:text-court-fg"
+          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-0.5 text-[11px] font-semibold text-court-fg-muted shadow-sm transition hover:border-court-brand/40 hover:text-court-fg"
         >
-          <Plus className="h-3 w-3" /> Add Contact
+          <Plus className="h-3 w-3" /> Add
         </button>
       </div>
-      <div className="mt-2 space-y-2">
+      <div className="mt-1.5 space-y-1.5">
         {hiringContacts.map((row) => (
           <div
             key={row.key}
@@ -2072,8 +2097,10 @@ function PlacementDialog({
           </div>
         ))}
       </div>
+      </div> {/* end Hiring column */}
+      </div> {/* end Billing+Hiring 2-col grid */}
 
-      <label className="mt-4 block text-sm">
+      <label className="mt-3 block text-sm">
         <PlacementInputLabel>Placement notes</PlacementInputLabel>
         <textarea
           value={notes}
@@ -2086,8 +2113,10 @@ function PlacementDialog({
       {/* Custom Payment Agreement (Ace fix 2026-05-26 - parity with
           placement-edit-drawer.tsx). Collapsible advanced section at the
           bottom of the modal; the chevron toggles open/closed. Fields are
-          inert until the "Use custom payment terms" switch is on. */}
-      <div className="mt-5 border-t border-court-border pt-5">
+          inert until the "Use custom payment terms" switch is on.
+          Ace 67.15: mt/pt tightened (4 instead of 5) so the collapsed
+          header doesn't add unnecessary breathing room below Notes. */}
+      <div className="mt-4 border-t border-court-border pt-4">
         <button
           type="button"
           onClick={() => setTermsOpen((o) => !o)}

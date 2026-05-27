@@ -503,7 +503,15 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
 
           <div className="overflow-hidden rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[820px] text-left text-sm">
+              {/* min-w tightened from 820 to 720 (Ace 67.15) so the
+                  Submitted / Interviewing / Offer / Pending Start /
+                  Hired tabs fit on a 13" laptop without horizontal
+                  scroll. Combined with the px-3 py-2 cell padding pass
+                  and the shared DataTableHeaderCell px-3 py-2 update in
+                  data-table.tsx, every column in the widest tab (Hired,
+                  7 columns + optional checkbox) now sits inside the
+                  ~960px usable viewport. */}
+              <table className="w-full min-w-[720px] text-left text-sm">
                 <DataTableHead>
                   <tr className="bg-court-surface border-b border-court-border/60">
                     {showCheckboxCol && (
@@ -579,7 +587,7 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                     >
                       {showCheckboxCol && (
                         <td
-                          className="w-px px-3 py-3 align-top text-center"
+                          className="w-px px-2 py-2 align-top text-center"
                           onClick={(e) => e.stopPropagation()}
                         >
                           {r.placementId && isRejectableStage(r.bucket) ? (
@@ -593,7 +601,7 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                           ) : null}
                         </td>
                       )}
-                      <td className="px-4 py-3 align-top">
+                      <td className="px-3 py-2 align-top">
                         <div className="flex items-start gap-2">
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-court-surface-subtle text-[11px] font-semibold text-court-fg-muted">
                             {initials(r.candidateName)}
@@ -625,7 +633,7 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 align-top">
+                      <td className="px-3 py-2 align-top">
                         <div className="min-w-0">
                           <Link
                             href={`/jobs/${r.jobId}`}
@@ -658,22 +666,22 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                         <HiredCells row={r} />
                       ) : (
                         <>
-                          <td className="px-4 py-3 align-top text-center text-sm text-court-fg">
+                          <td className="px-3 py-2 align-top text-center text-sm text-court-fg">
                             {formatMoney(r.placement?.acceptedSalary ?? null, r.placement?.acceptedCurrency)}
                           </td>
-                          <td className="px-4 py-3 align-top text-center text-sm text-court-fg">
+                          <td className="px-3 py-2 align-top text-center text-sm text-court-fg">
                             {formatMoney(r.placement?.feeTotal ?? null, r.placement?.acceptedCurrency)}
                             {r.placement?.feePercentage != null && (
                               <span className="ml-1 text-[11px] text-court-fg-muted">({r.placement.feePercentage}%)</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 align-top text-center text-xs text-court-fg-muted">
+                          <td className="px-3 py-2 align-top text-center text-xs text-court-fg-muted">
                             {formatDate(r.lastActionAt)}
                           </td>
-                          <td className="px-4 py-3 align-top text-center">
+                          <td className="px-3 py-2 align-top text-center">
                             <StageAgePill value={r.daysInStage} />
                           </td>
-                          <td className="w-px whitespace-nowrap px-4 py-3 align-top">
+                          <td className="w-px whitespace-nowrap px-3 py-2 align-top">
                             {/* Schedule (submitted) + Offer (interviewing) sit
                                 left of Reject. Both deep-link to the candidate
                                 profile — the full modal flows live there.
@@ -808,10 +816,10 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
   const soon = daysUntil != null && daysUntil >= 0 && daysUntil <= 7;
   return (
     <>
-      <td className="px-4 py-3 align-top text-center text-sm text-court-fg">
+      <td className="px-3 py-2 align-top text-center text-sm text-court-fg">
         {startDate ? startDate.toLocaleDateString() : <span className="text-court-fg-muted">—</span>}
       </td>
-      <td className="px-4 py-3 align-top text-center">
+      <td className="px-3 py-2 align-top text-center">
         {daysUntil == null ? (
           <span className="text-court-fg-muted">—</span>
         ) : (
@@ -832,7 +840,7 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
           </span>
         )}
       </td>
-      <td className="px-4 py-3 align-top">
+      <td className="px-3 py-2 align-top">
         {/* Edit Placement (left, slate) + Confirm Start (right, brand)
             mirror the candidate-profile pending_start action row in
             pipeline-row-actions.tsx so the two surfaces read as the
@@ -867,17 +875,17 @@ function HiredCells({ row }: { row: PipelineRow }) {
   const p = row.placement;
   return (
     <>
-      <td className="px-4 py-3 align-top text-center text-sm text-court-fg">{formatMoney(p?.acceptedSalary ?? null, p?.acceptedCurrency)}</td>
-      <td className="px-4 py-3 align-top text-center text-sm text-court-fg">
+      <td className="px-3 py-2 align-top text-center text-sm text-court-fg">{formatMoney(p?.acceptedSalary ?? null, p?.acceptedCurrency)}</td>
+      <td className="px-3 py-2 align-top text-center text-sm text-court-fg">
         {formatMoney(p?.feeTotal ?? null, p?.acceptedCurrency)}
         {p?.feePercentage != null && (
           <span className="ml-1 text-[11px] text-court-fg-muted">({p.feePercentage}%)</span>
         )}
       </td>
-      <td className="px-4 py-3 align-top text-center text-sm text-court-fg-muted">
+      <td className="px-3 py-2 align-top text-center text-sm text-court-fg-muted">
         {formatDate(p?.expectedStartDate)}
       </td>
-      <td className="px-4 py-3 align-top text-xs">
+      <td className="px-3 py-2 align-top text-xs">
         {p?.billingContactName ? (
           <div>
             <div className="text-court-fg">{p.billingContactName}</div>
@@ -907,7 +915,7 @@ function HiredCells({ row }: { row: PipelineRow }) {
           <span className="text-court-fg-muted">—</span>
         )}
       </td>
-      <td className="px-4 py-3 align-top text-center">
+      <td className="px-3 py-2 align-top text-center">
         <div className="flex flex-col items-center gap-0.5">
           <InvoiceStatusPill status={p?.invoiceStatus ?? null} />
           {p?.invoicePaymentMethod ? (
@@ -1341,7 +1349,11 @@ function IntakeTable({
 
       <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-sm">
+          {/* min-w tightened from 900 to 820 (Ace 67.15) for the same
+              13"-laptop fit pass — the Applicants / Kept / Rejected
+              tabs have more columns than the active-stage table above
+              so their min-w stays slightly wider. */}
+          <table className="w-full min-w-[820px] text-left text-sm">
             <DataTableHead>
               <tr className="bg-court-surface border-b border-court-border/60">
                 <DataTableHeaderCell align="center">
@@ -1485,7 +1497,7 @@ function AppliedRowView({
 
   return (
     <DataTableRow>
-      <td className="w-px px-3 py-3 align-top text-center">
+      <td className="w-px px-2 py-2 align-top text-center">
         <input
           type="checkbox"
           aria-label={`Select ${row.candidateName}`}
@@ -1494,12 +1506,12 @@ function AppliedRowView({
           className="h-3.5 w-3.5 cursor-pointer accent-brand"
         />
       </td>
-      <td className="px-4 py-3 align-top">
+      <td className="px-3 py-2 align-top">
         <Link href={`/candidates/${row.candidateId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
           {row.candidateName}
         </Link>
       </td>
-      <td className="px-4 py-3 align-top">
+      <td className="px-3 py-2 align-top">
         <JobCell
           jobId={row.jobId}
           jobTitle={row.jobTitle}
@@ -1507,9 +1519,9 @@ function AppliedRowView({
           clientName={row.clientName}
         />
       </td>
-      <td className="px-4 py-3 align-top text-center text-xs text-court-fg-muted">{formatDate(row.appliedAt)}</td>
-      <td className="px-4 py-3 align-top text-center text-sm text-court-fg-muted">{formatSourceLabel(row.source)}</td>
-      <td className="px-4 py-3 align-top">
+      <td className="px-3 py-2 align-top text-center text-xs text-court-fg-muted">{formatDate(row.appliedAt)}</td>
+      <td className="px-3 py-2 align-top text-center text-sm text-court-fg-muted">{formatSourceLabel(row.source)}</td>
+      <td className="px-3 py-2 align-top">
         <div className="flex flex-row flex-nowrap items-center justify-end gap-2">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
           {/* Submit / Keep / Reject share the row-action chip style. */}
@@ -1589,7 +1601,7 @@ function KeptRowView({
 
   return (
     <DataTableRow>
-      <td className="w-px px-3 py-3 align-top text-center">
+      <td className="w-px px-2 py-2 align-top text-center">
         <input
           type="checkbox"
           aria-label={`Select ${row.candidateName}`}
@@ -1598,12 +1610,12 @@ function KeptRowView({
           className="h-3.5 w-3.5 cursor-pointer accent-brand"
         />
       </td>
-      <td className="px-4 py-3 align-top">
+      <td className="px-3 py-2 align-top">
         <Link href={`/candidates/${row.candidateId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
           {row.candidateName}
         </Link>
       </td>
-      <td className="px-4 py-3 align-top">
+      <td className="px-3 py-2 align-top">
         <JobCell
           jobId={row.jobId}
           jobTitle={row.jobTitle}
@@ -1611,8 +1623,8 @@ function KeptRowView({
           clientName={row.clientName}
         />
       </td>
-      <td className="px-4 py-3 align-top text-center text-xs text-court-fg-muted">{formatDate(row.keptAt)}</td>
-      <td className="px-4 py-3 align-top">
+      <td className="px-3 py-2 align-top text-center text-xs text-court-fg-muted">{formatDate(row.keptAt)}</td>
+      <td className="px-3 py-2 align-top">
         <div className="flex flex-row flex-nowrap items-center justify-end gap-2">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
           <Link
