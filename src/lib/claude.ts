@@ -268,7 +268,7 @@ export async function parseCandidateFields(params: {
       "- 'current_designation' is the candidate's present job title; 'current_organization' is their present employer. A role is 'current' if its end date is 'Current', 'Present', 'Now', or blank - those all mean the candidate is still there. Prefer the most recent role explicitly marked 'Current'/'Present'/blank end date. If no role is explicitly current, use the most recent dated role. These MUST be non-empty whenever the resume lists any work history at all - never return '' here, use null only if the resume has zero work experience.\n" +
       "- 'location' should be 'City, ST' if US, otherwise 'City, Country'.\n" +
       "- 'phone' keep the digits and country code as given; don't reformat.\n" +
-      "- 'skills' is a short deduplicated array of 5–12 hard skills. Omit soft skills.\n" +
+      "- 'skills' is a deduplicated array of 4 to 10 hard skills directly relevant to the candidate's current role, industry, and recent experience. Use the resume's current_designation, current_organization, and most recent roles to judge relevance. INCLUDE: tools, software, certifications, technical methods, regulations, and domain expertise that match the candidate's profession (e.g. for an accountant: 'GAAP', 'QuickBooks', 'Tax Preparation', 'Financial Modeling', 'Audit', 'CPA'). EXCLUDE soft skills, hobbies, volunteer activities, generic interests, and anything unrelated to the candidate's professional field (e.g. NEVER include 'Swim', 'Jewelry Making', 'Lifeguard', 'Shopping Experience', 'Customer Service' for an accounting candidate). Hard cap: return no more than 10. If the resume lists 40, you filter down to the 10 most role-relevant before returning. If fewer than 4 truly relevant skills exist, return what you have (never pad with junk).\n" +
       "- 'linkedin_profile' is the full URL if one is present in the source. If only a LinkedIn URL was provided as input, echo it here.\n" +
       "- 'notes' is a short (2–4 sentence) summary of the candidate's experience highlights. Null if nothing notable.\n" +
       "- 'experience' is every work/job role found on the resume, most-recent-first. 'from_year' and 'to_year' are 4-digit years; if the role is still current set 'to_year' to null (do NOT write 'Current'/'Present'/'Now'). 'description' is a 1–3 sentence summary of that role (bullet-flattened). Return [] if no experience found.\n" +
@@ -354,7 +354,15 @@ export async function parseCandidateFields(params: {
     phone: normalizeToE164(parsed.phone),
     current_designation: finalDesignation,
     current_organization: finalOrganization,
-    skills: Array.isArray(parsed.skills) ? parsed.skills.filter((s: unknown): s is string => typeof s === "string") : [],
+    // Belt-and-suspenders cap at 10 in case Claude ignores the prompt's hard
+    // cap. Skills like "Swim" / "Jewelry Making" on an accountant's resume
+    // get filtered upstream by the role-relevance prompt rule; this slice
+    // guarantees we never write more than 10 skills to the DB regardless.
+    skills: Array.isArray(parsed.skills)
+      ? parsed.skills
+          .filter((s: unknown): s is string => typeof s === "string" && s.trim().length > 0)
+          .slice(0, 10)
+      : [],
     linkedin_profile: parsed.linkedin_profile ?? linkedinUrl ?? null,
     experience,
     education: normalizeEducation(parsed.education),
