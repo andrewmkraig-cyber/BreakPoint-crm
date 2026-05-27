@@ -136,6 +136,35 @@ function cityFromClientLocation(location: Prisma.JsonValue | null | undefined): 
   return city ? city : null;
 }
 
+// Resolve a "City, ST" string off Job structured fields. Used as a
+// second-stage fallback after Client.location.city — RF-imported Jobs
+// frequently leave locationCity/locationState null but carry the
+// composed string on locations[0] (the JD import wrote the free-form
+// "Springfield, OH" array but never split it into the structured
+// columns). Preference order:
+//   1. locationCity (+ locationState if set)   — Ace-native write path
+//   2. locations[0]                            — RF-imported fallback
+// Returns null when neither shape carries a city — callers fall back
+// to the Placement.cityOverride manual input.
+function cityFromJob(
+  job: { locationCity?: string | null; locationState?: string | null; locations?: string[] } | null | undefined,
+): string | null {
+  if (!job) return null;
+  const structured = job.locationCity?.trim();
+  if (structured) {
+    const state = job.locationState?.trim();
+    return state ? `${structured}, ${state}` : structured;
+  }
+  const arr = Array.isArray(job.locations) ? job.locations : [];
+  for (const entry of arr) {
+    if (typeof entry === "string") {
+      const trimmed = entry.trim();
+      if (trimmed) return trimmed;
+    }
+  }
+  return null;
+}
+
 function deriveSourceChannel(
   source: string | null | undefined,
 ): PlacementsDashboardSourceChannel {
@@ -294,7 +323,21 @@ export async function getPlacementsDashboardData(
         startConfirmedAt: true,
         candidate: { select: { firstName: true, lastName: true } },
         client: { select: { name: true, industry: true, location: true } },
-        job: { select: { title: true, employmentType: true } },
+        job: {
+          select: {
+            title: true,
+            employmentType: true,
+            // Pulled for the city-resolution fallback chain below. RF-
+            // imported jobs commonly have Client.location.city = null but
+            // carry the city string on Job.locations (e.g. Jennifer Cole
+            // / Sheehan Brothers — locations: ["Springfield, OH"]). We
+            // prefer the structured locationCity column when set and fall
+            // back to locations[0] when it isn't.
+            locationCity: true,
+            locationState: true,
+            locations: true,
+          },
+        },
         // All non-VOID invoices (not just the most recent), with every
         // column the billing-events helper needs. The row layer below
         // still picks invoices[0] for `invoiceId` / billing status
@@ -351,7 +394,14 @@ export async function getPlacementsDashboardData(
       .join(" ")
       .trim();
     const invoice = p.invoices[0] ?? null;
-    const fallbackCity = cityFromClientLocation(p.client?.location ?? null);
+    // Resolution chain: cityOverride > Client.location.city > Job
+    // structured/locations. The Job fallback catches RF-imported
+    // placements where the Client row has no location JSON but the Job
+    // carries the city (e.g. Jennifer Cole / Sheehan Brothers — Bug 1,
+    // Batch 4a). cityOverride still wins so the recruiter's manual fix
+    // is never blown away by a downstream client.location update.
+    const fallbackCity =
+      cityFromClientLocation(p.client?.location ?? null) ?? cityFromJob(p.job);
     const cityOverride = p.cityOverride?.trim();
     const placementType = derivePlacementType({
       employmentType: p.job?.employmentType ?? null,

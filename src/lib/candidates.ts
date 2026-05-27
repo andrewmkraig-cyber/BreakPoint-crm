@@ -318,14 +318,30 @@ export async function getRfJobsForOrg(): Promise<RFJobWithAce[]> {
       // legacyRfId so every existing indexer (jobs.find(j => j.id === rfId))
       // keeps working unchanged. Carry `_aceJobId` so the cuid is
       // available for slug-based navigation alongside the legacy id.
+      //
+      // Also carry `_aceClientId` (the Client cuid) whenever the job is
+      // linked to a Client row — even when that Client is itself RF-
+      // imported (legacyRfId != null). Apply / Submit write paths read
+      // _aceClientId straight into Placement.clientId; omitting it on
+      // RF-imported clients left Placement rows with clientId = null
+      // (the Jennifer Cole / Sheehan Brothers regression — Bug 1, Batch
+      // 4a). Presence of r.client.id (always a cuid) is the only gate.
+      const clientCuid = r.client?.id ?? undefined;
       if (raw && typeof raw === "object") {
-        out.push({ ...raw, id: r.legacyRfId, _aceJobId: r.id, _lifecycle: r.lifecycle ?? null });
+        out.push({
+          ...raw,
+          id: r.legacyRfId,
+          _aceJobId: r.id,
+          _aceClientId: clientCuid,
+          _lifecycle: r.lifecycle ?? null,
+        });
       } else {
         out.push({
           id: r.legacyRfId,
           title: r.title,
           is_open: r.isOpen,
           _aceJobId: r.id,
+          _aceClientId: clientCuid,
           _lifecycle: r.lifecycle ?? null,
         });
       }
@@ -353,7 +369,12 @@ export async function getRfJobsForOrg(): Promise<RFJobWithAce[]> {
       salary_range_currency: r.salaryCurrency ?? null,
       salary_frequency: r.salaryFrequency ?? null,
       _aceJobId: r.id,
-      _aceClientId: r.client && r.client.legacyRfId == null ? r.client.id : undefined,
+      // Always carry the Client cuid when a Client is linked. The prior
+      // `legacyRfId == null` gate excluded every RF-imported Client and
+      // left Apply / Submit writing Placement.clientId = null for those
+      // jobs (Bug 1, Batch 4a). The cuid is the canonical FK regardless
+      // of whether the Client originated from RF or Ace-native.
+      _aceClientId: r.client?.id ?? undefined,
       _lifecycle: r.lifecycle ?? null,
     });
   }

@@ -64,6 +64,7 @@ export const CITY_COORDS: ReadonlyMap<string, CityCoord> = new Map([
   ["San Jose, CA", { lng: -121.89, lat: 37.34 }],
   ["Seattle, WA", { lng: -122.33, lat: 47.61 }],
   ["Solon, OH", { lng: -81.4412, lat: 41.3897 }],
+  ["Springfield, OH", { lng: -83.8088, lat: 39.9242 }],
   ["St. Louis, MO", { lng: -90.2, lat: 38.63 }],
   ["Tampa, FL", { lng: -82.46, lat: 27.95 }],
   ["Tucson, AZ", { lng: -110.93, lat: 32.22 }],
