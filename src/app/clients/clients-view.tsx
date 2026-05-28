@@ -33,10 +33,12 @@ export type ClientCard = {
   offerCount: number;
   pendingStartCount: number;
   hiredCount: number;
-  // Set when the card has activity history. Computed server-side from
-  // ActivityLog's most recent timestamp (under either the cuid or the
-  // stringified legacyRfId) so the Quiet tab can bucket without
-  // recomputing on every render.
+  // Server-computed Active/Quiet/Inactive bucket. Mutually exclusive
+  // under the post-Ace-67.21 rule: Active = days<30, Quiet = 30-59,
+  // Inactive = 60+. Quiet is no longer a decorated subset of Active.
+  // Driven by max(client.createdAt, ActivityLog, Job.createdAt, open
+  // Job.updatedAt, Placement.createdAt/updatedAt) — see page.tsx.
+  bucket: "active" | "quiet" | "inactive";
   lastActivityAtIso: string | null;
   daysSinceLastActivity: number | null;
   // Per-user ownership. ownedByMe drives the "Mine" filter; ownerName
@@ -46,13 +48,15 @@ export type ClientCard = {
   ownerName: string | null;
 };
 
-export type QuietTier = "14-30" | "30-60" | "60+";
+// Single Quiet band now ("30-60" days). The legacy "14-30" and "60+"
+// tiers are retired — under the new spec they roll into Active and
+// Inactive respectively. Kept as a union (not a string literal) so
+// future re-introduction of multiple tiers wouldn't be a type rename.
+export type QuietTier = "30-60";
 type QuietCard = ClientCard & { quietTier: QuietTier };
 
 const QUIET_TIER_LABEL: Record<QuietTier, string> = {
-  "14-30": "14–30 days quiet",
-  "30-60": "30–60 days quiet",
-  "60+": "60+ days quiet",
+  "30-60": "30-60 days quiet",
 };
 
 type ViewKind = "grid" | "list";

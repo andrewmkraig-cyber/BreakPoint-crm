@@ -676,7 +676,14 @@ export function ComposeFAB() {
               ? { left: dragPos.x, top: dragPos.y, right: "auto" }
               : undefined
           }
-          className="fixed right-6 top-[100px] z-[1001] w-80 rounded-xl backdrop-blur-md bg-court-surface/90 border border-court-border/40 shadow-[0_8px_32px_rgba(0,0,0,0.18),0_2px_8px_rgba(0,0,0,0.12)]"
+          // Popout panel: fully opaque (no backdrop-blur, no /90 alpha)
+          // so the page behind never shows through. Border is bumped
+          // from court-border/40 to court-fg-muted/30 — court-fg-muted
+          // is the foreground-muted token, so on light surfaces it
+          // reads as a clean gray edge and on dark surfaces it lifts
+          // brighter than court-border (which goes very dark in Night
+          // Court). /30 keeps the edge defined without being harsh.
+          className="fixed right-6 top-[100px] z-[1001] w-80 rounded-xl bg-court-surface border border-court-fg-muted/30 shadow-[0_8px_32px_rgba(0,0,0,0.18),0_2px_8px_rgba(0,0,0,0.12)]"
         >
           {view === "menu" && (
             <div className="relative p-2">

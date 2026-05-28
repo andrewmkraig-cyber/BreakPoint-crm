@@ -28,6 +28,11 @@ export type ClientListRow = {
   // badge in the All-clients view.
   ownerId: string | null;
   ownerName: string | null;
+  // Client row creation timestamp. Used by /clients as the floor for the
+  // Active/Quiet/Inactive bucket — a brand-new client with zero recorded
+  // activity counts as Active until `createdAt + 30d`. Always set
+  // (Prisma default).
+  createdAt: Date;
 };
 
 // Shared parser for Client.customFields (Json column). RF-imported
@@ -99,6 +104,10 @@ export async function getClientsForOrg(): Promise<ClientListRow[]> {
       raw: true,
       ownerId: true,
       owner: { select: { name: true } },
+      // Needed by /clients to seed lastActivityAt for brand-new rows
+      // (Active until createdAt + 30d, regardless of empty job /
+      // placement / activity-log history).
+      createdAt: true,
     },
   });
 
@@ -146,6 +155,7 @@ export async function getClientsForOrg(): Promise<ClientListRow[]> {
       feePct,
       ownerId: r.ownerId,
       ownerName: r.owner?.name ?? null,
+      createdAt: r.createdAt,
     };
   });
 }

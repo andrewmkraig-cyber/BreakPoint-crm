@@ -1,6 +1,5 @@
 import { ClientsView, type ClientCard, type QuietTier } from "@/app/clients/clients-view";
 import { canonicalStage, emptyJobCounts, type JobPipelineCounts } from "@/lib/rf-payload-shapes";
-import { getRfCandidatesForOrg } from "@/lib/candidates";
 import { getClientsForOrg } from "@/lib/clients";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getCurrentUserId } from "@/lib/auth/getCurrentUserId";
@@ -8,11 +7,18 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-const PLACEMENT_WINDOW_MS = 1000 * 60 * 60 * 24 * 30 * 6; // ~6 months
 const DAY_MS = 1000 * 60 * 60 * 24;
-// Inactivity threshold for the Quiet tab. Anything past this is bucketed
-// into one of the three tier labels rendered on the card.
-const QUIET_MIN_DAYS = 21;
+// Active → Quiet after 30 days of no activity; Quiet → Inactive at 60
+// total. Buckets are mutually exclusive (a card is Active OR Quiet OR
+// Inactive — Quiet is no longer a decorated subset of Active).
+const QUIET_AFTER_DAYS = 30;
+const INACTIVE_AFTER_DAYS = 60;
+// "Activity" that resets the inactivity clock: new job created, job
+// reactivated, placement made, candidate stage move on one of their
+// jobs, or any ActivityLog row written against the client. Brand-new
+// clients land Active because client.createdAt is the floor for the
+// last-activity timestamp (zero job / placement / activity history
+// still means createdAt = now → days = 0 → Active).
 
 export default async function ClientsPage({
   searchParams,
@@ -29,9 +35,8 @@ export default async function ClientsPage({
   let otherUserName: string | null = null;
 
   try {
-    const [clients, candidates, org, currentUserId] = await Promise.all([
+    const [clients, org, currentUserId] = await Promise.all([
       getClientsForOrg(),
-      getRfCandidatesForOrg(),
       getCurrentOrg(),
       getCurrentUserId(),
     ]);
@@ -96,57 +101,141 @@ export default async function ClientsPage({
       }
       counts.set(g.clientId, pc);
     }
-    // recentlyPlacedClientIds still reads from RF payload — same
-    // RF-leak class as the counters were before, queued as a follow-up.
-    // Keying by legacyRfId here keeps the existing Active/Inactive
-    // logic intact while the counters move to Neon.
-    const recentPlacementIds = recentlyPlacedClientIds(candidates);
-
-    // Last ActivityLog per client — used to build the Quiet tab. Writers
-    // stamp `targetType="client"` with `targetId` set to either the
-    // Client cuid (Ace-native) or a stringified legacyRfId (legacy RF
-    // back-compat per /app/clients/[id]/actions.ts:447). Group by
-    // targetId so a single query covers both keying conventions.
+    // Build per-client lastActivityAt from FOUR Neon signals + the
+    // Client.createdAt floor. All queries are tenant-scoped (Rule 8).
+    //
+    //   1. ActivityLog targetType="client" — explicit client-targeted
+    //      events (covers candidate stage moves on the client detail
+    //      activity feed, manual notes, etc.). targetId is the cuid for
+    //      Ace-native rows and the stringified legacyRfId for legacy RF
+    //      back-compat, so we group across both.
+    //   2. Job.createdAt — new job posted for this client.
+    //   3. Job.updatedAt where isOpen=true — covers reactivation (any
+    //      lifecycle transition that re-opens a job updates updatedAt;
+    //      isOpen=true filter keeps closed-out jobs from anchoring the
+    //      client to a stale edit).
+    //   4. Placement.createdAt / updatedAt — placement made and any
+    //      stage move (Prisma @updatedAt auto-bumps on every write).
+    //
+    // Brand-new clients with empty histories fall back to createdAt
+    // below so they bucket as Active.
     const clientCuids = clients.map((c) => c.id);
     const clientLegacyIds = clients
       .map((c) => (c.legacyRfId != null ? String(c.legacyRfId) : null))
       .filter((x): x is string => x !== null);
     const targetIdNeedles = [...clientCuids, ...clientLegacyIds];
-    const lastActivityByTargetId = new Map<string, Date>();
-    if (targetIdNeedles.length > 0) {
-      const groups = await prisma.activityLog.groupBy({
-        by: ["targetId"],
-        where: {
-          organizationId: org.id,
-          targetType: "client",
-          targetId: { in: targetIdNeedles },
-        },
-        _max: { timestamp: true },
-      });
-      for (const g of groups) {
-        if (g._max.timestamp) lastActivityByTargetId.set(g.targetId, g._max.timestamp);
-      }
+
+    const [activityGroups, jobCreatedGroups, jobOpenUpdatedGroups, placementGroupsForActivity] =
+      await Promise.all([
+        targetIdNeedles.length > 0
+          ? prisma.activityLog.groupBy({
+              by: ["targetId"],
+              where: {
+                organizationId: org.id,
+                targetType: "client",
+                targetId: { in: targetIdNeedles },
+              },
+              _max: { timestamp: true },
+            })
+          : Promise.resolve([] as Array<{ targetId: string; _max: { timestamp: Date | null } }>),
+        clientCuids.length > 0
+          ? prisma.job.groupBy({
+              by: ["clientId"],
+              where: {
+                organizationId: org.id,
+                clientId: { in: clientCuids },
+              },
+              _max: { createdAt: true },
+            })
+          : Promise.resolve([] as Array<{ clientId: string | null; _max: { createdAt: Date | null } }>),
+        clientCuids.length > 0
+          ? prisma.job.groupBy({
+              by: ["clientId"],
+              where: {
+                organizationId: org.id,
+                clientId: { in: clientCuids },
+                isOpen: true,
+              },
+              _max: { updatedAt: true },
+            })
+          : Promise.resolve([] as Array<{ clientId: string | null; _max: { updatedAt: Date | null } }>),
+        clientCuids.length > 0
+          ? prisma.placement.groupBy({
+              by: ["clientId"],
+              where: {
+                organizationId: org.id,
+                clientId: { in: clientCuids },
+              },
+              _max: { createdAt: true, updatedAt: true },
+            })
+          : Promise.resolve(
+              [] as Array<{ clientId: string | null; _max: { createdAt: Date | null; updatedAt: Date | null } }>,
+            ),
+      ]);
+
+    const lastActivityLogByTargetId = new Map<string, Date>();
+    for (const g of activityGroups) {
+      if (g._max.timestamp) lastActivityLogByTargetId.set(g.targetId, g._max.timestamp);
     }
+    const lastJobCreatedByClientId = new Map<string, Date>();
+    for (const g of jobCreatedGroups) {
+      if (g.clientId && g._max.createdAt) lastJobCreatedByClientId.set(g.clientId, g._max.createdAt);
+    }
+    const lastOpenJobUpdatedByClientId = new Map<string, Date>();
+    for (const g of jobOpenUpdatedGroups) {
+      if (g.clientId && g._max.updatedAt) lastOpenJobUpdatedByClientId.set(g.clientId, g._max.updatedAt);
+    }
+    const lastPlacementTouchByClientId = new Map<string, Date>();
+    for (const g of placementGroupsForActivity) {
+      if (!g.clientId) continue;
+      const created = g._max.createdAt;
+      const updated = g._max.updatedAt;
+      const newest =
+        created && updated
+          ? created.getTime() >= updated.getTime()
+            ? created
+            : updated
+          : (created ?? updated ?? null);
+      if (newest) lastPlacementTouchByClientId.set(g.clientId, newest);
+    }
+
+    const pickNewer = (a: Date | null | undefined, b: Date | null | undefined): Date | null => {
+      if (a && b) return a.getTime() >= b.getTime() ? a : b;
+      return a ?? b ?? null;
+    };
 
     const now = Date.now();
     all = clients.map((c) => {
       const legacyId = c.legacyRfId;
       const pc = counts.get(c.id) ?? emptyJobCounts();
-      const hadRecentPlacement = legacyId != null && recentPlacementIds.has(legacyId);
-      const hasOpenJob = c.openJobsCount > 0;
       const website = c.domain ? (c.domain.startsWith("http") ? c.domain : `https://${c.domain}`) : null;
 
-      const cuidActivity = lastActivityByTargetId.get(c.id);
-      const legacyActivity = legacyId != null ? lastActivityByTargetId.get(String(legacyId)) : undefined;
-      const lastActivityAt =
-        cuidActivity && legacyActivity
-          ? cuidActivity.getTime() >= legacyActivity.getTime()
-            ? cuidActivity
-            : legacyActivity
-          : (cuidActivity ?? legacyActivity ?? null);
-      const daysSinceLastActivity = lastActivityAt
-        ? Math.floor((now - lastActivityAt.getTime()) / DAY_MS)
-        : null;
+      // Walk every signal and keep the newest. ActivityLog targetId is
+      // the cuid for Ace-native rows or the stringified legacyRfId for
+      // legacy RF back-compat, so consult both.
+      const cuidActivity = lastActivityLogByTargetId.get(c.id) ?? null;
+      const legacyActivity =
+        legacyId != null ? lastActivityLogByTargetId.get(String(legacyId)) ?? null : null;
+      const jobCreated = lastJobCreatedByClientId.get(c.id) ?? null;
+      const openJobUpdated = lastOpenJobUpdatedByClientId.get(c.id) ?? null;
+      const placementTouch = lastPlacementTouchByClientId.get(c.id) ?? null;
+
+      // createdAt floor: brand-new client with no jobs / placements /
+      // activity log lands on its own createdAt, so days = 0 and the
+      // bucket below evaluates to Active.
+      let lastActivityAt: Date = c.createdAt;
+      for (const candidate of [cuidActivity, legacyActivity, jobCreated, openJobUpdated, placementTouch]) {
+        const newer = pickNewer(lastActivityAt, candidate);
+        if (newer) lastActivityAt = newer;
+      }
+
+      const daysSinceLastActivity = Math.floor((now - lastActivityAt.getTime()) / DAY_MS);
+      const bucket: "active" | "quiet" | "inactive" =
+        daysSinceLastActivity < QUIET_AFTER_DAYS
+          ? "active"
+          : daysSinceLastActivity < INACTIVE_AFTER_DAYS
+            ? "quiet"
+            : "inactive";
 
       return {
         id: c.id,
@@ -171,8 +260,12 @@ export default async function ClientsPage({
         offerCount: pc.offer,
         pendingStartCount: pc.pendingStart,
         hiredCount: pc.hired,
-        isActive: hasOpenJob || hadRecentPlacement,
-        lastActivityAtIso: lastActivityAt?.toISOString() ?? null,
+        // isActive mirrors the Active bucket so existing card readers
+        // keep working. Quiet + Inactive are no longer subsets of
+        // Active — every card lands in exactly one bucket now.
+        isActive: bucket === "active",
+        bucket,
+        lastActivityAtIso: lastActivityAt.toISOString(),
         daysSinceLastActivity,
         ownedByMe: c.ownerId != null && c.ownerId === currentUserId,
         ownerId: c.ownerId,
@@ -190,25 +283,24 @@ export default async function ClientsPage({
     if (b.openJobsCount !== a.openJobsCount) return b.openJobsCount - a.openJobsCount;
     return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   };
-  const activeCards = all.filter((c) => c.isActive).sort(sortFn);
-  const inactiveCards = all.filter((c) => !c.isActive).sort(sortFn);
+
+  // Mutually exclusive buckets under the new spec:
+  //   Active   = days since last activity < 30
+  //   Quiet    = 30-59 days
+  //   Inactive = 60+ days
+  // A card is in exactly one bucket — Quiet is no longer a decorated
+  // subset of Active.
+  const activeCards = all.filter((c) => c.bucket === "active").sort(sortFn);
+  const inactiveCards = all.filter((c) => c.bucket === "inactive").sort(sortFn);
   const verifiedCount = all.filter((c) => c.isVerified).length;
 
-  // Quiet = active client that HAS prior ActivityLog history AND
-  // whose most-recent entry is past the QUIET_MIN_DAYS threshold.
-  // Brand-new clients with zero ActivityLog rows are intentionally
-  // excluded (no history = no signal that the client has gone quiet).
-  const quietCards = activeCards
-    .map((c) => {
-      const days = c.daysSinceLastActivity;
-      if (days == null) return null;
-      let tier: QuietTier | null = null;
-      if (days >= 60) tier = "60+";
-      else if (days >= 30) tier = "30-60";
-      else if (days >= QUIET_MIN_DAYS) tier = "14-30";
-      return tier ? { ...c, quietTier: tier } : null;
-    })
-    .filter((c): c is ClientCard & { quietTier: QuietTier } => c !== null)
+  // Quiet tab — every Quiet card now carries the single "30-60 days
+  // quiet" tier (the only Quiet band under the new spec). The 14-30
+  // tier rolls into Active and the 60+ tier rolls into Inactive, so
+  // we no longer surface those labels here.
+  const quietCards = all
+    .filter((c) => c.bucket === "quiet")
+    .map((c) => ({ ...c, quietTier: "30-60" as QuietTier }))
     .sort((a, b) => {
       // Stalest first.
       const aDays = a.daysSinceLastActivity ?? 0;
@@ -229,24 +321,4 @@ export default async function ClientsPage({
       otherUserName={otherUserName}
     />
   );
-}
-
-// Walks every candidate's jobs[] array and returns the set of
-// client_company_ids that have had a stage_moved to a "hired" stage
-// within the last 6 months.
-function recentlyPlacedClientIds(candidates: Awaited<ReturnType<typeof getRfCandidatesForOrg>>): Set<number> {
-  const cutoff = Date.now() - PLACEMENT_WINDOW_MS;
-  const out = new Set<number>();
-  for (const c of candidates) {
-    const jobs = Array.isArray(c.jobs) ? c.jobs : [];
-    for (const j of jobs) {
-      if (canonicalStage(j.stage_name) !== "hired") continue;
-      if (typeof j.client_company_id !== "number") continue;
-      if (!j.stage_moved) continue;
-      const t = Date.parse(j.stage_moved);
-      if (!Number.isFinite(t)) continue;
-      if (t >= cutoff) out.add(j.client_company_id);
-    }
-  }
-  return out;
 }
