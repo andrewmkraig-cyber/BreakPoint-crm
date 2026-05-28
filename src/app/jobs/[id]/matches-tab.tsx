@@ -39,6 +39,8 @@ import {
 import { toast } from "sonner";
 import { Button, ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
 import { TabStrip } from "@/components/ui/tab-strip";
+import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
+import type { MatchTarget } from "@/lib/find-matches-context";
 import { cn } from "@/lib/utils";
 
 // Per-job sourcing surface. Structurally a clone of /candidates' rail +
@@ -252,11 +254,16 @@ function buildQuery(
   return sp.toString();
 }
 
+// bg-court-surface (not bg-white) so the fields re-skin across Court
+// Modes — dark Grass / Clay / Night Court paint the rail surface dark,
+// matching the rest of the page instead of glaring white. Mirrors the
+// same fix already applied to the /candidates page filter rail (see
+// src/app/candidates/page.tsx:220-225).
 const inputCls =
-  "block h-8 w-full rounded-md border border-court-border bg-white px-2.5 text-xs text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
+  "block h-8 w-full rounded-md border border-court-border bg-court-surface px-2.5 text-xs text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
 
 const selectBareCls =
-  "block h-8 w-full appearance-none truncate rounded-md border border-court-border bg-white pl-2.5 pr-7 text-xs text-court-fg focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
+  "block h-8 w-full appearance-none truncate rounded-md border border-court-border bg-court-surface pl-2.5 pr-7 text-xs text-court-fg focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
 
 function SelectField({
   className,
@@ -344,7 +351,7 @@ function TagInput({
   }
 
   return (
-    <div className="flex min-h-8 flex-wrap items-center gap-1 rounded-md border border-court-border bg-white px-1.5 py-0.5 focus-within:border-court-accent focus-within:ring-2 focus-within:ring-court-accent/20">
+    <div className="flex min-h-8 flex-wrap items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 focus-within:border-court-accent focus-within:ring-2 focus-within:ring-court-accent/20">
       {values.map((p) => {
         const tintCls = p.exclude
           ? "bg-red-100 text-red-700"
@@ -569,6 +576,7 @@ export function MatchesTab({
   jobTitle,
   savedFilters,
   searchKeywords,
+  matchTarget,
 }: {
   jobCuid: string;
   // jobRfId stays in the prop contract for callers that pass it in — the
@@ -583,6 +591,11 @@ export function MatchesTab({
   // skills pill list on first mount when no saved snapshot supplied one
   // — recruiter can still remove individual pills or clear the field.
   searchKeywords: string | null;
+  // Drives the Find Matches button in the outer-tab row. Built in
+  // page.tsx alongside the original JD-tab usage; the button moved here
+  // so the recruiter triggers a fresh Find Matches run from the surface
+  // that actually displays results.
+  matchTarget: MatchTarget;
 }) {
   void jobRfId;
 
@@ -1747,8 +1760,14 @@ export function MatchesTab({
           {/* Outer tabs: "All" runs the filter pipeline; "Rejected"
               pulls the rejected bucket for this job (no filter
               required). Rejected count surfaces here once a fetch
-              lands so the recruiter can see triage volume at a glance. */}
-          <div className="border-b border-court-border bg-court-surface px-4 py-2.5">
+              lands so the recruiter can see triage volume at a glance.
+              Find Matches sits far-right in the same row (moved from
+              the JD tab so the trigger lives on the surface that
+              renders the results). justify-between + flex-wrap keeps
+              the pills left-aligned and the button right-aligned at
+              full width; under narrow viewports the button wraps to
+              the next line. */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-court-border bg-court-surface px-4 py-2.5">
             <TabStrip<ResultsView>
               ariaLabel="Match results scope"
               activeId={view}
@@ -1758,6 +1777,7 @@ export function MatchesTab({
                 { id: "rejected", label: "Rejected", count: view === "rejected" && total != null ? total : undefined },
               ]}
             />
+            <FindMatchesButton target={matchTarget} />
           </div>
 
           <div className="flex items-center justify-between border-b border-court-border/60 bg-court-surface-subtle px-4 py-3">

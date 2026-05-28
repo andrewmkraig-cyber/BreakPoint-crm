@@ -496,7 +496,6 @@ export default async function JobDetailPage({
               location: overviewSnapshot.locations.join(", "),
               compensation: overviewSnapshot.compensation,
             }}
-            matchTarget={matchTarget}
           />
         ) : tab === "promote" ? (
           <PromoteTab
@@ -518,6 +517,7 @@ export default async function JobDetailPage({
             jobTitle={job.title}
             savedFilters={jobRow.savedSearchFilters as unknown}
             searchKeywords={jobRow.searchKeywords ?? null}
+            matchTarget={matchTarget}
           />
         ) : (
           <TabStub label={JOB_TABS.find((t) => t.id === tab)?.label ?? ""} />

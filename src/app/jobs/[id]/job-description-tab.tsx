@@ -9,8 +9,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
-import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
-import type { MatchTarget } from "@/lib/find-matches-context";
 import {
   saveJobGeneratedDescription,
   saveJobSearchKeywords,
@@ -26,7 +24,6 @@ export function JobDescriptionTab({
   initialDescriptionGeneratedAt,
   initialSearchKeywords,
   jobMeta,
-  matchTarget,
 }: {
   jobId: string;
   initialDescription: string | null;
@@ -38,7 +35,6 @@ export function JobDescriptionTab({
     location: string;
     compensation: string;
   };
-  matchTarget: MatchTarget;
 }) {
   const router = useRouter();
   const [generated, setGenerated] = useState<string | null>(initialDescription);
@@ -78,8 +74,10 @@ export function JobDescriptionTab({
 
   return (
     <div className="space-y-4">
+      {/* Find Matches moved to the Matches tab (Ace 67.21 batch) so the
+          recruiter triggers a fresh search from the place that displays
+          the results. Only Regenerate stays on this row. */}
       <div className="flex flex-wrap items-center gap-2">
-        <FindMatchesButton target={matchTarget} />
         <button
           type="button"
           onClick={onGenerate}
