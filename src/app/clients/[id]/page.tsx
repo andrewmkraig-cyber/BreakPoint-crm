@@ -309,8 +309,27 @@ export default async function ClientDetailPage({
     jobCountsById.set(g.jobRfId, pc);
   }
 
-  const openJobs = Array.isArray(raw?.open_jobs) ? raw!.open_jobs! : [];
-  const closedJobs = Array.isArray(raw?.closed_jobs) ? raw!.closed_jobs! : [];
+  // Live Jobs table source — every Job row scoped to this client +
+  // tenant. Replaces the legacy Client.raw.open_jobs / closed_jobs RF
+  // snapshot, which never picked up Ace-native creates (the Job rowcount
+  // chip would silently disagree with the table when an Ace-native job
+  // was created against the client). Tenant-scoped per Rule 8.
+  const allJobs = await prisma.job.findMany({
+    where: {
+      clientId: client.id,
+      organizationId: client.organizationId,
+    },
+    select: {
+      id: true,
+      legacyRfId: true,
+      title: true,
+      isOpen: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  const openJobs = allJobs.filter((j) => j.isOpen);
+  const closedJobs = allJobs.filter((j) => !j.isOpen);
 
   // Fee Agreement seed: prefer Ace-native columns; for clients imported
   // before these columns existed, fall through to the RF custom_fields
@@ -447,8 +466,16 @@ export default async function ClientDetailPage({
                   </thead>
                   <tbody className="divide-y divide-court-border">
                     {[...openJobs, ...closedJobs].map((j) => {
-                      const isOpen = openJobs.includes(j);
-                      const c = jobCountsById.get(j.id) ?? emptyJobCounts();
+                      const isOpen = j.isOpen;
+                      // jobCountsById is keyed by Placement.jobRfId
+                      // (numeric RF id), so look up by legacyRfId for
+                      // RF-imported jobs. Ace-native jobs (legacyRfId
+                      // null) have no jobRfId-keyed placements and
+                      // legitimately show 0 across the per-stage pills.
+                      const c =
+                        j.legacyRfId != null
+                          ? jobCountsById.get(j.legacyRfId) ?? emptyJobCounts()
+                          : emptyJobCounts();
                       return (
                         <tr key={j.id} className="transition hover:bg-brand-tint/40">
                           <td className="px-5 py-2.5">
@@ -457,7 +484,7 @@ export default async function ClientDetailPage({
                               className="flex items-center gap-2 font-medium text-court-fg hover:text-brand-dark"
                             >
                               <Briefcase className="h-4 w-4 text-court-fg-muted" />
-                              <span>{j.name ?? j.title ?? "(untitled)"}</span>
+                              <span>{j.title ?? "(untitled)"}</span>
                             </Link>
                           </td>
                           <td className="px-5 py-2.5">
@@ -474,35 +501,35 @@ export default async function ClientDetailPage({
                             <JobCountPill
                               value={c.submitted}
                               tone="submitted"
-                              href={c.submitted > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.id}&stage=submitted` : undefined}
+                              href={c.submitted > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.legacyRfId ?? ""}&stage=submitted` : undefined}
                             />
                           </td>
                           <td className="px-5 py-2.5 text-right">
                             <JobCountPill
                               value={c.interviewing}
                               tone="interviewing"
-                              href={c.interviewing > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.id}&stage=interviewing` : undefined}
+                              href={c.interviewing > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.legacyRfId ?? ""}&stage=interviewing` : undefined}
                             />
                           </td>
                           <td className="px-5 py-2.5 text-right">
                             <JobCountPill
                               value={c.offer}
                               tone="offer"
-                              href={c.offer > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.id}&stage=offer` : undefined}
+                              href={c.offer > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.legacyRfId ?? ""}&stage=offer` : undefined}
                             />
                           </td>
                           <td className="px-5 py-2.5 text-right">
                             <JobCountPill
                               value={c.pendingStart}
                               tone="pendingStart"
-                              href={c.pendingStart > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.id}&stage=pending_start` : undefined}
+                              href={c.pendingStart > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.legacyRfId ?? ""}&stage=pending_start` : undefined}
                             />
                           </td>
                           <td className="px-5 py-2.5 text-right">
                             <JobCountPill
                               value={c.hired}
                               tone="hired"
-                              href={c.hired > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.id}&stage=hired` : undefined}
+                              href={c.hired > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.legacyRfId ?? ""}&stage=hired` : undefined}
                             />
                           </td>
                         </tr>

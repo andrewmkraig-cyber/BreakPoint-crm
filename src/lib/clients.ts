@@ -111,6 +111,27 @@ export async function getClientsForOrg(): Promise<ClientListRow[]> {
     },
   });
 
+  // Live Open/Closed job counts per client. Replaces the legacy
+  // Client.raw.open_jobs / closed_jobs RF snapshot, which never picked
+  // up Ace-native creates (raw is null on every Ace-native client and
+  // never re-syncs on existing ones). One groupBy across the tenant
+  // keyed by (clientId, isOpen); tenant-scoped per Rule 8.
+  const jobCountGroups = await prisma.job.groupBy({
+    by: ["clientId", "isOpen"],
+    where: {
+      organizationId: org.id,
+      clientId: { not: null },
+    },
+    _count: { _all: true },
+  });
+  const openCountByClientId = new Map<string, number>();
+  const closedCountByClientId = new Map<string, number>();
+  for (const g of jobCountGroups) {
+    if (!g.clientId) continue;
+    const target = g.isOpen ? openCountByClientId : closedCountByClientId;
+    target.set(g.clientId, g._count._all);
+  }
+
   return rows.map((r) => {
     const raw = (r.raw ?? null) as RFClient | null;
     const phoneFromJson = Array.isArray(r.phoneNumbers) && r.phoneNumbers.length > 0
@@ -118,8 +139,8 @@ export async function getClientsForOrg(): Promise<ClientListRow[]> {
           ? (r.phoneNumbers[0] as string)
           : (r.phoneNumbers[0] as { number?: string }).number ?? null)
       : null;
-    const openJobsCount = Array.isArray(raw?.open_jobs) ? raw!.open_jobs!.length : 0;
-    const closedJobsCount = Array.isArray(raw?.closed_jobs) ? raw!.closed_jobs!.length : 0;
+    const openJobsCount = openCountByClientId.get(r.id) ?? 0;
+    const closedJobsCount = closedCountByClientId.get(r.id) ?? 0;
 
     const signed = Array.isArray(raw?.custom_fields)
       ? raw!.custom_fields!.find(
