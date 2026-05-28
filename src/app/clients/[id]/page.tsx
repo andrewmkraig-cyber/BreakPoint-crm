@@ -543,7 +543,11 @@ export default async function ClientDetailPage({
               (c.lastActivityAt?.toISOString() ?? c.addedAt?.toISOString()) ?? null,
           }))}
         />
-      ) : tab === "agreements" && legacyRfId != null ? (
+      ) : tab === "agreements" ? (
+        // Tab renders for every client. Upload + DB rows are still keyed
+        // by legacyRfId (clientRfId column), so an Ace-native client with
+        // no legacyRfId gets the empty-state list and the upload card is
+        // suppressed inside AgreementsTab. RF clients keep full behavior.
         <AgreementsTab
           clientId={legacyRfId}
           canWrite={canWrite}
@@ -558,7 +562,10 @@ export default async function ClientDetailPage({
             summaryUpdatedAt: a.summaryUpdatedAt?.toISOString() ?? null,
           }))}
         />
-      ) : tab === "benefits" && legacyRfId != null ? (
+      ) : tab === "benefits" ? (
+        // Same pattern as Agreements: tab visible for everyone; the
+        // upload + save UI inside BenefitsTab disables itself when there
+        // is no legacyRfId to key clientRfId-scoped rows against.
         <BenefitsTab
           clientId={legacyRfId}
           canWrite={canWrite}
@@ -576,7 +583,7 @@ export default async function ClientDetailPage({
             uploadedByName: f.uploadedBy?.name ?? f.uploadedBy?.email ?? null,
           }))}
         />
-      ) : tab === "game-plan" && legacyRfId != null ? (
+      ) : tab === "game-plan" ? (
         <div className="space-y-4">
           <div className="flex items-center justify-end gap-3">
             <FindMatchesButton
@@ -587,7 +594,16 @@ export default async function ClientDetailPage({
               }}
             />
           </div>
-          <AiWorkspace entityType="client" entityId={String(legacyRfId)} bottomGapRem={30} />
+          {/* AiWorkspace messages are keyed by (entityType, entityId).
+              RF clients keep String(legacyRfId) so their existing thread
+              history survives; Ace-native clients with no legacyRfId
+              fall back to the cuid. api/ai-workspace/route.ts already
+              resolves either form via getClientByIdentifier. */}
+          <AiWorkspace
+            entityType="client"
+            entityId={legacyRfId != null ? String(legacyRfId) : client.id}
+            bottomGapRem={30}
+          />
         </div>
       ) : tab === "notes" ? (
         <section className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">

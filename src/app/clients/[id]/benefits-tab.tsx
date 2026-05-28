@@ -38,7 +38,11 @@ export function BenefitsTab({
   files,
   canWrite = true,
 }: {
-  clientId: number;
+  // null = Ace-native client with no legacyRfId. clientBenefits +
+  // clientBenefitsFile are still keyed by clientRfId, so uploads / saves
+  // have nothing to write against; the inner component degrades to a
+  // read-only "no benefits yet" surface in that case.
+  clientId: number | null;
   initial: BenefitsState;
   files: BenefitsFile[];
   // When false (client you don't own) uploads, deletes, the Generate
@@ -59,16 +63,20 @@ function BenefitsTabInner({
   files,
   canWrite,
 }: {
-  clientId: number;
+  clientId: number | null;
   initial: BenefitsState;
   files: BenefitsFile[];
   canWrite: boolean;
 }) {
   const router = useRouter();
-  // Read-only viewers never enter edit mode, even when the body is empty
-  // (the owner's default-to-edit-on-empty behavior would otherwise expose
-  // an editable textarea on a client they can't write to).
-  const [editing, setEditing] = useState<boolean>(canWrite ? !initial.body : false);
+  // Write-affordances need both a writeable client AND a legacyRfId to
+  // key the clientRfId-scoped rows. canWrite alone gates owner-vs-viewer;
+  // canMutate also gates Ace-native-with-no-legacyRfId.
+  const canMutate = canWrite && clientId != null;
+  // Read-only viewers (and Ace-native clients pending clientRfId support)
+  // never auto-enter edit mode, even on an empty body — the editable
+  // textarea would otherwise dangle with a save button that can't fire.
+  const [editing, setEditing] = useState<boolean>(canMutate ? !initial.body : false);
   const [draft, setDraft] = useState<string>(initial.body);
   const [saved, setSaved] = useState<BenefitsState>(initial);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -161,8 +169,16 @@ function BenefitsTabInner({
 
   function onSave() {
     setSaveError(null);
+    if (clientId == null) {
+      // Defensive: the Save button is gated on canMutate, so this should
+      // be unreachable. Surfacing the error rather than swallowing makes
+      // any future regression visible instead of silently no-op'ing.
+      setSaveError("Benefits can't be saved for this client yet.");
+      return;
+    }
+    const cid = clientId;
     startSave(async () => {
-      const result = await saveBenefits(clientId, draft);
+      const result = await saveBenefits(cid, draft);
       if (!result.ok) {
         setSaveError(result.error);
         return;
@@ -181,14 +197,19 @@ function BenefitsTabInner({
 
   function onSummarize() {
     setSummaryError(null);
+    if (clientId == null) {
+      setSummaryError("Benefits summary isn't available for this client yet.");
+      return;
+    }
     if (files.length === 0 && !draft.trim()) {
       setSummaryError("Upload a file or paste some notes first.");
       toast.error("Nothing to summarize", { description: "Upload a file or paste notes first." });
       return;
     }
+    const cid = clientId;
     const toastId = toast.loading("Summarizing benefits with Claude…");
     startSummarize(async () => {
-      const result = await summarizeBenefitsWithAI(clientId, draft);
+      const result = await summarizeBenefitsWithAI(cid, draft);
       if (!result || !result.ok) {
         const msg = result?.error ?? "Claude call failed.";
         setSummaryError(msg);
@@ -206,13 +227,13 @@ function BenefitsTabInner({
 
   return (
     <div className="space-y-6">
-      {(canWrite || files.length > 0) && (
+      {(canMutate || files.length > 0) && (
         <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
           <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
             <div>
               <h2 className="font-serif text-lg font-semibold text-court-fg">Benefits documents</h2>
               <p className="text-xs text-court-fg-muted">
-                {canWrite
+                {canMutate
                   ? "Drop PDFs, Word docs, or plain-text carrier packets here. Files are private to Ace."
                   : "Uploaded carrier packets. View only."}
               </p>
@@ -221,7 +242,7 @@ function BenefitsTabInner({
           <div className="p-5">
             <DocumentDropzone
               isBusy={isUploading}
-              readOnly={!canWrite}
+              readOnly={!canMutate}
               onFiles={onFiles}
               onDelete={onDeleteFile}
               emptyHint="PDF, DOC/DOCX, or TXT up to 20MB"
@@ -235,10 +256,10 @@ function BenefitsTabInner({
                 downloadHref: `/api/client-benefits-files/${f.id}`,
               }))}
             />
-            {canWrite && uploadError && (
+            {canMutate && uploadError && (
               <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{uploadError}</div>
             )}
-            {canWrite && uploadSuccess && !uploadError && (
+            {canMutate && uploadSuccess && !uploadError && (
               <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{uploadSuccess}</div>
             )}
           </div>
@@ -253,7 +274,7 @@ function BenefitsTabInner({
               Paste raw notes or generate a clean summary with Claude from uploaded docs + pasted text.
             </p>
           </div>
-          {canWrite && (
+          {canMutate && (
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"

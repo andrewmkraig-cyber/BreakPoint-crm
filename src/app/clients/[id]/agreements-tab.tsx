@@ -36,12 +36,17 @@ export function AgreementsTab({
   items,
   canWrite = true,
 }: {
-  clientId: number;
+  // null = Ace-native client with no legacyRfId. The clientAgreement table
+  // is still keyed by clientRfId (numeric), so uploads have nothing to
+  // write to until that column is widened. Suppress the upload card in
+  // that case rather than letting it POST clientId=null to /api/uploads.
+  clientId: number | null;
   items: AgreementRow[];
   // When false (client you don't own) the upload card plus the per-item
   // summarize and delete buttons are hidden. Files stay downloadable.
   canWrite?: boolean;
 }) {
+  const canUpload = canWrite && clientId != null;
   const router = useRouter();
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
@@ -99,7 +104,7 @@ export function AgreementsTab({
 
   return (
     <div className="space-y-4">
-      {canWrite && (
+      {canUpload && (
         <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
           <div className="border-b border-court-border px-5 py-3">
             <h3 className="font-serif text-base font-semibold text-court-fg">Upload agreement</h3>
