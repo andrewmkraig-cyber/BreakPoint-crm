@@ -30,6 +30,33 @@ export type ClientListRow = {
   ownerName: string | null;
 };
 
+// Shared parser for Client.customFields (Json column). RF-imported
+// clients carry their fee % inside this column as an array of
+// {name, value} objects under one of three name variants ("Avg Fee %",
+// "Fee %", "Fee Percent"). Returns null when the field is missing,
+// malformed, or unparseable as a number. Reused by:
+//   - /jobs/[id] page (where this logic originally lived)
+//   - /candidates/[id] page  (defensive read when Client.feePct is null)
+//   - LocalPlacementRows seed path via local-profile.tsx
+//   - scripts/backfill-client-feepct.ts (one-shot Client.feePct backfill)
+export function extractFeePctFromCustomFields(raw: unknown): number | null {
+  if (!Array.isArray(raw)) return null;
+  for (const f of raw) {
+    if (!f || typeof f !== "object") continue;
+    const name = (f as { name?: unknown }).name;
+    if (typeof name !== "string") continue;
+    const lower = name.toLowerCase();
+    if (!(lower.includes("avg fee") || lower.includes("fee %") || lower.includes("fee percent"))) continue;
+    const value = (f as { value?: unknown }).value;
+    if (typeof value === "number") return value;
+    if (typeof value === "string") {
+      const n = parseFloat(value);
+      return Number.isFinite(n) ? n : null;
+    }
+  }
+  return null;
+}
+
 type LocationJson = {
   street_address_1?: string | null;
   street_address_2?: string | null;

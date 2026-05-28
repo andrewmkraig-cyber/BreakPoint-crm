@@ -4,6 +4,7 @@ import { Target } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { getRfClientsForOrg, getRfContactsForOrg, getRfJobsForOrg } from "@/lib/candidates";
+import { extractFeePctFromCustomFields } from "@/lib/clients";
 import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/local-candidate-actions";
 import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
 import { listAceTeam } from "@/lib/ace-team";
@@ -319,6 +320,44 @@ export async function LocalCandidateProfile({
   const clientById = new Map<number, (typeof allClients)[number]>();
   for (const cl of allClients) clientById.set(cl.id, cl);
 
+  // Side-load Client.feePct + Client.customFields for every placement
+  // client so LocalJobRow.clientFeePct can seed the OfferDialog /
+  // LocalPlacementDialog auto-fills. allClients only carries the RF-
+  // shaped raw payload; the typed Prisma columns (feePct backfilled by
+  // scripts/backfill-client-feepct.ts, customFields for the defensive
+  // extract fallback) live next to it and aren't surfaced through
+  // getRfClientsForOrg. Tenant-scoped via candidate.organizationId.
+  const placementClientCuids = new Set<string>();
+  const placementClientRfIds = new Set<number>();
+  for (const p of placements) {
+    if (p.clientId) placementClientCuids.add(p.clientId);
+    if (p.clientRfId != null && p.clientRfId > 0) placementClientRfIds.add(p.clientRfId);
+  }
+  const feePctByCuid = new Map<string, number | null>();
+  const feePctByRfId = new Map<number, number | null>();
+  if (placementClientCuids.size > 0 || placementClientRfIds.size > 0) {
+    const rows = await prisma.client.findMany({
+      where: {
+        organizationId: candidate.organizationId,
+        OR: [
+          ...(placementClientCuids.size > 0
+            ? [{ id: { in: Array.from(placementClientCuids) } }]
+            : []),
+          ...(placementClientRfIds.size > 0
+            ? [{ legacyRfId: { in: Array.from(placementClientRfIds) } }]
+            : []),
+        ],
+      },
+      select: { id: true, legacyRfId: true, feePct: true, customFields: true },
+    });
+    for (const r of rows) {
+      const resolved =
+        r.feePct ?? extractFeePctFromCustomFields(r.customFields ?? null) ?? null;
+      feePctByCuid.set(r.id, resolved);
+      if (r.legacyRfId != null) feePctByRfId.set(r.legacyRfId, resolved);
+    }
+  }
+
   const openJobs: LocalOpenJob[] = allJobs
     .filter((j) => j.is_open !== false)
     .map((raw) => {
@@ -436,6 +475,14 @@ export async function LocalCandidateProfile({
       placementNotes: p.placementNotes,
       candidateSource: p.candidateSource,
     };
+    // Prefer cuid lookup (canonical) — only fall back to the rfId map
+    // when this placement has no clientId cuid yet (pre-Phase-0 rows;
+    // the backfill in scripts/backfill-placement-clientid.ts stamped
+    // every existing one but new RF imports may still land cuid-null
+    // before the loader fix at src/lib/candidates.ts:316 catches them).
+    const resolvedClientFeePct =
+      (p.clientId ? feePctByCuid.get(p.clientId) ?? null : null) ??
+      (p.clientRfId != null ? feePctByRfId.get(p.clientRfId) ?? null : null);
     return {
       placementId: p.id,
       jobRfId: p.jobRfId ?? (rfJob?.id ?? 0),
@@ -451,6 +498,7 @@ export async function LocalCandidateProfile({
       clientName: client?.name ?? job?.company ?? "",
       clientWebsite: client?.website ?? "",
       clientLinkedIn: client?.linkedIn ?? "",
+      clientFeePct: resolvedClientFeePct,
       clientContacts,
       stage: p.stage,
       interviews: interviewsByJob.get(interviewKey) ?? [],

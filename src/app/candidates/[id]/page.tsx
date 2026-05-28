@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { cn, formatLocation } from "@/lib/utils";
 import { extractCandidateFields } from "@/lib/candidate-fields";
 import { getCandidateByIdentifier, getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
+import { extractFeePctFromCustomFields } from "@/lib/clients";
 import {
   canonicalStage,
   normalizeClient,
@@ -336,6 +337,15 @@ export default async function CandidateProfilePage({
   // every jobCuid / clientCuid field is populated when possible.
   const jobCuidByRfId = new Map<number, string>();
   const clientCuidByRfId = new Map<number, string>();
+  // Defensive fallback for the offer-dialog auto-fill. RF-imported
+  // clients (e.g. Sheehan Brothers) sometimes have their fee % only on
+  // Client.customFields (typed JSON column) while Client.feePct is null
+  // and Client.raw.custom_fields is missing — so normalizeClient hands
+  // back feePct=null. scripts/backfill-client-feepct.ts promotes the
+  // typed column → feePct for existing rows, but new RF imports could
+  // still land in the same state, so we always side-load customFields
+  // here and use it as a tertiary source via extractFeePctFromCustomFields.
+  const clientCustomFieldsByRfId = new Map<number, unknown>();
   const referencedJobRfIds = new Set<number>();
   const referencedClientRfIds = new Set<number>();
   for (const j of linkedSubmittals) {
@@ -369,10 +379,20 @@ export default async function CandidateProfilePage({
         legacyRfId: { in: Array.from(referencedClientRfIds) },
         organizationId: orgForCuids.id,
       },
-      select: { id: true, legacyRfId: true },
+      // customFields piggybacks on the cuid-mapping query so we don't
+      // pay for a second round-trip. Used below as the
+      // extractFeePctFromCustomFields fallback when normalizeClient's
+      // raw-derived feePct is null and Client.feePct hasn't been
+      // backfilled yet.
+      select: { id: true, legacyRfId: true, customFields: true },
     });
     for (const r of rows) {
-      if (r.legacyRfId != null) clientCuidByRfId.set(r.legacyRfId, r.id);
+      if (r.legacyRfId != null) {
+        clientCuidByRfId.set(r.legacyRfId, r.id);
+        if (r.customFields != null) {
+          clientCustomFieldsByRfId.set(r.legacyRfId, r.customFields);
+        }
+      }
     }
   }
 
@@ -458,7 +478,17 @@ export default async function CandidateProfilePage({
       clientName: client?.name ?? j.client_company_name ?? "",
       clientWebsite: client?.website ?? "",
       clientLinkedIn: client?.linkedIn ?? "",
-      clientFeePct: client?.feePct ?? null,
+      // Three-way feePct resolution so the offer dialog auto-fills
+      // when ANY source carries the value: normalizeClient.feePct (from
+      // RF raw.custom_fields) > extractFeePctFromCustomFields on the
+      // typed Client.customFields column. The typed-column fallback
+      // catches RF-imported clients where raw.custom_fields was
+      // stripped/missing but customFields landed during ingest, and
+      // covers new imports between backfill runs.
+      clientFeePct:
+        client?.feePct ??
+        extractFeePctFromCustomFields(clientCustomFieldsByRfId.get(clientRfId) ?? null) ??
+        null,
       rfStageBucket: canonicalStage(j.stage_name),
       rfStageMovedAt: j.stage_moved ?? null,
       clientContacts,
@@ -510,7 +540,12 @@ export default async function CandidateProfilePage({
         clientName: client?.name ?? "",
         clientWebsite: client?.website ?? "",
         clientLinkedIn: client?.linkedIn ?? "",
-        clientFeePct: client?.feePct ?? null,
+        // Same three-way feePct fallback as the linkedSubmittals branch
+        // above — see comment there for why both sources are consulted.
+        clientFeePct:
+          client?.feePct ??
+          extractFeePctFromCustomFields(clientCustomFieldsByRfId.get(clientRfId) ?? null) ??
+          null,
         rfStageBucket: "sourced" as PipelineBucket,
         rfStageMovedAt: null,
         clientContacts,

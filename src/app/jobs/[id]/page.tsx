@@ -9,6 +9,7 @@ import {
 } from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { getJobByIdentifier } from "@/lib/jobs";
+import { extractFeePctFromCustomFields } from "@/lib/clients";
 import { getPlacementsForOrg } from "@/lib/placements";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
@@ -325,7 +326,7 @@ export default async function JobDetailPage({
       ? String(clientRow.legacyRfId)
       : clientRow.id
     : null;
-  const clientFeePct = extractFeePct(clientRow?.customFields ?? null);
+  const clientFeePct = extractFeePctFromCustomFields(clientRow?.customFields ?? null);
 
   // Tab selection from ?tab=. Default Overview so the recruiter lands
   // on a snapshot + quick actions before drilling into a specific surface.
@@ -553,26 +554,10 @@ function TabStub({ label }: { label: string }) {
   );
 }
 
-// Same fee-% parse the /clients list uses, narrowed to the shape Prisma
-// returns for Client.customFields (Json column). Returns null when the
-// field is missing or unparseable.
-function extractFeePct(raw: unknown): number | null {
-  if (!Array.isArray(raw)) return null;
-  for (const f of raw) {
-    if (!f || typeof f !== "object") continue;
-    const name = (f as { name?: unknown }).name;
-    if (typeof name !== "string") continue;
-    const lower = name.toLowerCase();
-    if (!(lower.includes("avg fee") || lower.includes("fee %") || lower.includes("fee percent"))) continue;
-    const value = (f as { value?: unknown }).value;
-    if (typeof value === "number") return value;
-    if (typeof value === "string") {
-      const n = parseFloat(value);
-      return Number.isFinite(n) ? n : null;
-    }
-  }
-  return null;
-}
+// Fee-% extractor moved to src/lib/clients.ts as
+// extractFeePctFromCustomFields so the candidate page, the Ace-native
+// row seed path, and scripts/backfill-client-feepct.ts can all reuse
+// the same parser. Imported at the top of this file.
 
 // Inline summary string for the Overview snapshot. Mirrors the
 // compensation formatter inside JobOverviewTab so the server can render

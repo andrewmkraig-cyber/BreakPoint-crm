@@ -148,6 +148,10 @@ export type LocalJobRow = {
   clientWebsite: string;
   clientLinkedIn: string;
   clientContacts: { id: number; name: string; title: string; email: string }[];
+  // Client fee % (annual base × %). Seed source for OfferDialog +
+  // LocalPlacementDialog. Null when no fee % is on file for the
+  // client; the dialogs fall back to an empty input.
+  clientFeePct: number | null;
   stage: string;
   interviews: LocalInterview[];
   // Populated once the placement has been through offer / placement
@@ -297,6 +301,13 @@ export function LocalPlacementRows({
           clientName: detail.clientName,
           clientWebsite: "",
           clientLinkedIn: "",
+          // Optimistic stub for the freshly-applied pill — the
+          // OfferDialog isn't reachable from this row state (Applied
+          // stage hasn't moved past Submitted), so leaving feePct null
+          // is safe; the 500ms router.refresh in local-candidate-actions
+          // replaces this row with the server-side shape that carries
+          // the real value.
+          clientFeePct: null,
           clientContacts: detail.clientContacts,
           stage: "applied",
           interviews: [],
@@ -1214,9 +1225,14 @@ function OfferDialog({
     snap?.offerStartDate ? snap.offerStartDate.slice(0, 10) : "",
   );
   const [notes, setNotes] = useState(snap?.offerNotes ?? "");
-  const [feePct, setFeePct] = useState(
-    snap?.feePercentage != null ? String(snap.feePercentage) : "",
-  );
+  // Three-way feePct seed mirrors the RF OfferDialog at
+  // placement-flows.tsx:1197 — placement snapshot takes precedence
+  // (Edit Offer / Make Placement re-open scenarios) so the recruiter
+  // never sees a fresh-typed override blown away by the client default.
+  // Client default fills in for the fresh-offer path. Empty string
+  // when neither source carries a value.
+  const seedFeePct = snap?.feePercentage ?? job.clientFeePct ?? null;
+  const [feePct, setFeePct] = useState(seedFeePct != null ? String(seedFeePct) : "");
   const [minFee, setMinFee] = useState(
     snap?.minFee != null ? String(snap.minFee) : "",
   );
@@ -1397,9 +1413,11 @@ function LocalPlacementDialog({
   const [currency, setCurrency] = useState(
     snap?.acceptedCurrency ?? snap?.offerCurrency ?? "USD",
   );
-  const [feePct, setFeePct] = useState(
-    snap?.feePercentage != null ? String(snap.feePercentage) : "",
-  );
+  // Same three-way seed as the OfferDialog above — snapshot first
+  // (Edit Placement re-open), then the client default, then blank.
+  // Matches the RF LocalPlacementDialog at placement-flows.tsx:1460.
+  const seedFeePct = snap?.feePercentage ?? job.clientFeePct ?? null;
+  const [feePct, setFeePct] = useState(seedFeePct != null ? String(seedFeePct) : "");
   const [minFee, setMinFee] = useState(
     snap?.minFee != null ? String(snap.minFee) : "",
   );
