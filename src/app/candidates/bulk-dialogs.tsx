@@ -847,7 +847,6 @@ export function BulkEmailDialog({
               onSelect={(e) => rememberCaret(e.currentTarget)}
               onKeyUp={(e) => rememberCaret(e.currentTarget)}
               onClick={(e) => rememberCaret(e.currentTarget)}
-              placeholder="Subject"
               className="min-w-0 flex-1 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
             />
           </div>

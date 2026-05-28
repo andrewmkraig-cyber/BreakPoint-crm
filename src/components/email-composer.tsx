@@ -835,17 +835,16 @@ export function EmailComposer({
                     onChange={setBcc}
                     options={effectiveBccOptions}
                     pinned={ccBccPinned}
-                    placeholder="Pick a teammate or type email…"
                   />
                 ) : (
-                  <Input value={bcc} onChange={setBcc} placeholder="bcc@example.com" />
+                  <Input value={bcc} onChange={setBcc} />
                 )}
               </Row>
             </>
           ) : (
             <>
               <Row label="To">
-                <Input value={to} onChange={setTo} placeholder="name@example.com, name2@example.com" />
+                <Input value={to} onChange={setTo} />
               </Row>
               {showCcBcc ? (
                 <>
@@ -856,10 +855,9 @@ export function EmailComposer({
                         onChange={setCc}
                         options={effectiveCcOptions}
                         pinned={ccBccPinned}
-                        placeholder="Pick a client contact or type email…"
                       />
                     ) : (
-                      <Input value={cc} onChange={setCc} placeholder="cc@example.com" />
+                      <Input value={cc} onChange={setCc} />
                     )}
                   </Row>
                   <Row label="Bcc">
@@ -869,10 +867,9 @@ export function EmailComposer({
                         onChange={setBcc}
                         options={effectiveBccOptions}
                         pinned={ccBccPinned}
-                        placeholder="Pick a teammate or type email…"
                       />
                     ) : (
-                      <Input value={bcc} onChange={setBcc} placeholder="bcc@example.com" />
+                      <Input value={bcc} onChange={setBcc} />
                     )}
                   </Row>
                 </>
@@ -894,7 +891,6 @@ export function EmailComposer({
               ref={subjectRef}
               type="text"
               value={subject}
-              placeholder="Subject"
               onChange={(e) => setSubject(e.target.value)}
               onFocus={(e) => {
                 setLastFocus("subject");

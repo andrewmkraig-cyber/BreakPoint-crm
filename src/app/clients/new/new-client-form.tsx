@@ -402,7 +402,6 @@ export function NewClientForm() {
               label="Title"
               value={form.primaryContact.title}
               onChange={(v) => setForm({ ...form, primaryContact: { ...form.primaryContact, title: v } })}
-              placeholder="Director of Talent"
             />
             <Field
               label="Email"
