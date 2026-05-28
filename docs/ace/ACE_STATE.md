@@ -1,8 +1,37 @@
 # ACE_STATE.md
-Last updated: 2026-05-27 · Ace 67.18
-Current Version: Ace 67.18
-Last Shipped: 2026-05-27
+Last updated: 2026-05-28 · Ace 67.19
+Current Version: Ace 67.19
+Last Shipped: 2026-05-28
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.19 (2026-05-28)
+
+Batch 6 — Cancel Placement. Step-0 grep flipped the brief's data-model premise before any edit landed: there is no `PlacementStatus` enum in `prisma/schema.prisma` (Placement.stage is a free-string column), `cancelPlacement` already existed at `src/app/candidates/[id]/placement-actions.ts:965` with a tenant-scope hole and narrow revalidation, and `/placements` is not a real route (only `revalidatePlacementSurfaces` keeps trying to revalidate it). Decisions confirmed before code: keep string `"cancelled"` on `stage` (matches every existing call site — no migration), harden the existing action in place, land the toggle on `/pipeline`, sweep only the queries that don't already whitelist active stages, and unblock cancelled candidates in the Game Plan matched-rows guards.
+
+- **`cancelPlacement` hardened in place** (`src/app/candidates/[id]/placement-actions.ts`). The lookup now does `findFirst({ where: { id, organizationId: org.id } })` so a stray cuid from another tenant returns "Placement not found." (Rule 8 fix). Revalidation swapped from the old `revalidatePath('/candidates/{rfId}') + revalidatePath('/pipeline')` pair to `revalidatePlacementSurfaces(input.placementId, org.id)` so cancel busts `/dashboard`, `/placements`, `/pipeline`, `/finances`, plus the specific candidate + client pages (placements ledger, scoreboard KPIs, placement map, guarantee period table, financial performance tab — every surface a placement edit can move).
+
+- **`getPlacementsForOrg` default-excludes cancelled rows** (`src/lib/placements.ts`). New `includeCancelled?: boolean` opt (default false). When `stages` is passed the caller is explicit and we respect it; otherwise we AND `stage: { not: "cancelled" }` onto the where clause. Three callers opt back in: `/candidates/[id]` and `/local-profile` keep cancelled rows visible so the candidate profile keeps rendering the cancellation history pill; `/pipeline` opts in so the Show Cancelled toggle has rows to show.
+
+- **Query sweep — 8 surfaces gained explicit cancelled filters.** `src/app/clients/page.tsx` (per-client groupBy), `src/app/clients/[id]/page.tsx` (counts.hired strip + per-job row counters), `src/app/dashboard/my-dashboard.tsx` (Offers Extended + Placements Made KPIs), `src/app/dashboard/goal-pacing.tsx` (YTD placements count), `src/app/api/dashboard/placement-drilldown/route.ts` (cash_collected, client, and role branches), `src/app/api/jobs/search-candidates/route.ts` (re-applicability — cancelled candidates can be re-applied to the same job), `src/app/api/game-plan/find-matches/route.ts` + `src/app/api/game-plan/matched-candidates/route.ts` (cancelled candidates are eligible for re-sourcing). Surfaces that already whitelist active stages via `stage: { in: [...] }` (`src/lib/placements-dashboard.ts`, `src/app/dashboard/scoreboard-data.ts`, `src/app/dashboard/financial-performance-tab.tsx`, `src/lib/billing-events.ts`) needed no edit — they already exclude cancelled implicitly.
+
+- **`/pipeline` Show Cancelled toggle** (`src/app/pipeline/page.tsx`, `src/app/pipeline/pipeline-view.tsx`). Local UI state (not URL-persisted). Adds `cancelled` to the Stage type + STAGE_ORDER so the strip can address a Cancelled tab. The tab is hidden by default; the checkbox next to the OwnerScopeSelect lights it up. When the recruiter is currently on `?stage=cancelled` and turns the toggle off, the page routes them back to `?stage=submitted` so the strip never strands them. `counts.cancelled` is computed from `scopedRows` (after owner-scope filter) so the badge respects Mine / Theirs / All consistently with the other stages.
+
+- **Cancel placement button in Edit Placement modal** (`src/app/candidates/[id]/local-placement-rows.tsx`). Ace-native path only — placement-flows.tsx's RF cancel UI was unreachable per the dual-file rule. Button sits below the Notes textarea, red outlined `rounded-md` (explicitly not `rounded-full`), shown only when `editing && !job.placementId.startsWith('local-applied-')` so a fresh Make Placement can't cancel a non-existent row. Click fires `window.confirm("Cancel this placement? This cannot be undone.")` then `cancelPlacement({ placementId, reason: 'other', detail: '' })`. Success toast points the recruiter at the Show Cancelled toggle for re-finding the row. Independent `useTransition` from Save so the destructive button can't fire concurrently.
+
+Touches (12 source files): `src/app/candidates/[id]/placement-actions.ts`, `src/lib/placements.ts`, `src/app/candidates/[id]/page.tsx`, `src/app/candidates/[id]/local-profile.tsx`, `src/app/clients/page.tsx`, `src/app/clients/[id]/page.tsx`, `src/app/dashboard/my-dashboard.tsx`, `src/app/dashboard/goal-pacing.tsx`, `src/app/api/dashboard/placement-drilldown/route.ts`, `src/app/api/jobs/search-candidates/route.ts`, `src/app/api/game-plan/find-matches/route.ts`, `src/app/api/game-plan/matched-candidates/route.ts`, `src/app/pipeline/page.tsx`, `src/app/pipeline/pipeline-view.tsx`, `src/app/candidates/[id]/local-placement-rows.tsx`.
+
+Build clean (`npm run build` exits 0; only the two pre-existing react-hooks/exhaustive-deps warnings, unrelated).
+
+Andrew browser-verify (after deploy):
+1. Open a Hired or Pending Start placement → Edit Placement → confirm a red "Cancel placement" button is visible at the bottom. Click → confirm dialog → OK → toast confirms cancellation. Row disappears from the placements ledger, dashboard KPIs, placement map, guarantee period table, client overview hired count, and the Hired pipeline tab.
+2. On `/pipeline`, check the "Show Cancelled" checkbox above the search bar → a Cancelled tab appears at the right end of the strip with the cancelled row's count. Click into it → the cancelled row renders there. Uncheck the toggle while on the Cancelled tab → routed back to Submitted, Cancelled tab hidden.
+3. Re-apply the cancelled candidate to the same job from the candidate profile → succeeds (search-candidates no longer treats the cancelled row as an active block). On the Game Plan matched-candidates view, the cancelled candidate is eligible to be re-sourced for the same job.
+
+Regression check:
+- Tenant-scope: every new query is scoped by `organizationId` (Rule 8). `cancelPlacement` lookup converted from `findUnique({ id })` to `findFirst({ id, organizationId })`.
+- Active-stage surfaces (placements ledger, scoreboard, financial performance, billing events) needed no edit — already filter via stage IN.
+- `/pipeline` performance: `getPlacementsForOrg({ includeCancelled: true })` returns the same row count as before (the helper used to include everything by default); the in-loop cancel handling is the only logic change.
+- candidate profile: cancellation reason / detail still renders against cancelled rows via `cancelReasonByPlacement` (line 448) — both `/candidates/[id]/page.tsx` and `/local-profile.tsx` opt back into cancelled rows.
 
 ## What Shipped in Ace 67.18 (2026-05-27)
 

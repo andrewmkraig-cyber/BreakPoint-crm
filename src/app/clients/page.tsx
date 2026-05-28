@@ -53,7 +53,16 @@ export default async function ClientsPage({
     // safety net here in case any new ones land).
     const placementGroups = await prisma.placement.groupBy({
       by: ["clientId", "stage"],
-      where: { organizationId: org.id, clientId: { not: null } },
+      where: {
+        organizationId: org.id,
+        clientId: { not: null },
+        // Cancelled rows are dropped by the canonicalStage switch below
+        // (default: break), so they don't affect counts today — but
+        // filtering at the DB layer keeps the wire payload smaller and
+        // makes the intent explicit. Mirrors the same pattern applied
+        // to the per-client groupBy in clients/[id]/page.tsx.
+        stage: { not: "cancelled" },
+      },
       _count: { _all: true },
     });
     const counts = new Map<string, JobPipelineCounts>();

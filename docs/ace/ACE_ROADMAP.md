@@ -1,15 +1,19 @@
 # Ace Roadmap
-Last updated: 2026-05-27 · Ace 67.18
+Last updated: 2026-05-28 · Ace 67.19
 
 ## Active Build Sequence
 
 ### Next Up (after test-run fix session)
 
 1. **Batch 5 - metric refresh.** Ethan placement edit not propagating to Momentum / Recent Deal Moves. Jennifer <=14d Offer-to-Start count stuck at 0 after same-day start. Likely revalidatePath gap on edit/confirm actions.
-2. **Batch 6 - Cancel Placement.** Cancel button on Edit Placement screen (LocalPlacementDialog / Edit Placement drawer). Soft-delete: status = CANCELLED, row preserved. Filtered from all live metrics, tables, map, pipeline by default. "Show cancelled" toggle on Placements page. Cascade removes candidate's impact from all downstream surfaces.
+2. ~~**Batch 6 - Cancel Placement.**~~ Shipped Ace 67.19 (2026-05-28). Kept string `"cancelled"` on Placement.stage (no enum existed; lowercase value already in widespread use). Hardened the existing `cancelPlacement` action in place — added organizationId scope on the lookup, swapped narrow revalidatePath calls for `revalidatePlacementSurfaces`. `getPlacementsForOrg` default-excludes cancelled rows; candidate-profile + pipeline callers opt back in. Eight surfaces gained explicit `stage: { not: "cancelled" }` filters (clients list + detail, my-dashboard KPIs, goal-pacing YTD count, placement-drilldown branches, jobs/search-candidates re-applicability, both game-plan placed-row guards). Show Cancelled toggle on `/pipeline` is local UI state; Cancelled tab appears at the right end of the strip with respected owner-scope count. Cancel button is red-outlined rounded-md at the bottom of LocalPlacementDialog (Ace-native path only), guarded so a fresh Make Placement can't fire it.
 3. **Batch 7 - UI polish.** Interview Scheduler: Type field moves to same line as Duration, dropdown tightened. Placements page: Guarantee Period row height grows to match All Placements This Quarter.
 4. **Batch 8a - Diagnose interview attendee hydration.** Clicking existing interview shows "No guests" instead of attendee list. Attendee info ends up in Notes as plain text. Diagnose-only prompt first.
 5. **Batch 8b - Fix interview attendee hydration.** Written after 8a diagnosis.
+
+### Cancel Placement follow-ups (open after 67.19)
+- Reason picker: the Cancel button currently fires `cancelPlacement({ reason: 'other', detail: '' })`. The action accepts `candidate_resigned | client_terminated | failed_background_check | other`. If the cancellation reason ever needs to drive analytics or audit logs (it's already stored), promote it to a small dropdown inside the confirmation dialog.
+- `/placements` route still doesn't exist. `revalidatePlacementSurfaces` revalidates the path optimistically (404 today). Scaffolding the route would land a dedicated placements ledger separate from `/pipeline`.
 
 ## Queued From Session
 Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.

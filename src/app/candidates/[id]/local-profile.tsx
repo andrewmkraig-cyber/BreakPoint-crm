@@ -103,7 +103,10 @@ export async function LocalCandidateProfile({
     // row — the local-profile renderer reads jobRfId, jobId, clientRfId,
     // clientId, stage, updatedAt off each row so no select projection
     // was load-bearing.
-    getPlacementsForOrg({ candidateId: id }),
+    // Include cancelled rows so the Ace-native profile still surfaces
+    // cancelled placements in the candidate's history strip (mirrors
+    // the candidates/[id] page above).
+    getPlacementsForOrg({ candidateId: id, includeCancelled: true }),
     getInterviewsForOrg({ candidateId: id }),
     // Populates the Submit/Apply dropdowns with existing open jobs.
     // Reads are served from Neon (the Phase 0 import populated Job/

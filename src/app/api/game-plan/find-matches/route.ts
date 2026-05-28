@@ -255,7 +255,17 @@ export async function POST(req: NextRequest) {
   const targetJobId = target.jobs[0]?.id;
   if (targetJobId) {
     const placedRows = await prisma.placement.findMany({
-      where: { jobId: targetJobId, organizationId: org.id },
+      // Game Plan placed-row exclusion — cancelled placements are
+      // intentionally excluded so a cancelled candidate becomes
+      // eligible to be re-sourced for the same job. Per the cancel-
+      // placement product call (decided alongside the /pipeline
+      // toggle): cancellation should not permanently lock a candidate
+      // out of future matches.
+      where: {
+        jobId: targetJobId,
+        organizationId: org.id,
+        stage: { not: "cancelled" },
+      },
       select: { candidateId: true },
     });
     for (const p of placedRows) {

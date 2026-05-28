@@ -219,7 +219,16 @@ export default async function ClientDetailPage({
   // groupBy here filters by Neon clientId cuid + organizationId (Rule 8).
   const placementGroups = await prisma.placement.groupBy({
     by: ["stage"],
-    where: { clientId: client.id, organizationId: client.organizationId },
+    where: {
+      clientId: client.id,
+      organizationId: client.organizationId,
+      // Drives the Hired stat strip (counts.hired). Cancelled rows
+      // would otherwise still be grouped (the JS-side canonicalStage
+      // switch ignores them via the default branch), but excluding at
+      // the DB layer guarantees counts.hired never reflects a cancelled
+      // placement and matches the user-visible "hired" definition.
+      stage: { not: "cancelled" },
+    },
     _count: { _all: true },
   });
   const counts = emptyJobCounts();
@@ -261,6 +270,10 @@ export default async function ClientDetailPage({
       clientId: client.id,
       organizationId: client.organizationId,
       jobRfId: { not: null },
+      // Same rationale as the per-client groupBy above: cancelled rows
+      // would be silently dropped by the JS switch but cleaner to
+      // exclude here so the per-job row counters never reflect them.
+      stage: { not: "cancelled" },
     },
     _count: { _all: true },
   });

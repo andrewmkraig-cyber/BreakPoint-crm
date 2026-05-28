@@ -36,7 +36,11 @@ export const dynamic = "force-dynamic";
 // through it (Applicants → Kept → Submitted → ...). The two intake
 // stages keep their own row shapes / actions; the main pipeline stages
 // still drive PipelineRow.
-type Stage = "applied" | "kept" | keyof typeof PIPELINE_LABELS;
+// "cancelled" is included alongside the main pipeline stages so the Show
+// Cancelled toggle in PipelineView can switch into a dedicated tab — its
+// visibility in the StageTabs strip is gated client-side, but a direct
+// /pipeline?stage=cancelled deep-link is still accepted server-side.
+type Stage = "applied" | "kept" | "cancelled" | keyof typeof PIPELINE_LABELS;
 const STAGES: Stage[] = [
   "applied",
   "kept",
@@ -45,6 +49,7 @@ const STAGES: Stage[] = [
   "offer",
   "pending_start",
   "hired",
+  "cancelled",
 ];
 
 // Owner scope for the Mine / <Name>'s / All filter (Step 4). Default is
@@ -102,6 +107,10 @@ export default async function PipelinePage({
     offer: 0,
     pending_start: 0,
     hired: 0,
+    // Always populated so the Cancelled tab can show its count the moment
+    // the recruiter toggles Show Cancelled on. Server-side build cost is
+    // small (one cheap stage match in the existing loop).
+    cancelled: 0,
   };
   let error: string | null = null;
 
@@ -119,7 +128,10 @@ export default async function PipelinePage({
     const [candidates, allJobs, placements, allPlacementsWithJob, interviews, clients, org, currentUserId, jobOverrides] = await Promise.all([
       getRfCandidatesForOrg(),
       getRfJobsForOrg(),
-      getPlacementsForOrg(),
+      // includeCancelled:true so the Cancelled tab can render when the
+      // recruiter toggles it on. The existing in-loop continue still
+      // drops cancelled rows from every other tab.
+      getPlacementsForOrg({ includeCancelled: true }),
       // Mirror of getPlacementsForOrg but pulls in the Job relation
       // so the Applied/Kept assembly can resolve Ace-native job titles
       // (those carry jobRfId=null, so the RF-jobs map can't find them).
@@ -268,8 +280,13 @@ export default async function PipelinePage({
     const allRows: (PipelineRow & { clientOwnerId: string | null })[] = [];
 
     for (const p of placements) {
-      // Cancelled placements are excluded from the pipeline view entirely.
-      if (p.stage === "cancelled") continue;
+      // Cancelled placements flow through the same path as every other
+      // stage now — they end up in `allRows` and `scopedRows` so the
+      // downstream owner-scope filter (line 399) and the counts loop
+      // (line 405) handle them consistently. `rows = scopedRows.filter
+      // (r => r.bucket === stage)` only emits cancelled rows into the
+      // active view when the recruiter is on the Cancelled tab, so the
+      // "hidden from main pipeline" behavior is preserved.
       // Applied / Kept / Rejected handled by the dedicated assembly
       // below — skip here so they don't double up in the main pipeline.
       if (p.stage === "applied" || p.stage === "kept" || p.stage === "rejected") continue;
@@ -321,7 +338,10 @@ export default async function PipelinePage({
         jobId,
         jobTitle,
         clientName,
-        stageName: PIPELINE_LABELS[stageName] ?? p.stage,
+        // Capitalize the fallback so the Cancelled tab renders "Cancelled"
+        // rather than the raw lowercase stage string. PIPELINE_LABELS only
+        // covers the active pipeline stages by design.
+        stageName: PIPELINE_LABELS[stageName] ?? (p.stage === "cancelled" ? "Cancelled" : p.stage),
         bucket: stageName,
         lastActionAt: p.updatedAt.toISOString(),
         daysInStage: daysBetween(p.updatedAt.toISOString()),

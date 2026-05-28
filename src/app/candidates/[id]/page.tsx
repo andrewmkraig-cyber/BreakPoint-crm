@@ -158,7 +158,11 @@ export default async function CandidateProfilePage({
     // scheduledAt asc (interviews) with no projection trimming — the
     // downstream renderers index into the full Placement / Interview
     // shapes.
-    getPlacementsForOrg({ candidateId: candidate.id }),
+    // Cancelled rows are needed here so the profile renders the
+    // "Cancelled" pill + reason/detail on past placements (see lines
+    // 448-450 below). includeCancelled:true opts back in to the rows
+    // the helper now filters out by default.
+    getPlacementsForOrg({ candidateId: candidate.id, includeCancelled: true }),
     getInterviewsForOrg({ candidateId: candidate.id }),
     // Phase 5A.5.a: candidate can carry N resume versions. Fetch all
     // of them sorted newest-first so the version dropdown is driven

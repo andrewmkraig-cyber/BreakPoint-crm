@@ -100,9 +100,13 @@ export async function getGoalPacingData(
       select: BILLING_EVENT_PLACEMENT_SELECT,
     }),
     prisma.placement.count({
+      // YTD Placements counter for Goal Pacing — cancelled placements
+      // are dropped so the count matches the booked-revenue ledger
+      // assembled above (which already whitelists pending_start/hired).
       where: {
         organizationId,
         placedAt: { gte: yearStart, lt: yearEnd },
+        stage: { not: "cancelled" },
       },
     }),
   ]);

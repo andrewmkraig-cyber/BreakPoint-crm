@@ -30,6 +30,14 @@ export type PlacementsForOrgOpts = {
   clientIdentifier?: number | string;
   // Stage filter. ["kept","rejected",...] — implemented as `IN` when set.
   stages?: PlacementStage[];
+  // Cancelled placements are excluded by default from every surface that
+  // computes metrics, tables, maps, dashboards, or guarantee-period rows.
+  // Callers that need cancelled rows visible (the /pipeline Show
+  // Cancelled toggle, the candidate profile cancellation history, the
+  // local-profile cancel ledger) opt in explicitly. When `stages` is
+  // provided the caller is being explicit about which stages they want;
+  // we respect that list and skip the implicit cancelled exclusion.
+  includeCancelled?: boolean;
 };
 
 // Lists Placements for the signed-in tenant. All reads scope by
@@ -60,6 +68,11 @@ export async function getPlacementsForOrg(
   }
   if (opts.stages && opts.stages.length > 0) {
     where.stage = { in: opts.stages };
+  } else if (!opts.includeCancelled) {
+    // Default-exclude cancelled. Pipeline / dashboards / metrics callers
+    // get the implicit filter; the candidate-profile and pipeline-toggle
+    // callers pass includeCancelled:true to opt back in.
+    where.stage = { not: "cancelled" };
   }
 
   return prisma.placement.findMany({ where });

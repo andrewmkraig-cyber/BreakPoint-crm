@@ -23,6 +23,7 @@ import { buildFullMergeValues } from "@/lib/merge-context";
 import { getAppPreferences } from "@/lib/preferences";
 import { fireTemplatedEmail, type FireResult } from "@/lib/templated-email";
 import { fireTriggerAndLog } from "@/lib/trigger-fire";
+import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
 import { extractCandidateFields } from "@/lib/candidate-fields";
 import { formatLocation } from "@/lib/utils";
 import { formatCompensation, type RFJob } from "@/lib/rf-payload-shapes";
@@ -966,10 +967,15 @@ export async function cancelPlacement(input: CancelPlacementInput): Promise<Resu
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   if (!VALID_CANCEL_REASON.has(input.reason)) return { ok: false, error: "Invalid cancellation reason." };
+  const org = await getCurrentOrg();
+  if (!org) return { ok: false, error: "No organization context." };
 
   try {
-    const existing = await prisma.placement.findUnique({
-      where: { id: input.placementId },
+    // Rule 8: org-scoped lookup so a stray placementId from another tenant
+    // can't probe candidate / client ids out of this org. findFirst (not
+    // findUnique) because we need to AND organizationId onto the lookup.
+    const existing = await prisma.placement.findFirst({
+      where: { id: input.placementId, organizationId: org.id },
       select: { candidateRfId: true, jobRfId: true, clientRfId: true },
     });
     if (!existing) return { ok: false, error: "Placement not found." };
@@ -997,8 +1003,11 @@ export async function cancelPlacement(input: CancelPlacementInput): Promise<Resu
       },
     });
 
-    revalidatePath(`/candidates/${existing.candidateRfId}`);
-    revalidatePath(`/pipeline`);
+    // Bust every server-rendered surface a cancel affects: dashboard
+    // metrics, placements ledger, pipeline tabs, finances cash forecast,
+    // and the specific candidate / client pages. Replaces the old narrow
+    // revalidatePath('/pipeline') + candidate-page only.
+    await revalidatePlacementSurfaces(input.placementId, org.id);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to cancel placement." };

@@ -24,7 +24,14 @@ export async function GET(req: NextRequest) {
   // the same filter the /jobs/[id] server fetch uses on initial
   // render so refetches stay consistent.
   const placedRows = await prisma.placement.findMany({
-    where: { jobId, organizationId: org.id },
+    // Matched-candidates exclusion mirrors find-matches above: cancelled
+    // placements do NOT block the candidate from re-appearing in the
+    // Matched tab. A cancelled candidate is eligible to be re-sourced.
+    where: {
+      jobId,
+      organizationId: org.id,
+      stage: { not: "cancelled" },
+    },
     select: { candidateId: true },
   });
   const placedCandidateIds = Array.from(

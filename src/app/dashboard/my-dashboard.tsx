@@ -67,10 +67,21 @@ export async function MyDashboard({
       where: { organizationId: org.id, createdAt: { gte: activityStart, lt: activityEnd } },
     }),
     prisma.placement.count({
-      where: { organizationId: org.id, offerReceivedAt: { gte: activityStart, lt: activityEnd } },
+      // Offers Extended KPI — cancelled placements shouldn't pad the
+      // counter even if the offer was originally received in-window.
+      where: {
+        organizationId: org.id,
+        offerReceivedAt: { gte: activityStart, lt: activityEnd },
+        stage: { not: "cancelled" },
+      },
     }),
     prisma.placement.count({
-      where: { organizationId: org.id, placedAt: { gte: activityStart, lt: activityEnd } },
+      // Placements Made KPI — same exclusion rationale.
+      where: {
+        organizationId: org.id,
+        placedAt: { gte: activityStart, lt: activityEnd },
+        stage: { not: "cancelled" },
+      },
     }),
     prisma.clientAgreement.count({
       where: { organizationId: org.id, uploadedAt: { gte: activityStart, lt: activityEnd } },

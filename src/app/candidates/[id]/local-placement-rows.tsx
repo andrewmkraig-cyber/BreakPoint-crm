@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState, useTransition, type ReactNode } fro
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  AlertTriangle,
   Briefcase,
   CalendarClock,
   CheckCircle2,
@@ -23,6 +24,11 @@ import {
   recordLocalPlacement,
   rejectLocalPlacement,
 } from "@/app/candidates/[id]/local-placement-actions";
+// cancelPlacement still lives on the legacy placement-actions module (it
+// was hardened in place — added org-scope lookup + revalidatePlacementSurfaces
+// — rather than duplicated onto the Ace-native module). The Cancel button
+// in LocalPlacementDialog imports from here.
+import { cancelPlacement } from "@/app/candidates/[id]/placement-actions";
 import { DismissPlacementButton } from "@/app/candidates/[id]/dismiss-placement-button";
 import { toast } from "sonner";
 import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
@@ -1444,6 +1450,10 @@ function LocalPlacementDialog({
   const [source, setSource] = useState(snap?.candidateSource ?? "");
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
+  // Cancel-placement state. Independent of `isPending` (Save) so the user
+  // can't fire both. Pending lights the spinner on the destructive button
+  // while the cancelPlacement server action runs.
+  const [cancelPending, startCancel] = useTransition();
 
   const salaryNum = parseAmount(acceptedSalary);
   const pctNum = parseFloat(feePct) || 0;
@@ -1504,6 +1514,42 @@ function LocalPlacementDialog({
   }
 
   const editing = job.stage === "pending_start" || job.stage === "hired";
+  // The Cancel button is only meaningful once the placement exists in the
+  // DB. Fresh "Make Placement" opens carry job.placementId starting with
+  // "local-applied-" (a synthetic id used before the row is saved); we
+  // gate on that so cancellation can only target a real cuid. This
+  // mirrors the same guard the DismissPlacementButton uses elsewhere in
+  // this file (~line 885).
+  const canCancel = editing && !job.placementId.startsWith("local-applied-");
+
+  function onCancelPlacement() {
+    // Plain window.confirm satisfies the spec ("Cancel this placement?
+    // This cannot be undone."). Keeps the path simple — no extra modal,
+    // no reason picker. The server action accepts reason="other" with
+    // empty detail and logs the cancellation either way.
+    if (typeof window === "undefined") return;
+    const ok = window.confirm("Cancel this placement? This cannot be undone.");
+    if (!ok) return;
+    setErr(null);
+    startCancel(async () => {
+      const result = await cancelPlacement({
+        placementId: job.placementId,
+        reason: "other",
+        detail: "",
+      });
+      if (!result.ok) {
+        setErr(result.error);
+        toast.error("Couldn't cancel placement", { description: result.error });
+        return;
+      }
+      toast.success("Placement cancelled", {
+        description: "Hidden from dashboards, map, and pipeline. Toggle Show Cancelled in /pipeline to re-find it.",
+      });
+      onSaved();
+      onClose();
+      router.refresh();
+    });
+  }
 
   return (
     <ModalShell
@@ -1667,6 +1713,31 @@ function LocalPlacementDialog({
         />
       </label>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
+      {/* Cancel Placement — destructive action sits at the bottom of the
+          body so the Footer's primary Save action stays unambiguous.
+          Visible only after the placement row exists (canCancel). Red
+          outlined rounded-md per spec; explicitly NOT rounded-full so the
+          shape reads "danger button" not "pill". */}
+      {canCancel && (
+        <div className="mt-4 border-t border-court-border/40 pt-3">
+          <button
+            type="button"
+            onClick={onCancelPlacement}
+            disabled={cancelPending || isPending}
+            className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-red-50/50 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
+          >
+            {cancelPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <AlertTriangle className="h-3 w-3" />
+            )}
+            Cancel placement
+          </button>
+          <p className="mt-1 text-[11px] text-court-fg-muted">
+            Hides this row from dashboards, the placement map, the guarantee period table, and the client hired count. Reversible only by toggling Show Cancelled on /pipeline.
+          </p>
+        </div>
+      )}
     </ModalShell>
   );
 }

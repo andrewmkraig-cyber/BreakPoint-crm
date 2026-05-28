@@ -101,6 +101,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       organizationId: org.id,
       OR: placementOr,
       candidateId: { in: candidates.map((c) => c.id) },
+      // Cancelled placements no longer block the candidate from being
+      // re-surfaced in candidate search — same product call as the
+      // game-plan placed-row exclusion. A candidate whose only row on
+      // this job was cancelled should be eligible for re-apply.
+      stage: { not: "cancelled" },
     },
     select: { candidateId: true, candidateRfId: true },
   });

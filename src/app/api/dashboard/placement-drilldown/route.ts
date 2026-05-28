@@ -326,7 +326,15 @@ async function fetchPlacements(args: FetchArgs): Promise<PlacementRow[]> {
     );
     if (placementIds.length === 0) return [];
     return prisma.placement.findMany({
-      where: { organizationId: orgId, id: { in: placementIds } },
+      // Cash-collected drilldown — the parent placements behind paid
+      // invoices in the window. Cancelled placements are excluded so
+      // their pre-cancel paid invoices don't surface as "collected
+      // revenue" in the drilldown popup.
+      where: {
+        organizationId: orgId,
+        id: { in: placementIds },
+        stage: { not: "cancelled" },
+      },
       select: PLACEMENT_SELECT,
     });
   }
@@ -338,6 +346,9 @@ async function fetchPlacements(args: FetchArgs): Promise<PlacementRow[]> {
         organizationId: orgId,
         clientId: id ?? "",
         placedAt: { gte: start, lt: endExclusive },
+        // Top Clients drilldown — closed deals only, cancelled rows
+        // dropped so the popup matches the Scoreboard tile.
+        stage: { not: "cancelled" },
       },
       select: PLACEMENT_SELECT,
     });
@@ -352,6 +363,9 @@ async function fetchPlacements(args: FetchArgs): Promise<PlacementRow[]> {
     where: {
       organizationId: orgId,
       placedAt: { gte: start, lt: endExclusive },
+      // Top Roles drilldown — closed deals only, same exclusion as
+      // the Top Clients branch above.
+      stage: { not: "cancelled" },
     },
     select: PLACEMENT_SELECT,
   });

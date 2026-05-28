@@ -43,11 +43,15 @@ import { resolveGuaranteeEnd } from "@/components/placements/guarantee-period-ut
 // excludes applied/kept on purpose to keep counters that aren't pipeline-
 // progression-aware honest), so a local label override carries the
 // intake-stage labels.
-type Stage = "applied" | "kept" | keyof typeof PIPELINE_LABELS;
+// "cancelled" is a terminal stage gated behind the Show Cancelled toggle;
+// it's part of Stage so counts/tabs can address it, but only renders in
+// the StageTabs strip when the recruiter opts in.
+type Stage = "applied" | "kept" | "cancelled" | keyof typeof PIPELINE_LABELS;
 
 const STAGE_LABEL: Record<Stage, string> = {
   applied: "Applicants",
   kept: "Kept",
+  cancelled: "Cancelled",
   ...PIPELINE_LABELS,
 };
 
@@ -174,6 +178,10 @@ const STAGE_ORDER: Stage[] = [
   "offer",
   "pending_start",
   "hired",
+  // Always last so the Cancelled tab sits at the end of the strip when
+  // visible (it's a terminal, audit-only view — not part of the active
+  // progression). Hidden by default; see `showCancelled` state below.
+  "cancelled",
 ];
 
 // Stages where per-row Reject (and therefore bulk Reject) is offered.
@@ -225,6 +233,18 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
   const params = useSearchParams();
   const [query, setQuery] = useState(q);
   const [, startTransition] = useTransition();
+
+  // Show Cancelled toggle — local UI state per the decision tree, not URL
+  // persisted. Default off so the Cancelled tab stays hidden until the
+  // recruiter explicitly opts in. When the active `stage` is "cancelled"
+  // (deep link or just-toggled), the StageTabs strip force-shows the tab
+  // regardless of this flag so the recruiter can navigate back out.
+  const [showCancelled, setShowCancelled] = useState(stage === "cancelled");
+  useEffect(() => {
+    // Keep the toggle in sync with deep-links: if the page lands directly
+    // on the Cancelled tab, light the toggle up so the strip stays put.
+    if (stage === "cancelled" && !showCancelled) setShowCancelled(true);
+  }, [stage, showCancelled]);
 
   useEffect(() => {
     setQuery(q);
@@ -419,8 +439,29 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
   return (
     <div className="space-y-4">
       <div className="flex flex-col items-start gap-3 md:flex-row md:items-center">
-        <StageTabs stage={stage} counts={counts} buildHref={buildHref} />
-        <div className="md:ml-auto">
+        <StageTabs stage={stage} counts={counts} buildHref={buildHref} showCancelled={showCancelled} />
+        <div className="md:ml-auto flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-court-fg-muted">
+            <input
+              type="checkbox"
+              checked={showCancelled}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setShowCancelled(next);
+                // If the recruiter turns the toggle off while viewing the
+                // Cancelled tab, route them back to Submitted so the strip
+                // isn't pointing at a hidden tab. Other stages survive the
+                // toggle change untouched.
+                if (!next && stage === "cancelled") {
+                  startTransition(() => {
+                    router.push(buildHref({ stage: "submitted" }));
+                  });
+                }
+              }}
+              className="h-3.5 w-3.5 rounded border-court-border accent-court-brand"
+            />
+            Show Cancelled
+          </label>
           <OwnerScopeSelect
             scope={owner}
             otherName={otherUserName}
@@ -976,16 +1017,25 @@ function StageTabs({
   stage,
   counts,
   buildHref,
+  showCancelled,
 }: {
   stage: Stage;
   counts: Record<Stage, number>;
   buildHref: (overrides: Record<string, string | number | undefined>) => string;
+  // When false, the "Cancelled" tab is omitted from the strip. The active
+  // stage is still respected — if the recruiter is currently viewing
+  // ?stage=cancelled (e.g. a deep-link) the tab is force-shown so the
+  // strip can't strand them on a stage with no visible tab.
+  showCancelled: boolean;
 }) {
+  const visibleStages = STAGE_ORDER.filter(
+    (s) => s !== "cancelled" || showCancelled || stage === "cancelled",
+  );
   return (
     <TabStrip<Stage>
       ariaLabel="Pipeline stage"
       activeId={stage}
-      items={STAGE_ORDER.map((s) => ({
+      items={visibleStages.map((s) => ({
         id: s,
         label: STAGE_LABEL[s],
         count: counts[s],
