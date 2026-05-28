@@ -436,6 +436,55 @@ A full UI-polish session: the input field treatment pass landed the `court-input
 
 Next task: TBD - opens with Andrew's live verification of this session's UI passes in BOTH light and dark mode across the Court themes.
 
+## What Shipped in Session (2026-05-27) - Test Run Fix List
+
+Andrew and Austin ran a live test session and flagged 18 items. This session closed Batches 1-4b.
+
+- **Offer popup constraints**: no negative salary or fee %, USD hardcoded as static label (column still writes "USD"), currency dropdown removed. Both OfferDialog instances (RF + Ace-native).
+- **Offer modal: closes only on X** (`dismissOnOverlay={false}` + Escape blocked). New `dismissOnOverlay` prop on `Modal`/`ModalShell`, default `true` so 11 other modal consumers keep existing behavior.
+- **Offer modal: numeric placeholder values removed** (replaced with text placeholders). USD rendered as inert chrome (`pointer-events-none`, `select-none`).
+- **Offer modal: draggable by header, resizable from bottom-right corner** (480x400 min, 90vw x 90vh max). Clean pointer-event release via `setPointerCapture` / `releasePointerCapture`. Opt-in via `draggable` / `resizable` props on `Modal` / `ModalShell`, default `false`.
+- **Offer modal fee % auto-fill**: existing seed at `placement-flows.tsx:1197` (`job.placement?.feePercentage ?? job.clientFeePct ?? null`) verified tenant-scoped. `Client.feePct` backfilled from `raw.custom_fields` for RF-imported clients (`scripts/backfill-client-feepct.ts`). `candidates/[id]/page.tsx` now falls back to `extractFeePct(customFields)` when `client.feePct` is null. Ace-native OfferDialog and LocalPlacementDialog both wired to `snap?.feePercentage ?? job?.clientFeePct ?? null`.
+- **Edit Offer button**: added to pipeline offer-stage rows in `pipeline-view.tsx` (grayish neutral outlined, `rounded-md`). Deep-links to `/candidates/<id>?edit=offer&jobId=NN`. Also on candidate profile job pill (was already there). Gated to offer stage only.
+- **Pipeline pagination removed**: "Showing X-X of N submittals" footer + Prev/N/Next buttons removed from all pipeline tabs (Applicants, Kept, Submitted, Interviewing, Pending Start, Hired) and `/jobs/[id]/pipeline`. Lists grow downward. Non-pipeline pagination untouched.
+- **Make Placement modal** (`LocalPlacementDialog` in `local-placement-rows.tsx`): `dismissOnOverlay={false}`, Lead Source converted to dropdown sourced from `LEAD_SOURCES` constant (Network/Referral/LinkedIn/Inbound/Indeed/Other), required validation added. Note: earlier ships (67.12, 67.15) accidentally edited the wrong file (`placement-flows.tsx` RF path). 67.17 fixed on the correct file. Dual-file trap lesson added as architecture non-negotiable 14.
+- **Invoice flow**: new `revalidateInvoiceSurfaces(id, orgId)` helper invalidates `/invoices`, `/invoices/[id]`, `/dashboard`, `/pipeline`, `/finances`, `/candidates/[id]`, `/clients/[id]` on `markInvoiceSentAction`, `markInvoicePaidAction`, `markInvoiceVoidAction`. New `INVOICE_DRAFT` billing status (`deriveBillingStatus` maps DRAFT -> INVOICE_DRAFT). BILLED + INVOICED display as "Invoice Sent". INVOICE_DRAFT displays as "Invoice Draft" (slate chip). Pipeline `InvoiceStatusPill` left unchanged (separate surface). Guarantee-period table now includes INVOICE_DRAFT rows.
+- **Invoice send regression fix**: `handleEmailDraft` in `invoice-detail.tsx` now passes `onSent` callback to `composer.open()` so Gmail composer send flips `Invoice.status` DRAFT->SENT in Neon and fires revalidation. Previously the composer sent the email but never updated the DB.
+- **Post-placement disconnect fix** (Jennifer/Sheehan root cause): `Placement.clientId` was null for all 11 RF-imported placements because `getRfJobsForOrg` was gating `_aceClientId` on `legacyRfId == null` (excluded RF-imported clients). Fixed in `src/lib/candidates.ts` - `_aceClientId` now stamped whenever `r.client.id` exists regardless of `legacyRfId`. Backfill script (`scripts/backfill-placement-clientid.ts`) ran live: 11 found, 11 updated. `Springfield, OH` added to `CITY_COORDS` in `placements-map-geo.ts`. `cityFromJob()` fallback added (Job.locationCity -> Job.locations[0]) for RF-imported placements with sparse Client.location.
+
+Next task: Batch 5 - metric refresh. Two items: (1) editing a placement does not trigger Momentum or Recent Deal Moves refresh on the dashboard (Ethan Larocca case), and (2) the Offer-to-Start <=14d count did not update after a same-day placement+start (Jennifer Cole, placed and started 2026-05-27, <=14d still reads 0). Likely a revalidatePath gap on the edit/confirm server actions.
+
+## What Shipped in Ace 67.0-67.1 (pre-test-run session, Newest Ace chat)
+
+Pipeline + candidate profile polish pass.
+
+- **Job pill button sizing**: Apply to Job, Kept, and Add to List buttons resized to match Profile/Game Plan/Notes tab button size. Applied across all candidate profile render paths (full profile, split view, pipeline access, search access).
+- **Extend Offer renamed to "Offer"** everywhere it appears.
+- **Extend Offer gated to INTERVIEWING stage only** (was showing on other stages).
+- **Client Sending Invite button removed** from the Schedule Interview flow.
+- **"Client will send invite" checkbox** now skips the invite email screens and just logs the interview on the calendar/activity log.
+- **Keep button color changed to cyan** (`cyan-50` / `cyan-700` / `cyan-200`) to distinguish from the blue INTERVIEWING badge.
+
+## What Shipped in Ace 66.0 (2026-05-23 to 2026-05-25)
+
+iOS-style input field pass, Liquid Glass floating-surface pass, forms sweep, custom installment invoice automation, and permanent roadmap kills.
+
+- **Input field treatment**: `court-input-frame` / `court-input-control` CSS classes in `globals.css`. Pill shape (`rounded-full`), solid `court-surface-subtle` fill, thin court-brand-tinted border, spring-eased focus-within glow (`color-mix` brand green ring + 4px lift on desktop, no lift on touch). `INPUT_FRAME_CLASS` and `INPUT_CONTROL_CLASS` exported from `src/components/ui/input.tsx`. Applied to: global search bar, SMS composer, Ace Assistant input bar, candidate/job/client forms, settings inputs, editable fields.
+- **Liquid Glass floating-surface pass**: targeted translucency on topbar, modals, dropdowns, panels only (not a full-app conversion).
+- **New Job page restructure** with numbered section badges.
+- **Dark-mode button fixes** across invoice/note/connector/settings buttons.
+- **Candidate split-view Court Mode token migration**.
+- **Storage-event listener for iframe theme re-skin**.
+- **Table header distinction pass**.
+- **Client card shadows + footer removal**.
+- **Uniform settings Save buttons**.
+- **Glass Contact Info panel**.
+- **Connector page mobile polish**: Mercury green Court Mode token fix, connector pop-out visibility fix (`hidden md:flex`), shadow additions.
+- **Service worker v8**: overnight PWA badge self-heal. Re-derives badge on push receipt and on SW activate. `setPointerCapture` / `releasePointerCapture` for clean drag release.
+- **Custom installment invoice automation**: when Confirm Start fires and `useCustomTerms` is true, creates a draft invoice for installment 1 via `createDraftInvoiceAction` and `AceReminder` entries for installments 2 and 3. Both creation paths are idempotent and wrapped in `try/catch`. Success toast updated.
+- **Permanently killed from roadmap**: QuickBooks standalone page, Quo setup wizard, APRO/job order worksheet. Do not bring these back.
+- **ACE_DESIGN.md updated**: input fields get a distinct pill/soft-glass treatment separate from the button standard. Buttons stay `rounded-md`. Inputs are pill-shaped. These are separate standards and not a conflict.
+
 ## What Shipped in Ace 65.0 (2026-05-23)
 
 Button/color standard cleanup closed out (the fix pass the Ace 64.0 audit surfaced), the deferred cleanup queue cleared (branch kill, tenant-scoping, Sentry N+1), and a dark-mode polish pass plus the sidebar profile card token and PWA icon.

@@ -3,61 +3,13 @@ Last updated: 2026-05-27 · Ace 67.18
 
 ## Active Build Sequence
 
-### Session 57.0 Status
-Reminder-system + calendar-drawer + dashboard-widget session as of Ace 57.0:
-- DONE this session: full reminder system (grid + widget render, edit/delete, stacked lead notifications, FAB writes AceReminder, ET times), calendar drawer overhaul (interactive timezone + four US zones, quarter-hour pickers, duration pills, persist type + reminder state), dashboard This Week widget (FAB reminders, reminder/event lane split, freshness fix, up to 5/day), 36 (calendar auto-sync verified), 34 (bulk reject from Lists), 35 (interview auto-reminder), 33 (Templates + Triggers unified), 38 (Teams OAuth expiry + connector polish)
-- DEFERRED (revisit after the sequence below): 28 (ToolExpense edit UI), 39 (calendar invite unknown-sender warning), 13 (date format refactor), 1 (PageWrapper / SectionCard chrome), 32 (BCC Austin clean fix)
+### Next Up (after test-run fix session)
 
-### Session 60.0 Status
-Toast/notification work (DONE Ace 60.0): reminder toast redesigned onto the shared SMS/email card structure in an amber palette; new In-app notification settings for duration (5s/10s/30s/Until dismissed, default 5s) and stack direction (Standard bottom-right vs Stack up top-right, position-based since sonner has no reverse-order prop); and a Dismiss All pill that shows when 2+ notification toasts are visible. New `src/lib/toast-prefs.ts` holds the prefs + active-toast counter. Awaiting Andrew's browser verification.
-
-### Session 59.0 Status
-Notification toast polish (DONE Ace 59.0): SMS toast `MessageSquare` icon, action buttons moved to a bottom row on both the SMS + email toasts to match the mockup, Mark as Read added to both (SMS via `markThreadReadAndBroadcast`, email via the `/read` route + `markThreadRead`), email toast Reply opens the floating thread straight into the focused reply composer (new `composerMode` open option), and the Settings phone "Try it" Call test removed. Awaiting Andrew's browser verification.
-
-### Session 61.0 Status
-Profile / pipeline regression close-out + features (DONE Ace 61.0): split-view candidate Delete restored; Apply / Keep / Reject real-time stage pill (optimistic, holds until server confirm) + the flash-then-disappear follow-on fixed; Add Note button removed from all four candidate profile locations; stage button visibility aligned to spec in `pipeline-row-actions.tsx`; phone thread auto-scroll to bottom on open; CalendarEventDrawer reminder mode (hides Guests / Location / Meeting type / All day / Timezone, ET hard-coded with a comment to pull per-user tz when multi-user ships); scheduled send (Send Later) on every email surface (`ScheduledEmail` table + per-minute Vercel cron + Retry toast); dark luxury login redesign; PWA badge auto-fire fix (`2d0081e`, null badgeCount in `unread-counts.ts`, sw.js cache `v5`); Auto Night Mode (`0dd1e41`, `UserProfile.autoNightMode`, 7pm/7am ET flip). Favicon / tab counter verified already correct. Awaiting Andrew's browser verification of scheduled send, the PWA badge, and Auto Night Mode.
-
-### Next Up (after Ace 67.18)
-
-- **Browser-verify the composer Send → Invoice Sent propagation.** (1) Confirm Start a placement → composer auto-pops → click Send → ledger row reads "Invoice Sent" (not "Invoice Draft"). (2) Same check on the /pipeline Hired tab invoice pill. (3) Open a draft invoice → click "Draft Email" → close the composer with X (no send) → ledger row still reads "Invoice Draft" — no premature flip on aborted compose.
-
-### Next Up (after Ace 67.17)
-
-- **Browser-verify Make Placement modal corrections (Ace-native).** (1) Open Make Placement on an offer-stage candidate → click outside / press Escape → modal stays open; X closes. (2) Drag the title bar → modal moves with the cursor and stops cleanly. (3) Resize from the bottom-right corner → modal grows/shrinks between the min and 90vw/90vh. (4) Lead Source is a dropdown with Network / Referral / LinkedIn / Inbound / Indeed / Other; the "Select a source…" placeholder is selected and disabled. (5) Try to save with Lead Source unselected → red error "Lead Source is required." (6) Fee summary card visible above the fold on first open. (7) Billing + Hiring side-by-side, not stacked. Regression: existing placements with legacy candidateSource ("Pin", "Apollo BD", etc.) reopen with that value pre-selected.
-- **Schedule RF cleanup (placement-flows.tsx removal).** After browser-verify above passes, schedule a separate ship to either delete or stub `src/app/candidates/[id]/placement-flows.tsx`. The file is RF-flavored code per rule 1 ("RecruiterFlow is removed") and was the source of the 67.12 / 67.15 dual-file misses. Audit imports (`local-placement-rows.tsx` imports `AceTeamContact` from it; ConfirmStartDialog is exported and shared) before removing — anything still needed gets hoisted to a neutral lib module first.
-
-### Next Up (after Ace 67.16)
-
-- **Browser-verify interview invite display collapse.** Schedule/send both candidate + client invites for one interview. Confirm `/calendar` shows both real Google blocks as Interview type, while Clubhouse This Week shows only one logical interview row/chip for that same scheduled time.
-- **Browser-verify the table + Make Placement compression pass.** (1) /pipeline Hired tab on a 13" laptop — every column visible, no horizontal scroll. (2) Same check on Submitted/Interviewing/Offer/Pending Start. (3) Jobs / Candidates / Applicants / Clients — row heights slightly tighter, headers still aligned with body rows (shared `DataTableHeaderCell` updated, see ACE 67.15 ship note). (4) Open Make Placement on an offer-stage candidate — fee summary card visible without scrolling on first open. (5) Billing contacts + Hiring managers render as two columns side-by-side instead of stacked vertically.
-
-### Next Up (after Ace 67.14)
-
-- **Browser-verify Confirm-Start → Invoice flow + status propagation.** (1) Confirm Start → land on `/invoices/[id]` with composer auto-popping (Item A from brief — should already be live or land on next deploy, no code change in 67.14; the hand-off code is at `placement-flows.tsx:2386-2396` + `invoice-detail.tsx:374-386`). (2) Click Send on the draft → /pipeline Hired tab invoice pill flips to "Sent" without a manual refresh. (3) Dashboard placements ledger row reads "Invoice Sent" (not "Billed"). (4) Candidate profile + client page both reflect the new status without a refresh. (5) Fresh Confirm Start with the draft still unsent → ledger row reads "Invoice Draft" with the new slate chip (NOT "Pending Start"). (6) New "Invoice Draft" filter tab shows non-zero count and filters to that row. (7) Mark an invoice Paid → /pipeline + dashboard + /clients/[id] all flip to COLLECTED without a refresh. (8) Existing placements at any prior status still render. Regression: `InvoiceStatusPill` on /pipeline (a separate component) intentionally untouched — still reads "Draft" / "Sent" / "Paid" / "No invoice" from raw Invoice.status.
-
-### Next Up (after Ace 67.13)
-
-- **Browser-verify the restored per-party interview invite model.** Schedule a fresh interview from the candidate profile/pipeline pill, send candidate invite, then client invite. Confirm Google Calendar shows two events at the same time with distinct bodies and the same Meet. Then test "Client will send invite" and confirm it creates one tracking event only with no candidate/client emails. Confirm the Jennifer duplicate is gone from the Clubhouse widget, and the schedule modal does not close on backdrop click, drags cleanly, resizes cleanly, and has readable dark-mode time options.
-- **Browser-verify the Make Placement modal hardening.** (1) Open Make Placement on an offer-stage row → click outside the dialog → modal stays open. (2) Press Escape → stays open. (3) Click X → closes. (4) Open Make Placement → Lead Source field shows "Select a source…" placeholder (disabled), then Network / Referral / LinkedIn / Inbound / Indeed / Other. (5) Try to save with Lead Source on the placeholder → red error banner reads "Lead Source is required." and save blocks. Regression: existing placements with `candidateSource` set still reopen with that value pre-selected; legacy values (Pin, Apollo BD, Cold Outreach) still preserved via the fallback option; Billing/Hiring multi-contact list + chip auto-fill untouched; Custom Payment Agreement untouched; Edit Placement drawer at `/pipeline` untouched.
-- **Browser-verify the offer modal drag/resize + pipeline pagination removal.** (1) Drag offer modal header — modal stops the frame the pointer releases, no drift. (2) Resize from bottom-right corner — width/height update live, release stops cleanly. (3) Drag fast and release — no stuck-to-cursor. (4) Overlay click — still doesn't close (67.10 lock holds). (5) Non-offer modals (Reject, Confirm Start, etc.) — header is NOT draggable, no corner handle. (6) /pipeline Offer tab — Edit Offer chip visible alongside Placement + Reject. (7) Click Edit Offer on /pipeline — modal opens prefilled. (8) /pipeline Applicants/Kept/Submitted/Interviewing/Pending Start/Hired — "Showing X of N submittals" + Prev/Next gone from every tab. (9) /jobs/[id] Matched tab pager — still works (separate feature, untouched). (10) /candidates, /jobs, /clients — pagination intact.
-- **Browser-verify the offer modal hardening.** (1) Make Offer overlay click → stays open. (2) Escape → stays open. (3) X → closes. (4) Fresh Make Offer on `feePct=null` client → four fields visually empty. (5) Edit Offer on existing placement → real values prefill. (6) Click "USD" → no focus shift, no selection, no typing affects it; the cursor does NOT jump into the salary input from a USD click. Regression: Save still works for new + edit; existing offers in any stage still load; negative-salary / negative-fee-% blocks still fire.
-- **Migrate Google `iCalUID` onto `CalendarEvent`.** Today's widget dedupe falls back to `title|start|end|meetLink` for cross-calendar duplicates because `iCalUID` isn't mirrored. Add `iCalUID String?` to `CalendarEvent`, populate it in `google-sync.ts`, then prefer it in `dedupeCalendarRows`. Once stable, drop the fallback key.
-
-### Next Up (after Ace 67.8)
-
-- **Browser-verify the offer popup + Edit Offer ship.** Confirm negative-salary / negative-fee-% rejection at input + submit; `($USD)` static label is visible and the dropdown is gone; fee % prefill is correct for clients with / without `feePct`; Edit Offer chip on /pipeline opens the popup prefilled and Save updates the same Placement row (count check); the chip only appears in the offer stage.
-
-### Next Up (after Ace 67.7)
-
-- **Wire invoice-detail to consume the seeded "Invoice Email" template.** Today the DB template row is visible + editable in /settings/templates, but `handleEmailDraft` still uses a literal in invoice-detail.tsx. Add `[Invoice Number]` / `[Fee Amount]` / `[Invoice Due Date]` to the merge-field system; have the invoice page server component fetch + merge the active template; pass to the client; fall back to the literal when the row is missing.
-- **Editable trigger metadata (Event Name / Audience / Dispatch).** Currently read-only in the modal — code-coupled to the call-site, but the human-readable Event Name + Audience are pure DB metadata. A separate save action that accepts those fields would land cleanly without touching call-sites.
-- **Create-new-trigger from the UI.** "+ New trigger" affordance on /settings/triggers that lets Andrew define a TriggerRule + tag a template without going through code. Note: the new trigger key still needs a code call-site somewhere to actually fire — UI-only creation produces a documentary row.
-
-### Next Up (after Ace 67.6)
-
-1. ~~**iOS-style input field pass.**~~ **DONE Ace 66.0** - shipped as the `court-input-frame` / `court-input-rect` system (pill on the search bar / SMS composer / Ace Assistant, rectangular on forms). See ACE_DESIGN.md, Input Field Treatment.
-2. ~~**Liquid Glass floating-surface pass.**~~ **DONE Ace 66.0** - translucency + glass shadow stacks on the topbar, dropdowns, popovers, and modals (floating surfaces only).
-Cancelled (Ace 66.0): QuickBooks standalone page, Quo setup wizard, and the APRO / job order worksheet - removed from the roadmap, not being built.
+1. **Batch 5 - metric refresh.** Ethan placement edit not propagating to Momentum / Recent Deal Moves. Jennifer <=14d Offer-to-Start count stuck at 0 after same-day start. Likely revalidatePath gap on edit/confirm actions.
+2. **Batch 6 - Cancel Placement.** Cancel button on Edit Placement screen (LocalPlacementDialog / Edit Placement drawer). Soft-delete: status = CANCELLED, row preserved. Filtered from all live metrics, tables, map, pipeline by default. "Show cancelled" toggle on Placements page. Cascade removes candidate's impact from all downstream surfaces.
+3. **Batch 7 - UI polish.** Interview Scheduler: Type field moves to same line as Duration, dropdown tightened. Placements page: Guarantee Period row height grows to match All Placements This Quarter.
+4. **Batch 8a - Diagnose interview attendee hydration.** Clicking existing interview shows "No guests" instead of attendee list. Attendee info ends up in Notes as plain text. Diagnose-only prompt first.
+5. **Batch 8b - Fix interview attendee hydration.** Written after 8a diagnosis.
 
 ## Queued From Session
 Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.
@@ -122,6 +74,14 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Test Run Fix Session (May 27, 2026)
+
+Closed Batches 1-4b from the Andrew + Austin test run. Full detail in ACE_STATE.md under What Shipped Session 2026-05-27. Short summary: offer popup constraints, offer modal hardening (X-only close, draggable/resizable), Edit Offer button on /pipeline, pipeline pagination removed, Make Placement modal fixes on correct file (LocalPlacementDialog), invoice flow revalidation + INVOICE_DRAFT status + Invoice Sent label, invoice send onSent callback fix, 11-row Placement.clientId backfill, getRfJobsForOrg `_aceClientId` fix, Springfield OH added to map, fee % auto-fill end-to-end (backfill + candidates page fallback + Ace-native wiring). Dual-file trap lesson saved as architecture non-negotiable 14.
+
+## Completed - Ace 66.0 Input Field Pass + Liquid Glass + Installment Invoices (May 23-25, 2026)
+
+iOS-style input field treatment (`court-input-frame` / `court-input-control`), Liquid Glass floating-surface pass, forms sweep, job pill/button polish, custom installment invoice automation on Confirm Start, service worker v8 overnight badge self-heal. QuickBooks standalone page, Quo setup wizard, and APRO / job order worksheet permanently killed. Full detail in ACE_STATE.md under What Shipped in Ace 66.0.
 
 ## Completed - Ace 67.4 Gmail-native signature white-logo fix (May 27, 2026)
 

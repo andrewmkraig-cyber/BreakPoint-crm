@@ -66,7 +66,7 @@ All time estimates calibrated against actual build pace: Game Plan Context Depth
 - When Code ships something, Claude translates what happened into plain English. Never pass through stack traces raw.
 - Andrew must test and confirm before the next task ships.
 
-## Architecture Non-Negotiables (13)
+## Architecture Non-Negotiables (14)
 1. RecruiterFlow is removed. No new RF dependencies.
 2. Ace-native parity is mandatory.
 3. Primary key is Neon cuid, always.
@@ -80,6 +80,7 @@ All time estimates calibrated against actual build pace: Game Plan Context Depth
 11. Git author email: andrew@breakpointtalent.com OR andrewmkraig@gmail.com.
 12. Court Mode theme tokens. No hardcoded colors.
 13. Pipeline stage source of truth: Neon only.
+14. **Ace-native modal path rule.** The candidate flow has two modal files - `placement-flows.tsx` (RF/legacy) and `local-placement-rows.tsx` (Ace-native). Since RF is removed (rule 1), every real user action routes through `local-placement-rows.tsx`. Step 0 grep on any candidate modal prompt must grep BOTH files and explicitly confirm which renders at runtime before writing any edits. Only edit the Ace-native file. Memory entry: `feedback_ace_native_only_modal_path.md`.
 
 ## BD Phase 4 Rule (added 2026-05-12 · Ace 41.0 — permanent, never skip)
 Claude must ask Andrew a full set of scoping questions before writing any BD Phase 4 prompt. Do not skip this even if Andrew says "start BD Phase 4" or "let's go." Andrew's standing direction is that Discovery + Client Signals + approval queue matters more than fully automated send magic, and not every Phase 4 automation ships for launch. The required questions are listed in ACE_STATE.md under the BD Phase 4 Rules section of Next Task. Re-read that section every time the next session opens against BD Phase 4 — the questions are the gate, not a suggestion.

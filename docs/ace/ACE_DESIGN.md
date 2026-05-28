@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-05-23 · Ace 66.0
+Last updated: 2026-05-27 · Ace 67.18
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -249,6 +249,14 @@ Source of truth for every button across the app. Mirrors the same block in ACE_R
 - **NEVER use `rounded-full` on text buttons.** The ban applies to text buttons only. `rounded-full` is reserved for badges, chips, status pills, and avatars, and IS permitted on icon-only circular buttons, toggle switches, and FABs.
 
 Supersedes the older "All buttons are rounded-full" rule from the Ace 24.0 Button System section below.
+
+## Input Field Treatment (Ace 66.0 - separate from Button Standard)
+- Inputs use `court-input-frame` / `court-input-control` CSS classes (`globals.css`). Pill shape (`rounded-full`), solid `court-surface-subtle` fill, thin court-brand-tinted border, spring-eased focus-within glow (`color-mix` brand green ring + 4px lift on desktop, no lift on touch devices).
+- `INPUT_FRAME_CLASS` and `INPUT_CONTROL_CLASS` exported from `src/components/ui/input.tsx`.
+- Inputs do NOT follow the button `rounded-md` rule. Inputs are pill-shaped. Buttons are `rounded-md`. These are separate standards.
+- Liquid Glass floating surfaces (Ace 66.0): targeted translucency on topbar, modals, dropdowns, panels only. Not a full-app conversion.
+
+See the fuller Input Field Treatment block lower in this doc for the rectangular `court-input-rect` form variant — the search bar / SMS composer / Ace Assistant keep the pill `court-input-frame`, and forms use the rectangular variant. Both share the same focus-within glow and lift behavior.
 
 ## Button System (added Ace 24.0 — superseded by Button Standard above as of Ace 54.0; kept for historical context)
 Shared component: src/components/ui/button.tsx
