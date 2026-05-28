@@ -2,25 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { createChunkedUploadHandler } from "@/lib/chunked-upload-server";
 import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
-import { recomputeMatchesForCandidate } from "@/lib/match-scoring-store";
-
-// Fire-and-forget match recompute after a resume upload completes.
-// Resume bytes feed the deterministic scorer (via the extractedText
-// cached on CandidateResume + the resume blob text). A new resume
-// flips the candidate-side sourceHash on every CandidateMatch row for
-// the candidate, so Find Matches + Matched tab reflect the new resume
-// on next read. Best-effort: a failing recompute never blocks the
-// upload finalization.
-async function recomputeAfterResumeUpload(candidateId: string, organizationId: string, label: string): Promise<void> {
-  try {
-    const stats = await recomputeMatchesForCandidate(organizationId, candidateId);
-    // eslint-disable-next-line no-console
-    console.log(`[${label}] recomputed matches`, { candidateId, ...stats });
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn(`[${label}] match recompute failed`, { candidateId, err: e instanceof Error ? e.message : String(e) });
-  }
-}
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -96,7 +77,6 @@ export const POST = createChunkedUploadHandler<UploadExtra>({
         },
         select: { id: true },
       });
-      await recomputeAfterResumeUpload(extra.candidateId, extra.organizationId, "candidate-resume.singleChunk");
       revalidatePath(`/candidates/${extra.candidateId}`);
       if (extra.candidateRfId != null) revalidatePath(`/candidates/${extra.candidateRfId}`);
       return { id: row.id, totalBytesStored: firstChunk.byteLength };
@@ -143,18 +123,7 @@ export const POST = createChunkedUploadHandler<UploadExtra>({
         where: { id },
         data: { data: Buffer.alloc(0), blobUrl: blob.url, uploadComplete: true },
       });
-      if (existing.candidateId) {
-        // Resolve organizationId off the candidate row — the upload
-        // session row doesn't carry orgId on its own.
-        const candidate = await prisma.candidate.findUnique({
-          where: { id: existing.candidateId },
-          select: { organizationId: true },
-        });
-        if (candidate) {
-          await recomputeAfterResumeUpload(existing.candidateId, candidate.organizationId, "candidate-resume.appendChunk");
-        }
-        revalidatePath(`/candidates/${existing.candidateId}`);
-      }
+      if (existing.candidateId) revalidatePath(`/candidates/${existing.candidateId}`);
       if (existing.candidateRfId != null) revalidatePath(`/candidates/${existing.candidateRfId}`);
     } else {
       await prisma.candidateResume.update({

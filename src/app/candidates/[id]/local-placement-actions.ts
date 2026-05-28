@@ -12,7 +12,6 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
 import { submittalToHtml, submittalToPlainText } from "@/lib/submittal-format";
 import { fireTriggerAndLog } from "@/lib/trigger-fire";
-import { upsertMatchScore } from "@/lib/match-scoring-store";
 import {
   CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
   CANDIDATE_CONFIRMATION_TRIGGER,
@@ -156,20 +155,6 @@ export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<
       },
     });
 
-    // Deterministic match score: compute + store on link. Idempotent.
-    // No-op if a CandidateMatch row already exists with the current
-    // (candidate, job) sourceHash. Cheap CPU + one upsert. Never
-    // blocks the apply path — wrapped so a stray throw doesn't roll
-    // back the Placement row we just wrote.
-    if (jobId) {
-      try {
-        await upsertMatchScore({ orgId: org.id, candidateId: input.candidateId, jobId });
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn("[applyLocalCandidateToJob] match-score upsert failed", { jobId, candidateId: input.candidateId, err: e instanceof Error ? e.message : String(e) });
-      }
-    }
-
     revalidatePath(`/candidates/${input.candidateId}`);
     revalidatePath("/pipeline");
 
@@ -285,18 +270,6 @@ export async function keepLocalCandidateForJob(input: KeepLocalForJobInput): Pro
       subjectId: input.candidateId,
       metadata: { jobRfId, jobId, clientRfId, clientId, local: true },
     });
-
-    // Deterministic match score on link, same contract as the apply
-    // path above. Idempotent — skipped when an unchanged-hash row
-    // already exists.
-    if (jobId) {
-      try {
-        await upsertMatchScore({ orgId: org.id, candidateId: input.candidateId, jobId });
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn("[keepLocalCandidateForJob] match-score upsert failed", { jobId, candidateId: input.candidateId, err: e instanceof Error ? e.message : String(e) });
-      }
-    }
 
     revalidatePath(`/candidates/${input.candidateId}`);
     if (jobId) revalidatePath(`/jobs/${jobId}`);

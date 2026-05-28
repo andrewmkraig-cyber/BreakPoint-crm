@@ -8,27 +8,6 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { isLikelyZip, validateUsCity, validateUsZip } from "@/lib/location-validation";
 import { prisma } from "@/lib/prisma";
-import { recomputeMatchesForJob } from "@/lib/match-scoring-store";
-
-// Fire a deterministic match-score recompute across every stored
-// CandidateMatch row for a job. Best-effort: never throws, never
-// blocks the JD save. Used by the four JD-edit actions in this file
-// (saveJobGeneratedDescription / saveJobSearchKeywords / saveJobRaw
-// Description / updateJobOverview when salary / locations / employment
-// type change) plus updateJobOverrideDescription in job-override-
-// actions.ts. The deterministic scorer reads description + search
-// Keywords + salaryRange + locations + employmentType — so every one
-// of these surfaces a sourceHash flip on the next read.
-async function recomputeMatchesAfterJobEdit(orgId: string, jobId: string, label: string): Promise<void> {
-  try {
-    const stats = await recomputeMatchesForJob(orgId, jobId);
-    // eslint-disable-next-line no-console
-    console.log(`[${label}] recomputed matches`, { jobId, ...stats });
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn(`[${label}] match recompute failed`, { jobId, err: e instanceof Error ? e.message : String(e) });
-  }
-}
 
 async function requireUserId(): Promise<string | null> {
   const s = await getServerSession(authOptions);
@@ -174,15 +153,6 @@ export async function updateJobOverview(args: {
     }
 
     await prisma.job.update({ where: { id: job.id }, data });
-
-    // Salary range / locations / employment type all feed the
-    // deterministic scorer's sourceHash. Recompute every stored
-    // CandidateMatch row for the job so Find Matches reflects the
-    // new inputs on next read. lifecycle / isOpen / openings don't
-    // touch the score — but we recompute unconditionally because the
-    // patch is mixed and the recompute is cheap.
-    const org = await getCurrentOrg();
-    await recomputeMatchesAfterJobEdit(org.id, job.id, "updateJobOverview");
 
     if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
     revalidatePath(`/jobs/${job.id}`);
@@ -331,12 +301,6 @@ export async function saveJobGeneratedDescription(args: {
       data: { description: next.trim() ? next : null },
     });
 
-    // Description is the primary text input feeding the deterministic
-    // skill / keyword pre-filter inside the scorer's sourceHash. Fan
-    // out the recompute now so Find Matches + Matched tab reflect
-    // the new description on next read.
-    await recomputeMatchesAfterJobEdit(org.id, job.id, "saveJobGeneratedDescription");
-
     if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
     revalidatePath(`/jobs/${job.id}`);
     return { ok: true };
@@ -473,12 +437,6 @@ export async function saveJobSearchKeywords(args: {
       where: { id: job.id },
       data: { searchKeywords: next.trim() ? next.trim() : null },
     });
-
-    // searchKeywords drives the "required" bucket in the deterministic
-    // skill scorer. Editing it is the single highest-signal way the
-    // recruiter retunes Find Matches for a role; recompute fan-out is
-    // exactly what they expect to happen on save.
-    await recomputeMatchesAfterJobEdit(org.id, job.id, "saveJobSearchKeywords");
 
     if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
     revalidatePath(`/jobs/${job.id}`);
