@@ -46,7 +46,20 @@ function safeFee(n: number | null): number {
 }
 
 function daysBetween(a: Date, b: Date): number {
-  return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+  // Calendar-day diff (UTC), not raw timestamp diff. placedAt is a full
+  // UTC timestamp (e.g. 2026-05-27T18:00:00Z when the recruiter clicked
+  // Record Placement at 2pm ET) but expectedStartDate is parsed from
+  // "YYYY-MM-DD" → 2026-05-27T00:00:00Z, so a same-business-day pair
+  // previously produced -0.75 days, rounded to -1, and the call-site
+  // negative-clamp dropped the row from the ≤14d bucket. Comparing
+  // year/month/day in UTC isolates the date portion and makes same-day
+  // starts read as 0 (Jennifer Cole 2026-05-27 → counted in ≤14d
+  // instead of 0). Cross-midnight-UTC edges (placedAt at 9pm ET =
+  // next-day UTC) are caught by the Math.max(0, …) clamp at the call
+  // sites — same-day in the recruiter's head, 0 in the bucket.
+  const da = Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate());
+  const db = Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate());
+  return Math.round((db - da) / (1000 * 60 * 60 * 24));
 }
 
 export function PlacementsBreakdowns({
@@ -196,8 +209,15 @@ function OfferToStartCard({ rows }: { rows: PlacementsDashboardRow[] }) {
   let fastest: { name: string; days: number; role: string | null } | null = null;
   for (const r of rows) {
     if (!r.offerAcceptedAt || !r.startDate) continue;
-    const days = daysBetween(r.offerAcceptedAt, r.startDate);
-    if (!Number.isFinite(days) || days < 0) continue;
+    const raw = daysBetween(r.offerAcceptedAt, r.startDate);
+    if (!Number.isFinite(raw)) continue;
+    // Clamp negatives to 0 — a same-business-day placement that
+    // spans UTC midnight (e.g. recorded at 9pm ET, which is next-day
+    // UTC, with start date "today" parsed as midnight UTC of the
+    // earlier day) reads as -1 here. The recruiter's mental model is
+    // "they accepted today, they start today" → 0 days, not "drop the
+    // row from the histogram."
+    const days = Math.max(0, raw);
     if (!fastest || days < fastest.days) {
       fastest = { name: r.candidateFullName || "Candidate", days, role: r.roleTitle };
     }
@@ -207,8 +227,12 @@ function OfferToStartCard({ rows }: { rows: PlacementsDashboardRow[] }) {
   const bins = OFFER_TO_START_BUCKETS.map((b) => ({ ...b, count: 0 }));
   for (const r of rows) {
     if (!r.offerAcceptedAt || !r.startDate) continue;
-    const days = daysBetween(r.offerAcceptedAt, r.startDate);
-    if (!Number.isFinite(days) || days < 0) continue;
+    const raw = daysBetween(r.offerAcceptedAt, r.startDate);
+    if (!Number.isFinite(raw)) continue;
+    // Same clamp as the fastest-fill loop above so same-day starts
+    // land in the ≤14d bucket regardless of which UTC date the
+    // placedAt timestamp ended up on.
+    const days = Math.max(0, raw);
     const bin = bins.find((bk) => days >= bk.min && days <= bk.max);
     if (bin) bin.count += 1;
   }
