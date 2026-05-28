@@ -109,22 +109,30 @@ export function GuaranteePeriodTable({
                 key={row.placementId}
                 className="border-b border-court-border-soft"
               >
-                <td className="px-4 py-1.5 align-middle font-medium text-court-fg">
+                {/* Row td padding bumped from py-1.5 to py-3 in Ace 67.20
+                    so single-line guarantee rows match the ~38px row
+                    height of the placements-ledger table next door (whose
+                    rows pack two lines of content per Client cell: name +
+                    industry sub-line at lines 310-313 of placements-
+                    ledger.tsx). Header padding stays at py-1.5 so the
+                    column-header strip still aligns visually between the
+                    two tables. */}
+                <td className="px-4 py-3 align-middle font-medium text-court-fg">
                   {row.candidateName || "-"}
                 </td>
-                <td className="px-3 py-1.5 align-middle text-court-fg">
+                <td className="px-3 py-3 align-middle text-court-fg">
                   {row.clientName || "-"}
                 </td>
-                <td className="px-3 py-1.5 align-middle text-court-fg-muted">
+                <td className="px-3 py-3 align-middle text-court-fg-muted">
                   {row.roleTitle ?? "-"}
                 </td>
-                <td className="px-3 py-1.5 align-middle tabular-nums text-court-fg-muted">
+                <td className="px-3 py-3 align-middle tabular-nums text-court-fg-muted">
                   {formatDate(row.startDateIso)}
                 </td>
-                <td className="px-3 py-1.5 align-middle tabular-nums text-court-fg-muted">
+                <td className="px-3 py-3 align-middle tabular-nums text-court-fg-muted">
                   {formatDate(row.guaranteeEndIso)}
                 </td>
-                <td className="px-3 py-1.5 text-right align-middle tabular-nums font-semibold text-court-fg">
+                <td className="px-3 py-3 text-right align-middle tabular-nums font-semibold text-court-fg">
                   {daysRemaining}
                 </td>
               </tr>

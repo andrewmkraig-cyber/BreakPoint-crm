@@ -1,8 +1,26 @@
 # ACE_STATE.md
-Last updated: 2026-05-28 · Ace 67.19
-Current Version: Ace 67.19
+Last updated: 2026-05-28 · Ace 67.20
+Current Version: Ace 67.20
 Last Shipped: 2026-05-28
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 67.20 (2026-05-28)
+
+Batch 7 — UI polish, two cosmetic items. No schema changes, no query changes, no tenant-scope impact (className-only edits inside two existing components).
+
+- **Interview scheduler Type joins the Date+time/Time zone/Duration row** (`src/app/candidates/[id]/local-placement-rows.tsx`, `ScheduleFields` at line 1914). Step-0 grep confirmed `ScheduleFields` is the live Ace-native helper used by the schedule flow (called from line 1093); `placement-flows.tsx` has the same field set but is dead RF code per the dual-file rule. The Type field was rendering on its own full-width line below the time-related row (`<label className="block text-sm">` with `mt-1 w-full` on the select), which left ~50% empty space to the right of the selected value. Moved the Type label inside the existing `flex flex-wrap items-end gap-3` row alongside Duration. Constrained the Type wrapper to `w-36` so the dropdown is just wide enough to fit "Phone Screen" (the longest of the three options: Phone Screen / Video / In-Person) plus the native chevron, with a touch of right whitespace. Time zone (w-32) and the compact DurationSelect keep their existing widths; Date & time still flex-grows via `min-w-[16rem] flex-1`.
+
+- **Guarantee Period row height matches the placements ledger** (`src/components/placements/guarantee-period-table.tsx`). Step-0 grep showed both tables already use `py-1.5` on their td cells — same padding. The visual height delta came from content shape, not padding: `placements-ledger.tsx:309-313` renders the Client column as a two-line cell (`clientName` + `clientIndustry` sub-line at `text-[11px]`), giving each ledger row ~38px of total height. Guarantee Period rows are single-line everywhere, so the same `py-1.5` produced ~25px rows. Per spec ("padding only — do not change data or columns") I left the columns/content alone and bumped every td in the guarantee-period tbody from `py-1.5` to `py-3` (12px each side = 24px padding; with a ~13px single line, total ~37px ≈ the ledger's 38px). Header padding stays at `py-1.5` so the column-header strip still aligns visually between the two tables.
+
+Touches (2 source files): `src/app/candidates/[id]/local-placement-rows.tsx`, `src/components/placements/guarantee-period-table.tsx`.
+
+Tenant-scope check: no queries touched. `placements-dashboard.ts` (placements ledger source) and `guarantee-period-utils.ts` (guarantee row source) are unchanged. Rule 8 surface unaffected.
+
+Build clean (`npm run build` exits 0; only the two pre-existing react-hooks/exhaustive-deps warnings, unrelated).
+
+Andrew browser-verify (after deploy):
+1. Open a candidate → click Schedule Interview → confirm Date & time, Time zone, Duration, and Type now sit on the same row. The Type dropdown should be visibly tighter (no large empty band to the right of the selected value). Switching Type to In-Person still reveals the Address field on its own row underneath.
+2. Open the Placements page → eye-compare a Guarantee Period row against an All Placements This Quarter row directly below it. They should look like the same vertical "block size" without the prior squat-vs-tall mismatch.
 
 ## What Shipped in Ace 67.19 (2026-05-28)
 

@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-28 · Ace 67.19
+Last updated: 2026-05-28 · Ace 67.20
 
 ## Active Build Sequence
 
@@ -7,7 +7,7 @@ Last updated: 2026-05-28 · Ace 67.19
 
 1. **Batch 5 - metric refresh.** Ethan placement edit not propagating to Momentum / Recent Deal Moves. Jennifer <=14d Offer-to-Start count stuck at 0 after same-day start. Likely revalidatePath gap on edit/confirm actions.
 2. ~~**Batch 6 - Cancel Placement.**~~ Shipped Ace 67.19 (2026-05-28). Kept string `"cancelled"` on Placement.stage (no enum existed; lowercase value already in widespread use). Hardened the existing `cancelPlacement` action in place — added organizationId scope on the lookup, swapped narrow revalidatePath calls for `revalidatePlacementSurfaces`. `getPlacementsForOrg` default-excludes cancelled rows; candidate-profile + pipeline callers opt back in. Eight surfaces gained explicit `stage: { not: "cancelled" }` filters (clients list + detail, my-dashboard KPIs, goal-pacing YTD count, placement-drilldown branches, jobs/search-candidates re-applicability, both game-plan placed-row guards). Show Cancelled toggle on `/pipeline` is local UI state; Cancelled tab appears at the right end of the strip with respected owner-scope count. Cancel button is red-outlined rounded-md at the bottom of LocalPlacementDialog (Ace-native path only), guarded so a fresh Make Placement can't fire it.
-3. **Batch 7 - UI polish.** Interview Scheduler: Type field moves to same line as Duration, dropdown tightened. Placements page: Guarantee Period row height grows to match All Placements This Quarter.
+3. ~~**Batch 7 - UI polish.**~~ Shipped Ace 67.20 (2026-05-28). Interview Scheduler `ScheduleFields` moved Type into the Date+time/Time zone/Duration flex row and constrained the Type wrapper to `w-36` so the dropdown fits "Phone Screen" (longest option) without trailing whitespace. Guarantee Period table td padding bumped from `py-1.5` to `py-3` so single-line rows match the ~38px height of the placements-ledger's two-line rows; headers stay `py-1.5` so the column strips still align between the two tables.
 4. **Batch 8a - Diagnose interview attendee hydration.** Clicking existing interview shows "No guests" instead of attendee list. Attendee info ends up in Notes as plain text. Diagnose-only prompt first.
 5. **Batch 8b - Fix interview attendee hydration.** Written after 8a diagnosis.
 

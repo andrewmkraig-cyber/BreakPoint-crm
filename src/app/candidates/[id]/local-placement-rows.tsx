@@ -1938,11 +1938,14 @@ function ScheduleFields(props: {
 }) {
   return (
     <div className="grid grid-cols-1 gap-3">
-      {/* Single-row layout — date+time | timezone | duration — so the
-          three time-related controls live on one line. Duration's
+      {/* Single-row layout — date+time | timezone | duration | type — so
+          all four scheduling controls live on one line. Duration's
           previous w-full layout on a 3-col grid produced ~50%
           whitespace next to "30 min"; compact mode shrinks it to the
-          natural option width. */}
+          natural option width. Type joined this row in Ace 67.20 (was
+          on its own full-width line below); w-36 fits the longest
+          option ("Phone Screen") with the dropdown arrow and a touch
+          of right whitespace, without the prior w-full padding bloat. */}
       <div className="flex flex-wrap items-end gap-3">
         <label className="block min-w-[16rem] flex-1 text-sm">
           <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
@@ -1971,19 +1974,19 @@ function ScheduleFields(props: {
           </select>
         </label>
         <DurationSelect value={props.durationMin} onChange={props.setDurationMin} compact />
+        <label className="block w-36 text-sm">
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Type</span>
+          <select
+            value={props.type}
+            onChange={(e) => props.setType(e.target.value as InterviewType)}
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          >
+            <option value="phone_screen">Phone Screen</option>
+            <option value="video">Video</option>
+            <option value="in_person">In-Person</option>
+          </select>
+        </label>
       </div>
-      <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Type</span>
-        <select
-          value={props.type}
-          onChange={(e) => props.setType(e.target.value as InterviewType)}
-          className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-        >
-          <option value="phone_screen">Phone Screen</option>
-          <option value="video">Video</option>
-          <option value="in_person">In-Person</option>
-        </select>
-      </label>
       {props.typeExtras}
       {props.type === "in_person" && (
         <label className="block text-sm">
