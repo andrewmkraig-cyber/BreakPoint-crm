@@ -6,6 +6,9 @@ import {
   tagThreadByAddresses,
 } from "@/lib/gmail";
 import { sendBadgeSyncToUser } from "@/lib/badge-sync-push";
+import { badgePayloadFields } from "@/lib/badge-math";
+import { getUnreadCountsForOrg } from "@/lib/unread-counts";
+import { sendPushToUser, type PushPayload } from "@/lib/web-push";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +16,8 @@ export const dynamic = "force-dynamic";
 // the watched mailbox (INBOX) changes. We respond 200 on every code
 // path — Pub/Sub treats anything else as failure and retries
 // aggressively, which would melt the route during transient errors.
-// The Settings card's "Enable" button is what registers the watch
-// itself; this route is the consumer side.
+// App-open and the daily renew cron register/refresh the watch; this
+// route is the consumer side that turns Gmail notices into Ace pushes.
 //
 // Auth is a shared-secret query param (?secret=...) rather than
 // OIDC. Andrew controls both the GCP push subscription URL and the
@@ -50,6 +53,12 @@ type GmailHistoryResponse = {
 
 type GmailHeader = { name?: string; value?: string };
 
+type NewUnreadInboxThread = {
+  threadId: string;
+  title: string;
+  body: string;
+};
+
 function headerValue(headers: GmailHeader[] | undefined, name: string): string {
   if (!headers) return "";
   const lower = name.toLowerCase();
@@ -57,35 +66,91 @@ function headerValue(headers: GmailHeader[] | undefined, name: string): string {
   return hit?.value ?? "";
 }
 
+function displaySender(fromHeader: string, addresses: string[]): string {
+  const beforeAngle = fromHeader.split("<")[0]?.trim();
+  const cleaned = beforeAngle?.replace(/^"+|"+$/g, "").trim();
+  return cleaned || addresses[0] || "New mail";
+}
+
 async function fetchMessageMeta(
   accessToken: string,
   messageId: string,
-): Promise<{ addresses: string[]; labelIds: string[] }> {
+): Promise<{
+  addresses: string[];
+  labelIds: string[];
+  from: string;
+  subject: string;
+}> {
   const url = new URL(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}`,
   );
   url.searchParams.set("format", "metadata");
-  for (const h of ["From", "To", "Cc"]) {
+  for (const h of ["From", "To", "Cc", "Subject"]) {
     url.searchParams.append("metadataHeaders", h);
   }
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
-  if (!res.ok) return { addresses: [], labelIds: [] };
+  if (!res.ok) return { addresses: [], labelIds: [], from: "", subject: "" };
   const j = (await res.json()) as {
     labelIds?: string[];
     payload?: { headers?: GmailHeader[] };
   };
   const headers = j.payload?.headers;
+  const from = headerValue(headers, "From");
   return {
     addresses: [
-      ...extractEmailsFromHeader(headerValue(headers, "From")),
+      ...extractEmailsFromHeader(from),
       ...extractEmailsFromHeader(headerValue(headers, "To")),
       ...extractEmailsFromHeader(headerValue(headers, "Cc")),
     ],
     labelIds: j.labelIds ?? [],
+    from,
+    subject: headerValue(headers, "Subject"),
   };
+}
+
+async function sendNewMailPushes({
+  userId,
+  organizationId,
+  threads,
+}: {
+  userId: string;
+  organizationId: string;
+  threads: NewUnreadInboxThread[];
+}) {
+  if (threads.length === 0) return;
+
+  const counts = await getUnreadCountsForOrg(organizationId, {
+    extraUnreadMailThreadIds: threads.map((t) => t.threadId),
+  });
+
+  console.log("[push][badge-diag]", {
+    source: "gmail-webhook-visible",
+    newThreads: threads.length,
+    mailUnread: counts.mailUnread,
+    phoneUnread: counts.phoneUnread,
+    badgeCount: counts.badgeCount,
+    mailReliable: counts.mailReliable,
+    mailReason: counts.mailReason,
+    mailSource: counts.mailSource,
+    badgeOmitted: counts.badgeCount === null,
+  });
+
+  const badgeFields = badgePayloadFields(counts);
+  await Promise.all(
+    threads.map((thread) => {
+      const payload: PushPayload = {
+        title: thread.title,
+        body: thread.body,
+        url: `/mail?thread=${encodeURIComponent(thread.threadId)}`,
+        tag: `mail-${thread.threadId}`,
+        ...badgeFields,
+      };
+      return sendPushToUser(userId, organizationId, payload);
+    }),
+  );
 }
 
 export async function POST(req: NextRequest) {
@@ -152,7 +217,7 @@ export async function POST(req: NextRequest) {
     // Threads we confirmed are INBOX + UNREAD in this batch. Folded into
     // the badge count below so the closed-app badge reflects the email
     // that just arrived even before Gmail's is:unread search index does.
-    const newUnreadInboxThreads = new Set<string>();
+    const newUnreadInboxThreads = new Map<string, NewUnreadInboxThread>();
     if (histRes.ok) {
       const histJson = (await histRes.json()) as GmailHistoryResponse;
       const entries = histJson.history ?? [];
@@ -190,7 +255,11 @@ export async function POST(req: NextRequest) {
             meta.labelIds.includes("INBOX") &&
             meta.labelIds.includes("UNREAD")
           ) {
-            newUnreadInboxThreads.add(m.threadId);
+            newUnreadInboxThreads.set(m.threadId, {
+              threadId: m.threadId,
+              title: displaySender(meta.from, meta.addresses),
+              body: meta.subject || "(no subject)",
+            });
           }
         }
       }
@@ -211,6 +280,16 @@ export async function POST(req: NextRequest) {
       newUnreadInbox: newUnreadInboxThreads.size,
     });
 
+    // Closed-app visible mail notifications must be emitted here, in the
+    // server-side Gmail webhook. The React MailProvider only exists after
+    // Ace is opened, so relying on its poller made morning notifications
+    // appear only after the user tapped into the PWA.
+    await sendNewMailPushes({
+      userId: user.id,
+      organizationId,
+      threads: Array.from(newUnreadInboxThreads.values()),
+    });
+
     // Reconcile the badge after EVERY Pub/Sub notice, not just on new mail.
     // Gmail pings us on any INBOX change - new arrivals AND reads / label
     // changes done in native Gmail - so recomputing the live unread count
@@ -228,7 +307,7 @@ export async function POST(req: NextRequest) {
       organizationId,
       // Floor the count with threads confirmed INBOX+UNREAD this batch -
       // Gmail's is:unread index lags a few seconds behind a fresh arrival.
-      extraUnreadMailThreadIds: Array.from(newUnreadInboxThreads),
+      extraUnreadMailThreadIds: Array.from(newUnreadInboxThreads.keys()),
       // Clear any stale mail banner left in the tray once the count settles
       // (e.g. a message that was read elsewhere).
       closeTags: ["gmail-push"],

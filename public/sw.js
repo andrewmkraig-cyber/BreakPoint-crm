@@ -1,6 +1,6 @@
 // Ace PWA service worker. Bump CACHE_NAME on any logic change so
 // the activate handler purges the previous shell.
-const CACHE_NAME = "ace-shell-v9";
+const CACHE_NAME = "ace-shell-v10";
 const PRECACHE_URLS = ["/", "/offline"];
 
 self.addEventListener("install", (event) => {
@@ -103,7 +103,10 @@ async function networkFirst(request, { fallback }) {
 async function fetchUnreadTotal() {
   const read = async (url) => {
     try {
-      const res = await fetch(url, { cache: "no-store" });
+      const res = await fetch(url, {
+        cache: "no-store",
+        credentials: "include",
+      });
       if (!res.ok) return null;
       const body = await res.json().catch(() => null);
       return typeof body?.count === "number" ? body.count : null;
@@ -283,23 +286,23 @@ self.addEventListener("notificationclick", (event) => {
 // user re-opens Ace and re-enables in Settings. This is the most
 // important leg of the self-heal: it keeps push alive across long idle.
 //
-// We re-subscribe with the SAME VAPID key the old subscription was
-// created with (event.oldSubscription.options.applicationServerKey),
-// so no key has to be embedded in this static file. Some browsers hand
-// us the already-rotated subscription on event.newSubscription - if so
-// we just re-POST that. Either way the new subscription is upserted via
-// the same /api/push/subscribe endpoint + body shape sw-register uses,
-// so the server row stays fresh (upsert is keyed on endpoint).
+// Prefer the SAME VAPID key the old subscription was created with
+// (event.oldSubscription.options.applicationServerKey). Some browsers,
+// notably on iOS, may fire this event without an oldSubscription/key; in
+// that case fetch the public VAPID key from Ace and recreate the
+// subscription anyway. Some browsers hand us the already-rotated
+// subscription on event.newSubscription - if so we just re-POST that.
+// Either way the new subscription is upserted via the same
+// /api/push/subscribe endpoint + body shape sw-register uses, so the
+// server row stays fresh (upsert is keyed on endpoint).
 self.addEventListener("pushsubscriptionchange", (event) => {
   event.waitUntil(
     (async () => {
       let subscription = event.newSubscription || null;
       if (!subscription) {
-        const applicationServerKey =
-          event.oldSubscription?.options?.applicationServerKey;
-        // No key to re-subscribe with (this event carried no
-        // oldSubscription) - nothing safe to do here. The next app open
-        // re-syncs via sw-register, or the Settings Enable button.
+        const applicationServerKey = await getApplicationServerKey(
+          event.oldSubscription,
+        );
         if (!applicationServerKey) return;
         subscription = await self.registration.pushManager
           .subscribe({ userVisibleOnly: true, applicationServerKey })
@@ -312,6 +315,8 @@ self.addEventListener("pushsubscriptionchange", (event) => {
       // exists and sw-register re-POSTs it on the next app open.
       await fetch("/api/push/subscribe", {
         method: "POST",
+        cache: "no-store",
+        credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           ...subscription.toJSON(),
@@ -321,3 +326,32 @@ self.addEventListener("pushsubscriptionchange", (event) => {
     })(),
   );
 });
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = self.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+async function getApplicationServerKey(oldSubscription) {
+  const oldKey = oldSubscription?.options?.applicationServerKey;
+  if (oldKey) return oldKey;
+  try {
+    const res = await fetch("/api/push/vapid-public-key", {
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    return typeof body?.key === "string" && body.key.trim()
+      ? urlBase64ToUint8Array(body.key.trim())
+      : null;
+  } catch {
+    return null;
+  }
+}

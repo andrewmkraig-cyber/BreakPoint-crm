@@ -226,12 +226,19 @@ export async function sendPushToUserOrOrg(
       ...diagPayload(payload),
     });
     if (userSubs.length > 0) {
-      await dispatch(userSubs, payload, "sendPushToUserOrOrg:user");
-      return;
+      const result = await dispatch(userSubs, payload, "sendPushToUserOrOrg:user");
+      if (result.sent > 0) return;
+      console.log("[web-push][diag] sendPushToUserOrOrg:user-fallback", {
+        reason: "user subscriptions existed but none accepted the push",
+        userId,
+        ...result,
+      });
     }
     // Owner has no live device — fan out to the org so the push still
-    // lands (in practice, Andrew's iPhone). No duplicate: we only get
-    // here when the user-scoped list was empty.
+    // lands (in practice, Andrew's iPhone). No duplicate when the user
+    // path succeeded; if the user path had only stale endpoints, dispatch
+    // pruned them first and this retry gives any remaining org device a
+    // chance to carry the notification.
     const orgSubs = await prisma.pushSubscription.findMany({
       where: { organizationId },
       select: { id: true, endpoint: true, p256dh: true, auth: true },

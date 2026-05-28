@@ -5,6 +5,24 @@ import { syncGrantedPushSubscription } from "@/lib/push-client";
 export function SwRegister() {
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
+    let registration: ServiceWorkerRegistration | null = null;
+
+    const syncIfGranted = () => {
+      if (
+        !registration ||
+        !("Notification" in window) ||
+        Notification.permission !== "granted"
+      ) {
+        return;
+      }
+      void syncGrantedPushSubscription(registration).catch(() => {
+        // Non-fatal - next resume / app launch / settings visit will retry.
+      });
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") syncIfGranted();
+    };
 
     // Auto-apply new builds. sw.js calls skipWaiting()+clients.claim(), so a
     // freshly-deployed worker takes control without a manual refresh — but the
@@ -26,7 +44,7 @@ export function SwRegister() {
 
     (async () => {
       try {
-        const registration = await navigator.serviceWorker.register("/sw.js");
+        registration = await navigator.serviceWorker.register("/sw.js");
         // Force an update check on every mount so a deploy that landed while
         // the PWA was backgrounded is detected on the next launch instead of
         // waiting for the browser's periodic (~24h) sw.js poll.
@@ -36,18 +54,20 @@ export function SwRegister() {
         // if iOS expired it while the PWA was idle, recreate it without
         // making Andrew tap Enable again. Default and denied states still
         // do nothing here - opt-in flows through the settings page button.
-        if (
-          "Notification" in window &&
-          Notification.permission === "granted"
-        ) {
-          await syncGrantedPushSubscription(registration).catch(() => {
-            // Non-fatal - next app launch / settings visit will retry.
-          });
-        }
+        syncIfGranted();
       } catch (err) {
         console.error("[sw-register]", err);
       }
     })();
+
+    window.addEventListener("focus", syncIfGranted);
+    window.addEventListener("pageshow", syncIfGranted);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", syncIfGranted);
+      window.removeEventListener("pageshow", syncIfGranted);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, []);
   return null;
 }

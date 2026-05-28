@@ -16,7 +16,7 @@ import { playMailSound } from "@/lib/notification-sound";
 // now" state. Replaces the per-render server fetch the sidebar +
 // tab-title used to do, so all surfaces (badge, title, toasts) move
 // together every 15s without a hard refresh. The 15s cadence is a
-// fallback only: Gmail push (webhook → sendPushToOrg → sw.js →
+// fallback only: Gmail push (webhook → web push → sw.js →
 // PUSH_RECEIVED → ace:refresh-unread) drives the same refresh within
 // seconds of an inbound, so this interval mostly catches the case
 // where push didn't reach the client (no notification permission,
@@ -119,20 +119,6 @@ export function MailProvider({
     if (enabled) {
       for (const thread of fresh) {
         renderNewMailToast(thread);
-        // Web push for every other device the recruiter has logged in
-        // on. Relayed through /api/push/fire because sendPushToUser is
-        // server-only. Best-effort: fire-and-forget; a 4xx/5xx never
-        // surfaces to the toast UI.
-        void fetch("/api/push/fire", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            title: thread.fromName || thread.fromEmail || "New mail",
-            body: thread.subject || "(no subject)",
-            url: `/mail?thread=${encodeURIComponent(thread.id)}`,
-            tag: `mail-${thread.id}`,
-          }),
-        }).catch(() => {});
       }
       // Ace 28.0: play the recruiter's chosen mail notification sound
       // when fresh threads land. Fires once per poll batch (not per
