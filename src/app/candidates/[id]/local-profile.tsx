@@ -7,7 +7,6 @@ import { getRfClientsForOrg, getRfContactsForOrg, getRfJobsForOrg } from "@/lib/
 import { extractFeePctFromCustomFields } from "@/lib/clients";
 import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/local-candidate-actions";
 import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
-import { listAceTeam } from "@/lib/ace-team";
 import { LocalEditableSkills } from "@/app/candidates/[id]/local-editable-skills";
 import { CandidateActivityCard } from "@/components/candidate-activity-card";
 import { CandidateProfileNav } from "@/components/candidate-profile-nav";
@@ -119,7 +118,6 @@ export async function LocalCandidateProfile({
     getServerSession(authOptions),
     getAppPreferences(),
   ]);
-  const aceTeam = await listAceTeam();
   const overrideByJob = new Map<number, string | null>();
   for (const o of jobOverrides) overrideByJob.set(o.jobRfId, o.description);
   // Per-placement trace: shows the candidate's placement jobRfIds and
@@ -682,7 +680,6 @@ export async function LocalCandidateProfile({
                 candidateCurrentEmployer={candidate.currentOrganization}
                 recruiter={recruiter}
                 jobs={jobRows}
-                aceTeam={aceTeam}
                 embed
               />
               {/* flex-nowrap + min-w-0 lets the action group ellipsize
@@ -845,7 +842,6 @@ export async function LocalCandidateProfile({
                 candidateCurrentEmployer={candidate.currentOrganization}
                 recruiter={recruiter}
                 jobs={jobRows}
-                aceTeam={aceTeam}
               />
             </section>
             <div className="flex items-center justify-between gap-3">

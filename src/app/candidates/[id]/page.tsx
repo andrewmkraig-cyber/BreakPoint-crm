@@ -50,7 +50,6 @@ import { PlacementActionsIsland } from "@/app/candidates/[id]/placement-actions-
 import { CandidateProfileBoundary } from "@/app/candidates/[id]/candidate-profile-boundary";
 import { TabStrip } from "@/components/ui/tab-strip";
 import { DeleteCandidateButton } from "@/app/candidates/[id]/delete-candidate-button";
-import { listAceTeam } from "@/lib/ace-team";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getAppPreferences } from "@/lib/preferences";
@@ -192,7 +191,6 @@ export default async function CandidateProfilePage({
     // gmailThreadTag fetch removed — the raw thread-id list rendered
     // poorly. Re-add once auto-tagging surfaces subject + preview.
   ]);
-  const aceTeam = await listAceTeam();
   const overrideByJob = new Map<number, string | null>();
   for (const o of jobOverrides) overrideByJob.set(o.jobRfId, o.description);
   const extractedName = extractCandidateFields(c);
@@ -741,7 +739,6 @@ export default async function CandidateProfilePage({
                 })()}
                 jobs={placementJobs}
                 openJobs={openJobOptions}
-                aceTeam={aceTeam}
               />
               <div className="flex items-center justify-between gap-3">
                 <UnderlineTabs tab={tab} candidateId={id} embed />
@@ -900,7 +897,6 @@ export default async function CandidateProfilePage({
                 })()}
                 jobs={placementJobs}
                 openJobs={openJobOptions}
-                aceTeam={aceTeam}
               />
             </section>
             <div className="flex items-center justify-between gap-3">

@@ -175,9 +175,9 @@ type InviteFlowState = {
   clientLinkedIn: string;
   clientContactName: string;
   clientContactEmail: string;
-  // Additional recipients chosen on the schedule dialog. Forwarded into
-  // both per-party invite events so Austin (or anyone else) stays in the
-  // loop without being added separately on both composers.
+  // Additional client contacts chosen on the schedule dialog. These are
+  // only added to the client-facing invite; the candidate invite stays
+  // candidate-only.
   ccEmails: string[];
   bccEmails: string[];
   // IANA timezone the recruiter picked on the schedule dialog. Passed
@@ -321,7 +321,6 @@ export function PlacementActions({
   recruiter,
   jobs,
   openJobs,
-  aceTeam,
   chromeless = false,
 }: {
   candidateRfId: number;
@@ -335,7 +334,6 @@ export function PlacementActions({
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
   jobs: PlacementContextJob[];
   openJobs: OpenJobOption[];
-  aceTeam: AceTeamContact[];
   /**
    * Embed split-view mounts this component only for its dialog modals +
    * searchParams handler (so ?openApply=true opens the apply picker). When
@@ -779,7 +777,6 @@ export function PlacementActions({
           candidateName={[candidateFirstName, candidateLastName].filter(Boolean).join(" ")}
           candidateEmail={candidateEmail}
           job={scheduleFor}
-          aceTeam={aceTeam}
           onClose={() => setScheduleFor(null)}
           onScheduled={(ctx) => {
             setInviteFlow({ ...ctx, step: "candidate" });
@@ -806,8 +803,6 @@ export function PlacementActions({
             currentEmployer: candidateCurrentEmployer,
           }}
           recruiter={recruiter}
-          clientContacts={findClientContactsForJob(jobsState, inviteFlow.jobTitle, inviteFlow.clientName)}
-          aceTeam={aceTeam}
           onClose={() => {
             setInviteFlow(null);
             setScheduleFor(null);
@@ -849,7 +844,6 @@ export function PlacementActions({
           }}
           recruiter={recruiter}
           clientContacts={findClientContactsForJob(jobsState, inviteFlow.jobTitle, inviteFlow.clientName)}
-          aceTeam={aceTeam}
           onClose={() => {
             setInviteFlow(null);
             setScheduleFor(null);
@@ -2512,7 +2506,6 @@ function ScheduleInterviewDialog({
   candidateName,
   candidateEmail,
   job,
-  aceTeam,
   onClose,
   onScheduled,
 }: {
@@ -2520,7 +2513,6 @@ function ScheduleInterviewDialog({
   candidateName: string;
   candidateEmail?: string;
   job: PlacementContextJob;
-  aceTeam: AceTeamContact[];
   onClose: () => void;
   onScheduled: (ctx: Omit<InviteFlowState, "step">) => void;
 }) {
@@ -2536,7 +2528,6 @@ function ScheduleInterviewDialog({
   const [interviewerEmail, setInterviewerEmail] = useState("");
   const [location, setLocation] = useState("");
   const [ccCsv, setCcCsv] = useState("");
-  const [bccCsv, setBccCsv] = useState("");
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
@@ -2654,7 +2645,7 @@ function ScheduleInterviewDialog({
         clientContactName: interviewerName.trim(),
         clientContactEmail: interviewerEmail.trim(),
         ccEmails: parseEmailCsv(ccCsv),
-        bccEmails: parseEmailCsv(bccCsv),
+        bccEmails: [],
         timeZone,
         candidateTemplate: templates.candidate,
         clientTemplate: templates.client,
@@ -2777,11 +2768,8 @@ function ScheduleInterviewDialog({
         />
         <CcBccPicker
           clientContacts={job.clientContacts}
-          aceTeam={aceTeam}
           cc={ccCsv}
-          bcc={bccCsv}
           onCcChange={setCcCsv}
-          onBccChange={setBccCsv}
         />
         <LabeledTextarea label="Notes" value={notes} onChange={setNotes} rows={3} />
       </div>
@@ -4485,7 +4473,6 @@ function ClientInviteComposer({
   candidate,
   recruiter,
   clientContacts,
-  aceTeam,
   onClose,
   onBack,
   onSent,
@@ -4494,7 +4481,6 @@ function ClientInviteComposer({
   candidate: CandidateInviteContext;
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
   clientContacts: ClientContactRef[];
-  aceTeam: AceTeamContact[];
   // Hard close — user clicked X or Cancel. Parent abandons the
   // composer chain without auto-advancing or rolling anything back.
   onClose: () => void;
@@ -4509,7 +4495,6 @@ function ClientInviteComposer({
   const values = buildInterviewMergeValues({ invite, candidate, recruiter });
   const hasClient = Boolean(invite.clientContactEmail);
   const ccPickerOptions = buildCcBccOptions(clientContacts);
-  const bccPickerOptions = aceTeam.map((m) => ({ id: m.id, name: m.name, email: m.email }));
   return (
     <EmailComposer
       title="Send client calendar invite"
@@ -4518,7 +4503,7 @@ function ClientInviteComposer({
       initial={{
         to: hasClient ? [invite.clientContactEmail] : [],
         cc: invite.ccEmails,
-        bcc: invite.bccEmails,
+        bcc: [],
         // Active client-side template wins if present; falls back to
         // the hardcoded composer default when no template is seeded
         // for this org. Merge fields resolve against the same `values`
@@ -4540,9 +4525,9 @@ function ClientInviteComposer({
         body: applyMergeFieldsClient(t.body, values),
       })}
       ccOptions={ccPickerOptions}
-      bccOptions={bccPickerOptions}
+      hideBccField
       mergeValues={values}
-      helperText="Subject becomes the calendar event title; body becomes the event description. Sending adds the client to the event. Google emails them the native invite with Accept / Maybe / Decline."
+      helperText="Subject becomes the calendar event title; body becomes the event description. Sending creates the client-side event and emails visible client guests the native invite."
       sendLabel="Send Invite"
       sendingLabel="Sending invite…"
       onClose={onClose}
@@ -4559,7 +4544,7 @@ function ClientInviteComposer({
           attendeeEmail: draft.to[0],
           attendeeName: invite.clientContactName || undefined,
           ccEmails: draft.cc,
-          bccEmails: draft.bcc,
+          bccEmails: [],
           subject: draft.subject,
           bodyText: draft.body,
           timeZone: invite.timeZone,
@@ -4581,8 +4566,6 @@ function CandidateInviteComposer({
   invite,
   candidate,
   recruiter,
-  clientContacts,
-  aceTeam,
   onClose,
   onBack,
   onSent,
@@ -4590,8 +4573,6 @@ function CandidateInviteComposer({
   invite: InviteFlowState;
   candidate: CandidateInviteContext;
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
-  clientContacts: ClientContactRef[];
-  aceTeam: AceTeamContact[];
   // Hard close — user clicked X or Cancel. Parent abandons the
   // composer chain without auto-advancing.
   onClose: () => void;
@@ -4606,8 +4587,6 @@ function CandidateInviteComposer({
   const candidateFullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ");
   const candidateEmail = candidate.email;
   const values = buildInterviewMergeValues({ invite, candidate, recruiter });
-  const ccPickerOptions = buildCcBccOptions(clientContacts);
-  const bccPickerOptions = aceTeam.map((m) => ({ id: m.id, name: m.name, email: m.email }));
   return (
     <EmailComposer
       title="Send candidate calendar invite"
@@ -4615,8 +4594,8 @@ function CandidateInviteComposer({
       draftKey={`interview-invite-${invite.interviewId}-candidate`}
       initial={{
         to: candidateEmail ? [candidateEmail] : [],
-        cc: invite.ccEmails,
-        bcc: invite.bccEmails,
+        cc: [],
+        bcc: [],
         // Active candidate-prep template wins when seeded — otherwise
         // the existing hardcoded fallback applies. Merge fields are
         // resolved client-side via the same `values` map either way.
@@ -4635,10 +4614,10 @@ function CandidateInviteComposer({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),
       })}
-      ccOptions={ccPickerOptions}
-      bccOptions={bccPickerOptions}
+      hideCcField
+      hideBccField
       mergeValues={values}
-      helperText="Subject becomes the calendar event title; body becomes the event description. Sending adds the candidate to the event. Google emails them the native invite with Accept / Maybe / Decline."
+      helperText="Subject becomes the calendar event title; body becomes the event description. Sending creates the candidate-side event only."
       sendLabel="Send Invite"
       sendingLabel="Sending…"
       onClose={onClose}
@@ -4654,8 +4633,8 @@ function CandidateInviteComposer({
           party: "candidate",
           attendeeEmail: draft.to[0],
           attendeeName: candidateFullName || undefined,
-          ccEmails: draft.cc,
-          bccEmails: draft.bcc,
+          ccEmails: [],
+          bccEmails: [],
           subject: draft.subject,
           bodyText: draft.body,
           timeZone: invite.timeZone,
@@ -4735,33 +4714,21 @@ export function buildCcBccOptions(
     .map((c) => ({ id: String(c.id), name: c.name, email: c.email }));
 }
 
-// Pre-composer Cc / Bcc picker shown on the Schedule Interview dialog.
-// Same semantics as the composer's Cc/Bcc (multi-select contacts with a
-// pinned quick-pick row + free-text entry) but emits CSV strings so the
-// existing state model doesn't need to change.
+// Pre-composer client-Cc picker shown on the Schedule Interview dialog.
+// Emits a CSV string so the existing state model doesn't need to change.
 export function CcBccPicker({
   clientContacts,
-  aceTeam,
   cc,
-  bcc,
   onCcChange,
-  onBccChange,
 }: {
   clientContacts: ClientContactRef[];
-  aceTeam: AceTeamContact[];
   cc: string;
-  bcc: string;
   onCcChange: (v: string) => void;
-  onBccChange: (v: string) => void;
 }) {
-  // Cc draws from the current job's CLIENT contacts only — a Cc'd
-  // recipient is openly looped on the thread, so it should be someone
-  // the candidate would expect to see on the email. Bcc draws from
-  // ACE TEAM members only (Andrew, Austin, etc.) so the recruiter
-  // can keep ops/colleagues informed without exposing them on the
-  // visible header. The two pools are intentionally disjoint.
+  // Cc draws from the current job's client contacts only and is applied
+  // only to the client-facing calendar event. Candidate invites stay
+  // private because Google Calendar has no hidden Bcc bucket.
   const ccPickerOptions = buildCcBccOptions(clientContacts);
-  const bccPickerOptions = aceTeam.map((m) => ({ id: m.id, name: m.name, email: m.email }));
   return (
     <div className="space-y-2">
       <label className="block text-sm">
@@ -4773,17 +4740,6 @@ export function CcBccPicker({
           onChange={onCcChange}
           options={ccPickerOptions}
           placeholder="Pick a client contact or type email…"
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
-          Bcc (optional) · Ace team
-        </span>
-        <InlineContactMultiInput
-          value={bcc}
-          onChange={onBccChange}
-          options={bccPickerOptions}
-          placeholder="Pick a teammate or type email…"
         />
       </label>
     </div>

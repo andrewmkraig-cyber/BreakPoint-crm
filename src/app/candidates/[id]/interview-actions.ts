@@ -299,11 +299,9 @@ function calendarDescription(input: ScheduleInterviewInput): string {
   if (input.clientName) lines.push(`Client: ${input.clientName}`);
   if (input.candidatePhone) lines.push(`Candidate phone: ${input.candidatePhone}`);
   if (input.location) lines.push(`Location: ${input.location}`);
-  // Interviewers are written to the event's attendees array (see
-  // scheduleInterview → createCalendarEvent call). Don't echo them
-  // into the description — the Edit Event drawer renders the Guests
-  // field from attendees, so the plain-text line was redundant and
-  // also leaked into the Notes field on hydrate.
+  // Interviewers live in Interview.clientAttendees and are added only to
+  // the client-facing invite. Don't echo them into the description; the
+  // edit drawer hydrates the Guests field from that local JSON.
   if (input.notes) lines.push("", input.notes);
   lines.push("", "Logged from Ace (BreakPoint Talent CRM).");
   return lines.join("\n");
@@ -333,6 +331,9 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
   //   creator's primary calendar. The first Send Invite reuses that event
   //   for that party; the second Send Invite creates a separate event with
   //   the same Meet link, so client and candidate keep unique invite bodies.
+  //   The tracking event must stay attendee-free: if we seed the client
+  //   interviewer as a silent guest, Google's later invite PATCH mails them
+  //   an "updated invitation" when the candidate copy is sent.
   // - client_scheduled: the client is sending their own invite. We put a
   //   tracking event on the creator's calendar (no attendees, no Meet),
   //   and no emails go out.
@@ -348,18 +349,11 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
       description: calendarDescription(input),
       startISO: when.toISOString(),
       durationMin: input.durationMin,
-      // Interviewers go on the tracking event as guests so the Edit
-      // Event drawer hydrates the Guests field correctly. sendUpdates:
-      // false (below) keeps Google from emailing them — the explicit
-      // Send Invite flow handles candidate/client notifications.
-      attendees: (input.attendees ?? [])
-        .filter((a) => typeof a.email === "string" && a.email.trim().length > 0)
-        .map((a) => ({ email: a.email, displayName: a.name })),
+      attendees: [],
       // Mint a Google Meet only when the video interview is staying on
-      // Google. For Teams we still create the tracking calendar event
-      // (so invite-send can patch attendees onto it later) but skip
-      // conferenceData entirely and overwrite meetLink below with the
-      // Teams joinWebUrl.
+      // Google. For Teams we still create the organizer-only tracking
+      // calendar event but skip conferenceData entirely and overwrite
+      // meetLink below with the Teams joinWebUrl.
       createMeet: wantsVideoLink && meetingProvider === "google",
       sendUpdates: false,
       location: input.location || undefined,
@@ -953,10 +947,10 @@ export type SendInvitePartyInput = {
   party: "client" | "candidate";
   attendeeEmail: string;
   attendeeName?: string;
-  // Optional additional recipients. The same event is patched both
-  // times — recruiter's cc/bcc choices on each send get appended as
-  // attendees. Google Calendar has no bcc concept; closest we can do
-  // is add them as needsAction attendees.
+  // Optional additional recipients. Google Calendar has no private Bcc
+  // bucket, so Bcc is intentionally ignored for native calendar invites.
+  // Candidate events stay candidate-only; client Cc recipients become
+  // visible client-event guests.
   ccEmails?: string[];
   bccEmails?: string[];
   subject: string; // becomes event.summary
@@ -1038,12 +1032,13 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
     resolvedSubject = resolvedSubject.split("[Job Description]").join(description);
   }
 
-  const cc = (input.ccEmails ?? []).filter((e) => e && e.trim()).map((e) => ({ email: e.trim() }));
-  const bcc = (input.bccEmails ?? []).filter((e) => e && e.trim()).map((e) => ({ email: e.trim() }));
+  const cc = input.party === "client"
+    ? (input.ccEmails ?? []).filter((e) => e && e.trim()).map((e) => ({ email: e.trim() }))
+    : [];
   const primary = { email: input.attendeeEmail.trim(), displayName: input.attendeeName };
   const seen = new Set<string>([primary.email.toLowerCase()]);
   const newAttendees: { email: string; displayName?: string }[] = [primary];
-  for (const a of [...cc, ...bcc]) {
+  for (const a of cc) {
     const key = a.email.toLowerCase();
     if (!key || seen.has(key)) continue;
     seen.add(key);
@@ -1076,7 +1071,25 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   // event so the first send does not create an extra duplicate block.
   const reusableTrackingEventId =
     !partyEventId && !otherPartyEventId ? interview.googleEventIdMine : null;
-  const eventToPatch = partyEventId ?? reusableTrackingEventId;
+  let retiredTrackingEventId: string | null = null;
+  let eventToPatch = partyEventId ?? reusableTrackingEventId;
+  if (reusableTrackingEventId) {
+    try {
+      const trackingAttendees = await getCalendarEventAttendees({
+        userId: user.id,
+        eventId: reusableTrackingEventId,
+      });
+      if (trackingAttendees.some((a) => a.email.trim().length > 0)) {
+        retiredTrackingEventId = reusableTrackingEventId;
+        eventToPatch = null;
+      }
+    } catch {
+      // If we cannot prove the tracking event is organizer-only, create a
+      // fresh party event instead of risking another cross-party update mail.
+      retiredTrackingEventId = reusableTrackingEventId;
+      eventToPatch = null;
+    }
+  }
 
   if (eventToPatch) {
     try {
@@ -1145,6 +1158,13 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
       createdMeetLink = created.meetLink;
       createdMeetingCode = created.meetingCode;
       effectiveMeetLink = effectiveMeetLink ?? created.meetLink ?? attachMeetLink ?? null;
+      if (retiredTrackingEventId && retiredTrackingEventId !== googleEventId) {
+        try {
+          await deleteCalendarEvent({ userId: user.id, eventId: retiredTrackingEventId, sendUpdates: false });
+        } catch {
+          // Best-effort cleanup; the new per-party invite is the source of truth.
+        }
+      }
     } catch (e) {
       return {
         ok: false,
@@ -1160,7 +1180,7 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
     meetLink?: string | null;
     meetConferenceId?: string | null;
   } = {};
-  if (!interview.googleEventIdMine) updateData.googleEventIdMine = googleEventId;
+  if (!interview.googleEventIdMine || retiredTrackingEventId) updateData.googleEventIdMine = googleEventId;
   if (input.party === "client") updateData.googleEventIdClient = googleEventId;
   else updateData.googleEventIdCandidate = googleEventId;
   if (!interview.meetLink && createdMeetLink) {

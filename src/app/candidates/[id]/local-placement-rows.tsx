@@ -53,7 +53,6 @@ import {
   InterviewerPicker,
   buildCcBccOptions,
   parseEmailCsv,
-  type AceTeamContact,
 } from "@/app/candidates/[id]/placement-flows";
 import { triggerCalendarSync } from "@/lib/calendar/trigger-sync";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
@@ -208,7 +207,6 @@ export function LocalPlacementRows({
   candidateCurrentEmployer,
   recruiter,
   jobs,
-  aceTeam,
   className,
   embed = false,
 }: {
@@ -221,7 +219,6 @@ export function LocalPlacementRows({
   candidateCurrentEmployer: string | null;
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
   jobs: LocalJobRow[];
-  aceTeam: AceTeamContact[];
   // Extra classes merged onto the pill-strip root. The split-view embed
   // passes mt-4 so the pills row clears the chrome above it; the full
   // profile passes nothing.
@@ -441,7 +438,6 @@ export function LocalPlacementRows({
           candidateId={candidateId}
           candidateName={candidateName}
           job={scheduleFor}
-          aceTeam={aceTeam}
           onClose={() => setScheduleFor(null)}
           onScheduled={(ctx) => {
             setInviteFlow({ ...ctx, step: "candidate" });
@@ -503,7 +499,6 @@ export function LocalPlacementRows({
           candidateName={candidateName}
           candidateEmail={candidateEmail}
           recruiter={recruiter}
-          aceTeam={aceTeam}
           onClose={() => {
             setInviteFlow(null);
             setScheduleFor(null);
@@ -541,7 +536,6 @@ export function LocalPlacementRows({
           candidateName={candidateName}
           candidateEmail={candidateEmail}
           recruiter={recruiter}
-          aceTeam={aceTeam}
           onClose={() => {
             setInviteFlow(null);
             setScheduleFor(null);
@@ -922,14 +916,12 @@ function ScheduleDialog({
   candidateId,
   candidateName,
   job,
-  aceTeam,
   onClose,
   onScheduled,
 }: {
   candidateId: string;
   candidateName: string;
   job: LocalJobRow;
-  aceTeam: AceTeamContact[];
   onClose: () => void;
   onScheduled: (ctx: Omit<LocalInviteFlow, "step">) => void;
 }) {
@@ -944,7 +936,6 @@ function ScheduleDialog({
   const [interviewerEmail, setInterviewerEmail] = useState("");
   const [location, setLocation] = useState("");
   const [ccCsv, setCcCsv] = useState("");
-  const [bccCsv, setBccCsv] = useState("");
   const [notes, setNotes] = useState("");
   // When checked, the recruiter is logging an interview the client is
   // scheduling themselves: we still write the Interview row + sync the
@@ -1072,7 +1063,7 @@ function ScheduleDialog({
         clientContactName: interviewerName.trim(),
         clientContactEmail: interviewerEmail.trim(),
         ccEmails: parseEmailCsv(ccCsv),
-        bccEmails: parseEmailCsv(bccCsv),
+        bccEmails: [],
         timeZone,
         candidateTemplate: templates.candidate,
         clientTemplate: templates.client,
@@ -1137,11 +1128,8 @@ function ScheduleDialog({
           clientWillSendInvite ? null : (
             <CcBccPicker
               clientContacts={job.clientContacts}
-              aceTeam={aceTeam}
               cc={ccCsv}
-              bcc={bccCsv}
               onCcChange={setCcCsv}
-              onBccChange={setBccCsv}
             />
           )
         }
@@ -2307,7 +2295,6 @@ function LocalClientInviteComposer({
   candidateName,
   candidateEmail,
   recruiter,
-  aceTeam,
   onClose,
   onBack,
   onSent,
@@ -2325,7 +2312,6 @@ function LocalClientInviteComposer({
   candidateName: string;
   candidateEmail: string | null;
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
-  aceTeam: AceTeamContact[];
   onClose: () => void;
   onBack?: () => void;
   onSent: (meetLink?: string | null) => void;
@@ -2359,7 +2345,6 @@ function LocalClientInviteComposer({
   const subject = applyMergeFieldsClient(invite.clientTemplate?.subject ?? fallbackSubject, values);
   const body = applyMergeFieldsClient(invite.clientTemplate?.body ?? fallbackBody, values);
   const ccPickerOptions = buildCcBccOptions(invite.clientContacts);
-  const bccPickerOptions = aceTeam.map((m) => ({ id: m.id, name: m.name, email: m.email }));
   return (
     <EmailComposer
       title="Send client calendar invite"
@@ -2368,7 +2353,7 @@ function LocalClientInviteComposer({
       initial={{
         to: invite.clientContactEmail ? [invite.clientContactEmail] : [],
         cc: invite.ccEmails,
-        bcc: invite.bccEmails,
+        bcc: [],
         subject,
         body,
       }}
@@ -2379,7 +2364,7 @@ function LocalClientInviteComposer({
         body: applyMergeFieldsClient(t.body, values),
       })}
       ccOptions={ccPickerOptions}
-      bccOptions={bccPickerOptions}
+      hideBccField
       mergeValues={values}
       sendLabel="Send Invite"
       onClose={onClose}
@@ -2396,7 +2381,7 @@ function LocalClientInviteComposer({
           attendeeEmail: draft.to[0],
           attendeeName: invite.clientContactName || undefined,
           ccEmails: draft.cc,
-          bccEmails: draft.bcc,
+          bccEmails: [],
           subject: draft.subject,
           bodyText: draft.body,
           timeZone: invite.timeZone,
@@ -2420,7 +2405,6 @@ function LocalCandidateInviteComposer({
   candidateName,
   candidateEmail,
   recruiter,
-  aceTeam,
   onClose,
   onBack,
   onSent,
@@ -2438,7 +2422,6 @@ function LocalCandidateInviteComposer({
   candidateName: string;
   candidateEmail: string | null;
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
-  aceTeam: AceTeamContact[];
   onClose: () => void;
   onBack?: () => void;
   onSent: (meetLink?: string | null) => void;
@@ -2467,8 +2450,6 @@ function LocalCandidateInviteComposer({
     `Good luck!`;
   const subject = applyMergeFieldsClient(invite.candidateTemplate?.subject ?? fallbackSubject, values);
   const body = applyMergeFieldsClient(invite.candidateTemplate?.body ?? fallbackBody, values);
-  const ccPickerOptions = buildCcBccOptions(invite.clientContacts);
-  const bccPickerOptions = aceTeam.map((m) => ({ id: m.id, name: m.name, email: m.email }));
   return (
     <EmailComposer
       title="Send candidate calendar invite"
@@ -2476,8 +2457,8 @@ function LocalCandidateInviteComposer({
       draftKey={`interview-invite-${invite.interviewId}-candidate`}
       initial={{
         to: candidateEmail ? [candidateEmail] : [],
-        cc: invite.ccEmails,
-        bcc: invite.bccEmails,
+        cc: [],
+        bcc: [],
         subject,
         body,
       }}
@@ -2487,8 +2468,8 @@ function LocalCandidateInviteComposer({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),
       })}
-      ccOptions={ccPickerOptions}
-      bccOptions={bccPickerOptions}
+      hideCcField
+      hideBccField
       mergeValues={values}
       sendLabel="Send Invite"
       onClose={onClose}
@@ -2504,8 +2485,8 @@ function LocalCandidateInviteComposer({
           party: "candidate",
           attendeeEmail: draft.to[0],
           attendeeName: candidateName || undefined,
-          ccEmails: draft.cc,
-          bccEmails: draft.bcc,
+          ccEmails: [],
+          bccEmails: [],
           subject: draft.subject,
           bodyText: draft.body,
           timeZone: invite.timeZone,

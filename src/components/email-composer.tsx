@@ -106,6 +106,10 @@ export type EmailComposerProps = {
   // recipientOptions — if both are passed, the recipient block stays
   // hidden.
   hideRecipientFields?: boolean;
+  // Calendar invites do not support all Gmail recipient buckets. These
+  // flags let callers hide individual rows while keeping the normal To row.
+  hideCcField?: boolean;
+  hideBccField?: boolean;
   // When provided, Cc and Bcc become multi-select dropdowns (contacts +
   // free-text entry). Cc and Bcc are sourced separately because their
   // intent is different:
@@ -208,6 +212,8 @@ export function EmailComposer({
   templateFilter,
   recipientOptions,
   hideRecipientFields = false,
+  hideCcField = false,
+  hideBccField = false,
   ccOptions,
   bccOptions,
   ccBccOptions,
@@ -230,12 +236,18 @@ export function EmailComposer({
   // recruiter can BCC him on any email from any composer entry point
   // — submittal, interview invite, ad-hoc — without depending on the
   // caller wiring teammates through manually.
-  const effectiveCcOptions = ccOptions ?? ccBccOptions;
-  const baseBccOptions = bccOptions ?? ccBccOptions ?? [];
-  const effectiveBccOptions = mergeContactOptionsByEmail(
-    baseBccOptions,
-    BCC_TEAMMATE_OPTIONS,
-  );
+  const showCcField = !hideCcField;
+  const showBccField = !hideBccField;
+  const effectiveCcOptions = showCcField ? (ccOptions ?? ccBccOptions) : undefined;
+  const baseBccOptions = showBccField ? (bccOptions ?? ccBccOptions ?? []) : [];
+  const effectiveBccOptions = showBccField
+    ? mergeContactOptionsByEmail(
+        baseBccOptions,
+        BCC_TEAMMATE_OPTIONS,
+      )
+    : [];
+  const addCcBccLabel =
+    showCcField && showBccField ? "Add Cc / Bcc" : showCcField ? "Add Cc" : "Add Bcc";
   // Read any saved draft for this draftKey BEFORE seeding state so the
   // restored values render on first paint — no flash of the seed body
   // and no race between the state setter and the localStorage read.
@@ -246,10 +258,10 @@ export function EmailComposer({
   const [cc, setCc] = useState<string>(initial.cc.join(", "));
   const [bcc, setBcc] = useState<string>(initial.bcc.join(", "));
   const [showCcBcc, setShowCcBcc] = useState<boolean>(
-    initial.cc.length > 0 ||
-      initial.bcc.length > 0 ||
+    (showCcField && initial.cc.length > 0) ||
+      (showBccField && initial.bcc.length > 0) ||
       Boolean(effectiveCcOptions && effectiveCcOptions.length > 0) ||
-      Boolean(effectiveBccOptions && effectiveBccOptions.length > 0),
+      Boolean(showBccField && effectiveBccOptions.length > 0),
   );
   const [subject, setSubject] = useState<string>(stored?.subject ?? initial.subject);
   const [body, setBody] = useState<string>(stored?.body ?? initial.body);
@@ -514,8 +526,8 @@ export function EmailComposer({
   function draftValue(): EmailDraft {
     return {
       to: parseList(to),
-      cc: parseList(cc),
-      bcc: parseList(bcc),
+      cc: showCcField ? parseList(cc) : [],
+      bcc: showBccField ? parseList(bcc) : [],
       subject: subject.trim(),
       // In rich-text mode the `body` state IS the HTML Tiptap emits. We
       // expose it through both fields so callers that want HTML explicitly
@@ -825,21 +837,25 @@ export function EmailComposer({
               <Row label="To">
                 <ContactSinglePicker value={to} onChange={setTo} options={recipientOptions} />
               </Row>
-              <Row label="Cc">
-                <ContactMultiPicker value={cc} onChange={setCc} options={recipientOptions} />
-              </Row>
-              <Row label="Bcc">
-                {effectiveBccOptions && effectiveBccOptions.length > 0 ? (
-                  <ContactComboMulti
-                    value={bcc}
-                    onChange={setBcc}
-                    options={effectiveBccOptions}
-                    pinned={ccBccPinned}
-                  />
-                ) : (
-                  <Input value={bcc} onChange={setBcc} />
-                )}
-              </Row>
+              {showCcField && (
+                <Row label="Cc">
+                  <ContactMultiPicker value={cc} onChange={setCc} options={recipientOptions} />
+                </Row>
+              )}
+              {showBccField && (
+                <Row label="Bcc">
+                  {effectiveBccOptions && effectiveBccOptions.length > 0 ? (
+                    <ContactComboMulti
+                      value={bcc}
+                      onChange={setBcc}
+                      options={effectiveBccOptions}
+                      pinned={ccBccPinned}
+                    />
+                  ) : (
+                    <Input value={bcc} onChange={setBcc} />
+                  )}
+                </Row>
+              )}
             </>
           ) : (
             <>
@@ -848,42 +864,46 @@ export function EmailComposer({
               </Row>
               {showCcBcc ? (
                 <>
-                  <Row label="Cc">
-                    {effectiveCcOptions && effectiveCcOptions.length > 0 ? (
-                      <ContactComboMulti
-                        value={cc}
-                        onChange={setCc}
-                        options={effectiveCcOptions}
-                        pinned={ccBccPinned}
-                      />
-                    ) : (
-                      <Input value={cc} onChange={setCc} />
-                    )}
-                  </Row>
-                  <Row label="Bcc">
-                    {effectiveBccOptions && effectiveBccOptions.length > 0 ? (
-                      <ContactComboMulti
-                        value={bcc}
-                        onChange={setBcc}
-                        options={effectiveBccOptions}
-                        pinned={ccBccPinned}
-                      />
-                    ) : (
-                      <Input value={bcc} onChange={setBcc} />
-                    )}
-                  </Row>
+                  {showCcField && (
+                    <Row label="Cc">
+                      {effectiveCcOptions && effectiveCcOptions.length > 0 ? (
+                        <ContactComboMulti
+                          value={cc}
+                          onChange={setCc}
+                          options={effectiveCcOptions}
+                          pinned={ccBccPinned}
+                        />
+                      ) : (
+                        <Input value={cc} onChange={setCc} />
+                      )}
+                    </Row>
+                  )}
+                  {showBccField && (
+                    <Row label="Bcc">
+                      {effectiveBccOptions && effectiveBccOptions.length > 0 ? (
+                        <ContactComboMulti
+                          value={bcc}
+                          onChange={setBcc}
+                          options={effectiveBccOptions}
+                          pinned={ccBccPinned}
+                        />
+                      ) : (
+                        <Input value={bcc} onChange={setBcc} />
+                      )}
+                    </Row>
+                  )}
                 </>
-              ) : (
+              ) : showCcField || showBccField ? (
                 <div className="pl-16">
                   <button
                     type="button"
                     onClick={() => setShowCcBcc(true)}
                     className="text-xs font-medium text-brand-dark hover:underline"
                   >
-                    Add Cc / Bcc
+                    {addCcBccLabel}
                   </button>
                 </div>
-              )}
+              ) : null}
             </>
           )}
           <Row label="Subject">
