@@ -996,14 +996,30 @@ model CandidateMatch {
   candidateId    String
   score          Int
   rationale      String   @db.Text
-  // Per-axis breakdown Claude emitted alongside the score (titleMatch,
-  // locationFit, experienceFit, compensationFit, overallSummary). Stored
-  // so the score popover renders the same explanation everywhere the
-  // score is visible — Find Matches panel today, /jobs/[id] Matched tab
-  // and any future surface that references the row. Nullable for legacy
-  // rows written before this column existed; the popover falls back to
-  // rationale when the JSON blob is null.
+  // Per-axis breakdown produced by the deterministic scorer
+  // (src/lib/match-scoring.ts). Carries both numeric per-axis scores
+  // (titleScore, skillsScore, experienceScore, locationScore, otherScore,
+  // titleFunctionMatch, titleLevelDelta) and the string explanations the
+  // ScoreBadge popover renders (titleMatch, locationFit, experienceFit,
+  // compensationFit, overallSummary). Legacy rows from the previous
+  // Claude-streamed scorer carry only the string fields; readers must
+  // fall back to rationale when the JSON blob is null.
   scoreBreakdown Json?
+  // Set every time the deterministic scorer (`computeMatchScore`) writes
+  // this row. `sourceHash` is the SHA-256 of every input the scorer
+  // reads: candidate.skills + experience + currentDesignation + comp +
+  // location + resume.extractedText, plus job.title + description +
+  // searchKeywords + salaryRange + locations. When a candidate is
+  // applied/linked to a job we compute once and store; on JD edit or
+  // resume swap the trigger action nulls sourceHash on every affected
+  // row, and the next find-matches read recomputes the stale rows in
+  // place. A read where sourceHash matches the current job + candidate
+  // inputs returns the stored values directly — never a recompute on
+  // an unchanged read. Both fields are nullable so the one-time
+  // backfill can pick up rows that pre-date this column without crashing
+  // the read path.
+  computedAt     DateTime?
+  sourceHash     String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

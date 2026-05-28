@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
+import { recomputeMatchesForJob } from "@/lib/match-scoring-store";
 
 // Local-only override layer for RF jobs. RF is the system of record but
 // doesn't have a writeable description endpoint we can use, and the
@@ -59,6 +60,19 @@ export async function updateJobOverrideDescription(args: {
         jobId: job.id,
         descLength: description.length,
       });
+      // Description is part of the deterministic match-score sourceHash.
+      // Fan out a recompute across every stored CandidateMatch row for
+      // this job so Find Matches + the Matched tab reflect the new
+      // description on next read. Best-effort.
+      const org = await getCurrentOrg();
+      try {
+        const stats = await recomputeMatchesForJob(org.id, job.id);
+        // eslint-disable-next-line no-console
+        console.log("[updateJobOverrideDescription] recomputed matches", { jobId: job.id, ...stats });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("[updateJobOverrideDescription] match recompute failed", { jobId: job.id, err: e instanceof Error ? e.message : String(e) });
+      }
       revalidatePath(`/jobs/${job.id}`);
       revalidatePath("/candidates", "layout");
       return { ok: true };
@@ -92,6 +106,22 @@ export async function updateJobOverrideDescription(args: {
       descPreview: saved.description?.slice(0, 200) ?? null,
       updatedAt: saved.updatedAt.toISOString(),
     });
+    // RF-imported branch: JD content is sourced from Job.description /
+    // raw.description / JobOverride.description per the readJobDescription
+    // priority. The deterministic scorer reads Job.description directly,
+    // so an override-only edit doesn't flip the sourceHash on its own.
+    // We still force a recompute pass when the Job row is resolved so
+    // recruiters see the new override land immediately in Find Matches.
+    if (job?.id) {
+      try {
+        const stats = await recomputeMatchesForJob(org.id, job.id);
+        // eslint-disable-next-line no-console
+        console.log("[updateJobOverrideDescription] recomputed matches (rf branch)", { jobId: job.id, ...stats });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("[updateJobOverrideDescription] rf-branch match recompute failed", { jobId: job.id, err: e instanceof Error ? e.message : String(e) });
+      }
+    }
     revalidatePath(`/jobs/${resolvedRfId}`);
     revalidatePath("/candidates", "layout");
     return { ok: true };

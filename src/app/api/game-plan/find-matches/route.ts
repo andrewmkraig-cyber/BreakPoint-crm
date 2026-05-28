@@ -1,33 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
-import { CLAUDE_MODEL } from "@/lib/claude";
+import { ensureMatchScoresForPool } from "@/lib/match-scoring-store";
 
-// Game Plan Phase 2 — Find Matches.
+// Game Plan Phase 2 — Find Matches (deterministic).
 //
 // POST /api/game-plan/find-matches
 // Body: { jobId?: string, clientId?: string, page?: number }
-// Returns: { matches, hasMore, page }
+// Returns: NDJSON stream { t: "meta" | "awaiting_pick" | "match" | "end" | "error" }
+//
+// History: prior to this version each candidate was scored by a live
+// Claude streaming call (Anthropic messages.stream + NDJSON parse).
+// Every panel open paid credits per candidate AND the exact-title bias
+// in the prompt mis-scored promotion-ready candidates (a tenured
+// Senior Tax Accountant against a Tax Manager role). This route now
+// runs the deterministic scorer in `src/lib/match-scoring.ts`: rule-
+// based code that computes once per (candidate, job), stores on
+// CandidateMatch (score + subScores + rationale + sourceHash +
+// computedAt), and returns stored values on every subsequent open. JD
+// edits and resume swaps invalidate via the recompute helpers in
+// `src/lib/match-scoring-store.ts`. Nothing in this route calls Claude.
 //
 // Tenant-scoped: every Neon query carries WHERE organizationId = org.id
 // (CLAUDE.md non-negotiable #8). The resolved org id is logged at the
 // top of the handler so the regression check can confirm it threads
 // into every query without rummaging through call sites.
 //
-// Pre-filter pool BEFORE Claude: title keyword match + rough location
-// match against the target (city OR state token). Cheap substring +
-// token comparisons; we are explicitly NOT geocoding for v1. This
-// keeps the Sonnet token cost sane on big candidate pools without
-// adding infra.
+// Pre-filter pool: title keyword match + rough location match against
+// the target (city OR state token). Cheap substring + token compares
+// — the pre-filter exists so the deterministic scorer never has to
+// touch every candidate in the org for every job; it scores the
+// reasonable 60-candidate slice and stores the result.
 
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 const PAGE_SIZE = 5;
 const PRE_FILTER_CAP = 60;
-const PROMPT_CANDIDATE_CAP = 30;
-
-const anthropic = new Anthropic();
 
 type MatchTarget = {
   jobs: Array<{
@@ -295,69 +303,97 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        const promptCandidates = filtered.slice(0, PROMPT_CANDIDATE_CAP);
-        const byId = new Map(promptCandidates.map((c) => [c.id, c]));
-        const seen = new Set<string>();
-        let emitted = 0;
+        // Deterministic compute + store pass. For the pre-filtered
+        // candidate slice this:
+        //   1. Bulk-selects every existing CandidateMatch row for
+        //      this job (so we don't pay one SELECT per candidate).
+        //   2. Hash-compares each candidate's current inputs against
+        //      the stored sourceHash. Match -> return stored. Miss ->
+        //      compute deterministically + upsert.
+        //   3. Sorts the slice by stored score descending, applies
+        //      the same threshold (>= 40) and PAGE_SIZE the prior
+        //      Claude path used.
+        // Every step is bounded by PRE_FILTER_CAP and the deterministic
+        // scorer is pure CPU — no API calls, no token budget, no per-
+        // open credit cost.
+        const targetJob = target.jobs[0];
+        if (!targetJob) {
+          send({ t: "end", hasMore: false, page });
+          controller.close();
+          return;
+        }
 
-        const claudeStream = anthropic.messages.stream({
-          model: CLAUDE_MODEL,
-          max_tokens: 4096,
-          messages: [
-            { role: "user", content: buildStreamingPrompt(promptCandidates, target) },
-          ],
+        // Pull the most-recent resume's extractedText for every
+        // pre-filter candidate in one query. The scorer reads
+        // resume.extractedText as part of skill / experience signal.
+        const resumeRows = await prisma.candidateResume.findMany({
+          where: {
+            organizationId: org.id,
+            candidateId: { in: filtered.map((c) => c.id) },
+            extractedText: { not: null },
+          },
+          orderBy: { uploadedAt: "desc" },
+          select: { candidateId: true, extractedText: true },
+        });
+        const resumeByCandidate = new Map<string, string>();
+        for (const r of resumeRows) {
+          if (!r.candidateId) continue;
+          if (!resumeByCandidate.has(r.candidateId)) {
+            resumeByCandidate.set(r.candidateId, r.extractedText ?? "");
+          }
+        }
+        // Pull lat/lng directly so the scorer can use them when present.
+        const geoRows = await prisma.candidate.findMany({
+          where: { organizationId: org.id, id: { in: filtered.map((c) => c.id) } },
+          select: { id: true, lat: true, lng: true },
+        });
+        const geoByCandidate = new Map(geoRows.map((g) => [g.id, g] as const));
+
+        const scoringCandidates = filtered.map((c) => ({
+          id: c.id,
+          currentDesignation: c.currentDesignation,
+          currentOrganization: c.currentOrganization,
+          skills: c.skills,
+          experience: c.experience,
+          expectedSalary: c.expectedSalary,
+          location: c.location,
+          lat: geoByCandidate.get(c.id)?.lat ?? null,
+          lng: geoByCandidate.get(c.id)?.lng ?? null,
+          resumeText: resumeByCandidate.get(c.id) ?? null,
+        }));
+
+        // Compute + store, returning the score map.
+        await ensureMatchScoresForPool({
+          orgId: org.id,
+          jobId: targetJob.id,
+          candidates: scoringCandidates,
         });
 
-        let buffer = "";
-        const tryEmit = (line: string): boolean => {
-          // Returns true when we've hit PAGE_SIZE and the caller
-          // should stop reading.
-          const trimmed = line.trim();
-          if (!trimmed) return false;
-          // Strip surrounding markdown / array brackets / commas if
-          // Claude slipped any in despite the prompt instruction.
-          const cleaned = trimmed
-            .replace(/^[\s\[,]+/, "")
-            .replace(/[\s\],]+$/, "");
-          if (!cleaned.startsWith("{")) return false;
-          let parsed: {
-            candidateId?: unknown;
-            score?: unknown;
-            rationale?: unknown;
-            scoreBreakdown?: unknown;
-          };
-          try {
-            parsed = JSON.parse(cleaned);
-          } catch {
-            return false;
-          }
-          if (typeof parsed.candidateId !== "string") return false;
-          if (seen.has(parsed.candidateId)) return false;
-          const c = byId.get(parsed.candidateId);
-          if (!c) return false;
-          const score =
-            typeof parsed.score === "number" ? Math.round(parsed.score) : 0;
-          const rationale =
-            typeof parsed.rationale === "string" ? parsed.rationale : "";
-          if (score < 40) return false;
+        // Read back the full stored row for the slice so the panel
+        // gets the rationale + scoreBreakdown alongside the score.
+        const storedRows = await prisma.candidateMatch.findMany({
+          where: {
+            jobId: targetJob.id,
+            organizationId: org.id,
+            candidateId: { in: filtered.map((c) => c.id) },
+          },
+          select: { candidateId: true, score: true, rationale: true, scoreBreakdown: true },
+        });
+        const storedByCandidate = new Map(storedRows.map((r) => [r.candidateId, r] as const));
+
+        // Build the ranked, threshold-filtered list. score >= 40 is
+        // the same drop threshold the Claude path used.
+        const candidatesById = new Map(filtered.map((c) => [c.id, c]));
+        const ranked = Array.from(storedByCandidate.values())
+          .filter((r) => r.score >= 40)
+          .sort((a, b) => b.score - a.score);
+
+        const slice = ranked.slice(0, PAGE_SIZE);
+        for (const row of slice) {
+          const c = candidatesById.get(row.candidateId);
+          if (!c) continue;
           const name =
-            [c.firstName, c.lastName].filter(Boolean).join(" ").trim() ||
-            "(no name)";
-          // Normalize the breakdown — defensive parse since Claude
-          // might omit a field when it can't ground a dimension.
-          const sbRaw =
-            parsed.scoreBreakdown && typeof parsed.scoreBreakdown === "object"
-              ? (parsed.scoreBreakdown as Record<string, unknown>)
-              : {};
-          const pickStr = (v: unknown): string =>
-            typeof v === "string" ? v.trim() : "";
-          const scoreBreakdown = {
-            titleMatch: pickStr(sbRaw.titleMatch),
-            locationFit: pickStr(sbRaw.locationFit),
-            experienceFit: pickStr(sbRaw.experienceFit),
-            compensationFit: pickStr(sbRaw.compensationFit),
-            overallSummary: pickStr(sbRaw.overallSummary) || rationale,
-          };
+            [c.firstName, c.lastName].filter(Boolean).join(" ").trim() || "(no name)";
           send({
             t: "match",
             match: {
@@ -371,109 +407,14 @@ export async function POST(req: NextRequest) {
               currentEmployer: c.currentOrganization ?? "",
               location: c.location ?? "",
               comp: formatComp(c.expectedSalary),
-              rationale,
-              score,
-              scoreBreakdown,
+              rationale: row.rationale,
+              score: row.score,
+              scoreBreakdown: row.scoreBreakdown,
             },
           });
-          // Persist to CandidateMatch so the /jobs/[id] Matched tab
-          // survives panel close + page reload. Tenant-scoped on the
-          // resolved org. Only fires for job-scoped streams (single
-          // jobId in target.jobs); client streams without a pick are
-          // short-circuited above and never reach this code path.
-          // Fire-and-forget to avoid stalling the NDJSON flush — but
-          // we surface every error explicitly because earlier silent
-          // failures hid the Matched count from updating.
-          const matchedJobId = target.jobs[0]?.id;
-          // eslint-disable-next-line no-console
-          console.log("[find-matches] upsert prep", {
-            organizationId: org.id,
-            jobId: matchedJobId,
-            candidateId: c.id,
-            score,
-          });
-          if (!matchedJobId || !org.id || !c.id) {
-            // eslint-disable-next-line no-console
-            console.warn(
-              "[find-matches] upsert skipped: missing id",
-              {
-                hasJobId: Boolean(matchedJobId),
-                hasOrgId: Boolean(org.id),
-                hasCandidateId: Boolean(c.id),
-                targetSource: target.source,
-                jobsLen: target.jobs.length,
-              },
-            );
-          } else {
-            prisma.candidateMatch
-              .upsert({
-                where: {
-                  jobId_candidateId: {
-                    jobId: matchedJobId,
-                    candidateId: c.id,
-                  },
-                },
-                create: {
-                  organizationId: org.id,
-                  jobId: matchedJobId,
-                  candidateId: c.id,
-                  score,
-                  rationale,
-                  scoreBreakdown,
-                },
-                update: { score, rationale, scoreBreakdown },
-              })
-              .then((row) => {
-                // eslint-disable-next-line no-console
-                console.log("[find-matches] upsert ok", {
-                  rowId: row.id,
-                  jobId: matchedJobId,
-                  candidateId: c.id,
-                  score,
-                });
-              })
-              .catch((err) => {
-                // eslint-disable-next-line no-console
-                console.error("[find-matches] candidateMatch upsert FAILED", {
-                  organizationId: org.id,
-                  jobId: matchedJobId,
-                  candidateId: c.id,
-                  score,
-                  error: err instanceof Error ? err.message : String(err),
-                  stack: err instanceof Error ? err.stack : undefined,
-                });
-              });
-          }
-          seen.add(parsed.candidateId);
-          emitted++;
-          return emitted >= PAGE_SIZE;
-        };
-
-        outer: for await (const event of claudeStream) {
-          if (
-            event.type === "content_block_delta" &&
-            event.delta.type === "text_delta"
-          ) {
-            buffer += event.delta.text;
-            let idx;
-            while ((idx = buffer.indexOf("\n")) !== -1) {
-              const line = buffer.slice(0, idx);
-              buffer = buffer.slice(idx + 1);
-              if (tryEmit(line)) break outer;
-            }
-          }
         }
-        // Flush any final line that didn't end with a newline.
-        if (emitted < PAGE_SIZE) tryEmit(buffer);
 
-        // hasMore = there are still candidates left in the pre-
-        // filtered pool that this page didn't surface (either
-        // because Claude ranked them low + we cut at PAGE_SIZE, or
-        // because PROMPT_CANDIDATE_CAP < filtered.length).
-        const hasMore =
-          emitted >= PAGE_SIZE ||
-          filtered.length > PROMPT_CANDIDATE_CAP ||
-          (emitted === 0 && filtered.length > 0);
+        const hasMore = ranked.length > PAGE_SIZE;
         send({ t: "end", hasMore, page });
       } catch (e) {
         send({
@@ -689,101 +630,9 @@ function formatComp(expectedSalary: unknown): string {
   return "";
 }
 
-// Build the streaming prompt. Critical instruction: emit one JSON
-// object per line (NDJSON), NOT a JSON array. That lets the route
-// stream-parse Claude's response line-by-line and forward each
-// scored candidate to the client as it lands, instead of waiting
-// for the whole batch to finish.
-function buildStreamingPrompt(
-  candidates: CandidateRow[],
-  target: MatchTarget,
-): string {
-  const targetBlock = target.jobs
-    .map((j, i) => {
-      const sal =
-        j.salaryRangeStart && j.salaryRangeEnd
-          ? `\n  Comp range: $${j.salaryRangeStart}-$${j.salaryRangeEnd}`
-          : "";
-      const loc = j.locations.length ? `\n  Locations: ${j.locations.join(", ")}` : "";
-      // Recruiter-tuned priority keywords. These are the skills/terms
-      // the recruiter explicitly flagged on the JD tab as what to
-      // weight highest. Surfaced inline with the job so Claude can
-      // factor them into the score for THIS specific role (vs. the
-      // general JD prose).
-      const kw = j.searchKeywords.length
-        ? `\n  RECRUITER PRIORITY KEYWORDS (weight these heavily): ${j.searchKeywords.join(", ")}`
-        : "";
-      const desc = j.description.slice(0, 4000);
-      return `Job ${i + 1}: ${j.title}${loc}${sal}${kw}\n  Description:\n${desc}`;
-    })
-    .join("\n\n---\n\n");
-
-  const candidateBlock = candidates
-    .map((c) => {
-      const name = [c.firstName, c.lastName].filter(Boolean).join(" ").trim();
-      const skills = (c.skills || []).slice(0, 30).join(", ");
-      const exp = formatExperience(c.experience);
-      const notes = (c.notes ?? "").slice(0, 800);
-      return [
-        `id: ${c.id}`,
-        `name: ${name}`,
-        `current_title: ${c.currentDesignation ?? ""}`,
-        `current_employer: ${c.currentOrganization ?? ""}`,
-        `location: ${c.location ?? ""}`,
-        `comp: ${formatComp(c.expectedSalary) || "(unspecified)"}`,
-        skills ? `skills: ${skills}` : "",
-        exp ? `experience: ${exp}` : "",
-        notes ? `notes: ${notes}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
-    })
-    .join("\n\n---\n\n");
-
-  return [
-    `You are ranking candidates from BreakPoint Talent's internal database for the following ${target.source === "client" ? "client's open roles" : "job"}.`,
-    "",
-    "TARGET:",
-    targetBlock,
-    "",
-    "CANDIDATES:",
-    candidateBlock,
-    "",
-    "TASK:",
-    `Score each candidate 1-100 on fit. ${target.source === "client" ? "If the client has multiple roles, score against the candidate's best-fit role across the union." : ""} Drop weak fits (score < 40).`,
-    "Emit your STRONGEST fit FIRST, then the next strongest, etc. Output them as you score them. Start writing the first match as soon as you've decided on it. Do NOT pre-rank silently.",
-    "Each rationale: 1-2 sentences calling out the specific reason they fit (title overlap, comp alignment, location, domain experience).",
-    "Use plain prose. Do NOT use em dashes - use hyphens or commas.",
-    "",
-    "Per match, also produce a scoreBreakdown object with EXACTLY these five fields, each ONE short sentence:",
-    "  titleMatch       : how the candidate's current title compares to the role.",
-    "  locationFit      : whether the candidate's location works for this role.",
-    "  experienceFit    : depth of relevant domain / years of experience for this role.",
-    "  compensationFit  : whether candidate comp target fits the role's range (use \"unspecified\" when comp is missing).",
-    "  overallSummary   : one-sentence verdict that rolls the four axes into a recommendation.",
-    "If a dimension can't be grounded in the data, write a short sentence saying so (do NOT leave the field blank or omit it).",
-    "",
-    "OUTPUT FORMAT: emit one JSON object per line (newline-delimited JSON). NOT a JSON array. NO markdown fence. NO preamble. NO commentary between objects.",
-    `Each line schema: {"candidateId":"<id>","score":<int>,"rationale":"<1-2 sentences>","scoreBreakdown":{"titleMatch":"...","locationFit":"...","experienceFit":"...","compensationFit":"...","overallSummary":"..."}}`,
-    `Example of two lines:`,
-    `{"candidateId":"abc123","score":92,"rationale":"Strong match - current title aligns directly and location is on-site eligible.","scoreBreakdown":{"titleMatch":"Currently a Senior Tax Manager, exact match for the open Tax Manager role.","locationFit":"Lives in Cleveland, the role is Cleveland on-site, no relocation needed.","experienceFit":"8 years public accounting with audit + tax exposure covers the JD's scope.","compensationFit":"Target $150k sits comfortably inside the role's $140-160k band.","overallSummary":"Top-tier fit on every axis, ready to submit immediately."}}`,
-    `{"candidateId":"def456","score":81,"rationale":"Adjacent title with overlapping skills; comp target sits inside the band.","scoreBreakdown":{"titleMatch":"Tax Senior moving up; the open role is one rung above current title.","locationFit":"Based 90 minutes away, would need hybrid arrangement to be viable.","experienceFit":"5 years in public accounting, slightly light on the leadership scope the JD calls for.","compensationFit":"Target $135k is at the bottom of the range, leaves room to negotiate.","overallSummary":"Solid stretch candidate worth a conversation, not a slam dunk."}}`,
-    `Stop after you have emitted every candidate that scores 40 or higher.`,
-  ].join("\n");
-}
-
-function formatExperience(experience: unknown): string {
-  if (!Array.isArray(experience)) return "";
-  return experience
-    .slice(0, 4)
-    .map((e) => {
-      if (!e || typeof e !== "object") return "";
-      const r = e as Record<string, unknown>;
-      const title = typeof r.title === "string" ? r.title : typeof r.designation === "string" ? r.designation : "";
-      const org = typeof r.organization === "string" ? r.organization : typeof r.employer === "string" ? r.employer : "";
-      if (!title && !org) return "";
-      return `${title}${title && org ? " at " : ""}${org}`;
-    })
-    .filter(Boolean)
-    .join(" | ");
-}
+// The prior buildStreamingPrompt + formatExperience helpers fed the
+// removed Claude streaming path. The deterministic scorer in
+// src/lib/match-scoring.ts owns all of that logic now (title taxonomy,
+// experience parsing, skill normalization, etc.). Kept this comment as
+// a tombstone for the git archaeology — search "buildStreamingPrompt"
+// here and see commit history if you need the old prompt text.

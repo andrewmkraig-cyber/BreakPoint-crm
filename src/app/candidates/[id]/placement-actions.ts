@@ -23,6 +23,7 @@ import { buildFullMergeValues } from "@/lib/merge-context";
 import { getAppPreferences } from "@/lib/preferences";
 import { fireTemplatedEmail, type FireResult } from "@/lib/templated-email";
 import { fireTriggerAndLog } from "@/lib/trigger-fire";
+import { upsertMatchScore } from "@/lib/match-scoring-store";
 import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
 import { extractCandidateFields } from "@/lib/candidate-fields";
 import { formatLocation } from "@/lib/utils";
@@ -1676,6 +1677,18 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
         rfSynced,
       },
     });
+
+    // Deterministic match score on link. Same idempotent contract as
+    // applyLocalCandidateToJob — skipped when the (candidate, job)
+    // sourceHash matches what's already stored. No Claude call.
+    if (jobId) {
+      try {
+        await upsertMatchScore({ orgId: org.id, candidateId: candidateRow.id, jobId });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("[applyCandidateToJob] match-score upsert failed", { jobId, candidateId: candidateRow.id, err: e instanceof Error ? e.message : String(e) });
+      }
+    }
   }
 
   revalidatePath(`/candidates/${input.candidateRfId}`);
@@ -2630,6 +2643,27 @@ export async function keepCandidate(input: KeepCandidateInput): Promise<Result> 
         },
       }),
     ]);
+
+    // Deterministic match score on link. RF apply path stores
+    // candidateRfId on Placement, so we resolve to candidateId (cuid)
+    // for the CandidateMatch upsert. Skipped when no candidate row
+    // exists yet (rare — every active recruiter target has a Candidate
+    // row before they're keepable).
+    if (jobId) {
+      try {
+        const c = await prisma.candidate.findFirst({
+          where: { rfId: input.candidateRfId, organizationId: org.id },
+          select: { id: true },
+        });
+        if (c) {
+          await upsertMatchScore({ orgId: org.id, candidateId: c.id, jobId });
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("[keepCandidate] match-score upsert failed", { jobId, candidateRfId: input.candidateRfId, err: e instanceof Error ? e.message : String(e) });
+      }
+    }
+
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/jobs/${input.jobRfId}`);
     return { ok: true };
