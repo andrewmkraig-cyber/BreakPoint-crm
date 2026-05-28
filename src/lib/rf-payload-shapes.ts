@@ -178,6 +178,18 @@ export type RFContact = {
   [key: string]: unknown;
 };
 
+// Ace-native augmentation parallel to RFJobWithAce. RF-imported contacts
+// keep their numeric legacyRfId on `id`; Ace-native contacts get a
+// synthetic negative `id` (djb2-of-cuid) so existing numeric indexers
+// still compile. `_aceClientId` carries the Client cuid (the canonical
+// FK per CLAUDE.md rule 3) on every contact — RF or Ace-native — so
+// consumers can match by cuid without relying on the numeric
+// client_company_id pathway. `_aceContactId` is the Contact cuid.
+export type RFContactWithAce = RFContact & {
+  _aceContactId?: string;
+  _aceClientId?: string;
+};
+
 // ---- Normalizers / helpers ----
 
 export function normalizeCandidate(c: RFCandidate) {

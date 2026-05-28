@@ -368,9 +368,18 @@ export async function LocalCandidateProfile({
       const client = j.companyId != null ? clientById.get(j.companyId) : null;
       const aceJobId = (raw as { _aceJobId?: string })._aceJobId ?? null;
       const aceClientId = (raw as { _aceClientId?: string })._aceClientId ?? null;
-      const clientContacts = j.companyId != null
+      // Contact match: prefer the cuid pathway (`_aceClientId` carries
+      // the Client cuid for every contact, RF-imported or Ace-native —
+      // the canonical FK per CLAUDE.md rule 3). Fall back to the legacy
+      // numeric client_company_id === companyId path for any contact
+      // whose `_aceClientId` wasn't populated, so RF-imported clients
+      // keep behaving exactly as they did before this fix.
+      const clientContacts = (aceClientId || j.companyId != null)
         ? allContacts
-            .filter((ct) => ct.client_company_id === j.companyId)
+            .filter((ct) =>
+              (aceClientId && ct._aceClientId === aceClientId) ||
+              (j.companyId != null && ct.client_company_id === j.companyId),
+            )
             .map((ct) => ({
               id: ct.id,
               name:
@@ -442,9 +451,17 @@ export async function LocalCandidateProfile({
     const job = rfJob ? normalizeJob(rfJob) : null;
     const clientRaw = p.clientRfId != null ? clientById.get(p.clientRfId) ?? null : null;
     const client = clientRaw ? normalizeClient(clientRaw) : null;
-    const clientContacts = p.clientRfId != null
+    // Cuid-first contact match (same pattern as openJobs above). The
+    // prior `p.clientRfId != null` gate left every Ace-native placement
+    // with an empty clientContacts array — that's the To/Cc picker
+    // emptiness symptom in the Submit composer. RF-imported placements
+    // continue to match via the legacy numeric client_company_id path.
+    const clientContacts = (p.clientId || p.clientRfId != null)
       ? allContacts
-          .filter((ct) => ct.client_company_id === p.clientRfId)
+          .filter((ct) =>
+            (p.clientId && ct._aceClientId === p.clientId) ||
+            (p.clientRfId != null && ct.client_company_id === p.clientRfId),
+          )
           .map((ct) => {
             const firstEmail = Array.isArray(ct.email) ? ct.email[0] ?? "" : ct.email ?? "";
             const fullNameC = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.name || "(unnamed)";

@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import type { RFCandidate, RFClient, RFContact, RFJob } from "@/lib/rf-payload-shapes";
+import type { RFCandidate, RFClient, RFContact, RFContactWithAce, RFJob } from "@/lib/rf-payload-shapes";
 import { formatLocation } from "@/lib/utils";
 
 // Row shape used by the /candidates list table.
@@ -400,42 +400,74 @@ export async function getRfClientsForOrg(): Promise<RFClient[]> {
   return out;
 }
 
-export async function getRfContactsForOrg(): Promise<RFContact[]> {
+export async function getRfContactsForOrg(): Promise<RFContactWithAce[]> {
   const org = await getCurrentOrg();
+  // Phase 2 parity: include Ace-native contacts (legacyRfId == null).
+  // The prior `legacyRfId: { not: null }` gate hid every Ace-native
+  // contact from the candidate-profile contact roster, which in turn
+  // made the Apply/Submit composer's To/Cc picker empty for Ace-native
+  // jobs (Bug: client contacts missing from To/CC picker). Output now
+  // carries `_aceClientId` (the Client cuid) on every row so consumers
+  // can match by cuid — the canonical FK per CLAUDE.md rule 3 — rather
+  // than the legacy numeric client_company_id pathway.
   const rows = await prisma.contact.findMany({
-    where: { organizationId: org.id, legacyRfId: { not: null } },
-    select: { legacyRfId: true, raw: true, firstName: true, lastName: true, emails: true, clientId: true, currentDesignation: true },
+    where: { organizationId: org.id },
+    select: { id: true, legacyRfId: true, raw: true, firstName: true, lastName: true, emails: true, clientId: true, currentDesignation: true },
   });
-  // contactsByClientLegacyRfId needs the clientRfId on the contact (RF
-  // id, not cuid). Look up the Client row once so we can populate
-  // client_company_id on each contact payload even if `raw` is absent.
+  // Look up each contact's Client row so we can populate
+  // client_company_id (legacy numeric path) for RF-imported clients
+  // while also carrying the cuid through _aceClientId. Tenant-scoped
+  // by organizationId — pre-existing query had only an `id IN (…)`
+  // filter (Rule 8 gap; not exploitable because the input id list is
+  // already org-scoped via the outer Contact query, but tightened now
+  // since this function is being touched).
   const clientIdToLegacyRf = new Map<string, number>();
   if (rows.some((r) => r.clientId)) {
     const clientRows = await prisma.client.findMany({
-      where: { id: { in: Array.from(new Set(rows.map((r) => r.clientId).filter((x): x is string => Boolean(x)))) } },
+      where: {
+        organizationId: org.id,
+        id: { in: Array.from(new Set(rows.map((r) => r.clientId).filter((x): x is string => Boolean(x)))) },
+      },
       select: { id: true, legacyRfId: true },
     });
     for (const c of clientRows) {
       if (c.legacyRfId != null) clientIdToLegacyRf.set(c.id, c.legacyRfId);
     }
   }
-  const out: RFContact[] = [];
+  const out: RFContactWithAce[] = [];
   for (const r of rows) {
-    if (r.legacyRfId == null) continue;
+    // Ace-native rows have legacyRfId null; mint a synthetic negative
+    // numeric id (djb2-of-cuid, negated — same scheme as
+    // syntheticIdFromCuid for jobs) so callers that key off `id` as a
+    // number keep working. Real RF ids are positive, so the keyspaces
+    // never collide.
+    const numericId = r.legacyRfId != null ? r.legacyRfId : syntheticIdFromCuid(r.id);
+    const aceClientId = r.clientId ?? undefined;
     const raw = r.raw as RFContact | null;
     if (raw && typeof raw === "object") {
-      out.push({ ...raw, id: r.legacyRfId });
+      // RF-imported with payload — preserve the raw shape and stamp the
+      // identity + cuid fields on top so downstream cuid-matching
+      // (local-profile clientContacts filter) works for RF clients too.
+      out.push({
+        ...raw,
+        id: numericId,
+        _aceContactId: r.id,
+        _aceClientId: aceClientId,
+      });
       continue;
     }
-    // Fallback shape.
+    // Fallback shape — either an RF row whose raw payload was lost or
+    // any Ace-native row (raw is always null there).
     const clientRfId = r.clientId ? clientIdToLegacyRf.get(r.clientId) ?? null : null;
     out.push({
-      id: r.legacyRfId,
+      id: numericId,
       first_name: r.firstName,
       last_name: r.lastName,
       email: r.emails && r.emails.length > 0 ? r.emails : null,
       current_designation: r.currentDesignation,
       client_company_id: clientRfId,
+      _aceContactId: r.id,
+      _aceClientId: aceClientId,
     });
   }
   return out;
