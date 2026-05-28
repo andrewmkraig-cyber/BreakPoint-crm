@@ -299,9 +299,11 @@ function calendarDescription(input: ScheduleInterviewInput): string {
   if (input.clientName) lines.push(`Client: ${input.clientName}`);
   if (input.candidatePhone) lines.push(`Candidate phone: ${input.candidatePhone}`);
   if (input.location) lines.push(`Location: ${input.location}`);
-  if (input.attendees && input.attendees.length > 0) {
-    lines.push(`Interviewers: ${input.attendees.map((a) => `${a.name}${a.email ? ` <${a.email}>` : ""}`).join(", ")}`);
-  }
+  // Interviewers are written to the event's attendees array (see
+  // scheduleInterview → createCalendarEvent call). Don't echo them
+  // into the description — the Edit Event drawer renders the Guests
+  // field from attendees, so the plain-text line was redundant and
+  // also leaked into the Notes field on hydrate.
   if (input.notes) lines.push("", input.notes);
   lines.push("", "Logged from Ace (BreakPoint Talent CRM).");
   return lines.join("\n");
@@ -346,7 +348,13 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
       description: calendarDescription(input),
       startISO: when.toISOString(),
       durationMin: input.durationMin,
-      attendees: [],
+      // Interviewers go on the tracking event as guests so the Edit
+      // Event drawer hydrates the Guests field correctly. sendUpdates:
+      // false (below) keeps Google from emailing them — the explicit
+      // Send Invite flow handles candidate/client notifications.
+      attendees: (input.attendees ?? [])
+        .filter((a) => typeof a.email === "string" && a.email.trim().length > 0)
+        .map((a) => ({ email: a.email, displayName: a.name })),
       // Mint a Google Meet only when the video interview is staying on
       // Google. For Teams we still create the tracking calendar event
       // (so invite-send can patch attendees onto it later) but skip
