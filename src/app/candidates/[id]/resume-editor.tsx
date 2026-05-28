@@ -78,9 +78,18 @@ export function ResumeEditor({
   const [redactDragCurrent, setRedactDragCurrent] = useState<{ page: number; x: number; y: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map());
-  // Logo drag uses a ref instead of state so a fast mouse doesn't
-  // lose deltas to async setState batching.
-  const logoDragRef = useRef<{ pointerOffsetX: number; pointerOffsetY: number } | null>(null);
+  // Logo drag uses a ref instead of state so a fast pointer doesn't
+  // lose deltas to async setState batching. pointerId is captured at
+  // pointerdown so move/up can verify the gesture belongs to the
+  // same finger / mouse — mirrors useDraggableResizable's drag ref.
+  const logoDragRef = useRef<{
+    pointerId: number;
+    pointerOffsetX: number;
+    pointerOffsetY: number;
+  } | null>(null);
+  // Same pattern for the redaction-draw gesture so a second finger
+  // mid-draw can't hijack the rect.
+  const redactDragPointerIdRef = useRef<number>(-1);
   // Holds the loaded PDF across re-renders so a fit-scale change
   // doesn't refetch + reparse the bytes — only re-renders into the
   // existing canvases at the new viewport.
@@ -239,14 +248,25 @@ export function ResumeEditor({
     };
   }, [pages, fitScale]);
 
-  // Logo handlers
-  const onLogoMouseDown = useCallback(
-    (pageIndex: number, e: React.MouseEvent<HTMLImageElement>) => {
+  // Logo handlers — Pointer Events instead of mouse so iOS PWA touch
+  // gestures fire too. setPointerCapture routes every subsequent move
+  // back to the logo even if the finger drifts off it, so a fast drag
+  // can't escape the handler (same pattern as use-draggable-resizable).
+  const onLogoPointerDown = useCallback(
+    (pageIndex: number, e: React.PointerEvent<HTMLImageElement>) => {
       if (!logo) return;
       e.preventDefault();
       e.stopPropagation();
       const img = e.currentTarget.getBoundingClientRect();
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Older Safari can throw if the pointer was already released
+        // between dispatch and capture; safe to ignore — the drag still
+        // works via the page wrapper's pointermove fallback.
+      }
       logoDragRef.current = {
+        pointerId: e.pointerId,
         pointerOffsetX: e.clientX - img.left,
         pointerOffsetY: e.clientY - img.top,
       };
@@ -284,13 +304,23 @@ export function ResumeEditor({
   }
 
   // Page event router — disambiguates logo drag from redaction draw
-  // by checking whether the mousedown target is the logo overlay.
-  const onPageMouseDown = useCallback(
-    (pageIndex: number, e: React.MouseEvent<HTMLDivElement>) => {
+  // by checking whether the pointerdown target is the logo overlay.
+  // setPointerCapture on the page wrapper so a redaction draw that
+  // strays off the page edge still routes its moves back here instead
+  // of triggering touch-scroll on whatever ancestor catches the gesture.
+  const onPagePointerDown = useCallback(
+    (pageIndex: number, e: React.PointerEvent<HTMLDivElement>) => {
       const target = e.target as HTMLElement;
       if (target.dataset.brandLogo === "true") return; // logo handles its own drag start
       const meta = pages[pageIndex];
       if (!meta) return;
+      e.preventDefault();
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // See onLogoPointerDown — older Safari edge case, safe to ignore.
+      }
+      redactDragPointerIdRef.current = e.pointerId;
       const rect = e.currentTarget.getBoundingClientRect();
       const x = (e.clientX - rect.left) / rect.width;
       const y = (e.clientY - rect.top) / rect.height;
@@ -300,12 +330,17 @@ export function ResumeEditor({
     [pages],
   );
 
-  const onPageMouseMove = useCallback(
-    (pageIndex: number, e: React.MouseEvent<HTMLDivElement>) => {
+  const onPagePointerMove = useCallback(
+    (pageIndex: number, e: React.PointerEvent<HTMLDivElement>) => {
       // Active logo drag wins over redaction drawing.
-      if (logoDragRef.current && logo) {
+      if (logoDragRef.current && logoDragRef.current.pointerId === e.pointerId && logo) {
         const meta = pages[pageIndex];
         if (!meta) return;
+        // preventDefault during an active drag stops the iOS WebView
+        // from interpreting the finger move as a background pan/scroll.
+        // touch-action: none on the page wrapper covers the gesture
+        // start; this covers the duration.
+        e.preventDefault();
         const pageRect = e.currentTarget.getBoundingClientRect();
         const xPx = e.clientX - pageRect.left - logoDragRef.current.pointerOffsetX;
         const yPx = e.clientY - pageRect.top - logoDragRef.current.pointerOffsetY;
@@ -319,7 +354,12 @@ export function ResumeEditor({
         });
         return;
       }
-      if (redactDragStart && redactDragStart.page === pageIndex + 1) {
+      if (
+        redactDragPointerIdRef.current === e.pointerId &&
+        redactDragStart &&
+        redactDragStart.page === pageIndex + 1
+      ) {
+        e.preventDefault();
         const target = e.currentTarget.getBoundingClientRect();
         const x = Math.max(0, Math.min(1, (e.clientX - target.left) / target.width));
         const y = Math.max(0, Math.min(1, (e.clientY - target.top) / target.height));
@@ -329,27 +369,49 @@ export function ResumeEditor({
     [logo, pages, redactDragStart],
   );
 
-  const onMouseUp = useCallback(() => {
-    if (logoDragRef.current) {
-      logoDragRef.current = null;
-      return;
-    }
-    if (
-      redactDragStart &&
-      redactDragCurrent &&
-      redactDragStart.page === redactDragCurrent.page
-    ) {
-      const x = Math.min(redactDragStart.x, redactDragCurrent.x);
-      const y = Math.min(redactDragStart.y, redactDragCurrent.y);
-      const w = Math.abs(redactDragCurrent.x - redactDragStart.x);
-      const h = Math.abs(redactDragCurrent.y - redactDragStart.y);
-      if (w > 0.005 && h > 0.005) {
-        setRects((prev) => [...prev, { page: redactDragStart.page, x, y, w, h }]);
+  // End handler is wired to onPointerUp + onPointerCancel +
+  // onLostPointerCapture on every element that owns a gesture, so the
+  // drag always ends the frame the pointer leaves the capturing element
+  // — no "stuck to finger" drift if the user lifts off-screen.
+  const onPointerEnd = useCallback(
+    (e: React.PointerEvent<HTMLElement>) => {
+      // Logo drag end.
+      if (logoDragRef.current && logoDragRef.current.pointerId === e.pointerId) {
+        try {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        } catch {
+          // Already released (e.g. via lostpointercapture) — safe to ignore.
+        }
+        logoDragRef.current = null;
+        return;
       }
-    }
-    setRedactDragStart(null);
-    setRedactDragCurrent(null);
-  }, [redactDragStart, redactDragCurrent]);
+      // Redaction draw end.
+      if (redactDragPointerIdRef.current === e.pointerId) {
+        try {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        } catch {
+          // Same rationale as above.
+        }
+        redactDragPointerIdRef.current = -1;
+        if (
+          redactDragStart &&
+          redactDragCurrent &&
+          redactDragStart.page === redactDragCurrent.page
+        ) {
+          const x = Math.min(redactDragStart.x, redactDragCurrent.x);
+          const y = Math.min(redactDragStart.y, redactDragCurrent.y);
+          const w = Math.abs(redactDragCurrent.x - redactDragStart.x);
+          const h = Math.abs(redactDragCurrent.y - redactDragStart.y);
+          if (w > 0.005 && h > 0.005) {
+            setRects((prev) => [...prev, { page: redactDragStart.page, x, y, w, h }]);
+          }
+        }
+        setRedactDragStart(null);
+        setRedactDragCurrent(null);
+      }
+    },
+    [redactDragStart, redactDragCurrent],
+  );
 
   function onUndoRect() {
     setRects((prev) => prev.slice(0, -1));
@@ -547,7 +609,6 @@ export function ResumeEditor({
         <div
           ref={scrollPaneRef}
           className="flex-1 overflow-auto bg-court-surface-subtle/60 p-4"
-          onMouseUp={onMouseUp}
         >
           {loadingDoc && (
             <div className="flex h-full items-center justify-center text-sm text-court-fg-muted">
@@ -585,9 +646,16 @@ export function ResumeEditor({
                   </div>
                   <div
                     className="relative cursor-crosshair select-none border border-court-border/40 bg-white shadow-sm"
-                    style={{ width: p.widthPx, height: p.heightPx }}
-                    onMouseDown={(e) => onPageMouseDown(pageIndex, e)}
-                    onMouseMove={(e) => onPageMouseMove(pageIndex, e)}
+                    // touch-action: none tells iOS Safari this element
+                    // owns its touch gestures — without it a one-finger
+                    // drag pans the nearest scrollable ancestor and the
+                    // editor's redaction draw never starts.
+                    style={{ width: p.widthPx, height: p.heightPx, touchAction: "none" }}
+                    onPointerDown={(e) => onPagePointerDown(pageIndex, e)}
+                    onPointerMove={(e) => onPagePointerMove(pageIndex, e)}
+                    onPointerUp={onPointerEnd}
+                    onPointerCancel={onPointerEnd}
+                    onLostPointerCapture={onPointerEnd}
                   >
                     <canvas
                       ref={(el) => {
@@ -626,7 +694,10 @@ export function ResumeEditor({
                         alt="BreakPoint logo (drag to reposition)"
                         data-brand-logo="true"
                         draggable={false}
-                        onMouseDown={(e) => onLogoMouseDown(pageIndex, e)}
+                        onPointerDown={(e) => onLogoPointerDown(pageIndex, e)}
+                        onPointerUp={onPointerEnd}
+                        onPointerCancel={onPointerEnd}
+                        onLostPointerCapture={onPointerEnd}
                         style={{
                           position: "absolute",
                           left: `${logo.xNorm * p.widthPx}px`,
@@ -635,6 +706,9 @@ export function ResumeEditor({
                           height: "auto",
                           cursor: "grab",
                           userSelect: "none",
+                          // touch-action: none so the iOS WebView can't
+                          // hijack a finger-drag on the logo for a pan.
+                          touchAction: "none",
                           outline: "1px dashed rgba(15, 23, 42, 0.35)",
                           outlineOffset: "2px",
                         }}
