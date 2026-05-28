@@ -8,17 +8,29 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 
 const DAY_MS = 1000 * 60 * 60 * 24;
-// Active → Quiet after 30 days of no activity; Quiet → Inactive at 60
-// total. Buckets are mutually exclusive (a card is Active OR Quiet OR
-// Inactive — Quiet is no longer a decorated subset of Active).
-const QUIET_AFTER_DAYS = 30;
-const INACTIVE_AFTER_DAYS = 60;
-// "Activity" that resets the inactivity clock: new job created, job
-// reactivated, placement made, candidate stage move on one of their
-// jobs, or any ActivityLog row written against the client. Brand-new
-// clients land Active because client.createdAt is the floor for the
-// last-activity timestamp (zero job / placement / activity history
-// still means createdAt = now → days = 0 → Active).
+// Active → Quiet after 7 days of no activity; Quiet → Inactive 30
+// days after that (37 days total). Buckets are mutually exclusive (a
+// card is Active OR Quiet OR Inactive). The 7/37-day window applies
+// unless a recent placement holds the client open — see
+// PLACEMENT_ACTIVE_DAYS below.
+const QUIET_AFTER_DAYS = 7;
+const INACTIVE_AFTER_DAYS = 37;
+// A placement (offer accepted = Placement.placedAt is set) keeps the
+// client Active for 6 months from the placement date regardless of the
+// normal 7-day window. Set per the revised activity rules: a placed
+// client is, by definition, "warm" through the guarantee period even
+// when no further submittals / interviews / jobs land.
+const PLACEMENT_ACTIVE_DAYS = 180;
+// "Activity" that resets the inactivity clock:
+//   - Job created or reactivated for the client
+//   - Any submittal (Placement row touched — stage moves bump updatedAt)
+//   - Any interview scheduled for a client job
+//   - Any ActivityLog row written against the client (manual notes,
+//     candidate stage moves on a client job, etc.)
+// Brand-new clients land Active immediately because client.createdAt
+// is the floor for the last-activity timestamp (zero job / placement /
+// interview / activity history still means createdAt = now → days = 0
+// → Active).
 
 export default async function ClientsPage({
   searchParams,
@@ -101,7 +113,7 @@ export default async function ClientsPage({
       }
       counts.set(g.clientId, pc);
     }
-    // Build per-client lastActivityAt from FOUR Neon signals + the
+    // Build per-client lastActivityAt from FIVE Neon signals + the
     // Client.createdAt floor. All queries are tenant-scoped (Rule 8).
     //
     //   1. ActivityLog targetType="client" — explicit client-targeted
@@ -115,7 +127,16 @@ export default async function ClientsPage({
     //      isOpen=true filter keeps closed-out jobs from anchoring the
     //      client to a stale edit).
     //   4. Placement.createdAt / updatedAt — placement made and any
-    //      stage move (Prisma @updatedAt auto-bumps on every write).
+    //      stage move (Prisma @updatedAt auto-bumps on every write),
+    //      which covers the "any submittal" signal because submitted
+    //      candidates write a Placement row at the submitted stage.
+    //   5. Interview.createdAt — any interview scheduled on one of the
+    //      client's jobs. Bumps the client's last-activity timestamp at
+    //      schedule time so the 7-day clock resets on the recruiter
+    //      action, not just on a later Placement.updatedAt nudge.
+    //
+    // Separately, Placement.placedAt is sampled per-client below to
+    // power the 180-day "placement made" Active override.
     //
     // Brand-new clients with empty histories fall back to createdAt
     // below so they bucket as Active.
@@ -125,53 +146,87 @@ export default async function ClientsPage({
       .filter((x): x is string => x !== null);
     const targetIdNeedles = [...clientCuids, ...clientLegacyIds];
 
-    const [activityGroups, jobCreatedGroups, jobOpenUpdatedGroups, placementGroupsForActivity] =
-      await Promise.all([
-        targetIdNeedles.length > 0
-          ? prisma.activityLog.groupBy({
-              by: ["targetId"],
-              where: {
-                organizationId: org.id,
-                targetType: "client",
-                targetId: { in: targetIdNeedles },
-              },
-              _max: { timestamp: true },
-            })
-          : Promise.resolve([] as Array<{ targetId: string; _max: { timestamp: Date | null } }>),
-        clientCuids.length > 0
-          ? prisma.job.groupBy({
-              by: ["clientId"],
-              where: {
-                organizationId: org.id,
-                clientId: { in: clientCuids },
-              },
-              _max: { createdAt: true },
-            })
-          : Promise.resolve([] as Array<{ clientId: string | null; _max: { createdAt: Date | null } }>),
-        clientCuids.length > 0
-          ? prisma.job.groupBy({
-              by: ["clientId"],
-              where: {
-                organizationId: org.id,
-                clientId: { in: clientCuids },
-                isOpen: true,
-              },
-              _max: { updatedAt: true },
-            })
-          : Promise.resolve([] as Array<{ clientId: string | null; _max: { updatedAt: Date | null } }>),
-        clientCuids.length > 0
-          ? prisma.placement.groupBy({
-              by: ["clientId"],
-              where: {
-                organizationId: org.id,
-                clientId: { in: clientCuids },
-              },
-              _max: { createdAt: true, updatedAt: true },
-            })
-          : Promise.resolve(
-              [] as Array<{ clientId: string | null; _max: { createdAt: Date | null; updatedAt: Date | null } }>,
-            ),
-      ]);
+    const [
+      activityGroups,
+      jobCreatedGroups,
+      jobOpenUpdatedGroups,
+      placementGroupsForActivity,
+      interviewCreatedGroups,
+      placementPlacedAtGroups,
+    ] = await Promise.all([
+      targetIdNeedles.length > 0
+        ? prisma.activityLog.groupBy({
+            by: ["targetId"],
+            where: {
+              organizationId: org.id,
+              targetType: "client",
+              targetId: { in: targetIdNeedles },
+            },
+            _max: { timestamp: true },
+          })
+        : Promise.resolve([] as Array<{ targetId: string; _max: { timestamp: Date | null } }>),
+      clientCuids.length > 0
+        ? prisma.job.groupBy({
+            by: ["clientId"],
+            where: {
+              organizationId: org.id,
+              clientId: { in: clientCuids },
+            },
+            _max: { createdAt: true },
+          })
+        : Promise.resolve([] as Array<{ clientId: string | null; _max: { createdAt: Date | null } }>),
+      clientCuids.length > 0
+        ? prisma.job.groupBy({
+            by: ["clientId"],
+            where: {
+              organizationId: org.id,
+              clientId: { in: clientCuids },
+              isOpen: true,
+            },
+            _max: { updatedAt: true },
+          })
+        : Promise.resolve([] as Array<{ clientId: string | null; _max: { updatedAt: Date | null } }>),
+      clientCuids.length > 0
+        ? prisma.placement.groupBy({
+            by: ["clientId"],
+            where: {
+              organizationId: org.id,
+              clientId: { in: clientCuids },
+            },
+            _max: { createdAt: true, updatedAt: true },
+          })
+        : Promise.resolve(
+            [] as Array<{ clientId: string | null; _max: { createdAt: Date | null; updatedAt: Date | null } }>,
+          ),
+      // Interview signal — the recruiter scheduling an interview on a
+      // client job is a "warming" event the 7-day window should respect
+      // even before any Placement.updatedAt nudge catches up.
+      clientCuids.length > 0
+        ? prisma.interview.groupBy({
+            by: ["clientId"],
+            where: {
+              organizationId: org.id,
+              clientId: { in: clientCuids },
+            },
+            _max: { createdAt: true },
+          })
+        : Promise.resolve([] as Array<{ clientId: string | null; _max: { createdAt: Date | null } }>),
+      // Placement-made 180-day Active override — sample the newest
+      // Placement.placedAt per client. placedAt is the moment the offer
+      // was accepted and the fee locked, which is the canonical
+      // "placement made" event for the 6-month window.
+      clientCuids.length > 0
+        ? prisma.placement.groupBy({
+            by: ["clientId"],
+            where: {
+              organizationId: org.id,
+              clientId: { in: clientCuids },
+              placedAt: { not: null },
+            },
+            _max: { placedAt: true },
+          })
+        : Promise.resolve([] as Array<{ clientId: string | null; _max: { placedAt: Date | null } }>),
+    ]);
 
     const lastActivityLogByTargetId = new Map<string, Date>();
     for (const g of activityGroups) {
@@ -198,6 +253,18 @@ export default async function ClientsPage({
           : (created ?? updated ?? null);
       if (newest) lastPlacementTouchByClientId.set(g.clientId, newest);
     }
+    const lastInterviewCreatedByClientId = new Map<string, Date>();
+    for (const g of interviewCreatedGroups) {
+      if (g.clientId && g._max.createdAt) lastInterviewCreatedByClientId.set(g.clientId, g._max.createdAt);
+    }
+    // Per-client newest placedAt drives the 180-day Active override.
+    // Holding it separately from the activity-signal map so the
+    // bucket computation can apply the override independently of the
+    // normal Active-vs-Quiet window.
+    const lastPlacedAtByClientId = new Map<string, Date>();
+    for (const g of placementPlacedAtGroups) {
+      if (g.clientId && g._max.placedAt) lastPlacedAtByClientId.set(g.clientId, g._max.placedAt);
+    }
 
     const pickNewer = (a: Date | null | undefined, b: Date | null | undefined): Date | null => {
       if (a && b) return a.getTime() >= b.getTime() ? a : b;
@@ -219,19 +286,40 @@ export default async function ClientsPage({
       const jobCreated = lastJobCreatedByClientId.get(c.id) ?? null;
       const openJobUpdated = lastOpenJobUpdatedByClientId.get(c.id) ?? null;
       const placementTouch = lastPlacementTouchByClientId.get(c.id) ?? null;
+      const interviewCreated = lastInterviewCreatedByClientId.get(c.id) ?? null;
 
       // createdAt floor: brand-new client with no jobs / placements /
-      // activity log lands on its own createdAt, so days = 0 and the
-      // bucket below evaluates to Active.
+      // interviews / activity log lands on its own createdAt, so
+      // days = 0 and the bucket below evaluates to Active.
       let lastActivityAt: Date = c.createdAt;
-      for (const candidate of [cuidActivity, legacyActivity, jobCreated, openJobUpdated, placementTouch]) {
+      for (const candidate of [
+        cuidActivity,
+        legacyActivity,
+        jobCreated,
+        openJobUpdated,
+        placementTouch,
+        interviewCreated,
+      ]) {
         const newer = pickNewer(lastActivityAt, candidate);
         if (newer) lastActivityAt = newer;
       }
 
       const daysSinceLastActivity = Math.floor((now - lastActivityAt.getTime()) / DAY_MS);
-      const bucket: "active" | "quiet" | "inactive" =
-        daysSinceLastActivity < QUIET_AFTER_DAYS
+
+      // Placement-made override: any Placement with placedAt within
+      // the last 180 days locks the client to Active regardless of the
+      // 7-day window. Mirrors the guarantee-period intuition that a
+      // placed client is "warm" through the 6-month mark even when no
+      // additional submittals / interviews / jobs land.
+      const lastPlacedAt = lastPlacedAtByClientId.get(c.id) ?? null;
+      const daysSincePlacement =
+        lastPlacedAt ? Math.floor((now - lastPlacedAt.getTime()) / DAY_MS) : null;
+      const placementActiveOverride =
+        daysSincePlacement != null && daysSincePlacement < PLACEMENT_ACTIVE_DAYS;
+
+      const bucket: "active" | "quiet" | "inactive" = placementActiveOverride
+        ? "active"
+        : daysSinceLastActivity < QUIET_AFTER_DAYS
           ? "active"
           : daysSinceLastActivity < INACTIVE_AFTER_DAYS
             ? "quiet"
@@ -284,23 +372,23 @@ export default async function ClientsPage({
     return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   };
 
-  // Mutually exclusive buckets under the new spec:
-  //   Active   = days since last activity < 30
-  //   Quiet    = 30-59 days
-  //   Inactive = 60+ days
-  // A card is in exactly one bucket — Quiet is no longer a decorated
-  // subset of Active.
+  // Mutually exclusive buckets under the revised spec:
+  //   Active   = days since last activity < 7 (or a placement was
+  //              made within the last 180 days — see the placement
+  //              override in the per-client bucket computation above)
+  //   Quiet    = 7-36 days
+  //   Inactive = 37+ days
+  // A card is in exactly one bucket — Quiet is not a decorated subset
+  // of Active.
   const activeCards = all.filter((c) => c.bucket === "active").sort(sortFn);
   const inactiveCards = all.filter((c) => c.bucket === "inactive").sort(sortFn);
   const verifiedCount = all.filter((c) => c.isVerified).length;
 
-  // Quiet tab — every Quiet card now carries the single "30-60 days
-  // quiet" tier (the only Quiet band under the new spec). The 14-30
-  // tier rolls into Active and the 60+ tier rolls into Inactive, so
-  // we no longer surface those labels here.
+  // Quiet tab — every Quiet card now carries the single "7-37 days
+  // quiet" tier (the only Quiet band under the revised spec).
   const quietCards = all
     .filter((c) => c.bucket === "quiet")
-    .map((c) => ({ ...c, quietTier: "30-60" as QuietTier }))
+    .map((c) => ({ ...c, quietTier: "7-37" as QuietTier }))
     .sort((a, b) => {
       // Stalest first.
       const aDays = a.daysSinceLastActivity ?? 0;

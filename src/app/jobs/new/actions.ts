@@ -7,6 +7,7 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { extractJobFieldsFromGeneratedJd, generateJobDescription, type ExtractedJdFields } from "@/lib/claude";
 import { ensureMajorBoardsSeeded } from "@/lib/job-boards";
+import { validateUsCity, validateUsZip } from "@/lib/location-validation";
 
 type ActionResult<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -189,6 +190,25 @@ export async function createJob(
     const locationCity = input.locationCity.trim();
     const locationState = input.locationState.trim();
     const locationZip = input.locationZip.trim();
+
+    // Defense-in-depth: re-run the US location validation the form
+    // already performed via /api/location/validate-us. Only fires
+    // when at least one of the location fields is filled — blank
+    // values pass through (per the "do not block save if the city
+    // field is left blank" rule). Network errors fail open inside
+    // the helpers, matching the form's behavior.
+    if (locationCity) {
+      const cityCheck = await validateUsCity(locationCity);
+      if (!cityCheck.ok) {
+        return { ok: false, error: `City: ${cityCheck.message}` };
+      }
+    }
+    if (locationZip) {
+      const zipCheck = await validateUsZip(locationZip);
+      if (!zipCheck.ok) {
+        return { ok: false, error: `Zip: ${zipCheck.message}` };
+      }
+    }
     const composedLocation = [
       [locationCity, locationState].filter(Boolean).join(", "),
       locationZip,

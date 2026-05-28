@@ -6,6 +6,7 @@ import { getServerSession } from "next-auth";
 import { logActivity } from "@/lib/activity";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { isLikelyZip, validateUsCity, validateUsZip } from "@/lib/location-validation";
 import { prisma } from "@/lib/prisma";
 
 async function requireUserId(): Promise<string | null> {
@@ -95,9 +96,42 @@ export async function updateJobOverview(args: {
       data.salaryFrequency = freq === "hourly" || freq === "yearly" ? freq : null;
     }
     if (patch.locations !== undefined) {
-      data.locations = patch.locations
+      const cleaned = patch.locations
         .map((l) => l.trim())
         .filter((l) => l.length > 0);
+      // US location validation. The overview cell's free-form input
+      // is split on commas before reaching us, so each entry is one
+      // chunk like "Atlanta", "GA 30303", or "30303". We validate
+      // each non-empty chunk as either a US ZIP (if it looks like
+      // one) or as a US city. The validation helpers fail open on
+      // network errors, so the recruiter isn't blocked by a Nominatim
+      // outage. Same "blank passes" rule as the New Job form — an
+      // empty `cleaned` array clears the field without checking.
+      for (const chunk of cleaned) {
+        // A 2-letter state abbreviation alone (e.g. "KY") is a
+        // common shorthand for remote roles. Skip the network check
+        // for those — they're not a city, but the field has always
+        // allowed them. Anything longer than two letters goes
+        // through the full validation pass.
+        if (/^[A-Za-z]{2}$/.test(chunk)) continue;
+        if (isLikelyZip(chunk)) {
+          const zipCheck = await validateUsZip(chunk);
+          if (!zipCheck.ok) {
+            return { ok: false, error: `Location "${chunk}": ${zipCheck.message}` };
+          }
+          continue;
+        }
+        // Strip a trailing " ST" / " ST 12345" pattern so "Atlanta GA"
+        // and "Atlanta GA 30303" both reduce to "Atlanta" for the
+        // city probe. Conservative — only matches a clearly-state
+        // shaped suffix.
+        const cityPart = chunk.replace(/\s+[A-Za-z]{2}(\s+\d{5}(?:-\d{4})?)?$/, "").trim();
+        const cityCheck = await validateUsCity(cityPart || chunk);
+        if (!cityCheck.ok) {
+          return { ok: false, error: `Location "${chunk}": ${cityCheck.message}` };
+        }
+      }
+      data.locations = cleaned;
     }
     if (patch.numberOfOpenings !== undefined) data.numberOfOpenings = patch.numberOfOpenings;
     if (patch.isOpen !== undefined) {

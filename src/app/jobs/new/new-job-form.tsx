@@ -89,6 +89,12 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
   const [openings, setOpenings] = useState("1");
   const [description, setDescription] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  // Inline field errors for the location validation pass that runs
+  // before createJob. Cleared on every edit to the relevant field so
+  // the message disappears as the recruiter retypes.
+  const [cityErr, setCityErr] = useState<string | null>(null);
+  const [zipErr, setZipErr] = useState<string | null>(null);
+  const [validatingLocation, setValidatingLocation] = useState(false);
   const [isPending, startSave] = useTransition();
 
   const jdInputRef = useRef<HTMLInputElement>(null);
@@ -329,8 +335,10 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
     }
   }
 
-  function onSubmit() {
+  async function onSubmit() {
     setErr(null);
+    setCityErr(null);
+    setZipErr(null);
 
     if (!title.trim()) {
       setErr("Job title is required.");
@@ -347,6 +355,42 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
     if (loNum != null && hiNum != null && loNum > hiNum) {
       setErr("Salary low can't be greater than salary high.");
       return;
+    }
+
+    // Pre-save US location validation. Only fires when at least one
+    // of city / zip is filled — blank fields pass through. The same
+    // helpers run again inside the createJob server action as a
+    // defense-in-depth check, but doing the call here lets us point
+    // the recruiter at the right field on failure.
+    const cityToCheck = locationCity.trim();
+    const zipToCheck = locationZip.trim();
+    if (cityToCheck || zipToCheck) {
+      setValidatingLocation(true);
+      try {
+        const res = await fetch("/api/location/validate-us", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ city: cityToCheck, zip: zipToCheck }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as {
+            ok: boolean;
+            errors: { city?: string; zip?: string };
+          };
+          if (!data.ok) {
+            if (data.errors.city) setCityErr(data.errors.city);
+            if (data.errors.zip) setZipErr(data.errors.zip);
+            return;
+          }
+        }
+        // Non-ok response → fail open (matches the lib's network
+        // fail-open policy so a transient upstream blip can't gate the
+        // recruiter's save).
+      } catch {
+        // Same fail-open behavior on network errors.
+      } finally {
+        setValidatingLocation(false);
+      }
     }
 
     startSave(async () => {
@@ -402,10 +446,14 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
           <Button
             type="button"
             size="sm"
-            onClick={onSubmit}
-            disabled={isPending || isCombinedRunning || rangeInvalid}
+            onClick={() => void onSubmit()}
+            disabled={isPending || isCombinedRunning || rangeInvalid || validatingLocation}
           >
-            {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+            {isPending || validatingLocation ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Save className="h-3 w-3" />
+            )}
             Save to Ace
           </Button>
         </div>
@@ -587,11 +635,32 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
           </div>
 
           {/* Row 2: City | State | Zip — the composed "City, ST Zip"
-              string is reassembled server-side. */}
+              string is reassembled server-side. City + Zip carry the
+              inline validation errors from the pre-save Nominatim /
+              Zippopotam round-trip. Typing in either field clears its
+              error so the message disappears as the recruiter retypes. */}
           <div className="flex gap-4">
-            <CompactField label="City" value={locationCity} onChange={setLocationCity} className="flex-1" />
+            <CompactField
+              label="City"
+              value={locationCity}
+              onChange={(v) => {
+                setLocationCity(v);
+                if (cityErr) setCityErr(null);
+              }}
+              className="flex-1"
+              error={cityErr}
+            />
             <CompactField label="State" value={locationState} onChange={setLocationState} className="flex-1" />
-            <CompactField label="Zip" value={locationZip} onChange={setLocationZip} className="w-32" />
+            <CompactField
+              label="Zip"
+              value={locationZip}
+              onChange={(v) => {
+                setLocationZip(v);
+                if (zipErr) setZipErr(null);
+              }}
+              className="w-32"
+              error={zipErr}
+            />
           </div>
 
           {/* Row 3: Employment Type | Job Type */}
@@ -741,6 +810,7 @@ function CompactField({
   placeholder,
   type = "text",
   className,
+  error,
 }: {
   label: string;
   value: string;
@@ -748,11 +818,21 @@ function CompactField({
   placeholder?: string;
   type?: string;
   className?: string;
+  // Optional inline error message rendered below the field. Used by
+  // the City + Zip controls to surface pre-save US location
+  // validation failures.
+  error?: string | null;
 }) {
   return (
     <label className={cn("flex flex-col", className)}>
       <span className={FIELD_LABEL_CLASS}>{label}</span>
-      <div className={`${INPUT_FRAME_RECT_CLASS} w-full`}>
+      <div
+        className={cn(
+          INPUT_FRAME_RECT_CLASS,
+          "w-full",
+          error && "border-red-300 bg-red-50",
+        )}
+      >
         <input
           type={type}
           value={value}
@@ -761,6 +841,9 @@ function CompactField({
           className={`${INPUT_CONTROL_CLASS} text-sm`}
         />
       </div>
+      {error && (
+        <span className="mt-1 text-[11px] font-medium text-red-700">{error}</span>
+      )}
     </label>
   );
 }

@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { toast } from "sonner";
 
@@ -308,6 +308,18 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The title control is a <textarea> so a long event title wraps
+  // instead of clipping. Snap its height to scrollHeight on every
+  // title change + on open so the field grows with content and
+  // collapses back to one line when the recruiter clears it.
+  const titleRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [title, open]);
 
   useEffect(() => {
     if (event) {
@@ -633,11 +645,22 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
             <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
               {headerLabel}
             </div>
-            <input
+            {/* Auto-growing textarea so long titles wrap to multiple
+                lines instead of clipping at the right edge. Font size
+                + weight match the prior <input> exactly (22px / bold /
+                serif); only the layout behavior changed. The
+                useEffect below resets `height` to "auto" and then
+                snaps it to scrollHeight every render so the control
+                grows as the recruiter types and shrinks back when
+                they delete. rows={1} keeps the empty state a single
+                line. */}
+            <textarea
+              ref={titleRef}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Untitled event"
-              className="mt-1 w-full bg-transparent font-serif text-[22px] font-bold tracking-tight text-court-fg outline-none placeholder:text-court-fg-dim focus:outline-none"
+              rows={1}
+              className="mt-1 w-full resize-none overflow-hidden break-words bg-transparent font-serif text-[22px] font-bold leading-tight tracking-tight text-court-fg outline-none placeholder:text-court-fg-dim focus:outline-none"
             />
           </div>
           {mode === "edit" && event?.htmlLink && (

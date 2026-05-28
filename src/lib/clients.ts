@@ -30,8 +30,8 @@ export type ClientListRow = {
   ownerName: string | null;
   // Client row creation timestamp. Used by /clients as the floor for the
   // Active/Quiet/Inactive bucket — a brand-new client with zero recorded
-  // activity counts as Active until `createdAt + 30d`. Always set
-  // (Prisma default).
+  // activity counts as Active until `createdAt + 7d` under the revised
+  // rule (was 30d before Ace 67.22). Always set (Prisma default).
   createdAt: Date;
 };
 
@@ -105,8 +105,8 @@ export async function getClientsForOrg(): Promise<ClientListRow[]> {
       ownerId: true,
       owner: { select: { name: true } },
       // Needed by /clients to seed lastActivityAt for brand-new rows
-      // (Active until createdAt + 30d, regardless of empty job /
-      // placement / activity-log history).
+      // (Active until createdAt + 7d under the revised rule, regardless
+      // of empty job / placement / interview / activity-log history).
       createdAt: true,
     },
   });

@@ -34,10 +34,11 @@ export type ClientCard = {
   pendingStartCount: number;
   hiredCount: number;
   // Server-computed Active/Quiet/Inactive bucket. Mutually exclusive
-  // under the post-Ace-67.21 rule: Active = days<30, Quiet = 30-59,
-  // Inactive = 60+. Quiet is no longer a decorated subset of Active.
-  // Driven by max(client.createdAt, ActivityLog, Job.createdAt, open
-  // Job.updatedAt, Placement.createdAt/updatedAt) — see page.tsx.
+  // under the revised rule: Active = days<7 (or placement within the
+  // last 180 days), Quiet = 7-36, Inactive = 37+. Driven by
+  // max(client.createdAt, ActivityLog, Job.createdAt, open
+  // Job.updatedAt, Placement.createdAt/updatedAt, Interview.createdAt)
+  // plus the 180-day placedAt override — see page.tsx.
   bucket: "active" | "quiet" | "inactive";
   lastActivityAtIso: string | null;
   daysSinceLastActivity: number | null;
@@ -48,15 +49,14 @@ export type ClientCard = {
   ownerName: string | null;
 };
 
-// Single Quiet band now ("30-60" days). The legacy "14-30" and "60+"
-// tiers are retired — under the new spec they roll into Active and
-// Inactive respectively. Kept as a union (not a string literal) so
-// future re-introduction of multiple tiers wouldn't be a type rename.
-export type QuietTier = "30-60";
+// Single Quiet band now ("7-37" days). Kept as a union (not a string
+// literal) so future re-introduction of multiple tiers wouldn't be a
+// type rename.
+export type QuietTier = "7-37";
 type QuietCard = ClientCard & { quietTier: QuietTier };
 
 const QUIET_TIER_LABEL: Record<QuietTier, string> = {
-  "30-60": "30-60 days quiet",
+  "7-37": "7-37 days quiet",
 };
 
 type ViewKind = "grid" | "list";
