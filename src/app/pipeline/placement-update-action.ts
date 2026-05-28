@@ -1,8 +1,7 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
 import { prisma } from "@/lib/prisma";
 
 // Edit drawer save action invoked from the pipeline placement-edit
@@ -100,14 +99,13 @@ export async function updatePlacement(
       },
     });
 
-    revalidatePath("/pipeline");
-    // /dashboard hosts the Placements tab with the map — needs busting
-    // so a cityOverride change shows up on the next render without a
-    // hard refresh.
-    revalidatePath("/dashboard");
-    if (existing.candidateId) {
-      revalidatePath(`/candidates/${existing.candidateId}`);
-    }
+    // Fan out to every surface this edit can move — dashboard
+    // (Placements tab + map + Momentum + Offer-to-Start), Placements
+    // ledger, Pipeline, Finances cash forecast, candidate profile, and
+    // the per-client placements list. Pre-fix: /placements,
+    // /finances, and /clients/[id] kept reading stale renders until
+    // the next manual hit.
+    await revalidatePlacementSurfaces(existing.id, org.id);
     return { ok: true };
   } catch (e) {
     return {

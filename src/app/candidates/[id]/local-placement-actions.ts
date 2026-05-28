@@ -9,6 +9,7 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { generateSubmittalWriteup } from "@/lib/claude";
 import { sendGmail } from "@/lib/gmail";
 import { prisma } from "@/lib/prisma";
+import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
 import { submittalToHtml, submittalToPlainText } from "@/lib/submittal-format";
 import { fireTriggerAndLog } from "@/lib/trigger-fire";
 import {
@@ -1114,10 +1115,13 @@ export async function recordLocalPlacement(
       },
     });
 
-    if (placement.candidateId) revalidatePath(`/candidates/${placement.candidateId}`);
-    if (placement.candidateRfId != null) revalidatePath(`/candidates/${placement.candidateRfId}`);
-    revalidatePath(`/pipeline`);
-    revalidatePath(`/dashboard`);
+    // Fan out to every surface a placement edit can move — dashboard
+    // (Momentum / Recent Deal Moves / Offer-to-Start), Placements
+    // ledger, Pipeline, Finances cash forecast, candidate profile, and
+    // per-client placements. Pre-fix: only candidate + pipeline +
+    // dashboard refreshed, so an edit to an existing pending_start /
+    // hired row never bubbled to /placements / /finances / /clients.
+    await revalidatePlacementSurfaces(row.id, org.id);
 
     // Auto-fire the Offer Accepted template to the client (with the
     // candidate CCed by template wiring). Mirrors the RF recordPlacement
