@@ -250,7 +250,7 @@ export function NewClientForm() {
                     scheduleAutoParse(e.target.value);
                   }}
                   onBlur={onWebsiteBlur}
-                  placeholder="acme.com or https://acme.com"
+                  placeholder=""
                   className={`${INPUT_CONTROL_CLASS} pl-8 text-sm`}
                 />
               </div>
@@ -323,7 +323,7 @@ export function NewClientForm() {
               type="url"
               value={form.website}
               onChange={(v) => setForm({ ...form, website: v })}
-              placeholder="https://acme.com"
+              placeholder=""
             />
             <label className="block text-sm">
               <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Industry</span>
@@ -363,7 +363,7 @@ export function NewClientForm() {
                 type="url"
                 value={form.linkedin}
                 onChange={(v) => setForm({ ...form, linkedin: v })}
-                placeholder="https://linkedin.com/company/acme"
+                placeholder=""
               />
             </div>
             <div className="sm:col-span-2">
@@ -374,7 +374,7 @@ export function NewClientForm() {
                     value={form.overview}
                     onChange={(e) => setForm({ ...form, overview: e.target.value })}
                     rows={3}
-                    placeholder="Short description of what the company does."
+                    placeholder=""
                     className={`${INPUT_CONTROL_CLASS} resize-none text-sm leading-relaxed`}
                   />
                 </div>

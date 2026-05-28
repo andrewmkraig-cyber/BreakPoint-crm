@@ -243,6 +243,15 @@ export async function createJob(
     const slug = job.id;
     revalidatePath("/jobs");
     revalidatePath(`/jobs/${slug}`);
+    // Bust the Clients list + the associated Client's detail page so the
+    // Open/Closed job count chip reflects the new row on next navigation.
+    // (Note: the count is currently sourced from Client.raw.open_jobs — a
+    // legacy RF snapshot — so this revalidate only helps once that source
+    // moves to a live Job rowcount. Flagging for a follow-up.)
+    if (clientId) {
+      revalidatePath("/clients");
+      revalidatePath(`/clients/${clientId}`);
+    }
     return { ok: true, value: { slug, jobCuid: job.id } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create job." };
