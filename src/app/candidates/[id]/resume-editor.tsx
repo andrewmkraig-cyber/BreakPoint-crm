@@ -10,7 +10,7 @@ import {
   type RedactionRect,
 } from "@/app/candidates/[id]/brand-resume-actions";
 import { BRAND_LOGO_TRANSPARENT_BASE64 } from "@/lib/default-brand-logo";
-import { loadPdfjs } from "@/lib/pdfjs-loader";
+import { loadPdfjs, type PdfJsDocument } from "@/lib/pdfjs-loader";
 import { Button } from "@/components/ui/button";
 
 // Phase 5A.5.b — Edit Resume modal. The unified editor lets the
@@ -19,10 +19,17 @@ import { Button } from "@/components/ui/button";
 // new CandidateResume row in one call. Replaces the earlier
 // two-tab Brand/Redact split.
 //
-// Render scale chosen to match the previous standalone editors so
-// existing muscle memory carries over.
-
-const RENDER_SCALE = 1.25;
+// Mobile sizing mirrors PdfCanvasViewer (src/components/pdf-canvas-viewer.tsx):
+// fit each page to the scroll pane's clientWidth so phone viewports don't
+// overflow, clamp bitmap DPR to 2, and back the bitmap off when its area
+// exceeds the iOS canvas-area ceiling. Without these the editor's canvas
+// blanked silently on the installed PWA (same symptom PdfCanvasViewer's
+// MAX_DPR / MAX_CANVAS_AREA comments call out). MIN_FIT_SCALE keeps the
+// rendered page large enough to drag the logo / draw redactions even when
+// the container measures absurdly narrow.
+const MIN_FIT_SCALE = 0.5;
+const MAX_DPR = 2;
+const MAX_CANVAS_AREA = 12_000_000;
 const DEFAULT_LOGO_WIDTH = 80;
 const MIN_LOGO_WIDTH = 40;
 const MAX_LOGO_WIDTH = 200;
@@ -74,8 +81,24 @@ export function ResumeEditor({
   // Logo drag uses a ref instead of state so a fast mouse doesn't
   // lose deltas to async setState batching.
   const logoDragRef = useRef<{ pointerOffsetX: number; pointerOffsetY: number } | null>(null);
+  // Holds the loaded PDF across re-renders so a fit-scale change
+  // doesn't refetch + reparse the bytes — only re-renders into the
+  // existing canvases at the new viewport.
+  const docRef = useRef<PdfJsDocument | null>(null);
+  // The scroll pane the pages sit in. Width is measured off this ref
+  // (clientWidth - padding) and the ResizeObserver re-fits when the
+  // mobile address bar wobbles the viewport.
+  const scrollPaneRef = useRef<HTMLDivElement | null>(null);
+  // null until the first measurement lands; render effects no-op until then.
+  const [fitScale, setFitScale] = useState<number | null>(null);
+  // Default logo placement is a one-shot per modal open — guards against
+  // re-centering the logo every time fit scale wobbles (and against
+  // re-placing after the recruiter clicked "Remove logo").
+  const defaultLogoPlacedRef = useRef(false);
 
-  // Load + render the base PDF.
+  // Load the PDF once per modal open. Bytes are cached on docRef so the
+  // recompute-fit and render effects can re-render at new sizes without
+  // refetching.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -85,43 +108,9 @@ export function ResumeEditor({
         if (!res.ok) throw new Error(`Couldn't load resume (${res.status}).`);
         const buf = await res.arrayBuffer();
         const doc = await pdfjsLib.getDocument({ data: buf }).promise;
-        const metas: PageMeta[] = [];
-        for (let i = 1; i <= doc.numPages; i++) {
-          const page = await doc.getPage(i);
-          const viewport = page.getViewport({ scale: RENDER_SCALE });
-          metas.push({ pageNumber: i, widthPx: viewport.width, heightPx: viewport.height });
-        }
         if (cancelled) return;
-        setPages(metas);
+        docRef.current = doc;
         setLoadingDoc(false);
-        // Default placement: center of page 1, default size.
-        if (metas.length > 0) {
-          const first = metas[0];
-          setLogo({
-            pageIndex: 0,
-            xNorm: 0.5 - DEFAULT_LOGO_WIDTH / 2 / first.widthPx,
-            yNorm: 0.5,
-            widthPx: DEFAULT_LOGO_WIDTH,
-          });
-        }
-        requestAnimationFrame(async () => {
-          for (let i = 1; i <= doc.numPages; i++) {
-            if (cancelled) return;
-            const canvas = canvasRefs.current.get(i);
-            if (!canvas) continue;
-            const page = await doc.getPage(i);
-            const viewport = page.getViewport({ scale: RENDER_SCALE });
-            const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
-            canvas.width = Math.floor(viewport.width * dpr);
-            canvas.height = Math.floor(viewport.height * dpr);
-            canvas.style.width = `${viewport.width}px`;
-            canvas.style.height = `${viewport.height}px`;
-            const ctx = canvas.getContext("2d");
-            if (!ctx) continue;
-            ctx.scale(dpr, dpr);
-            await page.render({ canvasContext: ctx, viewport }).promise;
-          }
-        });
       } catch (e) {
         if (cancelled) return;
         const msg = e instanceof Error ? e.message : "Failed to load PDF.";
@@ -133,6 +122,122 @@ export function ResumeEditor({
       cancelled = true;
     };
   }, [baseResumeUrl]);
+
+  // Measure fit-to-container scale off the scroll pane's clientWidth
+  // (matches PdfCanvasViewer's recomputeFit). 32 = 16px padding on each
+  // side of the pane (px-4). MIN_FIT_SCALE floors the rendered page so
+  // drag targets stay usable even when the pane measures absurdly narrow.
+  // 1% threshold suppresses the iOS Safari address-bar wobble — the same
+  // dampener PdfCanvasViewer uses.
+  const recomputeFit = useCallback(async () => {
+    const doc = docRef.current;
+    const pane = scrollPaneRef.current;
+    if (!doc || !pane) return;
+    const firstPage = await doc.getPage(1);
+    const natural = firstPage.getViewport({ scale: 1 });
+    const available = Math.max(240, pane.clientWidth - 32);
+    const fit = Math.max(MIN_FIT_SCALE, available / natural.width);
+    setFitScale((prev) => (prev != null && Math.abs(prev - fit) < 0.01 ? prev : fit));
+  }, []);
+
+  useEffect(() => {
+    if (loadingDoc || !docRef.current) return;
+    void recomputeFit();
+    const obs = new ResizeObserver(() => {
+      void recomputeFit();
+    });
+    if (scrollPaneRef.current) obs.observe(scrollPaneRef.current);
+    return () => obs.disconnect();
+  }, [loadingDoc, recomputeFit]);
+
+  // When fit scale changes, re-measure each page's CSS-pixel size.
+  // Updating pages[i].widthPx/heightPx is what keeps the logo's
+  // normalized xNorm/yNorm and the 0–1 redaction rects aligned with the
+  // resized page chrome — the overlay math reads back from these values.
+  useEffect(() => {
+    const doc = docRef.current;
+    if (!doc || loadingDoc || fitScale == null) return;
+    let cancelled = false;
+    (async () => {
+      const metas: PageMeta[] = [];
+      for (let i = 1; i <= doc.numPages; i++) {
+        const page = await doc.getPage(i);
+        const viewport = page.getViewport({ scale: fitScale });
+        metas.push({ pageNumber: i, widthPx: viewport.width, heightPx: viewport.height });
+      }
+      if (cancelled) return;
+      setPages(metas);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadingDoc, fitScale]);
+
+  // One-shot default-logo centering on first page after pages first land.
+  // Subsequent fit-scale changes don't re-run this — the recruiter's drag
+  // position (or explicit Remove) wins.
+  useEffect(() => {
+    if (defaultLogoPlacedRef.current) return;
+    if (pages.length === 0) return;
+    defaultLogoPlacedRef.current = true;
+    const first = pages[0];
+    setLogo({
+      pageIndex: 0,
+      xNorm: 0.5 - DEFAULT_LOGO_WIDTH / 2 / first.widthPx,
+      yNorm: 0.5,
+      widthPx: DEFAULT_LOGO_WIDTH,
+    });
+  }, [pages]);
+
+  // Render each page into its canvas after React has committed the page
+  // wrappers (so canvasRefs is populated). Re-runs whenever pages change
+  // (initial load AND fit-scale-driven resize). Mirrors PdfCanvasViewer's
+  // mobile guards: DPR clamped to MAX_DPR, bitmap area capped at
+  // MAX_CANVAS_AREA so iOS Safari doesn't silently blank the canvas.
+  useEffect(() => {
+    const doc = docRef.current;
+    if (!doc || pages.length === 0 || fitScale == null) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const rawDpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+        const dpr = Math.min(Math.max(1, rawDpr), MAX_DPR);
+        for (let i = 1; i <= doc.numPages; i++) {
+          if (cancelled) return;
+          const canvas = canvasRefs.current.get(i);
+          if (!canvas) continue;
+          const page = await doc.getPage(i);
+          const viewport = page.getViewport({ scale: fitScale });
+          let outputScale = dpr;
+          const area = viewport.width * viewport.height * outputScale * outputScale;
+          if (area > MAX_CANVAS_AREA) {
+            outputScale = Math.sqrt(
+              MAX_CANVAS_AREA / (viewport.width * viewport.height),
+            );
+          }
+          canvas.width = Math.round(viewport.width * outputScale);
+          canvas.height = Math.round(viewport.height * outputScale);
+          canvas.style.width = `${viewport.width}px`;
+          canvas.style.height = `${viewport.height}px`;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) continue;
+          // Reset the transform before scaling — a re-render at a new
+          // fit scale would otherwise compound the previous ctx.scale()
+          // and paint at the wrong resolution.
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.scale(outputScale, outputScale);
+          await page.render({ canvasContext: ctx, viewport }).promise;
+        }
+      } catch (e) {
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : "Failed to render PDF.";
+        setLoadError(msg);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pages, fitScale]);
 
   // Logo handlers
   const onLogoMouseDown = useCallback(
@@ -440,6 +545,7 @@ export function ResumeEditor({
         </div>
 
         <div
+          ref={scrollPaneRef}
           className="flex-1 overflow-auto bg-court-surface-subtle/60 p-4"
           onMouseUp={onMouseUp}
         >
