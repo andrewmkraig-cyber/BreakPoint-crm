@@ -1,15 +1,17 @@
 # Ace Roadmap
-Last updated: 2026-05-28 · Ace 67.20
+Last updated: 2026-05-29 · Ace 68.0
 
 ## Active Build Sequence
 
-### Next Up (after test-run fix session)
+### Next Up
 
-1. **Batch 5 - metric refresh.** Ethan placement edit not propagating to Momentum / Recent Deal Moves. Jennifer <=14d Offer-to-Start count stuck at 0 after same-day start. Likely revalidatePath gap on edit/confirm actions.
-2. ~~**Batch 6 - Cancel Placement.**~~ Shipped Ace 67.19 (2026-05-28). Kept string `"cancelled"` on Placement.stage (no enum existed; lowercase value already in widespread use). Hardened the existing `cancelPlacement` action in place — added organizationId scope on the lookup, swapped narrow revalidatePath calls for `revalidatePlacementSurfaces`. `getPlacementsForOrg` default-excludes cancelled rows; candidate-profile + pipeline callers opt back in. Eight surfaces gained explicit `stage: { not: "cancelled" }` filters (clients list + detail, my-dashboard KPIs, goal-pacing YTD count, placement-drilldown branches, jobs/search-candidates re-applicability, both game-plan placed-row guards). Show Cancelled toggle on `/pipeline` is local UI state; Cancelled tab appears at the right end of the strip with respected owner-scope count. Cancel button is red-outlined rounded-md at the bottom of LocalPlacementDialog (Ace-native path only), guarded so a fresh Make Placement can't fire it.
-3. ~~**Batch 7 - UI polish.**~~ Shipped Ace 67.20 (2026-05-28). Interview Scheduler `ScheduleFields` moved Type into the Date+time/Time zone/Duration flex row and constrained the Type wrapper to `w-36` so the dropdown fits "Phone Screen" (longest option) without trailing whitespace. Guarantee Period table td padding bumped from `py-1.5` to `py-3` so single-line rows match the ~38px height of the placements-ledger's two-line rows; headers stay `py-1.5` so the column strips still align between the two tables.
+1. **PRIORITY - RF two-profile split unification (own focused session).** 690 of 726 candidates render a legacy `rfId`-keyed profile layout (`placement-flows.tsx` / `PlacementActionsIsland`) instead of the Ace-native `LocalCandidateProfile`, routed by the `rfId == null` check at `src/app/candidates/[id]/page.tsx:109`. Live two-path split, not cosmetic - violates Architecture rule 1 (RF removed) and is the root cause of features half-working app-wide (the Ace 68.0 distance pill only renders for the 36 Ace-native candidates; likely others). Diagnose the full blast radius first (everything that branches on `rfId`), then migrate all candidates onto the single Ace-native path atomically per rule 7 (no partial migrations). Reads Neon data only; no RecruiterFlow re-introduction. A real migration, not a rename.
+2. **v2 deterministic scorer decision (Match column).** The deterministic scoring engine (`5665a8a`) was reverted (`220e381`) and the pipeline Match column was pulled (`cc8a89f`) because its `CandidateMatch.score` rows were zeroed post-revert. Decide whether a v2 scorer ships before any Match column returns. Per the revert message, a v2 should take resume-text + JD-prose as the primary inputs (not the deterministic trajectory heuristic that was rolled back). `CandidateMatch` model + Find Matches surface are intact; only the pipeline column was removed.
+3. **Batch 5 - metric refresh.** Ethan placement edit not propagating to Momentum / Recent Deal Moves. Jennifer <=14d Offer-to-Start count stuck at 0 after same-day start. Likely revalidatePath gap on edit/confirm actions.
 4. **Batch 8a - Diagnose interview attendee hydration.** Clicking existing interview shows "No guests" instead of attendee list. Attendee info ends up in Notes as plain text. Diagnose-only prompt first.
 5. **Batch 8b - Fix interview attendee hydration.** Written after 8a diagnosis.
+
+(Batch 6 Cancel Placement shipped Ace 67.19; Batch 7 UI polish shipped Ace 67.20 - full detail in ACE_STATE.md.)
 
 ### Cancel Placement follow-ups (open after 67.19)
 - Reason picker: the Cancel button currently fires `cancelPlacement({ reason: 'other', detail: '' })`. The action accepts `candidate_resigned | client_terminated | failed_background_check | other`. If the cancellation reason ever needs to drive analytics or audit logs (it's already stored), promote it to a small dropdown inside the confirmation dialog.
@@ -18,6 +20,7 @@ Last updated: 2026-05-28 · Ace 67.20
 ## Queued From Session
 Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.
 
+- **Auto-geocode the other 3 candidate-create paths** - `createCandidate` self-geocodes on save (Ace 68.0, fire-and-forget `geocodePill` → `lat/lng` update). The invoice-flow, CSV-import, and match-by-name candidate-create paths do NOT yet, so candidates created via those routes have no distance sub-line until the next `scripts/geocode-candidates.ts` run. Wire the same non-awaited `geocodePill` call into all three.
 - **Unread badge count - Quo + reminder legs audit** - Gmail leg fixed in Ace 51 via push-driven refresh; the badge/title comprehensive fix (Next Up 1) covers the Quo + mail reliability legs. The reminder due-count leg still needs an audit pass before the aggregate badge is provably correct.
 - **Search expansion map** - geocoded map visualization over the Candidate Sourcing Surface.
 - **Mercury + QuickBooks integration follow-through** - Mercury feed live for the Finances module since Ace 46; QuickBooks sync + variable-cost categorization still pending.
@@ -78,6 +81,10 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 68.0 Pipeline + profile distance, Find Matches UX, column/typography pass, Match column pull, candidate geocoding, RF scrub (May 29, 2026)
+
+Pipeline + Ace-native candidate-profile distance sub-line ("(X.X mi)" via the lifted `src/lib/geocode.ts` Nominatim geocoder + new `src/lib/distance.ts` haversine/`formatMiles` helper - one helper, one geocoder, both surfaces). Distance renders on every pipeline stage tab and the Ace-native candidate profile job pill; blanks cleanly when either side is missing. Match column added then REMOVED (`cc8a89f`) after the deterministic scoring engine was reverted (`220e381`) and its `CandidateMatch.score` rows zeroed - column pulled, model + Find Matches surface untouched. Candidate geocode backfill + `createCandidate` auto-geocode on save (`95f4635`; org coverage 724/726). Find Matches UX (`bcee788`): click-to-front floating panels, View Profile in a new tab, amber/gold magnifying-glass buttons. Sortable Location + Last Action on all pipeline tabs + mobile email sender full name/copyable (`882c8fe`). Job + Client merged into one stacked Job/Client column, Billing Contact removed from Hired, one-bold-per-row typography, date/location metadata normalized, My Pipeline selector sized to the tab-pill height (`3825f27`). Show Cancelled toggle removed - cancelled placements render dimmed at the bottom of Hired with a chip, excluded from Hired count + metrics. RF vocabulary scrub: cosmetic user-facing renames done, dead/legacy columns left in place (no schema churn), deeper structural RF items catalogued not executed. Full detail in ACE_STATE.md under What Shipped in Ace 68.0. Headline finding carried to Next Up 1: the live RF two-profile split (690 of 726 candidates on the legacy `rfId`-keyed profile path).
 
 ## Completed - Test Run Fix Session (May 27, 2026)
 

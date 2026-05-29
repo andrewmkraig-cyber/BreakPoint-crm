@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-05-28 · Ace 67.20
+Last updated: 2026-05-29 · Ace 68.0
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -103,6 +103,12 @@ Claude must ask Andrew a full set of scoping questions before writing any BD Pha
 - Dark themes (Clay + Grass): charcoal/graphite base, NOT green. Green as accent only.
 - No hardcoded colors anywhere. Three documented hex exceptions (full detail in ACE_DESIGN.md): Spotify panel palette (`spotify-panel/` only), dashboard premium surface (`dashboard/*` only), and the AI / Claude pill color family (`#1F3A29 / #2A4D38 / #284A36 / #2D4435 / #3A5944 / #37533F`, scoped to `button.tsx` + `edit-with-claude-menu.tsx`).
 - Documented shape exception (Ace 64.0): the circular `rounded-full` transport buttons in `src/components/spotify-panel/` are intentional Spotify-product mimicry, parallel to the Spotify hex exception. Full detail in ACE_DESIGN.md.
+
+## Distance + Pipeline Row Standards (added 2026-05-29 · Ace 68.0 - PERMANENT)
+Mirrored in ACE_DESIGN.md. Apply to any candidate→job distance and any pipeline row.
+- **Canonical distance format is `"(X.X mi)"`** - one decimal + `mi`, produced ONLY by `formatMiles` / `formatDistanceSubLine` in `src/lib/distance.ts`. Job side geocodes through the shared `src/lib/geocode.ts` Nominatim helper; candidate side reads `Candidate.lat/lng`. Never add a second helper or geocoder. Blank cleanly (no dash, no "N/A") when either side is missing. Rendered as muted metadata (`text-court-fg-muted`), never bold.
+- **One bold element per pipeline row: the candidate name.** Every other cell renders at the regular metadata weight/size. Two-line cells (Current Title/Employer, Job/Client) put the primary line in regular `text-court-fg` and the sub-line in smaller muted `text-xs text-court-fg-muted`. Date / location / salary cells share one metadata size - no mismatched sizes between Last Action and Start Date. (Documented exception: the Offer-stage Placement Fee percent keeps its own distinct font.)
+- **Pipeline per-row action buttons are uniform colored outlines** (`rounded-md`, colored border + text, transparent fill) - same Action-row treatment as the Button Standard. No filled or pill-shaped per-row action chips.
 
 ## Button Standard (added Ace 54.0 - DO NOT CHANGE)
 - Action row buttons (Submit, Apply, Keep, Reject, Add Note, Add to List): rounded-md, outlined, colored border + text, transparent background.

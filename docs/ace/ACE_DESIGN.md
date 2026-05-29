@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-05-27 · Ace 67.18
+Last updated: 2026-05-29 · Ace 68.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -346,3 +346,9 @@ Mirrored in ACE_RULES.md. Permanent, apply to every surface.
 - **TabStrip is mandatory for grouped controls.** Any in-page filter, tab, time-range selector, or nav group uses `TabStrip` (`src/components/ui/tab-strip.tsx`). No hand-rolled button rows. The Clubhouse "This Week / Last Week" strip is the reference.
 - **Both-modes verification gates every button task.** Every button and interactive element is visually verified in BOTH light and dark mode across the Court themes before the task is done. Token compliance alone is not sufficient.
 - **Input Field Treatment (above) is the source of truth for input shape.** Forms use rectangular `court-input-rect`; the search bar, SMS composer, and Ace Assistant keep the pill `court-input-frame`.
+
+## Distance + Pipeline Row Standards (added 2026-05-29 · Ace 68.0 - PERMANENT)
+Mirrored in ACE_RULES.md. Apply to any candidate→job distance and any pipeline row.
+- **Canonical distance format is `"(X.X mi)"`** — one decimal + `mi`, produced ONLY by `formatMiles` / `formatDistanceSubLine` in `src/lib/distance.ts`. Job side geocodes through the shared `src/lib/geocode.ts` Nominatim helper (module-level cache); candidate side reads `Candidate.lat/lng`. One helper, one geocoder — never add a second. Blank cleanly (no dash, no "N/A") when either side is missing. Rendered as muted metadata (`text-court-fg-muted`), never bold. Used by both the pipeline Location cell and the Ace-native candidate profile job pill.
+- **One bold element per pipeline row: the candidate name.** Every other cell renders at the regular metadata weight/size. Two-line cells (Current Title/Employer, Job/Client) put the primary line in regular `text-court-fg` and the sub-line in smaller muted `text-xs text-court-fg-muted`. Date / location / salary cells share one metadata size — no mismatched sizes between Last Action and Start Date. Documented exception: the Offer-stage Placement Fee percent keeps its own distinct font.
+- **Pipeline per-row action buttons are uniform colored outlines** (`rounded-md`, colored border + text, transparent fill) — the Action-row treatment from the Button Standard. No filled or pill-shaped per-row action chips.

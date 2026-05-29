@@ -1,8 +1,37 @@
 # ACE_STATE.md
-Last updated: 2026-05-28 · Ace 67.20
-Current Version: Ace 67.20
-Last Shipped: 2026-05-28
+Last updated: 2026-05-29 · Ace 68.0
+Current Version: Ace 68.0
+Last Shipped: 2026-05-29
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 68.0 (2026-05-29)
+
+Pipeline + candidate-profile distance pass, Find Matches UX, a column-standardization + typography pass, the Match column removal, candidate geocoding, and the RF vocabulary scrub. Shipped across `287d4e1`, `16af414`, `cc8a89f`, `95f4635`, `3874761`, `bcee788`, `882c8fe`, `3825f27` (plus the column-standardization groundwork in `d13983c` / `3ae8c2c` / `3c86061`).
+
+- **Prompt 4 — pipeline distance sub-line + Match column (`287d4e1`, `16af414`).** Added a Location-cell "(X.X mi)" candidate→job distance sub-line on `/pipeline`, computed server-side via the lifted Nominatim geocoder (`src/lib/geocode.ts`, with its module-level cache) plus a new `src/lib/distance.ts` haversine + formatter helper. Candidate side reads `Candidate.lat/lng`; job side geocodes `Job.locationZip` (preferred) or `City, ST`. A Match column was added alongside, reading `CandidateMatch.score`. Follow-up `16af414` handled Nominatim 429 backoff and a Match-score-0 edge.
+
+- **Match column REMOVED (`cc8a89f`).** The deterministic scoring engine that fed the column (`5665a8a`) was reverted (`220e381`), and the stored `CandidateMatch.score` rows were zeroed post-revert — so the column had no live data source and rendered all-zero. Pulled until a v2 scorer ships. The `CandidateMatch` model and the Find Matches surface were left untouched (only the pipeline column was removed).
+
+- **Candidate geocode backfill + auto-geocode on create (`95f4635`).** `scripts/geocode-candidates.ts` gained an optional `--org=<cuid>` arg (base WHERE `lat: null, location: { not: null }` unchanged; org filter ANDed when present). Ran against BreakPoint Talent — coverage is now 724/726 candidates with lat/lng (the 2 misses have no location string). `createCandidate` (`src/app/candidates/new/actions.ts`) now fires a non-awaited `geocodePill(location)` → `prisma.candidate.update({ lat, lng })` right after the row is created, so new candidates self-geocode. Known gap: the other three candidate-create paths (invoice flow, CSV import, match-by-name) do NOT auto-geocode yet — backlog.
+
+- **Distance everywhere + button borders + Show Cancelled removed (`3874761`).** Distance sub-line now renders on every pipeline stage tab AND on the Ace-native candidate profile job pill (`local-profile.tsx` computes it server-side keyed by placementId; `local-placement-rows.tsx` renders it muted next to the job/client). Format unified to "(X.X mi)" via the single `formatMiles` helper in `src/lib/distance.ts` — both surfaces share it, no second helper or geocoder. Pipeline per-row action buttons fixed (a border typo) to uniform colored outlines. The Show Cancelled toggle was removed; cancelled placements now render dimmed at the bottom of the Hired tab with a red "Cancelled" chip, excluded from the Hired count and from live metrics.
+
+- **Prompt 6 — Find Matches UX (`bcee788`).** Floating match panels click-to-front (raise on focus), View Profile opens in a new tab, and every Find Matches button was restyled to the amber/gold magnifying-glass treatment.
+
+- **Prompt 7 — sortable Location + Last Action on all tabs (`882c8fe`).** Both the main pipeline table and the intake (Applicants/Kept) tables gained click-to-sort Location and Last Action columns. Numeric `distanceMiles` is lifted onto each row so the Location sort is comparable; no-distance rows always sort to the bottom in both directions; one active sort at a time; the sort pattern is shared across the main + intake tables. Mobile PWA email composer shows the full sender name + a copyable email address below the `lg` breakpoint; desktop is unchanged.
+
+- **Pipeline typography + layout pass (`3825f27`).** Job + Client collapsed into one stacked **Job/Client** column matching the Current Title/Employer pattern (job title primary line, client name muted sub-line + verified shield). Billing Contact column removed from the Hired stage. Typography normalized to one-bold-element-per-row (candidate name only); job title dropped its `font-medium`; date/location/salary cells normalized to one metadata size (Last Action bumped `text-xs`→`text-sm`, Start Date colors aligned). Placement Fee percent font preserved per spec. The My Pipeline owner selector was sized down (`py-1` + `text-[13px]`) to match the stage-tab pill height. colSpans updated everywhere (main empty-state 7→6 LEFT cols, intake 10/9→9/8, Hired RIGHT 3→2). Applies to the main table and the intake tables via the shared `UniformLeftRowCells`.
+
+- **RF vocabulary scrub.** Cosmetic, user-facing RF-string renames were completed; dead/legacy columns and shim fields were left in place (no schema churn). The deeper structural RF items were catalogued, not executed — the headline bucket-C finding is the live two-profile split on the candidate profile (see Next Task below), deliberately left untouched this session so it can get its own focused migration.
+
+## Next Task
+
+**PRIORITY — RF two-profile split unification.** 690 of 726 candidates render a legacy `rfId`-keyed profile layout (`placement-flows.tsx` / `PlacementActionsIsland`) instead of the Ace-native `LocalCandidateProfile`, routed by the `rfId == null` check at `src/app/candidates/[id]/page.tsx:109`. This is a LIVE two-path split, not cosmetic — it violates Architecture rule 1 (RF removed) and is the root cause of features half-working across the app (the distance pill, and likely others, only render for the 36 Ace-native candidates). Next session: scope and execute migrating all candidates onto the single Ace-native profile path. This is a real migration, not a rename — it deserves its own focused session. Reads Neon data only; no RecruiterFlow re-introduction. Diagnose the full blast radius first (what else branches on `rfId`), then unify atomically per rule 7 (no partial migrations).
+
+Open follow-ups (carry forward):
+- **v2 deterministic scorer decision.** The Match column was pulled after the scoring engine was reverted. Decide whether a v2 scorer ships (resume-text + JD-prose as primary inputs, per the revert message) before re-adding any Match column.
+- **Auto-geocode the remaining candidate-create paths.** `createCandidate` self-geocodes; the invoice-flow, CSV-import, and match-by-name create paths do not yet — wire the same fire-and-forget `geocodePill` call into all three.
+- **Verify this session's ships on the live deploy.** The Ace 68.0 work is correct at HEAD but the live deploy lags repo (`live-deploy-diverges-from-repo`); confirm the pipeline distance, the profile pill distance, the Job/Client merge, and the Find Matches UX are actually live after the next deploy.
 
 ## What Shipped in Ace 67.20 (2026-05-28)
 
@@ -397,11 +426,6 @@ made horizontally scrollable so it can show past 6 hours.
   scrollable. Daily forecast + current chip untouched. Strip header
   updates dynamically: "Next 24 Hours" instead of "Next 6 Hours".
 
-Next task: TBD — opens with Andrew's live verification of the new phone
-icon (next send through Ace mail composer), the reordered sidebar on
-desktop + mobile drawer, and the hourly-strip scroll behavior in the
-weather popover.
-
 ## What Shipped in Ace 67.1 (2026-05-26)
 
 Ace-native candidate-profile job-pill polish: action buttons shrunk to chip
@@ -451,12 +475,6 @@ INTERVIEWING stage badge sitting beside it.
   (KeepCandidateButton, matches-tab x2, pipeline-row-actions x2,
   pipeline-view).
 
-Next task: TBD — opens with Andrew's live verification of the new chip-
-sized job pill, the Extend Offer flow on an Ace-native candidate at
-interviewing, the "Client will send invite" tracking-only branch in
-ScheduleDialog, and the Kept-button cyan recolor next to the INTERVIEWING
-stage badge.
-
 ## What Shipped in Ace 67.0 (2026-05-26)
 
 ATS consolidation: the standalone /applicants page was folded into /pipeline as the first two stage tabs so a candidate is followed from intake through hired without leaving the surface.
@@ -466,7 +484,6 @@ ATS consolidation: the standalone /applicants page was folded into /pipeline as 
 - **/applicants page deleted; nav cleaned up.** Sidebar ATS group is now Candidates → Pipeline (the User lucide import dropped with it). mobile-nav and top-bar-page-title /applicants entries removed. candidate-profile-nav legacy "applicants" snapshot source routes to /pipeline?stage=applied so older sessionStorage entries still land somewhere.
 - **Server-action cleanup.** /app/applicants/actions.ts moved to /app/pipeline/applicants-actions.ts with revalidatePath('/applicants') retargeted to /pipeline. setApplicantStatus dropped (dead code). 9 redundant revalidatePath('/applicants') calls stripped from candidate-side placement-actions / local-placement-actions — each was already paired with a /pipeline revalidation.
 
-Next task: TBD — opens with Andrew's live verification of the new Applicants + Kept tabs (counts, row actions, owner scope, search) in production.
 ## What Shipped in Ace 66.0 (2026-05-23)
 
 A full UI-polish session: the input field treatment pass landed the `court-input-frame` / `court-input-rect` system, the Liquid Glass pass added translucency to floating surfaces, the New Job page was restructured, and a long sweep of dark-mode button fixes, Court Mode token migrations, and list-page / table polish shipped across the app.
@@ -480,8 +497,6 @@ A full UI-polish session: the input field treatment pass landed the `court-input
 - **List-page + table polish.** Table header rows on pipeline / applicants / jobs made visually distinct from body rows (`bg-court-surface` + a bottom border). Client cards got a resting + hover shadow/lift, and the "X clients / X verified" footer row was removed. Pipeline + jobs search restyled to the clean clients-page style (rounded input, icon inside, no green fill or submit button), kept on both pages.
 - **Settings + chrome polish.** Uniform Save buttons across the settings pages (personal info, branding, billing, BD limits) - outlined green with a floppy-disk icon, matching the BD Engine "Save targeting" button. The "My contact info" floating panel got the YouTube-panel glass treatment (`bg-court-surface/90` + `backdrop-blur-md` + the matching shadow stack).
 - **Infra / deploy fixes (this session).** Removed the GitHub Actions "Smoke tests" workflow plus its orphaned Playwright config, specs, seed script, and screenshot fixtures - it had exhausted the month's free Actions minutes (2000/2000) and was failing in ~4s on every push, which gated Vercel and froze production at `b38deba` (the last green commit). Changed the `scheduled-send` Vercel cron from every minute (`* * * * *`) to every 5 minutes (`*/5 * * * *`) after the Vercel Pro upgrade - Send Later still fires within 5 minutes and cron invocations drop ~5x, with `BATCH_SIZE` left at 25 (fine for a solo recruiter). Excluded the PWA assets (`/sw.js`, `/manifest.json`, `/icons`, `/offline`, brand marks) from the auth middleware matcher so the installed PWA's service worker can update on an expired session instead of getting 307'd to the sign-in HTML - a redirected service-worker script is rejected by the browser, the same reason `/pdfjs` is already excluded.
-
-Next task: TBD - opens with Andrew's live verification of this session's UI passes in BOTH light and dark mode across the Court themes.
 
 ## What Shipped in Session (2026-05-27) - Test Run Fix List
 
