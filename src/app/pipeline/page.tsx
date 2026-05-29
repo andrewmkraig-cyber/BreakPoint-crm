@@ -438,14 +438,11 @@ export default async function PipelinePage({
           : !isRfCandidate && !isRfJob && p.candidateId && p.jobId
             ? nextByKey.get(`ace:${p.candidateId}:${p.jobId}`) ?? null
             : null,
-        // Defaults — populated below for the current-stage `rows` set
-        // via the CandidateMatch JOIN + Nominatim distance pass. Rows
-        // outside the active stage (counted but not rendered this
-        // request) keep the defaults; the next SSR for that stage will
-        // resolve them in turn.
+        // Default — populated below for the current-stage `rows` set
+        // via the Nominatim distance pass. Rows outside the active
+        // stage (counted but not rendered this request) keep the
+        // default; the next SSR for that stage will resolve them.
         distanceLine: "",
-        matchScore: null,
-        matchScoreBreakdown: null,
         clientOwnerId,
       });
     }
@@ -482,12 +479,10 @@ export default async function PipelinePage({
         placementId: null,
         placement: null,
         nextInterview: nextByKey.get(`${r.candidateId}:${r.jobId}`) ?? null,
-        // Defaults — populated below for the current-stage `rows` set
-        // (Match column + Location distance sub-line). Cancelled /
-        // non-active stages keep the defaults this request.
+        // Default — populated below for the current-stage `rows` set
+        // (Location distance sub-line). Cancelled / non-active stages
+        // keep the default this request.
         distanceLine: "",
-        matchScore: null,
-        matchScoreBreakdown: null,
         // RF-flat rows carry no clientId; resolve owner by client name.
         clientOwnerId: r.clientName
           ? ownerByClientNameLower.get(r.clientName.toLowerCase()) ?? null
@@ -508,28 +503,26 @@ export default async function PipelinePage({
 
     rows = scopedRows.filter((r) => r.bucket === stage);
 
-    // ---- Match column + Location distance sub-line (Prompt 4) ----
+    // ---- Location distance sub-line ----
     //
-    // Two attachments happen here, both scoped to the current-stage
-    // `rows` so we don't pay the cost on rows the user can't see:
+    // Originally landed alongside a Match column read (Prompt 4) that
+    // joined CandidateMatch. The Match column was pulled after the
+    // deterministic scorer (5665a8a) got reverted (220e381), leaving
+    // every stored CandidateMatch row stale; the join was removed with
+    // the column so the pipeline page does not read CandidateMatch at
+    // all anymore. Find Matches on /jobs still reads + writes
+    // CandidateMatch via its own surface — only this page's read was
+    // dropped. When a future scorer ships, re-introduce the join here.
     //
-    // 1. CandidateMatch.score / scoreBreakdown — the Prompt 2
-    //    deterministic scorer writes to CandidateMatch keyed by
-    //    (jobId, candidateId) cuids. RF-numeric ids are resolved to
-    //    their cuid via the Candidate.rfId / Job.legacyRfId lookups
-    //    below. No recompute, no Claude call on render — straight DB
-    //    read. Rows with no CandidateMatch row leave matchScore null
-    //    and the Match cell renders fully blank.
-    //
-    // 2. Distance sub-line — Candidate.lat/lng (backfilled by
-    //    scripts/geocode-candidates.ts) feeds the candidate side;
-    //    Job.locationZip / locationCity / locationState feeds the
-    //    job side via the shared Nominatim geocoder in src/lib/
-    //    geocode.ts (the same module-level cache the candidate-search
-    //    route uses, so a recruiter who's already searched Akron OH
-    //    pays zero Nominatim hits on the pipeline render). Unique job
-    //    locations are de-duped before the geocoder loop so cold-start
-    //    hits scale with distinct locations, not row count.
+    // Distance sub-line — Candidate.lat/lng (backfilled by
+    // scripts/geocode-candidates.ts) feeds the candidate side;
+    // Job.locationZip / locationCity / locationState feeds the job
+    // side via the shared Nominatim geocoder in src/lib/geocode.ts
+    // (the same module-level cache the candidate-search route uses,
+    // so a recruiter who's already searched Akron OH pays zero
+    // Nominatim hits on the pipeline render). Unique job locations
+    // are de-duped before the geocoder loop so cold-start hits scale
+    // with distinct locations, not row count.
     if (rows.length > 0) {
       const rfCandidateIds: number[] = [];
       const cuidCandidateIds: string[] = [];
@@ -556,14 +549,12 @@ export default async function PipelinePage({
         : [];
       const candidateLatLngByCuid = new Map<string, { lat: number; lng: number }>();
       const candidateLatLngByRfId = new Map<number, { lat: number; lng: number }>();
-      const candidateCuidByRfId = new Map<number, string>();
       for (const c of candidateLatLngRows) {
         if (c.lat != null && c.lng != null) {
           const point = { lat: c.lat, lng: c.lng };
           candidateLatLngByCuid.set(c.id, point);
           if (c.rfId != null) candidateLatLngByRfId.set(c.rfId, point);
         }
-        if (c.rfId != null) candidateCuidByRfId.set(c.rfId, c.id);
       }
 
       // Job zip/city/state + legacyRfId<->cuid mapping.
@@ -585,7 +576,6 @@ export default async function PipelinePage({
       type JobLoc = { zip: string | null; city: string | null; state: string | null };
       const jobLocByCuid = new Map<string, JobLoc>();
       const jobLocByRfId = new Map<number, JobLoc>();
-      const jobCuidByRfId = new Map<number, string>();
       for (const j of jobLocRows) {
         const loc: JobLoc = {
           zip: j.locationZip,
@@ -595,53 +585,7 @@ export default async function PipelinePage({
         jobLocByCuid.set(j.id, loc);
         if (j.legacyRfId != null) {
           jobLocByRfId.set(j.legacyRfId, loc);
-          jobCuidByRfId.set(j.legacyRfId, j.id);
         }
-      }
-
-      // CandidateMatch read. Keyed by (jobId cuid, candidateId cuid)
-      // per the schema unique. Rows without a resolvable cuid on
-      // either side are simply absent from the lookup — the Match
-      // cell renders blank for them.
-      const matchJobCuids = new Set<string>();
-      const matchCandidateCuids = new Set<string>();
-      for (const r of rows) {
-        const jobCuid =
-          typeof r.jobId === "string"
-            ? r.jobId
-            : jobCuidByRfId.get(r.jobId) ?? null;
-        const candidateCuid =
-          typeof r.candidateId === "string"
-            ? r.candidateId
-            : candidateCuidByRfId.get(r.candidateId) ?? null;
-        if (jobCuid) matchJobCuids.add(jobCuid);
-        if (candidateCuid) matchCandidateCuids.add(candidateCuid);
-      }
-      const matchRows =
-        matchJobCuids.size > 0 && matchCandidateCuids.size > 0
-          ? await prisma.candidateMatch.findMany({
-              where: {
-                organizationId: org.id,
-                jobId: { in: Array.from(matchJobCuids) },
-                candidateId: { in: Array.from(matchCandidateCuids) },
-              },
-              select: {
-                jobId: true,
-                candidateId: true,
-                score: true,
-                scoreBreakdown: true,
-              },
-            })
-          : [];
-      const matchByPair = new Map<
-        string,
-        { score: number; scoreBreakdown: unknown }
-      >();
-      for (const m of matchRows) {
-        matchByPair.set(`${m.jobId}:${m.candidateId}`, {
-          score: m.score,
-          scoreBreakdown: m.scoreBreakdown,
-        });
       }
 
       // Distance sub-line. De-dupe job locations first so each unique
@@ -689,25 +633,8 @@ export default async function PipelinePage({
         jobLatLngByKey.set(key, await geocodePill(query));
       }
 
-      // Attach matchScore + matchScoreBreakdown + distanceLine to each
-      // currently-rendered row.
+      // Attach distanceLine to each currently-rendered row.
       for (const r of rows) {
-        const jobCuid =
-          typeof r.jobId === "string"
-            ? r.jobId
-            : jobCuidByRfId.get(r.jobId) ?? null;
-        const candidateCuid =
-          typeof r.candidateId === "string"
-            ? r.candidateId
-            : candidateCuidByRfId.get(r.candidateId) ?? null;
-        if (jobCuid && candidateCuid) {
-          const match = matchByPair.get(`${jobCuid}:${candidateCuid}`);
-          if (match) {
-            r.matchScore = match.score;
-            r.matchScoreBreakdown = match.scoreBreakdown;
-          }
-        }
-
         const candidatePoint =
           typeof r.candidateId === "string"
             ? candidateLatLngByCuid.get(r.candidateId)

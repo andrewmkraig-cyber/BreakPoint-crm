@@ -19,7 +19,6 @@ import {
 import { TabStrip } from "@/components/ui/tab-strip";
 import { rejectLocalPlacement } from "@/app/candidates/[id]/local-placement-actions";
 import { rejectCandidateJob } from "@/app/candidates/[id]/placement-actions";
-import { ScoreBadge, normalizeBreakdown } from "@/components/game-plan/score-badge";
 import {
   keepCandidateForJob,
   keepLocalCandidateForJob,
@@ -144,14 +143,6 @@ export type PipelineRow = {
   // this verbatim below "City, ST"; blank string renders nothing per the
   // spec ("no dash, no placeholder, no N/A").
   distanceLine: string;
-  // CandidateMatch.score from the deterministic Prompt 2 scorer, read
-  // via prisma.candidateMatch on the SSR step that builds rows. Never
-  // recomputed on render; null when no CandidateMatch row exists for
-  // this (jobId, candidateId) pair (the Match column then renders
-  // blank). matchScoreBreakdown is the raw scoreBreakdown JSON column
-  // — the ScoreBadge popover normalizes it via normalizeBreakdown.
-  matchScore: number | null;
-  matchScoreBreakdown: unknown | null;
 };
 
 // Intake-stage row shapes (Applicants + Kept). polymorphic ids match
@@ -852,13 +843,6 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                         <DataTableHeaderCell align="right" />
                       </>
                     )}
-                    {/* Match column — right-most on every main-pipeline
-                        stage. Renders a ScoreBadge sourced from the
-                        deterministic Prompt 2 scorer (CandidateMatch.score
-                        joined SSR-side in pipeline/page.tsx). Pipeline
-                        only — Applicants / Kept tables below do NOT
-                        carry this column per the spec. */}
-                    <DataTableHeaderCell align="center">Match</DataTableHeaderCell>
                   </tr>
                 </DataTableHead>
                 <DataTableBody>
@@ -866,8 +850,7 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                     <tr>
                       <td
                         colSpan={
-                          // Checkbox + 7 LEFT columns + per-stage RIGHT
-                          // + Match (right-most on every stage).
+                          // Checkbox + 7 LEFT columns + per-stage RIGHT.
                           1 +
                           7 +
                           (stage === "pending_start"
@@ -878,8 +861,7 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                 ? 4
                                 : stage === "cancelled"
                                   ? 0
-                                  : 2) +
-                          1
+                                  : 2)
                         }
                         className="px-4 py-12 text-center text-sm text-court-fg-muted"
                       >
@@ -945,11 +927,6 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                       ) : stage === "hired" ? (
                         <HiredCells row={r} />
                       ) : stage === "cancelled" ? null : (
-                        // Submitted / Interviewing / Offer share the
-                        // stage-specific RIGHT block below. Match cell
-                        // is appended after this fragment closes so the
-                        // structural column lands at the right edge of
-                        // every stage including cancelled.
 
                         <>
                           {/* Offer stage: Offer Amount + Placement Fee
@@ -1084,14 +1061,6 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                           </td>
                         </>
                       )}
-                      {/* Match column — always the right-most cell on
-                          the main-pipeline table. ScoreBadge popover
-                          stops row navigation via its own onClick
-                          stopPropagation, but the cell wrapper also
-                          stopPropagates so an accidental click on the
-                          blank-cell whitespace doesn't open the
-                          candidate profile. */}
-                      <MatchCell row={r} />
                     </DataTableRow>
                   ))}
                 </DataTableBody>
@@ -1123,39 +1092,6 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
         onClose={() => setDrawerOpen(false)}
       />
     </div>
-  );
-}
-
-// Right-most Match column on the main-pipeline table only (Applicants /
-// Kept tables below skip it per the Prompt 4 spec). Reads the stored
-// CandidateMatch.score + scoreBreakdown attached SSR-side in
-// pipeline/page.tsx — never recomputes, never calls Claude on render.
-// When no CandidateMatch row exists for the (jobId, candidateId) pair,
-// matchScore is null and we render a fully blank td (no dash, no
-// placeholder) per the blank-cell rule that already governs the Salary
-// + Location columns.
-function MatchCell({ row }: { row: PipelineRow }) {
-  // Blank cell for null/undefined OR a stored 0. A stored 0 means the
-  // scorer ran but no real match data was produced (e.g. the candidate
-  // resume couldn't be scored against the JD, or the deterministic
-  // axes all came back empty), so it carries no information for the
-  // recruiter — rendering the gray-tier "0" badge from scoreTone is
-  // misleading. Treat 0 the same as "no score" and let the cell read
-  // blank, matching the blank-cell rule that already governs Salary
-  // and Location.
-  if (row.matchScore == null || row.matchScore === 0) {
-    return <td className="px-3 py-2 align-top" />;
-  }
-  return (
-    <td
-      className="px-3 py-2 align-top text-center"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <ScoreBadge
-        score={row.matchScore}
-        breakdown={normalizeBreakdown(row.matchScoreBreakdown, "")}
-      />
-    </td>
   );
 }
 
