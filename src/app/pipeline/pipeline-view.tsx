@@ -19,6 +19,7 @@ import {
 import { TabStrip } from "@/components/ui/tab-strip";
 import { rejectLocalPlacement } from "@/app/candidates/[id]/local-placement-actions";
 import { rejectCandidateJob } from "@/app/candidates/[id]/placement-actions";
+import { ScoreBadge, normalizeBreakdown } from "@/components/game-plan/score-badge";
 import {
   keepCandidateForJob,
   keepLocalCandidateForJob,
@@ -136,6 +137,21 @@ export type PipelineRow = {
   placementId: string | null;
   placement: PlacementDetails | null;
   nextInterview: NextInterview | null;
+  // Pre-computed "(N miles)" sub-line for the Location cell, attached
+  // server-side in pipeline/page.tsx. Empty string when any required
+  // input is missing (no candidate lat/lng, no job zip/city/state, or
+  // Nominatim couldn't resolve the job side). The Location cell renders
+  // this verbatim below "City, ST"; blank string renders nothing per the
+  // spec ("no dash, no placeholder, no N/A").
+  distanceLine: string;
+  // CandidateMatch.score from the deterministic Prompt 2 scorer, read
+  // via prisma.candidateMatch on the SSR step that builds rows. Never
+  // recomputed on render; null when no CandidateMatch row exists for
+  // this (jobId, candidateId) pair (the Match column then renders
+  // blank). matchScoreBreakdown is the raw scoreBreakdown JSON column
+  // — the ScoreBadge popover normalizes it via normalizeBreakdown.
+  matchScore: number | null;
+  matchScoreBreakdown: unknown | null;
 };
 
 // Intake-stage row shapes (Applicants + Kept). polymorphic ids match
@@ -247,6 +263,11 @@ type UniformLeftRowShape = {
   clientName: string;
   clientIsVerified: boolean;
   isKept?: boolean;
+  // Optional Location-cell sub-line ("(N miles)"). Set on main-pipeline
+  // rows by pipeline/page.tsx; intake (AppliedRow/KeptRow) rows leave it
+  // undefined so the cell renders only "City, ST" on those tabs. Always
+  // rendered verbatim — empty / undefined leaves the sub-line blank.
+  distanceLine?: string;
 };
 
 // Inline shield SVG copied from jobs-view.tsx to keep the verified-
@@ -358,10 +379,22 @@ function UniformLeftRowCells({
       </td>
 
       {/* Location. "City, ST" via shared formatLocation pass on the
-          server (RF-flat + Ace-native paths). Distance sub-line lands
-          in a follow-up prompt per the spec. */}
-      <td className="px-3 py-2 align-top text-sm text-court-fg-muted">
-        {row.candidateLocation || ""}
+          server (RF-flat + Ace-native paths). Distance sub-line is
+          pre-computed in pipeline/page.tsx via formatDistanceSubLine
+          (haversine against the candidate's stored lat/lng and the
+          job's zip-geocoded centroid). Blank `distanceLine` renders no
+          second line per the spec ("no dash, no placeholder, no N/A"). */}
+      <td className="px-3 py-2 align-top text-sm">
+        <div className="min-w-0">
+          {row.candidateLocation && (
+            <div className="truncate text-court-fg-muted">{row.candidateLocation}</div>
+          )}
+          {row.distanceLine && (
+            <div className="truncate text-[11px] text-court-fg-muted/80">
+              {row.distanceLine}
+            </div>
+          )}
+        </div>
       </td>
 
       {/* Salary. Candidate's expected salary. Blank cell on rows where
@@ -819,6 +852,13 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                         <DataTableHeaderCell align="right" />
                       </>
                     )}
+                    {/* Match column — right-most on every main-pipeline
+                        stage. Renders a ScoreBadge sourced from the
+                        deterministic Prompt 2 scorer (CandidateMatch.score
+                        joined SSR-side in pipeline/page.tsx). Pipeline
+                        only — Applicants / Kept tables below do NOT
+                        carry this column per the spec. */}
+                    <DataTableHeaderCell align="center">Match</DataTableHeaderCell>
                   </tr>
                 </DataTableHead>
                 <DataTableBody>
@@ -826,7 +866,8 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                     <tr>
                       <td
                         colSpan={
-                          // Checkbox + 7 LEFT columns + per-stage RIGHT.
+                          // Checkbox + 7 LEFT columns + per-stage RIGHT
+                          // + Match (right-most on every stage).
                           1 +
                           7 +
                           (stage === "pending_start"
@@ -837,7 +878,8 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                 ? 4
                                 : stage === "cancelled"
                                   ? 0
-                                  : 2)
+                                  : 2) +
+                          1
                         }
                         className="px-4 py-12 text-center text-sm text-court-fg-muted"
                       >
@@ -903,6 +945,12 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                       ) : stage === "hired" ? (
                         <HiredCells row={r} />
                       ) : stage === "cancelled" ? null : (
+                        // Submitted / Interviewing / Offer share the
+                        // stage-specific RIGHT block below. Match cell
+                        // is appended after this fragment closes so the
+                        // structural column lands at the right edge of
+                        // every stage including cancelled.
+
                         <>
                           {/* Offer stage: Offer Amount + Placement Fee
                               are the two extra columns called out in
@@ -1036,6 +1084,14 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                           </td>
                         </>
                       )}
+                      {/* Match column — always the right-most cell on
+                          the main-pipeline table. ScoreBadge popover
+                          stops row navigation via its own onClick
+                          stopPropagation, but the cell wrapper also
+                          stopPropagates so an accidental click on the
+                          blank-cell whitespace doesn't open the
+                          candidate profile. */}
+                      <MatchCell row={r} />
                     </DataTableRow>
                   ))}
                 </DataTableBody>
@@ -1067,6 +1123,31 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
         onClose={() => setDrawerOpen(false)}
       />
     </div>
+  );
+}
+
+// Right-most Match column on the main-pipeline table only (Applicants /
+// Kept tables below skip it per the Prompt 4 spec). Reads the stored
+// CandidateMatch.score + scoreBreakdown attached SSR-side in
+// pipeline/page.tsx — never recomputes, never calls Claude on render.
+// When no CandidateMatch row exists for the (jobId, candidateId) pair,
+// matchScore is null and we render a fully blank td (no dash, no
+// placeholder) per the blank-cell rule that already governs the Salary
+// + Location columns.
+function MatchCell({ row }: { row: PipelineRow }) {
+  if (row.matchScore == null) {
+    return <td className="px-3 py-2 align-top" />;
+  }
+  return (
+    <td
+      className="px-3 py-2 align-top text-center"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <ScoreBadge
+        score={row.matchScore}
+        breakdown={normalizeBreakdown(row.matchScoreBreakdown, "")}
+      />
+    </td>
   );
 }
 

@@ -7,6 +7,7 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { formatLocation } from "@/lib/utils";
 import { parseBooleanQuery, flattenBooleanQuery } from "@/lib/search/boolean-query";
+import { geocodePill, type GeoHit } from "@/lib/geocode";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -318,59 +319,11 @@ async function resolveEmployerAnyIds(
   return rows.map((r) => r.id);
 }
 
-// Nominatim hits for the search-pill location are reused across requests
-// within a server process. Recruiter typing "Akron, OH" 12 times in a
-// minute only burns the Nominatim quota once. Module-level Map is fine
-// here — Next's serverless runtime recycles the process often enough
-// that cache freshness isn't a concern (city centroids don't move).
-const geocodeCache = new Map<string, { lat: number; lng: number } | null>();
-const NOMINATIM_UA =
-  "Ace-BreakPointTalent-Search/1.0 (andrew@breakpointtalent.com)";
-
-type GeoHit = { lat: number; lng: number };
-type NominatimHit = { lat: string; lon: string };
-
-async function fetchNominatim(url: string): Promise<GeoHit | null> {
-  try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": NOMINATIM_UA },
-      // 5s upper bound so a slow Nominatim doesn't stall the search
-      // request — caller falls back to text contains on null return.
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) return null;
-    const arr = (await res.json()) as NominatimHit[];
-    if (!Array.isArray(arr) || arr.length === 0) return null;
-    const lat = Number.parseFloat(arr[0].lat);
-    const lng = Number.parseFloat(arr[0].lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return { lat, lng };
-  } catch {
-    return null;
-  }
-}
-
-async function geocodePill(loc: string): Promise<GeoHit | null> {
-  const key = loc.toLowerCase().trim();
-  if (geocodeCache.has(key)) return geocodeCache.get(key) ?? null;
-  // 5-digit numeric strings are US ZIP codes — the freeform `q=` path
-  // resolves them inconsistently (Nominatim sometimes returns the ZIP
-  // boundary's POI cluster instead of the centroid, sometimes nothing).
-  // Hit the dedicated postalcode endpoint first; only fall back to the
-  // freeform text path when the postalcode lookup returns nothing.
-  if (/^\d{5}$/.test(key)) {
-    const zipUrl = `https://nominatim.openstreetmap.org/search?postalcode=${encodeURIComponent(key)}&country=us&format=json&limit=1`;
-    const zipHit = await fetchNominatim(zipUrl);
-    if (zipHit) {
-      geocodeCache.set(key, zipHit);
-      return zipHit;
-    }
-  }
-  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1`;
-  const hit = await fetchNominatim(url);
-  geocodeCache.set(key, hit);
-  return hit;
-}
+// Geocoder + in-process cache live in src/lib/geocode.ts (lifted out so
+// the pipeline SSR distance helper can reuse the same cache). Behavior
+// here is unchanged: `geocodePill(loc)` resolves a single pill string to
+// a { lat, lng } centroid (or null), with the cache reused across calls
+// inside the same Node process.
 
 // Approximate degrees per mile. 1° latitude ≈ 69 miles everywhere; 1°
 // longitude shrinks with cos(lat). Good enough for filter pre-pass —

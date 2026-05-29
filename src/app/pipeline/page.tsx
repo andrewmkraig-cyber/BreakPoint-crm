@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import type { Prisma } from "@prisma/client";
 import {
   PipelineView,
   type AppliedRow,
@@ -28,6 +29,8 @@ import { getPlacementsForOrg } from "@/lib/placements";
 import { getInterviewsForOrg } from "@/lib/interviews";
 import { resolveJobTitle } from "@/lib/job-title";
 import { formatLocation } from "@/lib/utils";
+import { geocodePill } from "@/lib/geocode";
+import { haversineMiles } from "@/lib/distance";
 
 // Local helper for parsing the Json shape Prisma stores for
 // `Candidate.expectedSalary` (`{ number, currency }`). Returns null when
@@ -435,6 +438,14 @@ export default async function PipelinePage({
           : !isRfCandidate && !isRfJob && p.candidateId && p.jobId
             ? nextByKey.get(`ace:${p.candidateId}:${p.jobId}`) ?? null
             : null,
+        // Defaults — populated below for the current-stage `rows` set
+        // via the CandidateMatch JOIN + Nominatim distance pass. Rows
+        // outside the active stage (counted but not rendered this
+        // request) keep the defaults; the next SSR for that stage will
+        // resolve them in turn.
+        distanceLine: "",
+        matchScore: null,
+        matchScoreBreakdown: null,
         clientOwnerId,
       });
     }
@@ -471,6 +482,12 @@ export default async function PipelinePage({
         placementId: null,
         placement: null,
         nextInterview: nextByKey.get(`${r.candidateId}:${r.jobId}`) ?? null,
+        // Defaults — populated below for the current-stage `rows` set
+        // (Match column + Location distance sub-line). Cancelled /
+        // non-active stages keep the defaults this request.
+        distanceLine: "",
+        matchScore: null,
+        matchScoreBreakdown: null,
         // RF-flat rows carry no clientId; resolve owner by client name.
         clientOwnerId: r.clientName
           ? ownerByClientNameLower.get(r.clientName.toLowerCase()) ?? null
@@ -490,6 +507,230 @@ export default async function PipelinePage({
     }
 
     rows = scopedRows.filter((r) => r.bucket === stage);
+
+    // ---- Match column + Location distance sub-line (Prompt 4) ----
+    //
+    // Two attachments happen here, both scoped to the current-stage
+    // `rows` so we don't pay the cost on rows the user can't see:
+    //
+    // 1. CandidateMatch.score / scoreBreakdown — the Prompt 2
+    //    deterministic scorer writes to CandidateMatch keyed by
+    //    (jobId, candidateId) cuids. RF-numeric ids are resolved to
+    //    their cuid via the Candidate.rfId / Job.legacyRfId lookups
+    //    below. No recompute, no Claude call on render — straight DB
+    //    read. Rows with no CandidateMatch row leave matchScore null
+    //    and the Match cell renders fully blank.
+    //
+    // 2. Distance sub-line — Candidate.lat/lng (backfilled by
+    //    scripts/geocode-candidates.ts) feeds the candidate side;
+    //    Job.locationZip / locationCity / locationState feeds the
+    //    job side via the shared Nominatim geocoder in src/lib/
+    //    geocode.ts (the same module-level cache the candidate-search
+    //    route uses, so a recruiter who's already searched Akron OH
+    //    pays zero Nominatim hits on the pipeline render). Unique job
+    //    locations are de-duped before the geocoder loop so cold-start
+    //    hits scale with distinct locations, not row count.
+    if (rows.length > 0) {
+      const rfCandidateIds: number[] = [];
+      const cuidCandidateIds: string[] = [];
+      const rfJobIds: number[] = [];
+      const cuidJobIds: string[] = [];
+      for (const r of rows) {
+        if (typeof r.candidateId === "number") rfCandidateIds.push(r.candidateId);
+        else if (typeof r.candidateId === "string") cuidCandidateIds.push(r.candidateId);
+        if (typeof r.jobId === "number") rfJobIds.push(r.jobId);
+        else if (typeof r.jobId === "string") cuidJobIds.push(r.jobId);
+      }
+
+      // Candidate lat/lng + rfId<->cuid mapping. The Candidate table
+      // holds every candidate (RF-imported has rfId set; Ace-native
+      // has rfId null), so a single query covers both row shapes.
+      const candidateOr: Prisma.CandidateWhereInput[] = [];
+      if (rfCandidateIds.length > 0) candidateOr.push({ rfId: { in: rfCandidateIds } });
+      if (cuidCandidateIds.length > 0) candidateOr.push({ id: { in: cuidCandidateIds } });
+      const candidateLatLngRows = candidateOr.length > 0
+        ? await prisma.candidate.findMany({
+            where: { organizationId: org.id, OR: candidateOr },
+            select: { id: true, rfId: true, lat: true, lng: true },
+          })
+        : [];
+      const candidateLatLngByCuid = new Map<string, { lat: number; lng: number }>();
+      const candidateLatLngByRfId = new Map<number, { lat: number; lng: number }>();
+      const candidateCuidByRfId = new Map<number, string>();
+      for (const c of candidateLatLngRows) {
+        if (c.lat != null && c.lng != null) {
+          const point = { lat: c.lat, lng: c.lng };
+          candidateLatLngByCuid.set(c.id, point);
+          if (c.rfId != null) candidateLatLngByRfId.set(c.rfId, point);
+        }
+        if (c.rfId != null) candidateCuidByRfId.set(c.rfId, c.id);
+      }
+
+      // Job zip/city/state + legacyRfId<->cuid mapping.
+      const jobOr: Prisma.JobWhereInput[] = [];
+      if (rfJobIds.length > 0) jobOr.push({ legacyRfId: { in: rfJobIds } });
+      if (cuidJobIds.length > 0) jobOr.push({ id: { in: cuidJobIds } });
+      const jobLocRows = jobOr.length > 0
+        ? await prisma.job.findMany({
+            where: { organizationId: org.id, OR: jobOr },
+            select: {
+              id: true,
+              legacyRfId: true,
+              locationZip: true,
+              locationCity: true,
+              locationState: true,
+            },
+          })
+        : [];
+      type JobLoc = { zip: string | null; city: string | null; state: string | null };
+      const jobLocByCuid = new Map<string, JobLoc>();
+      const jobLocByRfId = new Map<number, JobLoc>();
+      const jobCuidByRfId = new Map<number, string>();
+      for (const j of jobLocRows) {
+        const loc: JobLoc = {
+          zip: j.locationZip,
+          city: j.locationCity,
+          state: j.locationState,
+        };
+        jobLocByCuid.set(j.id, loc);
+        if (j.legacyRfId != null) {
+          jobLocByRfId.set(j.legacyRfId, loc);
+          jobCuidByRfId.set(j.legacyRfId, j.id);
+        }
+      }
+
+      // CandidateMatch read. Keyed by (jobId cuid, candidateId cuid)
+      // per the schema unique. Rows without a resolvable cuid on
+      // either side are simply absent from the lookup — the Match
+      // cell renders blank for them.
+      const matchJobCuids = new Set<string>();
+      const matchCandidateCuids = new Set<string>();
+      for (const r of rows) {
+        const jobCuid =
+          typeof r.jobId === "string"
+            ? r.jobId
+            : jobCuidByRfId.get(r.jobId) ?? null;
+        const candidateCuid =
+          typeof r.candidateId === "string"
+            ? r.candidateId
+            : candidateCuidByRfId.get(r.candidateId) ?? null;
+        if (jobCuid) matchJobCuids.add(jobCuid);
+        if (candidateCuid) matchCandidateCuids.add(candidateCuid);
+      }
+      const matchRows =
+        matchJobCuids.size > 0 && matchCandidateCuids.size > 0
+          ? await prisma.candidateMatch.findMany({
+              where: {
+                organizationId: org.id,
+                jobId: { in: Array.from(matchJobCuids) },
+                candidateId: { in: Array.from(matchCandidateCuids) },
+              },
+              select: {
+                jobId: true,
+                candidateId: true,
+                score: true,
+                scoreBreakdown: true,
+              },
+            })
+          : [];
+      const matchByPair = new Map<
+        string,
+        { score: number; scoreBreakdown: unknown }
+      >();
+      for (const m of matchRows) {
+        matchByPair.set(`${m.jobId}:${m.candidateId}`, {
+          score: m.score,
+          scoreBreakdown: m.scoreBreakdown,
+        });
+      }
+
+      // Distance sub-line. De-dupe job locations first so each unique
+      // (zip OR city,state) string fires at most one Nominatim hit per
+      // cold process. The geocoder's module-level cache covers the
+      // warm-process case for free.
+      const jobLocKey = (loc: JobLoc): string => {
+        const zip = (loc.zip ?? "").trim();
+        if (zip) return `zip:${zip.toLowerCase()}`;
+        const parts = [loc.city, loc.state]
+          .map((s) => (s ?? "").trim())
+          .filter(Boolean);
+        return parts.length > 0 ? `cs:${parts.join(",").toLowerCase()}` : "";
+      };
+      const jobLocQuery = (loc: JobLoc): string => {
+        const zip = (loc.zip ?? "").trim();
+        if (zip) return zip;
+        const parts = [loc.city, loc.state]
+          .map((s) => (s ?? "").trim())
+          .filter(Boolean);
+        return parts.join(", ");
+      };
+      const uniqueJobLocs = new Map<string, JobLoc>();
+      for (const r of rows) {
+        const jobLoc =
+          typeof r.jobId === "string"
+            ? jobLocByCuid.get(r.jobId)
+            : jobLocByRfId.get(r.jobId);
+        if (!jobLoc) continue;
+        const key = jobLocKey(jobLoc);
+        if (key) uniqueJobLocs.set(key, jobLoc);
+      }
+      const jobLatLngByKey = new Map<string, { lat: number; lng: number } | null>();
+      // Serial loop intentional — keeps Nominatim within its usage
+      // policy (one request at a time). Warm-cache hits are sync and
+      // cheap; only cold strings actually round-trip. Array.from
+      // wrapper matches the existing codebase pattern for Map iteration
+      // (the tsconfig target does not enable downlevelIteration).
+      for (const [key, loc] of Array.from(uniqueJobLocs.entries())) {
+        const query = jobLocQuery(loc);
+        if (!query) {
+          jobLatLngByKey.set(key, null);
+          continue;
+        }
+        jobLatLngByKey.set(key, await geocodePill(query));
+      }
+
+      // Attach matchScore + matchScoreBreakdown + distanceLine to each
+      // currently-rendered row.
+      for (const r of rows) {
+        const jobCuid =
+          typeof r.jobId === "string"
+            ? r.jobId
+            : jobCuidByRfId.get(r.jobId) ?? null;
+        const candidateCuid =
+          typeof r.candidateId === "string"
+            ? r.candidateId
+            : candidateCuidByRfId.get(r.candidateId) ?? null;
+        if (jobCuid && candidateCuid) {
+          const match = matchByPair.get(`${jobCuid}:${candidateCuid}`);
+          if (match) {
+            r.matchScore = match.score;
+            r.matchScoreBreakdown = match.scoreBreakdown;
+          }
+        }
+
+        const candidatePoint =
+          typeof r.candidateId === "string"
+            ? candidateLatLngByCuid.get(r.candidateId)
+            : candidateLatLngByRfId.get(r.candidateId);
+        const jobLoc =
+          typeof r.jobId === "string"
+            ? jobLocByCuid.get(r.jobId)
+            : jobLocByRfId.get(r.jobId);
+        if (candidatePoint && jobLoc) {
+          const key = jobLocKey(jobLoc);
+          const jobPoint = key ? jobLatLngByKey.get(key) : null;
+          if (jobPoint) {
+            const miles = haversineMiles(
+              candidatePoint.lat,
+              candidatePoint.lng,
+              jobPoint.lat,
+              jobPoint.lng,
+            );
+            r.distanceLine = `(${miles} ${miles === 1 ? "mile" : "miles"})`;
+          }
+        }
+      }
+    }
 
     // ---- Applicants + Kept assembly ----
     //
