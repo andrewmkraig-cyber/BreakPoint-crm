@@ -32,6 +32,7 @@ import { AddToListButton } from "@/components/lists/add-to-list-button";
 import { Button } from "@/components/ui/button";
 import { ScoreBadge } from "@/components/game-plan/score-badge";
 import { cn } from "@/lib/utils";
+import { useFloatingZ } from "@/lib/floating-z";
 
 // Portal-rendered, draggable, resizable Find Matches panel. Mirrors
 // the /mail floating-thread-window pattern: GPU-composited drag via
@@ -117,6 +118,14 @@ export function FindMatchesPanel() {
     activeRouteKey && openEntities.has(activeRouteKey)
       ? targetForKey(activeRouteKey)
       : null;
+
+  // Click-to-front: the panel shares the app-wide floating z-index
+  // counter (src/lib/floating-z.ts) with the email composer it can
+  // launch. `active` flips true when the panel is actually shown
+  // (target resolved + not minimized) so showing it claims a fresh top
+  // z; pointerdown anywhere on the panel box bumps it above the composer.
+  const panelVisible = Boolean(target) && !minimized;
+  const { z: panelZ, bringToFront: panelBringToFront } = useFloatingZ(panelVisible);
 
   // Run a streaming fetch. Used both for the initial load and for
   // "Show 5 more" pagination — each call is a fresh stream.
@@ -464,10 +473,12 @@ export function FindMatchesPanel() {
     <div
       role="dialog"
       aria-label="Find matches"
-      className="pointer-events-none fixed inset-0 z-[1050]"
+      style={{ zIndex: panelZ }}
+      className="pointer-events-none fixed inset-0"
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        onPointerDown={panelBringToFront}
         style={{ left: position.x, top: position.y, width: size.w, height: size.h }}
         className="pointer-events-auto absolute"
       >
@@ -730,6 +741,11 @@ function ActionRow({
   const [applying, setApplying] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
+  // The composer launched from here floats alongside the Find Matches
+  // panel and shares the same floating z-index counter, so clicking
+  // either surface raises it above the other. `active` = emailOpen so
+  // opening the composer claims the top z.
+  const { z: composerZ, bringToFront: composerBringToFront } = useFloatingZ(emailOpen);
 
   const recipient = match.email.trim();
   const hasEmail = recipient.length > 0;
@@ -850,11 +866,15 @@ function ActionRow({
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2">
+      {/* View Profile opens the candidate in a NEW browser tab and must
+          NOT touch the Find Matches panel — no onDismiss (the match card
+          stays so the recruiter keeps their place) and no current-tab
+          navigation. rel="noopener noreferrer" so the opened tab can't
+          reach back through window.opener. */}
       <a
         href={`/candidates/${match.candidateRfId ?? match.candidateId}`}
         target="_blank"
-        rel="noreferrer"
-        onClick={() => onDismiss(match.candidateId)}
+        rel="noopener noreferrer"
         className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
       >
         <ExternalLink className="h-3 w-3" /> View Profile
@@ -911,6 +931,8 @@ function ActionRow({
       </Button>
       {emailOpen && (
         <EmailComposer
+          floatingZ={composerZ}
+          onBringToFront={composerBringToFront}
           title="New email"
           subtitle={recipient}
           initial={{

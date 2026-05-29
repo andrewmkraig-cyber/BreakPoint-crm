@@ -46,6 +46,16 @@ export type ContactOption = { id: string; name: string; email: string };
 export type EmailComposerProps = {
   title: string;
   subtitle?: string;
+  // Floating-stack mode. When `floatingZ` is provided the composer drops
+  // its blocking `z-[200]` + dim backdrop and instead renders as a
+  // non-blocking floating window at the supplied z-index, so it can sit
+  // alongside another floating surface (the Find Matches panel) and the
+  // two can be click-raised past each other. `onBringToFront` fires on
+  // pointerdown so the parent's shared floating-z counter can raise this
+  // composer. Omitting both keeps the default blocking centered modal —
+  // every other caller is unaffected.
+  floatingZ?: number;
+  onBringToFront?: () => void;
   initial: EmailDraft;
   onClose: () => void;
   onSend: (draft: EmailDraft) => Promise<void>;
@@ -193,6 +203,8 @@ export type EmailComposerProps = {
 export function EmailComposer({
   title,
   subtitle,
+  floatingZ,
+  onBringToFront,
   initial,
   onClose,
   onSend,
@@ -792,6 +804,12 @@ export function EmailComposer({
   // overlay because the backdrop no longer covers the full viewport.
   // Guard SSR with typeof document === "undefined".
   if (typeof document === "undefined") return null;
+  // Floating mode (Find Matches): no dim backdrop and pointer-events pass
+  // through the wrapper so the Find Matches panel underneath stays
+  // clickable; the modal box itself stays interactive and raises its
+  // shared z on pointerdown. Default mode: the blocking z-[200] dim modal
+  // every other caller relies on (unchanged).
+  const isFloating = floatingZ != null;
   return createPortal(
     // Backdrop has NO close handlers. A recruiter selecting text in the body
     // who drags past the panel boundary used to trigger the backdrop's
@@ -799,8 +817,21 @@ export function EmailComposer({
     // target is the common ancestor of mousedown + mouseup). Closing on that
     // path destroyed half-written submittal drafts with no undo. Dismissal is
     // explicit only: the header X button or the footer Cancel button.
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-ink/40 p-4">
-      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl">
+    <div
+      style={isFloating ? { zIndex: floatingZ } : undefined}
+      className={
+        isFloating
+          ? "pointer-events-none fixed inset-0 flex items-center justify-center p-4"
+          : "fixed inset-0 z-[200] flex items-center justify-center bg-ink/40 p-4"
+      }
+    >
+      <div
+        onPointerDown={isFloating ? onBringToFront : undefined}
+        className={cn(
+          "flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl",
+          isFloating && "pointer-events-auto",
+        )}
+      >
 
         <div className="flex shrink-0 items-start justify-between border-b border-court-border px-5 py-3">
           <div>
