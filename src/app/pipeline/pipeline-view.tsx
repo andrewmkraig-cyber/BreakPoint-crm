@@ -317,31 +317,28 @@ function UniformLeftRowCells({
 }) {
   return (
     <>
-      {/* Candidate. Avatar + name + optional Kept badge. The title
-          sub-line that used to live here moves into the dedicated
-          "Current Title/Employer" column. */}
+      {/* Candidate. Name + optional Kept badge. Ace 68.0 polish: the
+          AK-style initials circle that used to sit to the left of the
+          name is removed per recruiter feedback (visual noise on a
+          high-density table). The title sub-line that used to live
+          here lives in the dedicated "Current Title/Employer" column. */}
       <td className="px-3 py-2 align-top">
-        <div className="flex items-start gap-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-court-surface-subtle text-[11px] font-semibold text-court-fg-muted">
-            {initials(row.candidateName)}
-          </div>
-          <div className="min-w-0">
-            <Link
-              href={`/candidates/${row.candidateId}`}
-              className="inline-flex items-center gap-1 font-medium text-court-fg hover:text-court-accent-dark"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {row.candidateName}
-              {row.isKept && (
-                <span
-                  className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-blue-800 dark:bg-blue-950/60 dark:text-blue-100"
-                  title="Kept candidate"
-                >
-                  <Bookmark className="h-2.5 w-2.5" /> Kept
-                </span>
-              )}
-            </Link>
-          </div>
+        <div className="min-w-0">
+          <Link
+            href={`/candidates/${row.candidateId}`}
+            className="inline-flex items-center gap-1 font-medium text-court-fg hover:text-court-accent-dark"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {row.candidateName}
+            {row.isKept && (
+              <span
+                className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-blue-800 dark:bg-blue-950/60 dark:text-blue-100"
+                title="Kept candidate"
+              >
+                <Bookmark className="h-2.5 w-2.5" /> Kept
+              </span>
+            )}
+          </Link>
         </div>
       </td>
 
@@ -939,28 +936,29 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                 Interviewing rows show the "Edit interview"
                                 deep-link icon next to the Offer chip when a
                                 next interview is scheduled. */}
-                            <div className="flex items-center justify-end gap-1.5">
+                            {/* Ace 68.0 polish: chips stack vertically and
+                                drop to h-6 / px-2 / text-[10px]. The
+                                Action cell is now a narrow vertical
+                                stack rather than a wide side-by-side
+                                row. Same chips, same order, same deep-
+                                links — only the layout shrinks. */}
+                            <div className="flex flex-col items-end gap-1">
                               {r.bucket === "interviewing" && r.nextInterview && (
                                 <Link
                                   href={`/candidates/${r.candidateId}?edit=interview&interviewId=${encodeURIComponent(r.nextInterview.id)}`}
                                   onClick={(e) => e.stopPropagation()}
                                   title={`Edit interview · Next: ${formatInterviewWhen(r.nextInterview.scheduledAt)} · ${formatInterviewTypeShort(r.nextInterview.type)}`}
                                   aria-label="Edit interview"
-                                  className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-border bg-court-surface-subtle px-2 text-[11px] font-semibold text-court-fg-muted shadow-sm transition hover:bg-court-surface hover:text-court-fg"
+                                  className="inline-flex h-6 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-border bg-court-surface-subtle px-2 text-[10px] font-semibold text-court-fg-muted shadow-sm transition hover:bg-court-surface hover:text-court-fg"
                                 >
                                   <CalendarClock className="h-3 w-3" />
                                 </Link>
                               )}
                               {r.bucket === "submitted" && (
-                                // Anchor-shaped twin of <Button variant="schedule">.
-                                // Token classes mirror the variant so the Schedule
-                                // link reads identically to other calendar actions
-                                // (e.g. Schedule Interview on the candidate
-                                // profile) without nesting a <button> in a Link.
                                 <Link
                                   href={`/candidates/${r.candidateId}`}
                                   onClick={(e) => e.stopPropagation()}
-                                  className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2.5 text-[11px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
+                                  className="inline-flex h-6 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2 text-[10px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
                                   title="Schedule interview on candidate profile"
                                   aria-label="Schedule interview"
                                 >
@@ -969,53 +967,57 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                 </Link>
                               )}
                               {r.bucket === "interviewing" && (
-                                <Link
-                                  href={`/candidates/${r.candidateId}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-purple-200 bg-purple-50 px-2.5 text-[11px] font-semibold text-purple-700 shadow-sm transition hover:bg-purple-100 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-950/60"
-                                  title="Record offer on candidate profile"
-                                  aria-label="Record offer"
-                                >
-                                  <DollarSign className="h-3 w-3" />
-                                  <span className="hidden md:inline">Offer</span>
-                                </Link>
+                                <>
+                                  {/* Ace 68.0 polish: Schedule chip
+                                      lands on Interviewing rows too so
+                                      recruiters can book a follow-up
+                                      interview from the pipeline
+                                      without first jumping to the
+                                      candidate profile. Same Court
+                                      brand-blue styling and same
+                                      candidate-profile deep-link the
+                                      Submitted-stage Schedule chip uses;
+                                      the candidate profile's Schedule
+                                      Interview flow handles both
+                                      first-touch and follow-up cases. */}
+                                  <Link
+                                    href={`/candidates/${r.candidateId}?schedule=interview&jobId=${r.jobId}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex h-6 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2 text-[10px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
+                                    title="Schedule another interview on candidate profile"
+                                    aria-label="Schedule interview"
+                                  >
+                                    <CalendarClock className="h-3 w-3" />
+                                    <span className="hidden md:inline">Schedule</span>
+                                  </Link>
+                                  <Link
+                                    href={`/candidates/${r.candidateId}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex h-6 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-purple-200 bg-purple-50 px-2 text-[10px] font-semibold text-purple-700 shadow-sm transition hover:bg-purple-100 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-950/60"
+                                    title="Record offer on candidate profile"
+                                    aria-label="Record offer"
+                                  >
+                                    <DollarSign className="h-3 w-3" />
+                                    <span className="hidden md:inline">Offer</span>
+                                  </Link>
+                                </>
                               )}
                               {r.bucket === "offer" && (
                                 <>
-                                  {/* Edit Offer (Ace fix 2026-05-27): anchor-
-                                      shaped twin of <Button variant="secondary">.
-                                      Token classes mirror the variant so the
-                                      chip reads as neutral grayish — distinct
-                                      from the green Placement chip beside it
-                                      and the red Reject after it. Deep-links
-                                      to the candidate profile's OfferDialog
-                                      in edit mode (?edit=offer&jobId=NN) so
-                                      the recruiter can revise salary / fee /
-                                      start date without dropping out of the
-                                      pipeline view. */}
                                   <Link
                                     href={`/candidates/${r.candidateId}?edit=offer&jobId=${r.jobId}`}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-border bg-court-surface-subtle px-2.5 text-[11px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface"
+                                    className="inline-flex h-6 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-border bg-court-surface-subtle px-2 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface"
                                     title="Edit offer details"
                                     aria-label="Edit offer"
                                   >
                                     <Edit3 className="h-3 w-3" />
                                     <span className="hidden md:inline">Edit Offer</span>
                                   </Link>
-                                  {/* Green Placement link mirroring the
-                                      candidate-profile Placement button.
-                                      ?edit=placement&jobId=NN auto-opens the
-                                      PlacementDialog when jobId is the RF
-                                      numeric — Ace-native cuid rows just land
-                                      on the profile (still the same modal,
-                                      one extra click). The candidate page
-                                      strips the params after firing so
-                                      refreshes don't re-open the modal. */}
                                   <Link
                                     href={`/candidates/${r.candidateId}?edit=placement&jobId=${r.jobId}`}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-2.5 text-[11px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
+                                    className="inline-flex h-6 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-2 text-[10px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
                                     title="Record placement"
                                     aria-label="Record placement"
                                   >
@@ -1106,11 +1108,16 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
             pipeline-row-actions.tsx so the two surfaces read as the
             same control. Edit3 + CheckCircle2 icons match the
             candidate-profile DialogOrNav chip pair. */}
-        <div className="flex flex-row items-center justify-end gap-1.5">
+        {/* Ace 68.0 polish: chips stack vertically instead of side-by-
+            side, and each chip drops to h-6 / px-2 / text-[10px] so the
+            Action column doesn't dominate the row. Edit Placement on
+            top, Confirm Start on the bottom — same ordering as the
+            side-by-side layout this replaced. */}
+        <div className="flex flex-col items-end gap-1">
           <Link
             href={`/candidates/${row.candidateId}?edit=placement&jobId=${row.jobId}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-slate-400 bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:bg-slate-200 dark:border-slate-500 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800"
+            className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-md border border-slate-400 bg-slate-100 px-2 text-[10px] font-semibold text-slate-600 shadow-sm transition hover:bg-slate-200 dark:border-slate-500 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800"
             title="Edit placement details"
           >
             <Edit3 className="h-3 w-3" />
@@ -1119,7 +1126,7 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
           <Link
             href={`/candidates/${row.candidateId}?confirmStart=1&jobId=${row.jobId}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-2 py-1 text-[11px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
+            className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-2 text-[10px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
             title="Confirm start"
           >
             <CheckCircle2 className="h-3 w-3" />
@@ -1303,7 +1310,7 @@ function RejectButton({ placementId, candidateName }: { placementId: string; can
         disabled={isPending}
         title="Reject this candidate for this job"
         aria-label="Reject"
-        className="h-7 whitespace-nowrap px-2.5 text-[11px]"
+        className="h-6 whitespace-nowrap px-2 text-[10px]"
       >
         {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
         <span className="hidden md:inline">Reject</span>
@@ -1339,14 +1346,11 @@ function formatInterviewTypeShort(t: NextInterview["type"]): string {
   return "Onsite";
 }
 
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((s) => s[0]?.toUpperCase() ?? "")
-    .join("");
-}
+// `initials()` helper removed Ace 68.0 — the candidate-initials avatar
+// circle was dropped from UniformLeftRowCells per recruiter feedback,
+// and no other call site uses this helper. Re-add if the avatar lands
+// back somewhere else (candidate hover card, etc.).
+
 
 // ============================================================
 // Intake-stage table (Applicants + Kept) — formerly /applicants
@@ -1378,8 +1382,12 @@ function formatSourceLabel(raw: string | null): string {
 // recruiters see the same Submit / Keep / Reject silhouettes after the
 // merge. Submit reuses the Court Mode brand tokens so the affirmative
 // action follows whichever Court Mode is active.
+// Ace 68.0 polish: chip height dropped h-7 → h-6, padding px-2.5 → px-2,
+// text-[11px] → text-[10px] so the per-row Action cell reads thinner.
+// Used in tandem with the flex-col stack wrappers below so chips line up
+// vertically inside the action cell instead of running side-by-side.
 const ROW_ACTION_BASE =
-  "inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border px-2.5 text-[11px] font-semibold shadow-sm transition disabled:opacity-60";
+  "inline-flex h-6 items-center justify-center gap-1 whitespace-nowrap rounded-md border px-2 text-[10px] font-semibold shadow-sm transition disabled:opacity-60";
 
 const ROW_ACTION_CLASS = {
   primary: cn(
@@ -1773,7 +1781,7 @@ function AppliedRowView({
       <UniformLeftRowCells row={row} lastActionAt={row.appliedAt} />
       <td className="px-3 py-2 align-top text-center text-sm text-court-fg-muted">{formatSourceLabel(row.source)}</td>
       <td className="px-3 py-2 align-top">
-        <div className="flex flex-row flex-nowrap items-center justify-end gap-2">
+        <div className="flex flex-col items-end gap-1">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
           {/* Submit / Keep / Reject share the row-action chip style. */}
           <Link
@@ -1865,7 +1873,7 @@ function KeptRowView({
           for this row. */}
       <UniformLeftRowCells row={row} lastActionAt={row.keptAt} />
       <td className="px-3 py-2 align-top">
-        <div className="flex flex-row flex-nowrap items-center justify-end gap-2">
+        <div className="flex flex-col items-end gap-1">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
           <Link
             href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}

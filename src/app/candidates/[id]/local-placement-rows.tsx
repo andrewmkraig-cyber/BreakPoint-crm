@@ -401,6 +401,27 @@ export function LocalPlacementRows({
     router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
   }, [searchParams, pathname, router, jobsState]);
 
+  // Deep-link for the Pipeline page's per-row Schedule chip (Ace 68.0).
+  // Format is ?schedule=interview&jobId=NN — mirrors the ?edit=placement
+  // handler above so the Submitted + Interviewing tabs can pop the
+  // schedule modal directly from /pipeline without an extra click on
+  // the candidate profile.
+  useEffect(() => {
+    const flag = searchParams?.get("schedule");
+    const jobIdRaw = searchParams?.get("jobId");
+    if (flag !== "interview" || !jobIdRaw) return;
+    const jobId = Number(jobIdRaw);
+    if (!Number.isFinite(jobId)) return;
+    const target = jobsState.find((j) => j.jobRfId === jobId);
+    if (!target) return;
+    setScheduleFor(target);
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    next.delete("schedule");
+    next.delete("jobId");
+    const qs = next.toString();
+    router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+  }, [searchParams, pathname, router, jobsState]);
+
   // Mounted even with zero placements so the apply listener above is live
   // for the candidate's first apply. Render nothing until there's a row.
   if (jobsState.length === 0) return null;

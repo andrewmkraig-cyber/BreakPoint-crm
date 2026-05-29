@@ -146,10 +146,18 @@ export function AppShell({
   // filter aside. Drop the cap for this route so the wrapper's
   // existing -ml-[18px/22px/38px/54px] still lands flush with the
   // sidebar edge.
+  // Ace 68.0 polish: left padding trimmed further so page content slides
+  // closer to the sidebar. The resize handle (1.5px) plus the sidebar's
+  // own border-r already provides the visual divider — every pixel of
+  // extra pl- on the main column is dead space on a 13" laptop. Mobile
+  // pl-3 → pl-1; md pl-4 → pl-2; xl picks up a dedicated pl-3 so the
+  // px-8 horizontal default doesn't reassert the wider left gutter on
+  // larger viewports. Right side keeps the original p-6 / md:p-8 /
+  // xl:pr-8 / 2xl:pr-12 generosity.
   const isFullBleed = pathname === "/candidates";
   const mainCls = isFullBleed
-    ? "min-w-0 flex-1 p-6 pl-3 pt-4 md:p-8 md:pl-4 md:pt-4 xl:px-8 2xl:px-12"
-    : "min-w-0 flex-1 p-6 pl-3 pt-4 md:p-8 md:pl-4 md:pt-4 xl:mx-auto xl:w-full xl:max-w-[1600px] xl:px-8 2xl:px-12";
+    ? "min-w-0 flex-1 p-6 pl-1 pt-4 md:p-8 md:pl-2 md:pt-4 xl:px-8 xl:pl-3 2xl:px-12 2xl:pl-4"
+    : "min-w-0 flex-1 p-6 pl-1 pt-4 md:p-8 md:pl-2 md:pt-4 xl:mx-auto xl:w-full xl:max-w-[1600px] xl:px-8 xl:pl-3 2xl:px-12 2xl:pl-4";
 
   // MailProvider polls /api/mail/unread every 30s; the SSR count seeds
   // its initial value so the badge has a number to show before the
