@@ -56,6 +56,11 @@ type DistanceRow = {
   candidateId: number | string;
   jobId: number | string;
   distanceLine?: string;
+  // Numeric miles lifted onto the row so the client-side Location column
+  // sort has a comparable value (the formatted distanceLine string can't
+  // be sorted numerically). Undefined / null when no distance resolves -
+  // those rows sort to the bottom in both directions.
+  distanceMiles?: number | null;
 };
 async function attachDistanceLines(
   targetRows: DistanceRow[],
@@ -176,6 +181,7 @@ async function attachDistanceLines(
           jobPoint.lng,
         );
         r.distanceLine = formatMiles(miles);
+        r.distanceMiles = miles;
       }
     }
   }

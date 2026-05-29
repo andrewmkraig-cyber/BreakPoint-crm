@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import {
   Building2,
+  Check,
   Download,
   File as FileIcon,
   FileText,
@@ -215,6 +216,21 @@ export function MessageBlock({
   headerActions?: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(isLatest);
+  // Mobile-only tap-to-copy for the sender address (Item 3). stopPropagation
+  // so the tap copies instead of collapsing the message card. Brief
+  // "Copied" confirmation auto-clears after 1.5s.
+  const [copiedEmail, setCopiedEmail] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function copyFromEmail(e: ReactMouseEvent) {
+    e.stopPropagation();
+    const addr = msg.fromEmail;
+    if (!addr || typeof navigator === "undefined" || !navigator.clipboard) return;
+    void navigator.clipboard.writeText(addr).then(() => {
+      setCopiedEmail(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopiedEmail(false), 1500);
+    });
+  }
   // Body rendering moved out of this component on 2026-05-07: rich
   // marketing/newsletter emails (Quo dark-themed templates) need their
   // own <style> sheet + page bgcolor to survive, but inline rendering
@@ -268,7 +284,9 @@ export function MessageBlock({
           <SenderAvatar name={msg.fromName} email={msg.fromEmail} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              <span className="truncate text-sm font-semibold text-court-fg">
+              {/* Full name on mobile (wraps), truncated on desktop (lg+)
+                  so the desktop reading pane is byte-identical to before. */}
+              <span className="break-words text-sm font-semibold text-court-fg lg:truncate">
                 {msg.fromName || msg.fromEmail || "(unknown sender)"}
               </span>
               {msg.senderClient && (
@@ -289,9 +307,30 @@ export function MessageBlock({
               )}
             </div>
             {msg.fromEmail && (
-              <div className="mt-0.5 truncate text-xs text-court-fg-muted">
-                {msg.fromEmail}
-              </div>
+              <>
+                {/* Desktop (lg+): unchanged truncated address. */}
+                <div className="mt-0.5 hidden truncate text-xs text-court-fg-muted lg:block">
+                  {msg.fromEmail}
+                </div>
+                {/* Mobile (<lg): full address, tap to copy with a brief
+                    "Copied" confirmation. break-all so a long address
+                    wraps instead of overflowing. */}
+                <button
+                  type="button"
+                  onClick={copyFromEmail}
+                  title="Tap to copy email address"
+                  aria-label={`Copy email address ${msg.fromEmail}`}
+                  className="mt-0.5 flex items-start gap-1 break-all text-left text-xs text-court-fg-muted transition active:text-court-fg lg:hidden"
+                >
+                  {copiedEmail ? (
+                    <span className="inline-flex items-center gap-1 font-medium text-court-brand-dark">
+                      <Check className="h-3 w-3 shrink-0" /> Copied
+                    </span>
+                  ) : (
+                    <span className="break-all">{msg.fromEmail}</span>
+                  )}
+                </button>
+              </>
             )}
           </div>
           <div

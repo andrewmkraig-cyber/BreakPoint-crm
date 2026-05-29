@@ -57,6 +57,34 @@ const STAGE_LABEL: Record<Stage, string> = {
 
 export type OwnerScope = "mine" | "theirs" | "all";
 
+// Client-side sortable columns shared by the main pipeline table and the
+// intake (Applicants/Kept) table. "distance" = Location column (numeric
+// miles to the job), "lastAction" = Updated / Last Action column. The
+// main table also supports a null (no active sort) state so it can fall
+// back to the server-provided default order; the intake table always
+// carries one of its IntakeSortKey values.
+type MainSortKey = "distance" | "lastAction";
+type SortDir = "asc" | "desc";
+
+// Shared distance comparator. Rows with no resolvable distance (null /
+// undefined / non-finite) always sort to the BOTTOM regardless of
+// direction - the null checks return a fixed sign independent of `mul`,
+// so they never interleave and the subtraction never sees a NaN. Used by
+// both the main pipeline sort and the intake table's "distance" key so
+// the two tables behave identically.
+function compareDistance(
+  a: number | null | undefined,
+  b: number | null | undefined,
+  mul: number,
+): number {
+  const aMissing = a == null || !Number.isFinite(a);
+  const bMissing = b == null || !Number.isFinite(b);
+  if (aMissing && bMissing) return 0;
+  if (aMissing) return 1;
+  if (bMissing) return -1;
+  return (a - b) * mul;
+}
+
 export type PlacementDetails = {
   id: string;
   stage: "offer" | "pending_start" | "hired";
@@ -143,6 +171,10 @@ export type PipelineRow = {
   // this verbatim below "City, ST"; blank string renders nothing per the
   // spec ("no dash, no placeholder, no N/A").
   distanceLine: string;
+  // Numeric miles for the sortable Location column. Undefined/null when
+  // no distance resolves - those rows sort to the bottom in both
+  // directions. Set alongside distanceLine in pipeline/page.tsx.
+  distanceMiles?: number | null;
 };
 
 // Intake-stage row shapes (Applicants + Kept). polymorphic ids match
@@ -173,6 +205,8 @@ export type AppliedRow = {
   // Applicants tab the same way the main pipeline rows get it (Item 1A).
   // Blank when candidate lat/lng or the job location can't resolve.
   distanceLine?: string;
+  // Numeric miles for the sortable Location column (Item 1).
+  distanceMiles?: number | null;
 };
 
 export type KeptRow = {
@@ -193,6 +227,8 @@ export type KeptRow = {
   // "(X.X mi)" Location-cell sub-line (Item 1A) — same shape + blank rule
   // as the main pipeline + Applicants rows.
   distanceLine?: string;
+  // Numeric miles for the sortable Location column (Item 1).
+  distanceMiles?: number | null;
 };
 
 type PipelineViewProps = {
@@ -305,19 +341,48 @@ function formatExpectedSalary(n: number | null): string {
   return `$${n.toLocaleString()}`;
 }
 
-// Seven uniform LEFT header cells. Used by both the main pipeline table
-// and the intake (Applicants + Kept) table so column positions stay
-// pixel-identical across every stage.
-function UniformLeftHeaderCells() {
+// Seven uniform LEFT header cells for the main pipeline table. When sort
+// props are passed the Location (distance) and Last Action columns become
+// clickable, reusing the IntakeColHeader chevron affordance so the main
+// table sorts identically to the intake (Applicants/Kept) table. Without
+// the props they render as plain headers (unchanged default).
+function UniformLeftHeaderCells({
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  sortKey?: MainSortKey | null;
+  sortDir?: SortDir;
+  onSort?: (k: MainSortKey) => void;
+} = {}) {
   return (
     <>
       <DataTableHeaderCell>Candidate</DataTableHeaderCell>
       <DataTableHeaderCell>Current Title/Employer</DataTableHeaderCell>
-      <DataTableHeaderCell>Location</DataTableHeaderCell>
+      {onSort ? (
+        <IntakeColHeader
+          label="Location"
+          active={sortKey === "distance"}
+          dir={sortDir ?? "asc"}
+          onClick={() => onSort("distance")}
+        />
+      ) : (
+        <DataTableHeaderCell>Location</DataTableHeaderCell>
+      )}
       <DataTableHeaderCell align="right">Salary</DataTableHeaderCell>
       <DataTableHeaderCell>Client</DataTableHeaderCell>
       <DataTableHeaderCell>Job</DataTableHeaderCell>
-      <DataTableHeaderCell align="center">Last Action</DataTableHeaderCell>
+      {onSort ? (
+        <IntakeColHeader
+          label="Last Action"
+          active={sortKey === "lastAction"}
+          dir={sortDir ?? "desc"}
+          onClick={() => onSort("lastAction")}
+          align="center"
+        />
+      ) : (
+        <DataTableHeaderCell align="center">Last Action</DataTableHeaderCell>
+      )}
     </>
   );
 }
@@ -478,6 +543,49 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
     setQuery(q);
   }, [q]);
 
+  // Main pipeline table client-side sort (Item 1/2). Mirrors the intake
+  // table's sortKey/sortDir + toggle pattern, but the key is nullable so
+  // "no active sort" falls back to the server-provided default order
+  // (default ordering stays untouched). One column active at a time -
+  // selecting Location clears Last Action and vice versa. Distance sorts
+  // closest-first on first click (asc); Last Action newest-first (desc).
+  const [mainSortKey, setMainSortKey] = useState<MainSortKey | null>(null);
+  const [mainSortDir, setMainSortDir] = useState<SortDir>("asc");
+  function toggleMainSort(k: MainSortKey) {
+    if (mainSortKey === k) {
+      setMainSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setMainSortKey(k);
+      setMainSortDir(k === "lastAction" ? "desc" : "asc");
+    }
+  }
+  // Reset the sort whenever the stage or search changes so a sort chosen
+  // on one tab doesn't silently persist into the next (matches how the
+  // selection state clears on stage/search flip below).
+  useEffect(() => {
+    setMainSortKey(null);
+    setMainSortDir("asc");
+  }, [stage, q]);
+
+  // Display order for the main table. Null key = server default order
+  // (same array reference, untouched). distance/lastAction re-sort a
+  // shallow copy via the shared comparators; no-distance rows fall to the
+  // bottom in both directions.
+  const sortedRows = useMemo(() => {
+    if (!mainSortKey) return rows;
+    const mul = mainSortDir === "asc" ? 1 : -1;
+    const out = [...rows];
+    out.sort((a, b) => {
+      if (mainSortKey === "distance") {
+        return compareDistance(a.distanceMiles, b.distanceMiles, mul);
+      }
+      const ta = a.lastActionAt ? new Date(a.lastActionAt).getTime() : 0;
+      const tb = b.lastActionAt ? new Date(b.lastActionAt).getTime() : 0;
+      return (ta - tb) * mul;
+    });
+    return out;
+  }, [rows, mainSortKey, mainSortDir]);
+
   // Bulk selection — rejectable rows only. Stores Placement.id so the
   // bulk handler can call rejectLocalPlacement directly without
   // re-deriving the id from row keys. Cleared when the stage/search
@@ -618,13 +726,13 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
     const backHref = qs ? `/pipeline?${qs}` : "/pipeline";
     const visibleIds = isIntakeStage(stage)
       ? (stage === "applied" ? appliedRows : keptRows).map((r) => String(r.candidateId))
-      : rows.map((r) => String(r.candidateId));
+      : sortedRows.map((r) => String(r.candidateId));
     setCandidateNavList({
       source: "pipeline",
       backHref,
       ids: visibleIds,
     });
-  }, [rows, appliedRows, keptRows, stage, params]);
+  }, [sortedRows, appliedRows, keptRows, stage, params]);
 
   // Hired-tab guarantee rows: surface every hired placement that has been
   // billed or paid, has a start date, and still has an active guarantee
@@ -788,7 +896,11 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
                         className="h-3.5 w-3.5 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40"
                       />
                     </DataTableHeaderCell>
-                    <UniformLeftHeaderCells />
+                    <UniformLeftHeaderCells
+                      sortKey={mainSortKey}
+                      sortDir={mainSortDir}
+                      onSort={toggleMainSort}
+                    />
                     {/* Stage-specific RIGHT columns. */}
                     {stage === "pending_start" ? (
                       <>
@@ -848,7 +960,7 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
                       </td>
                     </tr>
                   )}
-                  {rows.map((r) => (
+                  {sortedRows.map((r) => (
                     <DataTableRow
                       key={`${r.candidateId}-${r.jobId}`}
                       className="cursor-pointer"
@@ -1468,7 +1580,7 @@ function RowActionButton({
   );
 }
 
-type IntakeSortKey = "name" | "job" | "when" | "source";
+type IntakeSortKey = "name" | "job" | "when" | "source" | "distance";
 type IntakeSortDir = "asc" | "desc";
 
 // Single source of truth for dispatching a per-row reject — used by
@@ -1672,7 +1784,7 @@ function IntakeTable({
                     plain headers matching the main pipeline table. */}
                 <IntakeColHeader label="Candidate" active={sortKey === "name"} dir={sortDir} onClick={() => toggleSort("name")} />
                 <DataTableHeaderCell>Current Title/Employer</DataTableHeaderCell>
-                <DataTableHeaderCell>Location</DataTableHeaderCell>
+                <IntakeColHeader label="Location" active={sortKey === "distance"} dir={sortDir} onClick={() => toggleSort("distance")} />
                 <DataTableHeaderCell align="right">Salary</DataTableHeaderCell>
                 <DataTableHeaderCell>Client</DataTableHeaderCell>
                 <IntakeColHeader label="Job" active={sortKey === "job"} dir={sortDir} onClick={() => toggleSort("job")} />
@@ -1956,6 +2068,9 @@ function sortApplied(rows: AppliedRow[], key: IntakeSortKey, dir: IntakeSortDir)
   const out = [...rows];
   out.sort((a, b) => {
     const mul = dir === "asc" ? 1 : -1;
+    // Distance uses the shared comparator so no-distance rows always sink
+    // to the bottom (same behavior as the main pipeline table).
+    if (key === "distance") return compareDistance(a.distanceMiles, b.distanceMiles, mul);
     let va: string | number = "";
     let vb: string | number = "";
     switch (key) {
@@ -1986,6 +2101,7 @@ function sortKept(rows: KeptRow[], key: IntakeSortKey, dir: IntakeSortDir): Kept
   const out = [...rows];
   out.sort((a, b) => {
     const mul = dir === "asc" ? 1 : -1;
+    if (key === "distance") return compareDistance(a.distanceMiles, b.distanceMiles, mul);
     let va: string | number = "";
     let vb: string | number = "";
     switch (key) {
