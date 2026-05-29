@@ -7,7 +7,6 @@ import { Bookmark, CalendarClock, CheckCircle2, ChevronDown, ChevronUp, DollarSi
 import { toast } from "sonner";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
 import { StageAgePill } from "@/components/ui/stage-age-pill";
-import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -341,11 +340,13 @@ function formatExpectedSalary(n: number | null): string {
   return `$${n.toLocaleString()}`;
 }
 
-// Seven uniform LEFT header cells for the main pipeline table. When sort
+// Six uniform LEFT header cells for the main pipeline table. When sort
 // props are passed the Location (distance) and Last Action columns become
 // clickable, reusing the IntakeColHeader chevron affordance so the main
 // table sorts identically to the intake (Applicants/Kept) table. Without
 // the props they render as plain headers (unchanged default).
+// Job + Client are one combined "Job/Client" column (job title primary,
+// client name as the muted sub-line) — the brief's column merge.
 function UniformLeftHeaderCells({
   sortKey,
   sortDir,
@@ -370,8 +371,7 @@ function UniformLeftHeaderCells({
         <DataTableHeaderCell>Location</DataTableHeaderCell>
       )}
       <DataTableHeaderCell align="right">Salary</DataTableHeaderCell>
-      <DataTableHeaderCell>Client</DataTableHeaderCell>
-      <DataTableHeaderCell>Job</DataTableHeaderCell>
+      <DataTableHeaderCell>Job/Client</DataTableHeaderCell>
       {onSort ? (
         <IntakeColHeader
           label="Last Action"
@@ -387,7 +387,7 @@ function UniformLeftHeaderCells({
   );
 }
 
-// Seven uniform LEFT body cells. `lastActionAt` is passed in because
+// Six uniform LEFT body cells. `lastActionAt` is passed in because
 // each row source carries it under a different key (PipelineRow uses
 // lastActionAt; AppliedRow uses appliedAt; KeptRow uses keptAt). The
 // stop-propagation pattern on the Candidate / Job links matches the
@@ -468,34 +468,41 @@ function UniformLeftRowCells({
         {formatExpectedSalary(row.candidateExpectedSalary)}
       </td>
 
-      {/* Client. Name + verified shield when the linked Client has a
-          signed agreement on file (same isVerified signal /clients and
-          /jobs use). */}
+      {/* Job/Client. Combined column matching the Current Title/Employer
+          shape: job title is the primary top line (regular weight — the
+          candidate name is the only bold element in the row), client name
+          is the smaller muted sub-line below it. The verified shield rides
+          next to the client name when the linked Client has a signed
+          agreement on file (same isVerified signal /clients and /jobs use).
+          Job title links to /jobs/[id]; clicking it doesn't fire the row's
+          navigate-to-candidate onClick (stopPropagation). */}
       <td className="px-3 py-2 align-top text-sm">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="truncate text-court-fg">{row.clientName || ""}</span>
-          {row.clientIsVerified && (
-            <span title="Client has a signed agreement">
-              <VerifiedShield />
-            </span>
+        <div className="min-w-0">
+          <Link
+            href={`/jobs/${row.jobId}`}
+            className="block truncate text-court-fg hover:text-court-accent-dark"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {row.jobTitle || "—"}
+          </Link>
+          {row.clientName && (
+            <div className="flex items-center gap-1 min-w-0">
+              <span className="truncate text-xs text-court-fg-muted">{row.clientName}</span>
+              {row.clientIsVerified && (
+                <span title="Client has a signed agreement">
+                  <VerifiedShield />
+                </span>
+              )}
+            </div>
           )}
         </div>
       </td>
 
-      {/* Job. Title only — client moved to its own column. */}
-      <td className="px-3 py-2 align-top">
-        <Link
-          href={`/jobs/${row.jobId}`}
-          className="font-medium text-court-fg hover:text-court-accent-dark"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {row.jobTitle || "—"}
-        </Link>
-      </td>
-
       {/* Last Action. Formatted date from whichever timestamp the row
-          source carries (placement.updatedAt / appliedAt / keptAt). */}
-      <td className="px-3 py-2 align-top text-center text-xs text-court-fg-muted">
+          source carries (placement.updatedAt / appliedAt / keptAt).
+          text-sm + muted so it reads at the same metadata size as the
+          Start Date cells (no Last-Action-vs-Start-Date size mismatch). */}
+      <td className="px-3 py-2 align-top text-center text-sm text-court-fg-muted">
         {formatDate(lastActionAt)}
       </td>
     </>
@@ -503,9 +510,10 @@ function UniformLeftRowCells({
 }
 
 // Soft-green native dropdown matching the /clients OwnerScopeSelect
-// styling. "Theirs" only renders when there is another user in the org.
-// Navigates via the `owner` URL param so the server filter runs before
-// pagination.
+// styling, sized (py-1 + text-[13px]) to the stage-tab pill height so it
+// stops visually competing with the tabs beside it. "Theirs" only renders
+// when there is another user in the org. Navigates via the `owner` URL
+// param so the server filter runs before pagination.
 function OwnerScopeSelect({
   scope,
   onChange,
@@ -522,7 +530,7 @@ function OwnerScopeSelect({
         value={scope}
         onChange={(e) => onChange(e.target.value as OwnerScope)}
         aria-label="Filter pipeline by owner"
-        className="appearance-none rounded-md border border-court-brand/40 bg-court-brand/5 py-1.5 pl-3 pr-9 text-sm font-medium text-court-brand transition hover:bg-court-brand/10 focus:border-court-brand focus:outline-none focus:ring-2 focus:ring-court-brand/20"
+        className="appearance-none rounded-md border border-court-brand/40 bg-court-brand/5 py-1 pl-3 pr-9 text-[13px] font-medium text-court-brand transition hover:bg-court-brand/10 focus:border-court-brand focus:outline-none focus:ring-2 focus:ring-court-brand/20"
       >
         <option value="mine">My Pipeline</option>
         {otherFirst && <option value="theirs">{otherFirst}&apos;s Pipeline</option>}
@@ -868,13 +876,12 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
 
           <div className="overflow-hidden rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
             <div className="overflow-x-auto">
-              {/* Ace 68.0 — min-w bumped from 720 to 1100 to fit the 7
-                  uniform LEFT columns (checkbox + Candidate + Current
-                  Title/Employer + Location + Salary + Client + Job +
-                  Last Action) plus each stage's RIGHT extras. Offer
-                  stage (LEFT + Offer Amount + Placement Fee + Days in
-                  Stage + Action) is the widest at 11 data columns; on a
-                  13" laptop the rightmost columns may need to scroll
+              {/* min-w-[1100px] holds the 6 uniform LEFT columns
+                  (checkbox + Candidate + Current Title/Employer +
+                  Location + Salary + Job/Client + Last Action) plus each
+                  stage's RIGHT extras. Offer stage (LEFT + Offer Amount +
+                  Placement Fee + Days in Stage + Action) is the widest; on
+                  a 13" laptop the rightmost columns may still scroll
                   horizontally, but the column STRUCTURE stays identical
                   across every stage per the standardization spec. The
                   shared px-3 py-2 padding from data-table.tsx still
@@ -911,7 +918,6 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
                     ) : stage === "hired" ? (
                       <>
                         <DataTableHeaderCell align="center">Start Date</DataTableHeaderCell>
-                        <DataTableHeaderCell>Billing Contact</DataTableHeaderCell>
                         <DataTableHeaderCell align="center">Invoicing</DataTableHeaderCell>
                       </>
                     ) : stage === "offer" ? (
@@ -940,13 +946,16 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
                     <tr>
                       <td
                         colSpan={
-                          // Checkbox + 7 LEFT columns + per-stage RIGHT.
+                          // Checkbox + 6 LEFT columns (Job/Client merged
+                          // into one) + per-stage RIGHT. Hired RIGHT dropped
+                          // to 2 (Start Date + Invoicing) after Billing
+                          // Contact was removed.
                           1 +
-                          7 +
+                          6 +
                           (stage === "pending_start"
                             ? 3
                             : stage === "hired"
-                              ? 3
+                              ? 2
                               : stage === "offer"
                                 ? 4
                                 : stage === "cancelled"
@@ -1006,10 +1015,10 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
                         )}
                       </td>
 
-                      {/* Uniform LEFT (7 columns): Candidate · Current
-                          Title/Employer · Location · Salary · Client ·
-                          Job · Last Action. Same render across every
-                          stage so the table reads identically. */}
+                      {/* Uniform LEFT (6 columns): Candidate · Current
+                          Title/Employer · Location · Salary · Job/Client ·
+                          Last Action. Same render across every stage so the
+                          table reads identically. */}
                       <UniformLeftRowCells row={r} lastActionAt={r.lastActionAt} />
 
                       {stage === "pending_start" ? (
@@ -1183,11 +1192,11 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
                           />
                         </td>
                         <UniformLeftRowCells row={r} lastActionAt={r.lastActionAt} />
-                        {/* Spans the Hired tab's 3 RIGHT columns (Start
-                            Date / Billing Contact / Invoicing) with the
-                            Cancelled status chip (red/REJECTED stage tone
-                            from the Stage Badge colors). */}
-                        <td className="px-3 py-2 align-top text-center" colSpan={3}>
+                        {/* Spans the Hired tab's 2 RIGHT columns (Start
+                            Date / Invoicing — Billing Contact removed) with
+                            the Cancelled status chip (red/REJECTED stage
+                            tone from the Stage Badge colors). */}
+                        <td className="px-3 py-2 align-top text-center" colSpan={2}>
                           <span className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
                             Cancelled
                           </span>
@@ -1234,7 +1243,10 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
   const soon = daysUntil != null && daysUntil >= 0 && daysUntil <= 7;
   return (
     <>
-      <td className="px-3 py-2 align-top text-center text-sm text-court-fg">
+      {/* Start Date renders at the same text-sm + muted metadata
+          treatment as the Hired Start Date and the Last Action cell so
+          every date column reads identically (no mismatched sizes/weights). */}
+      <td className="px-3 py-2 align-top text-center text-sm text-court-fg-muted">
         {startDate ? startDate.toLocaleDateString() : <span className="text-court-fg-muted">—</span>}
       </td>
       <td className="px-3 py-2 align-top text-center">
@@ -1297,44 +1309,13 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
 function HiredCells({ row }: { row: PipelineRow }) {
   const p = row.placement;
   // Ace 68.0: Salary moved into the uniform LEFT column on every stage.
-  // Hired stage's RIGHT extras are now Start Date + Billing Contact +
-  // Invoicing only — the old Salary + Fee cells dropped because Salary
-  // is now LEFT (candidate.expectedSalary) and Fee is Offer-stage-only
-  // per Item 1 of the column-standardization spec.
+  // Hired stage's RIGHT extras are now Start Date + Invoicing only —
+  // Salary is LEFT (candidate.expectedSalary), Fee is Offer-stage-only,
+  // and the Billing Contact column was removed (never requested).
   return (
     <>
       <td className="px-3 py-2 align-top text-center text-sm text-court-fg-muted">
         {formatDate(p?.expectedStartDate)}
-      </td>
-      <td className="px-3 py-2 align-top text-xs">
-        {p?.billingContactName ? (
-          <div>
-            <div className="text-court-fg">{p.billingContactName}</div>
-            {p.billingContactEmail && (
-              <span onClick={(e) => e.stopPropagation()}>
-                <EmailPopupLauncher
-                  email={p.billingContactEmail}
-                  className="text-court-accent-dark hover:underline"
-                  context={{
-                    candidate: {
-                      firstName: (row.candidateName.split(/\s+/)[0] ?? "").trim(),
-                    },
-                    client: {
-                      name: row.clientName,
-                      primaryContactFirstName:
-                        (p.billingContactName?.split(/\s+/)[0] ?? "").trim(),
-                    },
-                    job: { title: row.jobTitle },
-                  }}
-                >
-                  {p.billingContactEmail}
-                </EmailPopupLauncher>
-              </span>
-            )}
-          </div>
-        ) : (
-          <span className="text-court-fg-muted">—</span>
-        )}
       </td>
       <td className="px-3 py-2 align-top text-center">
         <div className="flex flex-col items-center gap-0.5">
@@ -1721,11 +1702,11 @@ function IntakeTable({
     }
   }
 
-  // Ace 68.0 — column count for the empty-state colSpan. Checkbox + 7
-  // uniform LEFT columns + 1 Actions column. Applied stage appends
-  // Source between Last Action and Actions, so it lands at 10 columns
-  // vs Kept's 9. Stays in sync with the headers below.
-  const colSpan = kind === "applied" ? 10 : 9;
+  // Ace 68.0 — column count for the empty-state colSpan. Checkbox + 6
+  // uniform LEFT columns (Job/Client merged into one) + 1 Actions column.
+  // Applied stage appends Source between Last Action and Actions, so it
+  // lands at 9 columns vs Kept's 8. Stays in sync with the headers below.
+  const colSpan = kind === "applied" ? 9 : 8;
 
   return (
     <div className="space-y-4">
@@ -1761,9 +1742,9 @@ function IntakeTable({
 
       <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
-          {/* Ace 68.0 — min-w bumped to 1100 (matches the main pipeline
-              table) so the 7 uniform LEFT columns + Source/Actions fit
-              the same grid as Submitted/Interviewing/etc. */}
+          {/* min-w-[1100px] matches the main pipeline table so the 6
+              uniform LEFT columns + Source/Actions sit on the same grid
+              as Submitted/Interviewing/etc. */}
           <table className="w-full min-w-[1100px] text-left text-sm">
             <DataTableHead>
               <tr className="bg-court-surface border-b border-court-border/60">
@@ -1778,16 +1759,17 @@ function IntakeTable({
                     className="h-3.5 w-3.5 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40"
                   />
                 </DataTableHeaderCell>
-                {/* Uniform LEFT headers. Three of the seven carry the
+                {/* Uniform LEFT headers. Three of the six carry the
                     existing sortable affordances (Candidate by name,
-                    Job by title, Last Action by when) — the rest are
-                    plain headers matching the main pipeline table. */}
+                    Job/Client by job title, Last Action by when) — the
+                    rest are plain headers matching the main pipeline
+                    table. Job + Client are one combined "Job/Client"
+                    column (job title primary, client name muted sub-line). */}
                 <IntakeColHeader label="Candidate" active={sortKey === "name"} dir={sortDir} onClick={() => toggleSort("name")} />
                 <DataTableHeaderCell>Current Title/Employer</DataTableHeaderCell>
                 <IntakeColHeader label="Location" active={sortKey === "distance"} dir={sortDir} onClick={() => toggleSort("distance")} />
                 <DataTableHeaderCell align="right">Salary</DataTableHeaderCell>
-                <DataTableHeaderCell>Client</DataTableHeaderCell>
-                <IntakeColHeader label="Job" active={sortKey === "job"} dir={sortDir} onClick={() => toggleSort("job")} />
+                <IntakeColHeader label="Job/Client" active={sortKey === "job"} dir={sortDir} onClick={() => toggleSort("job")} />
                 <IntakeColHeader
                   label="Last Action"
                   active={sortKey === "when"}
@@ -1925,7 +1907,7 @@ function AppliedRowView({
           className="h-3.5 w-3.5 cursor-pointer accent-brand"
         />
       </td>
-      {/* Uniform LEFT (7 cells). appliedAt becomes the Last Action
+      {/* Uniform LEFT (6 cells). appliedAt becomes the Last Action
           source for this row. */}
       <UniformLeftRowCells row={row} lastActionAt={row.appliedAt} />
       <td className="px-3 py-2 align-top text-center text-sm text-court-fg-muted">{formatSourceLabel(row.source)}</td>
@@ -2018,7 +2000,7 @@ function KeptRowView({
           className="h-3.5 w-3.5 cursor-pointer accent-brand"
         />
       </td>
-      {/* Uniform LEFT (7 cells). keptAt becomes the Last Action source
+      {/* Uniform LEFT (6 cells). keptAt becomes the Last Action source
           for this row. */}
       <UniformLeftRowCells row={row} lastActionAt={row.keptAt} />
       <td className="px-3 py-2 align-top">
