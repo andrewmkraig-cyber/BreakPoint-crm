@@ -8,7 +8,14 @@
 //
 // Usage from repo root:
 //   set -a && source .env.local && set +a
-//   npx tsx scripts/geocode-candidates.ts
+//   npx tsx scripts/geocode-candidates.ts                 # all orgs
+//   npx tsx scripts/geocode-candidates.ts --org=<orgCuid> # one org only
+//
+// `--org=<cuid>` narrows the WHERE clause to a single Organization.
+// Backward compatible: omitting it preserves the prior cross-org
+// behavior verbatim. Today BreakPoint Talent is the only prod org so
+// the two are functionally identical, but the flag exists so future
+// re-runs can stay scoped without editing the script.
 //
 // Resumable: each run pulls only rows that still have null lat, so
 // killing this mid-flight and re-running picks up where it stopped.
@@ -65,11 +72,29 @@ async function geocode(
   }
 }
 
+function parseOrgArg(): string | null {
+  const arg = process.argv.find((a) => a.startsWith("--org="));
+  if (!arg) return null;
+  const v = arg.slice("--org=".length).trim();
+  return v.length > 0 ? v : null;
+}
+
 async function main() {
-  const totalPending = await prisma.candidate.count({
-    where: { lat: null, location: { not: null } },
-  });
-  console.log(`Geocoding ${totalPending} candidates...`);
+  const orgId = parseOrgArg();
+  // Base WHERE clause shared by count + findMany — adding the
+  // organizationId filter only when --org was passed keeps the
+  // unscoped path byte-identical to the prior behavior.
+  const baseWhere = {
+    lat: null,
+    location: { not: null },
+    ...(orgId ? { organizationId: orgId } : {}),
+  };
+  const totalPending = await prisma.candidate.count({ where: baseWhere });
+  console.log(
+    orgId
+      ? `Geocoding ${totalPending} candidates in org ${orgId}...`
+      : `Geocoding ${totalPending} candidates...`,
+  );
   console.log(
     `Estimated runtime: ~${Math.ceil((totalPending * REQUEST_DELAY_MS) / 1000 / 60)} min at 1 req/sec\n`,
   );
@@ -95,8 +120,7 @@ async function main() {
   while (true) {
     const batch = await prisma.candidate.findMany({
       where: {
-        lat: null,
-        location: { not: null },
+        ...baseWhere,
         id: { notIn: Array.from(attempted) },
       },
       select: { id: true, location: true },

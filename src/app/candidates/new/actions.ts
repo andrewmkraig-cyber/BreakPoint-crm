@@ -8,6 +8,7 @@ import { parseCandidateFields, type ParsedCandidate } from "@/lib/claude";
 import { logActivity } from "@/lib/activity";
 import { prisma } from "@/lib/prisma";
 import { fallbackParseCandidate } from "@/lib/resume-fallback";
+import { geocodePill } from "@/lib/geocode";
 
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -293,6 +294,37 @@ export async function createCandidate(
       currentDesignation: created.currentDesignation,
       currentOrganization: created.currentOrganization,
     });
+
+    // Fire-and-forget geocode of the new candidate's location so the
+    // /pipeline Location distance sub-line works for them on next render
+    // without waiting for the one-shot scripts/geocode-candidates.ts
+    // backfill. We never await this: the create response returns before
+    // the geocode lands, so Nominatim latency / 429 / timeout never
+    // affects the user's "Save candidate" feedback. Failures (null
+    // result, fetch throw, prisma update error) are caught + logged but
+    // never surfaced — the row keeps lat/lng=null and the next backfill
+    // run will retry. Matches the existing chained-promise pattern at
+    // src/app/api/game-plan/find-matches/route.ts:408 (the only other
+    // fire-and-forget DB writer in this codebase).
+    const candidateLocation = input.location.trim();
+    if (candidateLocation) {
+      geocodePill(candidateLocation)
+        .then(async (hit) => {
+          if (!hit) return;
+          await prisma.candidate.update({
+            where: { id: created.id, organizationId: org.id },
+            data: { lat: hit.lat, lng: hit.lng },
+          });
+        })
+        .catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn("[createCandidate] geocode follow-up failed", {
+            candidateId: created.id,
+            location: candidateLocation,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        });
+    }
 
     // Phase 5A.5.b: write a parallel CandidateResume row whenever the
     // create flow attaches a resume, so the multi-version dropdown +
