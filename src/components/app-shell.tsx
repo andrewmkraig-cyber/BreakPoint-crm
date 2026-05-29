@@ -146,17 +146,23 @@ export function AppShell({
   // filter aside. Drop the cap for this route so the wrapper's
   // existing -ml-[18px/22px/38px/54px] still lands flush with the
   // sidebar edge.
-  // Ace 68.0 polish: left padding trimmed further so page content slides
-  // closer to the sidebar. The resize handle (1.5px) plus the sidebar's
-  // own border-r already provides the visual divider — every pixel of
-  // extra pl- on the main column is dead space on a 13" laptop. Mobile
-  // pl-3 → pl-1; md pl-4 → pl-2; xl picks up a dedicated pl-3 so the
-  // px-8 horizontal default doesn't reassert the wider left gutter on
-  // larger viewports. Right side keeps the original p-6 / md:p-8 /
+  // Ace 68.0 polish: left padding trimmed (pl-3 → pl-1; md:pl-4 → md:pl-2;
+  // dedicated xl:pl-3 / 2xl:pl-4) so page content slides closer to the
+  // sidebar. The resize handle (1.5px) plus the sidebar's own border-r
+  // already provide the visual divider, so the extra left gutter was dead
+  // space on a 13" laptop. Right side keeps the original p-6 / md:p-8 /
   // xl:pr-8 / 2xl:pr-12 generosity.
+  //
+  // EXCEPTION (Ace 69.0): the /candidates (isFullBleed) branch keeps the
+  // ORIGINAL left padding (pl-3 / md:pl-4 / xl:pl-8 / 2xl:pl-12). Its rail
+  // wrapper at candidates/page.tsx:1133 cancels the gutter with hard-coded
+  // negative margins (-ml-[18px/22px/38px/54px]) tuned to that padding for a
+  // flush -6px overlap with the sidebar. The 68.0 trim broke that matched
+  // pair (net offset jumped to -14/-26/-38px, clipping the filter labels), so
+  // this branch is exempt; the slide-left still applies to every other route.
   const isFullBleed = pathname === "/candidates";
   const mainCls = isFullBleed
-    ? "min-w-0 flex-1 p-6 pl-1 pt-4 md:p-8 md:pl-2 md:pt-4 xl:px-8 xl:pl-3 2xl:px-12 2xl:pl-4"
+    ? "min-w-0 flex-1 p-6 pl-3 pt-4 md:p-8 md:pl-4 md:pt-4 xl:px-8 xl:pl-8 2xl:px-12 2xl:pl-12"
     : "min-w-0 flex-1 p-6 pl-1 pt-4 md:p-8 md:pl-2 md:pt-4 xl:mx-auto xl:w-full xl:max-w-[1600px] xl:px-8 xl:pl-3 2xl:px-12 2xl:pl-4";
 
   // MailProvider polls /api/mail/unread every 30s; the SSR count seeds
