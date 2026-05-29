@@ -27,6 +27,18 @@ import { getClientsForOrg } from "@/lib/clients";
 import { getPlacementsForOrg } from "@/lib/placements";
 import { getInterviewsForOrg } from "@/lib/interviews";
 import { resolveJobTitle } from "@/lib/job-title";
+import { formatLocation } from "@/lib/utils";
+
+// Local helper for parsing the Json shape Prisma stores for
+// `Candidate.expectedSalary` (`{ number, currency }`). Returns null when
+// the blob is missing/zero so the Salary cell renders fully blank per
+// Item 2 of the column-standardization spec.
+function extractExpectedSalaryNumber(raw: unknown): number | null {
+  if (!raw || typeof raw !== "object") return null;
+  const n = (raw as { number?: unknown }).number;
+  if (typeof n !== "number" || !Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -172,9 +184,22 @@ export default async function PipelinePage({
     otherUserName = other?.name ?? null;
     const ownerByClientId = new Map<string, string | null>();
     const ownerByClientNameLower = new Map<string, string | null>();
+    // Verified-by-client lookups. Drives the small shield badge next to
+    // the Client column added in Ace 68.0's pipeline column standardization
+    // pass. Same `isVerified` signal /clients + /jobs use (see
+    // src/lib/clients.ts:153 — signed agreement custom field OR an
+    // agreement-named file under Client.raw). We key by both clientId and
+    // lowercased clientName so PipelineRow assembly (Placement.clientId-
+    // bearing rows) and RF-flat rows (clientName only) can both resolve.
+    const verifiedByClientId = new Map<string, boolean>();
+    const verifiedByClientNameLower = new Map<string, boolean>();
     for (const c of clients) {
       ownerByClientId.set(c.id, c.ownerId);
-      if (c.name) ownerByClientNameLower.set(c.name.toLowerCase(), c.ownerId);
+      verifiedByClientId.set(c.id, c.isVerified);
+      if (c.name) {
+        ownerByClientNameLower.set(c.name.toLowerCase(), c.ownerId);
+        verifiedByClientNameLower.set(c.name.toLowerCase(), c.isVerified);
+      }
     }
 
     // (candidateRfId, jobRfId) -> earliest upcoming interview
@@ -230,7 +255,19 @@ export default async function PipelinePage({
       aceCandidateIds.size > 0
         ? prisma.candidate.findMany({
             where: { id: { in: Array.from(aceCandidateIds) } },
-            select: { id: true, firstName: true, lastName: true, currentDesignation: true },
+            // Ace 68.0: also select currentOrganization / location /
+            // expectedSalary so the column-standardization pass can
+            // render the Current Title/Employer sub-line, the Location
+            // column, and the Salary column on Ace-native rows.
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              currentDesignation: true,
+              currentOrganization: true,
+              location: true,
+              expectedSalary: true,
+            },
           })
         : Promise.resolve([]),
       aceJobIds.size > 0
@@ -321,6 +358,18 @@ export default async function PipelinePage({
           ? [aceCandidate.firstName, aceCandidate.lastName].filter(Boolean).join(" ") || "(unnamed)"
           : "(unknown)";
       const candidateTitle = isRfCandidate ? rfEntry?.candidateTitle ?? "" : aceCandidate?.currentDesignation ?? "";
+      // Ace 68.0 fields for the uniform LEFT column set. RF rows use the
+      // employer/location/expectedSalary that flattenPipeline now emits;
+      // Ace-native rows pull from the freshly selected candidate columns.
+      const candidateEmployer = isRfCandidate
+        ? rfEntry?.candidateEmployer ?? ""
+        : aceCandidate?.currentOrganization ?? "";
+      const candidateLocation = isRfCandidate
+        ? rfEntry?.candidateLocation ?? ""
+        : formatLocation(aceCandidate?.location ?? null);
+      const candidateExpectedSalary = isRfCandidate
+        ? rfEntry?.candidateExpectedSalary ?? null
+        : extractExpectedSalaryNumber(aceCandidate?.expectedSalary ?? null);
       const jobTitle = isRfJob ? rfEntry?.jobTitle ?? "" : aceJob?.title ?? "";
       const clientName = isRfJob ? rfEntry?.clientName ?? "" : aceJob?.client?.name ?? "";
       // Owner of this row's client: prefer the Placement.clientId cuid
@@ -330,14 +379,25 @@ export default async function PipelinePage({
         : clientName
           ? ownerByClientNameLower.get(clientName.toLowerCase()) ?? null
           : null;
+      // Signed-agreement (verified) badge state, resolved through the same
+      // clientId-first / clientName-fallback pattern.
+      const clientIsVerified = p.clientId
+        ? verifiedByClientId.get(p.clientId) ?? false
+        : clientName
+          ? verifiedByClientNameLower.get(clientName.toLowerCase()) ?? false
+          : false;
 
       allRows.push({
         candidateId,
         candidateName,
         candidateTitle,
+        candidateEmployer,
+        candidateLocation,
+        candidateExpectedSalary,
         jobId,
         jobTitle,
         clientName,
+        clientIsVerified,
         // Capitalize the fallback so the Cancelled tab renders "Cancelled"
         // rather than the raw lowercase stage string. PIPELINE_LABELS only
         // covers the active pipeline stages by design.
@@ -374,9 +434,15 @@ export default async function PipelinePage({
         candidateId: r.candidateId,
         candidateName: r.candidateName,
         candidateTitle: r.candidateTitle,
+        candidateEmployer: r.candidateEmployer,
+        candidateLocation: r.candidateLocation,
+        candidateExpectedSalary: r.candidateExpectedSalary,
         jobId: r.jobId,
         jobTitle: r.jobTitle,
         clientName: r.clientName,
+        clientIsVerified: r.clientName
+          ? verifiedByClientNameLower.get(r.clientName.toLowerCase()) ?? false
+          : false,
         stageName: r.stageName,
         bucket: r.bucket,
         lastActionAt: r.stageMovedAt,
@@ -502,7 +568,19 @@ export default async function PipelinePage({
     const aceIntakeCandidates = aceIntakeCandidateIds.size > 0
       ? await prisma.candidate.findMany({
           where: { id: { in: Array.from(aceIntakeCandidateIds) } },
-          select: { id: true, firstName: true, lastName: true, currentDesignation: true, createdAt: true },
+          // Ace 68.0: also select currentOrganization / location /
+          // expectedSalary so the intake (Applicants + Kept) tables can
+          // render the uniform LEFT column set.
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            currentDesignation: true,
+            currentOrganization: true,
+            location: true,
+            expectedSalary: true,
+            createdAt: true,
+          },
         })
       : [];
     const aceIntakeById = new Map(aceIntakeCandidates.map((c) => [c.id, c]));
@@ -538,11 +616,19 @@ export default async function PipelinePage({
         appliedRows.push({
           candidateId: c.id,
           candidateName: name || "(unnamed)",
+          // Ace 68.0 uniform-LEFT columns on the intake table.
+          candidateTitle: c.current_designation ?? "",
+          candidateEmployer: c.current_organization ?? "",
+          candidateLocation: formatLocation(c.location ?? null),
+          candidateExpectedSalary: extractExpectedSalaryNumber(c.expected_salary),
           jobId: j.job_id,
           jobTitle: desc.title,
           jobLocation: desc.location,
           clientRfId: j.client_company_id ?? 0,
           clientName: desc.clientName,
+          clientIsVerified: desc.clientName
+            ? verifiedByClientNameLower.get(desc.clientName.toLowerCase()) ?? false
+            : false,
           appliedAt: j.stage_moved ?? j.added_time ?? c.added_time ?? null,
           source: c.source_name ?? null,
           clientOwnerId: intakeOwnerId(null, desc.clientName),
@@ -571,11 +657,20 @@ export default async function PipelinePage({
         appliedRows.push({
           candidateId: p.candidateRfId,
           candidateName: candName || "(unnamed)",
+          candidateTitle: cand?.current_designation ?? "",
+          candidateEmployer: cand?.current_organization ?? "",
+          candidateLocation: formatLocation(cand?.location ?? null),
+          candidateExpectedSalary: extractExpectedSalaryNumber(cand?.expected_salary),
           jobId: rowJobId,
           jobTitle: desc.title,
           jobLocation: desc.location,
           clientRfId: p.clientRfId,
           clientName: desc.clientName,
+          clientIsVerified: p.clientId
+            ? verifiedByClientId.get(p.clientId) ?? false
+            : desc.clientName
+              ? verifiedByClientNameLower.get(desc.clientName.toLowerCase()) ?? false
+              : false,
           appliedAt: p.updatedAt.toISOString(),
           source: p.source ?? cand?.source_name ?? null,
           clientOwnerId: intakeOwnerId(p.clientId, desc.clientName),
@@ -591,11 +686,20 @@ export default async function PipelinePage({
         appliedRows.push({
           candidateId: p.candidateId,
           candidateName: aceName,
+          candidateTitle: ace?.currentDesignation ?? "",
+          candidateEmployer: ace?.currentOrganization ?? "",
+          candidateLocation: formatLocation(ace?.location ?? null),
+          candidateExpectedSalary: extractExpectedSalaryNumber(ace?.expectedSalary ?? null),
           jobId: rowJobId,
           jobTitle: desc.title,
           jobLocation: desc.location,
           clientRfId: p.clientRfId,
           clientName: desc.clientName,
+          clientIsVerified: p.clientId
+            ? verifiedByClientId.get(p.clientId) ?? false
+            : desc.clientName
+              ? verifiedByClientNameLower.get(desc.clientName.toLowerCase()) ?? false
+              : false,
           appliedAt: p.updatedAt.toISOString(),
           source: p.source ?? null,
           clientOwnerId: intakeOwnerId(p.clientId, desc.clientName),
@@ -627,11 +731,20 @@ export default async function PipelinePage({
         keptRows.push({
           candidateId: p.candidateRfId,
           candidateName: candName || "(unnamed)",
+          candidateTitle: cand?.current_designation ?? "",
+          candidateEmployer: cand?.current_organization ?? "",
+          candidateLocation: formatLocation(cand?.location ?? null),
+          candidateExpectedSalary: extractExpectedSalaryNumber(cand?.expected_salary),
           jobId: rowJobId,
           jobTitle: desc.title,
           jobLocation: desc.location,
           clientRfId: p.clientRfId,
           clientName: desc.clientName,
+          clientIsVerified: p.clientId
+            ? verifiedByClientId.get(p.clientId) ?? false
+            : desc.clientName
+              ? verifiedByClientNameLower.get(desc.clientName.toLowerCase()) ?? false
+              : false,
           keptAt: p.updatedAt.toISOString(),
           clientOwnerId: intakeOwnerId(p.clientId, desc.clientName),
         });
@@ -646,11 +759,20 @@ export default async function PipelinePage({
         keptRows.push({
           candidateId: p.candidateId,
           candidateName: aceName,
+          candidateTitle: ace?.currentDesignation ?? "",
+          candidateEmployer: ace?.currentOrganization ?? "",
+          candidateLocation: formatLocation(ace?.location ?? null),
+          candidateExpectedSalary: extractExpectedSalaryNumber(ace?.expectedSalary ?? null),
           jobId: rowJobId,
           jobTitle: desc.title,
           jobLocation: desc.location,
           clientRfId: p.clientRfId,
           clientName: desc.clientName,
+          clientIsVerified: p.clientId
+            ? verifiedByClientId.get(p.clientId) ?? false
+            : desc.clientName
+              ? verifiedByClientNameLower.get(desc.clientName.toLowerCase()) ?? false
+              : false,
           keptAt: p.updatedAt.toISOString(),
           clientOwnerId: intakeOwnerId(p.clientId, desc.clientName),
         });

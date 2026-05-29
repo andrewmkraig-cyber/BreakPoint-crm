@@ -109,9 +109,21 @@ export type PipelineRow = {
   candidateId: number | string;
   candidateName: string;
   candidateTitle: string;
+  // Ace 68.0: uniform LEFT column inputs for the pipeline column-
+  // standardization pass. Employer is the candidate's CURRENT employer
+  // (not the job they applied to). Location is "City, ST" via the shared
+  // formatLocation helper. ExpectedSalary is the candidate's expectation
+  // ({ number, currency }.number); null = blank cell per Item 2 of the
+  // spec ("if unknown, render the cell fully blank"). Verified mirrors
+  // the /clients + /jobs `isVerified` signal so the badge shows next to
+  // the Client cell when the client has a signed agreement on file.
+  candidateEmployer: string;
+  candidateLocation: string;
+  candidateExpectedSalary: number | null;
   jobId: number | string;
   jobTitle: string;
   clientName: string;
+  clientIsVerified: boolean;
   stageName: string;
   bucket: keyof typeof PIPELINE_LABELS;
   lastActionAt: string | null;
@@ -128,14 +140,23 @@ export type PipelineRow = {
 
 // Intake-stage row shapes (Applicants + Kept). polymorphic ids match
 // PipelineRow — RF numeric for imported, cuid for Ace-native.
+// Ace 68.0: intake rows now carry the same uniform LEFT column inputs
+// as PipelineRow (candidateTitle / candidateEmployer / candidateLocation
+// / candidateExpectedSalary / clientIsVerified) so the Applicants + Kept
+// tables can share the LEFT column set with the main pipeline tabs.
 export type AppliedRow = {
   candidateId: number | string;
   candidateName: string;
+  candidateTitle: string;
+  candidateEmployer: string;
+  candidateLocation: string;
+  candidateExpectedSalary: number | null;
   jobId: number | string;
   jobTitle: string;
   jobLocation: string;
   clientRfId: number | null;
   clientName: string;
+  clientIsVerified: boolean;
   appliedAt: string | null;
   source: string | null;
   // Owner of the parent client. Resolved server-side so the page-level
@@ -146,11 +167,16 @@ export type AppliedRow = {
 export type KeptRow = {
   candidateId: number | string;
   candidateName: string;
+  candidateTitle: string;
+  candidateEmployer: string;
+  candidateLocation: string;
+  candidateExpectedSalary: number | null;
   jobId: number | string;
   jobTitle: string;
   jobLocation: string;
   clientRfId: number | null;
   clientName: string;
+  clientIsVerified: boolean;
   keptAt: string;
   clientOwnerId: string | null;
 };
@@ -195,6 +221,190 @@ function isRejectableStage(s: Stage): boolean {
 
 function isIntakeStage(s: Stage): s is "applied" | "kept" {
   return s === "applied" || s === "kept";
+}
+
+// Ace 68.0 — shared uniform LEFT column set across every stage. The
+// non-offer stages render checkbox + Candidate + Current Title/Employer
+// + Location + Salary + Client + Job + Last Action (7 data columns + the
+// far-left checkbox). Offer stage appends Offer Amount + Placement Fee
+// inside the stage-specific RIGHT block. Stage-specific RIGHT columns
+// (Days in Stage, Billing Contact, Invoicing, Days Until, action chips,
+// Source, etc.) keep rendering after the uniform LEFT cells.
+//
+// UniformLeftRowShape is the minimum a row must carry to feed
+// UniformLeftRowCells. Both PipelineRow and the intake AppliedRow /
+// KeptRow satisfy this shape (verified by the prop typing on the helper
+// below), so the same cells render on every table.
+type UniformLeftRowShape = {
+  candidateId: number | string;
+  candidateName: string;
+  candidateTitle: string;
+  candidateEmployer: string;
+  candidateLocation: string;
+  candidateExpectedSalary: number | null;
+  jobId: number | string;
+  jobTitle: string;
+  clientName: string;
+  clientIsVerified: boolean;
+  isKept?: boolean;
+};
+
+// Inline shield SVG copied from jobs-view.tsx to keep the verified-
+// client glyph identical across surfaces. Sharing a component is a
+// future refactor (jobs-view + clients-view + this file all hold a copy).
+function VerifiedShield() {
+  return (
+    <svg
+      width={12}
+      height={12}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="shrink-0 text-court-brand"
+    >
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  );
+}
+
+// Candidate expected salary formatter. Returns the empty string when
+// the value is missing so the Salary cell renders fully blank per
+// Item 2 of the column-standardization spec ("if unknown, render the
+// cell fully blank. No dash, no placeholder."). USD assumed — every
+// pipeline candidate today carries USD; non-USD currencies fall through
+// to the same "$" prefix because the pipeline display does not
+// distinguish currencies (the placement-side cells do, via formatMoney).
+function formatExpectedSalary(n: number | null): string {
+  if (!n || !Number.isFinite(n) || n <= 0) return "";
+  return `$${n.toLocaleString()}`;
+}
+
+// Seven uniform LEFT header cells. Used by both the main pipeline table
+// and the intake (Applicants + Kept) table so column positions stay
+// pixel-identical across every stage.
+function UniformLeftHeaderCells() {
+  return (
+    <>
+      <DataTableHeaderCell>Candidate</DataTableHeaderCell>
+      <DataTableHeaderCell>Current Title/Employer</DataTableHeaderCell>
+      <DataTableHeaderCell>Location</DataTableHeaderCell>
+      <DataTableHeaderCell align="right">Salary</DataTableHeaderCell>
+      <DataTableHeaderCell>Client</DataTableHeaderCell>
+      <DataTableHeaderCell>Job</DataTableHeaderCell>
+      <DataTableHeaderCell align="center">Last Action</DataTableHeaderCell>
+    </>
+  );
+}
+
+// Seven uniform LEFT body cells. `lastActionAt` is passed in because
+// each row source carries it under a different key (PipelineRow uses
+// lastActionAt; AppliedRow uses appliedAt; KeptRow uses keptAt). The
+// stop-propagation pattern on the Candidate / Job links matches the
+// existing per-cell wrappers so the row's outer onClick (navigate to
+// candidate profile) doesn't double-fire when the recruiter clicks the
+// link inside the cell.
+function UniformLeftRowCells({
+  row,
+  lastActionAt,
+}: {
+  row: UniformLeftRowShape;
+  lastActionAt: string | null;
+}) {
+  return (
+    <>
+      {/* Candidate. Avatar + name + optional Kept badge. The title
+          sub-line that used to live here moves into the dedicated
+          "Current Title/Employer" column. */}
+      <td className="px-3 py-2 align-top">
+        <div className="flex items-start gap-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-court-surface-subtle text-[11px] font-semibold text-court-fg-muted">
+            {initials(row.candidateName)}
+          </div>
+          <div className="min-w-0">
+            <Link
+              href={`/candidates/${row.candidateId}`}
+              className="inline-flex items-center gap-1 font-medium text-court-fg hover:text-court-accent-dark"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {row.candidateName}
+              {row.isKept && (
+                <span
+                  className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-blue-800 dark:bg-blue-950/60 dark:text-blue-100"
+                  title="Kept candidate"
+                >
+                  <Bookmark className="h-2.5 w-2.5" /> Kept
+                </span>
+              )}
+            </Link>
+          </div>
+        </div>
+      </td>
+
+      {/* Current Title/Employer. Two-line cell: title on top (regular
+          text), employer on the existing smaller sub-line style. Either
+          line is fine on its own; both blank renders a fully empty cell
+          (no placeholder dash — matches the Salary rule). */}
+      <td className="px-3 py-2 align-top">
+        <div className="min-w-0">
+          {row.candidateTitle && (
+            <div className="truncate text-sm text-court-fg">{row.candidateTitle}</div>
+          )}
+          {row.candidateEmployer && (
+            <div className="truncate text-xs text-court-fg-muted">{row.candidateEmployer}</div>
+          )}
+        </div>
+      </td>
+
+      {/* Location. "City, ST" via shared formatLocation pass on the
+          server (RF-flat + Ace-native paths). Distance sub-line lands
+          in a follow-up prompt per the spec. */}
+      <td className="px-3 py-2 align-top text-sm text-court-fg-muted">
+        {row.candidateLocation || ""}
+      </td>
+
+      {/* Salary. Candidate's expected salary. Blank cell on rows where
+          the field is missing — no dash, no placeholder. */}
+      <td className="px-3 py-2 align-top text-right text-sm text-court-fg">
+        {formatExpectedSalary(row.candidateExpectedSalary)}
+      </td>
+
+      {/* Client. Name + verified shield when the linked Client has a
+          signed agreement on file (same isVerified signal /clients and
+          /jobs use). */}
+      <td className="px-3 py-2 align-top text-sm">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="truncate text-court-fg">{row.clientName || ""}</span>
+          {row.clientIsVerified && (
+            <span title="Client has a signed agreement">
+              <VerifiedShield />
+            </span>
+          )}
+        </div>
+      </td>
+
+      {/* Job. Title only — client moved to its own column. */}
+      <td className="px-3 py-2 align-top">
+        <Link
+          href={`/jobs/${row.jobId}`}
+          className="font-medium text-court-fg hover:text-court-accent-dark"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {row.jobTitle || "—"}
+        </Link>
+      </td>
+
+      {/* Last Action. Formatted date from whichever timestamp the row
+          source carries (placement.updatedAt / appliedAt / keptAt). */}
+      <td className="px-3 py-2 align-top text-center text-xs text-court-fg-muted">
+        {formatDate(lastActionAt)}
+      </td>
+    </>
+  );
 }
 
 // Soft-green native dropdown matching the /clients OwnerScopeSelect
@@ -300,7 +510,16 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
     setSelectedPlacementIds(new Set());
   }, [stage, q]);
 
-  const showCheckboxCol = isRejectableStage(stage);
+  // Ace 68.0 — far-left checkbox column on every stage so the structural
+  // position stays identical across the whole pipeline (Item 1 of the
+  // column-standardization spec). Bulk selection is still gated on
+  // `isRejectableStage` — on Pending Start / Hired / Cancelled the
+  // checkbox renders disabled because no bulk action is wired for those
+  // stages today. The header checkbox is similarly inert when no row
+  // qualifies. This keeps the table grid uniform without inventing new
+  // bulk behavior.
+  const showCheckboxCol = true;
+  const rowsSelectable = isRejectableStage(stage);
   const selectableRows = useMemo(
     () => rows.filter((r) => r.placementId !== null && isRejectableStage(r.bucket)),
     [rows],
@@ -544,32 +763,36 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
 
           <div className="overflow-hidden rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
             <div className="overflow-x-auto">
-              {/* min-w tightened from 820 to 720 (Ace 67.15) so the
-                  Submitted / Interviewing / Offer / Pending Start /
-                  Hired tabs fit on a 13" laptop without horizontal
-                  scroll. Combined with the px-3 py-2 cell padding pass
-                  and the shared DataTableHeaderCell px-3 py-2 update in
-                  data-table.tsx, every column in the widest tab (Hired,
-                  7 columns + optional checkbox) now sits inside the
-                  ~960px usable viewport. */}
-              <table className="w-full min-w-[720px] text-left text-sm">
+              {/* Ace 68.0 — min-w bumped from 720 to 1100 to fit the 7
+                  uniform LEFT columns (checkbox + Candidate + Current
+                  Title/Employer + Location + Salary + Client + Job +
+                  Last Action) plus each stage's RIGHT extras. Offer
+                  stage (LEFT + Offer Amount + Placement Fee + Days in
+                  Stage + Action) is the widest at 11 data columns; on a
+                  13" laptop the rightmost columns may need to scroll
+                  horizontally, but the column STRUCTURE stays identical
+                  across every stage per the standardization spec. The
+                  shared px-3 py-2 padding from data-table.tsx still
+                  applies. */}
+              <table className="w-full min-w-[1100px] text-left text-sm">
                 <DataTableHead>
                   <tr className="bg-court-surface border-b border-court-border/60">
-                    {showCheckboxCol && (
-                      <DataTableHeaderCell align="center">
-                        <input
-                          ref={headerCheckboxRef}
-                          type="checkbox"
-                          aria-label="Select all rejectable rows on this page"
-                          checked={allSelected}
-                          disabled={selectableRows.length === 0}
-                          onChange={toggleAll}
-                          className="h-3.5 w-3.5 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40"
-                        />
-                      </DataTableHeaderCell>
-                    )}
-                    <DataTableHeaderCell>Candidate</DataTableHeaderCell>
-                    <DataTableHeaderCell>Job</DataTableHeaderCell>
+                    {/* Far-left checkbox column on every stage. Disabled
+                        on stages where no bulk action is wired (Pending
+                        Start / Hired / Cancelled). */}
+                    <DataTableHeaderCell align="center">
+                      <input
+                        ref={headerCheckboxRef}
+                        type="checkbox"
+                        aria-label="Select all rejectable rows on this page"
+                        checked={allSelected}
+                        disabled={!rowsSelectable || selectableRows.length === 0}
+                        onChange={toggleAll}
+                        className="h-3.5 w-3.5 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40"
+                      />
+                    </DataTableHeaderCell>
+                    <UniformLeftHeaderCells />
+                    {/* Stage-specific RIGHT columns. */}
                     {stage === "pending_start" ? (
                       <>
                         <DataTableHeaderCell align="center">Start Date</DataTableHeaderCell>
@@ -578,17 +801,23 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                       </>
                     ) : stage === "hired" ? (
                       <>
-                        <DataTableHeaderCell align="center">Salary</DataTableHeaderCell>
-                        <DataTableHeaderCell align="center">Fee</DataTableHeaderCell>
                         <DataTableHeaderCell align="center">Start Date</DataTableHeaderCell>
                         <DataTableHeaderCell>Billing Contact</DataTableHeaderCell>
                         <DataTableHeaderCell align="center">Invoicing</DataTableHeaderCell>
                       </>
-                    ) : (
+                    ) : stage === "offer" ? (
                       <>
                         <DataTableHeaderCell align="center">Offer Amount</DataTableHeaderCell>
                         <DataTableHeaderCell align="center">Placement Fee</DataTableHeaderCell>
-                        <DataTableHeaderCell align="center">Last Action</DataTableHeaderCell>
+                        <DataTableHeaderCell align="center">Days in Stage</DataTableHeaderCell>
+                        <DataTableHeaderCell align="right" />
+                      </>
+                    ) : stage === "cancelled" ? (
+                      // Cancelled tab is audit-only — no stage-specific
+                      // extras, just the uniform LEFT set.
+                      null
+                    ) : (
+                      <>
                         <DataTableHeaderCell align="center">Days in Stage</DataTableHeaderCell>
                         <DataTableHeaderCell align="right" />
                       </>
@@ -600,8 +829,18 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                     <tr>
                       <td
                         colSpan={
-                          (stage === "hired" ? 7 : stage === "pending_start" ? 5 : 7) +
-                          (showCheckboxCol ? 1 : 0)
+                          // Checkbox + 7 LEFT columns + per-stage RIGHT.
+                          1 +
+                          7 +
+                          (stage === "pending_start"
+                            ? 3
+                            : stage === "hired"
+                              ? 3
+                              : stage === "offer"
+                                ? 4
+                                : stage === "cancelled"
+                                  ? 0
+                                  : 2)
                         }
                         className="px-4 py-12 text-center text-sm text-court-fg-muted"
                       >
@@ -626,99 +865,65 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                         router.push(`/candidates/${r.candidateId}`);
                       }}
                     >
-                      {showCheckboxCol && (
-                        <td
-                          className="w-px px-2 py-2 align-top text-center"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {r.placementId && isRejectableStage(r.bucket) ? (
-                            <input
-                              type="checkbox"
-                              aria-label={`Select ${r.candidateName}`}
-                              checked={selectedPlacementIds.has(r.placementId)}
-                              onChange={() => toggleRow(r.placementId as string)}
-                              className="h-3.5 w-3.5 cursor-pointer accent-brand"
-                            />
-                          ) : null}
-                        </td>
-                      )}
-                      <td className="px-3 py-2 align-top">
-                        <div className="flex items-start gap-2">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-court-surface-subtle text-[11px] font-semibold text-court-fg-muted">
-                            {initials(r.candidateName)}
-                          </div>
-                          <div className="min-w-0">
-                            <Link
-                              href={`/candidates/${r.candidateId}`}
-                              className="inline-flex items-center gap-1 font-medium text-court-fg hover:text-court-accent-dark"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {r.candidateName}
-                              {/* Kept badge sits in the Keep-button blue family
-                                  but one step darker (blue-100/800 vs the Keep
-                                  button's blue-50/700) so the bookmark indicator
-                                  stays distinct from the interviewing stage
-                                  chip, which already owns the lighter blue. */}
-                              {r.isKept && (
-                                <span
-                                  className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-blue-800 dark:bg-blue-950/60 dark:text-blue-100"
-                                  title="Kept candidate"
-                                >
-                                  <Bookmark className="h-2.5 w-2.5" /> Kept
-                                </span>
-                              )}
-                            </Link>
-                            {r.candidateTitle && (
-                              <div className="truncate text-xs text-court-fg-muted">{r.candidateTitle}</div>
-                            )}
-                          </div>
-                        </div>
+                      {/* Far-left checkbox cell on every stage. Disabled
+                          input on non-rejectable stages so the structural
+                          column stays present but no orphan selection state
+                          can build up. The cell renders the next-interview
+                          chip beneath the checkbox on Interviewing rows so
+                          that signal moves with the Job column (it used to
+                          live in the Job cell sub-line, which now only
+                          carries the job title). */}
+                      <td
+                        className="w-px px-2 py-2 align-top text-center"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {r.placementId && isRejectableStage(r.bucket) ? (
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${r.candidateName}`}
+                            checked={selectedPlacementIds.has(r.placementId)}
+                            onChange={() => toggleRow(r.placementId as string)}
+                            className="h-3.5 w-3.5 cursor-pointer accent-brand"
+                          />
+                        ) : (
+                          <input
+                            type="checkbox"
+                            aria-label="Selection disabled on this stage"
+                            disabled
+                            className="h-3.5 w-3.5 cursor-not-allowed accent-brand opacity-30"
+                          />
+                        )}
                       </td>
-                      <td className="px-3 py-2 align-top">
-                        <div className="min-w-0">
-                          <Link
-                            href={`/jobs/${r.jobId}`}
-                            className="font-medium text-court-fg hover:text-court-accent-dark"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {r.jobTitle || "—"}
-                          </Link>
-                          {r.clientName && (
-                            <div className="truncate text-xs text-court-fg-muted">{r.clientName}</div>
-                          )}
-                          {r.bucket === "interviewing" && r.nextInterview && (
-                            <Link
-                              href={`/candidates/${r.candidateId}?edit=interview&interviewId=${encodeURIComponent(r.nextInterview.id)}`}
-                              onClick={(e) => e.stopPropagation()}
-                              title="Edit interview"
-                              aria-label="Edit interview"
-                              className="mt-0.5 inline-flex items-center gap-1 rounded text-[11px] text-court-fg-muted underline-offset-2 transition hover:text-court-fg hover:underline"
-                            >
-                              <CalendarClock className="h-3 w-3" />
-                              Next: {formatInterviewWhen(r.nextInterview.scheduledAt)} · {formatInterviewTypeShort(r.nextInterview.type)}
-                            </Link>
-                          )}
-                        </div>
-                      </td>
+
+                      {/* Uniform LEFT (7 columns): Candidate · Current
+                          Title/Employer · Location · Salary · Client ·
+                          Job · Last Action. Same render across every
+                          stage so the table reads identically. */}
+                      <UniformLeftRowCells row={r} lastActionAt={r.lastActionAt} />
 
                       {stage === "pending_start" ? (
                         <PendingStartCells row={r} />
                       ) : stage === "hired" ? (
                         <HiredCells row={r} />
-                      ) : (
+                      ) : stage === "cancelled" ? null : (
                         <>
-                          <td className="px-3 py-2 align-top text-center text-sm text-court-fg">
-                            {formatMoney(r.placement?.acceptedSalary ?? null, r.placement?.acceptedCurrency)}
-                          </td>
-                          <td className="px-3 py-2 align-top text-center text-sm text-court-fg">
-                            {formatMoney(r.placement?.feeTotal ?? null, r.placement?.acceptedCurrency)}
-                            {r.placement?.feePercentage != null && (
-                              <span className="ml-1 text-[11px] text-court-fg-muted">({r.placement.feePercentage}%)</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 align-top text-center text-xs text-court-fg-muted">
-                            {formatDate(r.lastActionAt)}
-                          </td>
+                          {/* Offer stage: Offer Amount + Placement Fee
+                              are the two extra columns called out in
+                              Item 1 of the column-standardization spec.
+                              Submitted / Interviewing skip them. */}
+                          {stage === "offer" && (
+                            <>
+                              <td className="px-3 py-2 align-top text-center text-sm text-court-fg">
+                                {formatMoney(r.placement?.acceptedSalary ?? null, r.placement?.acceptedCurrency)}
+                              </td>
+                              <td className="px-3 py-2 align-top text-center text-sm text-court-fg">
+                                {formatMoney(r.placement?.feeTotal ?? null, r.placement?.acceptedCurrency)}
+                                {r.placement?.feePercentage != null && (
+                                  <span className="ml-1 text-[11px] text-court-fg-muted">({r.placement.feePercentage}%)</span>
+                                )}
+                              </td>
+                            </>
+                          )}
                           <td className="px-3 py-2 align-top text-center">
                             <StageAgePill value={r.daysInStage} />
                           </td>
@@ -730,8 +935,22 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                 action column stays visible when the page
                                 decompresses; w-px + whitespace-nowrap on the
                                 cell pins it to its natural width and forces
-                                other columns (Job/Client) to compress first. */}
+                                other columns (Job/Client) to compress first.
+                                Interviewing rows show the "Edit interview"
+                                deep-link icon next to the Offer chip when a
+                                next interview is scheduled. */}
                             <div className="flex items-center justify-end gap-1.5">
+                              {r.bucket === "interviewing" && r.nextInterview && (
+                                <Link
+                                  href={`/candidates/${r.candidateId}?edit=interview&interviewId=${encodeURIComponent(r.nextInterview.id)}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  title={`Edit interview · Next: ${formatInterviewWhen(r.nextInterview.scheduledAt)} · ${formatInterviewTypeShort(r.nextInterview.type)}`}
+                                  aria-label="Edit interview"
+                                  className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-border bg-court-surface-subtle px-2 text-[11px] font-semibold text-court-fg-muted shadow-sm transition hover:bg-court-surface hover:text-court-fg"
+                                >
+                                  <CalendarClock className="h-3 w-3" />
+                                </Link>
+                              )}
                               {r.bucket === "submitted" && (
                                 // Anchor-shaped twin of <Button variant="schedule">.
                                 // Token classes mirror the variant so the Schedule
@@ -914,15 +1133,13 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
 
 function HiredCells({ row }: { row: PipelineRow }) {
   const p = row.placement;
+  // Ace 68.0: Salary moved into the uniform LEFT column on every stage.
+  // Hired stage's RIGHT extras are now Start Date + Billing Contact +
+  // Invoicing only — the old Salary + Fee cells dropped because Salary
+  // is now LEFT (candidate.expectedSalary) and Fee is Offer-stage-only
+  // per Item 1 of the column-standardization spec.
   return (
     <>
-      <td className="px-3 py-2 align-top text-center text-sm text-court-fg">{formatMoney(p?.acceptedSalary ?? null, p?.acceptedCurrency)}</td>
-      <td className="px-3 py-2 align-top text-center text-sm text-court-fg">
-        {formatMoney(p?.feeTotal ?? null, p?.acceptedCurrency)}
-        {p?.feePercentage != null && (
-          <span className="ml-1 text-[11px] text-court-fg-muted">({p.feePercentage}%)</span>
-        )}
-      </td>
       <td className="px-3 py-2 align-top text-center text-sm text-court-fg-muted">
         {formatDate(p?.expectedStartDate)}
       </td>
@@ -1151,27 +1368,11 @@ function formatSourceLabel(raw: string | null): string {
   return raw;
 }
 
-function JobCell({
-  jobId,
-  jobTitle,
-  jobLocation,
-  clientName,
-}: {
-  jobId: number | string;
-  jobTitle: string;
-  jobLocation: string;
-  clientName: string;
-}) {
-  const headLine = jobLocation ? `${jobTitle} - ${jobLocation}` : jobTitle;
-  return (
-    <div>
-      <Link href={`/jobs/${jobId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
-        {headLine}
-      </Link>
-      {clientName && <div className="text-xs text-court-fg-muted">{clientName}</div>}
-    </div>
-  );
-}
+// JobCell removed Ace 68.0 — the uniform LEFT column set now renders
+// Job + Client + Location in dedicated columns, replacing this combined
+// Job + jobLocation + clientName cell that the old IntakeTable used.
+// AppliedRowView and KeptRowView both now route through
+// UniformLeftRowCells, so this helper is no longer reachable.
 
 // Shared row-action chip styles. Mirrors the Applicants-page palette so
 // recruiters see the same Submit / Keep / Reject silhouettes after the
@@ -1363,7 +1564,11 @@ function IntakeTable({
     }
   }
 
-  const colSpan = kind === "applied" ? 6 : 5;
+  // Ace 68.0 — column count for the empty-state colSpan. Checkbox + 7
+  // uniform LEFT columns + 1 Actions column. Applied stage appends
+  // Source between Last Action and Actions, so it lands at 10 columns
+  // vs Kept's 9. Stays in sync with the headers below.
+  const colSpan = kind === "applied" ? 10 : 9;
 
   return (
     <div className="space-y-4">
@@ -1399,11 +1604,10 @@ function IntakeTable({
 
       <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
-          {/* min-w tightened from 900 to 820 (Ace 67.15) for the same
-              13"-laptop fit pass — the Applicants / Kept / Rejected
-              tabs have more columns than the active-stage table above
-              so their min-w stays slightly wider. */}
-          <table className="w-full min-w-[820px] text-left text-sm">
+          {/* Ace 68.0 — min-w bumped to 1100 (matches the main pipeline
+              table) so the 7 uniform LEFT columns + Source/Actions fit
+              the same grid as Submitted/Interviewing/etc. */}
+          <table className="w-full min-w-[1100px] text-left text-sm">
             <DataTableHead>
               <tr className="bg-court-surface border-b border-court-border/60">
                 <DataTableHeaderCell align="center">
@@ -1417,10 +1621,18 @@ function IntakeTable({
                     className="h-3.5 w-3.5 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40"
                   />
                 </DataTableHeaderCell>
+                {/* Uniform LEFT headers. Three of the seven carry the
+                    existing sortable affordances (Candidate by name,
+                    Job by title, Last Action by when) — the rest are
+                    plain headers matching the main pipeline table. */}
                 <IntakeColHeader label="Candidate" active={sortKey === "name"} dir={sortDir} onClick={() => toggleSort("name")} />
+                <DataTableHeaderCell>Current Title/Employer</DataTableHeaderCell>
+                <DataTableHeaderCell>Location</DataTableHeaderCell>
+                <DataTableHeaderCell align="right">Salary</DataTableHeaderCell>
+                <DataTableHeaderCell>Client</DataTableHeaderCell>
                 <IntakeColHeader label="Job" active={sortKey === "job"} dir={sortDir} onClick={() => toggleSort("job")} />
                 <IntakeColHeader
-                  label={kind === "applied" ? "Date Applied" : "Kept Since"}
+                  label="Last Action"
                   active={sortKey === "when"}
                   dir={sortDir}
                   onClick={() => toggleSort("when")}
@@ -1556,20 +1768,9 @@ function AppliedRowView({
           className="h-3.5 w-3.5 cursor-pointer accent-brand"
         />
       </td>
-      <td className="px-3 py-2 align-top">
-        <Link href={`/candidates/${row.candidateId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
-          {row.candidateName}
-        </Link>
-      </td>
-      <td className="px-3 py-2 align-top">
-        <JobCell
-          jobId={row.jobId}
-          jobTitle={row.jobTitle}
-          jobLocation={row.jobLocation}
-          clientName={row.clientName}
-        />
-      </td>
-      <td className="px-3 py-2 align-top text-center text-xs text-court-fg-muted">{formatDate(row.appliedAt)}</td>
+      {/* Uniform LEFT (7 cells). appliedAt becomes the Last Action
+          source for this row. */}
+      <UniformLeftRowCells row={row} lastActionAt={row.appliedAt} />
       <td className="px-3 py-2 align-top text-center text-sm text-court-fg-muted">{formatSourceLabel(row.source)}</td>
       <td className="px-3 py-2 align-top">
         <div className="flex flex-row flex-nowrap items-center justify-end gap-2">
@@ -1660,20 +1861,9 @@ function KeptRowView({
           className="h-3.5 w-3.5 cursor-pointer accent-brand"
         />
       </td>
-      <td className="px-3 py-2 align-top">
-        <Link href={`/candidates/${row.candidateId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
-          {row.candidateName}
-        </Link>
-      </td>
-      <td className="px-3 py-2 align-top">
-        <JobCell
-          jobId={row.jobId}
-          jobTitle={row.jobTitle}
-          jobLocation={row.jobLocation}
-          clientName={row.clientName}
-        />
-      </td>
-      <td className="px-3 py-2 align-top text-center text-xs text-court-fg-muted">{formatDate(row.keptAt)}</td>
+      {/* Uniform LEFT (7 cells). keptAt becomes the Last Action source
+          for this row. */}
+      <UniformLeftRowCells row={row} lastActionAt={row.keptAt} />
       <td className="px-3 py-2 align-top">
         <div className="flex flex-row flex-nowrap items-center justify-end gap-2">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}

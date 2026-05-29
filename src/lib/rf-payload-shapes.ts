@@ -411,7 +411,19 @@ export type PipelineRow = {
   addedAt: string | null;
   isKept: boolean;
   candidateTitle: string;
+  // Current employer the candidate works for right now. Sourced from
+  // RFCandidate.current_organization. Empty string when unknown so the
+  // shared "Current Title/Employer" sub-line stays blank instead of
+  // rendering "(unknown)" noise. Added Ace 68.0 for the pipeline
+  // column-standardization pass (sub-line of the unified
+  // "Current Title/Employer" column).
+  candidateEmployer: string;
   candidateLocation: string;
+  // Candidate's expected salary as a plain number (USD assumed for the
+  // pipeline display). Pulled from RFCandidate.expected_salary.number;
+  // null when the blob is missing/zero so the Salary cell can render
+  // fully blank per Item 2 of the column-standardization spec.
+  candidateExpectedSalary: number | null;
 };
 
 function candidateTagSet(c: RFCandidate): Set<string> {
@@ -454,11 +466,23 @@ export function flattenPipeline(candidates: RFCandidate[]): PipelineRow[] {
         addedAt: j.added_time ?? null,
         isKept,
         candidateTitle: c.current_designation ?? "",
+        candidateEmployer: c.current_organization ?? "",
         candidateLocation: locationLabel ?? "",
+        // RFCandidate doesn't declare expected_salary in its TS interface
+        // (the [key: string]: unknown index signature is the escape hatch),
+        // but RF returns it as `{ number, currency }`. Read defensively.
+        candidateExpectedSalary: extractExpectedSalaryNumber(c.expected_salary),
       });
     }
   }
   return rows;
+}
+
+function extractExpectedSalaryNumber(raw: unknown): number | null {
+  if (!raw || typeof raw !== "object") return null;
+  const n = (raw as { number?: unknown }).number;
+  if (typeof n !== "number" || !Number.isFinite(n) || n <= 0) return null;
+  return n;
 }
 
 function getCustomField(fields: RFClient["custom_fields"] | RFJob["custom_fields"], match: (name: string) => boolean): unknown {
