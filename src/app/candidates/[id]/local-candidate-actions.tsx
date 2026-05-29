@@ -16,7 +16,7 @@ import {
   generateLocalSubmittal,
   sendLocalSubmittalEmail,
 } from "@/app/candidates/[id]/local-placement-actions";
-import { formatOpenJobOption } from "@/app/candidates/[id]/placement-flows";
+import { formatOpenJobOption } from "@/components/placements/placement-shared";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
 import {
   LOCAL_PLACEMENT_APPLIED_EVENT,

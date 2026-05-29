@@ -53,7 +53,7 @@ import {
   InterviewerPicker,
   buildCcBccOptions,
   parseEmailCsv,
-} from "@/app/candidates/[id]/placement-flows";
+} from "@/components/placements/placement-shared";
 import { triggerCalendarSync } from "@/lib/calendar/trigger-sync";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
 // Canonical Lead Source options — shared with the RF PlacementDialog,
