@@ -169,6 +169,10 @@ export type AppliedRow = {
   // Owner of the parent client. Resolved server-side so the page-level
   // owner-scope filter can apply the same Mine/Theirs/All cut here.
   clientOwnerId: string | null;
+  // "(X.X mi)" Location-cell sub-line, attached server-side for the
+  // Applicants tab the same way the main pipeline rows get it (Item 1A).
+  // Blank when candidate lat/lng or the job location can't resolve.
+  distanceLine?: string;
 };
 
 export type KeptRow = {
@@ -186,12 +190,18 @@ export type KeptRow = {
   clientIsVerified: boolean;
   keptAt: string;
   clientOwnerId: string | null;
+  // "(X.X mi)" Location-cell sub-line (Item 1A) — same shape + blank rule
+  // as the main pipeline + Applicants rows.
+  distanceLine?: string;
 };
 
 type PipelineViewProps = {
   rows: PipelineRow[];
   appliedRows: AppliedRow[];
   keptRows: KeptRow[];
+  // Cancelled placements, surfaced inside the Hired tab's list (no
+  // separate tab). Empty unless the active stage is "hired".
+  cancelledRows: PipelineRow[];
   stage: Stage;
   q: string;
   counts: Record<Stage, number>;
@@ -211,10 +221,9 @@ const STAGE_ORDER: Stage[] = [
   "offer",
   "pending_start",
   "hired",
-  // Always last so the Cancelled tab sits at the end of the strip when
-  // visible (it's a terminal, audit-only view — not part of the active
-  // progression). Hidden by default; see `showCancelled` state below.
-  "cancelled",
+  // "cancelled" is intentionally NOT a tab. Cancelled placements render
+  // inside the Hired tab's list (subdued, Cancelled-chipped) rather than
+  // behind a toggle — see the Hired-tab render below.
 ];
 
 // Stages where per-row Reject (and therefore bulk Reject) is offered.
@@ -459,23 +468,11 @@ function OwnerScopeSelect({
   );
 }
 
-export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, owner, otherUserName, error }: PipelineViewProps) {
+export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage, q, counts, owner, otherUserName, error }: PipelineViewProps) {
   const router = useRouter();
   const params = useSearchParams();
   const [query, setQuery] = useState(q);
   const [, startTransition] = useTransition();
-
-  // Show Cancelled toggle — local UI state per the decision tree, not URL
-  // persisted. Default off so the Cancelled tab stays hidden until the
-  // recruiter explicitly opts in. When the active `stage` is "cancelled"
-  // (deep link or just-toggled), the StageTabs strip force-shows the tab
-  // regardless of this flag so the recruiter can navigate back out.
-  const [showCancelled, setShowCancelled] = useState(stage === "cancelled");
-  useEffect(() => {
-    // Keep the toggle in sync with deep-links: if the page lands directly
-    // on the Cancelled tab, light the toggle up so the strip stays put.
-    if (stage === "cancelled" && !showCancelled) setShowCancelled(true);
-  }, [stage, showCancelled]);
 
   useEffect(() => {
     setQuery(q);
@@ -679,29 +676,8 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
   return (
     <div className="space-y-4">
       <div className="flex flex-col items-start gap-3 md:flex-row md:items-center">
-        <StageTabs stage={stage} counts={counts} buildHref={buildHref} showCancelled={showCancelled} />
+        <StageTabs stage={stage} counts={counts} buildHref={buildHref} />
         <div className="md:ml-auto flex items-center gap-3">
-          <label className="flex items-center gap-1.5 text-xs font-medium text-court-fg-muted">
-            <input
-              type="checkbox"
-              checked={showCancelled}
-              onChange={(e) => {
-                const next = e.target.checked;
-                setShowCancelled(next);
-                // If the recruiter turns the toggle off while viewing the
-                // Cancelled tab, route them back to Submitted so the strip
-                // isn't pointing at a hidden tab. Other stages survive the
-                // toggle change untouched.
-                if (!next && stage === "cancelled") {
-                  startTransition(() => {
-                    router.push(buildHref({ stage: "submitted" }));
-                  });
-                }
-              }}
-              className="h-3.5 w-3.5 rounded border-court-border accent-court-brand"
-            />
-            Show Cancelled
-          </label>
           <OwnerScopeSelect
             scope={owner}
             otherName={otherUserName}
@@ -846,7 +822,9 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                   </tr>
                 </DataTableHead>
                 <DataTableBody>
-                  {rows.length === 0 && !error && (
+                  {rows.length === 0 &&
+                    !error &&
+                    !(stage === "hired" && cancelledRows.length > 0) && (
                     <tr>
                       <td
                         colSpan={
@@ -974,7 +952,7 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                   onClick={(e) => e.stopPropagation()}
                                   title={`Edit interview · Next: ${formatInterviewWhen(r.nextInterview.scheduledAt)} · ${formatInterviewTypeShort(r.nextInterview.type)}`}
                                   aria-label="Edit interview"
-                                  className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md borderborder-court-border bg-court-surface-subtle px-2 text-[10px] font-semibold text-court-fg-muted shadow-sm transition hover:bg-court-surface hover:text-court-fg"
+                                  className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-border bg-court-surface-subtle px-2 text-[10px] font-semibold text-court-fg-muted shadow-sm transition hover:bg-court-surface hover:text-court-fg"
                                 >
                                   <CalendarClock className="h-3 w-3" />
                                 </Link>
@@ -983,7 +961,7 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                 <Link
                                   href={`/candidates/${r.candidateId}`}
                                   onClick={(e) => e.stopPropagation()}
-                                  className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md borderborder-blue-200 bg-blue-50 px-2 text-[10px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
+                                  className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2 text-[10px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
                                   title="Schedule interview on candidate profile"
                                   aria-label="Schedule interview"
                                 >
@@ -1008,7 +986,7 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                   <Link
                                     href={`/candidates/${r.candidateId}?schedule=interview&jobId=${r.jobId}`}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md borderborder-blue-200 bg-blue-50 px-2 text-[10px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
+                                    className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2 text-[10px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
                                     title="Schedule another interview on candidate profile"
                                     aria-label="Schedule interview"
                                   >
@@ -1018,7 +996,7 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                   <Link
                                     href={`/candidates/${r.candidateId}`}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md borderborder-purple-200 bg-purple-50 px-2 text-[10px] font-semibold text-purple-700 shadow-sm transition hover:bg-purple-100 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-950/60"
+                                    className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md border border-purple-200 bg-purple-50 px-2 text-[10px] font-semibold text-purple-700 shadow-sm transition hover:bg-purple-100 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-950/60"
                                     title="Record offer on candidate profile"
                                     aria-label="Record offer"
                                   >
@@ -1032,7 +1010,7 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                   <Link
                                     href={`/candidates/${r.candidateId}?edit=offer&jobId=${r.jobId}`}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md borderborder-court-border bg-court-surface-subtle px-2 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface"
+                                    className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-border bg-court-surface-subtle px-2 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface"
                                     title="Edit offer details"
                                     aria-label="Edit offer"
                                   >
@@ -1042,7 +1020,7 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                   <Link
                                     href={`/candidates/${r.candidateId}?edit=placement&jobId=${r.jobId}`}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md borderborder-court-brand bg-court-brand-tint px-2 text-[10px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
+                                    className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-2 text-[10px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
                                     title="Record placement"
                                     aria-label="Record placement"
                                   >
@@ -1063,6 +1041,47 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                       )}
                     </DataTableRow>
                   ))}
+
+                  {/* Cancelled placements live at the bottom of the Hired
+                      tab's list (no separate tab, no toggle). Visually
+                      subdued (opacity-60) with a red "Cancelled" chip in
+                      the right-column block. They are NOT in counts.hired
+                      and NOT in any live metric (the guarantee-period
+                      table reads `rows`, not these). Clicking routes to
+                      the candidate profile — the inline placement drawer
+                      is for live placements only. */}
+                  {stage === "hired" &&
+                    cancelledRows.map((r) => (
+                      <DataTableRow
+                        key={`cancelled-${r.candidateId}-${r.jobId}`}
+                        className="cursor-pointer opacity-60"
+                        onClick={() => router.push(`/candidates/${r.candidateId}`)}
+                      >
+                        {/* Disabled checkbox cell keeps the column grid
+                            aligned with the hired rows above. */}
+                        <td
+                          className="w-px px-2 py-2 align-top text-center"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            aria-label="Selection disabled on cancelled rows"
+                            disabled
+                            className="h-3.5 w-3.5 cursor-not-allowed accent-brand opacity-30"
+                          />
+                        </td>
+                        <UniformLeftRowCells row={r} lastActionAt={r.lastActionAt} />
+                        {/* Spans the Hired tab's 3 RIGHT columns (Start
+                            Date / Billing Contact / Invoicing) with the
+                            Cancelled status chip (red/REJECTED stage tone
+                            from the Stage Badge colors). */}
+                        <td className="px-3 py-2 align-top text-center" colSpan={3}>
+                          <span className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+                            Cancelled
+                          </span>
+                        </td>
+                      </DataTableRow>
+                    ))}
                 </DataTableBody>
               </table>
             </div>
@@ -1266,25 +1285,16 @@ function StageTabs({
   stage,
   counts,
   buildHref,
-  showCancelled,
 }: {
   stage: Stage;
   counts: Record<Stage, number>;
   buildHref: (overrides: Record<string, string | number | undefined>) => string;
-  // When false, the "Cancelled" tab is omitted from the strip. The active
-  // stage is still respected — if the recruiter is currently viewing
-  // ?stage=cancelled (e.g. a deep-link) the tab is force-shown so the
-  // strip can't strand them on a stage with no visible tab.
-  showCancelled: boolean;
 }) {
-  const visibleStages = STAGE_ORDER.filter(
-    (s) => s !== "cancelled" || showCancelled || stage === "cancelled",
-  );
   return (
     <TabStrip<Stage>
       ariaLabel="Pipeline stage"
       activeId={stage}
-      items={visibleStages.map((s) => ({
+      items={STAGE_ORDER.map((s) => ({
         id: s,
         label: STAGE_LABEL[s],
         count: counts[s],

@@ -13,8 +13,9 @@ import { geocodePill, type GeoHit } from "@/lib/geocode";
 
 const EARTH_RADIUS_MILES = 3958.7613;
 
-// Great-circle distance between two lat/lng points in miles, rounded to
-// the nearest integer. Returns 0 when both points are identical.
+// Great-circle distance between two lat/lng points in miles, returned as
+// a raw float. Callers format with formatMiles() (one decimal + "mi").
+// Returns 0 when both points are identical.
 export function haversineMiles(
   candidateLat: number,
   candidateLng: number,
@@ -30,14 +31,23 @@ export function haversineMiles(
     Math.sin(dLat / 2) ** 2 +
     Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Math.round(EARTH_RADIUS_MILES * c);
+  return EARTH_RADIUS_MILES * c;
+}
+
+// Canonical distance sub-line format, shared by BOTH surfaces that show
+// a candidate→job distance (the pipeline Location cell and the candidate
+// profile job pill): one decimal place + the "mi" abbreviation. Same
+// location rounds to "(0.0 mi)". This is the single source of truth for
+// the string shape so the two surfaces never drift.
+export function formatMiles(miles: number): string {
+  return `(${miles.toFixed(1)} mi)`;
 }
 
 // Returns the Location-cell sub-line string for one candidate/job pair.
 // Blank-cell rule per the spec: if any input is missing or the job's
 // location can't be geocoded, return "" so the cell renders fully blank
 // (no dash, no "N/A" placeholder). A successful pair always returns
-// "(N miles)" — same-zip pairs naturally round to 0.
+// "(X.X mi)" — same-zip pairs naturally round to "(0.0 mi)".
 export async function formatDistanceSubLine(
   candidateLat: number | null,
   candidateLng: number | null,
@@ -60,5 +70,5 @@ export async function formatDistanceSubLine(
   if (!jobHit) return "";
 
   const miles = haversineMiles(candidateLat, candidateLng, jobHit.lat, jobHit.lng);
-  return `(${miles} ${miles === 1 ? "mile" : "miles"})`;
+  return formatMiles(miles);
 }

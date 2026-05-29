@@ -30,7 +30,7 @@ import { getInterviewsForOrg } from "@/lib/interviews";
 import { resolveJobTitle } from "@/lib/job-title";
 import { formatLocation } from "@/lib/utils";
 import { geocodePill } from "@/lib/geocode";
-import { haversineMiles } from "@/lib/distance";
+import { haversineMiles, formatMiles } from "@/lib/distance";
 
 // Local helper for parsing the Json shape Prisma stores for
 // `Candidate.expectedSalary` (`{ number, currency }`). Returns null when
@@ -43,6 +43,144 @@ function extractExpectedSalaryNumber(raw: unknown): number | null {
   return n;
 }
 
+// Attaches the "(X.X mi)" Location-cell sub-line to a row set in place.
+// Shared by every pipeline tab (main stages, Applicants/Kept intake, and
+// the cancelled rows appended under Hired) so the distance renders the
+// same way on all of them (Item 1A). Blank where the candidate has no
+// stored lat/lng OR the job's location can't be geocoded — same blank
+// rule as before, no dash. Job locations are de-duped before the
+// geocoder loop so cold-start Nominatim hits scale with distinct
+// locations, not row count; the geocoder's module-level cache covers the
+// warm-process case for free.
+type DistanceRow = {
+  candidateId: number | string;
+  jobId: number | string;
+  distanceLine?: string;
+};
+async function attachDistanceLines(
+  targetRows: DistanceRow[],
+  orgId: string,
+): Promise<void> {
+  if (targetRows.length === 0) return;
+
+  const rfCandidateIds: number[] = [];
+  const cuidCandidateIds: string[] = [];
+  const rfJobIds: number[] = [];
+  const cuidJobIds: string[] = [];
+  for (const r of targetRows) {
+    if (typeof r.candidateId === "number") rfCandidateIds.push(r.candidateId);
+    else if (typeof r.candidateId === "string") cuidCandidateIds.push(r.candidateId);
+    if (typeof r.jobId === "number") rfJobIds.push(r.jobId);
+    else if (typeof r.jobId === "string") cuidJobIds.push(r.jobId);
+  }
+
+  // Candidate lat/lng + rfId<->cuid mapping. The Candidate table holds
+  // every candidate (RF-imported has rfId set; Ace-native has rfId
+  // null), so a single org-scoped query covers both row shapes.
+  const candidateOr: Prisma.CandidateWhereInput[] = [];
+  if (rfCandidateIds.length > 0) candidateOr.push({ rfId: { in: rfCandidateIds } });
+  if (cuidCandidateIds.length > 0) candidateOr.push({ id: { in: cuidCandidateIds } });
+  const candidateLatLngRows = candidateOr.length > 0
+    ? await prisma.candidate.findMany({
+        where: { organizationId: orgId, OR: candidateOr },
+        select: { id: true, rfId: true, lat: true, lng: true },
+      })
+    : [];
+  const candidateLatLngByCuid = new Map<string, { lat: number; lng: number }>();
+  const candidateLatLngByRfId = new Map<number, { lat: number; lng: number }>();
+  for (const c of candidateLatLngRows) {
+    if (c.lat != null && c.lng != null) {
+      const point = { lat: c.lat, lng: c.lng };
+      candidateLatLngByCuid.set(c.id, point);
+      if (c.rfId != null) candidateLatLngByRfId.set(c.rfId, point);
+    }
+  }
+
+  // Job zip/city/state + legacyRfId<->cuid mapping.
+  const jobOr: Prisma.JobWhereInput[] = [];
+  if (rfJobIds.length > 0) jobOr.push({ legacyRfId: { in: rfJobIds } });
+  if (cuidJobIds.length > 0) jobOr.push({ id: { in: cuidJobIds } });
+  const jobLocRows = jobOr.length > 0
+    ? await prisma.job.findMany({
+        where: { organizationId: orgId, OR: jobOr },
+        select: {
+          id: true,
+          legacyRfId: true,
+          locationZip: true,
+          locationCity: true,
+          locationState: true,
+        },
+      })
+    : [];
+  type JobLoc = { zip: string | null; city: string | null; state: string | null };
+  const jobLocByCuid = new Map<string, JobLoc>();
+  const jobLocByRfId = new Map<number, JobLoc>();
+  for (const j of jobLocRows) {
+    const loc: JobLoc = {
+      zip: j.locationZip,
+      city: j.locationCity,
+      state: j.locationState,
+    };
+    jobLocByCuid.set(j.id, loc);
+    if (j.legacyRfId != null) jobLocByRfId.set(j.legacyRfId, loc);
+  }
+
+  const jobLocKey = (loc: JobLoc): string => {
+    const zip = (loc.zip ?? "").trim();
+    if (zip) return `zip:${zip.toLowerCase()}`;
+    const parts = [loc.city, loc.state].map((s) => (s ?? "").trim()).filter(Boolean);
+    return parts.length > 0 ? `cs:${parts.join(",").toLowerCase()}` : "";
+  };
+  const jobLocQuery = (loc: JobLoc): string => {
+    const zip = (loc.zip ?? "").trim();
+    if (zip) return zip;
+    const parts = [loc.city, loc.state].map((s) => (s ?? "").trim()).filter(Boolean);
+    return parts.join(", ");
+  };
+  const uniqueJobLocs = new Map<string, JobLoc>();
+  for (const r of targetRows) {
+    const jobLoc =
+      typeof r.jobId === "string" ? jobLocByCuid.get(r.jobId) : jobLocByRfId.get(r.jobId);
+    if (!jobLoc) continue;
+    const key = jobLocKey(jobLoc);
+    if (key) uniqueJobLocs.set(key, jobLoc);
+  }
+  const jobLatLngByKey = new Map<string, { lat: number; lng: number } | null>();
+  // Serial loop intentional — keeps Nominatim within its one-request-at-
+  // a-time usage policy. Warm-cache hits are sync; only cold strings
+  // round-trip. Array.from matches the codebase Map-iteration pattern.
+  for (const [key, loc] of Array.from(uniqueJobLocs.entries())) {
+    const query = jobLocQuery(loc);
+    if (!query) {
+      jobLatLngByKey.set(key, null);
+      continue;
+    }
+    jobLatLngByKey.set(key, await geocodePill(query));
+  }
+
+  for (const r of targetRows) {
+    const candidatePoint =
+      typeof r.candidateId === "string"
+        ? candidateLatLngByCuid.get(r.candidateId)
+        : candidateLatLngByRfId.get(r.candidateId);
+    const jobLoc =
+      typeof r.jobId === "string" ? jobLocByCuid.get(r.jobId) : jobLocByRfId.get(r.jobId);
+    if (candidatePoint && jobLoc) {
+      const key = jobLocKey(jobLoc);
+      const jobPoint = key ? jobLatLngByKey.get(key) : null;
+      if (jobPoint) {
+        const miles = haversineMiles(
+          candidatePoint.lat,
+          candidatePoint.lng,
+          jobPoint.lat,
+          jobPoint.lng,
+        );
+        r.distanceLine = formatMiles(miles);
+      }
+    }
+  }
+}
+
 export const dynamic = "force-dynamic";
 
 // Applied / Kept were folded in from the standalone /applicants page —
@@ -51,10 +189,10 @@ export const dynamic = "force-dynamic";
 // through it (Applicants → Kept → Submitted → ...). The two intake
 // stages keep their own row shapes / actions; the main pipeline stages
 // still drive PipelineRow.
-// "cancelled" is included alongside the main pipeline stages so the Show
-// Cancelled toggle in PipelineView can switch into a dedicated tab — its
-// visibility in the StageTabs strip is gated client-side, but a direct
-// /pipeline?stage=cancelled deep-link is still accepted server-side.
+// "cancelled" stays in the Stage type (counts/rows address it) but is NOT
+// a navigable stage: it's excluded from STAGES so a /pipeline?stage=
+// cancelled deep-link falls back to "submitted". Cancelled placements are
+// surfaced inside the Hired tab's list instead of behind their own tab.
 type Stage = "applied" | "kept" | "cancelled" | keyof typeof PIPELINE_LABELS;
 const STAGES: Stage[] = [
   "applied",
@@ -64,7 +202,6 @@ const STAGES: Stage[] = [
   "offer",
   "pending_start",
   "hired",
-  "cancelled",
 ];
 
 // Owner scope for the Mine / <Name>'s / All filter (Step 4). Default is
@@ -113,6 +250,11 @@ export default async function PipelinePage({
   let rows: PipelineRow[] = [];
   let appliedRows: AppliedRow[] = [];
   let keptRows: KeptRow[] = [];
+  // Cancelled placements no longer get their own tab (the Show Cancelled
+  // toggle was removed). They render appended to the Hired tab's list,
+  // visually subdued, with a Cancelled chip — counted nowhere (not in
+  // counts.hired, not in live metrics), audit-visible only.
+  let cancelledRows: PipelineRow[] = [];
   let otherUserName: string | null = null;
   const counts: Record<Stage, number> = {
     applied: 0,
@@ -502,162 +644,13 @@ export default async function PipelinePage({
     }
 
     rows = scopedRows.filter((r) => r.bucket === stage);
-
-    // ---- Location distance sub-line ----
-    //
-    // Originally landed alongside a Match column read (Prompt 4) that
-    // joined CandidateMatch. The Match column was pulled after the
-    // deterministic scorer (5665a8a) got reverted (220e381), leaving
-    // every stored CandidateMatch row stale; the join was removed with
-    // the column so the pipeline page does not read CandidateMatch at
-    // all anymore. Find Matches on /jobs still reads + writes
-    // CandidateMatch via its own surface — only this page's read was
-    // dropped. When a future scorer ships, re-introduce the join here.
-    //
-    // Distance sub-line — Candidate.lat/lng (backfilled by
-    // scripts/geocode-candidates.ts) feeds the candidate side;
-    // Job.locationZip / locationCity / locationState feeds the job
-    // side via the shared Nominatim geocoder in src/lib/geocode.ts
-    // (the same module-level cache the candidate-search route uses,
-    // so a recruiter who's already searched Akron OH pays zero
-    // Nominatim hits on the pipeline render). Unique job locations
-    // are de-duped before the geocoder loop so cold-start hits scale
-    // with distinct locations, not row count.
-    if (rows.length > 0) {
-      const rfCandidateIds: number[] = [];
-      const cuidCandidateIds: string[] = [];
-      const rfJobIds: number[] = [];
-      const cuidJobIds: string[] = [];
-      for (const r of rows) {
-        if (typeof r.candidateId === "number") rfCandidateIds.push(r.candidateId);
-        else if (typeof r.candidateId === "string") cuidCandidateIds.push(r.candidateId);
-        if (typeof r.jobId === "number") rfJobIds.push(r.jobId);
-        else if (typeof r.jobId === "string") cuidJobIds.push(r.jobId);
-      }
-
-      // Candidate lat/lng + rfId<->cuid mapping. The Candidate table
-      // holds every candidate (RF-imported has rfId set; Ace-native
-      // has rfId null), so a single query covers both row shapes.
-      const candidateOr: Prisma.CandidateWhereInput[] = [];
-      if (rfCandidateIds.length > 0) candidateOr.push({ rfId: { in: rfCandidateIds } });
-      if (cuidCandidateIds.length > 0) candidateOr.push({ id: { in: cuidCandidateIds } });
-      const candidateLatLngRows = candidateOr.length > 0
-        ? await prisma.candidate.findMany({
-            where: { organizationId: org.id, OR: candidateOr },
-            select: { id: true, rfId: true, lat: true, lng: true },
-          })
-        : [];
-      const candidateLatLngByCuid = new Map<string, { lat: number; lng: number }>();
-      const candidateLatLngByRfId = new Map<number, { lat: number; lng: number }>();
-      for (const c of candidateLatLngRows) {
-        if (c.lat != null && c.lng != null) {
-          const point = { lat: c.lat, lng: c.lng };
-          candidateLatLngByCuid.set(c.id, point);
-          if (c.rfId != null) candidateLatLngByRfId.set(c.rfId, point);
-        }
-      }
-
-      // Job zip/city/state + legacyRfId<->cuid mapping.
-      const jobOr: Prisma.JobWhereInput[] = [];
-      if (rfJobIds.length > 0) jobOr.push({ legacyRfId: { in: rfJobIds } });
-      if (cuidJobIds.length > 0) jobOr.push({ id: { in: cuidJobIds } });
-      const jobLocRows = jobOr.length > 0
-        ? await prisma.job.findMany({
-            where: { organizationId: org.id, OR: jobOr },
-            select: {
-              id: true,
-              legacyRfId: true,
-              locationZip: true,
-              locationCity: true,
-              locationState: true,
-            },
-          })
-        : [];
-      type JobLoc = { zip: string | null; city: string | null; state: string | null };
-      const jobLocByCuid = new Map<string, JobLoc>();
-      const jobLocByRfId = new Map<number, JobLoc>();
-      for (const j of jobLocRows) {
-        const loc: JobLoc = {
-          zip: j.locationZip,
-          city: j.locationCity,
-          state: j.locationState,
-        };
-        jobLocByCuid.set(j.id, loc);
-        if (j.legacyRfId != null) {
-          jobLocByRfId.set(j.legacyRfId, loc);
-        }
-      }
-
-      // Distance sub-line. De-dupe job locations first so each unique
-      // (zip OR city,state) string fires at most one Nominatim hit per
-      // cold process. The geocoder's module-level cache covers the
-      // warm-process case for free.
-      const jobLocKey = (loc: JobLoc): string => {
-        const zip = (loc.zip ?? "").trim();
-        if (zip) return `zip:${zip.toLowerCase()}`;
-        const parts = [loc.city, loc.state]
-          .map((s) => (s ?? "").trim())
-          .filter(Boolean);
-        return parts.length > 0 ? `cs:${parts.join(",").toLowerCase()}` : "";
-      };
-      const jobLocQuery = (loc: JobLoc): string => {
-        const zip = (loc.zip ?? "").trim();
-        if (zip) return zip;
-        const parts = [loc.city, loc.state]
-          .map((s) => (s ?? "").trim())
-          .filter(Boolean);
-        return parts.join(", ");
-      };
-      const uniqueJobLocs = new Map<string, JobLoc>();
-      for (const r of rows) {
-        const jobLoc =
-          typeof r.jobId === "string"
-            ? jobLocByCuid.get(r.jobId)
-            : jobLocByRfId.get(r.jobId);
-        if (!jobLoc) continue;
-        const key = jobLocKey(jobLoc);
-        if (key) uniqueJobLocs.set(key, jobLoc);
-      }
-      const jobLatLngByKey = new Map<string, { lat: number; lng: number } | null>();
-      // Serial loop intentional — keeps Nominatim within its usage
-      // policy (one request at a time). Warm-cache hits are sync and
-      // cheap; only cold strings actually round-trip. Array.from
-      // wrapper matches the existing codebase pattern for Map iteration
-      // (the tsconfig target does not enable downlevelIteration).
-      for (const [key, loc] of Array.from(uniqueJobLocs.entries())) {
-        const query = jobLocQuery(loc);
-        if (!query) {
-          jobLatLngByKey.set(key, null);
-          continue;
-        }
-        jobLatLngByKey.set(key, await geocodePill(query));
-      }
-
-      // Attach distanceLine to each currently-rendered row.
-      for (const r of rows) {
-        const candidatePoint =
-          typeof r.candidateId === "string"
-            ? candidateLatLngByCuid.get(r.candidateId)
-            : candidateLatLngByRfId.get(r.candidateId);
-        const jobLoc =
-          typeof r.jobId === "string"
-            ? jobLocByCuid.get(r.jobId)
-            : jobLocByRfId.get(r.jobId);
-        if (candidatePoint && jobLoc) {
-          const key = jobLocKey(jobLoc);
-          const jobPoint = key ? jobLatLngByKey.get(key) : null;
-          if (jobPoint) {
-            const miles = haversineMiles(
-              candidatePoint.lat,
-              candidatePoint.lng,
-              jobPoint.lat,
-              jobPoint.lng,
-            );
-            r.distanceLine = `(${miles} ${miles === 1 ? "mile" : "miles"})`;
-          }
-        }
-      }
-    }
+    // Cancelled rows are owner-scoped like every other bucket; they're
+    // surfaced inside the Hired tab (not a separate tab) and excluded
+    // from counts.hired (their bucket is "cancelled", never "hired").
+    // bucket is typed to the main pipeline stages, but cancelled rows are
+    // pushed with a cast `bucket: "cancelled"` upstream — compare as a
+    // string to read that runtime value without fighting the type.
+    cancelledRows = scopedRows.filter((r) => (r.bucket as string) === "cancelled");
 
     // ---- Applicants + Kept assembly ----
     //
@@ -1005,6 +998,29 @@ export default async function PipelinePage({
 
     counts.applied = appliedRows.length;
     counts.kept = keptRows.length;
+
+    // ---- Location distance sub-line ----
+    //
+    // Candidate.lat/lng (backfilled by scripts/geocode-candidates.ts)
+    // feeds the candidate side; Job.locationZip / locationCity /
+    // locationState feeds the job side via the shared Nominatim geocoder
+    // in src/lib/geocode.ts (the same module-level cache the candidate-
+    // search route uses, so a recruiter who's already searched Akron OH
+    // pays zero Nominatim hits on the pipeline render).
+    //
+    // Scoped to whichever tab is being rendered so cold-start hits scale
+    // with the visible row set, not the whole pipeline. Applicants/Kept
+    // get the same sub-line as the main pipeline stages (Item 1A); the
+    // Hired tab also geocodes its appended cancelled rows so they carry
+    // the distance too.
+    if (stage === "applied") {
+      await attachDistanceLines(appliedRows, org.id);
+    } else if (stage === "kept") {
+      await attachDistanceLines(keptRows, org.id);
+    } else {
+      await attachDistanceLines(rows, org.id);
+      if (stage === "hired") await attachDistanceLines(cancelledRows, org.id);
+    }
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to fetch pipeline";
   }
@@ -1029,6 +1045,12 @@ export default async function PipelinePage({
         r.jobTitle.toLowerCase().includes(needle) ||
         r.clientName.toLowerCase().includes(needle),
     );
+    cancelledRows = cancelledRows.filter(
+      (r) =>
+        r.candidateName.toLowerCase().includes(needle) ||
+        r.jobTitle.toLowerCase().includes(needle) ||
+        r.clientName.toLowerCase().includes(needle),
+    );
   }
 
   if (stage === "pending_start") {
@@ -1044,6 +1066,14 @@ export default async function PipelinePage({
       return tb - ta;
     });
   }
+
+  // Cancelled rows (surfaced under the Hired tab) sort newest-first by
+  // last action, same as the default bucket sort above.
+  cancelledRows.sort((a, b) => {
+    const ta = a.lastActionAt ? new Date(a.lastActionAt).getTime() : 0;
+    const tb = b.lastActionAt ? new Date(b.lastActionAt).getTime() : 0;
+    return tb - ta;
+  });
 
   // Ace 67.11: pagination dropped on every pipeline tab. The main-
   // pipeline buckets (submitted / interviewing / offer / pending_start /
@@ -1086,6 +1116,7 @@ export default async function PipelinePage({
         rows={pageRows}
         appliedRows={appliedRows}
         keptRows={keptRows}
+        cancelledRows={cancelledRows}
         stage={stage}
         q={q}
         counts={counts}

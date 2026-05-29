@@ -145,6 +145,10 @@ export type LocalJobRow = {
   jobCuid?: string | null;
   jobTitle: string;
   jobLocation: string;
+  // "(X.X mi)" candidate→job distance, computed server-side in
+  // local-profile.tsx (Item 1B). null when the candidate has no lat/lng
+  // or the job location can't be geocoded — the pill shows no distance.
+  distance?: string | null;
   jobDescription: string;
   jobSalaryRange: string;
   clientRfId: number;
@@ -744,6 +748,9 @@ function LocalJobActionRow({
           <span className="truncate text-sm font-medium text-court-fg">{job.jobTitle}</span>
           {job.clientName && (
             <span className="truncate text-xs text-court-fg-muted">· {job.clientName}</span>
+          )}
+          {job.distance && (
+            <span className="shrink-0 text-xs text-court-fg-muted">{job.distance}</span>
           )}
           <StageBadge bucket={normalizedStage as PipelineBucket} />
           {nextInterview && (

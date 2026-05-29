@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Target } from "lucide-react";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { getRfClientsForOrg, getRfContactsForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { extractFeePctFromCustomFields } from "@/lib/clients";
+import { formatDistanceSubLine } from "@/lib/distance";
 import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/local-candidate-actions";
 import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
 import { LocalEditableSkills } from "@/app/candidates/[id]/local-editable-skills";
@@ -73,6 +75,11 @@ export async function LocalCandidateProfile({
         currentDesignation: true,
         currentOrganization: true,
         location: true,
+        // lat/lng (backfilled by scripts/geocode-candidates.ts) feed the
+        // candidate side of the job-pill distance (Item 1B). Null on
+        // candidates that haven't been geocoded — distance just blanks.
+        lat: true,
+        lng: true,
         linkedinProfile: true,
         skills: true,
         tags: true,
@@ -440,6 +447,64 @@ export async function LocalCandidateProfile({
     interviewsByJob.set(key, list);
   }
 
+  // ---- Job-pill distance (Item 1B) ----
+  // Candidate.lat/lng (selected above) vs. each linked job's Neon
+  // location (zip / city / state) through the SAME shared geocoder +
+  // helper the pipeline uses (src/lib/geocode.ts + formatDistanceSubLine
+  // in src/lib/distance.ts — no second helper, no second geocoder). The
+  // distance is keyed by placementId so the jobRows map can attach it.
+  // Blank where the candidate has no lat/lng or the job side can't be
+  // resolved — no distance shown, no error (same blank rule as the
+  // pipeline). Query is org-scoped per Rule 8.
+  const distanceByPlacementId = new Map<string, string>();
+  if (candidate.lat != null && candidate.lng != null) {
+    const placementJobCuids = placements
+      .map((p) => p.jobId)
+      .filter((x): x is string => typeof x === "string" && x.length > 0);
+    const placementJobRfIds = placements
+      .map((p) => p.jobRfId)
+      .filter((x): x is number => typeof x === "number");
+    const jobLocOr: Prisma.JobWhereInput[] = [];
+    if (placementJobCuids.length > 0) jobLocOr.push({ id: { in: placementJobCuids } });
+    if (placementJobRfIds.length > 0) jobLocOr.push({ legacyRfId: { in: placementJobRfIds } });
+    const jobLocRows = jobLocOr.length > 0
+      ? await prisma.job.findMany({
+          where: { organizationId: candidate.organizationId, OR: jobLocOr },
+          select: {
+            id: true,
+            legacyRfId: true,
+            locationZip: true,
+            locationCity: true,
+            locationState: true,
+          },
+        })
+      : [];
+    type JobLoc = { zip: string | null; city: string | null; state: string | null };
+    const jobLocByCuid = new Map<string, JobLoc>();
+    const jobLocByRfId = new Map<number, JobLoc>();
+    for (const j of jobLocRows) {
+      const loc: JobLoc = { zip: j.locationZip, city: j.locationCity, state: j.locationState };
+      jobLocByCuid.set(j.id, loc);
+      if (j.legacyRfId != null) jobLocByRfId.set(j.legacyRfId, loc);
+    }
+    for (const p of placements) {
+      const loc = p.jobId
+        ? jobLocByCuid.get(p.jobId)
+        : p.jobRfId != null
+          ? jobLocByRfId.get(p.jobRfId)
+          : null;
+      if (!loc) continue;
+      const line = await formatDistanceSubLine(
+        candidate.lat,
+        candidate.lng,
+        loc.zip,
+        loc.city,
+        loc.state,
+      );
+      if (line) distanceByPlacementId.set(p.id, line);
+    }
+  }
+
   const jobRows: LocalJobRow[] = placements.map((p) => {
     const rfJob = p.jobRfId != null
       ? allJobs.find((j) => j.id === p.jobRfId) ?? null
@@ -507,6 +572,9 @@ export async function LocalCandidateProfile({
       jobCuid: p.jobId,
       jobTitle: job?.title ?? "(job)",
       jobLocation: job?.location ?? "",
+      // "(X.X mi)" candidate→job distance (Item 1B). Blank when either
+      // side can't resolve. Same helper + geocoder the pipeline uses.
+      distance: distanceByPlacementId.get(p.id) ?? null,
       jobDescription:
         (p.jobRfId != null ? overrideByJob.get(p.jobRfId) : null) ??
         rawDescription,
