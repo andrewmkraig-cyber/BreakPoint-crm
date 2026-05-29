@@ -34,6 +34,14 @@ export async function fetchNominatim(url: string): Promise<GeoHit | null> {
       // every consumer falls back to a degraded path on null return.
       signal: AbortSignal.timeout(5000),
     });
+    // Nominatim's published usage policy is one request per second;
+    // a burst on a cold pipeline render (many distinct job locations)
+    // can earn a 429. Treat it the same way we treat un-geocodable
+    // input: silently return null so geocodePill caches the null and
+    // the caller's distance sub-line renders fully blank. No console
+    // noise, no thrown error — the Location cell stays clean and the
+    // next warm process will pick up the cached miss without re-asking.
+    if (res.status === 429) return null;
     if (!res.ok) return null;
     const arr = (await res.json()) as NominatimHit[];
     if (!Array.isArray(arr) || arr.length === 0) return null;

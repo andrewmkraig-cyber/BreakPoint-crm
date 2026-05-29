@@ -1135,7 +1135,15 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
 // placeholder) per the blank-cell rule that already governs the Salary
 // + Location columns.
 function MatchCell({ row }: { row: PipelineRow }) {
-  if (row.matchScore == null) {
+  // Blank cell for null/undefined OR a stored 0. A stored 0 means the
+  // scorer ran but no real match data was produced (e.g. the candidate
+  // resume couldn't be scored against the JD, or the deterministic
+  // axes all came back empty), so it carries no information for the
+  // recruiter — rendering the gray-tier "0" badge from scoreTone is
+  // misleading. Treat 0 the same as "no score" and let the cell read
+  // blank, matching the blank-cell rule that already governs Salary
+  // and Location.
+  if (row.matchScore == null || row.matchScore === 0) {
     return <td className="px-3 py-2 align-top" />;
   }
   return (
