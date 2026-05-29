@@ -942,14 +942,14 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                 stack rather than a wide side-by-side
                                 row. Same chips, same order, same deep-
                                 links — only the layout shrinks. */}
-                            <div className="flex flex-col items-end gap-1">
+                            <div className="ml-auto flex w-28 flex-col gap-1">
                               {r.bucket === "interviewing" && r.nextInterview && (
                                 <Link
                                   href={`/candidates/${r.candidateId}?edit=interview&interviewId=${encodeURIComponent(r.nextInterview.id)}`}
                                   onClick={(e) => e.stopPropagation()}
                                   title={`Edit interview · Next: ${formatInterviewWhen(r.nextInterview.scheduledAt)} · ${formatInterviewTypeShort(r.nextInterview.type)}`}
                                   aria-label="Edit interview"
-                                  className="inline-flex h-6 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-border bg-court-surface-subtle px-2 text-[10px] font-semibold text-court-fg-muted shadow-sm transition hover:bg-court-surface hover:text-court-fg"
+                                  className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md borderborder-court-border bg-court-surface-subtle px-2 text-[10px] font-semibold text-court-fg-muted shadow-sm transition hover:bg-court-surface hover:text-court-fg"
                                 >
                                   <CalendarClock className="h-3 w-3" />
                                 </Link>
@@ -958,7 +958,7 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                 <Link
                                   href={`/candidates/${r.candidateId}`}
                                   onClick={(e) => e.stopPropagation()}
-                                  className="inline-flex h-6 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2 text-[10px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
+                                  className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md borderborder-blue-200 bg-blue-50 px-2 text-[10px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
                                   title="Schedule interview on candidate profile"
                                   aria-label="Schedule interview"
                                 >
@@ -983,7 +983,7 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                   <Link
                                     href={`/candidates/${r.candidateId}?schedule=interview&jobId=${r.jobId}`}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="inline-flex h-6 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2 text-[10px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
+                                    className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md borderborder-blue-200 bg-blue-50 px-2 text-[10px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
                                     title="Schedule another interview on candidate profile"
                                     aria-label="Schedule interview"
                                   >
@@ -993,7 +993,7 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                   <Link
                                     href={`/candidates/${r.candidateId}`}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="inline-flex h-6 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-purple-200 bg-purple-50 px-2 text-[10px] font-semibold text-purple-700 shadow-sm transition hover:bg-purple-100 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-950/60"
+                                    className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md borderborder-purple-200 bg-purple-50 px-2 text-[10px] font-semibold text-purple-700 shadow-sm transition hover:bg-purple-100 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-950/60"
                                     title="Record offer on candidate profile"
                                     aria-label="Record offer"
                                   >
@@ -1007,7 +1007,7 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                   <Link
                                     href={`/candidates/${r.candidateId}?edit=offer&jobId=${r.jobId}`}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="inline-flex h-6 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-border bg-court-surface-subtle px-2 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface"
+                                    className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md borderborder-court-border bg-court-surface-subtle px-2 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface"
                                     title="Edit offer details"
                                     aria-label="Edit offer"
                                   >
@@ -1017,7 +1017,7 @@ export function PipelineView({ rows, appliedRows, keptRows, stage, q, counts, ow
                                   <Link
                                     href={`/candidates/${r.candidateId}?edit=placement&jobId=${r.jobId}`}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="inline-flex h-6 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-2 text-[10px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
+                                    className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md borderborder-court-brand bg-court-brand-tint px-2 text-[10px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
                                     title="Record placement"
                                     aria-label="Record placement"
                                   >
@@ -1113,11 +1113,11 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
             Action column doesn't dominate the row. Edit Placement on
             top, Confirm Start on the bottom — same ordering as the
             side-by-side layout this replaced. */}
-        <div className="flex flex-col items-end gap-1">
+        <div className="ml-auto flex w-28 flex-col gap-1">
           <Link
             href={`/candidates/${row.candidateId}?edit=placement&jobId=${row.jobId}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-md border border-slate-400 bg-slate-100 px-2 text-[10px] font-semibold text-slate-600 shadow-sm transition hover:bg-slate-200 dark:border-slate-500 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800"
+            className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md border border-slate-400 bg-slate-100 px-2 text-[10px] font-semibold text-slate-600 shadow-sm transition hover:bg-slate-200 dark:border-slate-500 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800"
             title="Edit placement details"
           >
             <Edit3 className="h-3 w-3" />
@@ -1126,7 +1126,7 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
           <Link
             href={`/candidates/${row.candidateId}?confirmStart=1&jobId=${row.jobId}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-2 text-[10px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
+            className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-2 text-[10px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
             title="Confirm start"
           >
             <CheckCircle2 className="h-3 w-3" />
@@ -1310,7 +1310,7 @@ function RejectButton({ placementId, candidateName }: { placementId: string; can
         disabled={isPending}
         title="Reject this candidate for this job"
         aria-label="Reject"
-        className="h-6 whitespace-nowrap px-2 text-[10px]"
+        className="h-6 w-full whitespace-nowrap px-2 text-[10px]"
       >
         {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
         <span className="hidden md:inline">Reject</span>
@@ -1383,11 +1383,13 @@ function formatSourceLabel(raw: string | null): string {
 // merge. Submit reuses the Court Mode brand tokens so the affirmative
 // action follows whichever Court Mode is active.
 // Ace 68.0 polish: chip height dropped h-7 → h-6, padding px-2.5 → px-2,
-// text-[11px] → text-[10px] so the per-row Action cell reads thinner.
-// Used in tandem with the flex-col stack wrappers below so chips line up
-// vertically inside the action cell instead of running side-by-side.
+// text-[11px] → text-[10px]; `w-full` lets each chip fill its parent so
+// the stacked Action cell renders every chip at identical width
+// regardless of label length (Submit / Keep / Reject all the same
+// silhouette — recruiter screenshot showed varying widths read sloppy).
+// The fixed `w-28` lives on the wrapper around these chips.
 const ROW_ACTION_BASE =
-  "inline-flex h-6 items-center justify-center gap-1 whitespace-nowrap rounded-md border px-2 text-[10px] font-semibold shadow-sm transition disabled:opacity-60";
+  "inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md border px-2 text-[10px] font-semibold shadow-sm transition disabled:opacity-60";
 
 const ROW_ACTION_CLASS = {
   primary: cn(
@@ -1781,7 +1783,7 @@ function AppliedRowView({
       <UniformLeftRowCells row={row} lastActionAt={row.appliedAt} />
       <td className="px-3 py-2 align-top text-center text-sm text-court-fg-muted">{formatSourceLabel(row.source)}</td>
       <td className="px-3 py-2 align-top">
-        <div className="flex flex-col items-end gap-1">
+        <div className="ml-auto flex w-28 flex-col gap-1">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
           {/* Submit / Keep / Reject share the row-action chip style. */}
           <Link
@@ -1873,7 +1875,7 @@ function KeptRowView({
           for this row. */}
       <UniformLeftRowCells row={row} lastActionAt={row.keptAt} />
       <td className="px-3 py-2 align-top">
-        <div className="flex flex-col items-end gap-1">
+        <div className="ml-auto flex w-28 flex-col gap-1">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
           <Link
             href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}

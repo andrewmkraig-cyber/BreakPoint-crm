@@ -202,17 +202,29 @@ export default async function PipelinePage({
       }
     }
 
-    // (candidateRfId, jobRfId) -> earliest upcoming interview
+    // (candidateRfId, jobRfId) -> earliest upcoming interview, AND
+    // (ace:candidateId:jobId) for Ace-native interview rows.
+    // Ace 68.0: prior to this pass the map only keyed RF interviews,
+    // so the pipeline's per-row Edit Interview chip never rendered for
+    // Ace-native rows (which is most of the live data post-RF removal).
+    // Now we key whichever identity the Interview carries — both keys
+    // can fire if a row happens to have both, but the row-build sites
+    // below only look up the form that matches the row's identity.
     const nextByKey = new Map<string, NextInterview>();
     for (const iv of interviews) {
-      if (iv.candidateRfId == null) continue;
-      const key = `${iv.candidateRfId}:${iv.jobRfId}`;
-      if (nextByKey.has(key)) continue; // first match wins (orderBy asc)
-      nextByKey.set(key, {
+      const entry: NextInterview = {
         id: iv.id,
         scheduledAt: iv.scheduledAt.toISOString(),
         type: iv.type as NextInterview["type"],
-      });
+      };
+      if (iv.candidateRfId != null) {
+        const rfKey = `${iv.candidateRfId}:${iv.jobRfId}`;
+        if (!nextByKey.has(rfKey)) nextByKey.set(rfKey, entry);
+      }
+      if (iv.candidateId && iv.jobId) {
+        const aceKey = `ace:${iv.candidateId}:${iv.jobId}`;
+        if (!nextByKey.has(aceKey)) nextByKey.set(aceKey, entry);
+      }
     }
 
     // Phase 4b: key on whichever identity the placement carries — RF
@@ -412,9 +424,17 @@ export default async function PipelinePage({
           invoiceStatusByPlacementId.get(p.id) ?? null,
           invoicePaymentMethodByPlacementId.get(p.id) ?? null,
         ),
+        // Ace 68.0: route the lookup through whichever identity the
+        // placement carries. RF + RF uses the existing numeric key;
+        // Ace-native pairs use the new `ace:<cuid>:<cuid>` key so the
+        // pipeline can render Edit Interview on Ace-native rows too.
+        // Mixed pairs (one side RF, one side Ace) fall through to null
+        // — no interview record can match them.
         nextInterview: isRfCandidate && isRfJob
           ? nextByKey.get(`${p.candidateRfId}:${p.jobRfId}`) ?? null
-          : null,
+          : !isRfCandidate && !isRfJob && p.candidateId && p.jobId
+            ? nextByKey.get(`ace:${p.candidateId}:${p.jobId}`) ?? null
+            : null,
         clientOwnerId,
       });
     }
