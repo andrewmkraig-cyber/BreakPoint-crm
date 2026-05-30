@@ -591,13 +591,19 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
           >
             Cancel
           </button>
-          {/* Matches the "Save to Ace" CTA exactly: shared Button default
-              (primary) variant — rounded-md, transparent-tint fill, green
-              border + green text — with the disk icon. */}
-          <Button type="button" size="sm" onClick={onSave} disabled={isSaving}>
-            {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+          {/* Matches the "Save branding" / "Save to Ace" CTA exactly:
+              transparent green-tint fill, green border + green text,
+              rounded-md, with the disk icon (NOT the solid-filled green
+              shared Button primary variant). */}
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={isSaving}
+            className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+          >
+            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             Save
-          </Button>
+          </button>
         </div>
       </div>
     </div>
