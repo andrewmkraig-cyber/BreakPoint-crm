@@ -160,10 +160,18 @@ export function AppShell({
   // flush -6px overlap with the sidebar. The 68.0 trim broke that matched
   // pair (net offset jumped to -14/-26/-38px, clipping the filter labels), so
   // this branch is exempt; the slide-left still applies to every other route.
+  // Below md the sidebar is hidden (mobile / PWA), so the slim left gutter
+  // (pl-1) that exists to tuck content against the sidebar has nothing to
+  // tuck against — it just makes the page left-heavy with a wide empty
+  // strip on the right. Keep the base padding symmetric (p-6 left == right)
+  // and only apply the tighter left from md up, where the sidebar reappears.
+  // The isFullBleed (/candidates) branch keeps its base pl-3 — that gutter
+  // is matched to the filter rail's hard-coded negative margins at
+  // candidates/page.tsx and isn't the surface being centered here.
   const isFullBleed = pathname === "/candidates";
   const mainCls = isFullBleed
     ? "min-w-0 flex-1 p-6 pl-3 pt-4 md:p-8 md:pl-4 md:pt-4 xl:px-8 xl:pl-8 2xl:px-12 2xl:pl-12"
-    : "min-w-0 flex-1 p-6 pl-1 pt-4 md:p-8 md:pl-2 md:pt-4 xl:mx-auto xl:w-full xl:max-w-[1600px] xl:px-8 xl:pl-3 2xl:px-12 2xl:pl-4";
+    : "min-w-0 flex-1 p-6 pt-4 md:p-8 md:pl-2 md:pt-4 xl:mx-auto xl:w-full xl:max-w-[1600px] xl:px-8 xl:pl-3 2xl:px-12 2xl:pl-4";
 
   // MailProvider polls /api/mail/unread every 30s; the SSR count seeds
   // its initial value so the badge has a number to show before the
