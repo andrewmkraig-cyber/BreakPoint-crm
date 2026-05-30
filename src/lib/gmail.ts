@@ -287,14 +287,28 @@ async function withSignature(input: SendEmailInput): Promise<SendEmailInput> {
 // fresh signature lands on a clean tail.
 function stripExistingHtmlSignature(body: string): string {
   const idx = body.indexOf(ACE_SIGNATURE_MARKER);
-  if (idx < 0) return body;
-  const head = body.slice(0, idx);
-  // Drop the "<br/><br/><div>-- </div>" preamble that we prepend to the
-  // sig in htmlSigBlock so it doesn't pile up across re-signs. Anchored
-  // to end-of-string with optional whitespace.
-  return head
-    .replace(/(?:\s*<br\s*\/?>\s*){1,4}(?:<div[^>]*>\s*--\s*<\/div>\s*)?$/i, "")
-    .replace(/\s+$/, "");
+  if (idx >= 0) {
+    const head = body.slice(0, idx);
+    // Drop the "<br/><br/><div>-- </div>" preamble that we prepend to the
+    // sig in htmlSigBlock so it doesn't pile up across re-signs. Anchored
+    // to end-of-string with optional whitespace.
+    return head
+      .replace(/(?:\s*<br\s*\/?>\s*){1,4}(?:<div[^>]*>\s*--\s*<\/div>\s*)?$/i, "")
+      .replace(/\s+$/, "");
+  }
+  // No marker found — but the ACE_SIGNATURE_MARKER is an HTML comment, and
+  // sanitizers / forwarding can strip HTML comments while leaving the rest
+  // of the signature intact. Fall back to the "-- " delimiter block
+  // (SIGNATURE_DELIMITER_HTML, which withSignature always prepends ahead of
+  // the sig) so a marker-less prior signature still gets removed instead of
+  // stacking a second copy. Mirrors stripExistingTextSignature, which
+  // already anchors on the plain-text "-- " delimiter. Take the LAST such
+  // delimiter so only the trailing signature block is cut.
+  const delimRe = /(?:\s*<br\s*\/?>\s*){1,4}<div[^>]*>\s*--\s*<\/div>/gi;
+  let lastDelimIdx = -1;
+  for (let m = delimRe.exec(body); m; m = delimRe.exec(body)) lastDelimIdx = m.index;
+  if (lastDelimIdx < 0) return body;
+  return body.slice(0, lastDelimIdx).replace(/\s+$/, "");
 }
 
 // Returns the body with any prior "-- " plain-text signature block

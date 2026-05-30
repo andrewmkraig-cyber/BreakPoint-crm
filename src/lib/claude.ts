@@ -833,6 +833,26 @@ export type SubmittalInput = {
   clientContactFirstName?: string;
 };
 
+// Defense against Claude occasionally ignoring the "no signature" prompt
+// instruction and tacking a closing sign-off (e.g. "Best,\nAndrew Kraig\n
+// BreakPoint Talent") onto the submittal body. That sign-off has no
+// ACE_SIGNATURE_MARKER, so the send path's withSignature can't strip it and
+// then appends the real signature on top — two stacked signatures, most
+// visible in mobile HTML mail. We remove a trailing sign-off block here so
+// the recruiter's real email signature is the only closing.
+//
+// Conservative by design: only fires when a known closing salutation sits on
+// its own line near the end, immediately followed (after an optional comma)
+// by a newline and a name/title block. Intentional call-to-action closers
+// like "Let me know if you'd like to set up an interview this week." don't
+// start with a salutation, so they're never touched.
+const SUBMITTAL_SIGNOFF_RE =
+  /\n+[ \t]*(?:Best regards|Best wishes|Best|Warmest regards|Warm regards|Warmly|Kindest regards|Kind regards|Regards|Thanks so much|Many thanks|Thank you|Thanks|Sincerely|Cheers|Talk soon|All the best|Respectfully)[ \t]*,?[ \t]*\n[\s\S]*$/i;
+
+function stripTrailingSignOff(text: string): string {
+  return text.replace(SUBMITTAL_SIGNOFF_RE, "").replace(/\s+$/, "");
+}
+
 export async function generateSubmittalWriteup(input: SubmittalInput): Promise<string> {
   const anthropic = getClaude();
   const fullName = [input.candidate.firstName, input.candidate.lastName].filter(Boolean).join(" ") || "Candidate";
@@ -927,8 +947,10 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
 
   if (!text) throw new Error("Claude returned no submittal writeup. Try again.");
   // Preserve `**…**` / `__…__` markers — they're load-bearing for the HTML
-  // conversion on send. stripMarkdownToPlain would flatten them.
-  return text;
+  // conversion on send. stripMarkdownToPlain would flatten them. Strip any
+  // stray closing sign-off so the recruiter's real signature isn't doubled
+  // when withSignature appends it at send time.
+  return stripTrailingSignOff(text);
 }
 
 // Summarizes benefits material — PDFs and/or pasted text — into a clean,
