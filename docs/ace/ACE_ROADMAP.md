@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-30 · Ace 69.0
+Last updated: 2026-05-30 · Ace 70.0
 
 ## Active Build Sequence
 
@@ -82,6 +82,10 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 70.0 Approve-before-sending removal + interview Bcc + placement card alignment + template Save restyle (May 30, 2026)
+
+Four-item fix pass. (1) Removed the "approve before sending" toggle from Templates + Triggers entirely (`33c0a8b`) - triggered templates now send directly; the per-template and per-trigger `sendAsDraft` draft-diversion is gone from both the UI and the `templated-email.ts` / `trigger-fire.ts` send path (DB columns retained, no migration); the trigger `gmailConnected` signal was repurposed into a general "Gmail not connected so this auto-send trigger can't send" warning. (2) Added a Bcc field to the interview scheduler (`d7351c5`) - since a Google Calendar invite has no private Bcc bucket, a Bcc recipient (e.g. Austin) is delivered a separate private Gmail copy of the invite at client-invite send time, hidden from the candidate and client (`placement-shared.tsx` CcBccPicker, `local-placement-rows.tsx`, `interview-actions.ts` sendInterviewInvite). (3) Equal-height + aligned Billing Contact / Hiring Manager cards in the Edit/Confirm placement modal (`5e94832`) - flex-col cards + `mt-auto` bottom-anchored inputs under grid stretch. (4) Edit Template modal Save button restyled to match the Save branding / Save to Ace CTA (`b9c9eed`) - transparent green-tint fill, green border + text, rounded-md, disk icon (was the solid-filled shared Button primary). Full detail in ACE_STATE.md under What Shipped in Ace 70.0.
 
 ## Completed - Ace 69.0 RF two-profile split CLOSED + rail/mobile padding fixes + Edit Resume render fix (May 30, 2026)
 

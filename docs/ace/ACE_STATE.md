@@ -1,8 +1,22 @@
 # ACE_STATE.md
-Last updated: 2026-05-30 · Ace 69.0
-Current Version: Ace 69.0
+Last updated: 2026-05-30 · Ace 70.0
+Current Version: Ace 70.0
 Last Shipped: 2026-05-30
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 70.0 (2026-05-30)
+
+Four-item fix pass: approve-before-sending removal, interview-invite Bcc, placement-modal card alignment, and the Edit Template Save button restyle.
+
+- **Approve-before-sending removed from Templates + Triggers; triggers send directly (`33c0a8b`).** The per-template "Approve before sending" toggle + "Drafts to your inbox" indicator (`templates-view.tsx`) and the Edit-Trigger "Approve before sending" toggle + "Approve in drafts" chip + approve-tied warnings (`triggers-view.tsx`) were all removed. Runtime: `src/lib/templated-email.ts` no longer diverts a fire to draft on `template.sendAsDraft` / `forceDraft` — `effectiveMode` is purely the caller's mode; `src/lib/trigger-fire.ts` dropped the `forceDraft` plumbing and the `rule.sendAsDraft` read. The `gmailConnected` signal in the trigger cards/dialog was repurposed into a general "Gmail isn't connected, so this auto-send trigger can't send" warning (kept it load-bearing instead of orphaning it under `next/typescript` no-unused-vars). DB columns (`EmailTemplate.sendAsDraft`, `TriggerRule.sendAsDraft`) left in place — no migration, just no longer surfaced or read on the send path. Triggered templates now always send (subject to the caller's mode, which is `send` for every live trigger callsite).
+
+- **Bcc on the interview scheduler, delivered via a private Gmail copy (`d7351c5`).** The Schedule Interview modal's `CcBccPicker` (`src/components/placements/placement-shared.tsx`) gained a Bcc field beside Cc. A Google Calendar invite has no private Bcc bucket, so a Bcc recipient (e.g. Austin) is delivered a **separate Gmail copy** of the invite (same subject + description) at client-invite send time, hidden from the candidate and client. Wiring: `bccCsv` state on the schedule modal → `onScheduled` `bccEmails` → the client invite `EmailComposer` un-hides Bcc (Austin auto-offered via `BCC_TEAMMATE_OPTIONS`), pre-fills `initial.bcc`, and passes `draft.bcc` to `sendInterviewInvite`; the action (`src/app/candidates/[id]/interview-actions.ts`) sends the best-effort copy (`to: sender`, `bcc: recipients`) after the calendar event is created. Files: `placement-shared.tsx`, `local-placement-rows.tsx`, `interview-actions.ts`.
+
+- **Billing Contact + Hiring Manager cards equal height + aligned (`5e94832`).** In the Edit/Confirm placement modal (the one carrying the Cancel placement button), the side-by-side Billing contact / Hiring manager cards (`src/app/candidates/[id]/local-placement-rows.tsx`) rendered uneven because their helper paragraphs wrap to different line counts. Each card is now `flex flex-col` with the Name/Email block bottom-anchored via `mt-auto`; grid `align-items: stretch` keeps the two boxes equal height, so the inputs line up across both regardless of description length.
+
+- **Edit Template modal Save button restyled (`b9c9eed`).** Carryover cleanup. The template editor Save used the shared Button primary variant (solid-filled green). Replaced with a raw button matching the "Save branding" / "Save to Ace" CTA exactly (`src/app/settings/templates-view.tsx`): transparent `court-brand-tint` fill, `court-brand` border, `court-brand-dark` text, `rounded-md`, with the disk (Save) icon.
+
+Build clean (`npm run build` exits 0) after each of the four commits. Token-only color choices throughout (Court Mode tokens + the existing amber warning panel), so both light + dark modes are covered by construction; live two-mode visual confirmation is Andrew's after deploy (the live deploy lags repo — see `live-deploy-diverges-from-repo`).
 
 ## What Shipped in Ace 69.0 (2026-05-30)
 
