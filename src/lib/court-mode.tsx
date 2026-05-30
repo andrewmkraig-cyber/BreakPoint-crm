@@ -8,10 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  setAutoNightMode as persistAutoNightMode,
-  setCourtMode as persistCourtMode,
-} from "@/app/settings/appearance-actions";
+import { setAutoNightMode as persistAutoNightMode } from "@/app/settings/appearance-actions";
 
 // Court Mode is now two orthogonal axes:
 //   surface: "hard" | "clay" | "grass"   ← which palette family
@@ -142,28 +139,19 @@ function migrateLegacyStorage(): { surface: CourtSurface; theme: CourtTheme } | 
   }
 }
 
-// `fallback` carries the DB-backed UserProfile surface/theme (seeded from
-// the server). When localStorage is missing a key - the normal state after
-// an iOS PWA eviction - we fall back to the durable DB value instead of
-// snapping to Hard/Light, which is what made dark mode "forget" on a hard
-// close. The reconciliation effect then re-writes localStorage from the
-// restored value so subsequent reads are fast again.
-function readStored(fallback: {
-  surface: CourtSurface;
-  theme: CourtTheme;
-}): { surface: CourtSurface; theme: CourtTheme } {
-  if (typeof window === "undefined") return fallback;
+function readStored(): { surface: CourtSurface; theme: CourtTheme } {
+  if (typeof window === "undefined") return { surface: "hard", theme: "light" };
   try {
     const migrated = migrateLegacyStorage();
     if (migrated) return migrated;
     const s = window.localStorage.getItem(SURFACE_KEY);
     const t = window.localStorage.getItem(THEME_KEY);
     return {
-      surface: isSurface(s) ? s : fallback.surface,
-      theme: isTheme(t) ? t : fallback.theme,
+      surface: isSurface(s) ? s : "hard",
+      theme: isTheme(t) ? t : "light",
     };
   } catch {
-    return fallback;
+    return { surface: "hard", theme: "light" };
   }
 }
 
@@ -181,46 +169,28 @@ function applyToHtml(surface: CourtSurface, theme: CourtTheme) {
 export function CourtModeProvider({
   children,
   initialAutoNightMode = false,
-  initialSurface,
-  initialTheme,
 }: {
   children: ReactNode;
   // Seeded from the signed-in user's UserProfile in layout.tsx so the
   // preference is correct on first paint and follows the user across
   // devices. Defaults false for the unauthenticated /sign-in surface.
   initialAutoNightMode?: boolean;
-  // DB-backed Court Mode surface/theme (UserProfile.courtSurface/courtTheme),
-  // also seeded from layout.tsx. These are the durable source of truth used
-  // to repopulate the palette when localStorage was evicted on a PWA hard
-  // close. Strings (not the unions) because they arrive raw from the DB;
-  // validated to the defaults here.
-  initialSurface?: string;
-  initialTheme?: string;
 }) {
-  const seedSurface: CourtSurface = isSurface(initialSurface ?? null)
-    ? (initialSurface as CourtSurface)
-    : "hard";
-  const seedTheme: CourtTheme = isTheme(initialTheme ?? null)
-    ? (initialTheme as CourtTheme)
-    : "light";
-  // Seed from the DB values so the SSR HTML and the first client render
-  // agree (both run with the same server-read props). The pre-hydration
-  // script in layout.tsx has already stamped the real values onto <html>;
-  // the mount effect below reconciles against localStorage right after.
-  const [surface, setSurfaceState] = useState<CourtSurface>(seedSurface);
-  const [theme, setThemeState] = useState<CourtTheme>(seedTheme);
+  // Seed defaults so the SSR HTML matches the first client render —
+  // the pre-hydration script in layout.tsx has already stamped the
+  // real values onto <html> by the time this provider mounts.
+  const [surface, setSurfaceState] = useState<CourtSurface>("hard");
+  const [theme, setThemeState] = useState<CourtTheme>("light");
   const [autoNightMode, setAutoNightModeState] = useState<boolean>(
     initialAutoNightMode,
   );
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    const stored = readStored({ surface: seedSurface, theme: seedTheme });
+    const stored = readStored();
     setSurfaceState(stored.surface);
     setThemeState(stored.theme);
     setHydrated(true);
-    // seedSurface/seedTheme derive from stable props; intentionally run once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Reconciliation: keep <html> + storage in sync whenever state
@@ -251,12 +221,11 @@ export function CourtModeProvider({
   useEffect(() => {
     function onStorage(e: StorageEvent) {
       if (e.key !== SURFACE_KEY && e.key !== THEME_KEY) return;
-      const stored = readStored({ surface: seedSurface, theme: seedTheme });
+      const stored = readStored();
       applyToHtml(stored.surface, stored.theme);
     }
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const setSurface = useCallback((next: CourtSurface) => {
@@ -267,9 +236,6 @@ export function CourtModeProvider({
     try {
       window.localStorage.setItem(SURFACE_KEY, next);
     } catch {}
-    // Durable copy on UserProfile so the palette survives a localStorage
-    // eviction and follows the user across devices. Fire-and-forget.
-    void persistCourtMode({ surface: next }).catch(() => {});
   }, []);
 
   const setTheme = useCallback((next: CourtTheme) => {
@@ -280,7 +246,6 @@ export function CourtModeProvider({
     try {
       window.localStorage.setItem(THEME_KEY, next);
     } catch {}
-    void persistCourtMode({ theme: next }).catch(() => {});
   }, []);
 
   const toggleTheme = useCallback(() => {
@@ -292,7 +257,6 @@ export function CourtModeProvider({
       try {
         window.localStorage.setItem(THEME_KEY, next);
       } catch {}
-      void persistCourtMode({ theme: next }).catch(() => {});
       return next;
     });
   }, []);
@@ -380,22 +344,6 @@ export function useCourtMode(): CourtModeContextShape {
 // first paint matches the persisted palette — no flash. Also handles
 // the legacy "courtMode" migration inline so the very first render
 // after the upgrade reads correctly.
-//
-// `fallbackSurface` / `fallbackTheme` are the DB-backed UserProfile values
-// passed in from layout.tsx (a server component). When localStorage is empty
-// - the normal state after an iOS PWA evicts it on a hard close - the script
-// stamps the DB value instead of defaulting to Hard/Light, AND re-seeds
-// localStorage from it so the rest of the app reads the right palette without
-// a flash. This is what makes dark mode + the chosen surface survive a hard
-// close. The fallbacks are validated server-side, so the only values that can
-// be interpolated are the known enum strings (no injection surface).
-export function buildCourtModePreHydrationScript(
-  fallbackSurface?: string,
-  fallbackTheme?: string,
-): string {
-  const fs = isSurface(fallbackSurface ?? null) ? fallbackSurface : "hard";
-  const ft = isTheme(fallbackTheme ?? null) ? fallbackTheme : "light";
-  return `
-(function(){try{var ls=window.localStorage;var legacy=ls.getItem('courtMode');var s,t;if(legacy){s=legacy==='clay'?'clay':legacy==='grass'?'grass':'hard';t=(legacy==='clay'||legacy==='grass')?'dark':'light';ls.setItem('ace-court-surface',s);ls.setItem('ace-court-theme',t);ls.removeItem('courtMode');}else{s=ls.getItem('ace-court-surface');t=ls.getItem('ace-court-theme');if(!s){s='${fs}';ls.setItem('ace-court-surface',s);}if(!t){t='${ft}';ls.setItem('ace-court-theme',t);}}if(['hard','clay','grass','night'].indexOf(s)<0)s='hard';if(['light','dark'].indexOf(t)<0)t='light';document.documentElement.setAttribute('data-surface',s);document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
+export const COURT_MODE_PRE_HYDRATION_SCRIPT = `
+(function(){try{var ls=window.localStorage;var legacy=ls.getItem('courtMode');var s,t;if(legacy){s=legacy==='clay'?'clay':legacy==='grass'?'grass':'hard';t=(legacy==='clay'||legacy==='grass')?'dark':'light';ls.setItem('ace-court-surface',s);ls.setItem('ace-court-theme',t);ls.removeItem('courtMode');}else{s=ls.getItem('ace-court-surface')||'hard';t=ls.getItem('ace-court-theme')||'light';}if(['hard','clay','grass','night'].indexOf(s)<0)s='hard';document.documentElement.setAttribute('data-surface',s);document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
 `.trim();
-}

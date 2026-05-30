@@ -118,16 +118,6 @@ model UserProfile {
   // across devices; the chosen surface/theme stay in localStorage and
   // this flag only governs the automatic day/night flip.
   autoNightMode Boolean  @default(false)
-  // Court Mode surface + theme. These are ALSO mirrored into localStorage
-  // (ace-court-surface / ace-court-theme) for instant first-paint, but the
-  // DB copy is the durable source of truth: an installed PWA (iOS especially)
-  // evicts localStorage after inactivity/storage pressure, which used to reset
-  // dark mode + the chosen palette to Hard/Light on a hard close. Seeded back
-  // into the pre-hydration script + provider on boot so the preference survives
-  // an eviction and follows the user across devices. Nullable: null means
-  // "never explicitly chosen", so the client falls back to Hard/Light.
-  courtSurface String?
-  courtTheme   String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
