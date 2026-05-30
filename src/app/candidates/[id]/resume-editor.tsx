@@ -10,7 +10,7 @@ import {
   type RedactionRect,
 } from "@/app/candidates/[id]/brand-resume-actions";
 import { BRAND_LOGO_TRANSPARENT_BASE64 } from "@/lib/default-brand-logo";
-import { loadPdfjs, type PdfJsDocument } from "@/lib/pdfjs-loader";
+import { loadPdfjs, type PdfJsDocument, type PdfJsRenderTask } from "@/lib/pdfjs-loader";
 import { Button } from "@/components/ui/button";
 
 // Phase 5A.5.b — Edit Resume modal. The unified editor lets the
@@ -78,6 +78,15 @@ export function ResumeEditor({
   const [redactDragCurrent, setRedactDragCurrent] = useState<{ page: number; x: number; y: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map());
+  // In-flight pdfjs RenderTask per page (keyed by 1-based page number).
+  // Canvases are persistent DOM nodes (canvasRefs), so a fit-scale change
+  // can re-run the render effect while a prior page.render() is still
+  // painting the SAME canvas — pdfjs then throws "Cannot use the same
+  // canvas during multiple render() operations" and the interrupted task
+  // leaves the 2D-context transform half-applied, flipping/mirroring the
+  // page. We cancel the prior task before re-rendering and on cleanup so
+  // pdfjs unwinds its transform cleanly before the next pass.
+  const renderTasksRef = useRef<Map<number, PdfJsRenderTask>>(new Map());
   // Logo drag uses a ref instead of state so a fast pointer doesn't
   // lose deltas to async setState batching. pointerId is captured at
   // pointerdown so move/up can verify the gesture belongs to the
@@ -207,6 +216,10 @@ export function ResumeEditor({
     const doc = docRef.current;
     if (!doc || pages.length === 0 || fitScale == null) return;
     let cancelled = false;
+    // Stable Map instance (the ref never swaps); captured here so the
+    // cleanup closure reads the same object the effect body wrote to,
+    // per react-hooks/exhaustive-deps.
+    const renderTasks = renderTasksRef.current;
     (async () => {
       try {
         const rawDpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
@@ -224,6 +237,15 @@ export function ResumeEditor({
               MAX_CANVAS_AREA / (viewport.width * viewport.height),
             );
           }
+          // Cancel any render still in flight on THIS canvas before we
+          // touch its bitmap/transform — otherwise pdfjs sees two render()
+          // ops on one canvas (the error) and the old task corrupts the
+          // transform we're about to set.
+          const prevTask = renderTasks.get(i);
+          if (prevTask) {
+            prevTask.cancel();
+            renderTasks.delete(i);
+          }
           canvas.width = Math.round(viewport.width * outputScale);
           canvas.height = Math.round(viewport.height * outputScale);
           canvas.style.width = `${viewport.width}px`;
@@ -235,16 +257,28 @@ export function ResumeEditor({
           // and paint at the wrong resolution.
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.scale(outputScale, outputScale);
-          await page.render({ canvasContext: ctx, viewport }).promise;
+          const task = page.render({ canvasContext: ctx, viewport });
+          renderTasks.set(i, task);
+          await task.promise;
+          renderTasks.delete(i);
         }
       } catch (e) {
         if (cancelled) return;
+        // A cancel() (re-trigger or cleanup) rejects the promise with
+        // pdfjs's RenderingCancelledException — that's the intended path,
+        // not a failure, so swallow it instead of surfacing a red error.
+        if (isRenderingCancelled(e)) return;
         const msg = e instanceof Error ? e.message : "Failed to render PDF.";
         setLoadError(msg);
       }
     })();
     return () => {
       cancelled = true;
+      // Abort every still-painting render so the next effect run never
+      // starts a second render() on a canvas pdfjs is still using, and so
+      // it can unwind its transform before that next pass.
+      renderTasks.forEach((task) => task.cancel());
+      renderTasks.clear();
     };
   }, [pages, fitScale]);
 
@@ -722,5 +756,19 @@ export function ResumeEditor({
         </div>
       </div>
     </div>
+  );
+}
+
+// pdfjs rejects a cancelled render with a RenderingCancelledException whose
+// `.name` is "RenderingCancelledException". We match by name (the class
+// isn't exported from our thin loader shim) so a deliberate cancel — the
+// normal path when a fit-scale change or modal close re-runs/tears down the
+// render effect — isn't surfaced to the user as a load error.
+function isRenderingCancelled(e: unknown): boolean {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    "name" in e &&
+    (e as { name?: unknown }).name === "RenderingCancelledException"
   );
 }

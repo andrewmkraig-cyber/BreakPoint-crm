@@ -49,13 +49,19 @@ type PdfJsTextItem = {
 type PdfJsTextContent = {
   items: Array<PdfJsTextItem | { type: string }>;
 };
+type PdfJsRenderTask = { promise: Promise<void>; cancel(): void };
 type PdfJsPage = {
   getViewport(args: { scale: number }): PdfJsViewport;
   getTextContent(): Promise<PdfJsTextContent>;
+  // The underlying pdfjs RenderTask exposes cancel() alongside promise;
+  // we surface it so callers can abort an in-flight render before starting
+  // a new one on the same (reused) canvas — see ResumeEditor's render loop,
+  // which otherwise hit "Cannot use the same canvas during multiple
+  // render() operations" and a transform-corrupted (flipped) page.
   render(args: {
     canvasContext: CanvasRenderingContext2D;
     viewport: PdfJsViewport;
-  }): { promise: Promise<void> };
+  }): PdfJsRenderTask;
 };
 type PdfJsLib = {
   getDocument: (src: {
@@ -151,4 +157,4 @@ export async function loadPdfjs({
   }
 }
 
-export type { PdfJsDocument, PdfJsLib, PdfJsPage, PdfJsTextContent, PdfJsTextItem, PdfJsViewport };
+export type { PdfJsDocument, PdfJsLib, PdfJsPage, PdfJsRenderTask, PdfJsTextContent, PdfJsTextItem, PdfJsViewport };
