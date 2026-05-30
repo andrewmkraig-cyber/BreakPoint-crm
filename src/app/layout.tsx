@@ -11,7 +11,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getUnreadMailCount } from "@/lib/gmail";
 import {
-  COURT_MODE_PRE_HYDRATION_SCRIPT,
+  buildCourtModePreHydrationScript,
   CourtModeProvider,
 } from "@/lib/court-mode";
 
@@ -79,18 +79,35 @@ export default async function RootLayout({
   const session = await getServerSession(authOptions);
   let unreadMailCount = 0;
   let autoNightMode = false;
+  // DB-backed Court Mode palette. Null until the user explicitly picks one;
+  // null falls back to Hard/Light. These are the durable source of truth that
+  // survives a PWA localStorage eviction (the dark-mode "forget on hard close"
+  // bug) and follows the user across devices.
+  let courtSurface: string | undefined;
+  let courtTheme: string | undefined;
   if (session?.user?.email) {
     // Wrapped so a profile/mail lookup hiccup never 500s the app shell -
-    // this runs on every page render. Both values are decorative defaults
+    // this runs on every page render. All values are decorative defaults
     // (0 badge, light theme) if the read fails.
     try {
       const user = await prisma.user.findUnique({
         where: { email: session.user.email },
-        select: { id: true, profile: { select: { autoNightMode: true } } },
+        select: {
+          id: true,
+          profile: {
+            select: {
+              autoNightMode: true,
+              courtSurface: true,
+              courtTheme: true,
+            },
+          },
+        },
       });
       if (user) {
         unreadMailCount = await getUnreadMailCount(user.id);
         autoNightMode = user.profile?.autoNightMode ?? false;
+        courtSurface = user.profile?.courtSurface ?? undefined;
+        courtTheme = user.profile?.courtTheme ?? undefined;
       }
     } catch {
       // Keep the defaults.
@@ -107,10 +124,16 @@ export default async function RootLayout({
             paint is always default Hard/Light and flashes to the
             stored palette when the provider's useEffect fires later. */}
         <script
-          dangerouslySetInnerHTML={{ __html: COURT_MODE_PRE_HYDRATION_SCRIPT }}
+          dangerouslySetInnerHTML={{
+            __html: buildCourtModePreHydrationScript(courtSurface, courtTheme),
+          }}
         />
         <Providers>
-          <CourtModeProvider initialAutoNightMode={autoNightMode}>
+          <CourtModeProvider
+            initialAutoNightMode={autoNightMode}
+            initialSurface={courtSurface}
+            initialTheme={courtTheme}
+          >
             <AppShell unreadMailCount={unreadMailCount}>{children}</AppShell>
             <ReminderToastProvider />
           </CourtModeProvider>

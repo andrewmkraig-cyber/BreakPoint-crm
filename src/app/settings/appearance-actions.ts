@@ -34,6 +34,47 @@ export async function getAutoNightMode(): Promise<boolean> {
   return profile?.autoNightMode ?? false;
 }
 
+// Persist the chosen Court Mode surface / theme to UserProfile so the
+// preference survives a localStorage eviction (iOS PWA hard close) and
+// follows the user across devices. Mirrors the localStorage write the
+// client already does; either column can be written independently so a
+// theme toggle doesn't clobber the surface and vice versa. Fire-and-forget
+// on the client - the local state + localStorage are already correct for
+// this session even if the network write lags or fails.
+const SURFACE_VALUES = new Set(["hard", "clay", "grass", "night"]);
+const THEME_VALUES = new Set(["light", "dark"]);
+
+export async function setCourtMode(input: {
+  surface?: string;
+  theme?: string;
+}): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  const data: { courtSurface?: string; courtTheme?: string } = {};
+  if (input.surface && SURFACE_VALUES.has(input.surface)) {
+    data.courtSurface = input.surface;
+  }
+  if (input.theme && THEME_VALUES.has(input.theme)) {
+    data.courtTheme = input.theme;
+  }
+  if (data.courtSurface === undefined && data.courtTheme === undefined) {
+    return { ok: true };
+  }
+  try {
+    await prisma.userProfile.upsert({
+      where: { userId },
+      create: { userId, ...data },
+      update: data,
+    });
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Failed to save Court Mode.",
+    };
+  }
+}
+
 export async function setAutoNightMode(enabled: boolean): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
