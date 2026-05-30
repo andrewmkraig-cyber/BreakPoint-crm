@@ -753,9 +753,6 @@ function LocalJobActionRow({
             <span className="shrink-0 text-xs text-court-fg-muted">{job.distance}</span>
           )}
           <StageBadge bucket={normalizedStage as PipelineBucket} />
-          {nextInterview && (
-            <span className="truncate text-xs text-court-fg-muted">{formatNextInterviewLocal(nextInterview)}</span>
-          )}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-1.5">
           {canSubmit && (
@@ -928,17 +925,10 @@ function LocalJobActionRow({
   );
 }
 
-function formatNextInterviewLocal(iv: LocalInterview): string {
-  const d = new Date(iv.scheduledAt);
-  const date = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  const type = iv.type === "phone_screen" ? "Phone" : iv.type === "video" ? "Video" : "In-Person";
-  return `· ${date} · ${time} · ${type}`;
-}
-
-// InterviewRow removed — past interviews no longer render under the
-// row; `formatNextInterviewLocal` carries the next-upcoming interview
-// inline on the row title line.
+// Interview date/time no longer renders on the job pill — the next-upcoming
+// interview is still tracked (see `nextInterview` in LocalJobActionRow) only
+// to gate the Edit Interview button; the date/time itself lives in the
+// schedule/edit modal and on /calendar, not on the pill title line.
 
 function ScheduleDialog({
   candidateId,
@@ -1011,6 +1001,9 @@ function ScheduleDialog({
         : [];
       const result = await scheduleInterview({
         candidateId,
+        // Pass the exact pill's Placement row so scheduling updates it in
+        // place instead of minting a duplicate interviewing pill.
+        placementId: job.placementId,
         jobRfId: job.jobRfId,
         clientRfId: job.clientRfId,
         scheduledAt: snapped.toISOString(),

@@ -63,6 +63,11 @@ export type ScheduleInterviewInput = {
   // Exactly one of the two identifiers is set.
   candidateRfId?: number | null;
   candidateId?: string | null;
+  // The exact Placement row the pill is rendering, when known. Passing it
+  // lets scheduling UPDATE that row's stage in place instead of re-deriving
+  // the placement from (candidateId, jobRfId) — which misses for Ace-native
+  // rows whose stored jobRfId is null/synthetic and mints a duplicate pill.
+  placementId?: string | null;
   jobRfId: number;
   clientRfId: number;
   scheduledAt: string; // ISO datetime
@@ -122,11 +127,36 @@ function normalizeRefs(input: { candidateRfId?: number | null; candidateId?: str
 async function upsertInterviewingStage(args: {
   candidateRfId: number | null;
   candidateId: string | null;
+  placementId?: string | null;
   jobRfId: number;
   clientRfId: number;
   userId: string;
   organizationId: string;
 }) {
+  // Fast path: the caller handed us the exact Placement row the pill is
+  // rendering. Update it in place (bump to interviewing only if it's still
+  // an earlier stage) and stop — this is the canonical anti-duplicate path
+  // for Ace-native rows, where the (candidateId, jobRfId) lookup below
+  // would miss (stored jobRfId is null/synthetic) and mint a second pill.
+  // Skip synthetic optimistic ids that aren't real Placement rows yet.
+  if (args.placementId && !args.placementId.startsWith("local-applied-")) {
+    const row = await prisma.placement.findFirst({
+      where: { id: args.placementId, organizationId: args.organizationId },
+      select: { id: true, stage: true },
+    });
+    if (row) {
+      if (EARLIER_STAGES.has(row.stage)) {
+        await prisma.placement.update({
+          where: { id: row.id },
+          data: { stage: "interviewing", syncedToRf: false },
+        });
+      }
+      return;
+    }
+    // No row for that id (stale optimistic pill / cross-tenant id) — fall
+    // through to the identity-based upsert below.
+  }
+
   const whereUnique = args.candidateRfId != null
     ? { candidateRfId_jobRfId: { candidateRfId: args.candidateRfId, jobRfId: args.jobRfId } }
     : { candidateId_jobRfId: { candidateId: args.candidateId!, jobRfId: args.jobRfId } };
@@ -447,6 +477,7 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
     await upsertInterviewingStage({
       candidateRfId: ref.candidateRfId,
       candidateId: ref.candidateId,
+      placementId: input.placementId ?? null,
       jobRfId: input.jobRfId,
       clientRfId: input.clientRfId,
       userId: user.id,
