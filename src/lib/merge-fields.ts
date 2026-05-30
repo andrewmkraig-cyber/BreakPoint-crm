@@ -183,3 +183,57 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
   }
   return out;
 }
+
+// ── Template body HTML helpers ────────────────────────────────────────
+// Email template bodies used to be plain text. The rich template editor
+// now stores HTML (so recruiters can bold copy and bold inserted merge
+// fields), but legacy templates and several send paths still deal in
+// plain text. These pure helpers let every surface treat a body as
+// "plain text OR HTML" without guessing. Pure string functions only —
+// safe to import from both client components and server actions.
+
+// Heuristic: does this string already carry HTML element markup? A bare
+// "<3" or "a < b" won't match; "<p>", "<strong>", "<br/>" all do.
+export function looksLikeHtml(s: string): boolean {
+  return /<[a-z][a-z0-9]*(\s[^>]*)?\/?>/i.test(s);
+}
+
+function escapeHtmlEntities(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Convert a stored template body to the HTML the TipTap editor seeds
+// from. Already-HTML bodies pass through untouched; legacy plain text is
+// escaped and its newlines become <br/> inside a single paragraph
+// (mirrors the mail composer's pickTemplate conversion).
+export function templateBodyToEditorHtml(body: string): string {
+  if (!body) return "";
+  if (looksLikeHtml(body)) return body;
+  return `<p>${escapeHtmlEntities(body).replace(/\n/g, "<br/>")}</p>`;
+}
+
+// Wrap already-HTML body content in the same email-safe container
+// plainToHtml() uses, WITHOUT escaping, so <strong>/<u> survive into the
+// recipient's inbox. Server send paths use this for HTML template bodies.
+export function htmlEmailWrap(html: string): string {
+  return `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.55; color: #111111;">${html}</div>`;
+}
+
+// Flatten an HTML body back to readable plain text for surfaces that are
+// still plain-text only (the bulk composer textarea, the submittal
+// composer's text mode, the template-card preview). Block tags and <br>
+// become newlines; remaining tags are stripped; core entities decoded.
+// Plain-text input is returned unchanged.
+export function htmlToReadableText(body: string): string {
+  if (!body || !looksLikeHtml(body)) return body;
+  return body
+    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}

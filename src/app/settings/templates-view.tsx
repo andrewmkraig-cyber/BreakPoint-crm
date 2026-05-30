@@ -6,7 +6,15 @@ import { ChevronDown, ChevronUp, FileEdit, Link2, Loader2, Pencil, Plus, Save, T
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { MERGE_FIELDS } from "@/lib/merge-fields";
+import {
+  MERGE_FIELDS,
+  templateBodyToEditorHtml,
+  htmlToReadableText,
+} from "@/lib/merge-fields";
+import {
+  RichTextBodyEditor,
+  type RichTextBodyEditorHandle,
+} from "@/components/rich-text-body-editor";
 import { TRIGGER_OPTIONS, labelForTrigger } from "@/app/settings/template-constants";
 import {
   deleteEmailTemplate,
@@ -307,7 +315,7 @@ function TemplateCard({
           )}
           <div className="mt-1 text-sm text-court-fg-muted">{tpl.subject}</div>
           <pre className="mt-2 max-h-32 overflow-hidden whitespace-pre-wrap font-sans text-xs leading-relaxed text-court-fg-muted">
-            {tpl.body}
+            {htmlToReadableText(tpl.body)}
           </pre>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
@@ -417,7 +425,10 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
   const [isSaving, startSave] = useTransition();
 
   const subjectRef = useRef<HTMLInputElement>(null);
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  // Body is a TipTap rich-text editor now (bold + bold merge fields).
+  // Token inserts route through its imperative handle so they land at the
+  // caret without disturbing existing formatting.
+  const bodyEditorRef = useRef<RichTextBodyEditorHandle>(null);
   const [lastFocus, setLastFocus] = useState<"subject" | "body">("body");
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -447,20 +458,10 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
         const pos = start + token.length;
         el.setSelectionRange(pos, pos);
       });
-    } else if (bodyRef.current) {
-      const el = bodyRef.current;
-      const start = el.selectionStart ?? el.value.length;
-      const end = el.selectionEnd ?? el.value.length;
-      const next = el.value.slice(0, start) + token + el.value.slice(end);
-      setBody(next);
-      requestAnimationFrame(() => {
-        el.focus();
-        const pos = start + token.length;
-        el.setSelectionRange(pos, pos);
-      });
     } else {
-      // No ref yet — append to body as a safe default.
-      setBody((prev) => prev + token);
+      // Body — drop the token at the editor caret. The recruiter can then
+      // select it and hit Cmd/Ctrl+B to render the inserted field bold.
+      bodyEditorRef.current?.insertPlainText(token);
     }
     setPickerOpen(false);
   }
@@ -547,15 +548,18 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
                 onClose={() => setPickerOpen(false)}
               />
             </div>
-            <textarea
-              ref={bodyRef}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              onFocus={() => setLastFocus("body")}
-              rows={14}
-              placeholder="Write the template body. Use the Insert Field picker to drop in merge fields like [Candidate First Name]."
-              className={cn(FIELD_CLASS, "resize-vertical leading-relaxed")}
-            />
+            {/* Rich-text body (TipTap). Cmd/Ctrl+B bolds the selection,
+                including an inserted merge field; getHTML() output is
+                stored as the template body and rendered bold in the sent
+                email by the composer + server send paths. */}
+            <div className="mt-1" onFocus={() => setLastFocus("body")}>
+              <RichTextBodyEditor
+                ref={bodyEditorRef}
+                initialHtml={templateBodyToEditorHtml(initial.body)}
+                onChange={setBody}
+                placeholder="Write the template body. Bold with Cmd/Ctrl+B. Use Insert Field to drop in merge fields like [Candidate First Name]."
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

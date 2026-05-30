@@ -33,7 +33,7 @@ import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import { useSendLater } from "@/components/mail/send-later-popover";
 import { formatScheduledTime } from "@/lib/timezone";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
-import { MERGE_FIELDS, type MergeFieldValues } from "@/lib/merge-fields";
+import { MERGE_FIELDS, htmlToReadableText, type MergeFieldValues } from "@/lib/merge-fields";
 import { cn } from "@/lib/utils";
 
 // Shared bulk-action modals used by both the /candidates global page
@@ -462,7 +462,9 @@ export function BulkEmailDialog({
     const subj = jobValues ? applyJobTokensOnly(template.subject, jobValues) : template.subject;
     const bod = jobValues ? applyJobTokensOnly(template.body, jobValues) : template.body;
     setSubject(subj);
-    setBody(bod);
+    // Bulk composer body is a plain textarea; flatten any HTML template
+    // body to readable text so bolded templates don't surface raw tags.
+    setBody(htmlToReadableText(bod));
   }
 
   function onPickLocalTemplate(template: ActiveTemplateSummary) {

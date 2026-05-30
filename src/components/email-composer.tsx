@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { useSendLater } from "@/components/mail/send-later-popover";
 import { formatScheduledTime } from "@/lib/timezone";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
-import { MERGE_FIELDS, applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
+import { MERGE_FIELDS, applyMergeFields, htmlToReadableText, type MergeFieldValues } from "@/lib/merge-fields";
 import type { RichTextBodyEditorHandle } from "@/components/rich-text-body-editor";
 import { EditWithClaudeMenu, EditWithClaudeCustomPanel, type EditType } from "@/components/edit-with-claude-menu";
 import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
@@ -517,7 +517,12 @@ export function EmailComposer({
         // them through the caller-supplied HTML converter so the editor can
         // render bold/underline immediately. Text-mode callers keep the raw
         // string so the existing markdown-marker pipeline still works.
-        const incomingBody = richTextBody && toEditorHtml ? toEditorHtml(resolved.body) : resolved.body;
+        // Rich-text callers convert to editor HTML; plain-text callers
+        // flatten any HTML template body to readable text so a bolded
+        // template never drops raw <strong> tags into a plain textarea.
+        const incomingBody = richTextBody && toEditorHtml
+          ? toEditorHtml(resolved.body)
+          : htmlToReadableText(resolved.body);
         if (!body.trim() || confirmReplace(body, incomingBody)) setBody(incomingBody);
         toast.success("Template applied", { description: tpl.name });
       } catch (e) {

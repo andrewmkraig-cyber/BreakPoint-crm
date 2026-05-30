@@ -10,7 +10,12 @@ import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { logActivity } from "@/lib/activity";
 import { sendGmail, plainToHtml } from "@/lib/gmail";
 import { createScheduledEmail } from "@/lib/scheduled-email";
-import { applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
+import {
+  applyMergeFields,
+  htmlEmailWrap,
+  looksLikeHtml,
+  type MergeFieldValues,
+} from "@/lib/merge-fields";
 
 // Bulk Apply / Add-to-List actions backing the /candidates page's
 // multi-row checkbox toolbar. Single-candidate flows still live in
@@ -428,9 +433,13 @@ export async function bulkSendEmail(input: {
     };
     const mergedSubject = applyMergeFields(subject, values);
     const mergedBody = applyMergeFields(input.body, values);
+    // Defensive: if a rich (HTML) template body reached here as text,
+    // wrap it so <strong> survives instead of being escaped on send.
     const mergedHtml = input.bodyHtml
       ? applyMergeFields(input.bodyHtml, values)
-      : undefined;
+      : looksLikeHtml(mergedBody)
+        ? htmlEmailWrap(mergedBody)
+        : undefined;
 
     try {
       await sendGmail({
@@ -554,9 +563,13 @@ export async function scheduleBulkEmail(input: {
     };
     const mergedSubject = applyMergeFields(subject, values);
     const mergedBody = applyMergeFields(input.body, values);
+    // Defensive: rich (HTML) template body reaching here as text gets
+    // wrapped so its formatting survives the scheduled send.
     const mergedHtml = input.bodyHtml
       ? applyMergeFields(input.bodyHtml, values)
-      : undefined;
+      : looksLikeHtml(mergedBody)
+        ? htmlEmailWrap(mergedBody)
+        : undefined;
 
     try {
       await createScheduledEmail({
