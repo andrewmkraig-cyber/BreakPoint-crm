@@ -16,6 +16,15 @@ import {
 // interview activity is reconstructed from ActionLog + Interview rows.
 const IN_PIPELINE_STAGES = ["offer", "pending_start"] as const;
 
+// Cancelled placements keep their placedAt / offerReceivedAt timestamps —
+// cancelPlacement only flips stage to "cancelled", it never clears the
+// dates. So every placedAt/offerReceivedAt-keyed metric must explicitly
+// exclude cancelled or a dead deal keeps counting toward revenue, roles
+// closed, placement counts, win rate, avg fee, and days-to-fill. Recent
+// deal moves is the one exception: it KEEPS cancelled rows so it can
+// render a "Placement cancelled" entry instead of a stale "Placed" one.
+const NOT_CANCELLED = { not: "cancelled" } as const;
+
 const DAYS = 24 * 60 * 60 * 1000;
 
 export type ScoreboardData = {
@@ -141,6 +150,7 @@ export async function getScoreboardData(
     prisma.placement.findMany({
       where: {
         organizationId: org.id,
+        stage: NOT_CANCELLED,
         placedAt: { gte: ninetyDaysAgo, lte: now },
       },
       select: {
@@ -153,6 +163,7 @@ export async function getScoreboardData(
     prisma.placement.count({
       where: {
         organizationId: org.id,
+        stage: NOT_CANCELLED,
         placedAt: { gte: periodStart, lt: periodEnd },
       },
     }),
@@ -177,6 +188,7 @@ export async function getScoreboardData(
     prisma.placement.count({
       where: {
         organizationId: org.id,
+        stage: NOT_CANCELLED,
         offerReceivedAt: { gte: ninetyDaysAgo, lte: now },
       },
     }),
@@ -184,6 +196,7 @@ export async function getScoreboardData(
       _count: { _all: true },
       where: {
         organizationId: org.id,
+        stage: NOT_CANCELLED,
         placedAt: { gte: ninetyDaysAgo, lte: now },
       },
     }),
@@ -228,7 +241,7 @@ export async function getScoreboardData(
     // of bare feeTotal — Ethan's $7,500 custom-terms placement now shows
     // up in his client's column instead of contributing $0.
     prisma.placement.findMany({
-      where: { organizationId: org.id },
+      where: { organizationId: org.id, stage: NOT_CANCELLED },
       select: {
         ...BILLING_EVENT_PLACEMENT_SELECT,
         placedAt: true,
@@ -256,12 +269,18 @@ export async function getScoreboardData(
         OR: [
           { placedAt: { gte: new Date(now.getTime() - 30 * DAYS) } },
           { offerReceivedAt: { gte: new Date(now.getTime() - 30 * DAYS) } },
+          // Surface a recently-cancelled deal as its own move even when
+          // the placedAt/offerReceivedAt that put it on the books is older
+          // than 30 days. A cancel is the row's last write, so updatedAt
+          // is effectively the cancellation time.
+          { stage: "cancelled", updatedAt: { gte: new Date(now.getTime() - 30 * DAYS) } },
         ],
       },
       select: {
         ...BILLING_EVENT_PLACEMENT_SELECT,
         stage: true,
         offerReceivedAt: true,
+        updatedAt: true,
         candidateId: true,
         candidateRfId: true,
         clientId: true,
@@ -474,8 +493,6 @@ export async function getScoreboardData(
 
   const momentum = momentumRowsRaw
     .map((p) => {
-      const eventAt = p.placedAt ?? p.offerReceivedAt;
-      if (!eventAt) return null;
       const candidateName = p.candidate
         ? [p.candidate.firstName, p.candidate.lastName].filter(Boolean).join(" ") || "(unnamed)"
         : p.candidateRfId != null
@@ -483,6 +500,23 @@ export async function getScoreboardData(
           : "(unknown)";
       const clientName = p.client?.name
         ?? (p.clientRfId != null ? rfClientName.get(p.clientRfId) ?? "" : "");
+
+      // Cancelled deals stay in the feed but read as a loss, dated to the
+      // cancellation (updatedAt) rather than the now-void placedAt — so a
+      // dead deal shows "Placement cancelled" instead of stale "Placed".
+      if (p.stage === "cancelled") {
+        return {
+          id: p.id,
+          candidateName,
+          clientName,
+          eventLabel: "Placement cancelled",
+          eventAt: p.updatedAt,
+          kind: "down" as const,
+        };
+      }
+
+      const eventAt = p.placedAt ?? p.offerReceivedAt;
+      if (!eventAt) return null;
       const placed = p.placedAt;
       const kind: "win" | "up" = placed ? "win" : "up";
       // Deal-size label uses the billing-events helper so a custom-terms

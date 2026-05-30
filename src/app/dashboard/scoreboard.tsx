@@ -1,4 +1,5 @@
 import {
+  ArrowDownRight,
   ArrowUpRight,
   Clock,
   DollarSign,
@@ -495,10 +496,18 @@ function MomentumCard({ events }: { events: MomentumEvent[] }) {
                   "grid h-6 w-6 shrink-0 place-items-center rounded-full " +
                   (e.kind === "win"
                     ? "bg-court-brand-tint text-court-brand-dark"
-                    : "bg-blue-50 text-blue-700")
+                    : e.kind === "down"
+                      ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-200"
+                      : "bg-blue-50 text-blue-700")
                 }
               >
-                {e.kind === "win" ? <Trophy className="h-3 w-3" /> : <ArrowUpRight className="h-3 w-3" />}
+                {e.kind === "win" ? (
+                  <Trophy className="h-3 w-3" />
+                ) : e.kind === "down" ? (
+                  <ArrowDownRight className="h-3 w-3" />
+                ) : (
+                  <ArrowUpRight className="h-3 w-3" />
+                )}
               </span>
               <div className="min-w-0 flex-1">
                 <div className="text-sm">
