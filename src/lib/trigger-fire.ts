@@ -46,11 +46,10 @@ export type FireTriggerInput = {
   // strings ([Offer Amount], [Start Date], [Interview Date Time]).
   overrides?: Partial<MergeFieldValues>;
   mode?: "send" | "draft";
-  // Per-org TriggerRule override knobs, surfaced here so callers that
+  // Per-org TriggerRule override knob, surfaced here so callers that
   // skip fireTriggerAndLog (the rare direct fireTriggerForPlacement
   // path) can still honor a saved rule.
   templateOverrideId?: string | null;
-  forceDraft?: boolean;
 };
 
 export type FireTriggerOutcome = {
@@ -103,7 +102,6 @@ export async function fireTriggerForPlacement(
     values,
     mode: input.mode ?? "send",
     templateOverrideId: input.templateOverrideId ?? null,
-    forceDraft: input.forceDraft ?? false,
   });
 
   return { fire, candidateEmail };
@@ -131,8 +129,9 @@ export async function fireTriggerAndLog(args: {
 }): Promise<FireTriggerOutcome> {
   // Per-org TriggerRule override lookup. Absent row → default
   // behavior. enabled=false → short-circuit skip and log. templateId
-  // → pinned template via templateOverrideId. sendAsDraft → force
-  // draft regardless of caller mode and template-level flag.
+  // → pinned template via templateOverrideId. (The sendAsDraft
+  // "approve before sending" diversion was removed Ace 70.0 — triggers
+  // now always send; no per-rule draft forcing.)
   const rule = await prisma.triggerRule.findUnique({
     where: {
       organizationId_triggerKey: {
@@ -140,7 +139,7 @@ export async function fireTriggerAndLog(args: {
         triggerKey: args.trigger,
       },
     },
-    select: { enabled: true, sendAsDraft: true, templateId: true },
+    select: { enabled: true, templateId: true },
   });
 
   if (rule && rule.enabled === false) {
@@ -185,7 +184,6 @@ export async function fireTriggerAndLog(args: {
     overrides: args.overrides,
     mode: args.mode,
     templateOverrideId: rule?.templateId ?? null,
-    forceDraft: rule?.sendAsDraft ?? false,
   });
 
   // Targeted ActivityLog write so the candidate / placement timeline

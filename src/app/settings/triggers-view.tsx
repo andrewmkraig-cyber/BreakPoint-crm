@@ -3,7 +3,6 @@
 import {
   AlertTriangle,
   CheckCircle2,
-  FileEdit,
   Info,
   Link2,
   Loader2,
@@ -11,7 +10,6 @@ import {
   Pencil,
   Play,
   RotateCcw,
-  Send,
   X,
 } from "lucide-react";
 import { useState, useTransition } from "react";
@@ -114,7 +112,7 @@ function BuiltInsNote() {
       <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-court-fg-muted" aria-hidden />
       <div>
         <span className="font-semibold text-court-fg">Built-in triggers only.</span>{" "}
-        Each trigger is bound to a fixed pipeline action in code (Apply, Submit, Schedule Interview, Record Offer, Confirm Start, Reject, Request References). You can change which template fires, pause a trigger, or hand-approve drafts — but custom event keys can&apos;t be added from settings because no code path would emit them.
+        Each trigger is bound to a fixed pipeline action in code (Apply, Submit, Schedule Interview, Record Offer, Confirm Start, Reject, Request References). You can change which template fires or pause a trigger, but custom event keys can&apos;t be added from settings because no code path would emit them.
       </div>
     </div>
   );
@@ -226,9 +224,9 @@ function TriggerCard({
     } else if (!rule.templateId && !fallback) {
       warnings.push("No template is tagged for this trigger, so System default has nothing to send. Edit and pick one.");
     }
-  }
-  if (rule.sendAsDraft && !gmailConnected) {
-    warnings.push("Approve-before-sending is on but Gmail isn't connected — drafts can't be created.");
+    if (rule.dispatch === "auto-send" && !gmailConnected) {
+      warnings.push("Gmail isn't connected, so this trigger can't send its email. Reconnect Gmail in Settings.");
+    }
   }
 
   return (
@@ -274,12 +272,6 @@ function TriggerCard({
             {usingDefault && effectiveTemplate && (
               <span className="text-[11px] italic text-court-fg-muted">
                 (System default)
-              </span>
-            )}
-            {rule.sendAsDraft && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-court-fg-muted">
-                <FileEdit className="h-2.5 w-2.5" />
-                Approve in drafts
               </span>
             )}
           </div>
@@ -363,15 +355,12 @@ function TriggerCard({
   );
 }
 
-// Edit modal — the deliberate editor surface. Mirrors the per-trigger
-// controls the legacy inline editor exposed (template, enabled,
-// approve-before-sending) but adds: read-only event/audience/dispatch
-// header so the recruiter sees what the trigger actually does;
-// "compose-prefill" dispatch hides the approve-before-sending toggle
-// since those triggers never auto-send (calendar invite ships, the
-// composer opens for the recruiter to send manually). All saves go
-// through a single Save action — no per-field optimistic writes — so
-// Cancel actually rolls back unsaved changes.
+// Edit modal — the deliberate editor surface. Exposes the per-trigger
+// controls (template + enabled) plus a read-only event/audience/dispatch
+// header so the recruiter sees what the trigger actually does. The
+// approve-before-sending toggle was removed Ace 70.0 — triggers always
+// send directly. All saves go through a single Save action — no
+// per-field optimistic writes — so Cancel rolls back unsaved changes.
 function TriggerEditDialog({
   rule,
   templates,
@@ -385,20 +374,17 @@ function TriggerEditDialog({
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = useState(rule.enabled);
-  const [sendAsDraft, setSendAsDraft] = useState(rule.sendAsDraft);
   const [templateId, setTemplateId] = useState<string>(rule.templateId ?? "");
   const [pending, startTransition] = useTransition();
 
   const hasNoTemplates = templates.length === 0;
   const hasMatchingDefault = templates.some((t) => t.matchesTrigger);
-  const supportsDraft = rule.dispatch === "auto-send";
 
   function onSave() {
     startTransition(async () => {
       const res = await upsertTriggerRule({
         triggerKey: rule.triggerKey,
         enabled,
-        sendAsDraft: supportsDraft ? sendAsDraft : false,
         templateId: templateId === "" ? null : templateId,
       });
       if (!res.ok) {
@@ -422,9 +408,9 @@ function TriggerEditDialog({
     } else if (!templateId && !hasMatchingDefault) {
       warnings.push("No template is tagged for this trigger, so System default would skip. Pick an explicit template above.");
     }
-  }
-  if (supportsDraft && sendAsDraft && !gmailConnected) {
-    warnings.push("Approve-before-sending is on but Gmail isn't connected — drafts can't be created.");
+    if (rule.dispatch === "auto-send" && !gmailConnected) {
+      warnings.push("Gmail isn't connected, so this trigger can't send its email. Reconnect Gmail in Settings.");
+    }
   }
 
   return (
@@ -510,27 +496,6 @@ function TriggerEditDialog({
               ))}
             </select>
           </label>
-
-          {supportsDraft ? (
-            <label className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-medium text-court-fg">Approve before sending</div>
-                <div className="text-[11px] text-court-fg-muted">
-                  When on, fires land in your Gmail Drafts for review instead of sending immediately.
-                </div>
-              </div>
-              <Toggle
-                checked={sendAsDraft}
-                pending={pending}
-                onToggle={() => setSendAsDraft((p) => !p)}
-              />
-            </label>
-          ) : (
-            <div className="rounded-md border border-court-border bg-court-surface-subtle/40 p-3 text-[11px] text-court-fg-muted">
-              <Send className="-mt-0.5 mr-1 inline h-3 w-3" />
-              Compose-prefill triggers never auto-send. The composer opens with your template already filled in; you hit Send manually. There&apos;s nothing to route through Drafts.
-            </div>
-          )}
 
           {warnings.length > 0 && (
             <div

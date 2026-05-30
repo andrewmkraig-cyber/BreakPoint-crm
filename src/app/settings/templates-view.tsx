@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, FileEdit, Link2, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Link2, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,6 @@ import { TRIGGER_OPTIONS, labelForTrigger } from "@/app/settings/template-consta
 import {
   deleteEmailTemplate,
   reorderEmailTemplate,
-  updateTemplateSendAsDraft,
   upsertEmailTemplate,
   type EmailTemplateInput,
 } from "@/app/settings/templates-actions";
@@ -194,9 +193,7 @@ function TemplateCard({
   const [isDeleting, startDelete] = useTransition();
   const [isToggling, startToggle] = useTransition();
   const [isReordering, startReorder] = useTransition();
-  const [isDraftToggling, startDraftToggle] = useTransition();
   const [active, setActive] = useState(tpl.isActive);
-  const [sendAsDraft, setSendAsDraft] = useState(tpl.sendAsDraft);
 
   function onMove(direction: "up" | "down") {
     startReorder(async () => {
@@ -218,20 +215,6 @@ function TemplateCard({
         return;
       }
       toast.success("Template deleted");
-      router.refresh();
-    });
-  }
-
-  function onToggleSendAsDraft(next: boolean) {
-    setSendAsDraft(next);
-    startDraftToggle(async () => {
-      const result = await updateTemplateSendAsDraft(tpl.id, next);
-      if (!result.ok) {
-        setSendAsDraft(!next);
-        toast.error("Couldn't update template", { description: result.error });
-        return;
-      }
-      toast.success(next ? "Will draft to your inbox" : "Will send directly");
       router.refresh();
     });
   }
@@ -307,12 +290,6 @@ function TemplateCard({
               ))
             )}
           </div>
-          {sendAsDraft && (
-            <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-court-fg-muted">
-              <FileEdit className="h-3 w-3" />
-              Drafts to your inbox
-            </div>
-          )}
           <div className="mt-1 text-sm text-court-fg-muted">{tpl.subject}</div>
           <pre className="mt-2 max-h-32 overflow-hidden whitespace-pre-wrap font-sans text-xs leading-relaxed text-court-fg-muted">
             {htmlToReadableText(tpl.body)}
@@ -366,28 +343,6 @@ function TemplateCard({
               {active ? "Active" : "Inactive"}
             </label>
           </div>
-          <label className="inline-flex items-center gap-2 text-[11px] text-court-fg">
-            <button
-              type="button"
-              role="switch"
-              aria-checked={sendAsDraft}
-              onClick={() => onToggleSendAsDraft(!sendAsDraft)}
-              disabled={isDraftToggling}
-              className={cn(
-                "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
-                sendAsDraft ? "bg-brand" : "bg-court-fg-muted/40",
-                isDraftToggling && "opacity-60",
-              )}
-            >
-              <span
-                className={cn(
-                  "inline-block h-4 w-4 transform rounded-full bg-white shadow transition",
-                  sendAsDraft ? "translate-x-4" : "translate-x-0.5",
-                )}
-              />
-            </button>
-            Approve before sending
-          </label>
           <div className="flex items-center gap-2">
             <button
               type="button"

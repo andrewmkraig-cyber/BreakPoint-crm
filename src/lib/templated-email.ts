@@ -15,7 +15,6 @@ export type TriggerLookupResult =
         name: string;
         subject: string;
         body: string;
-        sendAsDraft: boolean;
       };
     }
   | { kind: "missing" }
@@ -33,7 +32,6 @@ export async function loadTemplateById(id: string): Promise<TriggerLookupResult>
       subject: true,
       body: true,
       isActive: true,
-      sendAsDraft: true,
     },
   });
   if (!tpl) return { kind: "missing" };
@@ -45,7 +43,6 @@ export async function loadTemplateById(id: string): Promise<TriggerLookupResult>
       name: tpl.name,
       subject: tpl.subject,
       body: tpl.body,
-      sendAsDraft: tpl.sendAsDraft,
     },
   };
 }
@@ -62,7 +59,6 @@ export async function loadTriggeredTemplate(trigger: string): Promise<TriggerLoo
       subject: true,
       body: true,
       isActive: true,
-      sendAsDraft: true,
     },
   });
   if (!any) return { kind: "missing" };
@@ -74,7 +70,6 @@ export async function loadTriggeredTemplate(trigger: string): Promise<TriggerLoo
       name: any.name,
       subject: any.subject,
       body: any.body,
-      sendAsDraft: any.sendAsDraft,
     },
   };
 }
@@ -88,13 +83,12 @@ export type FireTemplatedEmailInput = {
   cc?: string[];
   values: MergeFieldValues;
   mode: "send" | "draft";
-  // Per-org TriggerRule overrides. When templateOverrideId is set, that
+  // Per-org TriggerRule override. When templateOverrideId is set, that
   // template is loaded instead of the most-recently-updated match for
-  // the trigger string. When forceDraft is true, the result is drafted
-  // even if the caller asked for send and the template's own
-  // sendAsDraft is false. Absence of both keeps default behavior.
+  // the trigger string. Absence keeps default behavior. (The legacy
+  // "approve before sending" / sendAsDraft draft-diversion was removed
+  // Ace 70.0 — triggered templates always honor the caller's mode.)
   templateOverrideId?: string | null;
-  forceDraft?: boolean;
 };
 
 export type FireResult =
@@ -156,12 +150,9 @@ export async function fireTemplatedEmail(input: FireTemplatedEmailInput): Promis
 
   try {
     const cc = (input.cc ?? []).map((e) => e.trim()).filter(Boolean);
-    // Per-template "Approve before sending" override: when the
-    // template is flagged sendAsDraft, force the draft path even if
-    // the caller asked for a direct send. The recruiter reviews and
-    // hits Send themselves from /mail ▸ Drafts.
-    const effectiveMode: "send" | "draft" =
-      input.forceDraft || look.template.sendAsDraft ? "draft" : input.mode;
+    // No approve-before-sending diversion anymore (removed Ace 70.0):
+    // a triggered template sends or drafts purely on the caller's mode.
+    const effectiveMode: "send" | "draft" = input.mode;
     if (effectiveMode === "send") {
       const sent = await sendGmail({
         userId: input.userId,
@@ -185,20 +176,6 @@ export async function fireTemplatedEmail(input: FireTemplatedEmailInput): Promis
       bodyText: body,
       bodyHtml: html,
     });
-    // Log the draft id explicitly when the sendAsDraft override
-    // diverted a would-be send, so the recruiter (and ops) can
-    // correlate a deferred draft back to the lifecycle event that
-    // queued it.
-    if (look.template.sendAsDraft && input.mode === "send") {
-      // eslint-disable-next-line no-console
-      console.log("[templated-email] sendAsDraft override", {
-        trigger: input.trigger,
-        template: look.template.name,
-        draftId: drafted.draftId,
-        messageId: drafted.messageId,
-        threadId: drafted.threadId,
-      });
-    }
     // Ace 28.0b — createGmailDraft returns { draftId, messageId,
     // threadId } now. The fire-result shape carries SendEmailResult
     // (= { id, threadId }) for backward compatibility with downstream
