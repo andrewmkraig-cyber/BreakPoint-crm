@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-30 · Ace 70.0
+Last updated: 2026-05-30 · Ace 70.1
 
 ## Active Build Sequence
 
@@ -82,6 +82,10 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 70.1 Court Mode persistence fix - dark mode survives PWA hard close (May 30, 2026)
+
+Bug fix (`bf7f284`). Dark mode + the chosen Court Mode surface were saved to localStorage only (`ace-court-surface` / `ace-court-theme`) with no DB leg, so an installed PWA evicting localStorage on a hard close (iOS storage pressure / inactivity) reset everyone to Hard/Light and rewrote those defaults back - the "settings get forgotten over time" report. Fix mirrors the `autoNightMode` pattern: added nullable `UserProfile.courtSurface` / `courtTheme` (prisma db push), a `setCourtMode` server action that the surface/theme setters call fire-and-forget, and a DB-seeded pre-hydration script (`buildCourtModePreHydrationScript`) + provider (`initialSurface` / `initialTheme`) that fall back to the DB value when localStorage is empty and re-seed storage from it (no flash). localStorage stays the fast first-paint path; the DB is now the durable source of truth and follows the user across devices. Legacy `courtMode` migration + Hard/Light defaults intact. Verified by running the real emitted pre-hydration script against a simulated evicted localStorage; build exits 0. Full detail in ACE_STATE.md under What Shipped in Ace 70.1.
 
 ## Completed - Ace 70.0 Approve-before-sending removal + interview Bcc + placement card alignment + template Save restyle (May 30, 2026)
 

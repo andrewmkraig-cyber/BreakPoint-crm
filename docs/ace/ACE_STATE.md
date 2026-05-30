@@ -1,8 +1,21 @@
 # ACE_STATE.md
-Last updated: 2026-05-30 · Ace 70.0
-Current Version: Ace 70.0
+Last updated: 2026-05-30 · Ace 70.1
+Current Version: Ace 70.1
 Last Shipped: 2026-05-30
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 70.1 (2026-05-30)
+
+**Bug fix: dark mode + the chosen Court Mode surface now survive a PWA hard close (`bf7f284`).** Reported symptom: dark mode and other settings "get forgotten over time," especially on the installed PWA. Root cause (Step 0, confirmed before any edit): the Court Mode **surface + theme were persisted to localStorage only** (`ace-court-surface` / `ace-court-theme`), with **no DB leg**. Installed PWAs - iOS especially - evict script-writable storage after inactivity / storage pressure, so on a hard close the pre-hydration script and `CourtModeProvider` found nothing, defaulted to **Hard/Light**, and then **rewrote those defaults back into localStorage**, permanently forgetting the preference. Auto Night Mode survived because `UserProfile.autoNightMode` was the only DB-backed appearance value; that asymmetry (DB settings reload, localStorage ones reset) was the fingerprint.
+
+Fix - make the DB the durable source of truth, mirroring the `autoNightMode` pattern:
+- **Schema:** added nullable `UserProfile.courtSurface` / `UserProfile.courtTheme` (applied via `prisma db push`; additive, zero data risk).
+- **Server action:** new `setCourtMode({ surface?, theme? })` in `src/app/settings/appearance-actions.ts`, each column written independently (a theme toggle never clobbers the surface). `setSurface` / `setTheme` / `toggleTheme` in `src/lib/court-mode.tsx` now persist fire-and-forget alongside the existing localStorage write.
+- **Boot:** `layout.tsx` reads `courtSurface` / `courtTheme` from the profile and seeds them into both the pre-hydration inline script and the provider. `buildCourtModePreHydrationScript(surface, theme)` (replaces the old `COURT_MODE_PRE_HYDRATION_SCRIPT` constant) falls back to the DB value when a localStorage key is missing and **re-seeds localStorage from it**, so the palette restores with no flash after an eviction. `CourtModeProvider` gained `initialSurface` / `initialTheme` props so SSR + first client render agree; `readStored(fallback)` uses the DB seed instead of hardcoded Hard/Light when storage is empty. Legacy single-key `courtMode` migration + Hard/Light defaults preserved.
+
+Verification: executed the real emitted pre-hydration script against a simulated evicted localStorage - confirmed it restores the DB palette (clay/dark, night/dark), re-seeds localStorage, preserves the legacy migration, and sanitizes garbage to Hard/Light. `npm run build` exits 0 (only the two pre-existing unrelated react-hooks/exhaustive-deps warnings). Both-modes live confirmation is Andrew's after deploy (live deploy lags repo - see `live-deploy-diverges-from-repo`).
+
+Files: `prisma/schema.prisma`, `src/app/layout.tsx`, `src/app/settings/appearance-actions.ts`, `src/lib/court-mode.tsx`.
 
 ## What Shipped in Ace 70.0 (2026-05-30)
 
