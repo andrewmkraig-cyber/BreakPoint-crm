@@ -44,6 +44,10 @@ export type PushPayload = {
   // Badge-sync pushes can ask the service worker to close stale visible
   // notifications for messages now read on another device.
   closeTags?: string[];
+  // Manual diagnostics should surface even when Ace is focused; normal
+  // live notifications still suppress the OS banner while an Ace window
+  // is focused to avoid duplicates with the in-app toast.
+  forceNotify?: boolean;
 };
 
 // TEMP DIAG (keep until production push delivery is confirmed — see
@@ -70,7 +74,19 @@ function diagPayload(payload: PushPayload) {
   };
 }
 
-type DispatchResult = { total: number; sent: number; pruned: number; failed: number };
+export type PushDispatchResult = {
+  total: number;
+  sent: number;
+  pruned: number;
+  failed: number;
+};
+
+const EMPTY_DISPATCH_RESULT: PushDispatchResult = {
+  total: 0,
+  sent: 0,
+  pruned: 0,
+  failed: 0,
+};
 
 // Push is best-effort. Any error here must NOT bubble up — webhook
 // handlers + server actions call sendPush after the row write that
@@ -79,8 +95,8 @@ async function dispatch(
   subs: Array<{ id: string; endpoint: string; p256dh: string; auth: string }>,
   payload: PushPayload,
   fn: string,
-): Promise<DispatchResult> {
-  const result: DispatchResult = { total: subs.length, sent: 0, pruned: 0, failed: 0 };
+): Promise<PushDispatchResult> {
+  const result: PushDispatchResult = { total: subs.length, sent: 0, pruned: 0, failed: 0 };
   if (subs.length === 0) return result;
   const body = JSON.stringify(payload);
   await Promise.all(
@@ -135,7 +151,7 @@ export async function sendPushToUser(
   userId: string,
   organizationId: string,
   payload: PushPayload,
-): Promise<void> {
+): Promise<PushDispatchResult> {
   try {
     const vapidOk = ensureVapid();
     if (!vapidOk) {
@@ -143,7 +159,7 @@ export async function sendPushToUser(
         fn: "sendPushToUser",
         vapidConfigured: false,
       });
-      return;
+      return EMPTY_DISPATCH_RESULT;
     }
     const subs = await prisma.pushSubscription.findMany({
       where: { userId, organizationId },
@@ -154,9 +170,10 @@ export async function sendPushToUser(
       subscriptionCount: subs.length,
       ...diagPayload(payload),
     });
-    await dispatch(subs, payload, "sendPushToUser");
+    return await dispatch(subs, payload, "sendPushToUser");
   } catch (err) {
     console.error("[web-push] sendPushToUser swallowed error", err);
+    return EMPTY_DISPATCH_RESULT;
   }
 }
 
@@ -167,7 +184,7 @@ export async function sendPushToUser(
 export async function sendPushToOrg(
   organizationId: string,
   payload: PushPayload,
-): Promise<void> {
+): Promise<PushDispatchResult> {
   try {
     const vapidOk = ensureVapid();
     if (!vapidOk) {
@@ -175,7 +192,7 @@ export async function sendPushToOrg(
         fn: "sendPushToOrg",
         vapidConfigured: false,
       });
-      return;
+      return EMPTY_DISPATCH_RESULT;
     }
     const subs = await prisma.pushSubscription.findMany({
       where: { organizationId },
@@ -186,9 +203,10 @@ export async function sendPushToOrg(
       subscriptionCount: subs.length,
       ...diagPayload(payload),
     });
-    await dispatch(subs, payload, "sendPushToOrg");
+    return await dispatch(subs, payload, "sendPushToOrg");
   } catch (err) {
     console.error("[web-push] sendPushToOrg swallowed error", err);
+    return EMPTY_DISPATCH_RESULT;
   }
 }
 
@@ -205,7 +223,7 @@ export async function sendPushToUserOrOrg(
   userId: string,
   organizationId: string,
   payload: PushPayload,
-): Promise<void> {
+): Promise<PushDispatchResult> {
   try {
     const vapidOk = ensureVapid();
     if (!vapidOk) {
@@ -213,7 +231,7 @@ export async function sendPushToUserOrOrg(
         fn: "sendPushToUserOrOrg",
         vapidConfigured: false,
       });
-      return;
+      return EMPTY_DISPATCH_RESULT;
     }
     const userSubs = await prisma.pushSubscription.findMany({
       where: { userId, organizationId },
@@ -227,7 +245,7 @@ export async function sendPushToUserOrOrg(
     });
     if (userSubs.length > 0) {
       const result = await dispatch(userSubs, payload, "sendPushToUserOrOrg:user");
-      if (result.sent > 0) return;
+      if (result.sent > 0) return result;
       console.log("[web-push][diag] sendPushToUserOrOrg:user-fallback", {
         reason: "user subscriptions existed but none accepted the push",
         userId,
@@ -248,8 +266,9 @@ export async function sendPushToUserOrOrg(
       subscriptionCount: orgSubs.length,
       ...diagPayload(payload),
     });
-    await dispatch(orgSubs, payload, "sendPushToUserOrOrg:org-fallback");
+    return await dispatch(orgSubs, payload, "sendPushToUserOrOrg:org-fallback");
   } catch (err) {
     console.error("[web-push] sendPushToUserOrOrg swallowed error", err);
+    return EMPTY_DISPATCH_RESULT;
   }
 }

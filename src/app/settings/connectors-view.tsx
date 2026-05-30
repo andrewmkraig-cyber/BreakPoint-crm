@@ -240,10 +240,13 @@ function MicrosoftTeamsConnectorRow() {
 // service worker and its subscription, so the row reads Disconnected
 // until the user taps Enable here again (no uninstall needed).
 function PushNotificationsRow() {
-  const [connected, setConnected] = useState(false);
-  const detail = connected
-    ? "Active on this browser - alerts push here even when Ace is closed."
-    : "Not enabled here. Turn on for alerts, or to re-register after a reinstall.";
+  const [connected, setConnected] = useState<boolean | null>(null);
+  const detail =
+    connected === null
+      ? "Checking this browser's notification registration..."
+      : connected
+        ? "Active on this browser - alerts push here even when Ace is closed."
+        : "Not enabled here. Turn on for alerts, or to re-register after a reinstall.";
 
   return (
     <div className="flex min-h-0 items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
@@ -253,12 +256,24 @@ function PushNotificationsRow() {
           <span className="text-sm font-semibold text-court-fg">
             Push Notifications
           </span>
-          <StateLabel state={connected ? "connected" : "disconnected"} />
+          {connected === null ? (
+            <span className="shrink-0 whitespace-nowrap text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+              Checking
+            </span>
+          ) : (
+            <StateLabel state={connected ? "connected" : "disconnected"} />
+          )}
         </div>
         <div className="mt-1 truncate text-xs text-court-fg-muted">{detail}</div>
       </div>
-      <div className="shrink-0">
-        <PushPermissionButton hideStatusPill onStatusChange={setConnected} />
+      <div className="flex shrink-0 items-center gap-2">
+        {connected === null ? (
+          <Loader2 className="h-4 w-4 animate-spin text-court-fg-muted" />
+        ) : null}
+        <PushPermissionButton
+          hideStatusPill
+          onStatusChange={(next) => setConnected(next)}
+        />
       </div>
     </div>
   );

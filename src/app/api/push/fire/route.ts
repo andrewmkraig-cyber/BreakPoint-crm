@@ -68,13 +68,14 @@ export async function POST(req: NextRequest) {
     badgeOmitted: counts.badgeCount === null,
   });
 
-  await sendPushToUser(user.id, org.id, {
+  const push = await sendPushToUser(user.id, org.id, {
     title: body.title,
     body: body.body,
     url: body.url,
     tag: body.tag,
+    forceNotify: body.forceNotify,
     ...badgePayloadFields(counts),
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, push });
 }

@@ -31,6 +31,7 @@ export function PushPermissionButton({
 } = {}) {
   const [status, setStatus] = useState<Status>("loading");
   const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
   // Captures any failure that lands after permission was granted (VAPID
   // env missing, /api/push/subscribe non-2xx, pushManager.subscribe
   // throws). Without this, status="granted" wins the render branch and
@@ -61,6 +62,7 @@ export function PushPermissionButton({
     if (typeof window === "undefined") return;
     if (!("Notification" in window) || !("serviceWorker" in navigator)) {
       setStatus("unsupported");
+      onStatusChangeRef.current?.(false);
       return;
     }
     setStatus(Notification.permission as Status);
@@ -189,6 +191,52 @@ export function PushPermissionButton({
     }
   }
 
+  async function sendTestNotification() {
+    setTesting(true);
+    try {
+      const res = await fetch("/api/push/fire", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: "Ace test notification",
+          body: "If this appears, web push is reaching this device.",
+          url: "/settings",
+          tag: `ace-test-${Date.now()}`,
+          forceNotify: true,
+        }),
+      });
+      const json = (await res.json().catch(() => null)) as {
+        push?: { total?: number; sent?: number; pruned?: number; failed?: number };
+        error?: string;
+      } | null;
+      if (!res.ok) {
+        throw new Error(json?.error || `/api/push/fire ${res.status}`);
+      }
+      const push = json?.push;
+      if (push && (push.sent ?? 0) > 0) {
+        toast.success("Test notification sent.", {
+          description:
+            "Lock the phone or leave Ace, then confirm the banner arrives.",
+        });
+      } else if (push && (push.total ?? 0) === 0) {
+        toast.error("No server subscription found for this account.", {
+          description: "Tap Enable notifications to register this browser again.",
+        });
+        setHasSubscription(false);
+        onStatusChangeRef.current?.(false);
+      } else {
+        toast.error("Push service did not accept the test.", {
+          description: `Sent ${push?.sent ?? 0}, failed ${push?.failed ?? 0}, pruned ${push?.pruned ?? 0}.`,
+        });
+      }
+    } catch (err) {
+      console.error("[push] test failed", err);
+      toast.error("Couldn't send a test notification.");
+    } finally {
+      setTesting(false);
+    }
+  }
+
   if (status === "loading") return null;
 
   if (status === "unsupported") {
@@ -227,6 +275,14 @@ export function PushPermissionButton({
             Enabled on this device
           </span>
         )}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => void sendTestNotification()}
+          disabled={busy || testing}
+        >
+          {testing ? "Testing..." : "Test"}
+        </Button>
         <Button variant="secondary" size="sm" onClick={disable} disabled={busy}>
           {busy ? "Disabling…" : "Disable"}
         </Button>
