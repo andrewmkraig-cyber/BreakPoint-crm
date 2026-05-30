@@ -261,6 +261,72 @@ export function renderSignatureHtml(
     </table>`;
 }
 
+// One embedded signature image, ready to attach as a multipart/related
+// inline MIME part. `cid` is the Content-ID token: the HTML references it
+// as `cid:<cid>` and the part header carries `Content-ID: <<cid>>`.
+export type SignatureInlineImage = {
+  cid: string;
+  mimeType: string;
+  base64: string;
+  filename: string;
+};
+
+// Render the signature with `cid:` image references and return the inline
+// image parts the send pipeline must embed as a multipart/related sibling.
+//
+// Why this exists (and why inbox sends use it instead of the data:-URI
+// variant above): renderSignatureHtml embeds the logo + icons as base64
+// `data:` URIs. Gmail rewrites every `data:` URI into a `cid:` MIME image
+// part on send and labels the logo part with a filename (taken from the
+// img alt text), which makes Apple Mail / iOS Mail render the logo a
+// SECOND time as a bottom attachment thumbnail — the "duplicate signature"
+// Andrew saw. Gmail itself renders inline-only, hiding the bug there.
+//
+// Emitting our OWN inline parts with `Content-Disposition: inline` keeps
+// the images embedded (no "load remote images" prompt) and renders the
+// signature exactly once in every client. Gmail leaves our cid: parts
+// alone because there is no data: URI left to rewrite.
+export function renderSignatureInline(
+  profile: UserProfileRecord,
+  cidPrefix: string,
+): { html: string; images: SignatureInlineImage[] } {
+  const images: SignatureInlineImage[] = [];
+  const logoCid = `${cidPrefix}-logo`;
+  const emailCid = `${cidPrefix}-email`;
+  const phoneCid = `${cidPrefix}-phone`;
+  const globeCid = `${cidPrefix}-globe`;
+
+  const hasLogo = profile.logoDataBase64.length > 0;
+  if (hasLogo) {
+    images.push({
+      cid: logoCid,
+      mimeType: profile.logoMimeType || "image/png",
+      base64: profile.logoDataBase64,
+      filename: "breakpoint-logo.png",
+    });
+  }
+  // Icons are pushed only for the contact rows that actually render, so the
+  // cid: refs in the HTML and the attached parts stay 1:1 (buildContactRows
+  // emits a row only when the field is present).
+  if (profile.email) {
+    images.push({ cid: emailCid, mimeType: SIGNATURE_ICON_MIME, base64: SIGNATURE_ICON_EMAIL_BASE64, filename: "email.png" });
+  }
+  if (profile.phone) {
+    images.push({ cid: phoneCid, mimeType: SIGNATURE_ICON_MIME, base64: SIGNATURE_ICON_PHONE_BASE64, filename: "phone.png" });
+  }
+  if (profile.website) {
+    images.push({ cid: globeCid, mimeType: SIGNATURE_ICON_MIME, base64: SIGNATURE_ICON_GLOBE_BASE64, filename: "website.png" });
+  }
+
+  const html = renderSignatureHtml(profile, {
+    iconEmail: `cid:${emailCid}`,
+    iconPhone: `cid:${phoneCid}`,
+    iconGlobe: `cid:${globeCid}`,
+    logo: hasLogo ? `cid:${logoCid}` : undefined,
+  });
+  return { html, images };
+}
+
 export function renderSignatureText(profile: UserProfileRecord): string {
   const lines: string[] = [];
   if (profile.fullName) lines.push(profile.fullName);

@@ -3,10 +3,11 @@ import { getEmailSignature } from "@/lib/preferences";
 import {
   ACE_SIGNATURE_MARKER,
   getUserBrandingProfile,
-  renderSignatureHtml,
+  renderSignatureInline,
   renderSignatureText,
   SIGNATURE_DELIMITER_HTML,
   SIGNATURE_DELIMITER_TEXT,
+  type SignatureInlineImage,
 } from "@/lib/signature";
 
 // Gmail API helpers. We keep a single refresh token per user in the Account
@@ -102,6 +103,11 @@ export type SendEmailInput = {
   // threadId alone, but external clients rely on these.
   inReplyTo?: string;
   references?: string;
+  // Internal: signature logo/icons to embed as multipart/related inline
+  // parts (Content-Disposition: inline). Set by withSignature, consumed by
+  // buildRfc2822. Callers never populate this directly — withSignature is
+  // the single source of the branded signature.
+  inlineImages?: SignatureInlineImage[];
 };
 
 export type SendEmailResult = { id: string; threadId: string };
@@ -150,8 +156,46 @@ function buildAttachmentPart(att: GmailAttachment): string {
   ].join("\r\n");
 }
 
+// A renderable inline image part for multipart/related embedding. Unlike
+// buildAttachmentPart (Content-Disposition: attachment), this declares
+// `inline` and a Content-ID so the HTML's `cid:` refs resolve AND Apple
+// Mail renders it inside the body only — never as a bottom attachment.
+function buildInlineImagePart(img: SignatureInlineImage): string {
+  const b64 = img.base64.match(/.{1,76}/g)?.join("\r\n") ?? img.base64;
+  return [
+    `Content-Type: ${img.mimeType}; name="${img.filename}"`,
+    "Content-Transfer-Encoding: base64",
+    `Content-ID: <${img.cid}>`,
+    `Content-Disposition: inline; filename="${img.filename}"`,
+    `X-Attachment-Id: ${img.cid}`,
+    "",
+    b64,
+  ].join("\r\n");
+}
+
+// Joins already-rendered MIME entity strings (each beginning with its own
+// `Content-Type:` header) into one multipart body, and returns the entity
+// for the next nesting level: its own `Content-Type: multipart/<subtype>`
+// header line, a blank line, then the boundary-delimited body.
+function wrapMultipart(subtype: string, boundary: string, parts: string[]): string {
+  const body = parts.map((p) => `--${boundary}\r\n${p}`).join("\r\n") + `\r\n--${boundary}--`;
+  return `Content-Type: multipart/${subtype}; boundary="${boundary}"\r\n\r\n${body}`;
+}
+
 // Builds a Gmail-compatible RFC 2822 message + base64url encodes it, which is
 // the raw shape /users/me/messages/send expects.
+//
+// Nesting, built inside-out:
+//   multipart/mixed {              (only when file attachments present)
+//     multipart/related {          (only when inline signature images present)
+//       multipart/alternative { text/plain, text/html },
+//       inline-image+
+//     },
+//     attachment+
+//   }
+// Any layer with nothing to wrap is skipped, so a plain signed email is just
+// multipart/related { alternative, images } and a bare text email stays
+// text/plain.
 function buildRfc2822(params: SendEmailInput): string {
   const headers: string[] = [];
   const fromLabel = params.fromName ? `${encodeMimeWord(params.fromName)} <${params.from}>` : params.from;
@@ -164,44 +208,42 @@ function buildRfc2822(params: SendEmailInput): string {
   if (params.references) headers.push(`References: ${params.references}`);
   headers.push("MIME-Version: 1.0");
 
-  const hasAttachments = Boolean(params.attachments && params.attachments.length > 0);
+  const attachments = params.attachments ?? [];
+  const inlineImages = params.inlineImages ?? [];
 
-  // multipart/mixed { multipart/alternative { text, html }, attachment+ }
-  if (hasAttachments) {
-    const mixed = randomBoundary("mix");
-    const alt = randomBoundary("alt");
-    headers.push(`Content-Type: multipart/mixed; boundary="${mixed}"`);
-    const htmlBody = params.bodyHtml ?? plainToHtml(params.bodyText);
-    const parts: string[] = [
-      "",
-      `--${mixed}`,
-      `Content-Type: multipart/alternative; boundary="${alt}"`,
-      "",
-      buildAlternativePart(params.bodyText, htmlBody, alt),
-      "",
-    ];
-    for (const att of params.attachments!) {
-      parts.push(`--${mixed}`);
-      parts.push(buildAttachmentPart(att));
-      parts.push("");
-    }
-    parts.push(`--${mixed}--`);
-    return headers.join("\r\n") + "\r\n" + parts.join("\r\n");
+  // Plain-text only — no HTML, no inline images, no attachments.
+  if (!params.bodyHtml && inlineImages.length === 0 && attachments.length === 0) {
+    headers.push("Content-Type: text/plain; charset=UTF-8");
+    headers.push("Content-Transfer-Encoding: 7bit");
+    return headers.join("\r\n") + "\r\n\r\n" + params.bodyText;
   }
 
-  if (params.bodyHtml) {
-    const boundary = randomBoundary("alt");
-    headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
-    return (
-      headers.join("\r\n") +
-      "\r\n\r\n" +
-      buildAlternativePart(params.bodyText, params.bodyHtml, boundary)
-    );
+  // Innermost: multipart/alternative { text/plain, text/html }.
+  const altBoundary = randomBoundary("alt");
+  const htmlBody = params.bodyHtml ?? plainToHtml(params.bodyText);
+  const altBlock = buildAlternativePart(params.bodyText, htmlBody, altBoundary);
+  let entity = `Content-Type: multipart/alternative; boundary="${altBoundary}"\r\n\r\n${altBlock}`;
+
+  // Wrap the alternative + inline signature images in multipart/related so
+  // the cid: refs resolve and the logo renders inline only.
+  if (inlineImages.length > 0) {
+    entity = wrapMultipart("related", randomBoundary("rel"), [
+      entity,
+      ...inlineImages.map(buildInlineImagePart),
+    ]);
   }
 
-  headers.push("Content-Type: text/plain; charset=UTF-8");
-  headers.push("Content-Transfer-Encoding: 7bit");
-  return headers.join("\r\n") + "\r\n\r\n" + params.bodyText;
+  // Wrap the body + file attachments in multipart/mixed.
+  if (attachments.length > 0) {
+    entity = wrapMultipart("mixed", randomBoundary("mix"), [
+      entity,
+      ...attachments.map(buildAttachmentPart),
+    ]);
+  }
+
+  // The top-level entity carries its own Content-Type; lift it onto the
+  // message headers (entity already starts with "Content-Type: …\r\n\r\n").
+  return headers.join("\r\n") + "\r\n" + entity;
 }
 
 function encodeMimeWord(raw: string): string {
@@ -253,7 +295,12 @@ async function withSignature(input: SendEmailInput): Promise<SendEmailInput> {
   // recipient.
   const branding = await getUserBrandingProfile(input.userId);
   const textSig = renderSignatureText(branding);
-  const htmlSig = renderSignatureHtml(branding);
+  // Render the signature with cid: image refs (not data: URIs) and collect
+  // the logo/icons to embed as inline multipart/related parts. This stops
+  // Apple Mail / iOS Mail from rendering the logo a second time as a bottom
+  // attachment — see renderSignatureInline for the full why.
+  const cidPrefix = `bptsig-${Math.random().toString(36).slice(2)}`;
+  const { html: htmlSig, images: sigImages } = renderSignatureInline(branding, cidPrefix);
 
   // Plain-text body: strip any prior "-- " block (RFC 3676 delimiter
   // on a line by itself), then append a single fresh block. Falls back
@@ -278,7 +325,7 @@ async function withSignature(input: SendEmailInput): Promise<SendEmailInput> {
   const cleanedHtml = stripExistingHtmlSignature(baseHtml);
   const bodyHtml = `${cleanedHtml}${htmlSigBlock}`;
 
-  return { ...input, bodyText, bodyHtml };
+  return { ...input, bodyText, bodyHtml, inlineImages: sigImages };
 }
 
 // Returns the body with any prior Ace-rendered signature removed. We
