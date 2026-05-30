@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-05-30 · Ace 70.1
+Last updated: 2026-05-30 · Ace 70.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -322,14 +322,14 @@ Full token coverage on every page — no holdouts. Token names follow the same `
 - **Dark luxury login.** `/sign-in` is a dark recruiter-network screen, distinct from the in-app Court Mode surfaces: near-black canvas, a stippled world map with the Solon, OH HQ marker and connection arcs reaching out to the markets, a glassy auth card floating over a soft green glow, and a single pulsing brand-green status dot top-left.
 - **What it does NOT carry.** No top-bar stats strip (no "14 Markets / 1,247 Candidates / clock") and no "BreakPoint - Global Desk" eyebrow. Keep it to the map, the card, the bottom bar, the pulsing dot, and the HQ label. Colors here come from Court Mode tokens; the only fixed hexes are the Google "G" brand asset.
 
-## Court Mode Persistence (UPDATED Ace 70.1)
-- **Surface + theme are DB-backed as of Ace 70.1.** `UserProfile.courtSurface` / `UserProfile.courtTheme` are the durable source of truth for the chosen palette. They are still mirrored into localStorage (`ace-court-surface` / `ace-court-theme`) for instant, flash-free first paint, but the DB copy is what survives a hard close and follows the user across devices.
-- **Why:** installed PWAs (iOS especially) evict script-writable storage (localStorage) after inactivity / storage pressure. Pre-70.1, dark mode + the chosen surface lived in localStorage only, so a hard-close eviction reset everyone to Hard/Light and rewrote those defaults back into storage - the "settings get forgotten over time" bug. Auto Night Mode survived only because it was the lone DB-backed appearance value.
+## Court Mode Persistence (added Ace 70.0)
+- **Surface + theme are DB-backed as of Ace 70.0.** `UserProfile.courtSurface` / `UserProfile.courtTheme` are the durable source of truth for the chosen palette. They are still mirrored into localStorage (`ace-court-surface` / `ace-court-theme`) for instant, flash-free first paint, but the DB copy is what survives a hard close and follows the user across devices.
+- **Why:** installed PWAs (iOS especially) evict script-writable storage (localStorage) after inactivity / storage pressure. Before 70.0, dark mode + the chosen surface lived in localStorage only, so a hard-close eviction reset everyone to Hard/Light and rewrote those defaults back into storage - the "settings get forgotten over time" bug. Auto Night Mode survived only because it was the lone DB-backed appearance value.
 - **Boot order:** the pre-hydration inline script (`buildCourtModePreHydrationScript`, seeded with the user's DB values from `layout.tsx`) stamps `data-surface` / `data-theme` on `<html>` from localStorage; when a key is missing it falls back to the DB value AND re-seeds localStorage from it. `CourtModeProvider` takes `initialSurface` / `initialTheme` props (same DB values) so SSR + first client render agree, then reconciles against localStorage. `setSurface` / `setTheme` / `toggleTheme` persist fire-and-forget via the `setCourtMode` server action, each writing only its own column. Legacy single-key `courtMode` migration + Hard/Light defaults unchanged.
 
 ## Auto Night Mode (added Ace 61.0)
 - **Day/night auto-flip for Court Mode.** A Settings > Appearance toggle that, when on, flips the active surface to its dark variant at 7:00 PM ET and back to light at 7:00 AM ET on a 1-minute client interval (no cron). It only drives the Light / Dark axis; the chosen surface (Hard / Clay / Grass / Night) is untouched.
-- **Persistence.** The toggle saves to `UserProfile.autoNightMode` so the preference follows the user across devices. As of Ace 70.1 the surface + theme are also DB-backed (see Court Mode Persistence above); the per-window auto-night marker (`ace-auto-night-window`) stays localStorage-only device bookkeeping. A manual Light / Dark switch made inside a window wins until the next 7am / 7pm boundary.
+- **Persistence.** The toggle saves to `UserProfile.autoNightMode` so the preference follows the user across devices. As of Ace 70.0 the surface + theme are also DB-backed (see Court Mode Persistence above); the per-window auto-night marker (`ace-auto-night-window`) stays localStorage-only device bookkeeping. A manual Light / Dark switch made inside a window wins until the next 7am / 7pm boundary.
 - **ET via Intl.** Eastern time is computed with `Intl.DateTimeFormat` keyed to `America/New_York`, so DST is automatic. This mirrors the calendar reminder-mode decision below: ET is hard-coded for now, to be replaced by a per-user timezone preference when MULTI-USER ships.
 
 ## Calendar Reminder-Mode Drawer (added Ace 61.0)
