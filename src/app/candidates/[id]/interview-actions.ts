@@ -15,6 +15,7 @@ import {
   updateCalendarEvent,
   updateEventAsInvite,
 } from "@/lib/google-calendar";
+import { sendGmail } from "@/lib/gmail";
 import { createTeamsMeeting, getMicrosoftToken, TEAMS_TOKEN_EXPIRED_MESSAGE } from "@/lib/microsoft-graph";
 import { prisma } from "@/lib/prisma";
 import {
@@ -978,10 +979,11 @@ export type SendInvitePartyInput = {
   party: "client" | "candidate";
   attendeeEmail: string;
   attendeeName?: string;
-  // Optional additional recipients. Google Calendar has no private Bcc
-  // bucket, so Bcc is intentionally ignored for native calendar invites.
-  // Candidate events stay candidate-only; client Cc recipients become
-  // visible client-event guests.
+  // Optional additional recipients. Client Cc recipients become visible
+  // guests on the client calendar event. Google Calendar has no private
+  // Bcc bucket, so Bcc recipients (e.g. Austin) are delivered a separate
+  // Gmail copy of the invite at send time instead — hidden from the
+  // candidate and client. Candidate events stay candidate-only.
   ccEmails?: string[];
   bccEmails?: string[];
   subject: string; // becomes event.summary
@@ -1262,6 +1264,44 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
       deliveredVia: "calendar",
     },
   });
+
+  // Bcc delivery. A Google Calendar invite has no private Bcc bucket, so
+  // any Bcc recipient gets a separate Gmail copy of the invite — same
+  // subject + description the calendar event carries — sent to them
+  // privately (the candidate and client never see it). Best-effort: a
+  // copy-send failure never fails the invite the recruiter already sent.
+  const bccList = (input.bccEmails ?? [])
+    .map((e) => e.trim())
+    .filter(Boolean);
+  if (bccList.length > 0) {
+    try {
+      const meetForBody = effectiveMeetLink
+        ? `\n\nJoin on Google Meet: ${effectiveMeetLink}`
+        : "";
+      const copyBody =
+        `You've been Bcc'd a private copy of this interview invite. ` +
+        `The candidate and client do not see this message.\n\n` +
+        `${resolvedBodyText}${meetForBody}`;
+      await sendGmail({
+        userId: user.id,
+        from: user.email,
+        fromName: user.name ?? undefined,
+        // Send only to the Bcc recipients, hidden from each other via Bcc
+        // so multiple private observers never see one another.
+        to: [user.email],
+        bcc: bccList,
+        subject: resolvedSubject,
+        bodyText: copyBody,
+      });
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[interview-invite] bcc copy send failed", {
+        interviewId: interview.id,
+        party: input.party,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
 
   revalidateForCandidate({ candidateRfId: interview.candidateRfId, candidateId: interview.candidateId });
   return {

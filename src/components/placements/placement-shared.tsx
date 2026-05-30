@@ -529,21 +529,28 @@ export function buildCcBccOptions(
     .map((c) => ({ id: String(c.id), name: c.name, email: c.email }));
 }
 
-// Pre-composer client-Cc picker shown on the Schedule Interview dialog.
-// Emits a CSV string so the existing state model doesn't need to change.
+// Pre-composer Cc / Bcc picker shown on the Schedule Interview dialog.
+// Emits CSV strings so the existing state model doesn't need to change.
 export function CcBccPicker({
   clientContacts,
   cc,
   onCcChange,
+  bcc,
+  onBccChange,
 }: {
   clientContacts: ClientContactRef[];
   cc: string;
   onCcChange: (v: string) => void;
+  bcc: string;
+  onBccChange: (v: string) => void;
 }) {
-  // Cc draws from the current job's client contacts only and is applied
-  // only to the client-facing calendar event. Candidate invites stay
-  // private because Google Calendar has no hidden Bcc bucket.
-  const ccPickerOptions = buildCcBccOptions(clientContacts);
+  // Cc draws from the current job's client contacts and becomes a visible
+  // guest on the client-facing calendar event. Bcc is a private copy: the
+  // calendar invite itself has no hidden Bcc bucket, so a Bcc recipient
+  // (e.g. Austin) is delivered a separate email copy of the invite at send
+  // time, hidden from the candidate and client. Both pull from the same
+  // client-contact suggestion list and also accept any typed-in address.
+  const pickerOptions = buildCcBccOptions(clientContacts);
   return (
     <div className="space-y-2">
       <label className="block text-sm">
@@ -553,8 +560,19 @@ export function CcBccPicker({
         <InlineContactMultiInput
           value={cc}
           onChange={onCcChange}
-          options={ccPickerOptions}
+          options={pickerOptions}
           placeholder="Pick a client contact or type email…"
+        />
+      </label>
+      <label className="block text-sm">
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+          Bcc (optional) · private copy
+        </span>
+        <InlineContactMultiInput
+          value={bcc}
+          onChange={onBccChange}
+          options={pickerOptions}
+          placeholder="Type an email to Bcc (e.g. Austin)…"
         />
       </label>
     </div>

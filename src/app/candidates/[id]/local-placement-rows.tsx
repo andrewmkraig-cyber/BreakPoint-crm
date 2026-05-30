@@ -954,6 +954,7 @@ function ScheduleDialog({
   const [interviewerEmail, setInterviewerEmail] = useState("");
   const [location, setLocation] = useState("");
   const [ccCsv, setCcCsv] = useState("");
+  const [bccCsv, setBccCsv] = useState("");
   const [notes, setNotes] = useState("");
   // When checked, the recruiter is logging an interview the client is
   // scheduling themselves: we still write the Interview row + sync the
@@ -1084,7 +1085,7 @@ function ScheduleDialog({
         clientContactName: interviewerName.trim(),
         clientContactEmail: interviewerEmail.trim(),
         ccEmails: parseEmailCsv(ccCsv),
-        bccEmails: [],
+        bccEmails: parseEmailCsv(bccCsv),
         timeZone,
         candidateTemplate: templates.candidate,
         clientTemplate: templates.client,
@@ -1151,6 +1152,8 @@ function ScheduleDialog({
               clientContacts={job.clientContacts}
               cc={ccCsv}
               onCcChange={setCcCsv}
+              bcc={bccCsv}
+              onBccChange={setBccCsv}
             />
           )
         }
@@ -2374,7 +2377,7 @@ function LocalClientInviteComposer({
       initial={{
         to: invite.clientContactEmail ? [invite.clientContactEmail] : [],
         cc: invite.ccEmails,
-        bcc: [],
+        bcc: invite.bccEmails,
         subject,
         body,
       }}
@@ -2385,7 +2388,7 @@ function LocalClientInviteComposer({
         body: applyMergeFieldsClient(t.body, values),
       })}
       ccOptions={ccPickerOptions}
-      hideBccField
+      bccOptions={ccPickerOptions}
       mergeValues={values}
       sendLabel="Send Invite"
       onClose={onClose}
@@ -2402,7 +2405,7 @@ function LocalClientInviteComposer({
           attendeeEmail: draft.to[0],
           attendeeName: invite.clientContactName || undefined,
           ccEmails: draft.cc,
-          bccEmails: [],
+          bccEmails: draft.bcc,
           subject: draft.subject,
           bodyText: draft.body,
           timeZone: invite.timeZone,
