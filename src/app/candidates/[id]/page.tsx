@@ -104,9 +104,33 @@ export default async function CandidateProfilePage({
   // shows just the profile content.
   const isEmbed = searchParams?.embed === "true";
 
+  // Phase C1 — THE FLIP (reversible). Route ALL candidates, legacy
+  // (rfId != null) and Ace-native alike, through the Ace-native
+  // LocalCandidateProfile. Phase B backfilled every Placement / Interview /
+  // CandidateResume FK to the candidate cuid, and the audit
+  // (scripts/audit-legacy-candidates.ts) confirmed 0 pill-loss: every Neon
+  // placement is reachable by cuid, the path LocalCandidateProfile reads.
+  //
+  // This is C1, not C2 — DELETE NOTHING. The legacy RFCandidate
+  // reconstruction, PlacementActionsIsland mount, and full legacy body below
+  // are retained verbatim and remain type-checked; they're simply unreached
+  // while ROUTE_ALL_THROUGH_LOCAL is true. Flip the constant back to false
+  // to instantly restore the legacy RF-page render for rfId != null
+  // candidates (Ace-native candidates always took the LocalCandidateProfile
+  // path and are unaffected either way).
+  //
+  // Typed `: boolean` (not literal `true`) on purpose: it keeps TypeScript
+  // treating the legacy branch as reachable so it stays fully type-checked,
+  // and preserves the `candidate.rfId == null` narrowing that feeds
+  // `const id = candidate.rfId` below.
+  const ROUTE_ALL_THROUGH_LOCAL: boolean = true;
+
   // Ace-native candidates (never imported from RF) have no rfId and route
   // to the simpler LocalCandidateProfile UI — unchanged from pre-Phase 1.
-  if (candidate.rfId == null) {
+  // C1: the ROUTE_ALL_THROUGH_LOCAL guard widens this to legacy candidates
+  // too; the `rfId == null` clause is retained so flipping the constant back
+  // to false restores the original Ace-native-only routing exactly.
+  if (ROUTE_ALL_THROUGH_LOCAL || candidate.rfId == null) {
     return (
       <LocalCandidateProfile
         id={candidate.id}
