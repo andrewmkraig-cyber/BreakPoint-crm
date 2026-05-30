@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp, FileEdit, Link2, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -421,6 +421,20 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
   const [lastFocus, setLastFocus] = useState<"subject" | "body">("body");
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  // X-only dismissal. A half-written template is easy to lose to a stray
+  // backdrop click or a reflexive Escape, so this modal closes only on the
+  // X (or the explicit Cancel button) — never on overlay click, drag-off,
+  // or Escape. Mirrors the dismissOnOverlay=false ModalShell pattern in
+  // local-placement-rows.tsx: the overlay swallows clicks, and Escape is
+  // blocked in the capture phase so it can't bubble up to a parent.
+  useEffect(() => {
+    function block(e: KeyboardEvent) {
+      if (e.key === "Escape") e.stopPropagation();
+    }
+    window.addEventListener("keydown", block, { capture: true });
+    return () => window.removeEventListener("keydown", block, { capture: true });
+  }, []);
+
   function insertAtCursor(token: string) {
     if (lastFocus === "subject" && subjectRef.current) {
       const el = subjectRef.current;
@@ -480,7 +494,11 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
     // Modal backdrop is navy-tinted on every mode — reads as "darker than
     // whatever's behind me" regardless of theme, which is what a dialog
     // overlay wants.
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+      // Backdrop swallows clicks instead of closing — X (or Cancel) only.
+      onClick={(e) => e.stopPropagation()}
+    >
       <div
         className="flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl"
         onClick={(e) => e.stopPropagation()}
@@ -619,7 +637,9 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
             onClick={onSave}
             disabled={isSaving}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-md bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60",
+              // Button Standard primary CTA: rounded-md, filled green that
+              // tracks Court Mode (bg-court-brand, not the fixed bg-brand).
+              "inline-flex items-center gap-1.5 rounded-md bg-court-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:opacity-60",
             )}
           >
             {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
