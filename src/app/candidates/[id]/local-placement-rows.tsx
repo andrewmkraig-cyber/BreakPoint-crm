@@ -1688,27 +1688,33 @@ function LocalPlacementDialog({
           stacked full-width. Was sm:col-span-2 on each card (~280px
           combined); now sm:grid-cols-2 (~140px). Falls back to single
           column on narrow screens. */}
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border border-court-border/40 bg-court-surface-subtle/40 px-3 py-2">
+      {/* Grid default align-items: stretch already equalizes the two card
+          box heights; flex-col + mt-auto on the inputs block bottom-anchors
+          Name/Email so they line up across both cards even when the two
+          helper paragraphs wrap to different line counts (Ace 70.0 fix —
+          the descriptions differ in length, which previously left the
+          shorter card's inputs floating higher than the taller card's). */}
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:items-stretch">
+        <div className="flex flex-col rounded-lg border border-court-border/40 bg-court-surface-subtle/40 px-3 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
             Billing contact
           </div>
           <p className="mt-0.5 text-[11px] text-court-fg-muted">
             To: on the auto-drafted invoice when you Confirm Start. Pick the AP / finance contact.
           </p>
-          <div className="mt-1.5 grid grid-cols-1 gap-2">
+          <div className="mt-auto grid grid-cols-1 gap-2 pt-1.5">
             <OfferField label="Name" value={billingName} onChange={setBillingName} />
             <OfferField label="Email" value={billingEmail} onChange={setBillingEmail} placeholder="ap@example.com" />
           </div>
         </div>
-        <div className="rounded-lg border border-court-border/40 bg-court-surface-subtle/40 px-3 py-2">
+        <div className="flex flex-col rounded-lg border border-court-border/40 bg-court-surface-subtle/40 px-3 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
             Hiring manager
           </div>
           <p className="mt-0.5 text-[11px] text-court-fg-muted">
             Invoice notes + hired-welcome email so both sides know the manager.
           </p>
-          <div className="mt-1.5 grid grid-cols-1 gap-2">
+          <div className="mt-auto grid grid-cols-1 gap-2 pt-1.5">
             <OfferField label="Name" value={hiringName} onChange={setHiringName} />
             <OfferField label="Email" value={hiringEmail} onChange={setHiringEmail} placeholder="hm@example.com" />
           </div>
