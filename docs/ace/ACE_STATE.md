@@ -1,8 +1,36 @@
 # ACE_STATE.md
-Last updated: 2026-05-29 · Ace 68.0
-Current Version: Ace 68.0
-Last Shipped: 2026-05-29
+Last updated: 2026-05-30 · Ace 69.0
+Current Version: Ace 69.0
+Last Shipped: 2026-05-30
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 69.0 (2026-05-30)
+
+**Headline: the RF two-profile split is CLOSED.** Every one of the 726 candidates now renders the single Ace-native `LocalCandidateProfile`; the legacy `rfId`-keyed RF profile path is deleted. Executed as a four-phase, reversible-until-the-flip migration (rule 7: no partial migrations), plus two UI fixes and the Edit Resume render-bug fix surfaced by the flip. SHAs: `1f7e5d0` (A), `f4e6850` (B), `c985104` (C1), `791c843` (C2), `ff178a2` + `6c78351` (rail/mobile padding), `bd7c69e` (Edit Resume).
+
+- **Phase A — extract shared placement UI into a neutral module (`1f7e5d0`).** Behavior-neutral. Moved 7 shared symbols verbatim (`ConfirmStartDialog`, `formatOpenJobOption`, `InlineContactMultiInput`, + shared types `ClientContactRef` and the others) out of the legacy `placement-flows.tsx` into a new neutral module **`src/components/placements/placement-shared.tsx`**. `local-placement-rows.tsx` and `local-candidate-actions.tsx` now import from the new module instead of the RF closure; `placement-flows.tsx` re-imported them back so `PlacementActions` stayed unchanged. No query, data, or upload behavior change — pure relocation to break the Ace-native path's dependency on RF code ahead of the flip.
+
+- **Phase B — cuid-FK backfill (`f4e6850`).** Backfilled every `Placement` / `Interview` foreign key to the candidate cuid so the Ace-native path (which reads by cuid) reaches every row the legacy path reached by `rfId`. **68 cells filled** across Placement/Interview; **4 synthetic-id shim-bug rows resolved** (rows that had been written with a synthetic id instead of a real cuid); **1 duplicate placement reconciled**; **1 rejected RF orphan left untouched** (intentionally — no live candidate). `ActivityLog` and the client agreements/benefits tables were already cuid-keyed, so they needed no backfill. Idempotent, re-runnable artifact at **`scripts/migrations/phaseB-cuid-fk-backfill.cjs`**. Audit (`scripts/audit-legacy-candidates.ts` + `c1-verify-flip.ts`) confirmed **0 pill-loss** afterward: every Neon placement is reachable by cuid.
+
+- **C1 — THE FLIP, reversible (`c985104`).** Routed all 726 candidates (690 legacy + 36 Ace-native) through `LocalCandidateProfile` behind a `ROUTE_ALL_THROUGH_LOCAL: boolean = true` guard, deleting nothing — the legacy body stayed type-checked and one constant-flip away from restoration. Only `page.tsx` (+26) and a verify script changed. **Accepted behavior decision:** 594 legacy candidates whose pipeline pills came *only* from RF-cache `raw.jobs[]` (no backing Neon Placement) now show an empty pipeline strip. This is correct, not a regression — Neon is the canonical source of pipeline truth (rule 13) and RF is removed (rule 1); RF-cache-only pills were never real placements. The 3 spot-check candidates (Mac Bowers, Sidney Long, Jennifer Baker) built complete non-null props (name/contact, geocoded distance, Neon placements w/ job+client, interviews, resumes).
+
+- **C2 — delete the dead legacy path, atomic (`791c843`).** With C1 settled and live, removed the legacy path entirely (rule 7). `page.tsx` legacy body (RFCandidate-from-raw reconstruction, `PlacementActionsIsland` mount, all orphaned helpers) deleted; `ROUTE_ALL_THROUGH_LOCAL` + the `|| rfId == null` clause gone; **`LocalCandidateProfile` is now the unconditional return** (`page.tsx` 1186 → 44 lines). Deleted whole files: **`placement-actions-island.tsx`** (47 lines) and **`placement-flows.tsx`** (4225 lines) — both had no live importers after C1. **Synthetic-id shim RETAINED — still load-bearing:** `syntheticIdFromCuid` + `_aceJobId`/`_aceClientId`/`_aceContactId` carry-fields are read live by the Ace path (`local-profile.tsx`, `candidates/bulk-actions.ts`, `placement-actions.ts`, `jobs/page.tsx`, `jobs/[id]/page.tsx`, `lib/candidates.ts`, `lib/rf-payload-shapes.ts`). Its removal is a separate future phase, not part of the two-profile-split close.
+
+- **`/candidates` search-rail padding fix (`ff178a2`).** Ace 68.0's `3ae8c2c` slide-left trimmed the `isFullBleed` (`/candidates`) main-column left padding but left the rail wrapper's negative margins (`-ml-[18/22/38/54px]`) tuned to the old padding, jumping the net offset from a uniform −6px to −14/−26/−38px — shoving the rail under the sidebar and clipping the first letter of every filter label. Restored the original padding on the `isFullBleed` branch ONLY (`pl-3 / md:pl-4 / xl:pl-8 / 2xl:pl-12`) in `src/components/app-shell.tsx` so the net offset returns to −6px; negative margins untouched; every other route uses the unchanged else branch so the slide-left is preserved.
+
+- **Mobile/PWA left-shift fix (`6c78351`).** Symmetric page padding below `md` so the installed PWA no longer renders content shifted left on phone viewports.
+
+- **Edit Resume render fix (`bd7c69e`).** Once C1 routed all candidates through the canvas-based Ace-native editor, the Edit Resume tool (`src/app/candidates/[id]/resume-editor.tsx`) surfaced a runtime error — *"Cannot use the same canvas during multiple render() operations"* — and rendered the resume upside-down/mirrored. Root cause: the render effect reused persistent canvas DOM nodes but never cancelled its pdf.js `RenderTask`, so a `ResizeObserver`-driven fit-scale change re-ran the effect mid-render on the same canvas; pdf.js rejected the second `render()` and the interrupted task left the 2D-context transform half-applied (the flip). Fix: track the in-flight `RenderTask` per page, cancel any task still painting a canvas before re-rendering it, cancel all in-flight tasks on effect cleanup, and swallow pdf.js's `RenderingCancelledException` so a deliberate cancel isn't surfaced as an error. The same cancellation resolves the flip — pdf.js unwinds its Y-flip transform before the next pass. Type-only change to `src/lib/pdfjs-loader.ts` to expose `cancel()` (new `PdfJsRenderTask` type). Scope held to those two files; `PdfCanvasViewer` and routing/data untouched.
+
+## Next Task
+
+Open follow-ups (carry forward — the RF two-profile split that headlined the prior Next Task is now DONE):
+- **Auto-geocode the remaining candidate-create paths.** `createCandidate` self-geocodes; the **3 other create paths** (invoice flow, CSV import, match-by-name) do not yet — wire the same fire-and-forget `geocodePill` call into all three.
+- **v2 deterministic scorer decision.** The Match column was pulled after the scoring engine was reverted (Ace 68.0). Decide whether a v2 scorer ships (resume-text + JD-prose as primary inputs) before re-adding any Match column.
+- **Batch 5 metric refresh.** Carried forward.
+- **Batch 8a/8b interview attendee hydration.** Carried forward.
+- **Verify this session's ships on the live deploy.** HEAD is correct + builds clean, but the live deploy lags repo (`live-deploy-diverges-from-repo`); confirm the unified candidate profile, the empty-pipeline-strip behavior for RF-cache-only candidates, the rail/mobile padding, and the Edit Resume editor (no canvas error, right-side-up) after the next deploy.
+- **Synthetic-id shim removal (future phase).** Retained and load-bearing across 7 files after C2; removing it is its own scoped RF-removal phase.
 
 ## What Shipped in Ace 68.0 (2026-05-29)
 
@@ -23,15 +51,6 @@ Pipeline + candidate-profile distance pass, Find Matches UX, a column-standardiz
 - **Pipeline typography + layout pass (`3825f27`).** Job + Client collapsed into one stacked **Job/Client** column matching the Current Title/Employer pattern (job title primary line, client name muted sub-line + verified shield). Billing Contact column removed from the Hired stage. Typography normalized to one-bold-element-per-row (candidate name only); job title dropped its `font-medium`; date/location/salary cells normalized to one metadata size (Last Action bumped `text-xs`→`text-sm`, Start Date colors aligned). Placement Fee percent font preserved per spec. The My Pipeline owner selector was sized down (`py-1` + `text-[13px]`) to match the stage-tab pill height. colSpans updated everywhere (main empty-state 7→6 LEFT cols, intake 10/9→9/8, Hired RIGHT 3→2). Applies to the main table and the intake tables via the shared `UniformLeftRowCells`.
 
 - **RF vocabulary scrub.** Cosmetic, user-facing RF-string renames were completed; dead/legacy columns and shim fields were left in place (no schema churn). The deeper structural RF items were catalogued, not executed — the headline bucket-C finding is the live two-profile split on the candidate profile (see Next Task below), deliberately left untouched this session so it can get its own focused migration.
-
-## Next Task
-
-**PRIORITY — RF two-profile split unification.** 690 of 726 candidates render a legacy `rfId`-keyed profile layout (`placement-flows.tsx` / `PlacementActionsIsland`) instead of the Ace-native `LocalCandidateProfile`, routed by the `rfId == null` check at `src/app/candidates/[id]/page.tsx:109`. This is a LIVE two-path split, not cosmetic — it violates Architecture rule 1 (RF removed) and is the root cause of features half-working across the app (the distance pill, and likely others, only render for the 36 Ace-native candidates). Next session: scope and execute migrating all candidates onto the single Ace-native profile path. This is a real migration, not a rename — it deserves its own focused session. Reads Neon data only; no RecruiterFlow re-introduction. Diagnose the full blast radius first (what else branches on `rfId`), then unify atomically per rule 7 (no partial migrations).
-
-Open follow-ups (carry forward):
-- **v2 deterministic scorer decision.** The Match column was pulled after the scoring engine was reverted. Decide whether a v2 scorer ships (resume-text + JD-prose as primary inputs, per the revert message) before re-adding any Match column.
-- **Auto-geocode the remaining candidate-create paths.** `createCandidate` self-geocodes; the invoice-flow, CSV-import, and match-by-name create paths do not yet — wire the same fire-and-forget `geocodePill` call into all three.
-- **Verify this session's ships on the live deploy.** The Ace 68.0 work is correct at HEAD but the live deploy lags repo (`live-deploy-diverges-from-repo`); confirm the pipeline distance, the profile pill distance, the Job/Client merge, and the Find Matches UX are actually live after the next deploy.
 
 ## What Shipped in Ace 67.20 (2026-05-28)
 

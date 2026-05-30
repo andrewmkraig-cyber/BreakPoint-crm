@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-05-29 · Ace 68.0
+Last updated: 2026-05-30 · Ace 69.0
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -80,7 +80,9 @@ All time estimates calibrated against actual build pace: Game Plan Context Depth
 11. Git author email: andrew@breakpointtalent.com OR andrewmkraig@gmail.com.
 12. Court Mode theme tokens. No hardcoded colors.
 13. Pipeline stage source of truth: Neon only.
-14. **Ace-native modal path rule.** The candidate flow has two modal files - `placement-flows.tsx` (RF/legacy) and `local-placement-rows.tsx` (Ace-native). Since RF is removed (rule 1), every real user action routes through `local-placement-rows.tsx`. Step 0 grep on any candidate modal prompt must grep BOTH files and explicitly confirm which renders at runtime before writing any edits. Only edit the Ace-native file. Memory entry: `feedback_ace_native_only_modal_path.md`.
+14. **Ace-native modal path rule.** UPDATED Ace 69.0 — `placement-flows.tsx` was DELETED in C2 (`791c843`); the two-modal-file ambiguity is gone. `local-placement-rows.tsx` is now the only candidate placement modal file, and `LocalCandidateProfile` is the unconditional candidate-profile render (the legacy `rfId`-keyed path is deleted). Edit `local-placement-rows.tsx` for placement modal work. Shared placement/interview symbols extracted in Phase A live in `src/components/placements/placement-shared.tsx`. Step 0 grep still applies — confirm the live surface before editing. Memory entry: `feedback_ace_native_only_modal_path.md` (now stale on the dead-RF-file detail).
+
+    **Synthetic-id shim — RETAINED (known remaining shim).** RF removal progressed materially in Ace 69.0 (legacy candidate-profile path + `placement-flows.tsx` + `PlacementActionsIsland` all deleted), but the synthetic-id shim is NOT gone: `syntheticIdFromCuid` + `_aceJobId`/`_aceClientId`/`_aceContactId` carry-fields are still read live across 7 files (`local-profile.tsx`, `candidates/bulk-actions.ts`, `placement-actions.ts`, `jobs/page.tsx`, `jobs/[id]/page.tsx`, `lib/candidates.ts`, `lib/rf-payload-shapes.ts`). Rule 1 ("RecruiterFlow is removed") holds for the RF data path and UI; this numeric-stand-in shim remains load-bearing and its removal is a separate future RF-removal phase. The djb2-hash-in-URL prohibition (Job + JD Rules below) still stands.
 
 ## BD Phase 4 Rule (added 2026-05-12 · Ace 41.0 — permanent, never skip)
 Claude must ask Andrew a full set of scoping questions before writing any BD Phase 4 prompt. Do not skip this even if Andrew says "start BD Phase 4" or "let's go." Andrew's standing direction is that Discovery + Client Signals + approval queue matters more than fully automated send magic, and not every Phase 4 automation ships for launch. The required questions are listed in ACE_STATE.md under the BD Phase 4 Rules section of Next Task. Re-read that section every time the next session opens against BD Phase 4 — the questions are the gate, not a suggestion.

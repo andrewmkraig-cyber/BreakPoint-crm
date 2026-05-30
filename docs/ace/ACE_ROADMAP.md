@@ -1,15 +1,17 @@
 # Ace Roadmap
-Last updated: 2026-05-29 · Ace 68.0
+Last updated: 2026-05-30 · Ace 69.0
 
 ## Active Build Sequence
 
 ### Next Up
 
-1. **PRIORITY - RF two-profile split unification (own focused session).** 690 of 726 candidates render a legacy `rfId`-keyed profile layout (`placement-flows.tsx` / `PlacementActionsIsland`) instead of the Ace-native `LocalCandidateProfile`, routed by the `rfId == null` check at `src/app/candidates/[id]/page.tsx:109`. Live two-path split, not cosmetic - violates Architecture rule 1 (RF removed) and is the root cause of features half-working app-wide (the Ace 68.0 distance pill only renders for the 36 Ace-native candidates; likely others). Diagnose the full blast radius first (everything that branches on `rfId`), then migrate all candidates onto the single Ace-native path atomically per rule 7 (no partial migrations). Reads Neon data only; no RecruiterFlow re-introduction. A real migration, not a rename.
+1. **Auto-geocode the remaining 3 candidate-create paths.** `createCandidate` self-geocodes on save (Ace 68.0, fire-and-forget `geocodePill` → `lat/lng`). The invoice-flow, CSV-import, and match-by-name create paths do NOT yet, so candidates created via those routes have no distance sub-line until the next `scripts/geocode-candidates.ts` run. Wire the same non-awaited `geocodePill` call into all three.
 2. **v2 deterministic scorer decision (Match column).** The deterministic scoring engine (`5665a8a`) was reverted (`220e381`) and the pipeline Match column was pulled (`cc8a89f`) because its `CandidateMatch.score` rows were zeroed post-revert. Decide whether a v2 scorer ships before any Match column returns. Per the revert message, a v2 should take resume-text + JD-prose as the primary inputs (not the deterministic trajectory heuristic that was rolled back). `CandidateMatch` model + Find Matches surface are intact; only the pipeline column was removed.
 3. **Batch 5 - metric refresh.** Ethan placement edit not propagating to Momentum / Recent Deal Moves. Jennifer <=14d Offer-to-Start count stuck at 0 after same-day start. Likely revalidatePath gap on edit/confirm actions.
 4. **Batch 8a - Diagnose interview attendee hydration.** Clicking existing interview shows "No guests" instead of attendee list. Attendee info ends up in Notes as plain text. Diagnose-only prompt first.
 5. **Batch 8b - Fix interview attendee hydration.** Written after 8a diagnosis.
+
+(RF two-profile split unification — the prior PRIORITY item — shipped Ace 69.0 across Phases A/B/C1/C2. See Completed - Ace 69.0 below and ACE_STATE.md.)
 
 (Batch 6 Cancel Placement shipped Ace 67.19; Batch 7 UI polish shipped Ace 67.20 - full detail in ACE_STATE.md.)
 
@@ -42,12 +44,11 @@ _(none currently queued)_
 ## Cleanup
 Do alongside other work.
 
-- **Sentry N+1 fixes** — ACE-CRM-5 (37 events), ACE-CRM-6 (28), ACE-CRM-7 (2), ACE-CRM-9 (1), ACE-CRM-A (1). Fix via Prisma include eager-loading. **DONE Ace 65.0** - audit found 3 genuine N+1s (bulk-actions placement lookup, import-csv candidate lookup, match-by-name lookup), all converted to batched `findMany`.
 - **Compound-unique widening** — 3 Placement compound uniques missing organizationId.
-- **SmsMessage / CallLog / CallTranscript / AiWorkspaceMessage tenant-scoping**. **DONE Ace 65.0** - SmsMessage / CallLog covered by 9 query sites fixed across 5 files; CallTranscript / AiWorkspaceMessage scoping completed.
 - **MANUAL** — delete `RECRUITERFLOW_API_KEY` from `.env.local` and GitHub Actions secrets.
-- **MANUAL** — delete `src/lib/recruiterflow/` directory entirely. **DONE Ace 65.0** - confirmed nonexistent, no-op.
 - **Postgres search indexes** — already in active sequence above; listed here for completeness.
+
+(Doc hygiene, Ace 69.0: removed three long-DONE entries that were cluttering this list — Sentry N+1 fixes, SmsMessage/CallLog/CallTranscript/AiWorkspaceMessage tenant-scoping, and the `src/lib/recruiterflow/` directory delete. All were completed in Ace 65.0; see Completed - Ace 65.0 below.)
 
 ## Future Ideas
 Revisit at scale or workflow change — do not build now.
@@ -81,6 +82,10 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 69.0 RF two-profile split CLOSED + rail/mobile padding fixes + Edit Resume render fix (May 30, 2026)
+
+The RF two-profile split is closed: all 726 candidates now render the single Ace-native `LocalCandidateProfile`, and the legacy `rfId`-keyed RF profile path is deleted. Executed as a four-phase migration. **Phase A (`1f7e5d0`)** — behavior-neutral extraction of 7 shared placement/interview symbols out of the legacy `placement-flows.tsx` into a neutral module `src/components/placements/placement-shared.tsx`, breaking the Ace path's dependency on RF code. **Phase B (`f4e6850`)** — cuid-FK backfill so the Ace path (reads by cuid) reaches every row the legacy path reached by `rfId`: 68 Placement/Interview cells filled, 4 synthetic-id shim-bug rows resolved, 1 duplicate placement reconciled, 1 rejected RF orphan left untouched; idempotent artifact `scripts/migrations/phaseB-cuid-fk-backfill.cjs`; audit confirmed 0 pill-loss. **C1 (`c985104`)** — reversible flip routing all candidates through `LocalCandidateProfile` behind `ROUTE_ALL_THROUGH_LOCAL`, deleting nothing. Accepted behavior decision: 594 legacy candidates whose pipeline pills came only from RF-cache `raw.jobs[]` (no Neon Placement) now show an empty pipeline strip — correct per rules 13 (Neon canonical) + 1 (RF removed), not a regression. **C2 (`791c843`)** — atomic deletion of the dead path: legacy `page.tsx` body + `placement-actions-island.tsx` (47 lines) + `placement-flows.tsx` (4225 lines, whole file) removed; `LocalCandidateProfile` is now the unconditional return (`page.tsx` 1186 → 44 lines). Synthetic-id shim RETAINED — still load-bearing across 7 files; its removal is a separate future phase. Plus three fixes: `/candidates` search-rail left-padding restored after 68.0's slide-left over-trimmed it (`ff178a2`, net offset back to −6px in `app-shell.tsx`); mobile/PWA left-shift fixed via symmetric sub-`md` page padding (`6c78351`); and the Edit Resume canvas editor — surfaced once C1 routed everyone through it — fixed for the "Cannot use the same canvas during multiple render() operations" error + upside-down/mirrored render by tracking and cancelling the in-flight pdf.js `RenderTask` (`bd7c69e`, `resume-editor.tsx` + a type-only change in `pdfjs-loader.ts`). Full detail in ACE_STATE.md under What Shipped in Ace 69.0.
 
 ## Completed - Ace 68.0 Pipeline + profile distance, Find Matches UX, column/typography pass, Match column pull, candidate geocoding, RF scrub (May 29, 2026)
 
