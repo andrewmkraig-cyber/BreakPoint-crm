@@ -81,6 +81,13 @@ export async function GET(req: NextRequest) {
   });
 
   const url = new URL(req.url);
+  // Warm-up ping fired when the composer opens: kick the Gmail snapshot
+  // load in the background (non-blocking) so the sent-mail history is
+  // ready by the time the recruiter starts typing, then return empty.
+  if (url.searchParams.get("warm")) {
+    if (user) void getGmailSentRecipients(user.id, { wait: false });
+    return NextResponse.json({ ok: true, contacts: [] });
+  }
   const q = (url.searchParams.get("q") ?? "").trim();
   if (q.length < MIN_QUERY_LEN) {
     return NextResponse.json({ ok: true, contacts: [] });
@@ -120,8 +127,11 @@ export async function GET(req: NextRequest) {
   // Gmail Sent recipients: cached snapshot of the last 500 sent
   // messages, refreshed every 30 min. Helper returns [] on any
   // failure so a Gmail outage just hides these rows.
+  // wait:false — never block the typeahead on a cold Gmail snapshot. The
+  // Ace DB matches below return immediately; Gmail-history rows fold in
+  // on a later keystroke once the background snapshot warms.
   const gmailPromise: Promise<{ name: string; email: string }[]> = user
-    ? getGmailSentRecipients(user.id)
+    ? getGmailSentRecipients(user.id, { wait: false })
     : Promise.resolve([]);
 
   const [aceCandidates, aceContacts, gmailRecipients] = await Promise.all([

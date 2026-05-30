@@ -164,41 +164,17 @@ async function loadSnapshot(userId: string): Promise<Recipient[]> {
   return out;
 }
 
-// Public entry point. Returns the cached snapshot if fresh; otherwise
-// kicks off (or joins) a refresh.
-export async function getGmailSentRecipients(
-  userId: string,
-): Promise<Recipient[]> {
-  const now = Date.now();
-  const entry = cache.get(userId);
-  if (entry && entry.expiresAt > now) {
-    return entry.recipients;
-  }
-  // Coalesce concurrent refreshes — first caller does the work, the
-  // rest await its result.
-  if (entry?.loading) {
-    return entry.loading;
-  }
-  // Stale-but-recent: serve the old list immediately and refresh in
-  // the background, so a typeahead doesn't pay for the snapshot
-  // every 30 min. The next request after refresh completes hits a
-  // fresh cache.
-  if (entry && now - entry.expiresAt < STALE_OK_MS && entry.recipients.length > 0) {
-    const refresh = loadSnapshot(userId).then((recipients) => {
-      cache.set(userId, {
-        recipients: recipients.length ? recipients : entry.recipients,
-        expiresAt: Date.now() + CACHE_TTL_MS,
-        loading: null,
-      });
-      return recipients;
-    });
-    cache.set(userId, { ...entry, loading: refresh });
-    return entry.recipients;
-  }
-
+// Kick off (or join) a background snapshot refresh for this user and
+// store the in-flight promise on the cache entry so concurrent callers
+// coalesce onto it. Returns the promise; callers decide whether to await
+// it (blocking) or ignore it (non-blocking warm).
+function startRefresh(userId: string, entry: CacheEntry | undefined): Promise<Recipient[]> {
   const promise = loadSnapshot(userId).then((recipients) => {
+    const prev = cache.get(userId);
     cache.set(userId, {
-      recipients,
+      // A failed/empty snapshot keeps whatever we had rather than
+      // wiping a good list to [].
+      recipients: recipients.length ? recipients : prev?.recipients ?? [],
       expiresAt: Date.now() + CACHE_TTL_MS,
       loading: null,
     });
@@ -206,8 +182,49 @@ export async function getGmailSentRecipients(
   });
   cache.set(userId, {
     recipients: entry?.recipients ?? [],
-    expiresAt: 0,
+    expiresAt: entry?.expiresAt ?? 0,
     loading: promise,
   });
   return promise;
+}
+
+// Public entry point. Returns the cached snapshot if fresh; otherwise
+// kicks off (or joins) a refresh.
+//
+// `wait` controls cold-cache behavior. The mail composer's typeahead
+// passes wait=false so a cold snapshot (up to 500 Gmail header fetches,
+// ~3-5s) NEVER blocks the To-field lookup: the route returns the fast
+// Ace database matches immediately, the snapshot warms in the
+// background, and the Gmail-history rows fold in on the next keystroke
+// once it lands. wait=true (the default) preserves blocking semantics
+// for any caller that genuinely needs the full list in-line.
+export async function getGmailSentRecipients(
+  userId: string,
+  opts: { wait?: boolean } = {},
+): Promise<Recipient[]> {
+  const wait = opts.wait ?? true;
+  const now = Date.now();
+  const entry = cache.get(userId);
+  if (entry && entry.expiresAt > now) {
+    return entry.recipients;
+  }
+  // Refresh already in flight. Blocking callers await it; non-blocking
+  // callers take whatever's cached now (possibly []) and let it finish
+  // in the background.
+  if (entry?.loading) {
+    return wait ? entry.loading : entry.recipients;
+  }
+  // Stale-but-recent: serve the old list immediately and refresh in
+  // the background regardless of `wait`, so a typeahead never pays for
+  // the snapshot every 30 min.
+  if (entry && now - entry.expiresAt < STALE_OK_MS && entry.recipients.length > 0) {
+    startRefresh(userId, entry);
+    return entry.recipients;
+  }
+
+  // Cold (or fully expired with nothing usable). Start the snapshot;
+  // blocking callers await it, non-blocking callers return [] now and
+  // pick up the rows once it warms.
+  const promise = startRefresh(userId, entry);
+  return wait ? promise : entry?.recipients ?? [];
 }

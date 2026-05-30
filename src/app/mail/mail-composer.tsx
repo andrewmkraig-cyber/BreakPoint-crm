@@ -2050,6 +2050,15 @@ function AddressRow({
   serverSearch?: boolean;
 }) {
   const [focused, setFocused] = useState(false);
+  // Fired once on first focus of a server-search row: warms the Gmail
+  // sent-mail snapshot in the background so the cold ~3-5s load is paid
+  // before the recruiter finishes typing, not on their first keystroke.
+  const warmedRef = useRef(false);
+  function warmContactSnapshot() {
+    if (!serverSearch || warmedRef.current) return;
+    warmedRef.current = true;
+    void fetch("/api/mail/contacts-search?warm=1", { cache: "no-store" }).catch(() => {});
+  }
   // Server-backed contact search results, paired with the query that
   // produced them so a stale debounce tick can't apply suggestions
   // for an outdated segment. Cleared whenever the segment shrinks
@@ -2203,7 +2212,10 @@ function AddressRow({
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          onFocus={() => setFocused(true)}
+          onFocus={() => {
+            setFocused(true);
+            warmContactSnapshot();
+          }}
           onBlur={() => setFocused(false)}
           onKeyDown={onKeyDown}
           autoFocus={autoFocus}
