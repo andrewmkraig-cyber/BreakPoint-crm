@@ -1877,15 +1877,17 @@ export function MatchesTab({
                       )}
                       Add to List
                     </button>
-                    <button
+                    <Button
                       type="button"
+                      variant="secondary"
+                      size="sm"
                       onClick={() => setEmailDialogOpen(true)}
                       disabled={bulkInFlight}
-                      className="flex items-center gap-1.5 rounded-md border border-orange-500 bg-white px-3 py-1.5 text-sm font-medium text-orange-600 hover:bg-orange-50 transition-colors"
+                      className="px-2.5 py-1 text-sm"
                     >
                       <Mail className="h-3.5 w-3.5" />
                       Email
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )}

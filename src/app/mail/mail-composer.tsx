@@ -1885,7 +1885,7 @@ export function MailComposer({
           <Button
             type="button"
             size="sm"
-            variant="secondary"
+            variant="danger"
             onClick={onDelete}
             disabled={deletingDraft || sending}
           >

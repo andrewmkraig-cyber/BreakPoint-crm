@@ -3026,7 +3026,7 @@ function LabelTreeNode({
                       setMenuOpen(false);
                       if (node.id) void onDeleteLabel(node.id, node.name);
                     }}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-700 hover:bg-red-50"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50"
                   >
                     <Trash2 className="h-3 w-3" /> Delete
                   </button>

@@ -356,7 +356,7 @@ function TemplateCard({
               type="button"
               onClick={onDelete}
               disabled={isDeleting}
-              className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-court-surface px-2.5 py-1 text-[11px] font-medium text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-50 disabled:opacity-60"
+              className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-court-surface px-2.5 py-1 text-[11px] font-medium text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50 disabled:opacity-60"
             >
               {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
             </button>
