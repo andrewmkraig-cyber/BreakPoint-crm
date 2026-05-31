@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-05-30 · Ace 70.0
+Last updated: 2026-05-31 · Ace 71.0
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -105,6 +105,7 @@ Claude must ask Andrew a full set of scoping questions before writing any BD Pha
 - Dark themes (Clay + Grass): charcoal/graphite base, NOT green. Green as accent only.
 - No hardcoded colors anywhere. Three documented hex exceptions (full detail in ACE_DESIGN.md): Spotify panel palette (`spotify-panel/` only), dashboard premium surface (`dashboard/*` only), and the AI / Claude pill color family (`#1F3A29 / #2A4D38 / #284A36 / #2D4435 / #3A5944 / #37533F`, scoped to `button.tsx` + `edit-with-claude-menu.tsx`).
 - Documented shape exception (Ace 64.0): the circular `rounded-full` transport buttons in `src/components/spotify-panel/` are intentional Spotify-product mimicry, parallel to the Spotify hex exception. Full detail in ACE_DESIGN.md.
+- **Icon semantic color system (added Ace 71.0 - PERMANENT, full detail in ACE_DESIGN.md).** Icon color is driven by action meaning, not by file: delete=red-600, reject=red+UserX, edit=muted, create/add=brand, send=brand, confirm=brand-green+CheckCircle2, schedule=blue, keep=cyan, apply=amber, offer=purple, warning=amber, neutral/nav=muted. Icons inside a semantic Button **inherit** the button's color (set no color class); standalone / icon-only actions take the token explicitly.
 
 ## Distance + Pipeline Row Standards (added 2026-05-29 · Ace 68.0 - PERMANENT)
 Mirrored in ACE_DESIGN.md. Apply to any candidate→job distance and any pipeline row.

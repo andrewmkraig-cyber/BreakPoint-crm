@@ -1,8 +1,26 @@
 # ACE_STATE.md
-Last updated: 2026-05-30 · Ace 70.0
-Current Version: Ace 70.0
-Last Shipped: 2026-05-30
+Last updated: 2026-05-31 · Ace 71.0
+Current Version: Ace 71.0
+Last Shipped: 2026-05-31
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 71.0 (2026-05-31)
+
+UI-consistency session: a shared TabStrip proximity-hover effect, a unified two-tier TimeRangeSelector across all five selectors, a button shape/width/label standardization sweep, two Button Standard doc reconciliations, and the first batch of the new icon semantic-color system. No schema changes. Every commit built clean (`npm run build` exits 0).
+
+- **1. Proximity hover on the shared TabStrip.** The shared `src/components/ui/tab-strip.tsx` gained a proximity-hover effect: tabs scale to `1.04` + pick up a tint as the pointer nears, rAF-throttled so the pointer-move handler never thrashes layout, and gated behind `prefers-reduced-motion` (no transform when reduced motion is requested). Because every tab strip in the app routes through TabStrip (UI Consistency Rule), every TabStrip-based strip inherits the effect app-wide for free - no per-surface wiring.
+
+- **2. Unified two-tier TimeRangeSelector across all 5 selectors.** New `src/lib/time-range.ts` + `src/components/ui/time-range-selector.tsx` replace the five divergent ad-hoc range pickers with one two-tier model: **grain** (Week / Month / Quarter / Year) x **period** (Last / This / Next). A **compact dropdown variant** is used for the Billing Tower where horizontal space is tight; the full segmented variant is used elsewhere. The query layer is unchanged (the selector resolves to the same date bounds the old pickers produced) and timezone behavior is preserved exactly - **week boundaries compute in ET, all other grains compute local** - so no metric shifts. One selector, five consumers.
+
+- **3. Button Standard doc reconciliation - primary CTA is tinted-green outline, NOT filled green.** Code is canonical: the shipped primary CTA is `border border-court-brand bg-court-brand-tint text-court-brand-dark` (hover `bg-court-brand/25`), not a solid `bg-court-brand text-white` fill. The Button Standard block in both ACE_RULES.md and ACE_DESIGN.md already carried this corrected wording; this session also fixed the stale **"Primary: green filled"** line in ACE_DESIGN.md's older "Button hierarchy" section so the two no longer contradict.
+
+- **4. Save label uniformity; toast hex left as-is (deliberate).** Save buttons read a uniform **"Save"** across surfaces (see item 6). The toast hardcoded hex was reviewed and **intentionally left in place**: there is no white / on-accent Court Mode token to route it through, and the Ink toast theme is intentionally NOT Court-bound (it carries its own fixed palette by design). Documented so a future audit doesn't try to tokenize it.
+
+- **5. Button shape + width fixes.** **15 `rounded-full` text buttons -> `rounded-md`** (Button Standard: the `rounded-full` ban applies to text buttons; pills/chips/avatars/icon-only/FAB/toggles are unaffected). **6 non-submit full-width buttons -> `w-auto`** (the no-full-width rule: only a full-width form-submit CTA stretches edge-to-edge).
+
+- **6. Button LABEL standardization (39 edits).** Canonical label per action family: **Save** everywhere (no "Save changes" / "Save to Ace" variants in the label text); **Cancel / Reject / Submit / Delete** collapsed to the single canonical verb; the **"Submit to Job"** label was killed (it's just **Submit**); **Edit** keeps a noun only for Offer / Placement / Interview (where the screen has more than one editable thing); **Send** keeps a noun only where the same screen fires more than one kind of send; **New / Create** keep their noun in Title Case; connectors **name the service** (e.g. Reconnect Gmail); the pipeline chip-vs-submit pair is unified (short chip label + full label on the modal submit, with `aria-label` matching the full intent); busy states use the ellipsis character.
+
+- **7. Icon semantic color system - first fixes + new permanent rule.** Established the icon semantic-color system (now a permanent rule in ACE_DESIGN.md): **delete = red-600, reject = red + UserX, edit = muted, create/add = brand, send = brand, confirm = brand-green + CheckCircle2, schedule = blue, keep = cyan, apply = amber, offer = purple, warning = amber, neutral/nav = muted.** Icons inside a semantic Button **inherit** the button's color (set no color); standalone / icon-only actions take the token explicitly. First three fixes shipped: (a) **unified the delete trashcan** (was a 5-way split - mail-view delete-label `red-700 -> red-600`, the mail-composer "Delete draft" went from the lone neutral `secondary` to `danger`/red, settings/templates delete `red-700 -> red-600`, the delete-candidate resting state normalized to plain muted; no delete is ever fully neutral and all reds are red-600); (b) **retired the lone orange Email button** on the job Matches tab (bespoke `border-orange-500 / bg-white / text-orange-600` -> shared `Button variant="secondary"`, reskins across Court themes); (c) **fixed the Ace Assistant glyph dark-mode bug** (`src/components/icons/in-conversation.tsx` hardcoded `#5A9642` + `#FAF8F3` -> `rgb(var(--court-brand))` accent + `rgb(var(--court-surface))` bubble; the ink "you" figure -> `rgb(var(--court-fg))` so it stays legible on the surface bubble in the active green-button state). Ace glyph browser-verified light + dark, inactive + active (bubble inverts white<->dark-navy, accent tracks brand, ink figure legible in all states). The standalone-icon token sweep + the rainbow sidebar->mobile-nav port are queued (see ACE_ROADMAP.md Next Up).
 
 ## What Shipped in Ace 70.0 (2026-05-30)
 
@@ -49,6 +67,12 @@ Eleven-item session: scoreboard cancelled-placement accuracy, interview-pill ded
 - **Edit Resume render fix (`bd7c69e`).** Once C1 routed all candidates through the canvas-based Ace-native editor, the Edit Resume tool (`src/app/candidates/[id]/resume-editor.tsx`) surfaced a runtime error — *"Cannot use the same canvas during multiple render() operations"* — and rendered the resume upside-down/mirrored. Root cause: the render effect reused persistent canvas DOM nodes but never cancelled its pdf.js `RenderTask`, so a `ResizeObserver`-driven fit-scale change re-ran the effect mid-render on the same canvas; pdf.js rejected the second `render()` and the interrupted task left the 2D-context transform half-applied (the flip). Fix: track the in-flight `RenderTask` per page, cancel any task still painting a canvas before re-rendering it, cancel all in-flight tasks on effect cleanup, and swallow pdf.js's `RenderingCancelledException` so a deliberate cancel isn't surfaced as an error. The same cancellation resolves the flip — pdf.js unwinds its Y-flip transform before the next pass. Type-only change to `src/lib/pdfjs-loader.ts` to expose `cancel()` (new `PdfJsRenderTask` type). Scope held to those two files; `PdfCanvasViewer` and routing/data untouched.
 
 ## Next Task
+
+**Surfaced this session (Ace 71.0) — queued, see ACE_ROADMAP.md Next Up for full detail:**
+- **NEW BUG (high priority): `/jobs/[id]` Matched tab shows 129 matched for EVERY job.** The matched count + list is not job-specific - it's returning a global candidate set instead of scoping per job. Diagnose the matched-candidates query scoping first (diagnose-only prompt before any fix).
+- **Toast style-switch regression.** The in-app toast theme picker (Ink especially) stopped applying / the "Try it: Email" demo fires a wrong-themed toast. Diagnose, then fix.
+- **Second icon fix - standalone-icon token sweep** + port the rainbow sidebar `iconColor` to `mobile-nav` (decision made: keep the rainbow, match desktop + mobile).
+- **Widened visual-consistency audit, News-tabs->TabStrip migration, form placeholder sweep, Settings Personal Info white-vs-grey field diagnosis** - all queued in ACE_ROADMAP.md Next Up.
 
 **Push notifications — open after the 70.0 diagnostic ship:**
 - **Bug 2 (Enable Notifications turns itself off overnight) is still UNFIXED.** The web-push Test diagnostic (`e72ba19`) was instrumentation, not a cure — it lets us observe delivery, it does not stop the overnight self-disable. Working theory: subscription expiry tied to the Ace 67.3 PWA self-heal path (iOS expires the PushSubscription after idle/app-close and the re-subscribe isn't firing/sticking overnight). **Monitor overnight with the new Test button + delivery tally**, then fix from what the diagnostic shows.

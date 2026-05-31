@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-30 · Ace 70.0
+Last updated: 2026-05-31 · Ace 71.0
 
 ## Active Build Sequence
 
@@ -14,6 +14,17 @@ Last updated: 2026-05-30 · Ace 70.0
 (RF two-profile split unification — the prior PRIORITY item — shipped Ace 69.0 across Phases A/B/C1/C2. See Completed - Ace 69.0 below and ACE_STATE.md.)
 
 (Batch 6 Cancel Placement shipped Ace 67.19; Batch 7 UI polish shipped Ace 67.20 - full detail in ACE_STATE.md.)
+
+### Queued from Ace 71.0 — UI consistency + bugs (NOT yet done)
+Scoped/surfaced during the Ace 71.0 UI-consistency session. Each needs its own prompt.
+
+- **NEW BUG (high priority) — `/jobs/[id]` Matched tab shows 129 matched for EVERY job.** The matched count + list is not job-specific; it's returning a global candidate set rather than scoping per job. The matched-candidates query needs to be scoped per `jobId`. Diagnose-only prompt first (find where the Matched-tab count/list query drops the job scope), then fix.
+- **Toast style-switch regression.** The in-app toast theme picker (Ink especially) stopped applying, and/or the "Try it: Email" demo fires a wrong-themed toast. Diagnose then fix. (Relates to item 4 of the 71.0 ship - the Ink toast theme is intentionally non-Court-bound, so the regression is in the picker/apply path, not the palette.)
+- **Second icon fix — standalone-icon token sweep.** Apply the icon semantic-color system (ACE_DESIGN.md) to the remaining standalone / icon-only actions that still carry no token or an off-system color. Also **port the rainbow sidebar `iconColor` to `mobile-nav`** so desktop and mobile match - decision made: KEEP the rainbow per-nav-item color, give mobile-nav the same colors (don't flatten desktop to monochrome).
+- **Visual-consistency audit (widened).** Action-row buttons (Apply to Job / Keep / Add to List) must share font-weight + hover treatment + come from the same shared component; check alignment/centering; hunt font-weight + color drift between elements that should match; verify same-action button sizing is consistent across screens.
+- **News tabs -> TabStrip migration.** The Today's Briefing tabs (Front Page / Recruiting / etc.) are a hand-rolled segmented control, NOT TabStrip - migrate them onto TabStrip so they match the rest of the app and inherit the proximity-hover effect. While there: restyle the **Daily Chess Puzzle + Word of the Day** to the standard neutral outlined button (no green/blue), slim height, keep current width.
+- **Form placeholder sweep.** Remove example placeholder text from form fields app-wide (offer modal, schedule modal, candidate form, settings). Surface any REAL pre-filled values separately for review rather than auto-removing them (e.g. Austin auto-filled as interviewer is a real default, not placeholder noise) - do not blindly strip those.
+- **Settings Personal Info — white-vs-grey field values.** Some field values render white (saved) while others render grey (City / State / ZIP, email). Possibly a persistence bug, not just styling - diagnose whether those fields are actually saving before treating it as a color fix.
 
 ### Push notification follow-ups (open after 70.0)
 - **Bug 2 — Enable Notifications turns itself off overnight — still UNFIXED.** The 70.0 web-push Test diagnostic (`e72ba19`) is instrumentation, not a cure. Working theory: PushSubscription expiry tied to the Ace 67.3 PWA self-heal path (iOS expires the subscription after idle/app-close; the overnight re-subscribe isn't sticking). Monitor overnight with the Test button + delivery tally, then fix from what it shows. iOS caveat: a green Test proves server dispatch, not background wake.
@@ -86,6 +97,10 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 71.0 TabStrip proximity hover + unified TimeRangeSelector + button shape/width/label sweep + icon semantic-color system (first fixes) (May 31, 2026)
+
+UI-consistency session, no schema changes, every commit `npm run build` exits 0. (1) **TabStrip proximity hover** - the shared `src/components/ui/tab-strip.tsx` gained a rAF-throttled proximity-hover effect (tabs scale `1.04` + tint as the pointer nears), gated behind `prefers-reduced-motion`; inherited app-wide by every TabStrip-based strip with no per-surface wiring. (2) **Unified two-tier TimeRangeSelector** - `src/lib/time-range.ts` + `src/components/ui/time-range-selector.tsx` replace all 5 ad-hoc range pickers with one **grain (Week/Month/Quarter/Year) x period (Last/This/Next)** model, plus a compact dropdown variant for the Billing Tower. Query layer unchanged; TZ behavior preserved exactly (week boundaries = ET, all other grains = local). (3) **Button Standard reconciliation** - primary CTA is the tinted-green outline (`border-court-brand + bg-court-brand-tint + text-court-brand-dark`), NOT filled green; the Button Standard block in both docs already carried the correction, and the stale "Primary: green filled" line in ACE_DESIGN.md's old Button-hierarchy section was fixed this session. (4) **Save label uniformity; toast hex left as-is** - reviewed and intentionally retained (no white/on-accent token exists; the Ink toast theme is deliberately non-Court-bound). (5) **Button shape + width fixes** - 15 `rounded-full` text buttons -> `rounded-md`; 6 non-submit full-width buttons -> `w-auto`. (6) **Button LABEL standardization (39 edits)** - canonical label per family (Save everywhere; Cancel/Reject/Submit/Delete collapsed; "Submit to Job" killed -> Submit; Edit keeps a noun only for Offer/Placement/Interview; Send keeps a noun only where one screen fires multiple sends; New/Create keep Title-Case nouns; connectors name the service; pipeline chip-vs-submit unified with matching aria; busy states use the ellipsis char). (7) **Icon semantic-color system - new permanent rule in ACE_DESIGN.md + first 3 fixes** - delete=red-600, reject=red+UserX, edit=muted, create/add=brand, send=brand, confirm=brand-green+CheckCircle2, schedule=blue, keep=cyan, apply=amber, offer=purple, warning=amber, neutral/nav=muted (icons inside a semantic Button inherit; standalone icons take the token). Shipped: unified the 5-way-split delete trashcan to red-600 (no delete ever fully neutral; mail-composer "Delete draft" neutral->danger), retired the lone orange Email button on the job Matches tab (-> shared `secondary` Button), and fixed the Ace Assistant glyph dark-mode bug (`in-conversation.tsx` hardcoded `#5A9642`/`#FAF8F3` -> `court-brand` accent + `court-surface` bubble + `court-fg` ink figure; browser-verified light+dark, inactive+active). Standalone-icon token sweep + rainbow-sidebar->mobile-nav port queued (see Next Up). Full detail in ACE_STATE.md under What Shipped in Ace 71.0.
 
 ## Completed - Ace 70.0 Scoreboard accuracy + interview pill + submittal signature/iOS + template editor pass + autocomplete speed + approve-removal + interview Bcc + card alignment + push diagnostic + settings persistence (May 30, 2026)
 

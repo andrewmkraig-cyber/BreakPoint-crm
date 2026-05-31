@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-05-30 · Ace 70.0
+Last updated: 2026-05-31 · Ace 71.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -103,7 +103,7 @@ Reduce borders by ~40%. Use spacing and hierarchy instead of boxes.
 
 ### Button hierarchy
 
-- Primary: green filled
+- Primary: tinted-green outline (`border-court-brand + bg-court-brand-tint + text-court-brand-dark`), NOT filled green. Code is canonical - see the Button Standard block below; the older "green filled" wording from the original audit is superseded.
 - Secondary: neutral outline/subtle fill
 - Tertiary: ghost
 - Destructive: red
@@ -357,3 +357,24 @@ Mirrored in ACE_RULES.md. Apply to any candidate→job distance and any pipeline
 - **Canonical distance format is `"(X.X mi)"`** — one decimal + `mi`, produced ONLY by `formatMiles` / `formatDistanceSubLine` in `src/lib/distance.ts`. Job side geocodes through the shared `src/lib/geocode.ts` Nominatim helper (module-level cache); candidate side reads `Candidate.lat/lng`. One helper, one geocoder — never add a second. Blank cleanly (no dash, no "N/A") when either side is missing. Rendered as muted metadata (`text-court-fg-muted`), never bold. Used by both the pipeline Location cell and the Ace-native candidate profile job pill.
 - **One bold element per pipeline row: the candidate name.** Every other cell renders at the regular metadata weight/size. Two-line cells (Current Title/Employer, Job/Client) put the primary line in regular `text-court-fg` and the sub-line in smaller muted `text-xs text-court-fg-muted`. Date / location / salary cells share one metadata size — no mismatched sizes between Last Action and Start Date. Documented exception: the Offer-stage Placement Fee percent keeps its own distinct font.
 - **Pipeline per-row action buttons are uniform colored outlines** (`rounded-md`, colored border + text, transparent fill) — the Action-row treatment from the Button Standard. No filled or pill-shaped per-row action chips.
+
+## Icon Semantic Color System (added 2026-05-31 · Ace 71.0 - PERMANENT)
+Mirrored as a one-line pointer in ACE_RULES.md (Design Rules). Apply to every icon across the app.
+
+**Core principle: icon color is driven by action MEANING, not by which file the icon lives in.** Two rendering rules:
+- **Icons inside a semantic `Button` INHERIT the button's color** - set no color class on the icon. The shared `Button` variants (`reject`/`danger`=red, `apply`=amber, `keep`=cyan, `schedule`=blue, `offer`=purple, `primary`=brand) already carry the right color, and the icon should pick it up via `currentColor`. Adding an explicit icon color here is a bug - it desyncs the icon from its button.
+- **Standalone / icon-only actions take the token EXPLICITLY** (the icon is the whole control - there's no button color to inherit).
+
+**The semantic map** (token per meaning):
+- **Delete / destructive** = `red-600`. Icon-only or text delete triggers use `text-red-600` at rest; deletes inside a `reject`/`danger` Button inherit the variant red; the "quiet" row-action pattern (delete sitting beside a muted Edit pencil) may rest at `text-court-fg-muted` and go `hover:text-red-600`. **No delete is ever fully neutral, and all delete reds are red-600** (never red-700).
+- **Reject (person)** = red, icon = `UserX` (not `XCircle` / `CircleSlash`).
+- **Edit** = `text-court-fg-muted` (hover `text-court-fg`).
+- **Create / add** = brand (inherit `primary` for primary adds; muted for secondary adds).
+- **Send / submit** = brand (inherit `primary`). No bespoke per-button colors - no orange.
+- **Confirm / positive / saved** = brand green (`text-court-brand-dark`), icon = `CheckCircle2`.
+- **Schedule** = blue (`schedule` variant family). **Keep** = cyan. **Apply** = amber. **Offer** = purple. **Reapply** = violet.
+- **Warning** = amber (`text-amber-600` / `-500`).
+- **Neutral / nav / decorative / field-label / status-label** = `text-court-fg-muted` (or `-dim` for de-emphasis).
+- **Active nav / brand** = `text-court-brand` / the sidebar active token. The desktop sidebar's per-nav-item rainbow `iconColor` is intentional wayfinding and is being kept; mobile-nav is queued to receive the same colors so the two match (see ACE_ROADMAP.md Next Up).
+
+**First fixes shipped Ace 71.0:** unified the 5-way-split delete trashcan to red-600 (mail-composer "Delete draft" went from the lone neutral `secondary` to `danger`/red); retired the lone orange Email button on the job Matches tab (bespoke `border-orange-500`/`bg-white`/`text-orange-600` -> shared `Button variant="secondary"`, which reskins across Court themes); fixed the Ace Assistant glyph dark-mode bug (`src/components/icons/in-conversation.tsx` hardcoded `#5A9642` accent + `#FAF8F3` bubble -> `rgb(var(--court-brand))` accent + `rgb(var(--court-surface))` bubble, and the ink "you" figure -> `rgb(var(--court-fg))` so it stays legible on the surface bubble in the active green-button state where `currentColor` is white). The standalone-icon token sweep across the rest of the app is queued.
