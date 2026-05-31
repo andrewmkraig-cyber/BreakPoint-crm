@@ -233,18 +233,18 @@ export function PlacementsLedger({
         </div>
       </div>
 
-      <div className="mt-2.5 overflow-x-auto">
+      <div className="mt-2.5 overflow-x-auto px-4">
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr className="border-y border-court-border-soft text-left text-[10px] uppercase tracking-wide text-court-fg-muted">
-              <th className="px-4 py-1.5 font-semibold">Candidate</th>
+              <th className="py-1.5 pr-3 font-semibold">Candidate</th>
               <th className="px-3 py-1.5 font-semibold">Role</th>
               <th className="px-3 py-1.5 font-semibold">Client</th>
               <th className="px-3 py-1.5 font-semibold">City</th>
               <th className="px-3 py-1.5 font-semibold">Start</th>
               <th className="px-3 py-1.5 text-right font-semibold">Fee</th>
               <th className="px-3 py-1.5 font-semibold">Source</th>
-              <th className="px-4 py-1.5 font-semibold">Billing</th>
+              <th className="py-1.5 pl-3 font-semibold">Billing</th>
             </tr>
           </thead>
           <tbody>
@@ -302,7 +302,7 @@ function LedgerTableRow({
       aria-label={`Edit placement for ${candidateLabel}`}
       className="cursor-pointer border-b border-court-border-soft transition hover:bg-court-brand-tint/40 focus:bg-court-brand-tint/40 focus:outline-none"
     >
-      <td className="px-4 py-1.5 align-middle font-medium text-court-fg">
+      <td className="py-1.5 pr-3 align-middle font-medium text-court-fg">
         {candidateLabel}
       </td>
       <td className="px-3 py-1.5 align-middle text-court-fg">{row.roleTitle ?? "—"}</td>
@@ -326,7 +326,7 @@ function LedgerTableRow({
       <td className="px-3 py-1.5 align-middle text-court-fg-muted">
         {row.leadSource ?? "—"}
       </td>
-      <td className="px-4 py-1.5 align-middle">
+      <td className="py-1.5 pl-3 align-middle">
         <span
           className={
             "inline-flex items-center justify-center whitespace-nowrap px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide " +

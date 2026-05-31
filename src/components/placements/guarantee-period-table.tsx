@@ -89,16 +89,16 @@ export function GuaranteePeriodTable({
           "for free" from its two-line rows (client name + industry sub-line).
           Guarantee rows are single-line, so without explicit bottom padding
           the last row's border-b sits right against the card edge. */}
-      <div className="mt-2.5 overflow-x-auto pb-2">
+      <div className="mt-2.5 overflow-x-auto px-4 pb-2">
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr className="border-y border-court-border-soft text-left text-[10px] uppercase tracking-wide text-court-fg-muted">
-              <th className="px-4 py-1.5 font-semibold">Candidate</th>
+              <th className="py-1.5 pr-3 font-semibold">Candidate</th>
               <th className="px-3 py-1.5 font-semibold">Client</th>
               <th className="px-3 py-1.5 font-semibold">Role</th>
               <th className="px-3 py-1.5 font-semibold">Start</th>
               <th className="px-3 py-1.5 font-semibold">Guarantee ends</th>
-              <th className="px-3 py-1.5 text-right font-semibold">
+              <th className="py-1.5 pl-3 text-right font-semibold">
                 Days remaining
               </th>
             </tr>
@@ -117,7 +117,7 @@ export function GuaranteePeriodTable({
                     ledger.tsx). Header padding stays at py-1.5 so the
                     column-header strip still aligns visually between the
                     two tables. */}
-                <td className="px-4 py-3 align-middle font-medium text-court-fg">
+                <td className="py-3 pr-3 align-middle font-medium text-court-fg">
                   {row.candidateName || "-"}
                 </td>
                 <td className="px-3 py-3 align-middle text-court-fg">
@@ -132,7 +132,7 @@ export function GuaranteePeriodTable({
                 <td className="px-3 py-3 align-middle tabular-nums text-court-fg-muted">
                   {formatDate(row.guaranteeEndIso)}
                 </td>
-                <td className="px-3 py-3 text-right align-middle tabular-nums font-semibold text-court-fg">
+                <td className="py-3 pl-3 text-right align-middle tabular-nums font-semibold text-court-fg">
                   {daysRemaining}
                 </td>
               </tr>
