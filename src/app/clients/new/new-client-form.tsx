@@ -312,7 +312,7 @@ export function NewClientForm() {
               }
             >
               {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Save to Ace
+              Save
             </Button>
           </div>
 

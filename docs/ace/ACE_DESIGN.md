@@ -243,7 +243,7 @@ Source of truth for every button across the app. Mirrors the same block in ACE_R
 - **Action row buttons** (Submit, Apply, Keep, Reject, Add Note, Add to List): `rounded-md`, outlined, colored border + text, transparent background.
 - **Toolbar buttons** (Use Template, Insert Field, Edit with Claude, Delete, Save Draft, Send): `rounded-md`, outlined, NOT pill shaped.
 - **Generate with Claude / Generate Resume / Generate JD**: `rounded-md`, solid-filled dark (the `ai-primary` Button variant / `CLAUDE_PILL_CLASS` - graphite-leaning dark green fill), NOT outlined. Code is canonical: the shipped pill is solid-filled, superseding the older "dark green outlined" wording the Ace 54.0 spec carried.
-- **Primary CTA** (New Candidate, New Job, + New X at page tops, Save, Create): `rounded-md`, filled green (`bg-court-brand text-white`).
+- **Primary CTA** (New Candidate, New Job, + New X at page tops, Save, Create): `rounded-md`, tinted-green outline (`border border-court-brand bg-court-brand-tint text-court-brand-dark`, hover `bg-court-brand/25`). Code is canonical: the shipped primary is the tinted-green outline, NOT a solid `bg-court-brand text-white` fill - the older "filled green" wording the Ace 54.0 spec carried is superseded.
 - **Upload Resume**: `rounded-md`, blue outlined (`border-blue-500 text-blue-600`).
 - **Tab strip active**: `rounded-md border-court-brand text-court-brand font-semibold` transparent background.
 - **NEVER use `rounded-full` on text buttons.** The ban applies to text buttons only. `rounded-full` is reserved for badges, chips, status pills, and avatars, and IS permitted on icon-only circular buttons, toggle switches, and FABs.

@@ -506,7 +506,7 @@ export function NewCandidateForm({
               }
             >
               {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              {isParsing ? "Waiting for parse…" : "Save to Ace"}
+              {isParsing ? "Waiting for parse…" : "Save"}
             </Button>
           </div>
 
