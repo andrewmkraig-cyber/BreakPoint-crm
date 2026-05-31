@@ -151,12 +151,17 @@ export function SidebarProfileCard() {
             uses the court-brand tokens, not the per-theme accent (which flipped
             to white on Grass/Night Light). Re-skins per court but stays green.
             No raw hex. */}
-        <span className="mt-2 flex w-fit items-center justify-center gap-1.5 rounded-full border border-court-brand/40 bg-court-brand/10 px-2.5 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-court-brand">
-          <Crown aria-hidden="true" className="h-3 w-3 shrink-0" />
-          {/* -mr absorbs the trailing letter-spacing so the crown + label sit
-              optically centered inside the pill instead of pushed left. */}
-          <span className="-mr-[0.12em]">{profile.accessLabel}</span>
-        </span>
+        {/* pl offset (avatar 40px + gap 10px) pushes the pill past the avatar
+            so justify-center lands it under the name/phone column instead of
+            hugging the card's left edge. */}
+        <div className="mt-2 flex justify-center pl-[50px]">
+          <span className="flex w-fit items-center justify-center gap-1.5 rounded-full border border-court-brand/40 bg-court-brand/10 px-2.5 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-court-brand">
+            <Crown aria-hidden="true" className="h-3 w-3 shrink-0" />
+            {/* -mr absorbs the trailing letter-spacing so the crown + label sit
+                optically centered inside the pill instead of pushed left. */}
+            <span className="-mr-[0.12em]">{profile.accessLabel}</span>
+          </span>
+        </div>
       </div>
 
       {open && (
