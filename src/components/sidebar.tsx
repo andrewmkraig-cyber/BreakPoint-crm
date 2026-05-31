@@ -1,25 +1,9 @@
 "use client";
 
-import type React from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import {
-  Home,
-  Users,
-  GitBranch,
-  Briefcase,
-  Building2,
-  Megaphone,
-  Mail,
-  Phone,
-  Receipt,
-  Calendar,
-  Settings,
-  StickyNote,
-  BarChart3,
-  Trophy,
-} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NAV_GROUPS, FOOTER_NAV, type NavItemData } from "@/components/nav-items";
 import { BrandMark } from "@/components/brand-mark";
 import { SidebarProfileCard } from "@/components/sidebar-profile-card";
 import { useMailContext } from "@/lib/mail-context";
@@ -30,84 +14,10 @@ import {
   type DashboardTab,
 } from "@/components/nav-active";
 
-// Main nav grouped into recruiter workflow sections, in the explicit
-// order Andrew wants the eye to scan (no alphabet rule — Pipeline
-// leads ATS because that's where the active deals live, Placements
-// leads Scoreboard because the dollar number is the headline KPI).
-// Settings + the profile card stay pinned at the bottom.
-//   Home — Clubhouse
-//   Communication — Mail → Phone → Calendar
-//   ATS — Pipeline → Candidates → Jobs (Applicants folded into Pipeline as its first stage tab)
-//   CRM — BD → Clients
-//   Ops — Finances → Notes
-//   Scoreboard — Placements → Metrics (dashboard deep-links)
-type NavGroup = {
-  title: string | null;
-  items: ReadonlyArray<{
-    href: string;
-    label: string;
-    icon: NavItem["icon"];
-    iconColor: string;
-  }>;
-};
-
-// Per-icon accent colors. Tailwind palette tokens (not raw hex) so they
-// inherit theme inversion through the Court Mode setup. Used only on
-// inactive nav rows — active rows keep the high-contrast sidebar
-// foreground so the lit-up state still reads.
-const NAV_GROUPS: ReadonlyArray<NavGroup> = [
-  {
-    title: "Home",
-    items: [
-      { href: "/dashboard", label: "Clubhouse", icon: Home, iconColor: "text-emerald-400" },
-    ],
-  },
-  {
-    title: "Communication",
-    items: [
-      { href: "/mail", label: "Mail", icon: Mail, iconColor: "text-red-400" },
-      { href: "/phone", label: "Phone", icon: Phone, iconColor: "text-teal-400" },
-      { href: "/calendar", label: "Calendar", icon: Calendar, iconColor: "text-orange-400" },
-    ],
-  },
-  {
-    title: "ATS",
-    items: [
-      { href: "/pipeline", label: "Pipeline", icon: GitBranch, iconColor: "text-sky-400" },
-      { href: "/candidates", label: "Candidates", icon: Users, iconColor: "text-violet-400" },
-      { href: "/jobs", label: "Jobs", icon: Briefcase, iconColor: "text-indigo-400" },
-    ],
-  },
-  {
-    title: "CRM",
-    items: [
-      { href: "/bd", label: "BD", icon: Megaphone, iconColor: "text-rose-400" },
-      { href: "/clients", label: "Clients", icon: Building2, iconColor: "text-cyan-400" },
-    ],
-  },
-  {
-    title: "Ops",
-    items: [
-      { href: "/finances", label: "Finances", icon: Receipt, iconColor: "text-lime-400" },
-      { href: "/notes", label: "Notes", icon: StickyNote, iconColor: "text-yellow-400" },
-    ],
-  },
-  {
-    title: "Scoreboard",
-    items: [
-      { href: "/dashboard?tab=placements", label: "Placements", icon: Trophy, iconColor: "text-emerald-400" },
-      { href: "/dashboard?tab=scoreboard", label: "Metrics", icon: BarChart3, iconColor: "text-fuchsia-400" },
-    ],
-  },
-];
-
-// Settings is pinned to the bottom of the sidebar, flowing straight out
-// of the main nav as a normal nav row (no divider boxing it into its own
-// section). Matches the "account / settings drawer at the bottom"
-// treatment used by most CRMs (Apollo, HubSpot, Linear).
-const FOOTER_NAV = [
-  { href: "/settings", label: "Settings", icon: Settings, iconColor: "text-slate-400" },
-] as const;
+// NAV_GROUPS (with the per-item rainbow iconColor) and FOOTER_NAV now live
+// in @/components/nav-items so the desktop Sidebar and the mobile drawer
+// (MobileNav) share one source of truth and their icon colors can never
+// drift. This file owns only the desktop NavLink chrome.
 
 export function Sidebar({ width }: { width?: number } = {}) {
   const pathname = usePathname();
@@ -212,20 +122,13 @@ export function Sidebar({ width }: { width?: number } = {}) {
   );
 }
 
-type NavItem = {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  iconColor: string;
-};
-
 function NavLink({
   item,
   pathname,
   resolvedDashboardTab,
   badge = 0,
 }: {
-  item: NavItem;
+  item: NavItemData;
   pathname: string;
   resolvedDashboardTab: DashboardTab;
   badge?: number;

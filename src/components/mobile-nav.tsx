@@ -4,41 +4,24 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import {
-  BarChart3,
-  Building2,
-  Briefcase,
-  Calendar,
-  GitBranch,
-  Home,
-  Mail,
-  Megaphone,
-  Menu,
-  Moon,
-  Phone,
-  Receipt,
-  Settings,
-  StickyNote,
-  Sun,
-  Trophy,
-  Users,
-  X,
-  type LucideIcon,
-} from "lucide-react";
+import { Menu, Moon, Sun, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandDisc } from "@/components/brand-mark";
 import { useMailContext } from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
 import { useCourtMode } from "@/lib/court-mode";
 import { isNavItemActive, resolveDashboardTab } from "@/components/nav-active";
+import { NAV_GROUPS, FOOTER_NAV, type NavItemData } from "@/components/nav-items";
 
 // Mobile / narrow-viewport nav drawer. Below md the sidebar is
 // `hidden md:flex` so there's no nav at all — this hamburger fills
 // that gap. Click opens a left-anchored drawer with the same nav
 // groups the desktop sidebar shows; route change or backdrop click
-// dismisses it. Mirrors the sidebar's NAV_GROUPS rather than
-// importing them so the sidebar's per-icon color map and chrome
-// don't get pulled into the mobile bundle.
+// dismisses it. NAV_GROUPS + FOOTER_NAV (including the per-item rainbow
+// iconColor) are imported from the shared @/components/nav-items source
+// so desktop + mobile stay in lockstep and the icon colors can never
+// drift. Settings is pinned at the bottom (FOOTER_NAV), above the
+// Light/Dark toggle.
 //
 // Mail/Phone unread DO read from the shared MailContext/PhoneContext
 // (same source the desktop sidebar uses) so the installed iPhone PWA,
@@ -46,65 +29,6 @@ import { isNavItemActive, resolveDashboardTab } from "@/components/nav-active";
 // unread badges the desktop sidebar shows. TopBar (which renders this)
 // mounts inside both providers in app-shell, so the live counts flow
 // here, not the providers' static-zero fallback.
-
-type NavItem = {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-};
-
-type NavGroup = {
-  title: string | null;
-  items: ReadonlyArray<NavItem>;
-};
-
-const NAV_GROUPS: ReadonlyArray<NavGroup> = [
-  {
-    title: "Home",
-    items: [{ href: "/dashboard", label: "Clubhouse", icon: Home }],
-  },
-  {
-    title: "Communication",
-    items: [
-      { href: "/mail", label: "Mail", icon: Mail },
-      { href: "/phone", label: "Phone", icon: Phone },
-      { href: "/calendar", label: "Calendar", icon: Calendar },
-    ],
-  },
-  {
-    title: "ATS",
-    items: [
-      { href: "/pipeline", label: "Pipeline", icon: GitBranch },
-      { href: "/candidates", label: "Candidates", icon: Users },
-      { href: "/jobs", label: "Jobs", icon: Briefcase },
-    ],
-  },
-  {
-    title: "CRM",
-    items: [
-      { href: "/bd", label: "BD", icon: Megaphone },
-      { href: "/clients", label: "Clients", icon: Building2 },
-    ],
-  },
-  {
-    title: "Ops",
-    items: [
-      { href: "/finances", label: "Finances", icon: Receipt },
-      { href: "/notes", label: "Notes", icon: StickyNote },
-    ],
-  },
-  {
-    title: "Scoreboard",
-    items: [
-      { href: "/dashboard?tab=placements", label: "Placements", icon: Trophy },
-      { href: "/dashboard?tab=scoreboard", label: "Metrics", icon: BarChart3 },
-    ],
-  },
-  {
-    title: null,
-    items: [{ href: "/settings", label: "Settings", icon: Settings }],
-  },
-];
 
 export function MobileNav() {
   const [open, setOpen] = useState(false);
@@ -127,6 +51,53 @@ export function MobileNav() {
   // row stays on one line. Flips only the Light/Dark axis on the active
   // court; the surface (Hard/Clay/Grass/Night) is untouched.
   const { theme, toggleTheme } = useCourtMode();
+
+  // One row renderer for both the workflow groups and the pinned Settings
+  // (FOOTER_NAV), so the rainbow + badge + active-state logic lives in a
+  // single place. Inactive rows carry the shared per-item iconColor (the
+  // same map the desktop sidebar uses); the active row drops it so the
+  // icon inherits the high-contrast active foreground.
+  const renderNavRow = (item: NavItemData) => {
+    const Icon = item.icon;
+    const active = isNavItemActive({
+      href: item.href,
+      pathname: pathname ?? "",
+      resolvedDashboardTab,
+    });
+    // Same badge wiring as the desktop sidebar: Mail shows unread threads,
+    // Phone shows unread texts, everything else has no badge.
+    const badge =
+      item.href === "/mail"
+        ? mailUnread
+        : item.href === "/phone"
+          ? phoneUnread
+          : 0;
+    return (
+      <li key={item.href}>
+        <Link
+          href={item.href}
+          onClick={() => setOpen(false)}
+          className={cn(
+            "flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition",
+            active
+              ? "bg-[var(--court-sidebar-active-bg)] text-court-sidebar-active-fg"
+              : "text-court-sidebar-fg hover:bg-[var(--court-sidebar-active-bg)]/60",
+          )}
+        >
+          <Icon className={cn("h-4 w-4 shrink-0", !active && item.iconColor)} />
+          <span className="flex-1">{item.label}</span>
+          {badge > 0 && (
+            <span
+              aria-label={`${badge} unread`}
+              className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-[var(--court-badge)] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-court-badge-fg"
+            >
+              {badge > 99 ? "99+" : badge}
+            </span>
+          )}
+        </Link>
+      </li>
+    );
+  };
 
   // Close drawer when the route changes — the user just navigated, no
   // reason to leave the menu hanging open over the new page. This catches
@@ -237,51 +208,15 @@ export function MobileNav() {
                     </div>
                   ) : null}
                   <ul className="flex flex-col gap-0.5">
-                    {group.items.map((item) => {
-                      const Icon = item.icon;
-                      const active = isNavItemActive({
-                        href: item.href,
-                        pathname: pathname ?? "",
-                        resolvedDashboardTab,
-                      });
-                      // Same badge wiring as the desktop sidebar: Mail
-                      // shows unread threads, Phone shows unread texts,
-                      // everything else has no badge.
-                      const badge =
-                        item.href === "/mail"
-                          ? mailUnread
-                          : item.href === "/phone"
-                            ? phoneUnread
-                            : 0;
-                      return (
-                        <li key={item.href}>
-                          <Link
-                            href={item.href}
-                            onClick={() => setOpen(false)}
-                            className={cn(
-                              "flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition",
-                              active
-                                ? "bg-[var(--court-sidebar-active-bg)] text-court-sidebar-active-fg"
-                                : "text-court-sidebar-fg hover:bg-[var(--court-sidebar-active-bg)]/60",
-                            )}
-                          >
-                            <Icon className="h-4 w-4 shrink-0" />
-                            <span className="flex-1">{item.label}</span>
-                            {badge > 0 && (
-                              <span
-                                aria-label={`${badge} unread`}
-                                className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-[var(--court-badge)] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-court-badge-fg"
-                              >
-                                {badge > 99 ? "99+" : badge}
-                              </span>
-                            )}
-                          </Link>
-                        </li>
-                      );
-                    })}
+                    {group.items.map((item) => renderNavRow(item))}
                   </ul>
                 </div>
               ))}
+              {/* Settings, pinned below the workflow groups (shared
+                  FOOTER_NAV), above the Light/Dark toggle. */}
+              <ul className="flex flex-col gap-0.5">
+                {FOOTER_NAV.map((item) => renderNavRow(item))}
+              </ul>
               {/* Light/Dark toggle - sits below Settings. Mirrors the nav
                   item chrome but is a button (toggles theme, no navigation).
                   Drawer stays open so the user sees the theme flip apply. */}
