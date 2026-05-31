@@ -570,6 +570,40 @@ function coerceFilters(value: unknown): Filters {
   };
 }
 
+// Build the opening keyword seed for a job's Matches tab when no saved
+// search exists. Combines the job title with the recruiter's
+// searchKeywords ("top required skills") into a single OR-group so the
+// candidate search route's broad multi-field ILIKE resolver
+// (resolveTokenCandidateIds — designation, employer, skills, experience,
+// resume) returns a job-relevant, per-job-distinct opening set instead of
+// the whole org pool. OR (not AND) keeps it forgiving: a candidate hitting
+// the title OR any keyword surfaces, so the opening view is useful rather
+// than over-constrained toward zero. Multi-word phrases are quoted so the
+// boolean parser treats each as one token. Location is intentionally left
+// OUT of the auto-seed: the search route resolves a location pill to a
+// geocoded lat/lng box that drops every candidate with null coordinates,
+// which would silently zero the opening list — the recruiter can add a
+// location pill to narrow. Returns "" when there's nothing to seed (the
+// tab then falls back to its normal empty rail).
+function buildSeedQuery(
+  jobTitle: string | null | undefined,
+  searchKeywords: string | null | undefined,
+): string {
+  const terms: string[] = [];
+  const seen = new Set<string>();
+  const push = (raw: string) => {
+    const v = raw.trim();
+    if (!v) return;
+    const key = v.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    terms.push(v.includes(" ") ? `"${v}"` : v);
+  };
+  push(jobTitle ?? "");
+  for (const kw of (searchKeywords ?? "").split(",")) push(kw);
+  return terms.join(" OR ");
+}
+
 export function MatchesTab({
   jobCuid,
   jobRfId,
@@ -599,31 +633,21 @@ export function MatchesTab({
 }) {
   void jobRfId;
 
-  // Initial state comes from the persisted job snapshot when present;
-  // otherwise the standard empty INITIAL_FILTERS. useState's lazy
-  // initializer keeps the coerce off the hot path. When the coerced
-  // snapshot has no skills pills AND the JD tab populated
-  // Job.searchKeywords, seed those keywords as pills so Find Matches
-  // and the candidate filter start with a real signal instead of
-  // empty. The seed only fires once (initial render) — once filters
-  // are in state the recruiter owns them.
+  // Initial state. A saved search snapshot (Job.savedSearchFilters), when
+  // it carries any real filter, owns the opening view untouched. Otherwise
+  // we seed a job-relevant default into the keyword field from the job
+  // title + recruiter searchKeywords (see buildSeedQuery) so the tab opens
+  // to a per-job candidate set rather than the whole org pool. The seed is
+  // an ordinary keyword query the recruiter can edit or clear to widen the
+  // search back toward the full org pool — nothing here hard-restricts the
+  // search to the job. Lazy initializer keeps the coerce off the hot path
+  // and only computes the seed on first mount; once filters are in state
+  // the recruiter owns them.
   const [filters, setFilters] = useState<Filters>(() => {
-    const base = coerceFilters(savedFilters);
-    if (base.skills.length > 0 || !searchKeywords) return base;
-    const seeded = searchKeywords
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-    if (seeded.length === 0) return base;
-    const seen = new Set<string>();
-    const pills: Pill[] = [];
-    for (const s of seeded) {
-      const key = s.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      pills.push({ value: s, exclude: false });
-    }
-    return { ...base, skills: pills };
+    const saved = coerceFilters(savedFilters);
+    if (hasAnyFilter(saved)) return saved;
+    const seedQ = buildSeedQuery(jobTitle, searchKeywords);
+    return seedQ ? { ...saved, q: seedQ } : saved;
   });
   const [skillsBuffer, setSkillsBuffer] = useState("");
   const [jobTitlesBuffer, setJobTitlesBuffer] = useState("");
