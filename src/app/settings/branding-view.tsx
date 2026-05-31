@@ -217,7 +217,7 @@ export function BrandingView({
           className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
         >
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          Save branding
+          Save
         </button>
       </div>
 
@@ -239,8 +239,8 @@ export function BrandingView({
           </div>
           <div className="text-xs text-court-fg-muted">
             What recipients see at the bottom of every email Ace sends. Copy
-            pastes formatted HTML into Gmail compose. Save branding above to
-            refresh the output.
+            pastes formatted HTML into Gmail compose. Save above to refresh the
+            output.
           </div>
           <div
             className="mt-3 rounded-lg border border-court-border bg-white p-4"
