@@ -107,7 +107,7 @@ export function GuaranteePeriodTable({
             {active.map(({ row, daysRemaining }) => (
               <tr
                 key={row.placementId}
-                className="border-b border-court-border-soft"
+                className="border-b border-court-border-soft last:border-b-0"
               >
                 {/* Row td padding bumped from py-1.5 to py-3 in Ace 67.20
                     so single-line guarantee rows match the ~38px row
