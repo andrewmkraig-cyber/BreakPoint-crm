@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Paperclip, Send } from "lucide-react";
+import { Paperclip, Save } from "lucide-react";
 
 import { createNote } from "@/app/notes/actions";
 import type { Attachments } from "@/lib/notes/action-types";
@@ -96,9 +96,9 @@ export function NoteComposer() {
             type="button"
             onClick={onSave}
             disabled={pending || !body.trim()}
-            className="inline-flex items-center gap-1.5 rounded-md bg-court-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-lg border-2 border-court-brand bg-court-brand-tint/15 px-3.5 py-2 text-xs font-semibold text-court-brand ring-2 ring-court-brand/35 ring-offset-2 ring-offset-court-surface transition hover:bg-court-brand-tint/30 disabled:opacity-60"
           >
-            <Send className="h-3.5 w-3.5" />
+            <Save className="h-3.5 w-3.5" />
             {pending ? "Saving..." : "Save"}
           </button>
         </div>
