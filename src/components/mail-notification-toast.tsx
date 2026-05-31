@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useFloatingThread } from "@/lib/floating-thread-context";
 import { useMailContext } from "@/lib/mail-context";
 import { getStoredToastDurationMs, registerToast } from "@/lib/toast-prefs";
+import { getStoredToastTheme } from "@/lib/toast-theme";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import type { UnreadInboxThread } from "@/lib/mail-context";
 
@@ -149,32 +150,52 @@ function NewMailToast({
     toast.dismiss(toastId);
   }
 
+  // Theme read at render-time so the Settings picker takes effect on the
+  // very next toast — no reload, no remount. Layout/sizing stays in the
+  // dafdbfb Tailwind classes; only the palette is spec-driven (subtle /
+  // tint are court-bound, ink carries its own fixed dark palette).
+  const theme = getStoredToastTheme();
+  const actionChipStyle = {
+    border: `1px solid ${theme.actionBorder}`,
+    background: theme.actionBg,
+    color: theme.actionFg,
+  };
   return (
-    <div className="relative flex w-[314px] max-w-[94vw] items-center gap-2.5 rounded-xl border border-court-brand/70 bg-court-brand-tint px-3 py-2 shadow-[0_8px_22px_rgba(0,0,0,0.08)]">
-      {/* Left icon: white rounded square, matching the SMS toast, with
-          the Mail glyph in place of the "text" label box. */}
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-court-surface shadow-sm">
-        <MailIcon className="h-4 w-4 text-court-brand-dark" />
+    <div
+      className="relative flex w-[314px] max-w-[94vw] items-center gap-2.5 rounded-xl px-3 py-2 shadow-[0_8px_22px_rgba(0,0,0,0.08)]"
+      style={{ border: `1px solid ${theme.border}`, background: theme.bg, color: theme.fg }}
+    >
+      {/* Left icon: rounded square, matching the SMS toast, with the Mail
+          glyph in place of the "text" label box. */}
+      <div
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm"
+        style={{ background: theme.iconBg, color: theme.iconFg }}
+      >
+        <MailIcon className="h-4 w-4" />
       </div>
 
       {/* Center column: sender + subject preview, then a bottom-right
           action row (matches the notification mockup). */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="truncate pr-5 text-[12px] font-semibold leading-tight tracking-[-0.02em] text-court-fg">
+        <div
+          className="truncate pr-5 text-[12px] font-semibold leading-tight tracking-[-0.02em]"
+          style={{ color: theme.fg }}
+        >
           {thread.fromName || thread.fromEmail || "(unknown sender)"}
         </div>
-        <div className="mt-0.5 truncate text-[10px] font-medium text-court-fg-muted">
+        <div className="mt-0.5 truncate text-[10px] font-medium" style={{ color: theme.fgMuted }}>
           {truncate(thread.subject || "(no subject)", 80)}
         </div>
 
         {/* Action row: Reply opens the composer focused, View opens the
-            thread read-only, Mark as Read clears it. Same white card +
-            gray border + ink text look across all three. */}
+            thread read-only, Mark as Read clears it. Same chip look across
+            all three, driven by the resolved theme. */}
         <div className="mt-1.5 flex items-center justify-end gap-1.5">
           <button
             type="button"
             onClick={() => openThread("reply")}
-            className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold shadow-sm transition"
+            style={actionChipStyle}
           >
             <Reply className="h-2.5 w-2.5" />
             Reply
@@ -182,7 +203,8 @@ function NewMailToast({
           <button
             type="button"
             onClick={() => openThread()}
-            className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold shadow-sm transition"
+            style={actionChipStyle}
           >
             <Eye className="h-2.5 w-2.5" />
             View
@@ -190,7 +212,8 @@ function NewMailToast({
           <button
             type="button"
             onClick={onMarkRead}
-            className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold shadow-sm transition"
+            style={actionChipStyle}
           >
             <CheckCheck className="h-2.5 w-2.5" />
             Mark as Read
@@ -198,12 +221,13 @@ function NewMailToast({
         </div>
       </div>
 
-      {/* X close: absolute top-right, white card + gray border. */}
+      {/* X close: absolute top-right, themed chip. */}
       <button
         type="button"
         onClick={() => toast.dismiss(toastId)}
         aria-label="Dismiss"
-        className="absolute right-2 top-2 inline-flex h-4 w-4 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:text-court-fg"
+        className="absolute right-2 top-2 inline-flex h-4 w-4 items-center justify-center rounded-md shadow-sm transition"
+        style={actionChipStyle}
       >
         <X className="h-2.5 w-2.5" />
       </button>

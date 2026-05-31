@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { markThreadRead } from "@/app/phone/actions";
 import { getStoredToastDurationMs, registerToast } from "@/lib/toast-prefs";
+import { getStoredTextToastTheme } from "@/lib/toast-theme";
 
 // In-app inbound text + inbound call toast. Shares the design
 // language of the email toast (rounded card, soft shadow, themed
@@ -180,6 +181,17 @@ function QuoToast(props: QuoToastProps) {
       ? truncate(props.event.body || "(no message)", 80)
       : callSubtitle(props.event);
 
+  // Theme read at render-time so the Settings phone-toast picker takes
+  // effect on the very next toast. Layout/sizing stays in the dafdbfb
+  // Tailwind classes; only the palette is spec-driven (subtle / tint are
+  // court-bound, ink carries its own fixed dark palette).
+  const theme = getStoredTextToastTheme();
+  const actionChipStyle = {
+    border: `1px solid ${theme.actionBorder}`,
+    background: theme.actionBg,
+    color: theme.actionFg,
+  };
+
   function onView() {
     // Text toast: View hands off to the centered popup (a global host
     // listens for this event) and closes the toast — for every inbound
@@ -243,15 +255,21 @@ function QuoToast(props: QuoToastProps) {
   }
 
   return (
-    <div className="relative flex w-[314px] max-w-[94vw] items-center gap-2.5 rounded-xl border border-court-brand/70 bg-court-brand-tint px-3 py-2 shadow-[0_8px_22px_rgba(0,0,0,0.08)]">
-      {/* Left icon: white rounded square. Text mode shows a MessageSquare
-          glyph in green (matching the card's green border); call mode
-          keeps the phone glyph inside the same square. */}
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-court-surface shadow-sm">
+    <div
+      className="relative flex w-[314px] max-w-[94vw] items-center gap-2.5 rounded-xl px-3 py-2 shadow-[0_8px_22px_rgba(0,0,0,0.08)]"
+      style={{ border: `1px solid ${theme.border}`, background: theme.bg, color: theme.fg }}
+    >
+      {/* Left icon: rounded square. Text mode shows a MessageSquare glyph;
+          call mode keeps the phone glyph inside the same square. Both take
+          the theme's icon palette. */}
+      <div
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm"
+        style={{ background: theme.iconBg, color: theme.iconFg }}
+      >
         {props.mode === "text" ? (
-          <MessageSquare className="h-4 w-4 text-court-brand" />
+          <MessageSquare className="h-4 w-4" />
         ) : (
-          <Phone className="h-4 w-4 text-court-brand-dark" />
+          <Phone className="h-4 w-4" />
         )}
       </div>
 
@@ -260,7 +278,10 @@ function QuoToast(props: QuoToastProps) {
           quick-reply input once Reply is clicked, then a bottom-right
           action row (matches the notification mockup). */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="pr-5 text-[12px] font-semibold leading-tight tracking-[-0.02em] text-court-fg">
+        <div
+          className="pr-5 text-[12px] font-semibold leading-tight tracking-[-0.02em]"
+          style={{ color: theme.fg }}
+        >
           {candidateName}
         </div>
         {replying ? (
@@ -280,14 +301,15 @@ function QuoToast(props: QuoToastProps) {
               }}
               placeholder="Quick reply…"
               disabled={sending}
-              className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-[10px] text-court-fg outline-none placeholder:text-court-fg-muted/60 focus:border-court-brand"
+              className="w-full rounded-md px-2 py-1.5 text-[10px] outline-none"
+              style={actionChipStyle}
             />
             {sendError && (
               <div className="mt-1 text-[9px] text-red-600">{sendError}</div>
             )}
           </div>
         ) : (
-          <div className="mt-0.5 truncate text-[10px] font-medium text-court-fg-muted">
+          <div className="mt-0.5 truncate text-[10px] font-medium" style={{ color: theme.fgMuted }}>
             {preview}
           </div>
         )}
@@ -303,7 +325,8 @@ function QuoToast(props: QuoToastProps) {
                 type="button"
                 onClick={onSendReply}
                 disabled={sending || !body.trim()}
-                className="inline-flex items-center gap-1 rounded-lg border border-court-brand bg-court-brand px-2 py-1 text-[10px] font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:opacity-60"
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold shadow-sm transition disabled:opacity-60"
+                style={{ border: `1px solid ${theme.primaryBg}`, background: theme.primaryBg, color: theme.primaryFg }}
               >
                 {sending ? (
                   <Loader2 className="h-2.5 w-2.5 animate-spin" />
@@ -315,7 +338,8 @@ function QuoToast(props: QuoToastProps) {
               <button
                 type="button"
                 onClick={() => setReplying(false)}
-                className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold shadow-sm transition"
+                style={actionChipStyle}
               >
                 Cancel
               </button>
@@ -326,7 +350,8 @@ function QuoToast(props: QuoToastProps) {
                 <button
                   type="button"
                   onClick={onStartReply}
-                  className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold shadow-sm transition"
+                  style={actionChipStyle}
                 >
                   <Reply className="h-2.5 w-2.5" />
                   Reply
@@ -335,7 +360,8 @@ function QuoToast(props: QuoToastProps) {
               <button
                 type="button"
                 onClick={onView}
-                className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold shadow-sm transition"
+                style={actionChipStyle}
               >
                 <Eye className="h-2.5 w-2.5" />
                 View
@@ -344,7 +370,8 @@ function QuoToast(props: QuoToastProps) {
                 <button
                   type="button"
                   onClick={onMarkRead}
-                  className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[10px] font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold shadow-sm transition"
+                  style={actionChipStyle}
                 >
                   <CheckCheck className="h-2.5 w-2.5" />
                   Mark as Read
@@ -355,12 +382,13 @@ function QuoToast(props: QuoToastProps) {
         </div>
       </div>
 
-      {/* X close: absolute top-right, white card + gray border. */}
+      {/* X close: absolute top-right, themed chip. */}
       <button
         type="button"
         onClick={() => toast.dismiss(props.toastId)}
         aria-label="Dismiss"
-        className="absolute right-2 top-2 inline-flex h-4 w-4 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:text-court-fg"
+        className="absolute right-2 top-2 inline-flex h-4 w-4 items-center justify-center rounded-md shadow-sm transition"
+        style={actionChipStyle}
       >
         <X className="h-2.5 w-2.5" />
       </button>
