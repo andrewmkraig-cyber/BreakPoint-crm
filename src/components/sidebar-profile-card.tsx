@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { signOut } from "next-auth/react";
-import { ChevronRight, Copy, Crown, ExternalLink, Globe, LogOut, Mail, Phone } from "lucide-react";
+import { ChevronRight, Copy, ExternalLink, Globe, LogOut, Mail, Phone } from "lucide-react";
 import { toast } from "sonner";
 
 type Contact = {
@@ -77,15 +77,14 @@ export function SidebarProfileCard() {
 
   return (
     <div ref={wrapperRef} className="relative">
-      {/* One compact card: avatar / name / phone / chevron on top, a
-          content-width status pill below. The card lives INSIDE the sidebar,
-          so its chrome tracks the sidebar token family - bg-court-sidebar-card
-          (a raised panel that resolves to the sidebar surface on every Court
-          Mode), court-sidebar-border, and sidebar foreground text. That keeps
-          the card readable and blended on all 8 themes instead of rendering a
-          white content-surface card on the green / dark sidebars. Soft
-          court-brand glow on hover lives on this wrapper so the pill sits
-          inside the same outline. */}
+      {/* One compact card: avatar / name / phone / chevron in a single row.
+          The card lives INSIDE the sidebar, so its chrome tracks the sidebar
+          token family - bg-court-sidebar-card (a raised panel that resolves to
+          the sidebar surface on every Court Mode), court-sidebar-border, and
+          sidebar foreground text. That keeps the card readable and blended on
+          all 8 themes instead of rendering a white content-surface card on the
+          green / dark sidebars. Persistent soft white rim/glow gives the card
+          a raised, ordered feel; hover deepens it with the court-brand tint. */}
       <div className="rounded-2xl border border-court-sidebar-border bg-court-sidebar-card p-2.5 shadow-[0_0_0_1px_rgb(255_255_255/0.05),inset_0_1px_0_rgb(255_255_255/0.08),0_10px_30px_-10px_rgb(0_0_0/0.45),0_0_22px_-6px_rgb(255_255_255/0.12)] transition-all duration-150 hover:border-court-brand/40 hover:shadow-[0_0_0_1px_rgb(var(--court-brand)/0.18),inset_0_1px_0_rgb(255_255_255/0.10),0_10px_30px_-8px_rgb(0_0_0/0.5),0_0_26px_-4px_rgb(255_255_255/0.16)]">
       <button
         type="button"
@@ -145,23 +144,6 @@ export function SidebarProfileCard() {
           className="h-4 w-4 shrink-0 self-center text-court-sidebar-fg-dim"
         />
       </button>
-        {/* Slim status pill (~20px tall) under the name/phone row. rounded-full
-            is allowed here (status pill, per the button standard). ACE CREATOR
-            is always brand green on every Court surface (light + dark) - it
-            uses the court-brand tokens, not the per-theme accent (which flipped
-            to white on Grass/Night Light). Re-skins per court but stays green.
-            No raw hex. */}
-        {/* pl offset (avatar 40px + gap 10px) pushes the pill past the avatar
-            so justify-center lands it under the name/phone column instead of
-            hugging the card's left edge. */}
-        <div className="mt-2 flex justify-center pl-[50px]">
-          <span className="flex w-fit items-center justify-center gap-1.5 rounded-full border border-court-brand/40 bg-court-brand/10 px-2.5 py-1 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-court-brand">
-            <Crown aria-hidden="true" className="h-3 w-3 shrink-0" />
-            {/* -mr absorbs the trailing letter-spacing so the crown + label sit
-                optically centered inside the pill instead of pushed left. */}
-            <span className="-mr-[0.12em]">{profile.accessLabel}</span>
-          </span>
-        </div>
       </div>
 
       {open && (

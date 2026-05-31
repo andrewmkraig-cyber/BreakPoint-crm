@@ -273,7 +273,7 @@ export function ChessPuzzle() {
         // local exception to the "reduce borders ~40%" rule, scoped here
         // and on the Word of the Day pill only. Uses the court-border
         // token so it stays theme-aware across light + dark Court modes.
-        className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-court-border bg-emerald-50 px-3 py-2.5 text-sm font-medium text-emerald-800 transition hover:bg-emerald-100 hover:text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200 dark:hover:bg-emerald-950/60"
+        className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-court-border bg-emerald-50 px-3 py-2.5 text-sm font-medium text-emerald-800 shadow-[0_0_0_1px_rgb(255_255_255/0.05),inset_0_1px_0_rgb(255_255_255/0.08),0_10px_30px_-10px_rgb(0_0_0/0.45),0_0_22px_-6px_rgb(255_255_255/0.12)] transition hover:bg-emerald-100 hover:text-emerald-900 hover:shadow-[0_0_0_1px_rgb(var(--court-brand)/0.18),inset_0_1px_0_rgb(255_255_255/0.10),0_10px_30px_-8px_rgb(0_0_0/0.5),0_0_26px_-4px_rgb(255_255_255/0.16)] dark:bg-emerald-950/40 dark:text-emerald-200 dark:hover:bg-emerald-950/60"
       >
         {/* Inline chess-king silhouette — the previous unicode pawn
             glyph (♟) wasn't rendering as a chess piece on Andrew's
