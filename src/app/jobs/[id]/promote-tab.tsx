@@ -305,7 +305,7 @@ function BoardRow({
           onClick={cycleStatus}
           disabled={savingStatus}
           className={cn(
-            "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider transition",
+            "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider transition",
             STATUS_TONE[status],
             savingStatus && "opacity-60",
           )}

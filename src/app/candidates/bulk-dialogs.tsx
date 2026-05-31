@@ -784,7 +784,7 @@ export function BulkEmailDialog({
   }
 
   const ghostPill =
-    "inline-flex h-8 items-center gap-1.5 rounded-full border border-court-border bg-transparent px-3 text-[12px] font-semibold text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-60";
+    "inline-flex h-8 items-center gap-1.5 rounded-md border border-court-border bg-transparent px-3 text-[12px] font-semibold text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-60";
 
   // Send Later picker, anchored to the footer's Send Later button.
   const sendLater = useSendLater(scheduleLater);

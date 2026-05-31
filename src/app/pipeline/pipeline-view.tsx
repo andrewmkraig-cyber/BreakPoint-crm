@@ -1438,7 +1438,7 @@ function RejectButton({ placementId, candidateName }: { placementId: string; can
         disabled={isPending}
         title="Reject this candidate for this job"
         aria-label="Reject"
-        className="h-6 w-full whitespace-nowrap px-2 text-[10px]"
+        className="h-6 w-auto whitespace-nowrap px-2 text-[10px]"
       >
         {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
         <span className="hidden md:inline">Reject</span>

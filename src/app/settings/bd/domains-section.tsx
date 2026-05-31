@@ -298,7 +298,7 @@ function AddDomainForm({ onClose }: { onClose: () => void }) {
             <label
               key={s}
               className={cn(
-                "inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium",
+                "inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-0.5 text-[11px] font-medium",
                 status === s
                   ? "border-court-brand bg-court-brand-tint text-court-brand-dark"
                   : "border-court-border bg-court-surface text-court-fg-muted hover:text-court-fg",

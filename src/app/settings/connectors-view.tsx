@@ -66,7 +66,7 @@ export function ConnectorsView({
             href="https://my.openphone.com"
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface"
+            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface"
           >
             <ExternalLink className="h-3 w-3" />
             Open Quo
@@ -212,7 +212,7 @@ function MicrosoftTeamsConnectorRow() {
         ) : expired ? (
           <a
             href="/api/auth/microsoft"
-            className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900 transition hover:bg-amber-200"
+            className="inline-flex items-center gap-1.5 rounded-md border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900 transition hover:bg-amber-200"
           >
             <RefreshCw className="h-3 w-3" />
             Reconnect
@@ -220,7 +220,7 @@ function MicrosoftTeamsConnectorRow() {
         ) : (
           <a
             href="/api/auth/microsoft"
-            className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface"
+            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface"
           >
             <ExternalLink className="h-3 w-3" />
             Connect Microsoft

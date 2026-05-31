@@ -623,7 +623,7 @@ export function FindMatchesPanel() {
               <button
                 type="button"
                 onClick={loadMore}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-court-border bg-court-surface-subtle/40 px-3 py-1.5 text-xs font-semibold text-court-fg transition hover:bg-court-surface-subtle"
+                className="inline-flex w-auto items-center justify-center gap-2 rounded-md border border-court-border bg-court-surface-subtle/40 px-3 py-1.5 text-xs font-semibold text-court-fg transition hover:bg-court-surface-subtle"
               >
                 Show 5 more
               </button>

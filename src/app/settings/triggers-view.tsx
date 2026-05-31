@@ -259,7 +259,7 @@ function TriggerCard({
               <button
                 type="button"
                 onClick={() => onTemplateLinkClick?.(effectiveTemplate.id)}
-                className="inline-flex items-center gap-1 rounded-full border border-court-brand/40 bg-court-brand-tint px-2 py-0.5 text-[11px] font-medium text-court-brand-dark transition hover:bg-court-brand/15"
+                className="inline-flex items-center gap-1 rounded-md border border-court-brand/40 bg-court-brand-tint px-2 py-0.5 text-[11px] font-medium text-court-brand-dark transition hover:bg-court-brand/15"
                 title="Open this template"
               >
                 <Link2 className="h-2.5 w-2.5" /> {effectiveTemplate.name}

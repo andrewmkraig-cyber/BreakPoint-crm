@@ -148,7 +148,7 @@ export function ThisWeekWidgetClient({
         </div>
         <Link
           href="/calendar"
-          className="inline-flex h-8 items-center gap-1 rounded-full px-3 text-[12px] font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+          className="inline-flex h-8 items-center gap-1 rounded-md px-3 text-[12px] font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
         >
           Open Calendar
           <ArrowUpRight className="h-3 w-3" />

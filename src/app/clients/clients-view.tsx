@@ -190,7 +190,7 @@ function ClientGridCard({ card, quietTier }: { card: ClientCard; quietTier?: Qui
               e.stopPropagation();
               window.open(card.website!, "_blank", "noopener,noreferrer");
             }}
-            className="shrink-0 rounded-full border border-court-border bg-court-surface px-2.5 py-1 text-[11px] font-medium text-court-fg-muted opacity-0 transition group-hover:opacity-100 hover:text-court-fg"
+            className="shrink-0 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[11px] font-medium text-court-fg-muted opacity-0 transition group-hover:opacity-100 hover:text-court-fg"
           >
             Site ↗
           </button>
@@ -292,7 +292,7 @@ function ClientListRowView({ card, quietTier }: { card: ClientCard; quietTier?: 
               e.stopPropagation();
               window.open(card.website!, "_blank", "noopener,noreferrer");
             }}
-            className="rounded-full border border-court-border px-2.5 py-1 text-[11px] font-medium text-court-fg-muted hover:text-court-fg"
+            className="rounded-md border border-court-border px-2.5 py-1 text-[11px] font-medium text-court-fg-muted hover:text-court-fg"
           >
             Site ↗
           </button>

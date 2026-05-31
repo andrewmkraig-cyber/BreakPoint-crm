@@ -669,7 +669,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
               target="_blank"
               rel="noreferrer"
               title="Open in Google Calendar to edit or reschedule"
-              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-3 text-[11.5px] font-medium text-court-fg-muted transition hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 text-[11.5px] font-medium text-court-fg-muted transition hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark"
             >
               Open in Google <ExternalLink className="h-3 w-3" />
             </a>
@@ -804,7 +804,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
                       type="button"
                       onClick={() => applyDuration(d.minutes)}
                       className={cn(
-                        "rounded-full border px-3 py-1 text-xs font-semibold transition",
+                        "rounded-md border px-3 py-1 text-xs font-semibold transition",
                         active
                           ? "border-court-brand bg-court-brand-tint text-court-brand-dark"
                           : "border-court-border bg-court-surface text-court-fg hover:border-court-brand/40",

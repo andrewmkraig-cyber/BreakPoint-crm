@@ -1386,7 +1386,7 @@ export default function CandidatesPage() {
             size="sm"
             onClick={onSaveCurrent}
             disabled={!hasFilters}
-            className="h-8 w-full"
+            className="h-8 w-auto"
           >
             <Bookmark className="h-3.5 w-3.5" />
             Save search

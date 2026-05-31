@@ -283,7 +283,7 @@ function TemplateCard({
                   key={u.triggerKey}
                   type="button"
                   onClick={() => onUsedByClick?.(u.triggerKey)}
-                  className="inline-flex items-center gap-1 rounded-full border border-court-brand/40 bg-court-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-court-brand-dark transition hover:bg-court-brand/15"
+                  className="inline-flex items-center gap-1 rounded-md border border-court-brand/40 bg-court-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-court-brand-dark transition hover:bg-court-brand/15"
                 >
                   <Link2 className="h-2.5 w-2.5" /> Used by: {u.label}
                 </button>

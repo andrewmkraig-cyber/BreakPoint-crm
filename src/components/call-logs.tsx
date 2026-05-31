@@ -141,7 +141,7 @@ export function CallLogs(props: CallLogsProps) {
                 <button
                   type="button"
                   onClick={() => setShowAll((v) => !v)}
-                  className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-[11px] font-semibold text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
+                  className="mt-2 inline-flex w-auto items-center justify-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-[11px] font-semibold text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
                 >
                   {showAll
                     ? `Show 3 most recent`

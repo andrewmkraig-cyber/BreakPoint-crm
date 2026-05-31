@@ -56,7 +56,7 @@ export function SettingsNav() {
               href={`/settings/${c.slug}`}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "inline-flex shrink-0 items-center rounded-full border px-3 py-1.5 text-xs font-medium transition",
+                "inline-flex shrink-0 items-center rounded-md border px-3 py-1.5 text-xs font-medium transition",
                 active
                   ? "border-court-accent bg-court-accent-tint text-court-accent-dark"
                   : "border-court-border bg-court-surface text-court-fg-muted hover:bg-court-surface-subtle",

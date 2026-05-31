@@ -145,7 +145,7 @@ export default async function ActivityPage({
                   ...(filter !== "all" ? { filter } : {}),
                   before: oldestVisible.occurredAt.toISOString(),
                 }).toString()}`}
-                className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-3.5 py-1.5 text-xs font-medium text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+                className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3.5 py-1.5 text-xs font-medium text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
               >
                 Load earlier activity
               </Link>
