@@ -282,7 +282,7 @@ export function CandidatesView({
               onClick={() => setBulkOpen("delete")}
               className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 shadow-sm transition hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60"
             >
-              <Trash2 className="h-3 w-3" /> Delete Selected ({selectedCount})
+              <Trash2 className="h-3 w-3" /> Delete {selectedCount}
             </button>
           </div>
         </div>

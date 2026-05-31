@@ -1161,7 +1161,7 @@ export function MailView({
                 className="flex w-full items-center gap-1.5 rounded-md px-3 py-1.5 text-left text-xs font-medium text-court-fg-muted transition hover:bg-slate-50 hover:text-court-fg"
               >
                 <Plus className="h-3.5 w-3.5" />
-                New label
+                New Label
               </button>
             )}
           </div>
@@ -1797,7 +1797,7 @@ export function MoveToMenu({
                     className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-xs text-court-fg-muted hover:bg-court-accent-tint/40 hover:text-court-fg"
                   >
                     <Plus className="h-3 w-3" />
-                    New label…
+                    New Label…
                   </button>
                 )}
               </div>
@@ -3028,7 +3028,7 @@ function LabelTreeNode({
                     }}
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-700 hover:bg-red-50"
                   >
-                    <Trash2 className="h-3 w-3" /> Delete label
+                    <Trash2 className="h-3 w-3" /> Delete
                   </button>
                 )}
               </div>

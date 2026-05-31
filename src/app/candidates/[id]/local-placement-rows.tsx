@@ -796,7 +796,7 @@ function LocalJobActionRow({
               className={CHIP_BTN_CLS}
             >
               <CalendarClock className="h-3 w-3" />
-              <span className="hidden sm:inline">Schedule Interview</span>
+              <span className="hidden sm:inline">Schedule</span>
             </Button>
           )}
           {canExtendOffer && (
@@ -846,7 +846,7 @@ function LocalJobActionRow({
               className={CHIP_BTN_CLS}
             >
               <Handshake className="h-3 w-3" />
-              <span className="hidden sm:inline">Make Placement</span>
+              <span className="hidden sm:inline">Placement</span>
             </Button>
           )}
           {canEditPlacement && (
@@ -1101,7 +1101,7 @@ function ScheduleDialog({
       dismissOnOverlay={false}
       draggable
       resizable
-      footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Schedule" />}
+      footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Schedule Interview" />}
     >
       <ScheduleFields
         scheduledAt={scheduledAt}
@@ -1308,7 +1308,7 @@ function OfferDialog({
       title="Offer"
       subtitle={`${job.jobTitle} · ${job.clientName}`}
       onClose={onClose}
-      footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Record offer" />}
+      footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Record Offer" />}
       // Lock to X / Cancel close. Stray backdrop click or Escape press
       // shouldn't be able to throw away half-filled offer fields.
       dismissOnOverlay={false}
@@ -1585,7 +1585,7 @@ function LocalPlacementDialog({
           onCancel={onClose}
           onSave={onSave}
           saving={isPending}
-          label={editing ? "Save changes" : "Record placement"}
+          label={editing ? "Save" : "Make Placement"}
         />
       }
     >
@@ -1749,7 +1749,7 @@ function LocalPlacementDialog({
             ) : (
               <AlertTriangle className="h-3 w-3" />
             )}
-            Cancel placement
+            Cancel
           </button>
           <p className="mt-1 text-[11px] text-court-fg-muted">
             Hides this row from dashboards, the placement map, the guarantee period table, and the client hired count. Reversible only by toggling Show Cancelled on /pipeline.

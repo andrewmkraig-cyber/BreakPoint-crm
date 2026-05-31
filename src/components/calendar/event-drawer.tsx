@@ -1050,7 +1050,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
                   {saving === "none" && (
                     <Loader2 className="h-3 w-3 animate-spin" />
                   )}
-                  Save · just me
+                  Save
                 </Button>
                 <Button
                   variant="secondary"
@@ -1071,20 +1071,21 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
                   {saving === "new" && (
                     <Loader2 className="h-3 w-3 animate-spin" />
                   )}
-                  Save · notify new only
+                  Save
                 </Button>
                 <Button
                   variant="primary"
                   size="sm"
                   onClick={() => doSave("all")}
                   disabled={!canSave || saving !== null || deleting}
+                  title="Patch Google and email all guests about the change"
                 >
                   {saving === "all" ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
                   ) : (
                     <Check className="h-3 w-3" />
                   )}
-                  Save · notify all
+                  Save
                 </Button>
               </>
             ) : (

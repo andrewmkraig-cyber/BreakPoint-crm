@@ -558,7 +558,7 @@ export function ResumeEditor({
               disabled={saving || loadingDoc || (!logo && rects.length === 0)}
             >
               {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Save version
+              Save
             </Button>
             <button
               type="button"

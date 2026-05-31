@@ -133,7 +133,7 @@ export function LocalCandidateActions(props: {
             onClick={() => setModal("submit")}
             className="inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
           >
-            <Send className="h-3 w-3" /> Submit to Job
+            <Send className="h-3 w-3" /> Submit
           </button>
           <Button
             type="button"
@@ -337,7 +337,7 @@ function SubmitModal(props: {
       recipientOptions={contactOptions.length > 0 ? contactOptions : undefined}
       onClose={props.onClose}
       sendLabel="Send Submittal"
-      sendingLabel="Sending..."
+      sendingLabel="Sending…"
       helperText="Pick a client contact, then Generate with Claude or write the submittal yourself."
       showTemplatePicker
       templateFilter={(t) => t.audience !== "candidate"}

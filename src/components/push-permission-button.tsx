@@ -281,10 +281,10 @@ export function PushPermissionButton({
           onClick={() => void sendTestNotification()}
           disabled={busy || testing}
         >
-          {testing ? "Testing..." : "Test"}
+          {testing ? "Testing…" : "Test"}
         </Button>
         <Button variant="secondary" size="sm" onClick={disable} disabled={busy}>
-          {busy ? "Disabling…" : "Disable"}
+          {busy ? "Disabling…" : "Disable notifications"}
         </Button>
       </div>
     );

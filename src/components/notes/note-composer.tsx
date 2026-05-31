@@ -99,7 +99,7 @@ export function NoteComposer() {
             className="inline-flex items-center gap-1.5 rounded-lg border border-court-brand bg-transparent px-3.5 py-2 text-xs font-semibold text-court-brand transition hover:bg-court-brand-tint/20 disabled:opacity-60"
           >
             <Save className="h-3.5 w-3.5" />
-            {pending ? "Saving..." : "Save"}
+            {pending ? "Saving…" : "Save"}
           </button>
         </div>
       </div>

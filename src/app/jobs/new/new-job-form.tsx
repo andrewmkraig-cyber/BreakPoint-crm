@@ -515,7 +515,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
                         disabled={!sourceUrl.trim()}
                         className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100 disabled:opacity-60"
                       >
-                        Save Link
+                        Save
                       </button>
                     )}
                   </div>

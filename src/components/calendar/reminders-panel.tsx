@@ -277,7 +277,7 @@ function ReminderForm({
           size="sm"
           disabled={submitting || !title.trim()}
         >
-          {submitting ? "Saving..." : submitLabel}
+          {submitting ? "Saving…" : submitLabel}
         </Button>
       </div>
     </form>

@@ -1087,7 +1087,7 @@ export function ComposeFAB() {
                   disabled={noteSubmitting || !noteText.trim()}
                   className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-court-brand px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {noteSubmitting ? "Saving..." : "Save"}
+                  {noteSubmitting ? "Saving…" : "Save"}
                 </button>
               </div>
             </div>

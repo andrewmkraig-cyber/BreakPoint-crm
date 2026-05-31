@@ -498,7 +498,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
             className="h-9 gap-1.5 rounded-md px-4 text-[12.5px]"
           >
             {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-            Save changes
+            Save
           </Button>
         </div>
       </aside>

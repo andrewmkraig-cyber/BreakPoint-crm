@@ -304,7 +304,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
         <ActionRow disabled={isPending}>
           <DialogOrNav
             icon={CalendarClock}
-            label="Schedule Interview"
+            label="Schedule"
             title="Schedule Interview"
             tone="schedule"
             onClick={props.onSchedule}
@@ -319,7 +319,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
         <ActionRow disabled={isPending}>
           <DialogOrNav
             icon={CalendarClock}
-            label="Schedule Interview"
+            label="Schedule"
             title="Schedule another interview"
             tone="schedule"
             onClick={props.onSchedule}
@@ -350,8 +350,8 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
           />
           <DialogOrNav
             icon={Handshake}
-            label="Make Placement"
-            title="Record placement"
+            label="Placement"
+            title="Make Placement"
             tone="primary"
             onClick={props.onPlacement}
             href={profileHref}

@@ -1908,7 +1908,7 @@ export function MailComposer({
             ) : (
               <Save className="h-3 w-3" />
             )}
-            Save Draft
+            Save
           </Button>
           <Button
             type="button"
@@ -2419,7 +2419,7 @@ function ComposerAddonToolbar({
                     onClick={onCancelRecruit}
                     className="text-[10px] font-medium text-court-fg-muted hover:text-court-fg"
                   >
-                    Back
+                    Cancel
                   </button>
                 </div>
                 {recruitLoading ? (

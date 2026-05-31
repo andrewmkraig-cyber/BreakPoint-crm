@@ -572,7 +572,7 @@ function CalSubheader({
           className="inline-flex h-9 items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3.5 text-[12.5px] font-medium text-court-fg transition hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark"
         >
           <Plus className="h-3.5 w-3.5" />
-          New event
+          New Event
         </button>
         <button
           type="button"
@@ -583,7 +583,7 @@ function CalSubheader({
           <RefreshCw
             className={`h-3.5 w-3.5 ${isSyncing ? "animate-spin" : ""}`}
           />
-          {isSyncing ? "Syncing..." : "Sync"}
+          {isSyncing ? "Syncing…" : "Sync"}
         </button>
         {/* Passing an empty string here when scope is null means
             neither tab id matches, so both render in the inactive

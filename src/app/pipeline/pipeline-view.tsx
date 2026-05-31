@@ -1084,7 +1084,7 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
                                   onClick={(e) => e.stopPropagation()}
                                   className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2 text-[10px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
                                   title="Schedule interview on candidate profile"
-                                  aria-label="Schedule interview"
+                                  aria-label="Schedule Interview"
                                 >
                                   <CalendarClock className="h-3 w-3" />
                                   <span className="hidden md:inline">Schedule</span>
@@ -1109,7 +1109,7 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
                                     onClick={(e) => e.stopPropagation()}
                                     className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2 text-[10px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
                                     title="Schedule another interview on candidate profile"
-                                    aria-label="Schedule interview"
+                                    aria-label="Schedule Interview"
                                   >
                                     <CalendarClock className="h-3 w-3" />
                                     <span className="hidden md:inline">Schedule</span>
@@ -1119,7 +1119,7 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
                                     onClick={(e) => e.stopPropagation()}
                                     className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md border border-purple-200 bg-purple-50 px-2 text-[10px] font-semibold text-purple-700 shadow-sm transition hover:bg-purple-100 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-950/60"
                                     title="Record offer on candidate profile"
-                                    aria-label="Record offer"
+                                    aria-label="Record Offer"
                                   >
                                     <DollarSign className="h-3 w-3" />
                                     <span className="hidden md:inline">Offer</span>
@@ -1143,7 +1143,7 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
                                     onClick={(e) => e.stopPropagation()}
                                     className="inline-flex h-6 w-full items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-2 text-[10px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
                                     title="Record placement"
-                                    aria-label="Record placement"
+                                    aria-label="Make Placement"
                                   >
                                     <Handshake className="h-3 w-3" />
                                     <span className="hidden md:inline">Placement</span>

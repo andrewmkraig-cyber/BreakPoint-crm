@@ -252,7 +252,7 @@ function KeepDialog({
                   disabled={isPending}
                   onClick={() => runKeep(p)}
                 >
-                  Mark Kept
+                  Keep
                 </Button>
               </li>
             ))}
@@ -302,7 +302,7 @@ function KeepDialog({
           onClick={() => pickedOpenJob && runKeep(pickedOpenJob)}
         >
           {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bookmark className="h-3 w-3" />}
-          <span>Mark Kept</span>
+          <span>Keep</span>
         </Button>
       </div>
     </Modal>

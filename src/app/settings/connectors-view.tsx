@@ -45,7 +45,7 @@ export function ConnectorsView({
               className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface"
             >
               <RefreshCw className="h-3 w-3" />
-              Reconnect
+              Reconnect Gmail
             </button>
           )
         }
@@ -207,7 +207,7 @@ function MicrosoftTeamsConnectorRow() {
             className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:opacity-60"
           >
             {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-            Disconnect
+            Disconnect Microsoft
           </button>
         ) : expired ? (
           <a
@@ -215,7 +215,7 @@ function MicrosoftTeamsConnectorRow() {
             className="inline-flex items-center gap-1.5 rounded-md border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900 transition hover:bg-amber-200"
           >
             <RefreshCw className="h-3 w-3" />
-            Reconnect
+            Reconnect Microsoft
           </a>
         ) : (
           <a

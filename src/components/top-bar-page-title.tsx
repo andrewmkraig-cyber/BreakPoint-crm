@@ -155,7 +155,7 @@ function resolveBaseSpec(
         tab === "invoices"
           ? { kind: "new-invoice", label: "New Invoice" }
           : tab === "expenses"
-            ? { kind: "new-expense", label: "New expense" }
+            ? { kind: "new-expense", label: "New Expense" }
             : undefined,
     };
   }
@@ -166,7 +166,7 @@ function resolveBaseSpec(
   if (pathname === "/calendar" || pathname.startsWith("/calendar/")) {
     return {
       title: { label: "Calendar" },
-      action: { kind: "calendar-new-event", label: "New event" },
+      action: { kind: "calendar-new-event", label: "New Event" },
     };
   }
 

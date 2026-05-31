@@ -112,7 +112,7 @@ function VerticalTargetingCard({ row }: { row: ContactTargetingRow }) {
             className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
           >
             {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            Save targeting
+            Save
           </button>
         </div>
       </div>

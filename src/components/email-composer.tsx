@@ -858,7 +858,7 @@ export function EmailComposer({
               onClick={discardRestoredDraft}
               className="rounded-md border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-amber-900 hover:bg-amber-100"
             >
-              Discard draft
+              Cancel
             </button>
           </div>
         )}

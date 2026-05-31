@@ -132,7 +132,7 @@ function TrainerTab({
           disabled={pending}
           className="rounded-md bg-court-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-court-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {pending ? "Adding..." : "Add Rule"}
+          {pending ? "Adding…" : "Add Rule"}
         </button>
       </div>
       <p className="text-xs text-court-fg-muted">
@@ -242,7 +242,7 @@ function RuleRow({
             disabled={pending}
             className="rounded-md bg-court-accent px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-court-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {pending ? "Saving..." : "Save"}
+            {pending ? "Saving…" : "Save"}
           </button>
           <button
             type="button"

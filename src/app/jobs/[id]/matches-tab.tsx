@@ -1499,7 +1499,7 @@ export function MatchesTab({
               ) : (
                 <Bookmark className="h-3.5 w-3.5" />
               )}
-              Save search
+              Save
             </Button>
           </section>
         </div>

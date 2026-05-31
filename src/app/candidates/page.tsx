@@ -1389,7 +1389,7 @@ export default function CandidatesPage() {
             className="h-8 w-auto"
           >
             <Bookmark className="h-3.5 w-3.5" />
-            Save search
+            Save
           </Button>
         </div>
       </aside>

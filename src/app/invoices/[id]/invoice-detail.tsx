@@ -585,7 +585,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
                 }}
                 className="ml-auto rounded-md border border-red-500 bg-transparent px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-red-600 hover:bg-red-500/10 disabled:opacity-60 dark:text-red-400"
               >
-                Delete draft
+                Delete
               </button>
             )}
           </div>
