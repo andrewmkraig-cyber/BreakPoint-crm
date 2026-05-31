@@ -1,8 +1,16 @@
 # ACE_STATE.md
-Last updated: 2026-05-31 · Ace 71.0
-Current Version: Ace 71.0
+Last updated: 2026-05-31 · Ace 72.0
+Current Version: Ace 72.0
 Last Shipped: 2026-05-31
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 72.0 (2026-05-31)
+
+Mobile-nav rainbow + icon semantic-color audit. No schema changes. `npm run build` exits 0.
+
+- **Mobile-nav rainbow via a shared nav source.** New `src/components/nav-items.ts` is the single source of truth for the primary nav — `NAV_GROUPS` + `FOOTER_NAV`, including the per-item rainbow `iconColor`. The desktop `Sidebar` and the mobile hamburger `MobileNav` previously kept independent copies of the nav list, so the rainbow only existed on desktop. Both now consume the shared source, so per-item icon colors match and can never drift. Mobile inactive rows show the rainbow; the active row inherits the high-contrast active foreground (same rule as desktop). No new colors / no hardcoded hex — reuses the existing desktop palette tokens. ACE_DESIGN.md Icon Semantic Color note updated to record that mobile now consumes the shared source.
+
+- **Icon semantic-color sweep — audited, already compliant.** Enumerated every standalone/icon-only action across candidate/job/client/placement/pipeline (86 files, 392 icon usages). They already follow the Icon Semantic Color System: action icons inherit the correct color from their wrapping `Button` (shared `reject`/`apply`/`keep`/`schedule`/`offer`/`reapply`/`primary` variants, or colored-outline native/ghost buttons), and quiet row-action deletes already rest muted and go `hover:text-red-600`. No unambiguous icon-token fixes were needed. A short list of BUTTON-color judgment calls was deferred to Andrew (see ACE_ROADMAP.md Next Up / Queued-from-71.0): emerald-600 vs brand-green confirm checks; a couple of standalone keep glyphs inside primary-green buttons; the neutral-ghost `dismiss-placement-button` confirm; decorative `text-brand-dark` accents.
 
 ## What Shipped in Ace 71.0 (2026-05-31)
 
