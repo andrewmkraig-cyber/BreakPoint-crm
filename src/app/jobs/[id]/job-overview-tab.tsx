@@ -8,20 +8,24 @@ import {
   DollarSign,
   ExternalLink,
   EyeOff,
+  Loader2,
   MapPin,
+  Pencil,
   Percent,
+  Save,
   Users,
+  X,
 } from "lucide-react";
 import {
   useEffect,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
-import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
+import { LabeledField } from "@/app/candidates/[id]/editable-helpers";
+import { Button } from "@/components/ui/button";
 import { JobOverviewActionButtons } from "@/app/jobs/[id]/job-overview-action-buttons";
 import {
   updateJobOverview,
@@ -29,11 +33,14 @@ import {
   type JobOverviewPatch,
 } from "@/app/jobs/[id]/job-overview-actions";
 
-// Overview tab body. Full-width single card with click-to-edit cells.
-// Lifecycle actions (Inactivate / Make Private / Reactivate / Delete)
-// still ride the top bar; per-field saves call updateJobOverview and
+// Overview tab body. Full-width single card with a top-right Edit
+// button (mirrors the Client + Candidate overview cards): the whole
+// card flips into an edit form, the recruiter changes the fields, then
+// one Save batches every change through updateJobOverview and
 // router.refresh() so downstream readers (find-matches, Game Plan
-// context, pipeline) pick up the new values immediately.
+// context, pipeline) pick up the new values immediately. Lifecycle
+// actions (Inactivate / Make Private / Reactivate / Delete) still ride
+// the top bar, so Status / Fee / Last Edited stay read-only here.
 
 export type JobOverviewSnapshot = {
   jobId: string;
@@ -47,7 +54,7 @@ export type JobOverviewSnapshot = {
   numberOfOpenings: number | null;
   lastEditedAt: string | null;
   applyLink: string | null;
-  // Granular comp fields back the Compensation cell so save-on-blur can
+  // Granular comp fields back the Compensation cell so the edit form can
   // patch lo / hi / currency / frequency without rebuilding from the
   // formatted display string.
   salaryRangeStart: number | null;
@@ -55,6 +62,31 @@ export type JobOverviewSnapshot = {
   salaryCurrency: string | null;
   salaryFrequency: "yearly" | "hourly" | null;
 };
+
+// Flat draft for the editable fields. Locations join/split on commas;
+// salary fields stay strings while editing so partial input ("12", "")
+// doesn't fight the number parse until Save.
+type Draft = {
+  employmentType: string;
+  locations: string;
+  salaryLo: string;
+  salaryHi: string;
+  salaryCcy: string;
+  salaryFreq: "yearly" | "hourly";
+  openings: string;
+};
+
+function buildDraft(s: JobOverviewSnapshot): Draft {
+  return {
+    employmentType: s.employmentType ?? "",
+    locations: s.locations.join(", "),
+    salaryLo: s.salaryRangeStart != null ? String(s.salaryRangeStart) : "",
+    salaryHi: s.salaryRangeEnd != null ? String(s.salaryRangeEnd) : "",
+    salaryCcy: s.salaryCurrency ?? "USD",
+    salaryFreq: s.salaryFrequency === "hourly" ? "hourly" : "yearly",
+    openings: s.numberOfOpenings != null ? String(s.numberOfOpenings) : "",
+  };
+}
 
 export function JobOverviewTab({
   snapshot,
@@ -67,24 +99,105 @@ export function JobOverviewTab({
 }) {
   const router = useRouter();
   const [state, setState] = useState<JobOverviewSnapshot>(snapshot);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Draft>(() => buildDraft(snapshot));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
+  // Snapshot can change under us on revalidate. Refresh the read-only
+  // state always; only re-seed the draft when we're not mid-edit so a
+  // background refresh never clobbers in-progress typing.
   useEffect(() => {
     setState(snapshot);
-  }, [snapshot]);
+    if (!editing) setDraft(buildDraft(snapshot));
+  }, [snapshot, editing]);
 
-  async function save(
-    patch: JobOverviewPatch,
-    apply: (s: JobOverviewSnapshot) => JobOverviewSnapshot,
-  ): Promise<boolean> {
-    const res = await updateJobOverview({ jobRfId, jobCuid, patch });
-    if (!res.ok) {
-      toast.error("Couldn't save", { description: res.error });
-      return false;
+  function startEdit() {
+    setDraft(buildDraft(state));
+    setErr(null);
+    setEditing(true);
+  }
+
+  function onCancel() {
+    setDraft(buildDraft(state));
+    setErr(null);
+    setEditing(false);
+  }
+
+  async function onSave() {
+    if (saving) return;
+    setErr(null);
+
+    const lo = parseMoney(draft.salaryLo);
+    const hi = parseMoney(draft.salaryHi);
+    if (lo === "invalid" || hi === "invalid") {
+      setErr("Salary must be a number.");
+      toast.error("Salary must be a number.");
+      return;
     }
-    setState(apply);
+    if (lo != null && hi != null && lo > hi) {
+      setErr("Salary low can't be greater than salary high.");
+      toast.error("Salary low can't be greater than salary high.");
+      return;
+    }
+
+    const openTrim = draft.openings.trim();
+    const openings = openTrim === "" ? null : Number(openTrim);
+    if (
+      openings != null &&
+      (!Number.isFinite(openings) || !Number.isInteger(openings) || openings < 0)
+    ) {
+      setErr("Openings must be a positive whole number.");
+      toast.error("Openings must be a positive whole number.");
+      return;
+    }
+
+    const ccy = draft.salaryCcy.trim().toUpperCase().slice(0, 3) || null;
+    const locationList = draft.locations
+      .split(",")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    const employmentType = draft.employmentType.trim() || null;
+
+    const patch: JobOverviewPatch = {
+      employmentType,
+      locations: locationList,
+      numberOfOpenings: openings,
+      salaryRangeStart: lo,
+      salaryRangeEnd: hi,
+      salaryCurrency: ccy,
+      salaryFrequency: draft.salaryFreq,
+    };
+
+    setSaving(true);
+    const res = await updateJobOverview({ jobRfId, jobCuid, patch });
+    setSaving(false);
+    if (!res.ok) {
+      setErr(res.error);
+      toast.error("Couldn't save", { description: res.error });
+      return;
+    }
+
+    const nextComp: CompState = {
+      salaryRangeStart: lo,
+      salaryRangeEnd: hi,
+      salaryCurrency: ccy,
+      salaryFrequency: draft.salaryFreq,
+    };
+    setState((s) => ({
+      ...s,
+      employmentType,
+      locations: locationList,
+      numberOfOpenings: openings,
+      salaryRangeStart: lo,
+      salaryRangeEnd: hi,
+      salaryCurrency: ccy,
+      salaryFrequency: draft.salaryFreq,
+      compensation: formatCompSummary(nextComp),
+    }));
+    setEditing(false);
     toast.success("Saved");
     router.refresh();
-    return true;
   }
 
   return (
@@ -94,64 +207,167 @@ export function JobOverviewTab({
       </section>
 
       <section className="rounded-xl border border-court-border/40 bg-court-surface p-4 shadow-sm">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <InlineTextCell
-            icon={<Briefcase className="h-3.5 w-3.5" />}
-            label="Employment"
-            value={state.employmentType ?? ""}
-            placeholder="Full-time"
-            onSave={(next) =>
-              save(
-                { employmentType: next || null },
-                (s) => ({ ...s, employmentType: next || null }),
-              )
-            }
-          />
-          <InlineTextCell
-            icon={<MapPin className="h-3.5 w-3.5" />}
-            label="Location"
-            value={state.locations.join(", ")}
-            placeholder="Cleveland, OH"
-            onSave={(next) => {
-              const list = next
-                .split(",")
-                .map((s) => s.trim())
-                .filter((s) => s.length > 0);
-              return save({ locations: list }, (s) => ({ ...s, locations: list }));
-            }}
-          />
-          <StatusCell lifecycle={state.lifecycle} />
-          <CompensationCell
-            state={state}
-            onSave={(patch, next) =>
-              save(patch, (s) => ({
-                ...s,
-                salaryRangeStart: next.salaryRangeStart,
-                salaryRangeEnd: next.salaryRangeEnd,
-                salaryCurrency: next.salaryCurrency,
-                salaryFrequency: next.salaryFrequency,
-                compensation: formatCompSummary(next),
-              }))
-            }
-          />
-          <ReadOnlyCell
-            icon={<Percent className="h-3.5 w-3.5" />}
-            label="Fee"
-            value={state.feePct != null ? `${state.feePct}%` : "—"}
-          />
-          <InlineNumberCell
-            icon={<Users className="h-3.5 w-3.5" />}
-            label="Openings"
-            value={state.numberOfOpenings}
-            onSave={(next) =>
-              save(
-                { numberOfOpenings: next },
-                (s) => ({ ...s, numberOfOpenings: next }),
-              )
-            }
-          />
-          <ReadOnlyCell label="Last Edited" value={formatDate(state.lastEditedAt)} />
+        <div className="flex items-center justify-between">
+          <h2 className="font-serif text-base font-semibold text-court-fg">Details</h2>
+          {!editing && (
+            <button
+              type="button"
+              onClick={startEdit}
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
+            >
+              <Pencil className="h-3 w-3" /> Edit
+            </button>
+          )}
         </div>
+
+        {editing ? (
+          <div className="mt-3 space-y-3 text-sm">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <LabeledField
+                label="Employment"
+                value={draft.employmentType}
+                onChange={(v) => setDraft({ ...draft, employmentType: v })}
+                placeholder="Full-time"
+              />
+              <div className="sm:col-span-1">
+                <LabeledField
+                  label="Location"
+                  value={draft.locations}
+                  onChange={(v) => setDraft({ ...draft, locations: v })}
+                  placeholder="Cleveland, OH"
+                />
+                <p className="mt-1 text-[11px] text-court-fg-muted">
+                  Separate multiple locations with commas.
+                </p>
+              </div>
+              <LabeledField
+                label="Openings"
+                type="number"
+                value={draft.openings}
+                onChange={(v) => setDraft({ ...draft, openings: v })}
+                placeholder="1"
+              />
+            </div>
+
+            <div className="pt-1 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+              Compensation
+            </div>
+            <div className="flex items-center gap-3 text-[11px] text-court-fg-muted">
+              <label className="inline-flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="comp-freq"
+                  checked={draft.salaryFreq === "yearly"}
+                  onChange={() => setDraft({ ...draft, salaryFreq: "yearly" })}
+                />
+                Salary
+              </label>
+              <label className="inline-flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="comp-freq"
+                  checked={draft.salaryFreq === "hourly"}
+                  onChange={() => setDraft({ ...draft, salaryFreq: "hourly" })}
+                />
+                Hourly
+              </label>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <LabeledField
+                label="Salary low"
+                value={draft.salaryLo}
+                onChange={(v) => setDraft({ ...draft, salaryLo: v })}
+                placeholder="80,000"
+              />
+              <LabeledField
+                label="Salary high"
+                value={draft.salaryHi}
+                onChange={(v) => setDraft({ ...draft, salaryHi: v })}
+                placeholder="120,000"
+              />
+              <LabeledField
+                label="Currency"
+                value={draft.salaryCcy}
+                onChange={(v) => setDraft({ ...draft, salaryCcy: v })}
+                placeholder="USD"
+              />
+            </div>
+
+            {err && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+                {err}
+              </div>
+            )}
+            <div className="flex items-center justify-end gap-2 border-t border-court-border pt-3">
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={saving}
+                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+              >
+                <X className="h-3 w-3" /> Cancel
+              </button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={onSave}
+                disabled={saving}
+              >
+                {saving ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Save className="h-3 w-3" />
+                )}
+                Save
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <ReadOnlyCell
+              icon={<Briefcase className="h-3.5 w-3.5" />}
+              label="Employment"
+              value={
+                state.employmentType || <span className="text-court-fg-muted">—</span>
+              }
+            />
+            <ReadOnlyCell
+              icon={<MapPin className="h-3.5 w-3.5" />}
+              label="Location"
+              value={
+                state.locations.length ? (
+                  state.locations.join(", ")
+                ) : (
+                  <span className="text-court-fg-muted">—</span>
+                )
+              }
+            />
+            <StatusCell lifecycle={state.lifecycle} />
+            <ReadOnlyCell
+              icon={<DollarSign className="h-3.5 w-3.5" />}
+              label="Compensation"
+              value={state.compensation}
+            />
+            <ReadOnlyCell
+              icon={<Percent className="h-3.5 w-3.5" />}
+              label="Fee"
+              value={state.feePct != null ? `${state.feePct}%` : "—"}
+            />
+            <ReadOnlyCell
+              icon={<Users className="h-3.5 w-3.5" />}
+              label="Openings"
+              value={
+                state.numberOfOpenings != null ? (
+                  String(state.numberOfOpenings)
+                ) : (
+                  <span className="text-court-fg-muted">—</span>
+                )
+              }
+            />
+            <ReadOnlyCell label="Last Edited" value={formatDate(state.lastEditedAt)} />
+          </div>
+        )}
 
         {state.applyLink && <ApplyLinkSection url={state.applyLink} />}
       </section>
@@ -226,321 +442,12 @@ function StatusCell({ lifecycle }: { lifecycle: JobLifecycle }) {
   );
 }
 
-const inlineFrameCls = `${INPUT_FRAME_CLASS} w-full`;
-const inlineInputCls = `${INPUT_CONTROL_CLASS} text-sm`;
-
-const cellButtonCls =
-  "block w-full rounded text-left text-sm text-court-fg hover:bg-court-surface-subtle hover:text-court-accent-dark";
-
-function InlineTextCell({
-  icon,
-  label,
-  value,
-  placeholder,
-  onSave,
-}: {
-  icon?: ReactNode;
-  label: string;
-  value: string;
-  placeholder?: string;
-  onSave: (next: string) => Promise<boolean>;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!editing) setDraft(value);
-  }, [value, editing]);
-
-  async function commit() {
-    if (saving) return;
-    if (draft.trim() === value.trim()) {
-      setEditing(false);
-      return;
-    }
-    setSaving(true);
-    const ok = await onSave(draft.trim());
-    setSaving(false);
-    if (ok) setEditing(false);
-  }
-
-  return (
-    <CellShell icon={icon} label={label}>
-      {editing ? (
-        <div className={inlineFrameCls}>
-          <input
-            autoFocus
-            type="text"
-            value={draft}
-            disabled={saving}
-            placeholder={placeholder}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => void commit()}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                (e.currentTarget as HTMLInputElement).blur();
-              } else if (e.key === "Escape") {
-                setDraft(value);
-                setEditing(false);
-              }
-            }}
-            className={inlineInputCls}
-          />
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          aria-label={`Edit ${label}`}
-          className={cellButtonCls}
-        >
-          {value || <span className="text-court-fg-muted">—</span>}
-        </button>
-      )}
-    </CellShell>
-  );
-}
-
-function InlineNumberCell({
-  icon,
-  label,
-  value,
-  onSave,
-}: {
-  icon?: ReactNode;
-  label: string;
-  value: number | null;
-  onSave: (next: number | null) => Promise<boolean>;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value != null ? String(value) : "");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!editing) setDraft(value != null ? String(value) : "");
-  }, [value, editing]);
-
-  async function commit() {
-    if (saving) return;
-    const trimmed = draft.trim();
-    const parsed = trimmed === "" ? null : Number(trimmed);
-    if (
-      parsed != null &&
-      (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 0)
-    ) {
-      toast.error("Must be a positive whole number.");
-      setDraft(value != null ? String(value) : "");
-      setEditing(false);
-      return;
-    }
-    if (parsed === value) {
-      setEditing(false);
-      return;
-    }
-    setSaving(true);
-    const ok = await onSave(parsed);
-    setSaving(false);
-    if (ok) setEditing(false);
-  }
-
-  return (
-    <CellShell icon={icon} label={label}>
-      {editing ? (
-        <div className={inlineFrameCls}>
-          <input
-            autoFocus
-            type="number"
-            inputMode="numeric"
-            value={draft}
-            disabled={saving}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => void commit()}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                (e.currentTarget as HTMLInputElement).blur();
-              } else if (e.key === "Escape") {
-                setDraft(value != null ? String(value) : "");
-                setEditing(false);
-              }
-            }}
-            className={inlineInputCls}
-          />
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          aria-label={`Edit ${label}`}
-          className={cellButtonCls}
-        >
-          {value != null ? (
-            String(value)
-          ) : (
-            <span className="text-court-fg-muted">—</span>
-          )}
-        </button>
-      )}
-    </CellShell>
-  );
-}
-
 type CompState = {
   salaryRangeStart: number | null;
   salaryRangeEnd: number | null;
   salaryCurrency: string | null;
   salaryFrequency: "yearly" | "hourly";
 };
-
-function CompensationCell({
-  state,
-  onSave,
-}: {
-  state: JobOverviewSnapshot;
-  onSave: (patch: JobOverviewPatch, next: CompState) => Promise<boolean>;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draftLo, setDraftLo] = useState("");
-  const [draftHi, setDraftHi] = useState("");
-  const [draftCcy, setDraftCcy] = useState("USD");
-  const [draftFreq, setDraftFreq] = useState<"yearly" | "hourly">("yearly");
-  const [saving, setSaving] = useState(false);
-  const groupRef = useRef<HTMLDivElement | null>(null);
-
-  function startEditing() {
-    setDraftLo(state.salaryRangeStart != null ? String(state.salaryRangeStart) : "");
-    setDraftHi(state.salaryRangeEnd != null ? String(state.salaryRangeEnd) : "");
-    setDraftCcy(state.salaryCurrency ?? "USD");
-    setDraftFreq(state.salaryFrequency === "hourly" ? "hourly" : "yearly");
-    setEditing(true);
-  }
-
-  async function commit() {
-    if (saving) return;
-    const lo = parseMoney(draftLo);
-    const hi = parseMoney(draftHi);
-    if (lo === "invalid" || hi === "invalid") {
-      toast.error("Salary must be a number.");
-      setEditing(false);
-      return;
-    }
-    const ccy = draftCcy.trim().toUpperCase().slice(0, 3) || null;
-    const next: CompState = {
-      salaryRangeStart: lo,
-      salaryRangeEnd: hi,
-      salaryCurrency: ccy,
-      salaryFrequency: draftFreq,
-    };
-    if (
-      next.salaryRangeStart === state.salaryRangeStart &&
-      next.salaryRangeEnd === state.salaryRangeEnd &&
-      next.salaryCurrency === state.salaryCurrency &&
-      next.salaryFrequency === state.salaryFrequency
-    ) {
-      setEditing(false);
-      return;
-    }
-    setSaving(true);
-    const ok = await onSave(
-      {
-        salaryRangeStart: next.salaryRangeStart,
-        salaryRangeEnd: next.salaryRangeEnd,
-        salaryCurrency: next.salaryCurrency,
-        salaryFrequency: next.salaryFrequency,
-      },
-      next,
-    );
-    setSaving(false);
-    if (ok) setEditing(false);
-  }
-
-  // Group blur — only commit when focus leaves the entire compensation
-  // group. setTimeout lets the next focus settle before we read it.
-  function handleBlur() {
-    setTimeout(() => {
-      if (!groupRef.current) return;
-      if (!groupRef.current.contains(document.activeElement)) {
-        void commit();
-      }
-    }, 0);
-  }
-
-  return (
-    <CellShell icon={<DollarSign className="h-3.5 w-3.5" />} label="Compensation">
-      {editing ? (
-        <div ref={groupRef} onBlur={handleBlur} className="space-y-1.5">
-          <div className="flex items-center gap-3 text-[11px] text-court-fg-muted">
-            <label className="inline-flex items-center gap-1">
-              <input
-                type="radio"
-                name="comp-freq"
-                checked={draftFreq === "yearly"}
-                onChange={() => setDraftFreq("yearly")}
-              />
-              Salary
-            </label>
-            <label className="inline-flex items-center gap-1">
-              <input
-                type="radio"
-                name="comp-freq"
-                checked={draftFreq === "hourly"}
-                onChange={() => setDraftFreq("hourly")}
-              />
-              Hourly
-            </label>
-          </div>
-          <div className="grid grid-cols-3 gap-1.5">
-            <div className={inlineFrameCls}>
-              <input
-                autoFocus
-                type="text"
-                value={draftLo}
-                disabled={saving}
-                onChange={(e) => setDraftLo(e.target.value)}
-                placeholder="Low"
-                aria-label="Salary low"
-                className={inlineInputCls}
-              />
-            </div>
-            <div className={inlineFrameCls}>
-              <input
-                type="text"
-                value={draftHi}
-                disabled={saving}
-                onChange={(e) => setDraftHi(e.target.value)}
-                placeholder="High"
-                aria-label="Salary high"
-                className={inlineInputCls}
-              />
-            </div>
-            <div className={inlineFrameCls}>
-              <input
-                type="text"
-                value={draftCcy}
-                disabled={saving}
-                onChange={(e) => setDraftCcy(e.target.value)}
-                placeholder="USD"
-                aria-label="Currency"
-                className={inlineInputCls}
-              />
-            </div>
-          </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={startEditing}
-          aria-label="Edit compensation"
-          className={cellButtonCls}
-        >
-          {state.compensation}
-        </button>
-      )}
-    </CellShell>
-  );
-}
 
 function ApplyLinkSection({ url }: { url: string }) {
   return (
