@@ -5,9 +5,22 @@ import { useState, useTransition } from "react";
 import {
   getBillingTowerData,
   type BillingTowerData,
-  type BillingTowerPeriod,
 } from "@/app/dashboard/billing-tower-actions";
+import { TimeRangeDropdown } from "@/components/ui/time-range-selector";
+import type { TimeRangeSelection } from "@/lib/time-range";
 import { cn } from "@/lib/utils";
+
+// Billing Tower window options — the only four the tower ever surfaces, in
+// the original order. Quarter + YTD only, so the Goal math stays quarter-
+// anchored. Routed through the shared two-tier model via TimeRangeDropdown.
+const BILLING_TOWER_OPTIONS = (
+  currentQuarterLabel: string,
+): ReadonlyArray<{ selection: TimeRangeSelection; label: string }> => [
+  { selection: { grain: "QUARTER", period: "THIS" }, label: `Current Quarter (${currentQuarterLabel})` },
+  { selection: { grain: "QUARTER", period: "NEXT" }, label: "Next Quarter" },
+  { selection: { grain: "QUARTER", period: "LAST" }, label: "Previous Quarter" },
+  { selection: { grain: "YEAR", period: "THIS" }, label: "Annual / YTD" },
+];
 
 // Billing Tower summary strip. One big-panel card with a header row
 // ("Billing Tower" eyebrow + period selector) and a 3-column metrics
@@ -38,7 +51,10 @@ export function FinancialStrip({
   initial: BillingTowerData;
   currentQuarterLabel: string;
 }) {
-  const [period, setPeriod] = useState<BillingTowerPeriod>("current");
+  const [selection, setSelection] = useState<TimeRangeSelection>({
+    grain: "QUARTER",
+    period: "THIS",
+  });
   const [data, setData] = useState<BillingTowerData>(initial);
   const [pending, startTransition] = useTransition();
 
@@ -53,8 +69,8 @@ export function FinancialStrip({
       : "No open invoices";
   const remainingUsd = Math.max(0, data.goalUsd - data.revenueUsd);
 
-  function onPeriodChange(next: BillingTowerPeriod) {
-    setPeriod(next);
+  function onPeriodChange(next: TimeRangeSelection) {
+    setSelection(next);
     // Server action returns the full Billing Tower payload for the
     // selected window — Revenue, Outstanding, Goal, label. useTransition
     // keeps the previous tile values visible (with opacity-60) while
@@ -71,18 +87,13 @@ export function FinancialStrip({
         <div className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted">
           Billing Tower
         </div>
-        <select
-          aria-label="Billing Tower period"
-          value={period}
-          onChange={(e) => onPeriodChange(e.target.value as BillingTowerPeriod)}
+        <TimeRangeDropdown
+          ariaLabel="Billing Tower period"
+          value={selection}
+          options={BILLING_TOWER_OPTIONS(currentQuarterLabel)}
+          onChange={onPeriodChange}
           disabled={pending}
-          className="rounded-lg border border-court-border bg-court-surface px-2 py-0.5 text-[11px] text-court-fg-muted transition hover:text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/40 disabled:opacity-60"
-        >
-          <option value="current">{`Current Quarter (${currentQuarterLabel})`}</option>
-          <option value="next">Next Quarter</option>
-          <option value="previous">Previous Quarter</option>
-          <option value="ytd">Annual / YTD</option>
-        </select>
+        />
       </div>
       <div
         className={cn(

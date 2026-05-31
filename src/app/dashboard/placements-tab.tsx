@@ -9,32 +9,37 @@ import {
   type LedgerRow,
 } from "@/components/placements/placements-ledger";
 import { PlacementsMapCard } from "@/components/placements/placements-map-card";
-import { PeriodTabs } from "@/app/dashboard/period-tabs";
-import { resolveDashboardPeriod } from "@/app/dashboard/period-tabs-shared";
+import { TimeRangeTabs } from "@/components/ui/time-range-selector";
+import {
+  DEFAULT_TIME_RANGE,
+  timeRange,
+  type TimeRangeSelection,
+} from "@/lib/time-range";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
   getPlacementsDashboardData,
-  type PlacementsDashboardPeriod,
   type PlacementsDashboardRow,
 } from "@/lib/placements-dashboard";
 import { aggregateByCity } from "@/lib/placements-map-geo";
 
-export function resolvePlacementsPeriod(
-  raw: string | undefined | null,
-): PlacementsDashboardPeriod {
-  return resolveDashboardPeriod(raw);
+// "All placements" ledger heading from the resolved window label, e.g.
+// "All placements · Q2 2026" / "· YTD 2026" / "· Week of May 25-31, 2026".
+// The current quarter keeps its original friendlier wording.
+function ledgerTitleFor(selection: TimeRangeSelection, label: string): string {
+  if (selection.grain === "QUARTER" && selection.period === "THIS") {
+    return "All placements this quarter";
+  }
+  return `All placements · ${label}`;
 }
 
-const LEDGER_TITLE: Record<PlacementsDashboardPeriod, string> = {
-  YTD: `All placements YTD ${new Date().getFullYear()}`,
-  THIS_QUARTER: "All placements this quarter",
-  LAST_QUARTER: "All placements · last quarter",
-  NEXT_QUARTER: "All placements · next quarter",
-};
-
-export async function PlacementsTab({ period }: { period: PlacementsDashboardPeriod }) {
+export async function PlacementsTab({
+  selection = DEFAULT_TIME_RANGE,
+}: {
+  selection?: TimeRangeSelection;
+}) {
   const org = await getCurrentOrg();
-  const rows = await getPlacementsDashboardData(org.id, period);
+  const range = timeRange(selection);
+  const rows = await getPlacementsDashboardData(org.id, range);
   const cities = aggregateByCity(rows);
   const totalFee = cities.reduce((s, c) => s + c.totalFee, 0);
   const ledgerRows = toLedgerRows(rows);
@@ -49,9 +54,12 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           PLACEMENTS ON THE BOOKS
         </p>
-        <PeriodTabs period={period} />
+        <TimeRangeTabs value={selection} ariaLabel="Placements period" />
       </div>
-      <PlacementsLedger rows={ledgerRows} title={LEDGER_TITLE[period]} />
+      <PlacementsLedger
+        rows={ledgerRows}
+        title={ledgerTitleFor(selection, range.label)}
+      />
       <GuaranteePeriodTable rows={guaranteeRows} />
       <PlacementsBreakdowns rows={rows} />
       <PlacementsMapCard cities={cities} totalFee={totalFee} />

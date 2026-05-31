@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
-import { periodRange, type DashboardPeriod } from "@/lib/period-utils";
 import { normalizeClient, normalizeJob } from "@/lib/rf-payload-shapes";
 import {
   BILLING_EVENT_PLACEMENT_SELECT,
@@ -104,12 +103,11 @@ export type ScoreboardData = {
 };
 
 export async function getScoreboardData(
-  period: DashboardPeriod = "THIS_QUARTER",
+  range: { label: string; start: Date; endExclusive: Date },
 ): Promise<ScoreboardData> {
   const org = await getCurrentOrg();
   const now = new Date();
   const ninetyDaysAgo = new Date(now.getTime() - 90 * DAYS);
-  const range = periodRange(period, now);
   const periodStart = range.start;
   const periodEnd = range.endExclusive;
 

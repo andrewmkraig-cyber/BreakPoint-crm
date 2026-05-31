@@ -3,7 +3,6 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { periodRange } from "@/lib/period-utils";
 import { placementTotalDollars } from "@/lib/billing-events";
 
 // Data layer for the placements dashboard. Pulls every Placement in the
@@ -264,10 +263,10 @@ function deriveBillingStatus(args: {
 
 export async function getPlacementsDashboardData(
   orgId: string,
-  period: PlacementsDashboardPeriod,
+  range: { start: Date; endExclusive: Date },
 ): Promise<PlacementsDashboardRow[]> {
   const now = new Date();
-  const { start, endExclusive: end } = periodRange(period, now);
+  const { start, endExclusive: end } = range;
 
   // Prior-year window for the repeat-client KPI. Calendar-year-based
   // ("did this client place with us in 2025?") regardless of the

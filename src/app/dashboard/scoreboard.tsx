@@ -17,8 +17,12 @@ import {
   ClientDrilldownTrigger,
   RoleDrilldownTrigger,
 } from "@/app/dashboard/scoreboard-drilldowns";
-import { PeriodTabs } from "@/app/dashboard/period-tabs";
-import type { DashboardPeriod } from "@/app/dashboard/period-tabs-shared";
+import { TimeRangeTabs } from "@/components/ui/time-range-selector";
+import {
+  DEFAULT_TIME_RANGE,
+  timeRange,
+  type TimeRangeSelection,
+} from "@/lib/time-range";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { GoalPacingCard, getGoalPacingData } from "@/app/dashboard/goal-pacing";
 
@@ -27,13 +31,14 @@ import { GoalPacingCard, getGoalPacingData } from "@/app/dashboard/goal-pacing";
 // Billed/Collected forecast, stalled-deal stage timers) render honest
 // empty/placeholder states rather than mock numbers.
 export async function Scoreboard({
-  period = "THIS_QUARTER",
+  selection = DEFAULT_TIME_RANGE,
 }: {
-  period?: DashboardPeriod;
+  selection?: TimeRangeSelection;
 } = {}) {
   const org = await getCurrentOrg();
+  const range = timeRange(selection);
   const [data, goalPacing] = await Promise.all([
-    getScoreboardData(period),
+    getScoreboardData(range),
     getGoalPacingData(org.id),
   ]);
 
@@ -43,7 +48,7 @@ export async function Scoreboard({
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           DEAL FLOW &amp; FORECAST
         </p>
-        <PeriodTabs period={period} />
+        <TimeRangeTabs value={selection} ariaLabel="Scoreboard period" />
       </div>
       <KpiRow kpis={data.kpis} periodLabel={data.period.label} />
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">

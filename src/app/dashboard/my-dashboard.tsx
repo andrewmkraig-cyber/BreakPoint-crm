@@ -8,11 +8,12 @@ import { NewsFeed } from "@/components/news-feed";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getBillingTowerData } from "@/app/dashboard/billing-tower-actions";
+import { TimeRangeTabs } from "@/components/ui/time-range-selector";
 import {
-  clubhousePeriodRange,
-  type ClubhousePeriod,
-} from "@/app/dashboard/clubhouse-period";
-import { ClubhousePeriodTabs } from "@/app/dashboard/clubhouse-period-tabs";
+  timeRange,
+  type TimeRangeSelection,
+} from "@/lib/time-range";
+import { CLUBHOUSE_PERIOD_PARAM } from "@/app/dashboard/clubhouse-period";
 import {
   Building2,
   CalendarDays,
@@ -28,16 +29,16 @@ import {
 // got rejected Wednesday still counts as 1 in "Candidates submitted"
 // for that week — the rejection doesn't remove them from the count.
 export async function MyDashboard({
-  period = "THIS_WEEK",
+  selection = { grain: "WEEK", period: "THIS" },
 }: {
-  period?: ClubhousePeriod;
+  selection?: TimeRangeSelection;
 } = {}) {
   const now = new Date();
   const {
     start: activityStart,
     endExclusive: activityEnd,
-    eyebrowLabel: activityEyebrow,
-  } = clubhousePeriodRange(period, now);
+    eyebrow: activityEyebrow,
+  } = timeRange(selection, now);
 
   const [org, session] = await Promise.all([
     getCurrentOrg(),
@@ -91,7 +92,7 @@ export async function MyDashboard({
     // when the user picks a different period from the dropdown.
     // Calling the same server action the client uses keeps the
     // shape + math in one place.
-    getBillingTowerData("current"),
+    getBillingTowerData({ grain: "QUARTER", period: "THIS" }),
   ]);
 
   const currentQuarterLabel = `Q${Math.floor(now.getMonth() / 3) + 1} ${now.getFullYear()}`;
@@ -103,7 +104,14 @@ export async function MyDashboard({
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           {activityEyebrow}
         </p>
-        <ClubhousePeriodTabs period={period} />
+        <TimeRangeTabs
+          value={selection}
+          paramKey={CLUBHOUSE_PERIOD_PARAM}
+          defaultSelection={{ grain: "WEEK", period: "THIS" }}
+          grains={["WEEK", "MONTH", "QUARTER"]}
+          periods={["LAST", "THIS"]}
+          ariaLabel="Activity period"
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
