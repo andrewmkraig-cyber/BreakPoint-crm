@@ -87,7 +87,7 @@ export function CalendarLeftRail({
 }: Props) {
   return (
     <aside
-      className="hidden w-[280px] shrink-0 flex-col gap-4 overflow-y-auto pr-1 lg:flex"
+      className="hidden w-[280px] shrink-0 flex-col gap-4 overflow-y-auto pb-4 pr-1 lg:flex"
       style={{ maxHeight: "calc(100vh - 13rem)" }}
     >
       <MiniMonth

@@ -1,7 +1,7 @@
 "use client";
 
 import { Bell, Pencil, Plus, Trash2, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LeadTimePicker, leadsSummary } from "@/components/calendar/lead-time-picker";
 import { TimeSelect } from "@/components/calendar/time-select";
@@ -82,6 +82,12 @@ export function CalendarRemindersPanel({
               >
                 <ReminderForm
                   submitLabel="Update"
+                  // Edit forms open either from the panel's own pencil or
+                  // from a click on the reminder block out on the grid. In
+                  // both cases the panel may be scrolled out of view at the
+                  // bottom of the left rail, so reveal the full form (incl.
+                  // the Update button) when it mounts.
+                  scrollIntoViewOnMount
                   initial={{
                     title: r.title,
                     date: isoDate(r.reminderAt),
@@ -199,11 +205,17 @@ function ReminderRow({
 function ReminderForm({
   initial,
   submitLabel,
+  scrollIntoViewOnMount = false,
   onCancel,
   onSubmit,
 }: {
   initial?: { title: string; date: string; time: string; leads: number[] };
   submitLabel: string;
+  // When true, focus the title field WITHOUT the browser's default
+  // focus-scroll, then explicitly scroll the whole form to the center of
+  // the viewport so its Cancel/Update row is never clipped at the bottom
+  // of the left rail's scroll area.
+  scrollIntoViewOnMount?: boolean;
   onCancel: () => void;
   onSubmit: (title: string, reminderAt: Date, leads: number[]) => Promise<void>;
 }) {
@@ -215,6 +227,18 @@ function ReminderForm({
     initial && initial.leads.length > 0 ? initial.leads : [15],
   );
   const [submitting, setSubmitting] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const titleRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    titleRef.current?.focus({ preventScroll: true });
+    if (scrollIntoViewOnMount) {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    // Mount-only: the form remounts per open (keyed by reminder id), so the
+    // reveal fires once each time the editor opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -232,12 +256,15 @@ function ReminderForm({
 
   return (
     <form
+      ref={formRef}
       onSubmit={handleSubmit}
-      className="space-y-2.5 border-b border-court-border-soft bg-court-surface-subtle px-5 py-3.5"
+      // scroll-mt / scroll-mb give scrollIntoView breathing room so the
+      // form never butts right up against the rail's clip edge.
+      className="scroll-my-4 space-y-2.5 border-b border-court-border-soft bg-court-surface-subtle px-5 py-3.5"
     >
       <input
+        ref={titleRef}
         type="text"
-        autoFocus
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         className="w-full rounded-lg border border-court-border bg-court-surface px-2.5 py-1.5 text-[12.5px] text-court-fg outline-none focus:border-court-brand/60 focus:ring-2 focus:ring-court-brand/20"

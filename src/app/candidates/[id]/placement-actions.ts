@@ -31,6 +31,7 @@ import { createInvoiceForPlacement, resolvePlacementInvoiceContacts } from "@/li
 import { createDraftInvoiceAction } from "@/app/invoices/actions";
 import { createReminder } from "@/app/calendar/reminder-actions";
 import { zonedWallTimeToUtc } from "@/lib/timezone";
+import { priorFridayIfWeekendUtc } from "@/lib/business-days";
 import {
   CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
   CANDIDATE_CONFIRMATION_TRIGGER,
@@ -44,6 +45,12 @@ import {
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
   | { ok: false; error: string };
+
+// Future-installment reminders fire this many calendar days before the
+// installment's due date - the recruiter's cue to SEND that invoice so the
+// client has the full window to pay. Weekend results slide to the prior
+// Friday (see priorFridayIfWeekendUtc).
+const INSTALLMENT_REMINDER_LEAD_DAYS = 10;
 
 async function requireUserId(): Promise<string | null> {
   // The NextAuth JWT callback stamps user.id onto the session (see
@@ -857,8 +864,12 @@ export async function confirmStart(
           }
         }
 
-        // (b/c) Reminders for installments 2 and 3 at 9:00 AM ET on the due
-        // day. Deduped by title so a re-fire doesn't stack reminders.
+        // (b/c) Reminders for installments 2 and 3 at 9:00 AM ET, set 10
+        // calendar days BEFORE the installment's due date so the reminder
+        // is the recruiter's cue to SEND that invoice with 10 days for the
+        // client to pay. If the computed day lands on a weekend it moves to
+        // the prior Friday (reminders fire Mon-Fri only). Deduped by title
+        // so a re-fire doesn't stack reminders.
         const reminderSpecs: Array<{ n: number; amount: number; days: number }> = [];
         if (count >= 2 && placementForFire.inst2Amount != null) {
           reminderSpecs.push({
@@ -931,10 +942,20 @@ export async function confirmStart(
             select: { id: true },
           });
           if (dupe) continue;
+          // Due date = start + spec.days. The reminder fires 10 calendar
+          // days earlier; if that lands on Sat/Sun it slides back to the
+          // prior Friday. Built as a midnight-UTC calendar date first so the
+          // weekday check (getUTCDay) and the "minus 10 days" math stay
+          // server-timezone-independent, then anchored to 9:00 AM ET.
+          const reminderCal = priorFridayIfWeekendUtc(
+            new Date(
+              Date.UTC(baseY, baseM, baseD + spec.days - INSTALLMENT_REMINDER_LEAD_DAYS),
+            ),
+          );
           const remindAt = zonedWallTimeToUtc(
-            base.getUTCFullYear(),
-            base.getUTCMonth() + 1,
-            base.getUTCDate() + spec.days,
+            reminderCal.getUTCFullYear(),
+            reminderCal.getUTCMonth() + 1,
+            reminderCal.getUTCDate(),
             9,
             0,
             "America/New_York",
