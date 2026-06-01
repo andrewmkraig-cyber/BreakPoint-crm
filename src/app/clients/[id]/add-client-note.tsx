@@ -57,7 +57,7 @@ export function AddClientNote({ clientId }: { clientId: string }) {
           type="button"
           onClick={onAdd}
           disabled={!text.trim() || busy}
-          className="inline-flex items-center gap-1 rounded-md bg-court-brand px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:opacity-60"
+          className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-[11px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
         >
           {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
           Add note
