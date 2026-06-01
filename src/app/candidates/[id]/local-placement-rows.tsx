@@ -2705,7 +2705,12 @@ function LocalClientInviteComposer({
         body: applyMergeFieldsClient(t.body, values),
       })}
       ccOptions={ccPickerOptions}
-      bccOptions={ccPickerOptions}
+      // Bcc is the private team field — do NOT seed it with client contacts.
+      // Passing an empty pool lets EmailComposer surface ONLY its teammate
+      // roster (Austin) via BCC_TEAMMATE_OPTIONS; client contacts can no
+      // longer leak into the Bcc dropdown. The recruiter can still type any
+      // address. Cc keeps the client-contact list above.
+      bccOptions={[]}
       mergeValues={values}
       sendLabel="Send Invite"
       onClose={onClose}

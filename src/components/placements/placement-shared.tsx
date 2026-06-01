@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { Edit3, Loader2, RotateCcw, Save, UploadCloud, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { TEAM_BCC_OPTIONS } from "@/lib/team-contacts";
 import { Button } from "@/components/ui/button";
 import {
   useDraggableResizable,
@@ -545,12 +546,14 @@ export function CcBccPicker({
   onBccChange: (v: string) => void;
 }) {
   // Cc draws from the current job's client contacts and becomes a visible
-  // guest on the client-facing calendar event. Bcc is a private copy: the
-  // calendar invite itself has no hidden Bcc bucket, so a Bcc recipient
-  // (e.g. Austin) is delivered a separate email copy of the invite at send
-  // time, hidden from the candidate and client. Both pull from the same
-  // client-contact suggestion list and also accept any typed-in address.
-  const pickerOptions = buildCcBccOptions(clientContacts);
+  // guest on the client-facing calendar event. Bcc is a private team copy:
+  // the calendar invite itself has no hidden Bcc bucket, so a Bcc recipient
+  // (Austin) is delivered a separate email copy of the invite at send time,
+  // hidden from the candidate and client. Cc and Bcc draw from SEPARATE
+  // pools on purpose — client contacts must never appear as a Bcc option
+  // (that's a private team field), so Bcc is seeded only from the team
+  // roster. Both still accept any typed-in address.
+  const ccOptions = buildCcBccOptions(clientContacts);
   return (
     <div className="space-y-2">
       <label className="block text-sm">
@@ -560,19 +563,19 @@ export function CcBccPicker({
         <InlineContactMultiInput
           value={cc}
           onChange={onCcChange}
-          options={pickerOptions}
+          options={ccOptions}
           placeholder="Pick a client contact or type email…"
         />
       </label>
       <label className="block text-sm">
         <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
-          Bcc (optional) · private copy
+          Bcc (optional) · private team copy
         </span>
         <InlineContactMultiInput
           value={bcc}
           onChange={onBccChange}
-          options={pickerOptions}
-          placeholder="Type an email to Bcc (e.g. Austin)…"
+          options={TEAM_BCC_OPTIONS}
+          placeholder="Bcc Austin, or type an email…"
         />
       </label>
     </div>

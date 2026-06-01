@@ -335,7 +335,15 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
       const incoming = event.meta ?? "";
       setNotes(incoming);
       setNotesPreviewMode(isHtmlDescription(incoming));
-      setReminderOn(event.reminderEnabled ?? false);
+      // Interview-type events always carry an Ace reminder (the Schedule
+      // Interview flow sets one keyed on the interview, at start - 60 min,
+      // which the calendar-event-only `reminderEnabled` lookup can't see),
+      // so reopening an interview must show the toggle ON rather than the
+      // misleading OFF. Other event types keep mirroring their linked
+      // reminder's real state. (Create mode already defaults ON below.)
+      setReminderOn(
+        event.type === "interview" ? true : (event.reminderEnabled ?? false),
+      );
       setAllDay(false);
       setMeetingType("google_meet");
       setTimeZone(DEFAULT_TIMEZONE);

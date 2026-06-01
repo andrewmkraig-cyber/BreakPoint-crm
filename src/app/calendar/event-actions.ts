@@ -259,13 +259,41 @@ export async function updateCalendarEventAction(
     })
   ).map((r) => r.id);
 
+  // A scheduled interview owns its reminder keyed on interviewId (set by
+  // upsertInterviewReminder at start - 60 min), NOT on calendarEventId. The
+  // tracking calendar event the recruiter sees mirrors
+  // Interview.googleEventIdMine, so find that interview and fold its reminder
+  // into the dedup below. Without this, the now-default-ON interview reminder
+  // toggle would stack a SECOND, duplicate reminder every time a recruiter
+  // reopens an interview event and saves.
+  const linkedInterview = row.googleEventId
+    ? await prisma.interview.findFirst({
+        where: {
+          organizationId: row.organizationId,
+          // An interview's calendar presence can be the organizer tracking
+          // event OR the client / candidate invite events — match any so the
+          // dedup holds whichever copy the recruiter reopened.
+          OR: [
+            { googleEventIdMine: row.googleEventId },
+            { googleEventIdClient: row.googleEventId },
+            { googleEventIdCandidate: row.googleEventId },
+          ],
+        },
+        select: { id: true },
+      })
+    : null;
+  const reminderMatch = [
+    { calendarEventId: { in: mirrorIds } },
+    ...(linkedInterview ? [{ interviewId: linkedInterview.id }] : []),
+  ];
+
   if (input.reminderEnabled) {
     const reminderAt = new Date(start.getTime() - REMINDER_LEAD_MS);
     const existing = await prisma.aceReminder.findFirst({
       where: {
         organizationId: row.organizationId,
-        calendarEventId: { in: mirrorIds },
         dismissed: false,
+        OR: reminderMatch,
       },
       select: { id: true },
     });
@@ -297,8 +325,8 @@ export async function updateCalendarEventAction(
     await prisma.aceReminder.updateMany({
       where: {
         organizationId: row.organizationId,
-        calendarEventId: { in: mirrorIds },
         dismissed: false,
+        OR: reminderMatch,
       },
       data: { dismissed: true },
     });

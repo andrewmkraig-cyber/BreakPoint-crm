@@ -13,6 +13,7 @@ import { MERGE_FIELDS, applyMergeFields, htmlToReadableText, type MergeFieldValu
 import type { RichTextBodyEditorHandle } from "@/components/rich-text-body-editor";
 import { EditWithClaudeMenu, EditWithClaudeCustomPanel, type EditType } from "@/components/edit-with-claude-menu";
 import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
+import { TEAM_BCC_OPTIONS } from "@/lib/team-contacts";
 
 // Lazy-load the Tiptap editor — pulls in ProseMirror and pdfjs-sized helpers,
 // so we keep it out of the initial bundle for every composer. Only composers
@@ -1701,19 +1702,12 @@ function clearDraft(key: string | undefined): void {
   }
 }
 
-// Hardcoded BCC teammate roster. Surfaced on every BCC field so the
-// recruiter can pick Austin (or any future teammate added here) from
-// the BCC dropdown regardless of which composer surfaced — submittal,
-// interview invite, ad-hoc reply, etc. Mirrors ORG_MEMBER_SUGGESTIONS
-// in mail-composer.tsx; centralize when the roster grows past
-// "Andrew + Austin."
-const BCC_TEAMMATE_OPTIONS: ContactOption[] = [
-  {
-    id: "teammate-austin",
-    name: "Austin Barnard",
-    email: "austin@breakpointtalent.com",
-  },
-];
+// BCC teammate roster. Surfaced on every BCC field so the recruiter can
+// pick Austin (or any future teammate) from the BCC dropdown regardless of
+// which composer surfaced — submittal, interview invite, ad-hoc reply, etc.
+// Sourced from src/lib/team-contacts.ts so the interview scheduler's
+// CcBccPicker and this composer share one Bcc roster and can never drift.
+const BCC_TEAMMATE_OPTIONS: ContactOption[] = TEAM_BCC_OPTIONS;
 
 // Union two ContactOption lists by email (case-insensitive). Used to
 // stitch the static teammate roster onto whatever per-call BCC
