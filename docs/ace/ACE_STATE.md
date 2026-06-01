@@ -1,8 +1,36 @@
 # ACE_STATE.md
-Last updated: 2026-06-01 · Ace 74.0
-Current Version: Ace 74.0
+Last updated: 2026-06-01 · Ace 75.0
+Current Version: Ace 75.0
 Last Shipped: 2026-06-01
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 75.0 (2026-06-01)
+
+Invoice + placement billing accuracy, installment reminders, the composer recipient model, and a batch of profile/scheduler fixes. The same-day Finances restructure is logged separately under Ace 74.0 below (not repeated here). `npm run build` exits 0 (save the two pre-existing react-hooks/exhaustive-deps warnings).
+
+**Invoicing + placement contacts**
+- **Invoice email composer auto-populates recipients + smart greeting.** The invoice email `To` auto-fills from the placement **billing contact** and `Cc` from the **hiring manager**. The greeting scales to the recipient count: 1 person -> "Hi [First],", 2 -> "Hi [First] and [First],", 3+ -> "Hi Team,". The email-body **start date now reads the SAME placement start-date source + formatter as the PDF**, fixing the UTC off-by-one that showed 5/31 instead of 6/1.
+- **`createDraftInvoiceAction` (custom-installment path) carries billing + hiring contacts** via the shared **`resolvePlacementInvoiceContacts()`** helper, so the installment invoice flow resolves the same contacts as the standard flow.
+- **Billing + hiring contact PICKER restored on the live Make Placement modal (`LocalPlacementDialog` in `src/app/candidates/[id]/local-placement-rows.tsx`).** One-click chips from `job.clientContacts`, inline add, name-only contacts supported. `recordLocalPlacement` now writes the full `billingContacts` / `hiringContacts` JSON arrays and mirrors the first entry to the legacy columns. (Closes the gap on the Ace-native modal path where the richer picker had been lost - see architecture non-negotiable 14.)
+
+**Invoice PDF**
+- **Base Salary shows the accepted salary.** The Fee field reads **"Min Fee"** when a minimum/flat fee drove the amount, else the percentage. On min-fee deals the line-item description reads **"$X base (minimum fee of $Y applied)"**.
+- **Client-facing note (`Invoice.clientNote`) prints on the PDF**, separate from the internal note. Removed the "On invoice for reference..." italic line. Un-bolded Payable to / EIN / Accounts Receivable; only **"Please reference INV-#### on payment."** stays bold.
+- **Email signature oversize regression fixed** (kept the images-loading fix).
+
+**Installment reminders**
+- **Reminders fire 10 calendar days before each installment due date, slid to the prior Friday when that lands on a weekend** (new `src/lib/business-days.ts`). Reminder pseudo-events are clickable on the calendar grid; the Upcoming-panel reminder edit form is no longer clipped (scrolls down to Update). Ethan's installment-2 reminder moved Aug 30 -> Aug 20.
+
+**Composer recipient model**
+- **TO accepts multiple recipients as pick-or-type chips across every composer (`8b8146c`).** `EmailComposer`'s `To` always renders **`ContactComboMulti`** (the same chip widget as Cc/Bcc, seeded from `toOptions ?? recipientOptions`); the dead `ContactSinglePicker` single-select was removed. `MailComposer`'s **`AddressRow`** gained chip rendering (committed addresses as removable chips + a local typed buffer) while **KEEPING its live Gmail/contact server-search typeahead**; the value stays the comma-string the send path (`splitAddresses`) consumes, so no send-path change. Enter / comma / semicolon / Tab / blur commit a chip; Backspace on empty input removes the last chip; prefilled recipients render as chips at rest. Calendar Guests left untouched. Every send path already takes `to: string[]`. Covers submittal, interview client + candidate invites, find-matches "New email", click-to-email, Mail compose, reply / reply-all / forward, ComposeFAB New Email, and the invoice email.
+- **Cc = client contacts, Bcc = Austin only (new `src/lib/team-contacts.ts` `TEAM_BCC_OPTIONS`).** Client contacts no longer leak into the Bcc dropdown across the composers.
+
+**Profile / scheduler / UI fixes**
+- **Submit always opens the submittal composer with the candidate's most recent resume version attached** (amber note when there is none).
+- **Interview Ace reminder defaults ON on reopen**; `updateCalendarEventAction` dedupes so editing an interview no longer creates a duplicate reminder.
+- **Save Note button matches the Button Standard** (tinted-green outline).
+- **New candidate from pasted LinkedIn text no longer requires an email.**
+- **Keep-candidate popup no longer clips off-screen** (capped height + scroll).
 
 ## What Shipped in Ace 74.0 (2026-06-01)
 
@@ -123,6 +151,11 @@ Eleven-item session: scoreboard cancelled-placement accuracy, interview-pill ded
 - **Edit Resume render fix (`bd7c69e`).** Once C1 routed all candidates through the canvas-based Ace-native editor, the Edit Resume tool (`src/app/candidates/[id]/resume-editor.tsx`) surfaced a runtime error — *"Cannot use the same canvas during multiple render() operations"* — and rendered the resume upside-down/mirrored. Root cause: the render effect reused persistent canvas DOM nodes but never cancelled its pdf.js `RenderTask`, so a `ResizeObserver`-driven fit-scale change re-ran the effect mid-render on the same canvas; pdf.js rejected the second `render()` and the interrupted task left the 2D-context transform half-applied (the flip). Fix: track the in-flight `RenderTask` per page, cancel any task still painting a canvas before re-rendering it, cancel all in-flight tasks on effect cleanup, and swallow pdf.js's `RenderingCancelledException` so a deliberate cancel isn't surfaced as an error. The same cancellation resolves the flip — pdf.js unwinds its Y-flip transform before the next pass. Type-only change to `src/lib/pdfjs-loader.ts` to expose `cancel()` (new `PdfJsRenderTask` type). Scope held to those two files; `PdfCanvasViewer` and routing/data untouched.
 
 ## Next Task
+
+**PRIORITY — Interview restructure (3 prompts D1 / D2 / E). Full plan in ACE_ROADMAP.md ▸ Next Up. Do NOT change the existing per-recipient invite bodies/subjects or the working send logic.**
+- **D1 — store what the recipient saw + model calendar events.** At invite send time, store a copy of each sent invite's subject + body (candidate + client stored separately). Render TWO calendar events per interview when both invites were sent, ONE when only one side was emailed, ONE when "client will send invites" (no emails sent by us). Each event titled with its own invite subject. Clubhouse weekly widget stays ONE entry per interview. Clicking an interview event shows the stored sent detail + Edit / Cancel.
+- **D2 — one Edit, one Save, real update-choice, whole-interview Cancel.** Edit + the weekly-widget click both open the single scheduler. Cancel cancels the WHOLE interview (both events) with the update-choice prompt. ONE Save that prompts update all guests / only new guests / don't send updates and actually drives who is emailed. Editing from the candidate profile updates BOTH events.
+- **E — single-screen Jobot-style scheduler (last).** One scrolling screen (type, date/time/tz, location, interviewers, Cc = client contacts, Bcc = Austin, attachment, Send-Candidate-Email toggle + its own subject/body, Send-Client-Email toggle + its own subject/body, one Send button). Retire all other interview-scheduling entry points.
 
 **Surfaced this session (Ace 71.0) — queued, see ACE_ROADMAP.md Next Up for full detail:**
 - **NEW BUG (high priority): `/jobs/[id]` Matched tab shows 129 matched for EVERY job.** The matched count + list is not job-specific - it's returning a global candidate set instead of scoping per job. Diagnose the matched-candidates query scoping first (diagnose-only prompt before any fix).

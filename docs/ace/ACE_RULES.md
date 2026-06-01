@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-06-01 · Ace 74.0
+Last updated: 2026-06-01 · Ace 75.0
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -131,6 +131,12 @@ Mirrored in ACE_DESIGN.md. Permanent, apply to every surface.
 - **TabStrip is mandatory for grouped controls.** Any in-page filter, tab, time-range selector, or nav group uses the `TabStrip` component (`src/components/ui/tab-strip.tsx`). No hand-rolled button rows. The Clubhouse "This Week / Last Week" strip is the reference.
 - **Both-modes verification gates every button task.** Every button and interactive element must be visually verified in BOTH light and dark mode across the Court themes before a button task is considered done. Token compliance alone is NOT sufficient - look at it in both modes.
 - **Input Field Treatment is source of truth for input shape.** Forms use the rectangular `court-input-rect` frame; the search bar, SMS composer, and Ace Assistant keep the pill `court-input-frame`. Buttons stay `rounded-md` (Button Standard); inputs do not follow the button shape rule.
+
+## Composer Recipient Standard (added 2026-06-01 · Ace 75.0 - PERMANENT)
+Mirrored in ACE_DESIGN.md. Apply to every email/invite composer.
+- **Every composer's To accepts multiple recipients as pick-or-type chips.** Reuse the existing chip widgets - `ContactComboMulti` in `EmailComposer`, the chip-rendering `AddressRow` in `MailComposer` (which keeps its live Gmail/contact server-search typeahead). Never reintroduce a single-select To. Send paths already take `to: string[]`; the field value stays a comma-string for `parseList` / `splitAddresses`.
+- **Cc = client contacts. Bcc = Austin only** (the team roster, `src/lib/team-contacts.ts` `TEAM_BCC_OPTIONS`). Client contacts must never leak into the Bcc pool. The calendar Guests field is a separate single-bucket field and is OUT of this standard - do not touch it.
+- **Invoice email recipients auto-populate** from the placement billing contact (To) + hiring manager (Cc), with a recipient-count greeting (1 -> "Hi [First],", 2 -> "Hi [First] and [First],", 3+ -> "Hi Team,"). The email-body start date must use the SAME placement start-date source + formatter as the PDF - never a separate date path (the UTC off-by-one trap).
 
 ## UI Consistency Rules (added 2026-05-12 · Ace 43.0)
 - **TabStrip is the single source of truth.** All tab strips and filter pill groups across the app route through `src/components/ui/tab-strip.tsx`. No one-off pill groups anywhere — if a new surface needs filter pills or a tabbed selector, use TabStrip (link mode for navigation, controlled mode for in-page state).

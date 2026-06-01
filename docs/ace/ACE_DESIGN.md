@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-06-01 · Ace 74.0
+Last updated: 2026-06-01 · Ace 75.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -384,3 +384,12 @@ The old combined `/finances` page (three `?tab=` tabs: Revenue & Profitability /
 - **Two standalone Ops pages.** `/invoices` and `/expenses` are now separate sidebar entries + routes (`src/components/nav-items.ts`: Invoices = Receipt/lime, Expenses = Wallet/amber). `/finances` is a redirect only (`?tab=expenses` -> `/expenses`, else -> `/invoices`); do not add new UI there.
 - **Revenue cards live on Placements.** The three Revenue cards (By client / By source / Trend) are `RevenueCards` in `src/components/finances/revenue-cards.tsx` and render above the Placements map. The KPI strip + Revenue & Profitability (Margins + P&L) surface was deleted; do not rebuild it. `src/app/dashboard/financial-performance-tab.tsx` is the Expenses-only surface (subscriptions, money in, tools, ROI, totals).
 - **Money In = bank truth only.** The Expenses "Money In" list shows real Mercury (and QuickBooks once wired) transactions only. Never fold Ace placement fees into Money In — those are projected/earned revenue, surfaced on Placements + the Revenue cards, and mixing them in double-counts against Net Profit / Loss and lets cancelled/test placements leak in.
+
+## Composer Recipient Fields (added 2026-06-01 · Ace 75.0)
+Mirrored as a permanent rule in ACE_RULES.md (Composer Recipient Standard).
+- **To is a multi-recipient pick-or-type chip field on every composer**, matching Cc/Bcc. `EmailComposer` uses `ContactComboMulti`; `MailComposer` uses the chip-rendering `AddressRow` (chips + a typed buffer, retaining the live Gmail/contact server-search typeahead). Committed addresses render as `rounded-full bg-court-surface-subtle` chips with an X; type + Enter / comma / semicolon / Tab / blur commits; Backspace on an empty input removes the last chip; prefilled recipients render as chips at rest.
+- **Cc = client contacts; Bcc = Austin only** (`src/lib/team-contacts.ts` `TEAM_BCC_OPTIONS`). The calendar Guests field stays a single bucket and is untouched.
+
+## Interview Scheduler Direction (added 2026-06-01 · Ace 75.0 - to build, see ACE_ROADMAP.md ▸ Next Up D1/D2/E)
+- **One Jobot-style single screen.** The scheduler becomes one scrolling screen (interview type, date/time/timezone, location, interviewers, Cc = client contacts, Bcc = Austin, attachment, a Send-Candidate-Email toggle + its own subject/body editor, a Send-Client-Email toggle + its own subject/body editor, and ONE Send button at the bottom that fires whichever toggles are on), replacing the current multi-window step flow. It is the ONLY scheduler entry point (candidate profile Schedule Interview, clubhouse weekly widget, calendar event Edit/Cancel).
+- **Calendar reflects what the recipient saw.** Each sent invite's subject + body is stored at send time (candidate + client separately); TWO calendar events render when both sides were emailed, ONE when only one side (or none, for "client will send invites") was. The clubhouse weekly widget stays ONE entry per interview. One Save with an update-all / update-new-only / don't-send choice that actually drives who is emailed; Cancel cancels the whole interview. Do not change the existing per-recipient invite bodies/subjects or send logic.
