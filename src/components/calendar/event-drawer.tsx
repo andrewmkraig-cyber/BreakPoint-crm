@@ -484,7 +484,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
       if (endDate.getTime() <= startDate.getTime()) {
         throw new Error("End time must be after start time.");
       }
-      await updateCalendarEventAction({
+      const res = await updateCalendarEventAction({
         id: event.id,
         title: title.trim(),
         startISO: startDate.toISOString(),
@@ -497,6 +497,10 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
         type,
         timeZone,
       });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
       void triggerCalendarSync(router);
       onClose();
     } catch (e) {
@@ -607,7 +611,11 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
     setDeleting(true);
     setError(null);
     try {
-      await deleteCalendarEventAction({ id: event.id, notifyAll: true });
+      const res = await deleteCalendarEventAction({ id: event.id, notifyAll: true });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
       router.refresh();
       onClose();
     } catch (e) {

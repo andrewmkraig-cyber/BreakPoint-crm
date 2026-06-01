@@ -76,6 +76,22 @@ export type UpdateCalendarEventInput = {
 const REMINDER_LEAD_MS = 15 * 60 * 1000;
 const DEFAULT_TIMEZONE = "America/New_York";
 
+// Google returns 403 when we try to PATCH/DELETE an event on a
+// read-only calendar (e.g. the mirrored "Holidays in <country>"
+// feed) or one we don't own. patchCalendarEventDetails /
+// deleteCalendarEvent surface that as a thrown Error whose message
+// carries the status code. Detect it so the actions can fail
+// gracefully ("can't edit") or fall back to a local-only delete
+// instead of letting the throw mask into a 500.
+function isForbiddenGoogleError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /\(403\)/.test(msg) || /forbidden/i.test(msg);
+}
+
+export type UpdateCalendarEventResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
 async function loadSelfAndRow(eventId: string) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) throw new Error("Unauthorized");
@@ -94,7 +110,7 @@ async function loadSelfAndRow(eventId: string) {
 
 export async function updateCalendarEventAction(
   input: UpdateCalendarEventInput,
-): Promise<void> {
+): Promise<UpdateCalendarEventResult> {
   const { userId, row } = await loadSelfAndRow(input.id);
 
   const start = new Date(input.startISO);
@@ -129,64 +145,83 @@ export async function updateCalendarEventAction(
     .filter((a): a is AttendeeJson & { email: string } => Boolean(a.email))
     .map((a) => ({ email: a.email, displayName: a.displayName }));
 
-  if (input.notifyMode === "all") {
-    await patchCalendarEventDetails({
-      userId,
-      eventId: row.googleEventId,
-      calendarId: row.calendarId,
-      sendUpdates: "all",
-      startISO: input.startISO,
-      durationMin,
-      timeZone: tz,
-      summary: input.title,
-      description: input.notes ?? "",
-      location: input.location,
-      attendees: apiAttendees,
-    });
-  } else if (input.notifyMode === "new") {
-    // Pass 1: silent field patch - existing guests see the event
-    // update but don't get an email.
-    await patchCalendarEventDetails({
-      userId,
-      eventId: row.googleEventId,
-      calendarId: row.calendarId,
-      sendUpdates: "none",
-      startISO: input.startISO,
-      durationMin,
-      timeZone: tz,
-      summary: input.title,
-      description: input.notes ?? "",
-      location: input.location,
-    });
-    // Pass 2: only patch attendees if any are new. sendUpdates="all"
-    // + a list that diffs to the new emails means Google emails only
-    // those.
-    if (dedupedNew.length > 0) {
+  // Push the edit to Google first. A 403 here means the event lives
+  // on a read-only calendar (e.g. a mirrored holiday feed) or one we
+  // don't own - Google won't let us patch it. Catch that instead of
+  // rethrowing so the drawer shows a clean message rather than a
+  // masked 500, and bail before mirroring a change that never landed.
+  try {
+    if (input.notifyMode === "all") {
       await patchCalendarEventDetails({
         userId,
         eventId: row.googleEventId,
         calendarId: row.calendarId,
         sendUpdates: "all",
+        startISO: input.startISO,
+        durationMin,
+        timeZone: tz,
+        summary: input.title,
+        description: input.notes ?? "",
+        location: input.location,
+        attendees: apiAttendees,
+      });
+    } else if (input.notifyMode === "new") {
+      // Pass 1: silent field patch - existing guests see the event
+      // update but don't get an email.
+      await patchCalendarEventDetails({
+        userId,
+        eventId: row.googleEventId,
+        calendarId: row.calendarId,
+        sendUpdates: "none",
+        startISO: input.startISO,
+        durationMin,
+        timeZone: tz,
+        summary: input.title,
+        description: input.notes ?? "",
+        location: input.location,
+      });
+      // Pass 2: only patch attendees if any are new. sendUpdates="all"
+      // + a list that diffs to the new emails means Google emails only
+      // those.
+      if (dedupedNew.length > 0) {
+        await patchCalendarEventDetails({
+          userId,
+          eventId: row.googleEventId,
+          calendarId: row.calendarId,
+          sendUpdates: "all",
+          attendees: apiAttendees,
+        });
+      }
+    } else {
+      // "none": one silent patch with everything (fields + merged
+      // attendees). New guests get added to the Google event but no
+      // emails go out - Andrew can edit his own copy without spamming.
+      await patchCalendarEventDetails({
+        userId,
+        eventId: row.googleEventId,
+        calendarId: row.calendarId,
+        sendUpdates: "none",
+        startISO: input.startISO,
+        durationMin,
+        timeZone: tz,
+        summary: input.title,
+        description: input.notes ?? "",
+        location: input.location,
         attendees: apiAttendees,
       });
     }
-  } else {
-    // "none": one silent patch with everything (fields + merged
-    // attendees). New guests get added to the Google event but no
-    // emails go out - Andrew can edit his own copy without spamming.
-    await patchCalendarEventDetails({
-      userId,
-      eventId: row.googleEventId,
-      calendarId: row.calendarId,
-      sendUpdates: "none",
-      startISO: input.startISO,
-      durationMin,
-      timeZone: tz,
-      summary: input.title,
-      description: input.notes ?? "",
-      location: input.location,
-      attendees: apiAttendees,
-    });
+  } catch (e) {
+    if (isForbiddenGoogleError(e)) {
+      return {
+        ok: false,
+        error:
+          "This event is from a read-only calendar and can't be edited in Ace.",
+      };
+    }
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Failed to update event.",
+    };
   }
 
   // Mirror to Neon. Every CalendarEvent row that shares this
@@ -275,6 +310,8 @@ export async function updateCalendarEventAction(
   // a save from the dashboard tile lands in Neon but the reopened drawer
   // keeps showing the pre-save type / reminder state.
   revalidatePath("/dashboard");
+
+  return { ok: true };
 }
 
 export type CreateMeetingType =
@@ -724,17 +761,40 @@ export async function quickSearchContacts(
   return deduped;
 }
 
+export type DeleteCalendarEventResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
 export async function deleteCalendarEventAction(input: {
   id: string;
   notifyAll: boolean;
-}): Promise<void> {
+}): Promise<DeleteCalendarEventResult> {
   const { userId, row } = await loadSelfAndRow(input.id);
-  await deleteCalendarEvent({
-    userId,
-    eventId: row.googleEventId,
-    calendarId: row.calendarId,
-    sendUpdates: input.notifyAll,
-  });
+  // Try to delete on Google first. deleteCalendarEvent already treats
+  // 404/410 (already gone) as success, so the only throw left is a
+  // genuine failure. A 403 means a read-only / not-owned calendar
+  // (e.g. a mirrored holiday feed): Google refuses, but we still want
+  // to drop Ace's mirror so the event leaves the recruiter's view.
+  // Any other error is unexpected (network, 500) - surface a clean
+  // failure instead of silently dropping the local row.
+  try {
+    await deleteCalendarEvent({
+      userId,
+      eventId: row.googleEventId,
+      calendarId: row.calendarId,
+      sendUpdates: input.notifyAll,
+    });
+  } catch (e) {
+    if (!isForbiddenGoogleError(e)) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : "Failed to delete event.",
+      };
+    }
+    // Forbidden: fall through to the local-only delete below - this is
+    // a "remove from view" that drops the mirror without touching
+    // Google.
+  }
   // Dismiss any AceReminder rows tied to this event so a deleted
   // meeting can't still pop a toast 15 min before its old start.
   const mirrorIds = (
@@ -762,4 +822,6 @@ export async function deleteCalendarEventAction(input: {
   });
   revalidatePath("/calendar");
   revalidatePath("/dashboard");
+
+  return { ok: true };
 }
