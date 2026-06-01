@@ -62,6 +62,44 @@ const EMAIL_CSS = `
   a { color: #3F7030; }
 `;
 
+const MIN_EMAIL_HEIGHT = 80;
+
+function measureEmailDocumentHeight(doc: Document): number {
+  const body = doc.body;
+  const root = doc.documentElement;
+  if (!body || !root) return 0;
+
+  let max = Math.max(
+    body.scrollHeight,
+    root.scrollHeight,
+    body.offsetHeight,
+    root.offsetHeight,
+  );
+
+  // Some newsletter templates put the whole email inside a 100%-height
+  // scrollable wrapper. In that case html/body report only the iframe
+  // viewport height, so include each descendant's scrollHeight too.
+  const win = doc.defaultView;
+  const rootTop = root.getBoundingClientRect().top;
+  for (const el of Array.from(body.querySelectorAll<HTMLElement>("*"))) {
+    const style = win?.getComputedStyle(el);
+    if (style?.display === "none") continue;
+
+    const rect = el.getBoundingClientRect();
+    const top = rect.top - rootTop;
+    const bottom = top + Math.max(
+      rect.height,
+      el.scrollHeight,
+      el.offsetHeight,
+    );
+    if (Number.isFinite(bottom) && bottom > 0) {
+      max = Math.max(max, bottom);
+    }
+  }
+
+  return Math.ceil(max);
+}
+
 // Wrap the email body in a full HTML document so the iframe has a real
 // <head> for the <base target=...> + baseline CSS. Three cases:
 //   1. Body already has <head>  → splice our injection in.
@@ -84,9 +122,14 @@ function buildSrcDoc(bodyHtml: string, css: string): string {
 
 export function EmailHtmlViewer({ html }: { html: string }) {
   const ref = useRef<HTMLIFrameElement | null>(null);
-  const [height, setHeight] = useState<number>(80);
+  const [height, setHeight] = useState<number>(MIN_EMAIL_HEIGHT);
+  const [loadTick, setLoadTick] = useState(0);
 
   const srcDoc = useMemo(() => buildSrcDoc(html, EMAIL_CSS), [html]);
+
+  useEffect(() => {
+    setHeight(MIN_EMAIL_HEIGHT);
+  }, [srcDoc]);
 
   useEffect(() => {
     const iframe = ref.current;
@@ -94,28 +137,47 @@ export function EmailHtmlViewer({ html }: { html: string }) {
 
     let resizeObserver: ResizeObserver | null = null;
     const imgListeners: Array<{ img: HTMLImageElement; fn: () => void }> = [];
+    const timers: number[] = [];
+    let frame = 0;
 
     const updateHeight = () => {
       const doc = iframe.contentDocument;
       if (!doc?.body) return;
-      // scrollHeight of <html> handles the case where body is shorter
-      // than its content (some newsletters set explicit body height).
-      const next = Math.max(
-        doc.body.scrollHeight,
-        doc.documentElement.scrollHeight,
-      );
-      if (next > 0) setHeight(Math.ceil(next));
+      const next = measureEmailDocumentHeight(doc);
+      if (next > 0) {
+        setHeight((current) =>
+          Math.abs(current - next) > 1 ? Math.ceil(next) : current,
+        );
+      }
     };
 
-    const onLoad = () => {
-      updateHeight();
+    const scheduleUpdate = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        updateHeight();
+      });
+    };
+
+    const clearImageListeners = () => {
+      for (const { img, fn } of imgListeners) {
+        img.removeEventListener("load", fn);
+        img.removeEventListener("error", fn);
+      }
+      imgListeners.length = 0;
+    };
+
+    const wireDocument = () => {
       const doc = iframe.contentDocument;
       if (!doc?.body) return;
       // Watch for late layout shifts (web fonts loading, lazy images,
       // reflow as remote CSS resolves). Disconnects on unmount or when
       // the html prop changes (effect re-runs).
-      resizeObserver = new ResizeObserver(() => updateHeight());
+      if (resizeObserver) resizeObserver.disconnect();
+      resizeObserver = new ResizeObserver(() => scheduleUpdate());
+      resizeObserver.observe(doc.documentElement);
       resizeObserver.observe(doc.body);
+      clearImageListeners();
       // Hide images that fail to load — Quo support emails ship a CDN
       // logo that the recipient network sometimes blocks; without this
       // the iframe reserves a giant empty rectangle.
@@ -126,30 +188,37 @@ export function EmailHtmlViewer({ html }: { html: string }) {
         }
         const fn = () => {
           if (img.complete && img.naturalWidth === 0) img.style.display = "none";
-          updateHeight();
+          scheduleUpdate();
         };
         img.addEventListener("load", fn);
         img.addEventListener("error", fn);
         imgListeners.push({ img, fn });
       }
+      scheduleUpdate();
     };
 
-    iframe.addEventListener("load", onLoad);
+    // srcDoc iframes can finish loading before this effect attaches.
+    // Measure immediately and again after a few ticks so fast-loading
+    // and late-layout emails both expand.
+    wireDocument();
+    for (const ms of [0, 50, 250, 1000]) {
+      timers.push(window.setTimeout(wireDocument, ms));
+    }
+
     return () => {
-      iframe.removeEventListener("load", onLoad);
+      if (frame) cancelAnimationFrame(frame);
+      for (const timer of timers) window.clearTimeout(timer);
       if (resizeObserver) resizeObserver.disconnect();
-      for (const { img, fn } of imgListeners) {
-        img.removeEventListener("load", fn);
-        img.removeEventListener("error", fn);
-      }
+      clearImageListeners();
     };
-  }, [srcDoc]);
+  }, [srcDoc, loadTick]);
 
   return (
     <div className="w-full max-w-[840px] overflow-hidden rounded-xl border border-court-border bg-court-surface-subtle p-2 shadow-sm">
       <iframe
         ref={ref}
         srcDoc={srcDoc}
+        onLoad={() => setLoadTick((tick) => tick + 1)}
         sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
         title="Email body"
         style={{
