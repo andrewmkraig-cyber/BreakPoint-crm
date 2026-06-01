@@ -3,7 +3,9 @@
 import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  AlertTriangle,
   Loader2,
+  Paperclip,
   Send,
   Target,
   X,
@@ -67,6 +69,12 @@ export function LocalCandidateActions(props: {
   candidateFirstName: string;
   candidateEmail: string | null;
   openJobs: LocalOpenJob[];
+  // Display name of the candidate's most recent resume version on file,
+  // or null when none exists. Surfaced in the Submit composer so the
+  // recruiter sees which resume will be auto-attached (the actual bytes
+  // are fetched + attached server-side in sendLocalSubmittalEmail). Null
+  // drives the "no resume on file" note instead of an attachment chip.
+  latestResumeName?: string | null;
   // When true, render only the modals; the standalone Apply/Submit
   // button row is suppressed. Used by the candidate profile page so
   // the buttons live in the page header instead, while modals still
@@ -161,6 +169,7 @@ export function LocalCandidateActions(props: {
           candidateFirstName={props.candidateFirstName}
           candidateEmail={props.candidateEmail}
           openJobs={props.openJobs}
+          latestResumeName={props.latestResumeName ?? null}
           initialJobRfId={submitInitialJobRfId}
           onClose={() => {
             setModal(null);
@@ -278,6 +287,9 @@ function SubmitModal(props: {
   candidateFirstName: string;
   candidateEmail: string | null;
   openJobs: LocalOpenJob[];
+  // Most recent resume version name on file (null = none). Shown in the
+  // composer as the auto-attached file; the bytes are attached server-side.
+  latestResumeName?: string | null;
   // The job to submit to. Every Submit entry point (job pill row,
   // applicants table, pipeline row) deep-links with the job id, so the
   // composer always opens on a known job - there is no job picker.
@@ -342,6 +354,28 @@ function SubmitModal(props: {
       showTemplatePicker
       templateFilter={(t) => t.audience !== "candidate"}
       showCandidateConfirmationToggle
+      // Always show what's being attached. The latest resume version on
+      // file is auto-attached server-side on send (sendLocalSubmittalEmail);
+      // when none exists, surface a clear note rather than failing silently.
+      attachmentsSlot={
+        props.latestResumeName ? (
+          <div className="flex items-center gap-2 text-xs text-court-fg">
+            <Paperclip className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
+            <span>
+              Attaching latest resume:{" "}
+              <span className="font-semibold">{props.latestResumeName}</span>
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-start gap-2 text-xs text-amber-700">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              No resume on file for this candidate - the submittal will send
+              without an attachment.
+            </span>
+          </div>
+        )
+      }
       resolveTemplate={(t) => {
         // Mirror of the RF submittal composer's resolver — runs merge-field
         // interpolation against the candidate + job + primary client

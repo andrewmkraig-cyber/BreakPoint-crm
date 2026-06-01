@@ -326,6 +326,13 @@ export async function LocalCandidateProfile({
     // because both entries shared the same resumeId.
   }
   resumeVersions.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
+  // Most recent resume version on file (sorted desc above). Drives the
+  // Submit composer's auto-attach note; the actual bytes are fetched +
+  // attached server-side in sendLocalSubmittalEmail using the same
+  // uploadedAt-desc ordering, so the displayed name matches what ships.
+  const latestResumeName = resumeVersions[0]
+    ? resumeVersions[0].displayName || resumeVersions[0].filename
+    : null;
 
   const fullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ") || "(unnamed)";
 
@@ -753,6 +760,7 @@ export async function LocalCandidateProfile({
           candidateFirstName={candidate.firstName}
           candidateEmail={candidate.email}
           openJobs={openJobs}
+          latestResumeName={latestResumeName}
           hideButtons
         />
         <div className="flex h-[calc(100vh-3rem)] gap-4 md:h-[calc(100vh-4rem)]">
@@ -909,6 +917,7 @@ export async function LocalCandidateProfile({
         candidateFirstName={candidate.firstName}
         candidateEmail={candidate.email}
         openJobs={openJobs}
+        latestResumeName={latestResumeName}
         hideButtons
       />
       {/* Two-column layout. Left column is the working surface — a

@@ -296,8 +296,13 @@ export function NewCandidateForm({
       experience: form.experience,
       education: form.education,
     };
-    if (!payload.email.trim()) {
-      const msg = "Email is required. Every candidate must have an email on file.";
+    // Email is OPTIONAL — a candidate pasted in from LinkedIn text often
+    // has no email yet, and the server stores a blank as null. We only
+    // validate the FORMAT when one was actually typed; a blank email saves
+    // fine. (The duplicate check below is a no-op for a blank email.)
+    const trimmedEmail = payload.email.trim();
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      const msg = "That email doesn't look valid. Fix it or clear the field to save without one.";
       setSaveError(msg);
       toast.error("Can't save yet", { description: msg });
       return;
@@ -478,17 +483,18 @@ export function NewCandidateForm({
               type="button"
               size="sm"
               onClick={onSave}
-              // Save is gated on four things:
+              // Save is gated on:
               //   - no pending save or parse
-              //   - email is non-empty (required field)
-              //   - dup-check has resolved cleanly (not "duplicate" / "checking" / "idle")
-              // The hard-gate recheck inside onSave is still the source of
-              // truth; this just prevents obvious UX dead-ends.
+              //   - IF an email was typed, its dup-check resolved cleanly
+              //     (not "duplicate" / "checking" / "idle")
+              // Email is optional — a blank email never blocks Save (the
+              // server stores it as null). The hard-gate recheck + format
+              // validation inside onSave is still the source of truth; this
+              // just prevents obvious UX dead-ends.
               disabled={
                 isSaving ||
                 isParsing ||
-                !form.email.trim() ||
-                emailCheckStatus !== "clean"
+                (form.email.trim().length > 0 && emailCheckStatus !== "clean")
               }
               title={
                 emailCheckStatus === "duplicate"
@@ -499,9 +505,7 @@ export function NewCandidateForm({
                       ? "Checking email…"
                       : emailCheckStatus === "idle" && form.email.trim()
                         ? "Tab out of the email field to run the duplicate check"
-                        : !form.email.trim()
-                          ? "Email is required"
-                          : undefined
+                        : undefined
               }
             >
               {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
@@ -524,7 +528,6 @@ export function NewCandidateForm({
               <Field
                 label="Email"
                 type="email"
-                required
                 value={form.email}
                 onChange={(v) => {
                   setForm({ ...form, email: v });

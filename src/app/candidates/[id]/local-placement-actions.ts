@@ -8,7 +8,8 @@ import { logActivity } from "@/lib/activity";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { generateSubmittalWriteup } from "@/lib/claude";
-import { sendGmail } from "@/lib/gmail";
+import { sendGmail, type GmailAttachment } from "@/lib/gmail";
+import { getResumeBytes } from "@/lib/resume-bytes";
 import { prisma } from "@/lib/prisma";
 import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
 import { submittalToHtml, submittalToPlainText } from "@/lib/submittal-format";
@@ -475,6 +476,40 @@ export async function sendLocalSubmittalEmail(
   if (!input.bodyText.trim()) return { ok: false, error: "Body is required." };
 
   try {
+    // Always attach the candidate's most recent resume version on file.
+    // "Most recent" = the latest CandidateResume row by uploadedAt (the
+    // same ordering the profile's Version dropdown uses), so a branded /
+    // redacted version made after the original wins. Best-effort: a
+    // missing-bytes / blob-fetch failure logs and sends without the
+    // attachment rather than blocking the submittal. The composer surfaces
+    // a "no resume on file" note so the recruiter knows when nothing was
+    // attached (see local-candidate-actions.tsx).
+    const submittalAttachments: GmailAttachment[] = [];
+    try {
+      const latestResume = await prisma.candidateResume.findFirst({
+        where: { candidateId: input.candidateId, uploadComplete: true },
+        orderBy: { uploadedAt: "desc" },
+        select: { filename: true, mimeType: true, data: true, blobUrl: true },
+      });
+      if (latestResume) {
+        const bytes = await getResumeBytes({
+          blobUrl: latestResume.blobUrl,
+          data: latestResume.data,
+        });
+        submittalAttachments.push({
+          // Use the raw upload filename so the extension (.pdf / .docx) is
+          // always correct for the receiving mail client; displayName is a
+          // UI label that may lack an extension.
+          filename: latestResume.filename,
+          mimeType: latestResume.mimeType || "application/octet-stream",
+          data: bytes,
+        });
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[local-submittal] latest resume attach failed:", err);
+    }
+
     const sendResult = await sendGmail({
       userId: user.id,
       from: user.email,
@@ -485,6 +520,7 @@ export async function sendLocalSubmittalEmail(
       subject: input.subject,
       bodyText: submittalToPlainText(input.bodyText),
       bodyHtml: submittalToHtml(input.bodyText),
+      attachments: submittalAttachments.length ? submittalAttachments : undefined,
     });
 
     const jobRfId = input.jobRfId ?? null;
