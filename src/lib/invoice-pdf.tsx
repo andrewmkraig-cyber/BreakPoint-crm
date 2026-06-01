@@ -163,7 +163,6 @@ const styles = StyleSheet.create({
     marginBottom: 1,
   },
   contactLine: { fontSize: 9, color: INK_700, marginTop: 1 },
-  helperLine: { fontSize: 7.5, color: MUTED, marginTop: 6, fontStyle: "italic" },
   // --- Placement Summary ---
   summary: {
     marginTop: 14,
@@ -276,18 +275,13 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
     marginBottom: 4,
   },
+  // EIN number renders at normal weight (only the "Please reference"
+  // header is bold in the payment footer).
   einValue: {
     fontSize: 10,
     color: INK,
-    fontFamily: "Helvetica-Bold",
   },
   paymentLine: { fontSize: 9, color: INK_700, marginBottom: 1 },
-  paymentLineBold: {
-    fontSize: 9,
-    color: INK,
-    fontFamily: "Helvetica-Bold",
-    marginBottom: 1,
-  },
   // --- Optional Note line (renders below Payment Instructions when
   // invoice.notes is populated). Small muted single-line label + body
   // so a short memo can ride along without crowding the page chrome.
@@ -339,6 +333,11 @@ export type InvoicePdfInput = {
   // fields and passes the final string here. When null/undefined the
   // renderer falls back to the bare percentage (or "-").
   feeBasisLabel?: string | null;
+  // The placement's real minimum fee (Int dollars). Used in the line-item
+  // description when feeBasisLabel === "Min Fee" so it reads
+  // "$70,000 base (minimum fee of $7,500 applied)" instead of a percentage
+  // that did not actually drive the amount.
+  minFeeUsd?: number | null;
   accountExecName: string;
   billingContacts: InvoiceContact[];
   hiringContacts: InvoiceContact[];
@@ -394,6 +393,7 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
     baseSalaryUsd,
     feePercentage,
     feeBasisLabel,
+    minFeeUsd,
     accountExecName,
     billingContacts,
     hiringContacts,
@@ -405,12 +405,22 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
   const primaryBilling = billingContacts[0];
   const primaryHiring = hiringContacts[0];
 
+  // Fee basis line. When the minimum fee (or flat override) is what drove
+  // the amount - the SAME signal that makes the FEE % box read "Min Fee"
+  // (feeBasisLabel) - state the base salary + the real min fee applied,
+  // instead of a percentage that did not actually produce the number. When
+  // a true percentage drove it, keep the "X% of $[base] base" wording.
+  const feeBasisDescription =
+    feeBasisLabel === "Min Fee" && minFeeUsd != null && baseSalaryUsd != null
+      ? `${formatUsdCompact(baseSalaryUsd)} base (minimum fee of ${formatUsdCompact(minFeeUsd)} applied)`
+      : feePercentage != null && baseSalaryUsd != null
+        ? `${feePercentage}% of ${formatUsdCompact(baseSalaryUsd)} base`
+        : null;
+
   const lineSub = [
     roleTitle ? roleTitle : null,
     startDateLabel ? `Start date ${startDateLabel}` : null,
-    feePercentage != null && baseSalaryUsd != null
-      ? `${feePercentage}% of ${formatUsdCompact(baseSalaryUsd)} base`
-      : null,
+    feeBasisDescription,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -525,11 +535,6 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           primaryHiring?.email
             ? createElement(Text, { style: styles.contactLine }, primaryHiring.email)
             : null,
-          createElement(
-            Text,
-            { style: styles.helperLine },
-            "On invoice for reference. Billing inquiries: Accounts Payable contact above.",
-          ),
         ),
       ),
       // Placement Summary
@@ -647,7 +652,7 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
             createElement(Text, { style: styles.paymentHeader }, "CHECK"),
             createElement(
               Text,
-              { style: styles.paymentLineBold },
+              { style: styles.paymentLine },
               `Payable to: ${billing.checkPayableTo || billing.companyName}`,
             ),
             ...billing.checkMailingAddress
@@ -664,7 +669,7 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
             View,
             { style: styles.paymentCol },
             createElement(Text, { style: styles.paymentHeader }, "BILLING QUESTIONS"),
-            createElement(Text, { style: styles.paymentLineBold }, "Accounts Receivable"),
+            createElement(Text, { style: styles.paymentLine }, "Accounts Receivable"),
             createElement(Text, { style: styles.paymentLine }, billing.arEmail),
             createElement(Text, { style: styles.paymentLine }, billing.arPhone),
           ),

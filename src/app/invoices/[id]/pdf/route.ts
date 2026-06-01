@@ -111,6 +111,10 @@ export async function GET(
     baseSalaryUsd,
     feePercentage: feePercentageNum,
     feeBasisLabel,
+    // Real min fee off the placement, so the line-item description can read
+    // "$70,000 base (minimum fee of $7,500 applied)" when feeBasisLabel is
+    // "Min Fee" (same decision used for the FEE % box above).
+    minFeeUsd: placementMinFee,
     accountExecName,
     billingContacts,
     hiringContacts,
