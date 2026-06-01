@@ -12,6 +12,7 @@ import {
   DollarSign,
   Edit3,
   Handshake,
+  Image as ImageIcon,
   Loader2,
   RotateCcw,
   Send,
@@ -168,6 +169,12 @@ export type LocalJobRow = {
   // for early-stage rows (sourced / applied / kept / submitted) where
   // none of these columns have been written yet.
   placement?: LocalPlacementSnapshot | null;
+  // True when this placement has a sealed start-confirmation screenshot
+  // (Placement.startConfirmationFile != null). Lightweight boolean only —
+  // the bytes never ship into the page payload; the image loads on demand
+  // from /api/placement-screenshot/<placementId> when the recruiter clicks
+  // "View start confirmation".
+  hasStartConfirmation: boolean;
 };
 
 type LocalInviteFlow = {
@@ -318,6 +325,10 @@ export function LocalPlacementRows({
           clientContacts: detail.clientContacts,
           stage: "applied",
           interviews: [],
+          // Freshly-applied stub — no placement sealed yet, so never a
+          // start-confirmation screenshot. The router.refresh swap lands
+          // the real flag.
+          hasStartConfirmation: false,
         };
         return [...prev, optimistic];
       });
@@ -873,6 +884,30 @@ function LocalJobActionRow({
             >
               <CheckCircle2 className="h-3 w-3" />
               <span className="hidden sm:inline">Confirm Start</span>
+            </Button>
+          )}
+          {job.hasStartConfirmation && (
+            // Read-only: surfaces the proof-of-start screenshot the
+            // recruiter uploaded when sealing the placement. Opens the
+            // already-existing org-scoped retrieval route in a new tab so
+            // the bytes stream on demand (never in the page payload).
+            // Outlined secondary chip to match the Button Standard.
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                window.open(
+                  `/api/placement-screenshot/${job.placementId}`,
+                  "_blank",
+                  "noopener,noreferrer",
+                )
+              }
+              title="View the start-confirmation screenshot on file"
+              className={CHIP_BTN_CLS}
+            >
+              <ImageIcon className="h-3 w-3" />
+              <span className="hidden sm:inline">View start confirmation</span>
             </Button>
           )}
           {canReject && (

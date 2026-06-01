@@ -589,6 +589,12 @@ export async function LocalCandidateProfile({
       stage: p.stage,
       interviews: interviewsByJob.get(interviewKey) ?? [],
       placement: placementSnapshot,
+      // Lightweight presence flag only. getPlacementsForOrg returns the
+      // full Placement row, so startConfirmationFile (Bytes) is already in
+      // server memory here — we derive a boolean and deliberately do NOT
+      // copy the bytes into jobRows, so the page payload stays slim. The
+      // image itself streams on demand from /api/placement-screenshot/<id>.
+      hasStartConfirmation: p.startConfirmationFile != null,
     };
   });
 
