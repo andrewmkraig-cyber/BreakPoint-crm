@@ -109,11 +109,12 @@ export function WordOfDayCard() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        // Heavier border on the dashboard companion pill — intentional
-        // local exception to the "reduce borders ~40%" rule, scoped here
-        // and on the Chess Puzzle pill only. Uses the court-border token
-        // so it stays theme-aware across light + dark Court modes.
-        className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-court-border bg-sky-50 px-3 py-2.5 text-sm font-medium text-sky-800 shadow-[0_0_0_1px_rgb(255_255_255/0.05),inset_0_1px_0_rgb(255_255_255/0.08),0_10px_30px_-10px_rgb(0_0_0/0.45),0_0_22px_-6px_rgb(255_255_255/0.12)] transition hover:bg-sky-100 hover:text-sky-900 hover:shadow-[0_0_0_1px_rgb(var(--court-brand)/0.18),inset_0_1px_0_rgb(255_255_255/0.10),0_10px_30px_-8px_rgb(0_0_0/0.5),0_0_26px_-4px_rgb(255_255_255/0.16)] dark:bg-sky-950/40 dark:text-sky-200 dark:hover:bg-sky-950/60"
+        // Standard neutral outlined button: rounded-md, single muted
+        // border + muted text, transparent fill. Keeps the full-width
+        // half-column footprint; height slimmed to the standard button
+        // line. Court-border / court-fg tokens stay theme-aware across
+        // light + dark Court modes.
+        className="flex w-full items-center justify-center gap-2 rounded-md border border-court-border bg-transparent px-3 py-1.5 text-sm font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
       >
         <span aria-hidden="true" className="text-[15px] leading-none">📖</span>
         <span className="truncate">Word of the Day</span>

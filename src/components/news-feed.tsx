@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { WordOfDayCard } from "@/components/word-of-day-card";
 import { ChessPuzzle } from "@/components/chess-puzzle";
+import { TabStrip } from "@/components/ui/tab-strip";
 
 // Editorial briefing layout: header, four tabs, lead story + list,
 // then a quiet 2x2 mini-grid of the daily companion items (Chess,
@@ -239,44 +240,20 @@ export function NewsFeed() {
 
       {collapsed ? null : (
         <div id="today-briefing-body" className="flex min-h-0 flex-1 flex-col">
-          {/* Segmented tab box, mirrors the Active/Inactive control on
-              /jobs and the Applied/Kept control on /applicants so every
-              tab strip in the app reads as one control language. The
-              refresh icon to its right wipes today's cached rows for
-              all four tabs so the next read regenerates fresh
-              headlines via Claude web_search. */}
+          {/* Shared TabStrip (controlled mode), so the briefing topics
+              read as the same control language as /clients, /jobs, and
+              /pipeline and inherit the proximity-hover effect for free.
+              The refresh icon to its right wipes today's cached rows for
+              all four tabs so the next read regenerates fresh headlines
+              via Claude web_search. Per-tab fetch wiring is unchanged —
+              onChange still drives setActive, which keys the fetch. */}
           <div className="mt-3 mb-3 flex items-center gap-2">
-            <div
-              role="tablist"
-              aria-label="Briefing topics"
-              className="inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-0.5 shadow-sm"
-            >
-              {TABS.map((t) => {
-                const selected = t.key === active;
-                const tabLoading = byTab[t.key].status === "loading";
-                return (
-                  <button
-                    key={t.key}
-                    type="button"
-                    role="tab"
-                    aria-selected={selected}
-                    aria-busy={tabLoading}
-                    onClick={() => setActive(t.key)}
-                    className={
-                      "inline-flex items-center gap-0.5 whitespace-nowrap rounded-md px-1.5 py-1 text-[12px] font-medium transition-colors " +
-                      (selected
-                        ? "bg-court-accent-tint text-court-accent-dark"
-                        : "text-court-fg-muted hover:bg-court-surface-subtle")
-                    }
-                  >
-                    {t.label}
-                    {tabLoading ? (
-                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
+            <TabStrip<TabKey>
+              ariaLabel="Briefing topics"
+              activeId={active}
+              onChange={setActive}
+              items={TABS.map((t) => ({ id: t.key, label: t.label }))}
+            />
             <button
               type="button"
               onClick={handleRefresh}
