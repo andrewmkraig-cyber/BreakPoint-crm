@@ -208,10 +208,10 @@ function KeepDialog({
           <ul className="mt-2 space-y-1.5">
             {keptPlacements.map((p) => (
               <li key={p.placementId} className="flex items-center justify-between gap-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 px-3 py-2 text-sm">
-                <div className="min-w-0 truncate">
-                  <span className="font-medium text-court-fg">{p.jobTitle}</span>
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-court-fg">{p.jobTitle}</div>
                   {p.clientName && (
-                    <span className="ml-1 text-court-fg-muted">· {p.clientName}</span>
+                    <div className="truncate text-xs text-court-fg-muted">{p.clientName}</div>
                   )}
                 </div>
                 <Button
@@ -237,10 +237,10 @@ function KeepDialog({
           <ul className="mt-2 space-y-1.5">
             {nonKeptPlacements.map((p) => (
               <li key={p.placementId} className="flex items-center justify-between gap-2 rounded-lg border border-court-border/40 bg-court-surface px-3 py-2 text-sm">
-                <div className="min-w-0 truncate">
-                  <span className="font-medium text-court-fg">{p.jobTitle}</span>
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-court-fg">{p.jobTitle}</div>
                   {p.clientName && (
-                    <span className="ml-1 text-court-fg-muted">· {p.clientName}</span>
+                    <div className="truncate text-xs text-court-fg-muted">{p.clientName}</div>
                   )}
                 </div>
                 <Button
