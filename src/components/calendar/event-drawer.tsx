@@ -24,6 +24,7 @@ import {
   updateCalendarEventAction,
   type CreateMeetingType,
 } from "@/app/calendar/event-actions";
+import { cancelInterview } from "@/app/candidates/[id]/interview-actions";
 import { createReminder } from "@/app/calendar/reminder-actions";
 import { LeadTimePicker } from "@/components/calendar/lead-time-picker";
 import { GoogleGlyph } from "@/components/calendar/left-rail";
@@ -307,7 +308,23 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
   const [saving, setSaving] = useState<null | "all" | "new" | "none">(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [cancellingInterview, setCancellingInterview] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // D1: an interview-linked calendar block carries its Interview.id + party.
+  // When present, the drawer surfaces an interview-aware Edit / Cancel strip
+  // wired to the existing interview handlers (D2 rewires Edit to the single
+  // scheduler). The title + Notes already show the stored "what the recipient
+  // saw" subject/body that page.tsx routes through event.title / event.meta.
+  const interviewId = event?.interviewId ?? null;
+  const interviewParty = event?.interviewParty ?? null;
+  const isInterviewEvent = mode === "edit" && interviewId != null;
+  const interviewPartyLabel =
+    interviewParty === "candidate"
+      ? "Showing exactly what the candidate was emailed."
+      : interviewParty === "client"
+        ? "Showing exactly what the client was emailed."
+        : "No invite emailed yet — the client is sending their own invites.";
 
   // The title control is a <textarea> so a long event title wraps
   // instead of clipping. Snap its height to scrollHeight on every
@@ -608,6 +625,49 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
     }
   }
 
+  // D1: wire to the EXISTING interview handlers. Cancel cancels the WHOLE
+  // interview (every Google event tied to it) via cancelInterview. Edit
+  // routes to the candidate profile, where the live interview edit /
+  // reschedule flow lives today. D2 replaces Edit with the single in-place
+  // scheduler and folds the multiple calendar Saves into one.
+  function doEditInterview() {
+    const candidateId = event?.candidateId;
+    if (!candidateId) {
+      setError("Open this interview from the candidate's profile to edit it.");
+      return;
+    }
+    onClose();
+    router.push(`/candidates/${candidateId}`);
+  }
+
+  async function doCancelInterview() {
+    if (!interviewId) return;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "Cancel this interview? Every calendar invite for it will be removed and guests notified.",
+      )
+    ) {
+      return;
+    }
+    setCancellingInterview(true);
+    setError(null);
+    try {
+      const res = await cancelInterview(interviewId);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      toast.success("Interview cancelled");
+      router.refresh();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Cancel failed");
+    } finally {
+      setCancellingInterview(false);
+    }
+  }
+
   async function doDelete() {
     if (!event) return;
     // Only warn about (and trigger) attendee notifications when the
@@ -708,6 +768,47 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
 
         {/* Body */}
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+          {/* Interview-aware strip. Surfaces parity context ("what the
+              recipient saw") plus Edit / Cancel wired to the existing
+              interview handlers. Only for calendar blocks that map to an
+              Ace Interview row. */}
+          {isInterviewEvent && (
+            <div className="rounded-xl border border-court-brand/30 bg-court-brand-tint/30 p-3.5">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-3.5 w-3.5 text-court-brand-dark" />
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-court-brand-dark">
+                  Interview invite
+                </span>
+              </div>
+              <div className="mt-1 text-[12px] text-court-fg-muted">
+                {interviewPartyLabel}
+              </div>
+              <div className="mt-3 flex items-center gap-2.5">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={doEditInterview}
+                  disabled={cancellingInterview}
+                >
+                  Edit interview
+                </Button>
+                <Button
+                  variant="reject"
+                  size="sm"
+                  onClick={() => void doCancelInterview()}
+                  disabled={cancellingInterview}
+                >
+                  {cancellingInterview ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <X className="h-3 w-3" />
+                  )}
+                  Cancel interview
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Type selector */}
           <div>
             <FieldLabel>Event type</FieldLabel>

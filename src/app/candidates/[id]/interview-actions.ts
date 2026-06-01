@@ -1238,6 +1238,12 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
     googleEventIdCandidate?: string;
     meetLink?: string | null;
     meetConferenceId?: string | null;
+    sentCandidateSubject?: string;
+    sentCandidateBody?: string;
+    sentCandidateAt?: Date;
+    sentClientSubject?: string;
+    sentClientBody?: string;
+    sentClientAt?: Date;
   } = {};
   if (!interview.googleEventIdMine || retiredTrackingEventId) updateData.googleEventIdMine = googleEventId;
   if (input.party === "client") updateData.googleEventIdClient = googleEventId;
@@ -1245,6 +1251,22 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   if (!interview.meetLink && createdMeetLink) {
     updateData.meetLink = createdMeetLink;
     updateData.meetConferenceId = createdMeetingCode;
+  }
+  // D1: store a verbatim copy of EXACTLY what this party was emailed — the
+  // same summary (title) + description the calendar invite carries, which
+  // is what the recipient saw. `title` and `description` are the values
+  // already handed to Google above; we only copy them, never re-derive, so
+  // the outgoing invite is untouched. The *At timestamp doubles as the
+  // "invite delivered" flag the calendar reads to decide one vs two events.
+  const sentAt = new Date();
+  if (input.party === "client") {
+    updateData.sentClientSubject = title;
+    updateData.sentClientBody = description;
+    updateData.sentClientAt = sentAt;
+  } else {
+    updateData.sentCandidateSubject = title;
+    updateData.sentCandidateBody = description;
+    updateData.sentCandidateAt = sentAt;
   }
   await prisma.interview.updateMany({
     where: { id: input.interviewId, organizationId: org.id },

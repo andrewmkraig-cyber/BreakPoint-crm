@@ -198,9 +198,16 @@ export default async function CalendarPage() {
       },
       select: {
         id: true,
+        candidateId: true,
         googleEventIdMine: true,
         googleEventIdClient: true,
         googleEventIdCandidate: true,
+        sentCandidateSubject: true,
+        sentCandidateBody: true,
+        sentCandidateAt: true,
+        sentClientSubject: true,
+        sentClientBody: true,
+        sentClientAt: true,
       },
     }),
   ]);
@@ -210,10 +217,52 @@ export default async function CalendarPage() {
       .filter((id): id is string => Boolean(id)),
   );
   const rows = rowsRaw.filter((row) => !cancelledGoogleEventIds.has(row.googleEventId));
-  const interviewIdByGoogleEventId = new Map<string, string>();
+  // Map each interview-owned googleEventId → its Interview.id + which party
+  // the event represents + the verbatim subject/body that party was emailed.
+  // This is the existing googleEventId → Interview.id pattern, enriched so
+  // each rendered calendar block can show "what the recipient saw" and wire
+  // interview-aware Edit / Cancel. The per-party events (candidate/client)
+  // carry the stored sent copy; the organizer-only tracking event (mine,
+  // when neither side was emailed — "client will send invites") maps as
+  // party "none" with no stored copy. The natural count falls out of this:
+  // two party events when both invites went out, one when a single side did,
+  // one tracking event when none did.
+  type InterviewEventMeta = {
+    interviewId: string;
+    candidateId: string | null;
+    party: "candidate" | "client" | "none";
+    sentSubject?: string;
+    sentBody?: string;
+  };
+  const interviewMetaByGoogleEventId = new Map<string, InterviewEventMeta>();
   for (const iv of activeInterviews) {
-    for (const id of [iv.googleEventIdMine, iv.googleEventIdClient, iv.googleEventIdCandidate]) {
-      if (id) interviewIdByGoogleEventId.set(id, iv.id);
+    if (iv.googleEventIdCandidate) {
+      interviewMetaByGoogleEventId.set(iv.googleEventIdCandidate, {
+        interviewId: iv.id,
+        candidateId: iv.candidateId,
+        party: "candidate",
+        sentSubject: iv.sentCandidateSubject ?? undefined,
+        sentBody: iv.sentCandidateBody ?? undefined,
+      });
+    }
+    if (iv.googleEventIdClient) {
+      interviewMetaByGoogleEventId.set(iv.googleEventIdClient, {
+        interviewId: iv.id,
+        candidateId: iv.candidateId,
+        party: "client",
+        sentSubject: iv.sentClientSubject ?? undefined,
+        sentBody: iv.sentClientBody ?? undefined,
+      });
+    }
+    // The organizer tracking event only earns its own block when it wasn't
+    // reused as a party event (i.e. nothing was emailed). If it already maps
+    // to a party above, leave that richer mapping in place.
+    if (iv.googleEventIdMine && !interviewMetaByGoogleEventId.has(iv.googleEventIdMine)) {
+      interviewMetaByGoogleEventId.set(iv.googleEventIdMine, {
+        interviewId: iv.id,
+        candidateId: iv.candidateId,
+        party: "none",
+      });
     }
   }
 
@@ -308,26 +357,42 @@ export default async function CalendarPage() {
     const overrideType = groupRows
       .map((r) => r.typeOverride as CalendarEventType | null)
       .find((t): t is CalendarEventType => t != null);
-    const linkedInterview = groupRows.some((r) => interviewIdByGoogleEventId.has(r.googleEventId));
+    // Find the interview meta for any googleEventId in this dedup group.
+    const interviewMeta = groupRows
+      .map((r) => interviewMetaByGoogleEventId.get(r.googleEventId))
+      .find((m): m is InterviewEventMeta => m != null);
+    const linkedInterview = interviewMeta != null;
+    // Title + Notes render off the stored "what the recipient saw" copy when
+    // a party invite went out (authoritative even if the Google event later
+    // drifts); the organizer tracking-event ("none") and any not-yet-stored
+    // case fall back to the synced Google summary/description.
+    const displayTitle = interviewMeta?.sentSubject ?? row.title;
+    const displayMeta = interviewMeta?.sentBody ?? row.description ?? undefined;
     return {
       id: row.id,
-      title: row.title,
+      title: displayTitle,
       startTime: row.startTime,
       endTime: row.endTime,
       allDay: row.allDay,
       type: linkedInterview ? "interview" : overrideType ?? deriveType(row.title, row.calendarName),
-      meta: row.description ?? undefined,
+      meta: displayMeta,
       guests,
       location: row.location ?? undefined,
       ownerKeys,
       jobId: row.jobId ?? undefined,
-      candidateId: row.candidateId ?? undefined,
+      // Prefer the interview's own candidateId (authoritative) so the
+      // drawer's interview Edit can deep-link to the candidate profile.
+      candidateId: interviewMeta?.candidateId ?? row.candidateId ?? undefined,
       clientId: row.clientId ?? undefined,
       calendarName: row.calendarName,
       calendarColor: row.calendarColor ?? undefined,
       meetLink: row.meetLink ?? undefined,
       htmlLink: row.htmlLink ?? undefined,
       reminderEnabled,
+      interviewId: interviewMeta?.interviewId,
+      interviewParty: interviewMeta?.party,
+      sentSubject: interviewMeta?.sentSubject,
+      sentBody: interviewMeta?.sentBody,
     };
   });
 

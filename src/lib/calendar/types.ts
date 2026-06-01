@@ -45,6 +45,20 @@ export type CalendarEvent = {
   // grid/widget as a pseudo-event (not a real Google CalendarEvent).
   // Clicking it opens the reminders panel editor, not the Google drawer.
   aceReminderId?: string;
+  // Interview restructure D1. Set when this calendar block belongs to an
+  // Ace Interview row (mapped via the googleEventId → Interview.id pattern).
+  // Drives the drawer's interview-aware Edit / Cancel and the stored
+  // "what the recipient saw" detail.
+  interviewId?: string;
+  // Which party's invite this block represents: "candidate" / "client" for
+  // a sent per-party event, "none" for the organizer-only tracking event
+  // ("client will send invites", nothing emailed by us).
+  interviewParty?: "candidate" | "client" | "none";
+  // The exact subject + body this party was emailed, copied at send time.
+  // Rendered in the drawer for parity with the real Google invite. Absent
+  // for the tracking-event ("none") case where no invite went out.
+  sentSubject?: string;
+  sentBody?: string;
 };
 
 export type CalendarReminder = {

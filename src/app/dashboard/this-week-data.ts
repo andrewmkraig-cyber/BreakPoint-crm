@@ -243,9 +243,14 @@ export async function getWeekData(
       },
       select: {
         id: true,
+        candidateId: true,
         googleEventIdMine: true,
         googleEventIdClient: true,
         googleEventIdCandidate: true,
+        sentCandidateSubject: true,
+        sentCandidateBody: true,
+        sentClientSubject: true,
+        sentClientBody: true,
       },
     }),
   ]);
@@ -255,8 +260,46 @@ export async function getWeekData(
       .filter((id): id is string => Boolean(id)),
   );
   const activeRowsAll = rowsAll.filter((row) => !cancelledGoogleEventIds.has(row.googleEventId));
+  // Mirror the /calendar enrichment: each interview-owned googleEventId maps
+  // to its Interview.id + party + the verbatim sent copy, so the drawer the
+  // widget opens shows "what the recipient saw" and the interview-aware Edit
+  // / Cancel. The widget still collapses to ONE row per interview below; this
+  // only enriches the event object that the single chosen row carries.
+  type InterviewEventMeta = {
+    interviewId: string;
+    candidateId: string | null;
+    party: "candidate" | "client" | "none";
+    sentSubject?: string;
+    sentBody?: string;
+  };
+  const interviewMetaByGoogleEventId = new Map<string, InterviewEventMeta>();
   const interviewIdByGoogleEventId = new Map<string, string>();
   for (const iv of activeInterviews) {
+    if (iv.googleEventIdCandidate) {
+      interviewMetaByGoogleEventId.set(iv.googleEventIdCandidate, {
+        interviewId: iv.id,
+        candidateId: iv.candidateId,
+        party: "candidate",
+        sentSubject: iv.sentCandidateSubject ?? undefined,
+        sentBody: iv.sentCandidateBody ?? undefined,
+      });
+    }
+    if (iv.googleEventIdClient) {
+      interviewMetaByGoogleEventId.set(iv.googleEventIdClient, {
+        interviewId: iv.id,
+        candidateId: iv.candidateId,
+        party: "client",
+        sentSubject: iv.sentClientSubject ?? undefined,
+        sentBody: iv.sentClientBody ?? undefined,
+      });
+    }
+    if (iv.googleEventIdMine && !interviewMetaByGoogleEventId.has(iv.googleEventIdMine)) {
+      interviewMetaByGoogleEventId.set(iv.googleEventIdMine, {
+        interviewId: iv.id,
+        candidateId: iv.candidateId,
+        party: "none",
+      });
+    }
     for (const id of [iv.googleEventIdMine, iv.googleEventIdClient, iv.googleEventIdCandidate]) {
       if (id) interviewIdByGoogleEventId.set(id, iv.id);
     }
@@ -319,26 +362,33 @@ export async function getWeekData(
           .filter((s) => s.length > 0)
       : undefined;
     const overrideType = row.typeOverride as CalendarEventType | null;
-    const linkedInterview = interviewIdByGoogleEventId.has(row.googleEventId);
+    const interviewMeta = interviewMetaByGoogleEventId.get(row.googleEventId);
+    const linkedInterview = interviewMeta != null;
+    const displayTitle = interviewMeta?.sentSubject ?? row.title;
+    const displayMeta = interviewMeta?.sentBody ?? row.description ?? undefined;
     return {
       id: row.id,
-      title: row.title,
+      title: displayTitle,
       startTime: row.startTime,
       endTime: row.endTime,
       allDay: row.allDay,
       type: linkedInterview ? "interview" : overrideType ?? deriveType(row.title, row.calendarName),
-      meta: row.description ?? undefined,
+      meta: displayMeta,
       guests,
       location: row.location ?? undefined,
       ownerKeys: ["ak"],
       jobId: row.jobId ?? undefined,
-      candidateId: row.candidateId ?? undefined,
+      candidateId: interviewMeta?.candidateId ?? row.candidateId ?? undefined,
       clientId: row.clientId ?? undefined,
       calendarName: row.calendarName,
       calendarColor: row.calendarColor ?? undefined,
       meetLink: row.meetLink ?? undefined,
       htmlLink: row.htmlLink ?? undefined,
       reminderEnabled: eventsWithReminders.has(row.id),
+      interviewId: interviewMeta?.interviewId,
+      interviewParty: interviewMeta?.party,
+      sentSubject: interviewMeta?.sentSubject,
+      sentBody: interviewMeta?.sentBody,
     };
   });
 

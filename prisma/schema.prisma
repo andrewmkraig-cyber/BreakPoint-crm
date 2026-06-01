@@ -621,6 +621,19 @@ model Interview {
   // Meet, so the second invite can attach the same Meet link. Both attendee
   // events share one Meet URL; users from either event land in the same room.
   meetConferenceId       String?
+  // Interview restructure D1: a copy of EXACTLY what each recipient was
+  // emailed at send time (the calendar event summary + description that
+  // went out as their invite). Candidate and client are stored separately
+  // so the calendar can show "what the recipient saw" per party. Captured
+  // verbatim in sendInterviewInvite — never re-derived. The *At columns
+  // double as "invite delivered" flags that drive the calendar event count
+  // (two events when both are set, one when only one side was emailed).
+  sentCandidateSubject   String?
+  sentCandidateBody      String?  @db.Text
+  sentCandidateAt        DateTime?
+  sentClientSubject      String?
+  sentClientBody         String?  @db.Text
+  sentClientAt           DateTime?
 
   createdById    String
   organizationId String
