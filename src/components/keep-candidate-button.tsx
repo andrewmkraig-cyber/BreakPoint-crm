@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Bookmark, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -241,9 +242,6 @@ function KeepDialog({
                   {p.clientName && (
                     <span className="ml-1 text-court-fg-muted">· {p.clientName}</span>
                   )}
-                  <span className="ml-2 inline-flex items-center rounded-full bg-court-surface-subtle px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-court-fg-muted">
-                    {p.stage}
-                  </span>
                 </div>
                 <Button
                   type="button"
@@ -388,11 +386,19 @@ function Modal({
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  return (
+  // Portal to document.body so the overlay escapes the candidate-profile
+  // tree. The profile's sticky pipeline bundle uses `backdrop-blur`, which
+  // creates a containing block for `fixed` descendants — without the portal
+  // `fixed inset-0` was being clamped to that sticky box instead of the
+  // viewport, so the dialog clipped off the top of the screen (the max-height
+  // fix couldn't help because the box itself was the wrong size/position).
+  // Guard SSR where document is undefined.
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4"
       onClick={(e) => {
         // Click-outside dismisses, matching the Apply/Submit dialogs in
         // placement-flows.tsx. Inner clicks bubble up through the panel
@@ -422,6 +428,7 @@ function Modal({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
