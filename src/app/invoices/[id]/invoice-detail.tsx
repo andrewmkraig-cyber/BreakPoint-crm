@@ -5,6 +5,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { useComposerManager } from "@/lib/composer-manager";
+import { buildSmartGreeting } from "@/lib/merge-fields";
+import { formatInvoiceDateLabelFromIso } from "@/lib/invoice-date";
 import type { AttachmentDraft } from "@/app/mail/mail-composer";
 
 import {
@@ -186,7 +188,6 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
   // Unsaved "new invoice" mode — no row exists yet.
   const isNew = props.id === null;
   const statusPill = STATUS_PILL[props.status] ?? { label: props.status, tone: "rounded-full" };
-  const billingPrimary = billingContacts[0];
 
   // Persists the editor. In new mode this CREATES the draft row (the first
   // and only write for a brand-new invoice); in edit mode it updates the
@@ -282,9 +283,17 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
       // tell candidates apart at a glance.
       const candidateFullName = props.candidateName?.trim() ?? "";
       const candidateClause = candidateFullName ? `${candidateFullName} ` : "";
-      const firstName = billingPrimary?.name?.split(" ")[0] ?? "team";
-      const startLabel = startDate ? new Date(startDate).toLocaleDateString() : "TBD";
-      const dueLabel = dueDate ? new Date(dueDate).toLocaleDateString() : "TBD";
+      // Smart greeting from the populated recipients (billing To + hiring CC),
+      // deduped by person: 1 -> "Hi Jane,", 2 -> "Hi Jane and Tom,", 3+ ->
+      // "Hi Team,". Same helper the seeded Invoice Email template's [Greeting]
+      // merge field resolves through, so the two stay in lockstep.
+      const greeting = buildSmartGreeting([...billingContacts, ...hiringContacts]);
+      // Format the date-only strings the SAME way the PDF does (Jun 1, 2026),
+      // parsing Y/M/D locally so the body no longer prints the prior day from
+      // a UTC reinterpretation of "2026-06-01". formatInvoiceDateLabelFromIso
+      // returns "" for empty/missing, so the || "TBD" fallback stands.
+      const startLabel = formatInvoiceDateLabelFromIso(startDate) || "TBD";
+      const dueLabel = formatInvoiceDateLabelFromIso(dueDate) || "TBD";
       const signer = props.accountExecName || "Andrew";
       const subject = `Invoice from ${props.billingCompanyName} - ${candidateClause}placement (${props.invoiceNumber})`;
       // Suppress the "of $X" clause when the fee isn't captured so we
@@ -294,7 +303,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
       const feeLabel = formatUsd(feeAmount);
       const feeOfClause = feeLabel === "—" ? "" : ` of ${feeLabel}`;
       const paragraphs = [
-        `Hi ${firstName},`,
+        greeting,
         `Congratulations again on bringing ${props.candidateName || "your new hire"} onto the team${props.roleTitle ? ` as ${props.roleTitle}` : ""}.`,
         `Attached is invoice ${props.invoiceNumber} for the placement fee${feeOfClause}, with a start date of ${startLabel}. Payment is due ${dueLabel}.`,
         `ACH, wire, and check details are inside the PDF. Please reference ${props.invoiceNumber} on payment. If anything looks off or you need a different billing contact on file, just reply here and we'll sort it out.`,
@@ -302,8 +311,18 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
         `Best,<br />${signer}`,
       ];
       const body = paragraphs.map((p) => `<p>${p}</p>`).join("");
-      const to = billingPrimary?.email ?? "";
-      const cc = hiringContacts.map((c) => c.email).filter(Boolean).join(", ");
+      // To = every billing contact email; CC = every hiring contact email,
+      // minus any address already in To (dedupe so the same person isn't both
+      // a To and a CC). Name-only contacts contribute no address and are
+      // simply skipped here while their name stays in the Billing/Hiring list.
+      const billingEmailSet = new Set(
+        billingContacts.map((c) => c.email.trim().toLowerCase()).filter(Boolean),
+      );
+      const to = billingContacts.map((c) => c.email).filter(Boolean).join(", ");
+      const cc = hiringContacts
+        .map((c) => c.email)
+        .filter((e) => e && !billingEmailSet.has(e.trim().toLowerCase()))
+        .join(", ");
 
       // Fetch the rendered invoice PDF and attach as a base64 draft so
       // the recruiter doesn't have to re-attach by hand. The composer

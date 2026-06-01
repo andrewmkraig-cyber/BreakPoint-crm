@@ -101,6 +101,7 @@ export async function createInvoiceForPlacement(
       billingContacts: true,
       hiringManagerName: true,
       hiringManagerEmail: true,
+      hiringContacts: true,
     },
   });
   if (!placement) throw new Error("Placement not found");
@@ -126,20 +127,45 @@ export async function createInvoiceForPlacement(
   const termsString = "Net 30";
   const dueDate = addDays(issueDate, termsToDays(termsString));
 
+  // Billing contacts (the invoice's To). Prefer the placement's JSON list;
+  // fall back to the legacy single columns. parseInvoiceContacts keeps a
+  // name-only contact (blank email) rather than dropping it, and the legacy
+  // fallback now fires on a name OR an email so a name-only billing contact
+  // survives too.
   const billingContacts = parseInvoiceContacts(placement.billingContacts);
-  if (billingContacts.length === 0 && placement.billingContactEmail) {
+  if (
+    billingContacts.length === 0 &&
+    (placement.billingContactName || placement.billingContactEmail)
+  ) {
     billingContacts.push({
       name: placement.billingContactName ?? "",
-      email: placement.billingContactEmail,
+      email: placement.billingContactEmail ?? "",
     });
   }
-  const hiringContacts: InvoiceContact[] = [];
-  if (placement.hiringManagerEmail) {
-    hiringContacts.push({
+  // Hiring contacts (the invoice's CC). Same precedence — read the
+  // placement's hiringContacts JSON list first (the modal's primary store),
+  // then fall back to the legacy hiringManagerName/Email columns, keeping a
+  // name-only contact. Previously only the legacy email was read, so hiring
+  // managers stored in the JSON array (or with no email) were silently
+  // dropped and the composer opened with an empty CC.
+  const hiringContactsRaw = parseInvoiceContacts(placement.hiringContacts);
+  if (
+    hiringContactsRaw.length === 0 &&
+    (placement.hiringManagerName || placement.hiringManagerEmail)
+  ) {
+    hiringContactsRaw.push({
       name: placement.hiringManagerName ?? "",
-      email: placement.hiringManagerEmail,
+      email: placement.hiringManagerEmail ?? "",
     });
   }
+  // Dedupe: drop any hiring contact whose email already appears in billing,
+  // so the same person isn't both a To and a CC on the invoice email.
+  const billingEmails = new Set(
+    billingContacts.map((c) => c.email.trim().toLowerCase()).filter(Boolean),
+  );
+  const hiringContacts = hiringContactsRaw.filter(
+    (c) => !c.email || !billingEmails.has(c.email.trim().toLowerCase()),
+  );
 
   const feeAmount = placement.feeTotal != null
     ? new Prisma.Decimal(placement.feeTotal.toString())

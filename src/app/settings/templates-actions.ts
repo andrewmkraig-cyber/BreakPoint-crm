@@ -318,7 +318,7 @@ const CONFIRMED_START_INVOICE_DEFAULT = {
   audience: "client",
   category: "invoice",
   body:
-    "Hi [Client Contact First Name],\n\n" +
+    "[Greeting]\n\n" +
     "Congratulations again on bringing [Candidate Full Name] onto the team as [Job Title].\n\n" +
     "Attached is the invoice for the placement fee, with a start date of [Start Date].\n\n" +
     "ACH, wire, and check details are inside the PDF. If anything looks off or you need a different billing contact on file, just reply here and we'll sort it out.\n\n" +
@@ -452,6 +452,7 @@ export async function ensureDefaultTemplates(): Promise<void> {
   }
 
   await migrateClientNameToken();
+  await migrateInvoiceGreetingToken();
   await stripSignatureBlocksFromTemplates();
   await stripEmDashesFromTemplates();
   await backfillSortOrderForLegacyRows();
@@ -535,6 +536,27 @@ function stripTrailingSignatureBlock(body: string): string {
 // [Client Name] token gets rewritten to [Client Company Name]. Idempotent —
 // templates that don't reference it are skipped; templates that already use
 // the new token are left alone.
+// Bring the live "Invoice Email" template in line with the smart-greeting
+// change: swap the old fixed greeting line for the [Greeting] merge field so
+// it renders consistently with the runtime invoice email (1/2/3+ recipients).
+// Edit-safe + idempotent — only fires when the body still carries the exact
+// original seeded greeting substring, so a recruiter who reworded the greeting
+// is left untouched, and a row already on [Greeting] is skipped.
+async function migrateInvoiceGreetingToken(): Promise<void> {
+  const OLD_GREETING = "Hi [Client Contact First Name],";
+  const rows = await prisma.emailTemplate.findMany({
+    where: { trigger: CONFIRMED_START_INVOICE_TRIGGER },
+    select: { id: true, body: true },
+  });
+  for (const row of rows) {
+    if (!row.body.includes(OLD_GREETING)) continue;
+    await prisma.emailTemplate.update({
+      where: { id: row.id },
+      data: { body: row.body.split(OLD_GREETING).join("[Greeting]") },
+    });
+  }
+}
+
 async function migrateClientNameToken(): Promise<void> {
   const rows = await prisma.emailTemplate.findMany({
     select: { id: true, subject: true, body: true },

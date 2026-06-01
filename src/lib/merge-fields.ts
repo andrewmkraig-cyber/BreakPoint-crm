@@ -14,6 +14,8 @@ export const MERGE_FIELDS = [
   { token: "[Candidate Location]", label: "Candidate Location", group: "Candidate" },
   { token: "[Candidate Current Title]", label: "Candidate Current Title", group: "Candidate" },
   { token: "[Candidate Current Employer]", label: "Candidate Current Employer", group: "Candidate" },
+  // General
+  { token: "[Greeting]", label: "Greeting (smart, by recipient count)", group: "General" },
   // Client
   { token: "[Client Company Name]", label: "Client Company Name", group: "Client" },
   { token: "[Client Company Website]", label: "Client Company Website", group: "Client" },
@@ -53,6 +55,11 @@ export const MERGE_FIELDS = [
 export type MergeFieldToken = (typeof MERGE_FIELDS)[number]["token"];
 
 export type MergeFieldValues = {
+  // General
+  // Pre-computed smart greeting line (e.g. "Hi Jane and Tom,"). When absent,
+  // [Greeting] falls back to a one-person greeting from the client contact
+  // first name, then to "Hi there,". Built via buildSmartGreeting().
+  greeting?: string;
   // Candidate
   candidateFirstName?: string;
   candidateLastName?: string;
@@ -129,7 +136,16 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
   const recruiterFull = nonEmpty(values.recruiterFullName, values.recruiterName);
   const recruiterFirst = nonEmpty(values.recruiterFirstName, recruiterFull.split(/\s+/)[0]);
   const meetLink = nonEmpty(values.interviewMeetLink);
+  const greeting = nonEmpty(
+    values.greeting,
+    values.clientContactFirstName
+      ? `Hi ${values.clientContactFirstName.trim().split(/\s+/)[0]},`
+      : "",
+    "Hi there,",
+  );
   const map: Record<MergeFieldToken, string> = {
+    // General
+    "[Greeting]": greeting,
     // Candidate
     "[Candidate First Name]": values.candidateFirstName ?? "",
     "[Candidate Last Name]": values.candidateLastName ?? "",
@@ -182,6 +198,45 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
     out = out.replace(new RegExp(escapeForRegex(field.token), "g"), map[field.token]);
   }
   return out;
+}
+
+// Builds the greeting line for an email addressed to a set of recipients,
+// deduped by person (same email, or same name when no email). Pure string
+// helper — safe on both client and server. Single source of truth for the
+// invoice email greeting; the [Greeting] merge field above resolves to the
+// string this returns when callers pass it through as values.greeting.
+//   1 person  -> "Hi Jane,"
+//   2 people  -> "Hi Jane and Tom,"
+//   3+ people -> "Hi Team,"
+// A contact with no usable first name (email-only) still counts as a person;
+// if that leaves the 1- or 2-person name slots unfillable we fall back to
+// "Hi Team," so the line never reads "Hi ,". Zero recipients -> "Hi there,".
+export function buildSmartGreeting(
+  recipients: Array<{ name?: string | null; email?: string | null }>,
+): string {
+  const seen = new Set<string>();
+  const firstNames: string[] = [];
+  let personCount = 0;
+  for (const r of recipients) {
+    const name = (r?.name ?? "").trim();
+    const email = (r?.email ?? "").trim().toLowerCase();
+    if (!name && !email) continue;
+    const key = email || name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    personCount += 1;
+    const first = name ? name.split(/\s+/)[0] : "";
+    if (first) firstNames.push(first);
+  }
+  if (personCount === 0) return "Hi there,";
+  if (personCount >= 3) return "Hi Team,";
+  if (personCount === 1) {
+    return firstNames.length === 1 ? `Hi ${firstNames[0]},` : "Hi Team,";
+  }
+  // Exactly two people.
+  return firstNames.length === 2
+    ? `Hi ${firstNames[0]} and ${firstNames[1]},`
+    : "Hi Team,";
 }
 
 // ── Template body HTML helpers ────────────────────────────────────────
