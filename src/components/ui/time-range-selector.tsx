@@ -60,7 +60,7 @@ export function TimeRangeSelector({
       <div
         role="tablist"
         aria-label={`${ariaLabel} grain`}
-        className="inline-flex items-center gap-0.5 rounded-full bg-court-surface-subtle p-1"
+        className="inline-flex items-center gap-1"
       >
         {grainItems.map((g) => {
           const active = g.id === value.grain;
@@ -72,10 +72,10 @@ export function TimeRangeSelector({
               aria-selected={active}
               onClick={() => onChange({ grain: g.id, offset: 0 })}
               className={cn(
-                "rounded-full px-3.5 py-1 text-[13px] transition focus:outline-none focus-visible:ring-1 focus-visible:ring-court-brand/40",
+                "rounded-md border px-2.5 py-1 text-[13px] transition focus:outline-none focus-visible:ring-1 focus-visible:ring-court-brand/40",
                 active
-                  ? "bg-court-brand-tint font-semibold text-court-brand-dark shadow-sm"
-                  : "font-medium text-court-fg-muted hover:text-court-fg",
+                  ? "border-court-brand bg-transparent font-semibold text-court-brand"
+                  : "border-transparent bg-transparent font-medium text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg",
               )}
             >
               {g.label}
