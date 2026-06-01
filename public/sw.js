@@ -1,6 +1,6 @@
 // Ace PWA service worker. Bump CACHE_NAME on any logic change so
 // the activate handler purges the previous shell.
-const CACHE_NAME = "ace-shell-v11";
+const CACHE_NAME = "ace-shell-v12";
 const PRECACHE_URLS = ["/", "/offline"];
 
 self.addEventListener("install", (event) => {
@@ -165,7 +165,6 @@ self.addEventListener("push", (event) => {
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then(async (clients) => {
-        const isBadgeSync = data.type === "badge-sync";
         const forceNotify = data.forceNotify === true;
         await closeNotificationsByTags(data.closeTags);
         const aceFocused = clients.some(
@@ -174,7 +173,17 @@ self.addEventListener("push", (event) => {
             c.focused &&
             c.visibilityState === "visible",
         );
-        if ((forceNotify || !aceFocused) && !isBadgeSync) {
+        // iOS/WebKit REQUIRES every received push to show a user-visible
+        // notification (the userVisibleOnly contract). A push handled
+        // silently spends from a hidden budget and, once exhausted, iOS
+        // unsubscribes the PushSubscription - which silently kills ALL
+        // background push delivery (the "badge only updates when the app is
+        // opened" regression). So the ONLY case we suppress the banner is
+        // when an Ace window is already focused + visible (the in-app toast
+        // covers it, and a focused window is not a background-budget event).
+        // There is no longer a silent `badge-sync` push type. forceNotify
+        // overrides the focus suppression for the Settings Test push.
+        if (forceNotify || !aceFocused) {
           await self.registration.showNotification(data.title, {
             body: data.body,
             icon: "/icons/icon-192.png",

@@ -3,8 +3,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { markGmailThreadUnread } from "@/lib/gmail";
-import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
-import { sendBadgeSyncToUser } from "@/lib/badge-sync-push";
 
 export const dynamic = "force-dynamic";
 
@@ -28,16 +26,9 @@ export async function POST(
 
   try {
     await markGmailThreadUnread(user.id, params.id);
-    try {
-      const org = await getCurrentOrg();
-      await sendBadgeSyncToUser({
-        userId: user.id,
-        organizationId: org.id,
-        closeTags: [`mail-${params.id}`],
-      });
-    } catch (syncErr) {
-      console.error("[mail unread] badge sync failed", syncErr);
-    }
+    // No cross-device badge-sync push (see /read route): silent pushes get
+    // the iOS PushSubscription revoked. The badge reconciles via the in-app
+    // poll and the SW activate self-heal.
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Mark-unread failed";

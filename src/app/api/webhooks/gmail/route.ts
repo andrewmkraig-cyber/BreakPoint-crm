@@ -5,7 +5,6 @@ import {
   getFreshAccessToken,
   tagThreadByAddresses,
 } from "@/lib/gmail";
-import { sendBadgeSyncToUser } from "@/lib/badge-sync-push";
 import { badgePayloadFields } from "@/lib/badge-math";
 import { getUnreadCountsForOrg } from "@/lib/unread-counts";
 import { sendPushToUser, type PushPayload } from "@/lib/web-push";
@@ -290,28 +289,16 @@ export async function POST(req: NextRequest) {
       threads: Array.from(newUnreadInboxThreads.values()),
     });
 
-    // Reconcile the badge after EVERY Pub/Sub notice, not just on new mail.
-    // Gmail pings us on any INBOX change - new arrivals AND reads / label
-    // changes done in native Gmail - so recomputing the live unread count
-    // here is what lets the closed mobile PWA badge drop when a message is
-    // read outside Ace. (Desktop Ace already covered this by polling while
-    // open; the closed PWA had no way to know - this is that gap.)
-    //
-    // SILENT by design: this sends a `badge-sync` push, which sw.js never
-    // renders as a banner (it short-circuits showNotification on
-    // type === "badge-sync"). So this path produces ZERO visible
-    // notifications and cannot duplicate a new-mail alert. Targeted to the
-    // mailbox owner resolved above, not broadcast to the whole org.
-    await sendBadgeSyncToUser({
-      userId: user.id,
-      organizationId,
-      // Floor the count with threads confirmed INBOX+UNREAD this batch -
-      // Gmail's is:unread index lags a few seconds behind a fresh arrival.
-      extraUnreadMailThreadIds: Array.from(newUnreadInboxThreads.keys()),
-      // Clear any stale mail banner left in the tray once the count settles
-      // (e.g. a message that was read elsewhere).
-      closeTags: ["gmail-push"],
-    });
+    // NO silent badge-sync push here. iOS/WebKit revokes the PushSubscription
+    // when it receives pushes that don't show a notification (the
+    // userVisibleOnly budget), and Gmail pings on every INBOX change - so a
+    // silent reconcile on each ping drained the budget and killed ALL
+    // background push delivery overnight (the "badge only updates when the
+    // app is opened" regression + Bug 2). The closed-PWA decrement on a
+    // native-Gmail read is instead handled by the v8 SW activate self-heal,
+    // which re-derives the true count the next time the app wakes. New-mail
+    // INCREMENT stays real-time via the visible push above, which already
+    // carries the live badgeCount for sw.js to setAppBadge.
   } catch (err) {
     console.error("[gmail webhook] handler error", {
       err: err instanceof Error ? err.message : String(err),

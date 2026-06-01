@@ -27,7 +27,10 @@ function ensureVapid(): boolean {
 export type PushPayload = {
   title: string;
   body: string;
-  type?: "notification" | "badge-sync";
+  // Only "notification" remains. The silent "badge-sync" type was removed:
+  // iOS revokes the PushSubscription for pushes that show no notification,
+  // which killed background delivery. Every push is now user-visible.
+  type?: "notification";
   url?: string;
   // Tag dedupes notifications — subsequent pushes with the same tag
   // replace the previous notification rather than stacking. Pass a
