@@ -1,14 +1,16 @@
 "use client";
 
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 
 import { CalendarEventDrawer } from "@/components/calendar/event-drawer";
 import type { CalendarEvent, CalendarEventType } from "@/lib/calendar/types";
 import { eventTypeMeta } from "@/lib/calendar/utils";
 import { cn } from "@/lib/utils";
+
+import { fetchWeekData } from "./this-week-actions";
 
 // All formatting (timeLabel, weekdayShort, etc.) happens server-side
 // and is passed down as plain strings so SSR + hydration agree
@@ -82,32 +84,62 @@ const PILL_LABEL: Record<CalendarEventType, string> = {
   other: "Event",
 };
 
-type Props = {
+// One week's worth of pre-formatted widget data. getWeekData (server)
+// produces it for the initial render and for every ‹ › paging request.
+// isCurrentWeek gates the today-centric heading + lists: offset 0 leads
+// with today's date and shows "Up next today" / "Later this week"; other
+// weeks lead with the Mon-Fri range and hide both lists.
+export type WeekViewData = {
   days: DayCell[];
   upNextToday: UpNextRow[];
   laterRows: LaterRow[];
   laterOverflow: number;
   events: CalendarEvent[];
-  todayHeading: string;
+  eyebrow: string;
+  heading: string;
+  isCurrentWeek: boolean;
   countToday: number;
   countWeek: number;
   nextInLabel: string | null;
 };
 
-export function ThisWeekWidgetClient({
-  days,
-  upNextToday,
-  laterRows,
-  laterOverflow,
-  events,
-  todayHeading,
-  countToday,
-  countWeek,
-  nextInLabel,
-}: Props) {
+type Props = {
+  initial: WeekViewData;
+};
+
+export function ThisWeekWidgetClient({ initial }: Props) {
   const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selected, setSelected] = useState<CalendarEvent | null>(null);
+
+  // weekOffset is the only paging state the client owns; each change pulls
+  // that week's data from the server action and swaps it in. useTransition
+  // keeps the current week on screen (dimmed) until the next week lands.
+  const [offset, setOffset] = useState(0);
+  const [data, setData] = useState<WeekViewData>(initial);
+  const [pending, startTransition] = useTransition();
+
+  const {
+    days,
+    upNextToday,
+    laterRows,
+    laterOverflow,
+    events,
+    eyebrow,
+    heading,
+    isCurrentWeek,
+    countToday,
+    countWeek,
+    nextInLabel,
+  } = data;
+
+  const goToWeek = (next: number) => {
+    startTransition(async () => {
+      const d = await fetchWeekData(next);
+      setData(d);
+      setOffset(next);
+    });
+  };
 
   const eventsById = useMemo(() => {
     const m = new Map<string, CalendarEvent>();
@@ -132,18 +164,62 @@ export function ThisWeekWidgetClient({
     <section className="flex h-full flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-court-fg-muted">
-            THIS WEEK
+          <div className="flex items-center gap-1.5">
+            <div className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-court-fg-muted">
+              {eyebrow}
+            </div>
+            {/* ‹ › page the Mon-Fri window one week at a time. Muted
+                icon-button treatment; disabled while a fetch is in
+                flight so rapid clicks can't race. "This week" resets to
+                offset 0 and only shows when paged away. */}
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => goToWeek(offset - 1)}
+                disabled={pending}
+                aria-label="Previous week"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg focus:outline-none focus:ring-1 focus:ring-court-brand/40 disabled:opacity-50"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => goToWeek(offset + 1)}
+                disabled={pending}
+                aria-label="Next week"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg focus:outline-none focus:ring-1 focus:ring-court-brand/40 disabled:opacity-50"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              {!isCurrentWeek && (
+                <button
+                  type="button"
+                  onClick={() => goToWeek(0)}
+                  disabled={pending}
+                  className="ml-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-court-brand transition hover:bg-court-surface-subtle disabled:opacity-50"
+                >
+                  This week
+                </button>
+              )}
+            </div>
           </div>
           <h2
             className="mt-1 font-semibold tracking-[-0.035em] text-court-fg"
             style={{ fontSize: "18px", lineHeight: 1.15 }}
           >
-            {todayHeading}
+            {heading}
           </h2>
           <p className="mt-1 text-[12px] text-court-fg-muted">
-            {countToday} today · {countWeek} this week
-            {nextInLabel != null && <> · Next in {nextInLabel}</>}
+            {isCurrentWeek ? (
+              <>
+                {countToday} today · {countWeek} this week
+                {nextInLabel != null && <> · Next in {nextInLabel}</>}
+              </>
+            ) : (
+              <>
+                {countWeek} {countWeek === 1 ? "event" : "events"} this week
+              </>
+            )}
           </p>
         </div>
         <Link
@@ -155,6 +231,12 @@ export function ThisWeekWidgetClient({
         </Link>
       </div>
 
+      {/* Body dims while a week swap is in flight; the header + arrows
+          stay live so paging never feels locked. */}
+      <div
+        aria-busy={pending}
+        className={cn("transition-opacity", pending && "pointer-events-none opacity-50")}
+      >
       {/* 5-day strip - each day is its own bordered tile, events stack
           INSIDE the tile so nothing clips at the Friday edge or smushes
           against the Thursday divider. Today gets a sage-tinted tile
@@ -238,6 +320,8 @@ export function ThisWeekWidgetClient({
         })}
       </div>
 
+      {isCurrentWeek && (
+        <>
       {/* Up next today - rich row: time + duration block, color strip,
           name + meta, type chip. Same layout pattern as Later this week
           so the two sections read as one continuous schedule. */}
@@ -309,6 +393,9 @@ export function ThisWeekWidgetClient({
             + {laterOverflow} more this week
           </div>
         )}
+      </div>
+        </>
+      )}
       </div>
 
       <CalendarEventDrawer
