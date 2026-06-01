@@ -1,8 +1,18 @@
 # ACE_STATE.md
-Last updated: 2026-06-01 · Ace 73.0
-Current Version: Ace 73.0
+Last updated: 2026-06-01 · Ace 74.0
+Current Version: Ace 74.0
 Last Shipped: 2026-06-01
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 74.0 (2026-06-01)
+
+Finances surface restructure. No schema changes. `npm run build` exits 0; lint + types clean (save the two pre-existing react-hooks/exhaustive-deps warnings).
+
+- **Finances split into two standalone Ops pages (`f5e099b`).** The single OPS "Finances" sidebar link (three `?tab=` tabs) is gone, replaced by two entries in `src/components/nav-items.ts`: **Invoices** (`/invoices`, Receipt icon, lime) and **Expenses** (`/expenses`, Wallet icon, amber). Both desktop `Sidebar` and `MobileNav` inherit the split from the shared nav source. `/invoices` is now a real page (the old InvoicesTab content + KPI tiles + filter TabStrip + future-invoices section, moved out of `finances/page.tsx`; `future-invoices-section.tsx` relocated to `app/invoices/`), no longer a redirect. `/expenses` is a thin new page rendering `FinancialPerformanceTab`. `top-bar-page-title.tsx` gained `/invoices` + `/expenses` specs (titles "Invoices"/"Expenses", "+ New Invoice"/"+ New Expense" actions; `/invoices/[id]` breadcrumb now links to `/invoices`). `/finances` is kept as a redirect (`?tab=expenses` -> `/expenses`, else -> `/invoices`) so old bookmarks + `revalidatePath("/finances")` still land.
+
+- **Revenue & Profitability deleted; three Revenue cards moved to Placements (`f5e099b`).** The By client / By source / Trend cards were extracted verbatim (data wiring + styling) into `src/components/finances/revenue-cards.tsx` (`RevenueCards`, a self-contained server component that runs its own invoice + placement queries, honoring the Placements period selection) and now render **above the map** on the Placements tab (`placements-tab.tsx`, between PlacementsBreakdowns and PlacementsMapCard). The entire Revenue & Profitability surface was then removed from `financial-performance-tab.tsx`: the top KPI row (Total Revenue / Gross Margin / Net Margin / Total Expenses / Blended ROI), the Revenue section, and the Profitability section (Margins + P&L) are gone. `FinancialPerformanceTab` is now Expenses-only (no `mode`/`selection` props, calendar-year scoped). It still runs the revenue-invoice query, but only to feed **ROI-per-tool** revenue attribution (an Expenses card) — that was the one cross-dependency. `PnlCard`/`buildPnlData` are no longer imported here.
+
+- **Expenses "Money In" is bank-truth only (`f5e099b`).** Money In combined Ace placement rows (`stage: hired`, candidate name + `feeTotal`) with Mercury IO Cashback. The Ace placement rows let projected/cancelled placement amounts (the stray **$18,000 Andrew Kraig** Jun 1 row) leak into the cash tally and double-count against Net Profit / Loss. The placement-sourced rows are removed entirely; Money In = Mercury (and QuickBooks once wired) transactions only. Total Money In + Net Profit/Loss derive from `moneyInRows` so they recompute without the placement rows. Matched Mercury rows untouched. `expense-actions.ts` now also `revalidatePath("/expenses")`.
 
 ## What Shipped in Ace 73.0 (2026-06-01)
 

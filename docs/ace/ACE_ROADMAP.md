@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-06-01 · Ace 73.0
+Last updated: 2026-06-01 · Ace 74.0
 
 ## Active Build Sequence
 
@@ -92,6 +92,10 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 74.0 Finances split into standalone Invoices + Expenses + Revenue cards moved to Placements + Money In bank-truth (June 1, 2026)
+
+Finances restructure, no schema changes, `npm run build` exits 0 (lint + types clean). (1) **OPS sidebar Finances link split into two entries** — Invoices (`/invoices`) and Expenses (`/expenses`), via the shared `src/components/nav-items.ts` so desktop + mobile match. `/invoices` is now a standalone page (the old InvoicesTab content moved out of `finances/page.tsx`; `future-invoices-section.tsx` relocated to `app/invoices/`), `/expenses` is new (renders `FinancialPerformanceTab`). Topbar gained `/invoices` + `/expenses` titles + New Invoice/New Expense actions; `/invoices/[id]` breadcrumb links to `/invoices`. `/finances` kept as a redirect (`?tab=expenses` -> `/expenses`, else -> `/invoices`) so old bookmarks + `revalidatePath("/finances")` still land. (2) **Revenue & Profitability deleted entirely** — the three Revenue cards (By client/By source/Trend) extracted verbatim into `src/components/finances/revenue-cards.tsx` and rendered above the map on the Placements tab; the KPI row + Revenue section + Profitability (Margins + P&L) removed from `financial-performance-tab.tsx`, which is now Expenses-only (keeps the revenue-invoice query solely to feed ROI-per-tool attribution). (3) **Expenses Money In is bank-truth only** — Ace placement rows (which let the stray $18k Andrew Kraig row + cancelled/projected fees leak in and double-count) removed; Money In = Mercury/QuickBooks transactions only; Total Money In + Net Profit/Loss recompute without them; matched Mercury rows untouched. Full detail in ACE_STATE.md under What Shipped in Ace 74.0.
 
 ## Completed - Ace 73.0 Test-run close-out: per-job Matches search + toast-theme fix + news tabs + placeholder sweep + read-only-calendar resilience + start-confirmation viewer + week paging + unified dashboard time control (June 1, 2026)
 

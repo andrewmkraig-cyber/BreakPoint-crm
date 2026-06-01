@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-06-01 · Ace 73.0
+Last updated: 2026-06-01 · Ace 74.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -378,3 +378,9 @@ Mirrored as a one-line pointer in ACE_RULES.md (Design Rules). Apply to every ic
 - **Active nav / brand** = `text-court-brand` / the sidebar active token. The desktop sidebar's per-nav-item rainbow `iconColor` is intentional wayfinding and is being kept; as of Ace 72.0 mobile-nav consumes the SAME per-item colors from the shared `src/components/nav-items.ts` source (`NAV_GROUPS` + `FOOTER_NAV`), so desktop and mobile match and can never drift.
 
 **First fixes shipped Ace 71.0:** unified the 5-way-split delete trashcan to red-600 (mail-composer "Delete draft" went from the lone neutral `secondary` to `danger`/red); retired the lone orange Email button on the job Matches tab (bespoke `border-orange-500`/`bg-white`/`text-orange-600` -> shared `Button variant="secondary"`, which reskins across Court themes); fixed the Ace Assistant glyph dark-mode bug (`src/components/icons/in-conversation.tsx` hardcoded `#5A9642` accent + `#FAF8F3` bubble -> `rgb(var(--court-brand))` accent + `rgb(var(--court-surface))` bubble, and the ink "you" figure -> `rgb(var(--court-fg))` so it stays legible on the surface bubble in the active green-button state where `currentColor` is white). The standalone-icon token sweep across the rest of the app is queued.
+
+## Finances Surface (updated 2026-06-01 · Ace 74.0)
+The old combined `/finances` page (three `?tab=` tabs: Revenue & Profitability / Invoices / Expenses) was split and trimmed:
+- **Two standalone Ops pages.** `/invoices` and `/expenses` are now separate sidebar entries + routes (`src/components/nav-items.ts`: Invoices = Receipt/lime, Expenses = Wallet/amber). `/finances` is a redirect only (`?tab=expenses` -> `/expenses`, else -> `/invoices`); do not add new UI there.
+- **Revenue cards live on Placements.** The three Revenue cards (By client / By source / Trend) are `RevenueCards` in `src/components/finances/revenue-cards.tsx` and render above the Placements map. The KPI strip + Revenue & Profitability (Margins + P&L) surface was deleted; do not rebuild it. `src/app/dashboard/financial-performance-tab.tsx` is the Expenses-only surface (subscriptions, money in, tools, ROI, totals).
+- **Money In = bank truth only.** The Expenses "Money In" list shows real Mercury (and QuickBooks once wired) transactions only. Never fold Ace placement fees into Money In — those are projected/earned revenue, surfaced on Placements + the Revenue cards, and mixing them in double-counts against Net Profit / Loss and lets cancelled/test placements leak in.
