@@ -1,5 +1,6 @@
 "use server";
 
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { createActionLog } from "@/lib/action-log";
@@ -1023,8 +1024,15 @@ export type RecordLocalPlacementInput = {
   guaranteePeriodDays: number | null;
   billingContactName: string;
   billingContactEmail: string;
+  // Full multi-contact lists. Optional; when present the first entry mirrors
+  // into billingContactName/Email + hiringManagerName/Email above and the full
+  // list persists in Placement.billingContacts / hiringContacts (JSON) so the
+  // Confirm Start invoice auto-populate gets every recipient. A name-only
+  // contact (blank email) is kept.
+  billingContacts?: Array<{ name: string; email: string }>;
   hiringManagerName: string;
   hiringManagerEmail: string;
+  hiringContacts?: Array<{ name: string; email: string }>;
   expectedStartDate: string; // ISO YYYY-MM-DD
   notes: string;
   // Recruiter-tagged lead source. Free-form so legacy seed values
@@ -1064,6 +1072,24 @@ export async function recordLocalPlacement(
     const previousStage = placement.stage;
     const trimmedSource = input.candidateSource?.trim();
 
+    // Normalize the multi-contact lists. Keep name-only rows (blank email);
+    // drop fully-empty ones. The first entry mirrors into the legacy single
+    // columns so single-contact readers (Pipeline, gmail-recipients) stay
+    // correct; the full list persists in the JSON columns. When no list is
+    // sent we fall back to the legacy single-field inputs.
+    const cleanedBilling = (input.billingContacts ?? [])
+      .map((c) => ({ name: (c.name ?? "").trim(), email: (c.email ?? "").trim() }))
+      .filter((c) => c.name || c.email);
+    const cleanedHiring = (input.hiringContacts ?? [])
+      .map((c) => ({ name: (c.name ?? "").trim(), email: (c.email ?? "").trim() }))
+      .filter((c) => c.name || c.email);
+    const primaryBilling = cleanedBilling[0] ?? null;
+    const primaryHiring = cleanedHiring[0] ?? null;
+    const billingName = (primaryBilling?.name || input.billingContactName.trim()) || null;
+    const billingEmail = (primaryBilling?.email || input.billingContactEmail.trim()) || null;
+    const hiringName = (primaryHiring?.name || input.hiringManagerName.trim()) || null;
+    const hiringEmail = (primaryHiring?.email || input.hiringManagerEmail.trim()) || null;
+
     const row = await prisma.placement.update({
       where: { id: input.placementId },
       data: {
@@ -1078,10 +1104,12 @@ export async function recordLocalPlacement(
         feeTotal: input.feeTotal,
         minFee: input.minFee,
         guaranteePeriodDays: input.guaranteePeriodDays,
-        billingContactName: input.billingContactName.trim() || null,
-        billingContactEmail: input.billingContactEmail.trim() || null,
-        hiringManagerName: input.hiringManagerName.trim() || null,
-        hiringManagerEmail: input.hiringManagerEmail.trim() || null,
+        billingContactName: billingName,
+        billingContactEmail: billingEmail,
+        billingContacts: cleanedBilling.length > 0 ? cleanedBilling : Prisma.JsonNull,
+        hiringManagerName: hiringName,
+        hiringManagerEmail: hiringEmail,
+        hiringContacts: cleanedHiring.length > 0 ? cleanedHiring : Prisma.JsonNull,
         expectedStartDate: new Date(input.expectedStartDate),
         placementNotes: input.notes.trim() || null,
         candidateSource: trimmedSource || null,

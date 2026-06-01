@@ -14,6 +14,7 @@ import {
   Handshake,
   Image as ImageIcon,
   Loader2,
+  Plus,
   RotateCcw,
   Send,
   UserX,
@@ -135,6 +136,11 @@ export type LocalPlacementSnapshot = {
   billingContactEmail: string | null;
   hiringManagerName: string | null;
   hiringManagerEmail: string | null;
+  // Full multi-contact lists. Preferred seed source for the placement
+  // dialog's billing / hiring pickers; the legacy single columns above are
+  // the fallback for rows saved before the list was restored.
+  billingContacts?: { name: string; email: string }[] | null;
+  hiringContacts?: { name: string; email: string }[] | null;
   expectedStartDate: string | null;
   placementNotes: string | null;
   candidateSource: string | null;
@@ -1486,10 +1492,26 @@ function LocalPlacementDialog({
     const iso = snap?.expectedStartDate ?? snap?.offerStartDate ?? null;
     return iso ? iso.slice(0, 10) : "";
   });
-  const [billingName, setBillingName] = useState(snap?.billingContactName ?? "");
-  const [billingEmail, setBillingEmail] = useState(snap?.billingContactEmail ?? "");
-  const [hiringName, setHiringName] = useState(snap?.hiringManagerName ?? "");
-  const [hiringEmail, setHiringEmail] = useState(snap?.hiringManagerEmail ?? "");
+  // Multi-contact billing + hiring lists (restored Ace fix 2026-06-01). Seed
+  // priority: saved JSON list -> legacy single column -> one blank row so the
+  // section always has a slot. Each row carries a stable local key so Add /
+  // Remove doesn't lose input focus on re-render.
+  const [billingContacts, setBillingContacts] = useState<ContactRow[]>(() => {
+    const seeded = seedContactList(
+      snap?.billingContacts ?? null,
+      snap?.billingContactName ?? null,
+      snap?.billingContactEmail ?? null,
+    );
+    return seeded.length > 0 ? seeded : [{ key: makeLocalKey(), name: "", email: "" }];
+  });
+  const [hiringContacts, setHiringContacts] = useState<ContactRow[]>(() => {
+    const seeded = seedContactList(
+      snap?.hiringContacts ?? null,
+      snap?.hiringManagerName ?? null,
+      snap?.hiringManagerEmail ?? null,
+    );
+    return seeded.length > 0 ? seeded : [{ key: makeLocalKey(), name: "", email: "" }];
+  });
   const [notes, setNotes] = useState(snap?.placementNotes ?? snap?.offerNotes ?? "");
   const [source, setSource] = useState(snap?.candidateSource ?? "");
   const [err, setErr] = useState<string | null>(null);
@@ -1527,6 +1549,20 @@ function LocalPlacementDialog({
     if (!source.trim()) {
       return setErr("Lead Source is required.");
     }
+    // Strip empty rows before send (the server filters defensively too).
+    // A name-only contact (blank email) is kept on purpose. The first entry
+    // mirrors into the legacy billingContactName/Email + hiringManagerName/
+    // Email columns server-side; the full lists persist on Placement.
+    // billingContacts / hiringContacts so Confirm Start auto-populate gets
+    // every recipient.
+    const cleanedBilling = billingContacts
+      .map((c) => ({ name: c.name.trim(), email: c.email.trim() }))
+      .filter((c) => c.name || c.email);
+    const primaryBilling = cleanedBilling[0] ?? { name: "", email: "" };
+    const cleanedHiring = hiringContacts
+      .map((c) => ({ name: c.name.trim(), email: c.email.trim() }))
+      .filter((c) => c.name || c.email);
+    const primaryHiring = cleanedHiring[0] ?? { name: "", email: "" };
     startSave(async () => {
       const result = await recordLocalPlacement({
         placementId: job.placementId,
@@ -1536,10 +1572,12 @@ function LocalPlacementDialog({
         feeTotal,
         minFee: minFeeNum,
         guaranteePeriodDays: guaranteeDaysNum,
-        billingContactName: billingName,
-        billingContactEmail: billingEmail,
-        hiringManagerName: hiringName,
-        hiringManagerEmail: hiringEmail,
+        billingContactName: primaryBilling.name,
+        billingContactEmail: primaryBilling.email,
+        billingContacts: cleanedBilling,
+        hiringManagerName: primaryHiring.name,
+        hiringManagerEmail: primaryHiring.email,
+        hiringContacts: cleanedHiring,
         expectedStartDate: startDate,
         notes,
         candidateSource: source.trim() || null,
@@ -1724,30 +1762,20 @@ function LocalPlacementDialog({
           the descriptions differ in length, which previously left the
           shorter card's inputs floating higher than the taller card's). */}
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:items-stretch">
-        <div className="flex flex-col rounded-lg border border-court-border/40 bg-court-surface-subtle/40 px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
-            Billing contact
-          </div>
-          <p className="mt-0.5 text-[11px] text-court-fg-muted">
-            To: on the auto-drafted invoice when you Confirm Start. Pick the AP / finance contact.
-          </p>
-          <div className="mt-auto grid grid-cols-1 gap-2 pt-1.5">
-            <OfferField label="Name" value={billingName} onChange={setBillingName} />
-            <OfferField label="Email" value={billingEmail} onChange={setBillingEmail} />
-          </div>
-        </div>
-        <div className="flex flex-col rounded-lg border border-court-border/40 bg-court-surface-subtle/40 px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
-            Hiring manager
-          </div>
-          <p className="mt-0.5 text-[11px] text-court-fg-muted">
-            Invoice notes + hired-welcome email so both sides know the manager.
-          </p>
-          <div className="mt-auto grid grid-cols-1 gap-2 pt-1.5">
-            <OfferField label="Name" value={hiringName} onChange={setHiringName} />
-            <OfferField label="Email" value={hiringEmail} onChange={setHiringEmail} />
-          </div>
-        </div>
+        <ContactPickerCard
+          title="Billing contact"
+          helper="To: on the auto-drafted invoice when you Confirm Start. Pick the AP / finance contact."
+          rows={billingContacts}
+          setRows={setBillingContacts}
+          clientContacts={job.clientContacts}
+        />
+        <ContactPickerCard
+          title="Hiring manager"
+          helper="Invoice notes + hired-welcome email so both sides know the manager."
+          rows={hiringContacts}
+          setRows={setHiringContacts}
+          clientContacts={job.clientContacts}
+        />
       </div>
 
       <label className="mt-3 block text-sm">
@@ -1786,6 +1814,129 @@ function LocalPlacementDialog({
         </div>
       )}
     </ModalShell>
+  );
+}
+
+// One editable billing / hiring contact row in the placement dialog. The
+// local `key` is stable across re-renders so Add / Remove never steals focus.
+type ContactRow = { key: string; name: string; email: string };
+
+function makeLocalKey(): string {
+  return `c_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// Seed a contact list: prefer the saved JSON array, fall back to the legacy
+// single name/email columns, else return [] so the caller seeds one blank row.
+function seedContactList(
+  jsonList: { name: string; email: string }[] | null | undefined,
+  legacyName: string | null,
+  legacyEmail: string | null,
+): ContactRow[] {
+  if (jsonList && jsonList.length > 0) {
+    return jsonList.map((c) => ({ key: makeLocalKey(), name: c.name, email: c.email }));
+  }
+  if ((legacyName ?? "") || (legacyEmail ?? "")) {
+    return [{ key: makeLocalKey(), name: legacyName ?? "", email: legacyEmail ?? "" }];
+  }
+  return [];
+}
+
+// Restored billing / hiring contact picker (Ace fix 2026-06-01). Keeps the
+// current compressed side-by-side Court Mode card chrome and adds back: an
+// inline Add for extra name+email rows (a name-only row is allowed — blank
+// email is fine), a per-row Remove, and one-click chips that fill a row from
+// the client's saved contacts (job.clientContacts).
+function ContactPickerCard({
+  title,
+  helper,
+  rows,
+  setRows,
+  clientContacts,
+}: {
+  title: string;
+  helper: string;
+  rows: ContactRow[];
+  setRows: React.Dispatch<React.SetStateAction<ContactRow[]>>;
+  clientContacts: { id: number; name: string; title: string; email: string }[];
+}) {
+  const update = (key: string, field: "name" | "email", value: string) =>
+    setRows((prev) => prev.map((c) => (c.key === key ? { ...c, [field]: value } : c)));
+  const add = () =>
+    setRows((prev) => [...prev, { key: makeLocalKey(), name: "", email: "" }]);
+  const remove = (key: string) =>
+    setRows((prev) => {
+      const next = prev.filter((c) => c.key !== key);
+      // Keep at least one row so the section never collapses to nothing.
+      return next.length > 0 ? next : [{ key: makeLocalKey(), name: "", email: "" }];
+    });
+  const pick = (key: string, c: { name: string; email: string }) =>
+    setRows((prev) =>
+      prev.map((r) => (r.key === key ? { ...r, name: c.name, email: c.email ?? "" } : r)),
+    );
+
+  return (
+    <div className="flex flex-col rounded-lg border border-court-border/40 bg-court-surface-subtle/40 px-3 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+          {title}
+        </div>
+        <button
+          type="button"
+          onClick={add}
+          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-0.5 text-[11px] font-semibold text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
+        >
+          <Plus className="h-3 w-3" /> Add
+        </button>
+      </div>
+      <p className="mt-0.5 text-[11px] text-court-fg-muted">{helper}</p>
+      <div className="mt-1.5 flex flex-col gap-1.5">
+        {rows.map((row) => (
+          <div
+            key={row.key}
+            className="rounded-md border border-court-border/40 bg-court-surface/60 p-1.5"
+          >
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+              <OfferField
+                label="Name"
+                value={row.name}
+                onChange={(v) => update(row.key, "name", v)}
+                placeholder="Contact name"
+              />
+              <OfferField
+                label="Email"
+                value={row.email}
+                onChange={(v) => update(row.key, "email", v)}
+                placeholder="name@client.com"
+              />
+              <button
+                type="button"
+                onClick={() => remove(row.key)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted transition hover:border-red-300 hover:text-red-600"
+                title="Remove this contact"
+                aria-label="Remove contact"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {clientContacts.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {clientContacts.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => pick(row.key, c)}
+                    className="rounded-full border border-court-border bg-court-surface px-2 py-0.5 text-[10px] text-court-fg-muted transition hover:border-brand/40 hover:text-court-fg"
+                    title={`Fill from ${c.name}${c.email ? ` (${c.email})` : ""}`}
+                  >
+                    {c.name.split(/\s+/)[0]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

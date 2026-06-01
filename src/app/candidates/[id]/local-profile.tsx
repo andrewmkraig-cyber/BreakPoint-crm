@@ -38,6 +38,21 @@ import { getInterviewsForOrg } from "@/lib/interviews";
 import { getAppPreferences } from "@/lib/preferences";
 
 
+// Normalize a Placement.billingContacts / hiringContacts JSON value into the
+// { name, email }[] shape the placement dialog seeds from. Keeps name-only
+// rows (blank email); drops fully-empty entries; tolerates non-array / legacy
+// nulls by returning [].
+function parseSnapshotContacts(value: unknown): { name: string; email: string }[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((c) => {
+    if (!c || typeof c !== "object") return [];
+    const o = c as Record<string, unknown>;
+    const name = typeof o.name === "string" ? o.name : "";
+    const email = typeof o.email === "string" ? o.email : "";
+    return name || email ? [{ name, email }] : [];
+  });
+}
+
 type LocalCandidateTab = "profile" | "game-plan" | "notes";
 
 export async function LocalCandidateProfile({
@@ -554,6 +569,11 @@ export async function LocalCandidateProfile({
       billingContactEmail: p.billingContactEmail,
       hiringManagerName: p.hiringManagerName,
       hiringManagerEmail: p.hiringManagerEmail,
+      // Full multi-contact lists (JSON) so LocalPlacementDialog can reopen an
+      // edited placement with every billing / hiring row intact, not just the
+      // first one mirrored into the legacy single columns above.
+      billingContacts: parseSnapshotContacts(p.billingContacts),
+      hiringContacts: parseSnapshotContacts(p.hiringContacts),
       expectedStartDate: p.expectedStartDate?.toISOString() ?? null,
       placementNotes: p.placementNotes,
       candidateSource: p.candidateSource,
