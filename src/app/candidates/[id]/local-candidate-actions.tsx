@@ -347,6 +347,10 @@ function SubmitModal(props: {
       // without picking a template.
       initial={{ to: [], cc: [], bcc: [], subject: "", body: "" }}
       recipientOptions={contactOptions.length > 0 ? contactOptions : undefined}
+      // Multi-recipient To: pick from the client contacts or type any
+      // address as chips (same as Cc), so a submittal can go to more than
+      // one client contact. The send path already passes the full to array.
+      toOptions={contactOptions.length > 0 ? contactOptions : undefined}
       onClose={props.onClose}
       sendLabel="Send Submittal"
       sendingLabel="Sending…"

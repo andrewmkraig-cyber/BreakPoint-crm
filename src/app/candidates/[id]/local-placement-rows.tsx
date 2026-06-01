@@ -2704,6 +2704,10 @@ function LocalClientInviteComposer({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),
       })}
+      // To is multi-recipient: pick from the client contacts or type any
+      // address, as chips (same component as Cc/Bcc). Every To recipient is
+      // sent (see onSend → toEmails), not just the first.
+      toOptions={ccPickerOptions}
       ccOptions={ccPickerOptions}
       // Bcc is the private team field — do NOT seed it with client contacts.
       // Passing an empty pool lets EmailComposer surface ONLY its teammate
@@ -2726,6 +2730,9 @@ function LocalClientInviteComposer({
           party: "client",
           attendeeEmail: draft.to[0],
           attendeeName: invite.clientContactName || undefined,
+          // Pass ALL To recipients (not just the first) so every one is
+          // added as a guest on the calendar invite.
+          toEmails: draft.to,
           ccEmails: draft.cc,
           bccEmails: draft.bcc,
           subject: draft.subject,

@@ -110,6 +110,13 @@ export type EmailComposerProps = {
   // for scoped flows (submittal) where recipients must come from a curated
   // client contact list.
   recipientOptions?: ContactOption[];
+  // When provided, the To field becomes a multi-recipient pick-or-type chip
+  // input (the same ContactComboMulti used for Cc/Bcc) seeded from these
+  // options, instead of the single-select dropdown / plain text input. Lets
+  // a recruiter add more than one To recipient (pick a contact or type an
+  // address) on invite/submittal composers. Takes precedence over
+  // recipientOptions for the To field only — Cc/Bcc are unaffected.
+  toOptions?: ContactOption[];
   // When true, the To / Cc / Bcc row block is not rendered and the
   // "at least one recipient" validation is skipped. Used by the bulk-
   // email dialog where recipients are resolved server-side per
@@ -224,6 +231,7 @@ export function EmailComposer({
   resolveTemplate,
   templateFilter,
   recipientOptions,
+  toOptions,
   hideRecipientFields = false,
   hideCcField = false,
   hideBccField = false,
@@ -872,7 +880,16 @@ export function EmailComposer({
           {hideRecipientFields ? null : recipientOptions ? (
             <>
               <Row label="To">
-                <ContactSinglePicker value={to} onChange={setTo} options={recipientOptions} />
+                {toOptions ? (
+                  <ContactComboMulti
+                    value={to}
+                    onChange={setTo}
+                    options={toOptions}
+                    placeholder="Pick a contact or type an email…"
+                  />
+                ) : (
+                  <ContactSinglePicker value={to} onChange={setTo} options={recipientOptions} />
+                )}
               </Row>
               {showCcField && (
                 <Row label="Cc">
@@ -897,7 +914,16 @@ export function EmailComposer({
           ) : (
             <>
               <Row label="To">
-                <Input value={to} onChange={setTo} />
+                {toOptions ? (
+                  <ContactComboMulti
+                    value={to}
+                    onChange={setTo}
+                    options={toOptions}
+                    placeholder="Pick a contact or type an email…"
+                  />
+                ) : (
+                  <Input value={to} onChange={setTo} />
+                )}
               </Row>
               {showCcBcc ? (
                 <>

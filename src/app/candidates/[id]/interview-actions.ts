@@ -979,6 +979,12 @@ export type SendInvitePartyInput = {
   party: "client" | "candidate";
   attendeeEmail: string;
   attendeeName?: string;
+  // All To recipients for this party. The first is the primary attendee
+  // (carries attendeeName as its display name); every other To address is
+  // added as an additional guest on the calendar event so multi-recipient
+  // To invites land for everyone. Falls back to [attendeeEmail] when the
+  // caller doesn't pass the array (e.g. the candidate-only invite).
+  toEmails?: string[];
   // Optional additional recipients. Client Cc recipients become visible
   // guests on the client calendar event. Google Calendar has no private
   // Bcc bucket, so Bcc recipients (e.g. Austin) are delivered a separate
@@ -1068,9 +1074,29 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   const cc = input.party === "client"
     ? (input.ccEmails ?? []).filter((e) => e && e.trim()).map((e) => ({ email: e.trim() }))
     : [];
-  const primary = { email: input.attendeeEmail.trim(), displayName: input.attendeeName };
-  const seen = new Set<string>([primary.email.toLowerCase()]);
-  const newAttendees: { email: string; displayName?: string }[] = [primary];
+  // Every To recipient becomes a guest on the calendar event. The first
+  // carries the display name; the rest are added as additional attendees
+  // so a multi-recipient To invite reaches everyone, not just draft.to[0].
+  // Falls back to the single attendeeEmail for callers (candidate invite)
+  // that don't pass the toEmails array.
+  const toList = (input.toEmails && input.toEmails.length > 0
+    ? input.toEmails
+    : [input.attendeeEmail]
+  )
+    .map((e) => e.trim())
+    .filter(Boolean);
+  const seen = new Set<string>();
+  const newAttendees: { email: string; displayName?: string }[] = [];
+  for (const email of toList) {
+    const key = email.toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    newAttendees.push({
+      email,
+      // Only the primary (first) To recipient carries the display name.
+      displayName: newAttendees.length === 0 ? input.attendeeName : undefined,
+    });
+  }
   for (const a of cc) {
     const key = a.email.toLowerCase();
     if (!key || seen.has(key)) continue;
