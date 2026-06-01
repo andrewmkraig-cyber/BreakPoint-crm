@@ -124,6 +124,13 @@ export async function syncGoogleCalendars(
     // freeBusyReader gets you /freeBusy access only — calendarList shows
     // them, but /events on the same id returns 403. Skip outright.
     if (cal.accessRole === "freeBusyReader") continue;
+    // reader-role calendars are read-only: holiday feeds, birthdays, and
+    // subscribed shares the user can't edit. Mirroring them made events
+    // like "Republic Day" look like the user's own (editing/deleting
+    // 403s, and a local delete returned on the next sync). Only ingest
+    // calendars we own or can write to. Writable shares (Austin's, team
+    // calendars) carry "owner"/"writer" and are unaffected.
+    if (cal.accessRole === "reader") continue;
     if (!cal.id) continue;
 
     const url = new URL(

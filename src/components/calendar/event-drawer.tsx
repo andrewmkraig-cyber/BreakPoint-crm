@@ -602,16 +602,23 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
 
   async function doDelete() {
     if (!event) return;
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm("Delete this event? Attendees will be notified.")
-    ) {
+    // Only warn about (and trigger) attendee notifications when the
+    // event actually has guests. A guestless event was falsely warning
+    // "Attendees will be notified" and passing notifyAll: true.
+    const hasGuests = (event.guests ?? []).length > 0;
+    const confirmMsg = hasGuests
+      ? "Delete this event? Attendees will be notified."
+      : "Delete this event?";
+    if (typeof window !== "undefined" && !window.confirm(confirmMsg)) {
       return;
     }
     setDeleting(true);
     setError(null);
     try {
-      const res = await deleteCalendarEventAction({ id: event.id, notifyAll: true });
+      const res = await deleteCalendarEventAction({
+        id: event.id,
+        notifyAll: hasGuests,
+      });
       if (!res.ok) {
         setError(res.error);
         return;
