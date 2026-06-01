@@ -2050,6 +2050,12 @@ function AddressRow({
   serverSearch?: boolean;
 }) {
   const [focused, setFocused] = useState(false);
+  // Committed recipients are chips; the in-progress address being typed
+  // lives in this local state, NOT in `value`. `value` stays the
+  // comma-separated committed-address string the send path already
+  // expects (splitAddresses() consumes it unchanged) — this mirrors the
+  // ContactComboMulti chip model used for the EmailComposer Cc/Bcc fields.
+  const [typed, setTyped] = useState("");
   // Fired once on first focus of a server-search row: warms the Gmail
   // sent-mail snapshot in the background so the cold ~3-5s load is paid
   // before the recruiter finishes typing, not on their first keystroke.
@@ -2058,6 +2064,40 @@ function AddressRow({
     if (!serverSearch || warmedRef.current) return;
     warmedRef.current = true;
     void fetch("/api/mail/contacts-search?warm=1", { cache: "no-store" }).catch(() => {});
+  }
+  const parseCsv = (raw: string): string[] =>
+    raw.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+  // The committed chips, parsed from `value`.
+  const chips = parseCsv(value);
+  // Ref holds the authoritative committed string so rapid-fire picks
+  // (which can batch before a re-render) each see the latest list.
+  const latestValueRef = useRef(value);
+  latestValueRef.current = value;
+  function commitList(next: string[]) {
+    onChange(next.join(", "));
+  }
+  function addAddr(addr: string) {
+    const key = addr.trim();
+    if (!key) return;
+    const next = parseCsv(latestValueRef.current);
+    if (next.some((c) => c.toLowerCase() === key.toLowerCase())) return;
+    next.push(key);
+    commitList(next);
+  }
+  // Commit whatever is in the typed buffer (Enter / comma / Tab / blur).
+  // Allows comma/semicolon-separated bulk paste.
+  function addTyped() {
+    const raw = typed.trim();
+    if (!raw) return;
+    const next = parseCsv(latestValueRef.current);
+    for (const p of parseCsv(raw)) {
+      if (!next.some((c) => c.toLowerCase() === p.toLowerCase())) next.push(p);
+    }
+    commitList(next);
+    setTyped("");
+  }
+  function removeChipAt(idx: number) {
+    commitList(chips.filter((_, i) => i !== idx));
   }
   // Server-backed contact search results, paired with the query that
   // produced them so a stale debounce tick can't apply suggestions
@@ -2073,12 +2113,11 @@ function AddressRow({
   // chase a row that's no longer the same item it pointed at.
   const [activeIndex, setActiveIndex] = useState(-1);
 
-  // The "current segment" is whatever the user is typing after the
-  // last comma. We filter suggestions against this so the dropdown
-  // narrows as they type "aust…".
+  // The "current segment" is whatever the user is typing into the chip
+  // input. We filter suggestions against this so the dropdown narrows as
+  // they type "aust…".
   const lowerValue = value.toLowerCase();
-  const lastCommaIdx = value.lastIndexOf(",");
-  const currentSegment = value.slice(lastCommaIdx + 1).trim();
+  const currentSegment = typed.trim();
   const lowerSegment = currentSegment.toLowerCase();
 
   // Debounced server fetch. Resets the request on every keystroke;
@@ -2162,13 +2201,10 @@ function AddressRow({
   }, [currentSegment, focused, visible.length]);
 
   function pick(s: { name: string; email: string }) {
-    const addr = `${s.name} <${s.email}>`;
-    // Drop the in-progress segment, replace with the full picked
-    // address, and append a trailing comma+space so the user can keep
-    // typing the next recipient without manual punctuation.
-    const before =
-      lastCommaIdx >= 0 ? value.slice(0, lastCommaIdx + 1) + " " : "";
-    onChange(before + addr + ", ");
+    // Add the picked contact as a committed chip and clear the typed
+    // buffer so the recruiter can keep adding the next recipient.
+    addAddr(`${s.name} <${s.email}>`);
+    setTyped("");
     setActiveIndex(-1);
     // Clear server results so the dropdown doesn't briefly flash the
     // just-picked contact while the segment resets.
@@ -2176,8 +2212,31 @@ function AddressRow({
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    // Commit / chip-edit keys work whether or not the dropdown is open.
+    if (e.key === "," || e.key === ";") {
+      e.preventDefault();
+      addTyped();
+      return;
+    }
+    if (e.key === "Tab") {
+      // Commit the in-progress address without blocking the focus move.
+      addTyped();
+      return;
+    }
+    if (e.key === "Backspace" && typed.length === 0 && chips.length > 0) {
+      e.preventDefault();
+      removeChipAt(chips.length - 1);
+      return;
+    }
     if (visible.length === 0) {
-      if (e.key === "Escape") setFocused(false);
+      if (e.key === "Enter") {
+        if (typed.trim()) {
+          e.preventDefault();
+          addTyped();
+        }
+      } else if (e.key === "Escape") {
+        setFocused(false);
+      }
       return;
     }
     if (e.key === "ArrowDown") {
@@ -2189,9 +2248,11 @@ function AddressRow({
         i <= 0 ? visible.length - 1 : i - 1,
       );
     } else if (e.key === "Enter") {
+      e.preventDefault();
       if (activeIndex >= 0 && activeIndex < visible.length) {
-        e.preventDefault();
         pick(visible[activeIndex]);
+      } else if (typed.trim()) {
+        addTyped();
       }
     } else if (e.key === "Escape") {
       e.preventDefault();
@@ -2205,22 +2266,52 @@ function AddressRow({
 
   return (
     <div className="relative">
-      <label className="flex items-center gap-2 text-sm">
-        <span className="w-14 shrink-0 text-[10px] uppercase tracking-wider text-court-fg-muted">
+      <label className="flex items-start gap-2 text-sm">
+        <span className="mt-1.5 w-14 shrink-0 text-[10px] uppercase tracking-wider text-court-fg-muted">
           {label}
         </span>
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onFocus={() => {
-            setFocused(true);
-            warmContactSnapshot();
-          }}
-          onBlur={() => setFocused(false)}
-          onKeyDown={onKeyDown}
-          autoFocus={autoFocus}
-          className="h-7 w-full rounded-md border border-court-border bg-court-surface px-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-        />
+        <div className="flex min-h-7 w-full flex-wrap items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-1 text-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20">
+          {chips.map((chip, i) => (
+            <span
+              key={`${chip}-${i}`}
+              className="inline-flex max-w-full items-center gap-1 rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] text-court-fg"
+            >
+              <span className="truncate">{chip}</span>
+              <button
+                type="button"
+                // mousedown + preventDefault so removing a chip never
+                // blurs the input (a blur would commit the typed buffer
+                // mid-edit) and never reaches a parent drag handler.
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  removeChipAt(i);
+                }}
+                className="shrink-0 text-court-fg-muted hover:text-court-fg"
+                aria-label={`Remove ${chip}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          <input
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            onFocus={() => {
+              setFocused(true);
+              warmContactSnapshot();
+            }}
+            onBlur={() => {
+              setFocused(false);
+              // Commit a half-typed address so it isn't silently dropped
+              // when the recruiter clicks Send / away.
+              addTyped();
+            }}
+            onKeyDown={onKeyDown}
+            autoFocus={autoFocus}
+            className="h-5 min-w-[140px] flex-1 bg-transparent px-1 text-sm text-court-fg outline-none"
+          />
+        </div>
       </label>
       {visible.length > 0 && (
         <ul className="absolute left-[64px] right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg">

@@ -880,16 +880,18 @@ export function EmailComposer({
           {hideRecipientFields ? null : recipientOptions ? (
             <>
               <Row label="To">
-                {toOptions ? (
-                  <ContactComboMulti
-                    value={to}
-                    onChange={setTo}
-                    options={toOptions}
-                    placeholder="Pick a contact or type an email…"
-                  />
-                ) : (
-                  <ContactSinglePicker value={to} onChange={setTo} options={recipientOptions} />
-                )}
+                {/* To is always a multi-recipient pick-or-type chip input
+                    (the same ContactComboMulti used for Cc/Bcc) so the
+                    recruiter can add more than one To recipient without
+                    being forced into Cc. Seeds from toOptions when given,
+                    otherwise falls back to the curated recipientOptions
+                    pool; free-typed addresses are always allowed. */}
+                <ContactComboMulti
+                  value={to}
+                  onChange={setTo}
+                  options={toOptions ?? recipientOptions}
+                  placeholder="Pick a contact or type an email…"
+                />
               </Row>
               {showCcField && (
                 <Row label="Cc">
@@ -914,16 +916,16 @@ export function EmailComposer({
           ) : (
             <>
               <Row label="To">
-                {toOptions ? (
-                  <ContactComboMulti
-                    value={to}
-                    onChange={setTo}
-                    options={toOptions}
-                    placeholder="Pick a contact or type an email…"
-                  />
-                ) : (
-                  <Input value={to} onChange={setTo} />
-                )}
+                {/* To is always a multi-recipient pick-or-type chip input
+                    (same ContactComboMulti as Cc/Bcc). With no curated
+                    pool the dropdown is empty but the recruiter can still
+                    type any number of addresses as chips. */}
+                <ContactComboMulti
+                  value={to}
+                  onChange={setTo}
+                  options={toOptions ?? []}
+                  placeholder="Pick a contact or type an email…"
+                />
               </Row>
               {showCcBcc ? (
                 <>
@@ -1298,31 +1300,6 @@ function confirmReplace(current: string, incoming: string): boolean {
   if (!current.trim()) return true;
   if (current.trim() === incoming.trim()) return false;
   return window.confirm("Replace the current text with the template?");
-}
-
-function ContactSinglePicker({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: ContactOption[];
-}) {
-  return (
-    <select
-      value={value.trim()}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-    >
-      <option value="">Select a contact…</option>
-      {options.map((c) => (
-        <option key={c.id} value={c.email} disabled={!c.email}>
-          {c.name}{c.email ? ` (${c.email})` : " (no email on file)"}
-        </option>
-      ))}
-    </select>
-  );
 }
 
 function ContactMultiPicker({
