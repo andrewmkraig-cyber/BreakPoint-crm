@@ -7,10 +7,10 @@ import { WordOfDayCard } from "@/components/word-of-day-card";
 import { ChessPuzzle } from "@/components/chess-puzzle";
 import { TabStrip } from "@/components/ui/tab-strip";
 
-// Editorial briefing layout: header, four tabs, lead story + list,
+// Editorial briefing layout: header, three tabs, lead story + list,
 // then a quiet 2x2 mini-grid of the daily companion items (Chess,
 // Word, Fun Fact, Horoscope) at the bottom of the same card. Per-tab
-// fetch wiring is unchanged — /api/news-feed?tab=... backs all four
+// fetch wiring is unchanged — /api/news-feed?tab=... backs all three
 // tabs. Collapse persists in localStorage so the recruiter's choice
 // survives reload.
 //
@@ -21,13 +21,12 @@ import { TabStrip } from "@/components/ui/tab-strip";
 
 const COLLAPSE_KEY = "ace.dashboard.news-feed.collapsed";
 
-type TabKey = "general" | "accounting" | "recruiting" | "ai";
+type TabKey = "recruiting" | "ai" | "accounting";
 
 const TABS: Array<{ key: TabKey; label: string }> = [
-  { key: "general", label: "Front Page" },
   { key: "recruiting", label: "Recruiting" },
-  { key: "accounting", label: "Public Accounting" },
   { key: "ai", label: "AI & Tech" },
+  { key: "accounting", label: "Public Accounting" },
 ];
 
 type Headline = {
@@ -54,7 +53,7 @@ function formatToday(): string {
 }
 
 export function NewsFeed() {
-  const [active, setActive] = useState<TabKey>("general");
+  const [active, setActive] = useState<TabKey>("recruiting");
   const [collapsed, setCollapsed] = useState(false);
   // formatToday() reads new Date(), which can resolve to slightly
   // different millisecond instants on the server vs. on hydration —
@@ -74,10 +73,9 @@ export function NewsFeed() {
     window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
   }, [collapsed]);
   const [byTab, setByTab] = useState<Record<TabKey, TabState>>({
-    general: { status: "idle" },
-    accounting: { status: "idle" },
     recruiting: { status: "idle" },
     ai: { status: "idle" },
+    accounting: { status: "idle" },
   });
   // byTab IS the per-tab cache. Once a tab transitions to `ready`, its
   // headlines stay in local state for the rest of the session and tab
@@ -164,10 +162,9 @@ export function NewsFeed() {
       initiatedRef.current.clear();
       initiatedRef.current.add(active);
       setByTab({
-        general: { status: "idle" },
-        accounting: { status: "idle" },
         recruiting: { status: "idle" },
         ai: { status: "idle" },
+        accounting: { status: "idle" },
         [active]: { status: "loading" },
       });
       const next = await fetchTab(active);

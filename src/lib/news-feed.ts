@@ -12,16 +12,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { CLAUDE_MODEL } from "@/lib/claude";
 
-// UI display order: Front Page → Recruiting → Public Accounting → AI &
-// Tech. Cron runs through this list to pre-warm tabs in the same order
-// the recruiter scans them. The cache @@unique key is keyed on the tab
+// UI display order: Recruiting → AI & Tech → Public Accounting. Cron
+// runs through this list to pre-warm tabs in the same order the
+// recruiter scans them. The cache @@unique key is keyed on the tab
 // string (not the array index), so reordering doesn't invalidate any
 // previously cached row — it just changes cron's run/log order.
 export const NEWS_TABS = [
-  "general",
   "recruiting",
-  "accounting",
   "ai",
+  "accounting",
 ] as const;
 export type NewsTab = (typeof NEWS_TABS)[number];
 
@@ -60,14 +59,12 @@ function getAnthropic(): Anthropic {
 // Per-tab user prompts. Today's date is injected so the model anchors
 // recency rather than relying on its training-data sense of "now".
 const TAB_PROMPTS: Record<NewsTab, (todayIso: string) => string> = {
-  general: (d) =>
-    `Search for the top US business and financial news headlines from today, ${d}. Return only English-language articles from US or UK sources published in the last 48 hours.`,
-  accounting: (d) =>
-    `Search for the latest news about CPA firms, public accounting, audit, and tax industry from today, ${d}. Return only English-language articles from US or UK sources published in the last 48 hours.`,
   recruiting: (d) =>
     `Search for the latest recruiting, hiring, talent market, and staffing industry news from today, ${d}. Return only English-language articles from US or UK sources published in the last 48 hours.`,
   ai: (d) =>
     `Search for the most important AI and technology news headlines from today, ${d}. Return only English-language articles. Prioritize results from TechCrunch, The Verge, Wired, Ars Technica, VentureBeat, or similar major English tech publications. Published in the last 48 hours only.`,
+  accounting: (d) =>
+    `Search for the latest news about CPA firms, public accounting, audit, and tax industry from today, ${d}. Return only English-language articles from US or UK sources published in the last 48 hours.`,
 };
 
 const SYSTEM_PROMPT =

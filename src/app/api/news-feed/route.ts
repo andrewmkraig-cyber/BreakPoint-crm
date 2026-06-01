@@ -33,7 +33,7 @@ const FALLBACK_HEADLINES = [
 ];
 
 export async function GET(req: NextRequest) {
-  const tabParam = new URL(req.url).searchParams.get("tab") ?? "general";
+  const tabParam = new URL(req.url).searchParams.get("tab") ?? "recruiting";
   if (!(NEWS_TABS as readonly string[]).includes(tabParam)) {
     return NextResponse.json(
       { ok: false, error: `Unknown tab: ${tabParam}` },
