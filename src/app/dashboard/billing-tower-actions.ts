@@ -29,7 +29,7 @@ const QUARTER_GOAL_USD = 125_000;
 function goalUsdForSelection(sel: TimeRangeSelection, now: Date): number {
   if (sel.grain === "YEAR") {
     const quarters =
-      sel.period === "THIS" ? Math.floor(now.getMonth() / 3) + 1 : 4;
+      sel.offset === 0 ? Math.floor(now.getMonth() / 3) + 1 : 4;
     return QUARTER_GOAL_USD * quarters;
   }
   return QUARTER_GOAL_USD;

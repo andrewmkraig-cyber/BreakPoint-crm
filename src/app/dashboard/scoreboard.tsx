@@ -21,6 +21,7 @@ import { TimeRangeTabs } from "@/components/ui/time-range-selector";
 import {
   DEFAULT_TIME_RANGE,
   timeRange,
+  timeRangeChrome,
   type TimeRangeSelection,
 } from "@/lib/time-range";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
@@ -37,6 +38,8 @@ export async function Scoreboard({
 } = {}) {
   const org = await getCurrentOrg();
   const range = timeRange(selection);
+  const { eyebrow: periodEyebrow, rangeLabel: periodLabel } =
+    timeRangeChrome(selection);
   const [data, goalPacing] = await Promise.all([
     getScoreboardData(range),
     getGoalPacingData(org.id),
@@ -48,7 +51,12 @@ export async function Scoreboard({
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           DEAL FLOW &amp; FORECAST
         </p>
-        <TimeRangeTabs value={selection} ariaLabel="Scoreboard period" />
+        <TimeRangeTabs
+          value={selection}
+          eyebrow={periodEyebrow}
+          rangeLabel={periodLabel}
+          ariaLabel="Scoreboard period"
+        />
       </div>
       <KpiRow kpis={data.kpis} periodLabel={data.period.label} />
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">

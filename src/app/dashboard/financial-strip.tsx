@@ -16,10 +16,10 @@ import { cn } from "@/lib/utils";
 const BILLING_TOWER_OPTIONS = (
   currentQuarterLabel: string,
 ): ReadonlyArray<{ selection: TimeRangeSelection; label: string }> => [
-  { selection: { grain: "QUARTER", period: "THIS" }, label: `Current Quarter (${currentQuarterLabel})` },
-  { selection: { grain: "QUARTER", period: "NEXT" }, label: "Next Quarter" },
-  { selection: { grain: "QUARTER", period: "LAST" }, label: "Previous Quarter" },
-  { selection: { grain: "YEAR", period: "THIS" }, label: "Annual / YTD" },
+  { selection: { grain: "QUARTER", offset: 0 }, label: `Current Quarter (${currentQuarterLabel})` },
+  { selection: { grain: "QUARTER", offset: 1 }, label: "Next Quarter" },
+  { selection: { grain: "QUARTER", offset: -1 }, label: "Previous Quarter" },
+  { selection: { grain: "YEAR", offset: 0 }, label: "Annual / YTD" },
 ];
 
 // Billing Tower summary strip. One big-panel card with a header row
@@ -53,7 +53,7 @@ export function FinancialStrip({
 }) {
   const [selection, setSelection] = useState<TimeRangeSelection>({
     grain: "QUARTER",
-    period: "THIS",
+    offset: 0,
   });
   const [data, setData] = useState<BillingTowerData>(initial);
   const [pending, startTransition] = useTransition();

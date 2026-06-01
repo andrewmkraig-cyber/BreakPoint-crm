@@ -13,6 +13,7 @@ import { TimeRangeTabs } from "@/components/ui/time-range-selector";
 import {
   DEFAULT_TIME_RANGE,
   timeRange,
+  timeRangeChrome,
   type TimeRangeSelection,
 } from "@/lib/time-range";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
@@ -26,7 +27,7 @@ import { aggregateByCity } from "@/lib/placements-map-geo";
 // "All placements · Q2 2026" / "· YTD 2026" / "· Week of May 25-31, 2026".
 // The current quarter keeps its original friendlier wording.
 function ledgerTitleFor(selection: TimeRangeSelection, label: string): string {
-  if (selection.grain === "QUARTER" && selection.period === "THIS") {
+  if (selection.grain === "QUARTER" && selection.offset === 0) {
     return "All placements this quarter";
   }
   return `All placements · ${label}`;
@@ -39,6 +40,8 @@ export async function PlacementsTab({
 }) {
   const org = await getCurrentOrg();
   const range = timeRange(selection);
+  const { eyebrow: periodEyebrow, rangeLabel: periodLabel } =
+    timeRangeChrome(selection);
   const rows = await getPlacementsDashboardData(org.id, range);
   const cities = aggregateByCity(rows);
   const totalFee = cities.reduce((s, c) => s + c.totalFee, 0);
@@ -54,7 +57,12 @@ export async function PlacementsTab({
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           PLACEMENTS ON THE BOOKS
         </p>
-        <TimeRangeTabs value={selection} ariaLabel="Placements period" />
+        <TimeRangeTabs
+          value={selection}
+          eyebrow={periodEyebrow}
+          rangeLabel={periodLabel}
+          ariaLabel="Placements period"
+        />
       </div>
       <PlacementsLedger
         rows={ledgerRows}

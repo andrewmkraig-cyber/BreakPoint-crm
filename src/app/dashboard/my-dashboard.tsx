@@ -11,6 +11,7 @@ import { getBillingTowerData } from "@/app/dashboard/billing-tower-actions";
 import { TimeRangeTabs } from "@/components/ui/time-range-selector";
 import {
   timeRange,
+  timeRangeChrome,
   type TimeRangeSelection,
 } from "@/lib/time-range";
 import { CLUBHOUSE_PERIOD_PARAM } from "@/app/dashboard/clubhouse-period";
@@ -29,16 +30,19 @@ import {
 // got rejected Wednesday still counts as 1 in "Candidates submitted"
 // for that week — the rejection doesn't remove them from the count.
 export async function MyDashboard({
-  selection = { grain: "WEEK", period: "THIS" },
+  selection = { grain: "WEEK", offset: 0 },
 }: {
   selection?: TimeRangeSelection;
 } = {}) {
   const now = new Date();
-  const {
-    start: activityStart,
-    endExclusive: activityEnd,
-    eyebrow: activityEyebrow,
-  } = timeRange(selection, now);
+  const { start: activityStart, endExclusive: activityEnd } = timeRange(
+    selection,
+    now,
+  );
+  const { eyebrow: periodEyebrow, rangeLabel: periodLabel } = timeRangeChrome(
+    selection,
+    now,
+  );
 
   const [org, session] = await Promise.all([
     getCurrentOrg(),
@@ -92,7 +96,7 @@ export async function MyDashboard({
     // when the user picks a different period from the dropdown.
     // Calling the same server action the client uses keeps the
     // shape + math in one place.
-    getBillingTowerData({ grain: "QUARTER", period: "THIS" }),
+    getBillingTowerData({ grain: "QUARTER", offset: 0 }),
   ]);
 
   const currentQuarterLabel = `Q${Math.floor(now.getMonth() / 3) + 1} ${now.getFullYear()}`;
@@ -101,15 +105,13 @@ export async function MyDashboard({
     <div className="flex w-full flex-col gap-6">
       <DashboardAutoRefresh />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
-          {activityEyebrow}
-        </p>
         <TimeRangeTabs
           value={selection}
           paramKey={CLUBHOUSE_PERIOD_PARAM}
-          defaultSelection={{ grain: "WEEK", period: "THIS" }}
-          grains={["WEEK", "MONTH", "QUARTER"]}
-          periods={["LAST", "THIS"]}
+          defaultSelection={{ grain: "WEEK", offset: 0 }}
+          eyebrow={periodEyebrow}
+          rangeLabel={periodLabel}
+          maxOffset={0}
           ariaLabel="Activity period"
         />
       </div>

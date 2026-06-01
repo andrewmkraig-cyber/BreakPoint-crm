@@ -37,7 +37,7 @@ export default async function DashboardPage({
   // Clubhouse activity strip has its own param and defaults to the current week.
   const clubhousePeriod = resolveTimeRange(
     firstParam(resolved[CLUBHOUSE_PERIOD_PARAM]),
-    { grain: "WEEK", period: "THIS" },
+    { grain: "WEEK", offset: 0 },
   );
 
   return (

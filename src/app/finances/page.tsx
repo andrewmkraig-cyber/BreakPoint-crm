@@ -3,7 +3,7 @@ import { TabStrip } from "@/components/ui/tab-strip";
 import { FinancialPerformanceTab } from "@/app/dashboard/financial-performance-tab";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { TimeRangeTabs } from "@/components/ui/time-range-selector";
-import { resolveTimeRange } from "@/lib/time-range";
+import { resolveTimeRange, timeRangeChrome } from "@/lib/time-range";
 import { InvoiceRow } from "@/app/invoices/invoice-row";
 import { SendTestInvoiceButton } from "@/app/invoices/send-test-invoice-button";
 import { FutureInvoicesSection } from "@/app/finances/future-invoices-section";
@@ -90,6 +90,8 @@ export default async function FinancesPage({
   const params = (await Promise.resolve(searchParams ?? {})) as RawParams;
   const tab = resolveFinancesTab(params.tab);
   const period = resolveTimeRange(params.period);
+  const { eyebrow: periodEyebrow, rangeLabel: periodLabel } =
+    timeRangeChrome(period);
 
   return (
     <div className="flex w-full flex-col gap-6">
@@ -100,7 +102,12 @@ export default async function FinancesPage({
           items={TAB_ITEMS}
         />
         {tab === "overview" ? (
-          <TimeRangeTabs value={period} ariaLabel="Finances period" />
+          <TimeRangeTabs
+            value={period}
+            eyebrow={periodEyebrow}
+            rangeLabel={periodLabel}
+            ariaLabel="Finances period"
+          />
         ) : null}
       </div>
       {tab === "overview" && (
