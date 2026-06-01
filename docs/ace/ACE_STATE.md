@@ -1,8 +1,46 @@
 # ACE_STATE.md
-Last updated: 2026-05-31 · Ace 72.0
-Current Version: Ace 72.0
-Last Shipped: 2026-05-31
+Last updated: 2026-06-01 · Ace 73.0
+Current Version: Ace 73.0
+Last Shipped: 2026-06-01
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 73.0 (2026-06-01)
+
+Test-run close-out session: per-job Matches search, toast-theme regression fix, news-tab restructure, app-wide placeholder sweep, read-only-calendar resilience, start-confirmation screenshot viewer, This-Week week paging, and a unified time control across all four dashboards. No schema changes. `npm run build` exits 0. (The mobile-nav rainbow + icon-audit work shipped earlier the same weekend is logged separately under Ace 72.0 — not repeated here.)
+
+- **Matches tab now job-seeded (`dd915d8`).** Root cause: `/api/candidates/search` is org-scoped only; passing `jobId` merely excluded that job's already-rejected candidates, so every job's Matches tab opened to the same global org list. Fix: the tab now opens to a per-job *seeded* search — an OR-group built off the job title + `searchKeywords` (location deliberately omitted so candidates with null coordinates aren't zeroed out; skills matched via forgiving ILIKE). The route stays org-scoped and user-widenable, and the empty-state gate was left untouched.
+
+- **Toast theme regression fixed (`868c2e2`).** Root cause: `dafdbfb` deleted the `getStoredToastTheme()` read from both toast renderers and hardcoded a brand-tint, so the in-app toast theme picker (Ink especially) stopped applying. Fix: restored the stored-theme read so both renderers are inline-driven from the spec again. Side effect: `_toast-chrome.tsx` is now orphaned (flagged for cleanup in the roadmap).
+
+- **News tabs migrated to TabStrip + companion buttons neutralized (`2a1c2aa`).** Today's Briefing tabs were a hand-rolled segmented control; migrated onto the shared `TabStrip` so they match the rest of the app and inherit the proximity-hover effect. While there, restyled the Daily Chess Puzzle + Word of the Day to the standard neutral-outlined button (no green/blue), slim height, width preserved.
+
+- **News tabs trimmed to 3 (`e6e36d2`).** Per Andrew, the Front Page tab was removed; the strip is now Recruiting / AI & Tech / Public Accounting, defaulting to **Recruiting**, in that order.
+
+- **App-wide placeholder sweep (`6c76cd6` + follow-up).** Removed ~113 example/hint placeholders across 42 files. Verified safe: app-wide `defaultValue` count = 0, so removing `placeholder` text cannot touch any real pre-filled value. Keepers were documented and deliberately retained — branding identity hints, job-form Full-time / 1 / USD defaults, invoice `0.00`, the Title-optional hint, functional search/composer placeholders, Select prompts, and the Mercury API-key field.
+
+- **Calendar edit/delete is 403-resilient (`9112622`).** Root cause: read-only Google holiday/subscribed events return a 403 on mutate, which surfaced as an opaque failure. Fix: edit/delete actions now return typed results — edit shows a clean "read-only" message, and delete skips the Google call but still removes the local Neon row so the event disappears from Ace.
+
+- **Calendar ingestion stops mirroring read-only feeds (`0df74e3`).** `google-sync.ts` now skips `accessRole === "reader"` (and `freeBusyReader`) calendars so holiday/subscribed feeds aren't ingested into Neon; the delete-confirm only warns "notify attendees" when the event actually has guests. No safe blanket cleanup of already-synced reader rows is possible (the schema has no `accessRole` column), so already-mirrored rows must be deleted manually — Republic Day was removed by hand and won't return.
+
+- **Start-confirmation screenshot viewer (`2a9e6c2`).** Placements now derive a `hasStartConfirmation` boolean (the screenshot bytes are NOT shipped into the page payload). Placements that have one show a "View start confirmation" chip that opens `/api/placement-screenshot/<id>` on demand.
+
+- **This-Week widget week paging (`5b7cd07`).** Added a client `weekOffset` + a server action that re-runs the same `getEasternWeekBounds` queries over a shifted window. Offset 0 keeps the today/this-week sections; any other week shows a "WEEK OF" range header + a 5-day strip only.
+
+- **Unified time control across Clubhouse / Metrics / Placements / Finances (`284a7a1` + `1ff9f98` active-tab restyle).** One combined control row = grain tabs (Week / Month / Quarter / Year) + divider + prev/next arrows around a center period label. `TimeRangeSelection` moved from a 3-value period enum to an integer **offset** (0 = this, −N = back); the underlying `timeRange()` math is unchanged. Year grain is now enabled everywhere (only Clubhouse had restricted grains; Clubhouse is forward-capped at the current week, unbounded backward). The active grain tab is the standard squared green-outline (`border-court-brand` + `text-court-brand`, transparent) matching the app TabStrip standard. Legacy URL params still parse.
+
+### Resolved / Closed this session (no longer in the queue)
+
+- **Settings Personal Info white-vs-grey field values — NOT A BUG.** The grey fields were simply empty and rendering their placeholder; a saved value can only ever render white. The save/load JSON round-trip is correct — Andrew re-entered the values and confirmed. **Latent edge flagged:** the `parseAddress` legacy fallback (`constants.ts:60`) collapses a non-JSON address into street-only; worth a guard if a legacy single-string address ever shows up.
+
+- **Bug 3 "dark mode resets itself" — was Auto Night Mode, now toggled off; pending one morning confirmation.** The resets traced to the Auto Night Mode 7 AM ET light-flip, not a persistence failure. Auto Night is now off. **If it still resets with Auto Night off**, it's the real localStorage-only / no-DB-backstop bug: `courtSurface` / `courtTheme` columns don't exist (the prior "fix" crashed prod by calling a client-module fn from the server root layout and was wrongly logged as shipped in 70.0). The safe 3-step fix is already mapped in the roadmap.
+
+- **v2 deterministic scorer / pipeline Match column — DECIDED: leave gone, not rebuilding.** Removed from the active queue.
+
+- **Test-run Batch 5 (Ethan metric refresh) + Batch 8 (interview attendee hydration) — CLOSED per Andrew.** Both were stale carry-overs; a prior session's doc update missed the actual fixes. Removed from the active queue.
+
+### Note — Step 0 grep baseline UNITS mismatch (for future audits)
+
+The CLAUDE.md Step 0 grep baselines (`recruiterflow ~0`, `RecruiterFlow ~18`, `RfId ~1076`) read as **occurrence/line counts**, but the documented grep commands pipe through `-l | wc -l`, which yields **file counts**. This session Code reported file counts (`recruiterflow` 3, `RecruiterFlow` 10, `RfId` 84 files) and they looked alarmingly "below baseline" only because the units didn't match. Future audits must compare like-for-like: either drop `-l` to compare occurrences, or restate the baselines as file counts. (Also recorded in ACE_RULES.md under the Step 0 rule.)
 
 ## What Shipped in Ace 72.0 (2026-05-31)
 

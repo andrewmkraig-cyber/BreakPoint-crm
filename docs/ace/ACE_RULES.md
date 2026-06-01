@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-05-31 · Ace 72.0
+Last updated: 2026-06-01 · Ace 73.0
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -38,6 +38,7 @@ All time estimates calibrated against actual build pace: Game Plan Context Depth
 ## Code Prompt Rules
 - Max 3 items per prompt. No exceptions.
 - Step 0 on every prompt touching candidate/job/client/placement/pipeline: grep for relevant files and report exact counts before writing any code.
+  - **Baseline UNITS caveat (added Ace 73.0).** The CLAUDE.md Step 0 baselines (`recruiterflow ~0`, `RecruiterFlow ~18`, `RfId ~1076`) read as occurrence/line counts, but the documented grep commands use `-l | wc -l`, which returns **file counts**. Compare like-for-like: drop `-l` to count occurrences, or treat the baselines as file counts. A 73.0 audit reported file counts (`recruiterflow` 3, `RecruiterFlow` 10, `RfId` 84 files) that only looked "below baseline" because of this units mismatch — not an actual regression.
 - Browser-verify before every commit. Code must report what it saw, not just "done."
 - Dual-file awareness: always name BOTH files when a feature touches more than one.
 - Single terminal only. Never suggest parallel Claude Code sessions or multiple terminals.
