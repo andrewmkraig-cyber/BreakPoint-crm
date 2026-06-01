@@ -1216,7 +1216,7 @@ export function MailView({
               type="search"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search mail (try from:foo@bar.com)"
+              placeholder="Search mail"
               aria-label="Search mail"
               className="h-9 w-full rounded-md border border-court-border bg-court-surface pl-9 pr-9 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
