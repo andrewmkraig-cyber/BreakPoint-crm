@@ -40,8 +40,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 // content is authored for a white background, so a fixed white card with
 // dark text is correct here (this is not a Court Mode surface).
 const EMAIL_CSS = `
+  /* Pin text to its authored size. The body renders in a srcdoc iframe with
+     no <meta name="viewport">, so mobile WebKit (the installed iOS PWA)
+     auto-INFLATES text by its font-boost multiplier - which blew the
+     BreakPoint signature's authored 18/11/13px name/title/links up to
+     oversized in the reading pane. text-size-adjust:100% disables that
+     inflation WITHOUT changing layout width (so fixed-width newsletters are
+     unaffected) and is a no-op on desktop, where boosting is already off.
+     Keep this: without it, signatures render oversized on mobile again. */
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   html, body { margin: 0; padding: 0; }
   body {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
     font-size: 14px;
     line-height: 1.55;
