@@ -139,7 +139,7 @@ export function ContactsTab({
 
       <div className="overflow-hidden rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
+          <thead className="border-b border-court-border/40 bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
             <tr>
               <th className="px-5 py-3 font-medium">Name</th>
               <th className="px-5 py-3 font-medium">Title</th>
@@ -148,7 +148,7 @@ export function ContactsTab({
               <th className="px-5 py-3 font-medium">Last Activity</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody className="divide-y divide-court-border/40">
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-5 py-12 text-center text-sm text-court-fg-muted">
