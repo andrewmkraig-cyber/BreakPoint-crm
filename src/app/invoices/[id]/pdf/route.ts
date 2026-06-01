@@ -48,16 +48,46 @@ export async function GET(
   //   Base Salary / Fee %        ← invoice.baseSalary / invoice.feePercentage
   //                                (Decimal snapshot columns; populated
   //                                from placement at create time or set
-  //                                directly by the test-invoice path)
+  //                                directly by the test-invoice path). When
+  //                                null — e.g. custom-installment drafts,
+  //                                which never snapshot them — fall back to
+  //                                the live placement fee fields.
   //   Account Exec               ← invoice.placement.createdBy.name
   //                                (still joined — AE is recruiter context,
   //                                not a billing snapshot)
   //   Notes                      ← invoice.notes (optional memo line)
   const feeAmountUsd = invoice.feeAmount ? Number(invoice.feeAmount.toString()) : null;
-  const baseSalaryUsd = invoice.baseSalary ? Number(invoice.baseSalary.toString()) : null;
+  const baseSalaryUsd = invoice.baseSalary
+    ? Number(invoice.baseSalary.toString())
+    : invoice.placement?.acceptedSalary ?? null;
   const feePercentageNum = invoice.feePercentage
     ? Number(invoice.feePercentage.toString())
-    : null;
+    : invoice.placement?.feePercentage ?? null;
+
+  // Fee field basis (% vs Min Fee). The dollar fee already shows in the
+  // line-item rate/amount, so this field just states what drove the number.
+  // Render "Min Fee" when a flat fee override is set OR (base salary × fee %)
+  // fell below the minimum fee; otherwise render the fee percentage. Both
+  // "flat override" and "below-min" cases surface as the full placement fee
+  // (feeTotal) differing from the raw percentage calc, which is the single
+  // signal used here. Falls back to the plain percentage when there is no
+  // placement to read a fee basis from (e.g. the test invoice / a manual
+  // New Invoice), preserving the prior behavior for those.
+  const placementFullFee = invoice.placement?.feeTotal ?? null;
+  const placementMinFee = invoice.placement?.minFee ?? null;
+  let feeBasisLabel: string | null = null;
+  if (feePercentageNum != null && feePercentageNum > 0 && baseSalaryUsd != null) {
+    const rawFee = Math.round(baseSalaryUsd * (feePercentageNum / 100));
+    const belowMin = placementMinFee != null && rawFee < placementMinFee;
+    const flatOverride = placementFullFee != null && placementFullFee !== rawFee;
+    feeBasisLabel = belowMin || flatOverride ? "Min Fee" : `${feePercentageNum}%`;
+  } else if (invoice.placement != null && (placementFullFee != null || feeAmountUsd != null)) {
+    // Placement-backed invoice with no percentage basis — the fee is a flat
+    // number, so the minimum (or a flat override) is what drove it. Gated on
+    // an actual placement so a manual placement-less invoice keeps rendering
+    // a blank "-" rather than an unfounded "Min Fee".
+    feeBasisLabel = "Min Fee";
+  }
 
   const pdfBuffer = await renderInvoicePdfBuffer({
     invoiceNumber: invoice.invoiceNumber,
@@ -78,6 +108,7 @@ export async function GET(
       : "",
     baseSalaryUsd,
     feePercentage: feePercentageNum,
+    feeBasisLabel,
     accountExecName,
     billingContacts,
     hiringContacts,

@@ -48,6 +48,51 @@ export function parseInvoiceContacts(value: Prisma.JsonValue | null): InvoiceCon
     .filter((x): x is InvoiceContact => x !== null);
 }
 
+// Resolves the To (billing) + CC (hiring) contacts for an invoice from a
+// placement, shared by every path that spawns an invoice off a placement
+// (the standard createInvoiceForPlacement path AND the custom-installment
+// Confirm Start path). Precedence: read the placement's JSON contact lists
+// first, fall back to the legacy single columns (firing on a name OR an
+// email so a name-only contact survives), keep name-only contacts, then
+// drop any hiring contact whose email already appears in billing so the
+// same person isn't both a To and a CC.
+export function resolvePlacementInvoiceContacts(placement: {
+  billingContactName?: string | null;
+  billingContactEmail?: string | null;
+  billingContacts?: Prisma.JsonValue | null;
+  hiringManagerName?: string | null;
+  hiringManagerEmail?: string | null;
+  hiringContacts?: Prisma.JsonValue | null;
+}): { billingContacts: InvoiceContact[]; hiringContacts: InvoiceContact[] } {
+  const billingContacts = parseInvoiceContacts(placement.billingContacts ?? null);
+  if (
+    billingContacts.length === 0 &&
+    (placement.billingContactName || placement.billingContactEmail)
+  ) {
+    billingContacts.push({
+      name: placement.billingContactName ?? "",
+      email: placement.billingContactEmail ?? "",
+    });
+  }
+  const hiringContactsRaw = parseInvoiceContacts(placement.hiringContacts ?? null);
+  if (
+    hiringContactsRaw.length === 0 &&
+    (placement.hiringManagerName || placement.hiringManagerEmail)
+  ) {
+    hiringContactsRaw.push({
+      name: placement.hiringManagerName ?? "",
+      email: placement.hiringManagerEmail ?? "",
+    });
+  }
+  const billingEmails = new Set(
+    billingContacts.map((c) => c.email.trim().toLowerCase()).filter(Boolean),
+  );
+  const hiringContacts = hiringContactsRaw.filter(
+    (c) => !c.email || !billingEmails.has(c.email.trim().toLowerCase()),
+  );
+  return { billingContacts, hiringContacts };
+}
+
 export async function nextInvoiceNumber(organizationId: string): Promise<string> {
   const rows = await prisma.invoice.findMany({
     where: { organizationId },
@@ -127,45 +172,10 @@ export async function createInvoiceForPlacement(
   const termsString = "Net 30";
   const dueDate = addDays(issueDate, termsToDays(termsString));
 
-  // Billing contacts (the invoice's To). Prefer the placement's JSON list;
-  // fall back to the legacy single columns. parseInvoiceContacts keeps a
-  // name-only contact (blank email) rather than dropping it, and the legacy
-  // fallback now fires on a name OR an email so a name-only billing contact
-  // survives too.
-  const billingContacts = parseInvoiceContacts(placement.billingContacts);
-  if (
-    billingContacts.length === 0 &&
-    (placement.billingContactName || placement.billingContactEmail)
-  ) {
-    billingContacts.push({
-      name: placement.billingContactName ?? "",
-      email: placement.billingContactEmail ?? "",
-    });
-  }
-  // Hiring contacts (the invoice's CC). Same precedence — read the
-  // placement's hiringContacts JSON list first (the modal's primary store),
-  // then fall back to the legacy hiringManagerName/Email columns, keeping a
-  // name-only contact. Previously only the legacy email was read, so hiring
-  // managers stored in the JSON array (or with no email) were silently
-  // dropped and the composer opened with an empty CC.
-  const hiringContactsRaw = parseInvoiceContacts(placement.hiringContacts);
-  if (
-    hiringContactsRaw.length === 0 &&
-    (placement.hiringManagerName || placement.hiringManagerEmail)
-  ) {
-    hiringContactsRaw.push({
-      name: placement.hiringManagerName ?? "",
-      email: placement.hiringManagerEmail ?? "",
-    });
-  }
-  // Dedupe: drop any hiring contact whose email already appears in billing,
-  // so the same person isn't both a To and a CC on the invoice email.
-  const billingEmails = new Set(
-    billingContacts.map((c) => c.email.trim().toLowerCase()).filter(Boolean),
-  );
-  const hiringContacts = hiringContactsRaw.filter(
-    (c) => !c.email || !billingEmails.has(c.email.trim().toLowerCase()),
-  );
+  // Billing (To) + hiring (CC) contacts, resolved via the shared helper so
+  // the custom-installment Confirm Start path produces identical To/CC
+  // population (JSON list → legacy columns, name-only kept, To/CC deduped).
+  const { billingContacts, hiringContacts } = resolvePlacementInvoiceContacts(placement);
 
   const feeAmount = placement.feeTotal != null
     ? new Prisma.Decimal(placement.feeTotal.toString())
@@ -392,10 +402,12 @@ export async function getInvoice(id: string, organizationId: string) {
       client: {
         select: { id: true, name: true, domain: true, location: true },
       },
-      // Placement is still joined so the PDF can resolve the Account
-      // Executive name (placement.createdBy). Base salary + fee % no
-      // longer rely on this join — they live on Invoice as snapshot
-      // columns and are pulled from the top-level row instead.
+      // Placement is joined so the PDF can resolve the Account Executive
+      // name (placement.createdBy) and, when the Invoice's own snapshot
+      // columns are null (e.g. custom-installment drafts, which never
+      // snapshot them), fall back to the live placement fee fields. The
+      // fee-basis decision (% vs Min Fee) also reads acceptedSalary /
+      // feePercentage / minFee / feeTotal off the placement.
       placement: {
         select: {
           id: true,
@@ -403,6 +415,10 @@ export async function getInvoice(id: string, organizationId: string) {
           offerTitle: true,
           createdById: true,
           createdBy: { select: { name: true, email: true } },
+          acceptedSalary: true,
+          feePercentage: true,
+          minFee: true,
+          feeTotal: true,
         },
       },
     },

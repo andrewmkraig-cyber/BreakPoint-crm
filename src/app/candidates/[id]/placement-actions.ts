@@ -27,7 +27,7 @@ import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
 import { extractCandidateFields } from "@/lib/candidate-fields";
 import { formatLocation } from "@/lib/utils";
 import { formatCompensation, type RFJob } from "@/lib/rf-payload-shapes";
-import { createInvoiceForPlacement } from "@/lib/invoices";
+import { createInvoiceForPlacement, resolvePlacementInvoiceContacts } from "@/lib/invoices";
 import { createDraftInvoiceAction } from "@/app/invoices/actions";
 import { createReminder } from "@/app/calendar/reminder-actions";
 import { zonedWallTimeToUtc } from "@/lib/timezone";
@@ -730,6 +730,14 @@ export async function confirmStart(
         inst2DaysAfterStart: true,
         inst3Amount: true,
         inst3DaysAfterStart: true,
+        // Billing (To) + hiring (CC) contacts so the custom-installment
+        // drafts carry the same recipients createInvoiceForPlacement writes.
+        billingContactName: true,
+        billingContactEmail: true,
+        billingContacts: true,
+        hiringManagerName: true,
+        hiringManagerEmail: true,
+        hiringContacts: true,
         candidate: { select: { firstName: true, lastName: true } },
         client: { select: { name: true } },
       },
@@ -790,6 +798,13 @@ export async function confirmStart(
           .trim() || "Candidate";
       const clientName = placementForFire.client?.name?.trim() || "Client";
 
+      // Resolve billing (To) + hiring (CC) contacts off the placement using
+      // the same logic createInvoiceForPlacement uses, so the custom-terms
+      // installment drafts open the composer with To/CC pre-filled just like
+      // the standard path. Computed once and reused for every installment.
+      const { billingContacts: invoiceBillingContacts, hiringContacts: invoiceHiringContacts } =
+        resolvePlacementInvoiceContacts(placementForFire);
+
       // Installments 2 + 3 are the "remaining" ones surfaced in the toast;
       // count them from the terms so the message is stable on a re-fire.
       if (count >= 2 && placementForFire.inst2Amount != null) remindersSet += 1;
@@ -828,6 +843,8 @@ export async function confirmStart(
             ).toISOString(),
             feeAmount: String(placementForFire.inst1Amount),
             notes: `Installment 1 of ${count} - custom payment agreement`,
+            billingContacts: invoiceBillingContacts,
+            hiringContacts: invoiceHiringContacts,
           });
           if (!draftRes.ok) {
             // eslint-disable-next-line no-console
@@ -893,6 +910,8 @@ export async function confirmStart(
               feeAmount: String(spec.amount),
               notes: futureNote,
               isFuture: true,
+              billingContacts: invoiceBillingContacts,
+              hiringContacts: invoiceHiringContacts,
             });
             if (!futureRes.ok) {
               // eslint-disable-next-line no-console

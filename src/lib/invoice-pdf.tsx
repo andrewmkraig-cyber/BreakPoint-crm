@@ -332,6 +332,11 @@ export type InvoicePdfInput = {
   startDateLabel: string;
   baseSalaryUsd: number | null;
   feePercentage: number | null;
+  // Pre-resolved label for the FEE field. The route decides "%" vs
+  // "Min Fee" (flat override / below-minimum) from the placement's fee
+  // fields and passes the final string here. When null/undefined the
+  // renderer falls back to the bare percentage (or "-").
+  feeBasisLabel?: string | null;
   accountExecName: string;
   billingContacts: InvoiceContact[];
   hiringContacts: InvoiceContact[];
@@ -385,6 +390,7 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
     startDateLabel,
     baseSalaryUsd,
     feePercentage,
+    feeBasisLabel,
     accountExecName,
     billingContacts,
     hiringContacts,
@@ -533,7 +539,10 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
         summaryItem("PLACEMENT TYPE", "Direct Hire"),
         summaryItem("ACCOUNT EXEC", accountExecName || "-"),
         summaryItem("BASE SALARY", formatUsdCompact(baseSalaryUsd)),
-        summaryItem("FEE %", feePercentage != null ? `${feePercentage}%` : "-"),
+        summaryItem(
+          "FEE %",
+          feeBasisLabel ?? (feePercentage != null ? `${feePercentage}%` : "-"),
+        ),
         summaryItem("GUARANTEE", "90 days"),
       ),
       // Services table
