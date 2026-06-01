@@ -45,6 +45,7 @@ export default async function NewInvoicePage() {
         feeAmount=""
         paymentTerms="Net 30"
         notes=""
+        clientNote=""
         sentAt={null}
         paidAt={null}
         paymentMethod={null}

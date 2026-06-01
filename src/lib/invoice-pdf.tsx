@@ -298,12 +298,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   noteLabel: {
-    fontSize: 8,
-    color: MUTED,
+    fontSize: 9,
+    color: INK_700,
     fontFamily: "Helvetica-Bold",
     letterSpacing: 0.4,
   },
-  noteBody: { fontSize: 8, color: MUTED, lineHeight: 1.4, flex: 1 },
+  // Client-facing note body — slightly larger + darker than the old
+  // internal-memo styling so payment-agreement language reads cleanly.
+  noteBody: { fontSize: 9, color: INK_700, lineHeight: 1.4, flex: 1 },
   // --- Footer ---
   // Single muted line: "Kraig Talent LLC dba BreakPoint Talent" in the
   // bottom-left. EIN moved into the cream panel above; the prior "Thank
@@ -341,11 +343,12 @@ export type InvoicePdfInput = {
   billingContacts: InvoiceContact[];
   hiringContacts: InvoiceContact[];
   billing: BillingSettings;
-  // Optional memo line written from the detail page's Internal Notes
-  // field (Invoice.notes column). Falsy → the note row is skipped
-  // entirely so a blank-notes invoice has clean whitespace under the
-  // payment instructions panel.
-  notes?: string | null;
+  // Optional CLIENT-FACING note written from the detail page's "Client
+  // note" field (Invoice.clientNote column). Prints in the "Note:" block.
+  // The internal `notes` memo is deliberately NOT passed here so it never
+  // reaches the client document. Falsy → the note row is skipped entirely
+  // so a blank-note invoice has clean whitespace under the payment panel.
+  clientNote?: string | null;
 };
 
 function formatDate(d: Date | null | undefined): string {
@@ -395,9 +398,9 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
     billingContacts,
     hiringContacts,
     billing,
-    notes,
+    clientNote,
   } = props;
-  const trimmedNotes = notes?.trim() || "";
+  const trimmedNotes = clientNote?.trim() || "";
 
   const primaryBilling = billingContacts[0];
   const primaryHiring = hiringContacts[0];

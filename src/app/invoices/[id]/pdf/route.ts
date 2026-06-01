@@ -55,7 +55,9 @@ export async function GET(
   //   Account Exec               ← invoice.placement.createdBy.name
   //                                (still joined — AE is recruiter context,
   //                                not a billing snapshot)
-  //   Notes                      ← invoice.notes (optional memo line)
+  //   Note (client-facing)       ← invoice.clientNote (optional, prints
+  //                                on the PDF). invoice.notes is internal
+  //                                only and is intentionally NOT rendered.
   const feeAmountUsd = invoice.feeAmount ? Number(invoice.feeAmount.toString()) : null;
   const baseSalaryUsd = invoice.baseSalary
     ? Number(invoice.baseSalary.toString())
@@ -113,7 +115,9 @@ export async function GET(
     billingContacts,
     hiringContacts,
     billing,
-    notes: invoice.notes,
+    // Client-facing note only. invoice.notes (internal) is deliberately
+    // never passed to the PDF so it stays off the client document.
+    clientNote: invoice.clientNote,
   });
 
   const filename = `${billing.companyName} - ${invoice.invoiceNumber}.pdf`;

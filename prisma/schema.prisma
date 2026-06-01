@@ -1224,7 +1224,13 @@ model Invoice {
   // both the invoice detail view and the linked Placement so the desk
   // can scan how clients are actually paying without opening each PDF.
   paymentMethod   InvoicePaymentMethod?
+  // Internal-only memo. NEVER prints on the client PDF — surfaced only in
+  // the invoice detail editor for the recruiter's own reference.
   notes           String?
+  // Client-facing note. Prints on the invoice PDF (the "Note:" block).
+  // Separate from `notes` so internal bookkeeping (e.g. installment
+  // tracking) never leaks onto the document the client receives.
+  clientNote      String?
   // Verified Gmail "Send mail as" alias the invoice email should go out
   // from. Set by the From selector on the invoice detail page. Null =
   // fall back to the billing AR email if it's a verified alias, otherwise

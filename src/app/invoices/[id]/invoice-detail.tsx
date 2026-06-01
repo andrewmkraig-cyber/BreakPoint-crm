@@ -68,6 +68,9 @@ export type InvoiceDetailProps = {
   feeAmount: string;
   paymentTerms: string;
   notes: string;
+  // Client-facing note that prints on the invoice PDF (separate from the
+  // internal `notes` memo).
+  clientNote: string;
   sentAt: string | null;
   paidAt: string | null;
   paymentMethod: InvoicePaymentMethod | null;
@@ -111,6 +114,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
   const [feeAmount, setFeeAmount] = useState(props.feeAmount);
   const [paymentTerms, setPaymentTerms] = useState(props.paymentTerms);
   const [notes, setNotes] = useState(props.notes);
+  const [clientNote, setClientNote] = useState(props.clientNote);
   const [billingContacts, setBillingContacts] = useState<Contact[]>(props.billingContacts);
   const [hiringContacts, setHiringContacts] = useState<Contact[]>(props.hiringContacts);
   // Recruiter selects how the client paid before flipping the invoice
@@ -204,6 +208,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
           feeAmount,
           paymentTerms,
           notes,
+          clientNote,
           billingContacts,
           hiringContacts,
           candidateId: props.candidateId,
@@ -229,6 +234,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
         feeAmount,
         paymentTerms,
         notes,
+        clientNote,
         billingContacts,
         hiringContacts,
       });
@@ -516,7 +522,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               className={inputCls}
             />
           </Field>
-          <Field label="Internal notes">
+          <Field label="Internal notes (not on invoice)">
             <input
               type="text"
               disabled={!isDraft}
@@ -525,6 +531,18 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               className={inputCls}
             />
           </Field>
+          <div className="sm:col-span-2">
+            <Field label="Client note (prints on invoice)">
+              <textarea
+                rows={3}
+                disabled={!isDraft}
+                value={clientNote}
+                onChange={(e) => setClientNote(e.target.value)}
+                placeholder="Optional. Appears in the Note section of the invoice PDF the client receives."
+                className={inputCls + " resize-y leading-relaxed"}
+              />
+            </Field>
+          </div>
         </div>
 
         <ContactSection

@@ -12,7 +12,6 @@ import {
   getInvoiceSummary,
   listFutureInvoices,
   listInvoices,
-  parseInvoiceContacts,
   type InvoiceListFilter,
 } from "@/lib/invoices";
 
@@ -217,8 +216,6 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
                 </tr>
               ) : (
                 invoices.map((inv) => {
-                  const billing = parseInvoiceContacts(inv.billingContacts);
-                  const primary = billing[0];
                   const candName = inv.candidate
                     ? orDash(`${inv.candidate.firstName ?? ""} ${inv.candidate.lastName ?? ""}`.trim())
                     : "—";
@@ -233,13 +230,12 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
                       </td>
                       <td className="px-6 py-3 align-top">
                         <div className="font-medium text-court-fg">{orDash(inv.client?.name)}</div>
-                        <div className="text-[12px] text-court-fg-muted">{orDash(primary?.name)}</div>
                       </td>
                       <td className="px-6 py-3 align-top">
                         <div className="font-medium text-court-fg">{candName}</div>
                         <div className="text-[12px] text-court-fg-muted">{orDash(inv.roleTitle)}</div>
                       </td>
-                      <td className="px-6 py-3 align-top tabular-nums">{formatUsdDecimal(inv.feeAmount)}</td>
+                      <td className="px-6 py-3 align-top tabular-nums text-court-fg">{formatUsdDecimal(inv.feeAmount)}</td>
                       <td className="px-6 py-3 align-top text-court-fg-muted">{formatDate(inv.startDate)}</td>
                       <td className={"px-6 py-3 align-top " + (isOverdue ? "font-semibold text-red-700" : "text-court-fg-muted")}>
                         {formatDate(inv.dueDate)}
@@ -301,8 +297,6 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
                 </tr>
               ) : (
                 futureInvoices.map((inv) => {
-                  const billing = parseInvoiceContacts(inv.billingContacts);
-                  const primary = billing[0];
                   const candName = inv.candidate
                     ? orDash(
                         `${inv.candidate.firstName ?? ""} ${inv.candidate.lastName ?? ""}`.trim(),
@@ -319,9 +313,6 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
                         <div className="font-medium text-court-fg">
                           {orDash(inv.client?.name)}
                         </div>
-                        <div className="text-[12px] text-court-fg-muted">
-                          {orDash(primary?.name)}
-                        </div>
                       </td>
                       <td className="px-6 py-3 align-top">
                         <div className="font-medium text-court-fg">{candName}</div>
@@ -329,7 +320,7 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
                           {orDash(inv.roleTitle)}
                         </div>
                       </td>
-                      <td className="px-6 py-3 align-top tabular-nums">
+                      <td className="px-6 py-3 align-top tabular-nums text-court-fg">
                         {formatUsdDecimal(inv.feeAmount)}
                       </td>
                       <td className="px-6 py-3 align-top text-court-fg-muted">

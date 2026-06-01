@@ -1039,6 +1039,21 @@ export type RecordLocalPlacementInput = {
   // (Pin, Apollo BD) keep working; the dialog renders a fixed
   // dropdown of canonical channels but stores free text.
   candidateSource?: string | null;
+  // Custom Payment Agreement. Optional and only written when present
+  // (the dialog passes them whenever its Custom Payment Agreement section
+  // has been touched). When useCustomTerms is false the installment +
+  // guarantee-date columns are cleared; when the whole block is undefined
+  // the columns are left untouched so a routine re-save can't wipe terms
+  // the dialog never loaded. Mirrors the /pipeline drawer's semantics.
+  useCustomTerms?: boolean;
+  installmentCount?: number | null;
+  inst1Amount?: number | null;
+  inst1DaysAfterStart?: number | null;
+  inst2Amount?: number | null;
+  inst2DaysAfterStart?: number | null;
+  inst3Amount?: number | null;
+  inst3DaysAfterStart?: number | null;
+  customGuaranteeDate?: string | null; // ISO YYYY-MM-DD or null
 };
 
 export async function recordLocalPlacement(
@@ -1090,6 +1105,37 @@ export async function recordLocalPlacement(
     const hiringName = (primaryHiring?.name || input.hiringManagerName.trim()) || null;
     const hiringEmail = (primaryHiring?.email || input.hiringManagerEmail.trim()) || null;
 
+    // Custom Payment Agreement. Only touch these columns when the dialog
+    // actually sent the block (useCustomTerms defined). Off => clear the
+    // installment + custom-guarantee columns; on => write the supplied
+    // values, gating inst2/3 on the installment count. Same write shape as
+    // the /pipeline placement-edit drawer so both entry points round-trip
+    // the terms identically.
+    const useCustomTerms = input.useCustomTerms === true;
+    const count =
+      input.installmentCount === 2 || input.installmentCount === 3
+        ? input.installmentCount
+        : 1;
+    const termsPayload =
+      input.useCustomTerms === undefined
+        ? {}
+        : {
+            useCustomTerms,
+            installmentCount: useCustomTerms ? count : null,
+            inst1Amount: useCustomTerms ? input.inst1Amount ?? null : null,
+            inst1DaysAfterStart: useCustomTerms ? input.inst1DaysAfterStart ?? null : null,
+            inst2Amount: useCustomTerms && count >= 2 ? input.inst2Amount ?? null : null,
+            inst2DaysAfterStart:
+              useCustomTerms && count >= 2 ? input.inst2DaysAfterStart ?? null : null,
+            inst3Amount: useCustomTerms && count >= 3 ? input.inst3Amount ?? null : null,
+            inst3DaysAfterStart:
+              useCustomTerms && count >= 3 ? input.inst3DaysAfterStart ?? null : null,
+            customGuaranteeDate:
+              useCustomTerms && input.customGuaranteeDate
+                ? new Date(input.customGuaranteeDate)
+                : null,
+          };
+
     const row = await prisma.placement.update({
       where: { id: input.placementId },
       data: {
@@ -1113,6 +1159,7 @@ export async function recordLocalPlacement(
         expectedStartDate: new Date(input.expectedStartDate),
         placementNotes: input.notes.trim() || null,
         candidateSource: trimmedSource || null,
+        ...termsPayload,
         // Ace-native placements never round-trip to RF; keep the flag
         // pinned to false so the pill's source-of-truth indicator is
         // accurate (no false "synced" banner).

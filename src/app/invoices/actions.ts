@@ -75,6 +75,9 @@ export type CreateDraftInvoiceInput = {
   paymentTerms?: string | null;
   dueDate?: string | null;
   notes?: string | null;
+  // Client-facing note that prints on the invoice PDF. Separate from the
+  // internal `notes` memo above.
+  clientNote?: string | null;
   candidateId?: string | null;
   clientId?: string | null;
   // Optional link back to the originating placement. The New Invoice
@@ -123,6 +126,7 @@ export async function createDraftInvoiceAction(
         feeAmount: feeCleaned ? new Prisma.Decimal(feeCleaned) : null,
         paymentTerms: input.paymentTerms?.trim() || "Net 30",
         notes: input.notes?.trim() || null,
+        clientNote: input.clientNote?.trim() || null,
         billingContacts: sanitizeContacts(input.billingContacts) as unknown as Prisma.InputJsonValue,
         hiringContacts: sanitizeContacts(input.hiringContacts) as unknown as Prisma.InputJsonValue,
         sendFromAlias: input.sendFromAlias?.trim() || null,
@@ -146,6 +150,7 @@ export type UpdateInvoiceInput = {
   paymentTerms?: string | null;
   dueDate?: string | null;
   notes?: string | null;
+  clientNote?: string | null;
   candidateId?: string | null;
   clientId?: string | null;
   billingContacts?: unknown;
@@ -180,6 +185,7 @@ export async function updateInvoiceAction(input: UpdateInvoiceInput): Promise<Re
       data.dueDate = input.dueDate ? new Date(input.dueDate) : null;
     }
     if (input.notes !== undefined) data.notes = input.notes?.trim() || null;
+    if (input.clientNote !== undefined) data.clientNote = input.clientNote?.trim() || null;
     if (input.candidateId !== undefined) {
       data.candidate = input.candidateId
         ? { connect: { id: input.candidateId } }

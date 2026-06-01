@@ -577,6 +577,19 @@ export async function LocalCandidateProfile({
       expectedStartDate: p.expectedStartDate?.toISOString() ?? null,
       placementNotes: p.placementNotes,
       candidateSource: p.candidateSource,
+      // Custom Payment Agreement — threaded so the candidate-profile Edit
+      // Placement dialog renders the same full field set as the /pipeline
+      // drawer (getPlacementsForOrg selects all scalar columns, so these
+      // are already loaded on `p`).
+      useCustomTerms: p.useCustomTerms,
+      installmentCount: p.installmentCount,
+      inst1Amount: p.inst1Amount,
+      inst1DaysAfterStart: p.inst1DaysAfterStart,
+      inst2Amount: p.inst2Amount,
+      inst2DaysAfterStart: p.inst2DaysAfterStart,
+      inst3Amount: p.inst3Amount,
+      inst3DaysAfterStart: p.inst3DaysAfterStart,
+      customGuaranteeDate: p.customGuaranteeDate?.toISOString() ?? null,
     };
     // Prefer cuid lookup (canonical) — only fall back to the rfId map
     // when this placement has no clientId cuid yet (pre-Phase-0 rows;

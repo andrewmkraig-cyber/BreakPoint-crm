@@ -49,6 +49,7 @@ export default async function InvoiceDetailPage({
         feeAmount={invoice.feeAmount ? invoice.feeAmount.toString() : ""}
         paymentTerms={invoice.paymentTerms ?? "Net 30"}
         notes={invoice.notes ?? ""}
+        clientNote={invoice.clientNote ?? ""}
         sentAt={invoice.sentAt ? invoice.sentAt.toISOString() : null}
         paidAt={invoice.paidAt ? invoice.paidAt.toISOString() : null}
         paymentMethod={invoice.paymentMethod ?? null}

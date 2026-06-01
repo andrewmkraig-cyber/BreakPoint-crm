@@ -144,6 +144,20 @@ export type LocalPlacementSnapshot = {
   expectedStartDate: string | null;
   placementNotes: string | null;
   candidateSource: string | null;
+  // Custom Payment Agreement (mirrors the /pipeline placement-edit drawer).
+  // Lets the candidate-profile Edit Placement dialog re-seed + edit the
+  // same custom-installment terms instead of opening a stripped version.
+  // customGuaranteeDate is an ISO string (date portion sliced for the
+  // <input type="date">), matching expectedStartDate's serialization.
+  useCustomTerms?: boolean | null;
+  installmentCount?: number | null;
+  inst1Amount?: number | null;
+  inst1DaysAfterStart?: number | null;
+  inst2Amount?: number | null;
+  inst2DaysAfterStart?: number | null;
+  inst3Amount?: number | null;
+  inst3DaysAfterStart?: number | null;
+  customGuaranteeDate?: string | null;
 };
 
 export type LocalJobRow = {
@@ -1514,6 +1528,39 @@ function LocalPlacementDialog({
   });
   const [notes, setNotes] = useState(snap?.placementNotes ?? snap?.offerNotes ?? "");
   const [source, setSource] = useState(snap?.candidateSource ?? "");
+  // Custom Payment Agreement — full parity with the /pipeline Hired drawer
+  // (Ace fix 2026-06-01). Seeded from the placement snapshot so re-opening
+  // Edit Placement shows the saved installment schedule + custom guarantee
+  // date instead of a stripped version.
+  const [useCustomTerms, setUseCustomTerms] = useState<boolean>(
+    snap?.useCustomTerms ?? false,
+  );
+  const [installmentCount, setInstallmentCount] = useState<1 | 2 | 3>(
+    snap?.installmentCount === 2 || snap?.installmentCount === 3
+      ? snap.installmentCount
+      : 1,
+  );
+  const [inst1Amount, setInst1Amount] = useState(
+    snap?.inst1Amount != null ? String(snap.inst1Amount) : "",
+  );
+  const [inst1Days, setInst1Days] = useState(
+    snap?.inst1DaysAfterStart != null ? String(snap.inst1DaysAfterStart) : "",
+  );
+  const [inst2Amount, setInst2Amount] = useState(
+    snap?.inst2Amount != null ? String(snap.inst2Amount) : "",
+  );
+  const [inst2Days, setInst2Days] = useState(
+    snap?.inst2DaysAfterStart != null ? String(snap.inst2DaysAfterStart) : "",
+  );
+  const [inst3Amount, setInst3Amount] = useState(
+    snap?.inst3Amount != null ? String(snap.inst3Amount) : "",
+  );
+  const [inst3Days, setInst3Days] = useState(
+    snap?.inst3DaysAfterStart != null ? String(snap.inst3DaysAfterStart) : "",
+  );
+  const [customGuaranteeDate, setCustomGuaranteeDate] = useState(
+    snap?.customGuaranteeDate ? snap.customGuaranteeDate.slice(0, 10) : "",
+  );
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
   // Cancel-placement state. Independent of `isPending` (Save) so the user
@@ -1581,6 +1628,19 @@ function LocalPlacementDialog({
         expectedStartDate: startDate,
         notes,
         candidateSource: source.trim() || null,
+        // Custom Payment Agreement. Always sent (useCustomTerms defined) so
+        // the section round-trips; the action gates inst2/3 on the count and
+        // clears every term column when the toggle is off. Days map to Int
+        // columns, so truncate. Amounts/days reuse parseAmount.
+        useCustomTerms,
+        installmentCount,
+        inst1Amount: parseAmount(inst1Amount),
+        inst1DaysAfterStart: truncOrNull(parseAmount(inst1Days)),
+        inst2Amount: parseAmount(inst2Amount),
+        inst2DaysAfterStart: truncOrNull(parseAmount(inst2Days)),
+        inst3Amount: parseAmount(inst3Amount),
+        inst3DaysAfterStart: truncOrNull(parseAmount(inst3Days)),
+        customGuaranteeDate: customGuaranteeDate || null,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -1787,6 +1847,72 @@ function LocalPlacementDialog({
           className="mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         />
       </label>
+
+      {/* Custom Payment Agreement — full parity with the /pipeline Hired
+          edit drawer (Ace fix 2026-06-01). Previously the candidate-profile
+          dialog dropped these, so the custom-installment schedule could only
+          be edited from /pipeline. Same columns, same write semantics. */}
+      <div className="mt-4 border-t border-court-border/40 pt-3">
+        <label className="flex items-center justify-between gap-3">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+            Custom Payment Agreement
+          </span>
+          <input
+            type="checkbox"
+            checked={useCustomTerms}
+            onChange={(e) => setUseCustomTerms(e.target.checked)}
+            aria-label="Use custom payment terms"
+            className="h-4 w-4 accent-court-brand"
+          />
+        </label>
+        {useCustomTerms && (
+          <div className="mt-3 space-y-2">
+            <label className="block text-sm">
+              <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+                Number of installments
+              </span>
+              <select
+                value={installmentCount}
+                onChange={(e) =>
+                  setInstallmentCount(Number(e.target.value) as 1 | 2 | 3)
+                }
+                className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              >
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+                <option value={3}>3</option>
+              </select>
+            </label>
+            {[
+              { n: 1, amount: inst1Amount, setAmount: setInst1Amount, days: inst1Days, setDays: setInst1Days },
+              { n: 2, amount: inst2Amount, setAmount: setInst2Amount, days: inst2Days, setDays: setInst2Days },
+              { n: 3, amount: inst3Amount, setAmount: setInst3Amount, days: inst3Days, setDays: setInst3Days },
+            ]
+              .slice(0, installmentCount)
+              .map((f) => (
+                <div key={f.n}>
+                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-court-fg">
+                    {`Installment ${f.n}`}
+                  </div>
+                  <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2">
+                    <OfferField label="Amount ($)" value={f.amount} onChange={f.setAmount} />
+                    <OfferField label="Days after start" value={f.days} onChange={f.setDays} />
+                  </div>
+                </div>
+              ))}
+            <OfferField
+              label="Guarantee end date (custom)"
+              type="date"
+              value={customGuaranteeDate}
+              onChange={setCustomGuaranteeDate}
+            />
+            <p className="text-[11px] text-court-fg-muted">
+              Overrides the guarantee period (days) field above when set.
+            </p>
+          </div>
+        )}
+      </div>
+
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
       {/* Cancel Placement — destructive action sits at the bottom of the
           body so the Footer's primary Save action stays unambiguous.
@@ -2007,6 +2133,12 @@ function OfferField({
       />
     </label>
   );
+}
+
+// Days-after-start columns are Int?, so coerce a parsed amount to a whole
+// number (or null). Keeps Prisma from rejecting a Float on an Int column.
+function truncOrNull(n: number | null): number | null {
+  return n == null ? null : Math.trunc(n);
 }
 
 // Local parser so the offer dialog doesn't have to import the RF flow's
