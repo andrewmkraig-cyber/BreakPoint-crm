@@ -5,13 +5,13 @@
 // of the way down the page.
 //
 // Visual order top → bottom:
-//   Header band         · company wordmark + address stack ⟂ brand mark + big "Invoice" + INV-NNNN
+//   Header band         · brand mark + company wordmark/contact stack ⟂ big "Invoice" + INV-NNNN
 //   Meta strip          · Issue Date / Due Date / Terms / Amount Due
-//   Bill To · Hiring    · client company ⟂ hiring contact + green billing-contact badge
+//   Bill To · Contacts  · client ⟂ hiring contact ⟂ billing contact
 //   Placement Summary   · candidate / role / start / fee details
 //   Services table      · single line item with rate × qty = amount
 //   Totals              · right-aligned subtotal + amount due
-//   Payment Instructions· four columns: ACH/Wire · Check · EIN · Questions (9pt)
+//   Payment Instructions· three columns: ACH/Wire · Check · EIN (9pt)
 //   Note (optional)     · small muted "Note: …" line if invoice.notes set
 //   Footer              · bottom-left grey "Kraig Talent LLC dba BreakPoint Talent"
 //
@@ -64,8 +64,8 @@ const CREAM = "#FAF8F3";
 
 const styles = StyleSheet.create({
   page: {
-    paddingTop: 36,
-    paddingBottom: 36,
+    paddingTop: 28,
+    paddingBottom: 24,
     paddingHorizontal: 48,
     fontFamily: "Helvetica",
     fontSize: 10,
@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
     lineHeight: 1.35,
   },
   // --- Header band ---
-  // Two-column flex row. Left = company wordmark + address stack.
+  // Two-column flex row. Left = logo + company wordmark/contact stack.
   // Right = big "Invoice" wordmark + smaller muted INV-NNNN beneath.
   // alignItems:flex-end pins the bottom of the right stack to the bottom
   // of the left stack so the brand-green hairline rule reads as a clean
@@ -82,31 +82,35 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
-    paddingBottom: 10,
+    paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: BRAND_GREEN,
   },
-  brand: { flexDirection: "column", maxWidth: "60%" },
+  brand: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    maxWidth: "65%",
+  },
+  brandCopy: { flexDirection: "column" },
   brandName: {
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: "Helvetica-Bold",
     letterSpacing: -0.2,
     color: INK,
-    marginBottom: 3,
+    marginBottom: 2,
   },
   brandLine: { fontSize: 9, color: MUTED, marginTop: 1 },
   headerRight: { alignItems: "flex-end" },
-  // The "Invoice" wordmark + brand mark sit on a single row, brand
-  // mark on the LEFT of "Invoice". Height of the logo matches the
-  // wordmark's font size so the two read as one unit.
+  // The "Invoice" wordmark sits alone now; the brand mark anchors the
+  // far-left header beside the company identity.
   invoiceTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
   },
   brandMark: {
-    width: 32,
-    height: 28,
+    width: 54,
+    height: 54,
     objectFit: "contain",
   },
   invoiceWord: {
@@ -126,8 +130,8 @@ const styles = StyleSheet.create({
   // --- Meta strip ---
   meta: {
     flexDirection: "row",
-    marginTop: 12,
-    paddingVertical: 7,
+    marginTop: 10,
+    paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: LINE,
   },
@@ -145,15 +149,21 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
     color: INK,
   },
-  // --- Bill To / Hiring ---
-  twoCol: { flexDirection: "row", marginTop: 14, gap: 24 },
-  col: { flex: 1 },
+  // --- Bill To / Contacts ---
+  contactGrid: {
+    flexDirection: "row",
+    marginTop: 12,
+    gap: 18,
+    alignItems: "flex-start",
+  },
+  billToCol: { flex: 1.15 },
+  contactCol: { flex: 1 },
   sectionHeader: {
     fontSize: 8,
     color: BRAND_GREEN_DARK,
     letterSpacing: 1.4,
     fontFamily: "Helvetica-Bold",
-    marginBottom: 6,
+    marginBottom: 5,
   },
   contactName: { fontSize: 10.5, fontFamily: "Helvetica-Bold", color: INK },
   contactCompany: {
@@ -163,30 +173,12 @@ const styles = StyleSheet.create({
     marginBottom: 1,
   },
   contactLine: { fontSize: 9, color: INK_700, marginTop: 1 },
-  // Green "BILLING CONTACT" pill that sits beneath the hiring contact.
-  // The billing contact moved out of the BILL TO block (now company-only)
-  // and is flagged here so the client can see who to route the bill to.
-  billingBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: BRAND_GREEN,
-    borderRadius: 3,
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  billingBadgeText: {
-    fontSize: 7,
-    color: "#FFFFFF",
-    letterSpacing: 1.2,
-    fontFamily: "Helvetica-Bold",
-  },
   // --- Placement Summary ---
   summary: {
-    marginTop: 14,
+    marginTop: 12,
     backgroundColor: CREAM,
     borderRadius: 4,
-    padding: 10,
+    padding: 9,
     flexDirection: "row",
     flexWrap: "wrap",
   },
@@ -202,7 +194,7 @@ const styles = StyleSheet.create({
   // --- Services table ---
   tableHeader: {
     flexDirection: "row",
-    marginTop: 14,
+    marginTop: 12,
     paddingBottom: 5,
     borderBottomWidth: 1.2,
     borderBottomColor: INK,
@@ -219,7 +211,7 @@ const styles = StyleSheet.create({
   thAmount: { flex: 2, textAlign: "right" },
   tableRow: {
     flexDirection: "row",
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderBottomWidth: 1,
     borderBottomColor: LINE,
     alignItems: "flex-start",
@@ -237,7 +229,7 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
   },
   // --- Totals ---
-  totals: { alignItems: "flex-end", marginTop: 10 },
+  totals: { alignItems: "flex-end", marginTop: 8 },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -258,13 +250,11 @@ const styles = StyleSheet.create({
   totalDueLabel: { fontSize: 12, color: INK, fontFamily: "Helvetica-Bold" },
   totalDueValue: { fontSize: 14, color: INK, fontFamily: "Helvetica-Bold" },
   // --- Payment Instructions ---
-  // Tightened cream panel: 9pt body, 10px gap between the 3 columns,
-  // smaller paddings. Same content (ACH/Wire · Check · Questions) but
-  // ~30% less vertical real estate so the whole invoice stays on one
-  // US Letter page.
+  // Tightened cream panel: three evenly-spaced columns with ACH/Wire
+  // widened so the bank name can sit on one line.
   payment: {
-    marginTop: 14,
-    padding: 11,
+    marginTop: 12,
+    padding: 10,
     backgroundColor: CREAM,
     borderRadius: 4,
   },
@@ -272,10 +262,13 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: INK,
     fontFamily: "Helvetica-Bold",
-    marginBottom: 7,
+    marginBottom: 8,
   },
-  paymentCols: { flexDirection: "row", gap: 10 },
-  paymentCol: { flex: 1 },
+  paymentCols: { flexDirection: "row", gap: 18, alignItems: "flex-start" },
+  paymentCol: { flexDirection: "column" },
+  paymentAchCol: { width: "44%" },
+  paymentCheckCol: { width: "34%" },
+  paymentEinCol: { width: "14%" },
   paymentHeader: {
     fontSize: 7.5,
     color: BRAND_GREEN_DARK,
@@ -283,9 +276,8 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
     marginBottom: 4,
   },
-  // EIN column sits between CHECK and BILLING QUESTIONS in the cream
-  // panel. Label tracks the other section headers but uses BRAND_GREEN
-  // (slightly lighter than BRAND_GREEN_DARK) per the "EIN in green" ask.
+  // EIN uses the same section-label treatment as the payment columns,
+  // with the slightly brighter brand green to keep it legible at 7.5pt.
   einHeader: {
     fontSize: 7.5,
     color: BRAND_GREEN,
@@ -299,13 +291,19 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: INK,
   },
-  paymentLine: { fontSize: 9, color: INK_700, marginBottom: 1 },
+  paymentLine: { fontSize: 8.8, color: INK_700, marginBottom: 1 },
+  paymentLineBold: {
+    fontSize: 8.8,
+    color: INK,
+    fontFamily: "Helvetica-Bold",
+    marginBottom: 1,
+  },
   // --- Optional Note line (renders below Payment Instructions when
-  // invoice.notes is populated). Small muted single-line label + body
+  // clientNote is populated). Small muted single-line label + body
   // so a short memo can ride along without crowding the page chrome.
   note: {
     flexDirection: "row",
-    marginTop: 9,
+    marginTop: 8,
     gap: 4,
     paddingHorizontal: 2,
   },
@@ -323,8 +321,8 @@ const styles = StyleSheet.create({
   // bottom-left. EIN moved into the cream panel above; the prior "Thank
   // you for your business" line was removed per the Ace 43 spec.
   footer: {
-    marginTop: 10,
-    paddingTop: 7,
+    marginTop: 8,
+    paddingTop: 6,
     borderTopWidth: 1,
     borderTopColor: LINE,
     flexDirection: "row",
@@ -339,6 +337,7 @@ export type InvoicePdfInput = {
   dueDate: Date | null;
   paymentTerms: string;
   feeAmountUsd: number | null;
+  totalFeeAmountUsd?: number | null;
   roleTitle: string | null;
   candidateName: string;
   clientName: string;
@@ -372,10 +371,6 @@ export type InvoicePdfInput = {
   // date), otherwise guaranteePeriodDays, falling back to the 90-day
   // default. Null/undefined → renders the legacy "90 days".
   guaranteeLabel?: string | null;
-  // Quantity cell for the single line item. For a custom-installment
-  // invoice this is the installment fraction ("1/2" = installment 1 of 2),
-  // parsed from the invoice's internal note in the route. Null/undefined → "1".
-  quantityLabel?: string | null;
 };
 
 function formatDate(d: Date | null | undefined): string {
@@ -384,6 +379,7 @@ function formatDate(d: Date | null | undefined): string {
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -406,6 +402,12 @@ function formatUsdCompact(n: number | null | undefined): string {
   });
 }
 
+function formatQuantity(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "1";
+  const rounded = Math.round(n * 100) / 100;
+  return rounded.toFixed(2).replace(/\.?0+$/, "");
+}
+
 export function InvoicePdfDocument(props: InvoicePdfInput) {
   const {
     invoiceNumber,
@@ -413,38 +415,53 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
     dueDate,
     paymentTerms,
     feeAmountUsd,
+    totalFeeAmountUsd,
     roleTitle,
     candidateName,
     clientName,
+    clientAddress,
     startDateLabel,
     baseSalaryUsd,
     feePercentage,
     feeBasisLabel,
     minFeeUsd,
     accountExecName,
+    guaranteeLabel,
     billingContacts,
     hiringContacts,
     billing,
     clientNote,
-    guaranteeLabel,
-    quantityLabel,
   } = props;
   const trimmedNotes = clientNote?.trim() || "";
 
   const primaryBilling = billingContacts[0];
   const primaryHiring = hiringContacts[0];
-
+  const lineItemRateUsd =
+    totalFeeAmountUsd != null &&
+    Number.isFinite(totalFeeAmountUsd) &&
+    feeAmountUsd != null &&
+    totalFeeAmountUsd > feeAmountUsd
+      ? totalFeeAmountUsd
+      : feeAmountUsd;
+  const lineItemQty =
+    feeAmountUsd != null && lineItemRateUsd != null && lineItemRateUsd > 0
+      ? feeAmountUsd / lineItemRateUsd
+      : 1;
   // Fee basis line. When the minimum fee (or flat override) is what drove
   // the amount - the SAME signal that makes the FEE % box read "Min Fee"
   // (feeBasisLabel) - state the base salary + the real min fee applied,
   // instead of a percentage that did not actually produce the number. When
   // a true percentage drove it, keep the "X% of $[base] base" wording.
+  const minimumFeeAppliedUsd = minFeeUsd ?? lineItemRateUsd;
   const feeBasisDescription =
-    feeBasisLabel === "Min Fee" && minFeeUsd != null && baseSalaryUsd != null
-      ? `${formatUsdCompact(baseSalaryUsd)} base (minimum fee of ${formatUsdCompact(minFeeUsd)} applied)`
+    feeBasisLabel === "Min Fee" && minimumFeeAppliedUsd != null && baseSalaryUsd != null
+      ? `${formatUsdCompact(baseSalaryUsd)} base (minimum fee of ${formatUsdCompact(minimumFeeAppliedUsd)} applied)`
       : feePercentage != null && baseSalaryUsd != null
         ? `${feePercentage}% of ${formatUsdCompact(baseSalaryUsd)} base`
-        : null;
+        : baseSalaryUsd != null
+          ? `${formatUsdCompact(baseSalaryUsd)} base`
+          : null;
+  const feeSummaryLabel = feeBasisLabel ?? (feePercentage != null ? `${feePercentage}%` : "-");
 
   const lineSub = [
     roleTitle ? roleTitle : null,
@@ -467,16 +484,21 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
         createElement(
           View,
           { style: styles.brand },
-          createElement(Text, { style: styles.brandName }, billing.companyName),
+          BRAND_LOGO_DATA_URI
+            ? createElement(Image, {
+                src: BRAND_LOGO_DATA_URI,
+                style: styles.brandMark,
+              })
+            : null,
           createElement(
-            Text,
-            { style: styles.brandLine },
-            `${billing.addressLine1} · ${billing.city}, ${billing.state} ${billing.zip}`,
-          ),
-          createElement(
-            Text,
-            { style: styles.brandLine },
-            `${billing.arEmail} · ${billing.arPhone} · ${billing.website}`,
+            View,
+            { style: styles.brandCopy },
+            createElement(Text, { style: styles.brandName }, billing.companyName),
+            createElement(
+              Text,
+              { style: styles.brandLine },
+              `${billing.arEmail} · ${billing.arPhone} · ${billing.website}`,
+            ),
           ),
         ),
         createElement(
@@ -485,12 +507,6 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           createElement(
             View,
             { style: styles.invoiceTitleRow },
-            BRAND_LOGO_DATA_URI
-              ? createElement(Image, {
-                  src: BRAND_LOGO_DATA_URI,
-                  style: styles.brandMark,
-                })
-              : null,
             createElement(Text, { style: styles.invoiceWord }, "Invoice"),
           ),
           createElement(Text, { style: styles.invoiceNum }, invoiceNumber),
@@ -525,28 +541,25 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           createElement(Text, { style: styles.metaValueAmount }, formatUsd(feeAmountUsd)),
         ),
       ),
-      // Bill To / Hiring
+      // Bill To / Contacts
       createElement(
         View,
-        { style: styles.twoCol },
+        { style: styles.contactGrid },
         createElement(
           View,
-          { style: styles.col },
+          { style: styles.billToCol },
           createElement(Text, { style: styles.sectionHeader }, "BILL TO"),
-          // Company only — the billing contact moved to the green-badged
-          // sub-block beneath the hiring contact in the right column.
           createElement(Text, { style: styles.contactCompany }, clientName || "-"),
+          clientAddress
+            ? createElement(Text, { style: styles.contactLine }, clientAddress)
+            : null,
         ),
         createElement(
           View,
-          { style: styles.col },
+          { style: styles.contactCol },
           createElement(Text, { style: styles.sectionHeader }, "HIRING CONTACT"),
           primaryHiring
-            ? createElement(
-                Text,
-                { style: styles.contactName },
-                primaryHiring.name || "-",
-              )
+            ? createElement(Text, { style: styles.contactName }, primaryHiring.name || "-")
             : createElement(Text, { style: styles.contactLine }, "-"),
           primaryHiring?.title
             ? createElement(Text, { style: styles.contactLine }, primaryHiring.title)
@@ -554,22 +567,16 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           primaryHiring?.email
             ? createElement(Text, { style: styles.contactLine }, primaryHiring.email)
             : null,
-          // Billing contact, flagged with a green "BILLING CONTACT" pill.
-          // Rendered only when a billing contact exists so a contact-less
-          // invoice doesn't show an empty badge.
-          primaryBilling
-            ? createElement(
-                View,
-                { style: styles.billingBadge },
-                createElement(
-                  Text,
-                  { style: styles.billingBadgeText },
-                  "BILLING CONTACT",
-                ),
-              )
-            : null,
+        ),
+        createElement(
+          View,
+          { style: styles.contactCol },
+          createElement(Text, { style: styles.sectionHeader }, "BILLING CONTACT"),
           primaryBilling
             ? createElement(Text, { style: styles.contactName }, primaryBilling.name || "-")
+            : createElement(Text, { style: styles.contactLine }, "-"),
+          primaryBilling?.title
+            ? createElement(Text, { style: styles.contactLine }, primaryBilling.title)
             : null,
           primaryBilling?.email
             ? createElement(Text, { style: styles.contactLine }, primaryBilling.email)
@@ -586,10 +593,7 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
         summaryItem("PLACEMENT TYPE", "Direct Hire"),
         summaryItem("ACCOUNT EXEC", accountExecName || "-"),
         summaryItem("BASE SALARY", formatUsdCompact(baseSalaryUsd)),
-        summaryItem(
-          "FEE %",
-          feeBasisLabel ?? (feePercentage != null ? `${feePercentage}%` : "-"),
-        ),
+        summaryItem("FEE %", feeSummaryLabel),
         summaryItem("GUARANTEE", guaranteeLabel || "90 days"),
       ),
       // Services table
@@ -614,8 +618,8 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           ),
           lineSub ? createElement(Text, { style: styles.tdDescSub }, lineSub) : null,
         ),
-        createElement(Text, { style: styles.tdQty }, quantityLabel || "1"),
-        createElement(Text, { style: styles.tdRate }, formatUsd(feeAmountUsd)),
+        createElement(Text, { style: styles.tdQty }, formatQuantity(lineItemQty)),
+        createElement(Text, { style: styles.tdRate }, formatUsd(lineItemRateUsd)),
         createElement(Text, { style: styles.tdAmount }, formatUsd(feeAmountUsd)),
       ),
       // Totals
@@ -655,7 +659,7 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           { style: styles.paymentCols },
           createElement(
             View,
-            { style: styles.paymentCol },
+            { style: [styles.paymentCol, styles.paymentAchCol] },
             createElement(Text, { style: styles.paymentHeader }, "ACH / WIRE"),
             createElement(
               Text,
@@ -687,12 +691,17 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           ),
           createElement(
             View,
-            { style: styles.paymentCol },
+            { style: [styles.paymentCol, styles.paymentCheckCol] },
             createElement(Text, { style: styles.paymentHeader }, "CHECK"),
             createElement(
               Text,
               { style: styles.paymentLine },
-              `Payable to: ${billing.checkPayableTo || billing.companyName}`,
+              "Payable to:",
+            ),
+            createElement(
+              Text,
+              { style: styles.paymentLineBold },
+              billing.checkPayableTo || billing.companyName,
             ),
             ...billing.checkMailingAddress
               .split("\n")
@@ -700,17 +709,9 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           ),
           createElement(
             View,
-            { style: styles.paymentCol },
+            { style: [styles.paymentCol, styles.paymentEinCol] },
             createElement(Text, { style: styles.einHeader }, "EIN"),
             createElement(Text, { style: styles.einValue }, billing.ein || "41-4887871"),
-          ),
-          createElement(
-            View,
-            { style: styles.paymentCol },
-            createElement(Text, { style: styles.paymentHeader }, "BILLING QUESTIONS"),
-            createElement(Text, { style: styles.paymentLine }, "Accounts Receivable"),
-            createElement(Text, { style: styles.paymentLine }, billing.arEmail),
-            createElement(Text, { style: styles.paymentLine }, billing.arPhone),
           ),
         ),
       ),

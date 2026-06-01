@@ -8,6 +8,16 @@ import { renderInvoicePdfBuffer } from "@/lib/invoice-pdf";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function formatInvoiceDate(date: Date | null | undefined): string {
+  if (!date) return "";
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 export async function GET(
   _req: Request,
   context: { params: Promise<{ id: string }> },
@@ -52,6 +62,8 @@ export async function GET(
   //                                null — e.g. custom-installment drafts,
   //                                which never snapshot them — fall back to
   //                                the live placement fee fields.
+  //   Rate / Qty                 ← placement.feeTotal as rate, invoice.feeAmount / rate
+  //                                as decimal quantity for installment invoices
   //   Account Exec               ← invoice.placement.createdBy.name
   //                                (still joined — AE is recruiter context,
   //                                not a billing snapshot)
@@ -77,6 +89,7 @@ export async function GET(
   // New Invoice), preserving the prior behavior for those.
   const placementFullFee = invoice.placement?.feeTotal ?? null;
   const placementMinFee = invoice.placement?.minFee ?? null;
+  const totalFeeAmountUsd = placementFullFee ?? feeAmountUsd;
   let feeBasisLabel: string | null = null;
   if (feePercentageNum != null && feePercentageNum > 0 && baseSalaryUsd != null) {
     const rawFee = Math.round(baseSalaryUsd * (feePercentageNum / 100));
@@ -108,33 +121,18 @@ export async function GET(
   }
   const guaranteeLabel = `${guaranteeDays} day${guaranteeDays === 1 ? "" : "s"}`;
 
-  // Quantity — for a custom-installment invoice, show the installment
-  // fraction ("1/2" = installment 1 of 2). The installment drafts carry a
-  // stable internal note ("Installment 1 of 2 ...", "Future - Installment 2
-  // of 2 ..."); parse the index/count from it. Non-installment invoices
-  // keep QTY "1". Internal note only — it never prints on the PDF itself.
-  const installmentMatch = invoice.notes?.match(/Installment\s+(\d+)\s+of\s+(\d+)/i);
-  const quantityLabel = installmentMatch
-    ? `${installmentMatch[1]}/${installmentMatch[2]}`
-    : "1";
-
   const pdfBuffer = await renderInvoicePdfBuffer({
     invoiceNumber: invoice.invoiceNumber,
     issueDate: invoice.startDate,
     dueDate: invoice.dueDate,
     paymentTerms: invoice.paymentTerms ?? "Net 30",
     feeAmountUsd,
+    totalFeeAmountUsd,
     roleTitle: invoice.roleTitle,
     candidateName,
     clientName: invoice.client?.name ?? "",
     clientAddress,
-    startDateLabel: invoice.startDate
-      ? invoice.startDate.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })
-      : "",
+    startDateLabel: formatInvoiceDate(invoice.startDate),
     baseSalaryUsd,
     feePercentage: feePercentageNum,
     feeBasisLabel,
@@ -150,7 +148,6 @@ export async function GET(
     // never passed to the PDF so it stays off the client document.
     clientNote: invoice.clientNote,
     guaranteeLabel,
-    quantityLabel,
   });
 
   const filename = `${billing.companyName} - ${invoice.invoiceNumber}.pdf`;
