@@ -234,7 +234,6 @@ export function JobOverviewTab({
                   label="Location"
                   value={draft.locations}
                   onChange={(v) => setDraft({ ...draft, locations: v })}
-                  placeholder="Cleveland, OH"
                 />
                 <p className="mt-1 text-[11px] text-court-fg-muted">
                   Separate multiple locations with commas.
@@ -277,13 +276,11 @@ export function JobOverviewTab({
                 label="Salary low"
                 value={draft.salaryLo}
                 onChange={(v) => setDraft({ ...draft, salaryLo: v })}
-                placeholder="80,000"
               />
               <LabeledField
                 label="Salary high"
                 value={draft.salaryHi}
                 onChange={(v) => setDraft({ ...draft, salaryHi: v })}
-                placeholder="120,000"
               />
               <LabeledField
                 label="Currency"

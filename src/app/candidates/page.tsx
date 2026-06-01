@@ -1245,14 +1245,12 @@ export default function CandidatesPage() {
                 type="number"
                 value={filters.minComp}
                 onChange={(e) => setField("minComp", e.target.value)}
-                placeholder="Min $"
                 className={inputCls}
               />
               <input
                 type="number"
                 value={filters.maxComp}
                 onChange={(e) => setField("maxComp", e.target.value)}
-                placeholder="Max $"
                 className={inputCls}
               />
             </div>

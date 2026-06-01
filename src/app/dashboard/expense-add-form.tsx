@@ -76,7 +76,6 @@ export function ExpenseAddForm() {
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="text"
-          placeholder="Name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           className="min-w-[140px] flex-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg placeholder:text-court-fg-dim focus:border-court-brand focus:outline-none"
@@ -86,7 +85,6 @@ export function ExpenseAddForm() {
           type="number"
           step="0.01"
           min="0"
-          placeholder="Cost"
           value={cost}
           onChange={(e) => setCost(e.target.value)}
           className="w-24 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm tabular-nums text-court-fg placeholder:text-court-fg-dim focus:border-court-brand focus:outline-none"
@@ -106,7 +104,6 @@ export function ExpenseAddForm() {
           type="number"
           min="1"
           step="1"
-          placeholder="Paid"
           value={paidCount}
           onChange={(e) => setPaidCount(e.target.value)}
           className="w-16 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm tabular-nums text-court-fg placeholder:text-court-fg-dim focus:border-court-brand focus:outline-none"

@@ -1339,7 +1339,6 @@ function OfferDialog({
           label="Offered salary"
           value={salary}
           onChange={(v) => setSalary(v.replace(/-/g, ""))}
-          placeholder="Enter amount"
           suffix="USD"
         />
         <div className="sm:col-span-2">
@@ -1350,14 +1349,12 @@ function OfferDialog({
           label="Fee %"
           value={feePct}
           onChange={(v) => setFeePct(v.replace(/-/g, ""))}
-          placeholder="Enter percent"
         />
-        <OfferField label="Min fee" value={minFee} onChange={setMinFee} placeholder="Optional" />
+        <OfferField label="Min fee" value={minFee} onChange={setMinFee} />
         <OfferField
           label="Fee amount (flat, overrides calc)"
           value={feeAmountOverride}
           onChange={setFeeAmountOverride}
-          placeholder="Optional flat amount"
         />
         <label className="block text-sm sm:col-span-2">
           <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Notes</span>
@@ -1599,22 +1596,19 @@ function LocalPlacementDialog({
           label="Accepted salary"
           value={acceptedSalary}
           onChange={setAcceptedSalary}
-          placeholder="e.g. 120000 or 120k"
         />
         <OfferField label="Currency" value={currency} onChange={setCurrency} />
-        <OfferField label="Fee %" value={feePct} onChange={setFeePct} placeholder="25" />
-        <OfferField label="Min fee" value={minFee} onChange={setMinFee} placeholder="20000 (optional)" />
+        <OfferField label="Fee %" value={feePct} onChange={setFeePct} />
+        <OfferField label="Min fee" value={minFee} onChange={setMinFee} />
         <OfferField
           label="Fee amount (flat, overrides calc)"
           value={feeAmountOverride}
           onChange={setFeeAmountOverride}
-          placeholder="7500 (wins over salary × fee %)"
         />
         <OfferField
           label="Guarantee period (days)"
           value={guaranteeDays}
           onChange={setGuaranteeDays}
-          placeholder="90 (optional)"
         />
         <OfferField
           label="Expected start date"
@@ -1704,7 +1698,7 @@ function LocalPlacementDialog({
           </p>
           <div className="mt-auto grid grid-cols-1 gap-2 pt-1.5">
             <OfferField label="Name" value={billingName} onChange={setBillingName} />
-            <OfferField label="Email" value={billingEmail} onChange={setBillingEmail} placeholder="ap@example.com" />
+            <OfferField label="Email" value={billingEmail} onChange={setBillingEmail} />
           </div>
         </div>
         <div className="flex flex-col rounded-lg border border-court-border/40 bg-court-surface-subtle/40 px-3 py-2">
@@ -1716,7 +1710,7 @@ function LocalPlacementDialog({
           </p>
           <div className="mt-auto grid grid-cols-1 gap-2 pt-1.5">
             <OfferField label="Name" value={hiringName} onChange={setHiringName} />
-            <OfferField label="Email" value={hiringEmail} onChange={setHiringEmail} placeholder="hm@example.com" />
+            <OfferField label="Email" value={hiringEmail} onChange={setHiringEmail} />
           </div>
         </div>
       </div>
@@ -2013,7 +2007,6 @@ function ScheduleFields(props: {
             type="text"
             value={props.location}
             onChange={(e) => props.setLocation(e.target.value)}
-            placeholder="e.g. 500 Main St, Suite 300, Columbus OH 43215"
             className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
           <span className="mt-1 block text-[11px] text-court-fg-muted">

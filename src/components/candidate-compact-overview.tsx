@@ -206,7 +206,6 @@ export function CandidateCompactOverview({
               value={titleDraft}
               disabled={isSaving}
               onChange={(e) => setTitleDraft(e.target.value)}
-              placeholder="Add title"
               className={EDIT_INPUT_CLASS}
             />
           </EditField>
@@ -216,7 +215,6 @@ export function CandidateCompactOverview({
               value={employerDraft}
               disabled={isSaving}
               onChange={(e) => setEmployerDraft(e.target.value)}
-              placeholder="Add employer"
               className={EDIT_INPUT_CLASS}
             />
           </EditField>
@@ -226,7 +224,6 @@ export function CandidateCompactOverview({
               value={locationDraft}
               disabled={isSaving}
               onChange={(e) => setLocationDraft(e.target.value)}
-              placeholder="Add location"
               className={EDIT_INPUT_CLASS}
             />
           </EditField>
@@ -236,7 +233,6 @@ export function CandidateCompactOverview({
               value={compDraft}
               disabled={isSaving}
               onChange={(e) => setCompDraft(e.target.value)}
-              placeholder="e.g. 120k"
               className={EDIT_INPUT_CLASS}
             />
           </EditField>

@@ -238,7 +238,6 @@ function ReminderForm({
       <input
         type="text"
         autoFocus
-        placeholder="What's the reminder?"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         className="w-full rounded-lg border border-court-border bg-court-surface px-2.5 py-1.5 text-[12.5px] text-court-fg outline-none focus:border-court-brand/60 focus:ring-2 focus:ring-court-brand/20"

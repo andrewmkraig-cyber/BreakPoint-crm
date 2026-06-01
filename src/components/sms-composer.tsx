@@ -228,7 +228,6 @@ function AddPhoneInline({ candidateId }: { candidateId: string }) {
           type="tel"
           value={draft}
           disabled={saving}
-          placeholder="216-555-5555"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {

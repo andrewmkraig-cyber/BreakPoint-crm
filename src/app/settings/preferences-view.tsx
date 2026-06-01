@@ -220,7 +220,6 @@ export function EmailPreferencesView({
               <input
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="216-488-5565"
                 className={`${INPUT_CONTROL_CLASS} text-sm`}
               />
             </div>

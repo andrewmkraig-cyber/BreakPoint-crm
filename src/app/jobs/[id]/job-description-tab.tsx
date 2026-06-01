@@ -165,7 +165,6 @@ function SearchKeywordsCard({
         onChange={(e) => setValue(e.target.value)}
         onBlur={() => void commit()}
         rows={3}
-        placeholder="e.g. python, kubernetes, terraform, distributed systems"
         className={cn(
           "mt-3 w-full resize-y rounded-md border border-court-border bg-court-bg px-3 py-2 text-sm text-court-fg shadow-sm",
           "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",

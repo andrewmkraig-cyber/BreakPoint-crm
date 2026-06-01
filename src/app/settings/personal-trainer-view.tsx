@@ -121,7 +121,6 @@ function TrainerTab({
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={3}
-        placeholder="Type a rule and press Add. Example: Never start a bullet with He."
         className="block w-full resize-y rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
       />
       {error && <p className="text-xs text-red-600">{error}</p>}

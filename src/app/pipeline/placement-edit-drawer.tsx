@@ -280,7 +280,6 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
                 min={0}
                 value={salary}
                 onChange={(e) => setSalary(e.target.value)}
-                placeholder="0"
                 className={INPUT_CLS}
               />
             </div>
@@ -292,7 +291,6 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
                 min={0}
                 value={feeTotal}
                 onChange={(e) => setFeeTotal(e.target.value)}
-                placeholder="0"
                 className={INPUT_CLS}
               />
             </div>
@@ -305,7 +303,6 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
                 min={0}
                 value={feePct}
                 onChange={(e) => setFeePct(e.target.value)}
-                placeholder="0"
                 className={INPUT_CLS}
               />
             </div>
@@ -317,7 +314,6 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
               type="text"
               value={city}
               onChange={(e) => setCity(e.target.value)}
-              placeholder="e.g. Pittsburgh. Leave blank to use client's city"
               className={INPUT_CLS}
             />
           </div>
@@ -353,7 +349,6 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
               rows={4}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Internal notes on this placement"
               className="w-full resize-y rounded-md border border-court-border bg-court-surface px-3 py-2.5 text-[13.5px] leading-relaxed text-court-fg outline-none placeholder:text-court-fg-dim focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
             />
           </div>

@@ -106,13 +106,13 @@ export function ContactsTab({
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="First name" name="first_name" required autoFocus />
             <Field label="Last name" name="last_name" />
-            <Field label="Title" name="current_designation" placeholder="e.g. VP Engineering" />
-            <Field label="Email" name="email" type="email" placeholder="name@company.com" />
+            <Field label="Title" name="current_designation" />
+            <Field label="Email" name="email" type="email" />
             <div className="grid grid-cols-[1fr_auto] gap-2">
-              <Field label="Phone" name="phone_number" placeholder="(555) 555-5555" />
-              <Field label="Ext." name="phone_extension" placeholder="123" className="w-20" />
+              <Field label="Phone" name="phone_number" />
+              <Field label="Ext." name="phone_extension" className="w-20" />
             </div>
-            <Field label="LinkedIn URL" name="linkedin_profile" placeholder="https://linkedin.com/in/…" />
+            <Field label="LinkedIn URL" name="linkedin_profile" />
           </div>
           {error && (
             <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{error}</div>
@@ -343,13 +343,13 @@ function ContactEditor({
             <EditorField label="First name" required value={firstName} onChange={setFirstName} autoFocus />
             <EditorField label="Last name" value={lastName} onChange={setLastName} />
           </div>
-          <EditorField label="Title" value={title} onChange={setTitle} placeholder="e.g. VP Engineering" />
-          <EditorField label="Email" type="email" value={email} onChange={setEmail} placeholder="name@company.com" />
+          <EditorField label="Title" value={title} onChange={setTitle} />
+          <EditorField label="Email" type="email" value={email} onChange={setEmail} />
           <div className="grid grid-cols-[1fr_auto] gap-2">
-            <EditorField label="Phone" value={phone} onChange={setPhone} placeholder="(555) 555-5555" />
-            <EditorField label="Ext." value={extension} onChange={setExtension} placeholder="123" className="w-24" />
+            <EditorField label="Phone" value={phone} onChange={setPhone} />
+            <EditorField label="Ext." value={extension} onChange={setExtension} className="w-24" />
           </div>
-          <EditorField label="LinkedIn URL" value={linkedin} onChange={setLinkedin} placeholder="https://linkedin.com/in/…" />
+          <EditorField label="LinkedIn URL" value={linkedin} onChange={setLinkedin} />
           <label className="block text-sm">
             <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Notes</span>
             <textarea
@@ -360,7 +360,6 @@ function ContactEditor({
                 "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
                 "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
               )}
-              placeholder="Conversation history, role specifics, gotchas…"
             />
           </label>
           {error && (

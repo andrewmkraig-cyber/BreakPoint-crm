@@ -217,7 +217,6 @@ export function CreateEventModal({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Intro call with Linda"
               disabled={submitting}
               autoFocus
               className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
@@ -290,7 +289,6 @@ export function CreateEventModal({
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                placeholder="123 Main St, New York, NY"
                 disabled={submitting}
                 className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
               />
@@ -301,7 +299,6 @@ export function CreateEventModal({
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Agenda, dial-in extras, prep links…"
               rows={2}
               disabled={submitting}
               className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
@@ -594,7 +591,6 @@ function EmailChipInput({
             // the dropdown would race the blur and double-commit.
             if (draft.trim().length > 0) commit(draft);
           }}
-          placeholder={value.length === 0 ? "email@example.com, …" : ""}
           disabled={disabled}
           className="min-w-[140px] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none disabled:opacity-60"
         />

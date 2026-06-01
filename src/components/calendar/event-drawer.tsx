@@ -658,7 +658,6 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
               ref={titleRef}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Untitled event"
               rows={1}
               className="mt-1 w-full resize-none overflow-hidden break-words bg-transparent font-serif text-[22px] font-bold leading-tight tracking-tight text-court-fg outline-none placeholder:text-court-fg-dim focus:outline-none"
             />
@@ -903,7 +902,6 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                placeholder="Paste a Zoom link, address, or room"
                 className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none placeholder:text-court-fg-dim"
               />
               {isUrlLike(location) && (
@@ -951,7 +949,6 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
                 rows={3}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add notes for this event"
                 className="w-full resize-none rounded-[10px] border border-court-border bg-court-surface px-3 py-2.5 text-[13.5px] leading-relaxed text-court-fg outline-none placeholder:text-court-fg-dim focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
               />
             )}

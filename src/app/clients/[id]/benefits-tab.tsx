@@ -309,7 +309,6 @@ function BenefitsTabInner({
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 rows={18}
-                placeholder="Paste benefits info here, or click Summarize with Claude to generate from uploaded docs…"
                 className={cn(
                   "w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 font-sans text-sm leading-relaxed text-court-fg",
                   "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",

@@ -1136,7 +1136,6 @@ export function MailView({
                       setSidebarLabelDraft("");
                     }
                   }}
-                  placeholder="Label name"
                   className="min-w-0 flex-1 rounded border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg outline-none focus:border-court-accent"
                 />
                 <button
@@ -1778,7 +1777,6 @@ export function MoveToMenu({
                           setDraft("");
                         }
                       }}
-                      placeholder="Label name"
                       className="min-w-0 flex-1 rounded border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg outline-none focus:border-court-accent"
                     />
                     <button
@@ -3060,7 +3058,6 @@ function LabelTreeNode({
                 setAddDraft("");
               }
             }}
-            placeholder="Sublabel name"
             className="h-7 min-w-0 flex-1 rounded border border-court-border bg-court-surface px-2 text-[12px] text-court-fg outline-none focus:border-court-accent"
           />
           <button

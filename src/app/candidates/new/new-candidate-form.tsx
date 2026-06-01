@@ -418,7 +418,7 @@ export function NewCandidateForm({
             </p>
           </div>
           <div className="flex flex-1 flex-col gap-3 p-5">
-            <Field label="Profile URL" type="url" value={linkedinUrl} onChange={onLinkedinChange} placeholder="https://linkedin.com/in/…" />
+            <Field label="Profile URL" type="url" value={linkedinUrl} onChange={onLinkedinChange} />
             <div className="flex flex-1 flex-col">
               <label className="text-[11px] uppercase tracking-wider text-court-fg-muted">Pasted profile text (optional)</label>
               <div className={`${INPUT_FRAME_RECT_CLASS} mt-1 w-full flex-1 items-stretch`}>
@@ -426,7 +426,6 @@ export function NewCandidateForm({
                   value={pastedText}
                   onChange={(e) => setPastedText(e.target.value)}
                   rows={6}
-                  placeholder="Paste the LinkedIn About / Experience section here. Included in the next parse."
                   className={`${INPUT_CONTROL_CLASS} h-full resize-none font-sans text-sm leading-relaxed`}
                 />
               </div>
@@ -581,15 +580,14 @@ export function NewCandidateForm({
             <Field label="Last name" value={form.last_name} onChange={(v) => setForm({ ...form, last_name: v })} />
             <Field label="Current title" value={form.current_designation} onChange={(v) => setForm({ ...form, current_designation: v })} />
             <Field label="Current employer" value={form.current_organization} onChange={(v) => setForm({ ...form, current_organization: v })} />
-            <Field label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} placeholder="+1 216-555-5555" />
-            <Field label="Location" value={form.location} onChange={(v) => setForm({ ...form, location: v })} placeholder="Cleveland, OH" />
+            <Field label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
+            <Field label="Location" value={form.location} onChange={(v) => setForm({ ...form, location: v })} />
             <Field label="LinkedIn" type="url" value={form.linkedin_profile} onChange={(v) => setForm({ ...form, linkedin_profile: v })} />
             <div className="sm:col-span-2">
               <Field
                 label="Skills"
                 value={form.skillsText}
                 onChange={(v) => setForm({ ...form, skillsText: v })}
-                placeholder="Comma-separated, e.g. Java, GAAP, SOX, NetSuite"
               />
             </div>
             <div className="sm:col-span-2">
@@ -599,7 +597,6 @@ export function NewCandidateForm({
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   rows={7}
-                  placeholder="Short summary of the candidate's background, or internal recruiter notes."
                   className={`${INPUT_CONTROL_CLASS} resize-none text-sm leading-relaxed`}
                 />
               </div>

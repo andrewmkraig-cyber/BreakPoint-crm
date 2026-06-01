@@ -360,7 +360,6 @@ function SavedSearchEditForm({
           type="text"
           value={locationOverride}
           onChange={(e) => setLocationOverride(e.target.value)}
-          placeholder="Nationwide. Leave blank for all locations"
           className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
         />
       </Field>

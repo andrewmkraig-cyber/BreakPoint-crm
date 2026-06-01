@@ -291,7 +291,6 @@ export function PersonalInfoView({
             type="text"
             value={address.street}
             onChange={(e) => setAddressField("street", e.target.value)}
-            placeholder="123 Main St"
             className={`${ADDRESS_INPUT_CLASS} w-80 max-w-full`}
           />
         </SubField>
@@ -301,7 +300,6 @@ export function PersonalInfoView({
               type="text"
               value={address.city}
               onChange={(e) => setAddressField("city", e.target.value)}
-              placeholder="Solon"
               className={`${ADDRESS_INPUT_CLASS} w-56 max-w-full`}
             />
           </SubField>
@@ -310,7 +308,6 @@ export function PersonalInfoView({
               type="text"
               value={address.state}
               onChange={(e) => setAddressField("state", e.target.value)}
-              placeholder="OH"
               maxLength={32}
               className={`${ADDRESS_INPUT_CLASS} w-20 uppercase`}
             />
@@ -320,7 +317,6 @@ export function PersonalInfoView({
               type="text"
               value={address.zip}
               onChange={(e) => setAddressField("zip", e.target.value)}
-              placeholder="44139"
               inputMode="numeric"
               maxLength={10}
               className={`${ADDRESS_INPUT_CLASS} w-28 tabular-nums`}

@@ -49,7 +49,6 @@ export function AddClientNote({ clientId }: { clientId: string }) {
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={3}
-        placeholder="Add a note…"
         className="w-full resize-vertical rounded-md border border-transparent bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
       />
       <div className="mt-2 flex items-center justify-between">

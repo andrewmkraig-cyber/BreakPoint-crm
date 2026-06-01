@@ -448,7 +448,6 @@ export function EditableResume({
               }}
               disabled={savingName}
               autoFocus
-              placeholder="Resume name"
               className="min-w-0 flex-1 truncate rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
             />
             <button

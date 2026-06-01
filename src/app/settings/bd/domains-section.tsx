@@ -266,7 +266,6 @@ function AddDomainForm({ onClose }: { onClose: () => void }) {
             type="text"
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
-            placeholder="outreach6.breakpointconnect.com"
             required
             className="mt-1 block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 font-mono text-[12px] text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
           />

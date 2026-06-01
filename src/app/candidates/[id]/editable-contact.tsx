@@ -122,12 +122,12 @@ export function EditableContact({ candidateId, initial }: { candidateId: number;
           <LabeledField label="First name" value={draft.first_name} onChange={(v) => setDraft({ ...draft, first_name: v })} />
           <LabeledField label="Last name" value={draft.last_name} onChange={(v) => setDraft({ ...draft, last_name: v })} />
           <LabeledField label="Email" type="email" value={draft.email} onChange={(v) => setDraft({ ...draft, email: v })} />
-          <LabeledField label="Phone" value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} placeholder="+1 216-555-5555" />
+          <LabeledField label="Phone" value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} />
           <div className="sm:col-span-2">
-            <LabeledField label="Location" value={draft.location} onChange={(v) => setDraft({ ...draft, location: v })} placeholder="Cleveland, OH" />
+            <LabeledField label="Location" value={draft.location} onChange={(v) => setDraft({ ...draft, location: v })} />
           </div>
           <div className="sm:col-span-2">
-            <LabeledField label="LinkedIn URL" type="url" value={draft.linkedin_profile} onChange={(v) => setDraft({ ...draft, linkedin_profile: v })} placeholder="https://linkedin.com/in/…" />
+            <LabeledField label="LinkedIn URL" type="url" value={draft.linkedin_profile} onChange={(v) => setDraft({ ...draft, linkedin_profile: v })} />
           </div>
           {error && <div className="sm:col-span-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{error}</div>}
         </div>

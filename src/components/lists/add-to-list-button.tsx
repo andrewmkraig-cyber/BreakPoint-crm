@@ -255,7 +255,6 @@ function AddToListModal({
                     autoFocus
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    placeholder="e.g. Top Tax Candidates"
                     maxLength={80}
                     className="mt-1 w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
                   />

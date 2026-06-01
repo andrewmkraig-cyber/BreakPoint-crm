@@ -202,7 +202,6 @@ function TitleTierField({
               commitDraft();
             }
           }}
-          placeholder={titles.length === 0 ? "Type a title, press Enter or comma" : ""}
           className="flex-1 min-w-[160px] bg-transparent text-sm text-court-fg placeholder:text-court-fg-dim focus:outline-none"
         />
       </div>

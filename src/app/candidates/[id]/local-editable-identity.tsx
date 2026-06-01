@@ -130,14 +130,12 @@ export function LocalEditableIdentity({
               label="Phone"
               value={draft.phone}
               onChange={(v) => setDraft({ ...draft, phone: v })}
-              placeholder="+1 216-555-5555"
             />
             <div className="sm:col-span-2">
               <LabeledField
                 label="Location"
                 value={draft.location}
                 onChange={(v) => setDraft({ ...draft, location: v })}
-                placeholder="Cleveland, OH"
               />
             </div>
             <div className="sm:col-span-2">
@@ -146,7 +144,6 @@ export function LocalEditableIdentity({
                 type="url"
                 value={draft.linkedinProfile}
                 onChange={(v) => setDraft({ ...draft, linkedinProfile: v })}
-                placeholder="https://linkedin.com/in/…"
               />
             </div>
             <div className="sm:col-span-2">

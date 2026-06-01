@@ -900,13 +900,11 @@ export function InterviewerPicker({
       {showManualFields && (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <BareInput
-            placeholder="Interviewer name"
             value={name}
             onChange={(v) => onChange(v, email)}
             name={`ace-interviewer-name-${nonce}`}
           />
           <BareInput
-            placeholder="Interviewer email"
             type="email"
             value={email}
             onChange={(v) => onChange(name, v)}

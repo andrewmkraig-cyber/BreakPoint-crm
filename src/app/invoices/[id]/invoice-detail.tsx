@@ -494,7 +494,6 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               disabled={!isDraft}
               value={paymentTerms}
               onChange={(e) => setPaymentTerms(e.target.value)}
-              placeholder="Net 30"
               className={inputCls}
             />
           </Field>

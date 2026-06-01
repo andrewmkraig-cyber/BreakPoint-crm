@@ -206,7 +206,7 @@ function EntryForm({
     <div className="rounded-lg border border-brand/30 bg-brand-tint/20 p-4">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <LabeledField label="School" value={draft.school} onChange={(v) => onChange({ ...draft, school: v })} />
-        <LabeledField label="Degree" value={draft.degree} onChange={(v) => onChange({ ...draft, degree: v })} placeholder="e.g. BS, Computer Science" />
+        <LabeledField label="Degree" value={draft.degree} onChange={(v) => onChange({ ...draft, degree: v })} />
         <LabeledField
           label="From (MM/YYYY)"
           value={formatMonthYear(draft.from)}

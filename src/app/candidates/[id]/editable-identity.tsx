@@ -166,14 +166,12 @@ export function EditableIdentity({
               label="Phone"
               value={draft.phone}
               onChange={(v) => setDraft({ ...draft, phone: v })}
-              placeholder="+1 216-555-5555"
             />
             <div className="sm:col-span-2">
               <LabeledField
                 label="Location"
                 value={draft.location}
                 onChange={(v) => setDraft({ ...draft, location: v })}
-                placeholder="Cleveland, OH"
               />
             </div>
             <div className="sm:col-span-2">
@@ -182,7 +180,6 @@ export function EditableIdentity({
                 type="url"
                 value={draft.linkedin_profile}
                 onChange={(v) => setDraft({ ...draft, linkedin_profile: v })}
-                placeholder="https://linkedin.com/in/…"
               />
             </div>
             <div className="sm:col-span-2">
@@ -205,13 +202,11 @@ export function EditableIdentity({
               label="Expected comp"
               value={draft.expected_salary}
               onChange={(v) => setDraft({ ...draft, expected_salary: v })}
-              placeholder="e.g. 120000 or 120k"
             />
             <LabeledField
               label="Currency"
               value={draft.expected_currency}
               onChange={(v) => setDraft({ ...draft, expected_currency: v })}
-              placeholder="USD"
             />
             {error && (
               <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800 sm:col-span-2">

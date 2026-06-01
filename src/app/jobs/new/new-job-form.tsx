@@ -496,7 +496,6 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
                     if (parseInlineError) setParseInlineError(null);
                     if (linkSaved) setLinkSaved(false);
                   }}
-                  placeholder="https://…"
                   className={`${INPUT_CONTROL_CLASS} text-sm`}
                 />
               </div>

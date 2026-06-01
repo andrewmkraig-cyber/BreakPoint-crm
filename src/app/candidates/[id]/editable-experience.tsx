@@ -219,13 +219,11 @@ function EntryForm({
           label="From (MM/YYYY)"
           value={formatMonthYear(draft.from)}
           onChange={(v) => onChange({ ...draft, from: parseMonthYear(v) })}
-          placeholder="03/2020"
         />
         <LabeledField
           label="To (MM/YYYY, blank = current)"
           value={formatMonthYear(draft.to)}
           onChange={(v) => onChange({ ...draft, to: parseMonthYear(v) })}
-          placeholder="leave blank for present"
         />
         <div className="sm:col-span-2">
           <LabeledTextarea

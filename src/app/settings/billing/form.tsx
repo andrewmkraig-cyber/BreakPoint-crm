@@ -17,18 +17,17 @@ type FieldDef = {
 
 const COMPANY_FIELDS: FieldDef[] = [
   { key: "companyName", label: "Company name" },
-  { key: "ein", label: "EIN", placeholder: "XX-XXXXXXX" },
+  { key: "ein", label: "EIN" },
   { key: "addressLine1", label: "Address" },
   { key: "city", label: "City" },
   { key: "state", label: "State" },
   { key: "zip", label: "ZIP" },
-  { key: "arEmail", label: "Accounts Receivable email", placeholder: "ar@yourdomain.com" },
+  { key: "arEmail", label: "Accounts Receivable email" },
   { key: "arPhone", label: "Accounts Receivable phone" },
   { key: "website", label: "Website" },
   {
     key: "defaultPaymentTerms",
     label: "Default payment terms",
-    placeholder: "Net 30",
     hint: "Used when a placement doesn't override.",
   },
 ];

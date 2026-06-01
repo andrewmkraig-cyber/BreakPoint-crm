@@ -291,7 +291,6 @@ function BoardRow({
             value={boardName}
             onChange={(e) => setBoardName(e.target.value)}
             onBlur={onBlurFields}
-            placeholder="Board name"
             className="w-full rounded-md border border-court-border bg-court-bg px-2 py-1 text-sm font-semibold text-court-fg shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
         ) : (
@@ -320,7 +319,6 @@ function BoardRow({
         value={url}
         onChange={(e) => setUrl(e.target.value)}
         onBlur={onBlurFields}
-        placeholder="External URL (optional)"
         className="rounded-md border border-court-border bg-court-bg px-2 py-1 text-xs text-court-fg shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
       />
       <input
@@ -328,7 +326,6 @@ function BoardRow({
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         onBlur={onBlurFields}
-        placeholder="Notes (account info, posting cadence, etc.)"
         className="rounded-md border border-court-border bg-court-bg px-2 py-1 text-xs text-court-fg shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
       />
       <div className="flex items-center justify-end gap-2">
@@ -403,28 +400,24 @@ function AddLocalBoardForm({ jobId }: { jobId: string }) {
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Board name (e.g. AICPA, Built In NYC)"
           className="rounded-md border border-court-border bg-court-bg px-2 py-1 text-sm text-court-fg shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         />
         <input
           type="text"
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          placeholder="Category (e.g. local_niche, regional)"
           className="rounded-md border border-court-border bg-court-bg px-2 py-1 text-xs text-court-fg shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         />
         <input
           type="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="External URL (optional)"
           className="rounded-md border border-court-border bg-court-bg px-2 py-1 text-xs text-court-fg shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         />
         <input
           type="text"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Notes (optional)"
           className="rounded-md border border-court-border bg-court-bg px-2 py-1 text-xs text-court-fg shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         />
         <Button type="button" size="sm" onClick={onAdd} disabled={pending}>

@@ -476,7 +476,6 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Client Submittal"
               className={FIELD_CLASS}
             />
           </label>
@@ -488,7 +487,6 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               onFocus={() => setLastFocus("subject")}
-              placeholder="Candidate Submittal - [Candidate First Name] | [Job Title]"
               className={FIELD_CLASS}
             />
           </label>

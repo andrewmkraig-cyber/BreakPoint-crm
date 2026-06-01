@@ -620,7 +620,6 @@ function BulkAddToListDialog({
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="New list name"
           maxLength={80}
           disabled={busy}
           className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-60"

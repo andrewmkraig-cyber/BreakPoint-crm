@@ -127,19 +127,16 @@ export function EditableCompany({
               label="Website"
               value={draft.website}
               onChange={(v) => setDraft({ ...draft, website: v })}
-              placeholder="example.com"
             />
             <LabeledField
               label="LinkedIn"
               value={draft.linkedin}
               onChange={(v) => setDraft({ ...draft, linkedin: v })}
-              placeholder="https://linkedin.com/company/…"
             />
             <LabeledField
               label="Phone"
               value={draft.phone}
               onChange={(v) => setDraft({ ...draft, phone: v })}
-              placeholder="+1 555-555-5555"
             />
             <label className="block text-sm">
               <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
@@ -228,13 +225,11 @@ export function EditableCompany({
               label="Fee %"
               value={draft.feePct}
               onChange={(v) => setDraft({ ...draft, feePct: v })}
-              placeholder="20"
             />
             <LabeledField
               label="Billing contact"
               value={draft.feeBillingContact}
               onChange={(v) => setDraft({ ...draft, feeBillingContact: v })}
-              placeholder="ap@example.com"
             />
           </div>
           {err && (
