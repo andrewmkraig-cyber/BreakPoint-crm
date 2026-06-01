@@ -7,7 +7,7 @@
 // Visual order top → bottom:
 //   Header band         · company wordmark + address stack ⟂ brand mark + big "Invoice" + INV-NNNN
 //   Meta strip          · Issue Date / Due Date / Terms / Amount Due
-//   Bill To · Hiring    · billing contact + address ⟂ hiring contact
+//   Bill To · Hiring    · client company ⟂ hiring contact + green billing-contact badge
 //   Placement Summary   · candidate / role / start / fee details
 //   Services table      · single line item with rate × qty = amount
 //   Totals              · right-aligned subtotal + amount due
@@ -163,6 +163,24 @@ const styles = StyleSheet.create({
     marginBottom: 1,
   },
   contactLine: { fontSize: 9, color: INK_700, marginTop: 1 },
+  // Green "BILLING CONTACT" pill that sits beneath the hiring contact.
+  // The billing contact moved out of the BILL TO block (now company-only)
+  // and is flagged here so the client can see who to route the bill to.
+  billingBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: BRAND_GREEN,
+    borderRadius: 3,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  billingBadgeText: {
+    fontSize: 7,
+    color: "#FFFFFF",
+    letterSpacing: 1.2,
+    fontFamily: "Helvetica-Bold",
+  },
   // --- Placement Summary ---
   summary: {
     marginTop: 14,
@@ -348,6 +366,16 @@ export type InvoicePdfInput = {
   // reaches the client document. Falsy → the note row is skipped entirely
   // so a blank-note invoice has clean whitespace under the payment panel.
   clientNote?: string | null;
+  // Pre-resolved guarantee label for the GUARANTEE summary field, e.g.
+  // "214 days". The route computes the real guaranteed day count from the
+  // placement: a custom guarantee end date wins (days from start to that
+  // date), otherwise guaranteePeriodDays, falling back to the 90-day
+  // default. Null/undefined → renders the legacy "90 days".
+  guaranteeLabel?: string | null;
+  // Quantity cell for the single line item. For a custom-installment
+  // invoice this is the installment fraction ("1/2" = installment 1 of 2),
+  // parsed from the invoice's internal note in the route. Null/undefined → "1".
+  quantityLabel?: string | null;
 };
 
 function formatDate(d: Date | null | undefined): string {
@@ -388,7 +416,6 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
     roleTitle,
     candidateName,
     clientName,
-    clientAddress,
     startDateLabel,
     baseSalaryUsd,
     feePercentage,
@@ -399,6 +426,8 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
     hiringContacts,
     billing,
     clientNote,
+    guaranteeLabel,
+    quantityLabel,
   } = props;
   const trimmedNotes = clientNote?.trim() || "";
 
@@ -504,19 +533,9 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           View,
           { style: styles.col },
           createElement(Text, { style: styles.sectionHeader }, "BILL TO"),
+          // Company only — the billing contact moved to the green-badged
+          // sub-block beneath the hiring contact in the right column.
           createElement(Text, { style: styles.contactCompany }, clientName || "-"),
-          primaryBilling
-            ? createElement(Text, { style: styles.contactLine }, primaryBilling.name || "-")
-            : null,
-          primaryBilling?.title
-            ? createElement(Text, { style: styles.contactLine }, primaryBilling.title)
-            : null,
-          primaryBilling?.email
-            ? createElement(Text, { style: styles.contactLine }, primaryBilling.email)
-            : null,
-          clientAddress
-            ? createElement(Text, { style: styles.contactLine }, clientAddress)
-            : null,
         ),
         createElement(
           View,
@@ -535,6 +554,26 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           primaryHiring?.email
             ? createElement(Text, { style: styles.contactLine }, primaryHiring.email)
             : null,
+          // Billing contact, flagged with a green "BILLING CONTACT" pill.
+          // Rendered only when a billing contact exists so a contact-less
+          // invoice doesn't show an empty badge.
+          primaryBilling
+            ? createElement(
+                View,
+                { style: styles.billingBadge },
+                createElement(
+                  Text,
+                  { style: styles.billingBadgeText },
+                  "BILLING CONTACT",
+                ),
+              )
+            : null,
+          primaryBilling
+            ? createElement(Text, { style: styles.contactName }, primaryBilling.name || "-")
+            : null,
+          primaryBilling?.email
+            ? createElement(Text, { style: styles.contactLine }, primaryBilling.email)
+            : null,
         ),
       ),
       // Placement Summary
@@ -551,7 +590,7 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           "FEE %",
           feeBasisLabel ?? (feePercentage != null ? `${feePercentage}%` : "-"),
         ),
-        summaryItem("GUARANTEE", "90 days"),
+        summaryItem("GUARANTEE", guaranteeLabel || "90 days"),
       ),
       // Services table
       createElement(
@@ -575,7 +614,7 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           ),
           lineSub ? createElement(Text, { style: styles.tdDescSub }, lineSub) : null,
         ),
-        createElement(Text, { style: styles.tdQty }, "1"),
+        createElement(Text, { style: styles.tdQty }, quantityLabel || "1"),
         createElement(Text, { style: styles.tdRate }, formatUsd(feeAmountUsd)),
         createElement(Text, { style: styles.tdAmount }, formatUsd(feeAmountUsd)),
       ),

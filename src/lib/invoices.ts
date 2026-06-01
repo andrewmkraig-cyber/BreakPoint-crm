@@ -419,6 +419,10 @@ export async function getInvoice(id: string, organizationId: string) {
           feePercentage: true,
           minFee: true,
           feeTotal: true,
+          // Guarantee fields so the PDF can show the real guaranteed day
+          // count: a custom guarantee end date overrides guaranteePeriodDays.
+          guaranteePeriodDays: true,
+          customGuaranteeDate: true,
         },
       },
     },

@@ -91,6 +91,33 @@ export async function GET(
     feeBasisLabel = "Min Fee";
   }
 
+  // Guarantee — the real guaranteed day count for this placement. A custom
+  // guarantee end date wins: show the number of days from the placement
+  // start to that date. Otherwise the recruiter-entered guaranteePeriodDays,
+  // falling back to the 90-day industry default. Mirrors resolveGuaranteeEnd's
+  // precedence (customGuaranteeDate > guaranteePeriodDays > 90).
+  const guaranteeStart =
+    invoice.startDate ?? invoice.placement?.expectedStartDate ?? null;
+  const customGuaranteeDate = invoice.placement?.customGuaranteeDate ?? null;
+  let guaranteeDays = invoice.placement?.guaranteePeriodDays ?? 90;
+  if (customGuaranteeDate && guaranteeStart) {
+    const diffDays = Math.round(
+      (customGuaranteeDate.getTime() - guaranteeStart.getTime()) / 86_400_000,
+    );
+    if (diffDays > 0) guaranteeDays = diffDays;
+  }
+  const guaranteeLabel = `${guaranteeDays} day${guaranteeDays === 1 ? "" : "s"}`;
+
+  // Quantity — for a custom-installment invoice, show the installment
+  // fraction ("1/2" = installment 1 of 2). The installment drafts carry a
+  // stable internal note ("Installment 1 of 2 ...", "Future - Installment 2
+  // of 2 ..."); parse the index/count from it. Non-installment invoices
+  // keep QTY "1". Internal note only — it never prints on the PDF itself.
+  const installmentMatch = invoice.notes?.match(/Installment\s+(\d+)\s+of\s+(\d+)/i);
+  const quantityLabel = installmentMatch
+    ? `${installmentMatch[1]}/${installmentMatch[2]}`
+    : "1";
+
   const pdfBuffer = await renderInvoicePdfBuffer({
     invoiceNumber: invoice.invoiceNumber,
     issueDate: invoice.startDate,
@@ -122,6 +149,8 @@ export async function GET(
     // Client-facing note only. invoice.notes (internal) is deliberately
     // never passed to the PDF so it stays off the client document.
     clientNote: invoice.clientNote,
+    guaranteeLabel,
+    quantityLabel,
   });
 
   const filename = `${billing.companyName} - ${invoice.invoiceNumber}.pdf`;
