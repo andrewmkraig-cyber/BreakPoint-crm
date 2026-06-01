@@ -9,6 +9,7 @@ import {
   Mail,
   Phone,
   Receipt,
+  Wallet,
   Calendar,
   Settings,
   StickyNote,
@@ -77,7 +78,8 @@ export const NAV_GROUPS: ReadonlyArray<NavGroupData> = [
   {
     title: "Ops",
     items: [
-      { href: "/finances", label: "Finances", icon: Receipt, iconColor: "text-lime-400" },
+      { href: "/invoices", label: "Invoices", icon: Receipt, iconColor: "text-lime-400" },
+      { href: "/expenses", label: "Expenses", icon: Wallet, iconColor: "text-amber-400" },
       { href: "/notes", label: "Notes", icon: StickyNote, iconColor: "text-yellow-400" },
     ],
   },

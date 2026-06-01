@@ -44,6 +44,7 @@ export async function createToolExpense(
       select: { id: true },
     });
     revalidatePath("/finances");
+    revalidatePath("/expenses");
     return { ok: true, id: row.id };
   } catch (e) {
     return {
@@ -101,6 +102,7 @@ export async function updateToolExpense(
       data,
     });
     revalidatePath("/finances");
+    revalidatePath("/expenses");
     return { ok: true };
   } catch (e) {
     return {
@@ -124,6 +126,7 @@ export async function deleteToolExpense(
   try {
     await prisma.toolExpense.delete({ where: { id } });
     revalidatePath("/finances");
+    revalidatePath("/expenses");
     return { ok: true };
   } catch (e) {
     return {

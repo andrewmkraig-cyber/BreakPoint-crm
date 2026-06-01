@@ -9,6 +9,7 @@ import {
   type LedgerRow,
 } from "@/components/placements/placements-ledger";
 import { PlacementsMapCard } from "@/components/placements/placements-map-card";
+import { RevenueCards } from "@/components/finances/revenue-cards";
 import { TimeRangeTabs } from "@/components/ui/time-range-selector";
 import {
   DEFAULT_TIME_RANGE,
@@ -70,6 +71,7 @@ export async function PlacementsTab({
       />
       <GuaranteePeriodTable rows={guaranteeRows} />
       <PlacementsBreakdowns rows={rows} />
+      <RevenueCards selection={selection} />
       <PlacementsMapCard cities={cities} totalFee={totalFee} />
     </div>
   );

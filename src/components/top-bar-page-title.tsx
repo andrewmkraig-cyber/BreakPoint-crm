@@ -63,6 +63,7 @@ function resolveGroup(pathname: string): string | undefined {
   if (
     pathname.startsWith("/finances")
     || pathname.startsWith("/invoices")
+    || pathname.startsWith("/expenses")
     || pathname.startsWith("/calendar")
     || pathname.startsWith("/notes")
   ) {
@@ -145,22 +146,20 @@ function resolveBaseSpec(
     };
   }
 
-  if (pathname === "/finances") {
-    const tab = searchParams?.get("tab") ?? "overview";
-    const label =
-      tab === "invoices" ? "Invoices" : tab === "expenses" ? "Expenses" : "Finances";
+  if (pathname === "/invoices") {
     return {
-      title: { label },
-      action:
-        tab === "invoices"
-          ? { kind: "new-invoice", label: "New Invoice" }
-          : tab === "expenses"
-            ? { kind: "new-expense", label: "New Expense" }
-            : undefined,
+      title: { label: "Invoices" },
+      action: { kind: "new-invoice", label: "New Invoice" },
     };
   }
   if (/^\/invoices\/[^/]+/.test(pathname)) {
-    return { title: { label: "Finances", href: "/finances?tab=invoices" } };
+    return { title: { label: "Invoices", href: "/invoices" } };
+  }
+  if (pathname === "/expenses") {
+    return {
+      title: { label: "Expenses" },
+      action: { kind: "new-expense", label: "New Expense" },
+    };
   }
 
   if (pathname === "/calendar" || pathname.startsWith("/calendar/")) {

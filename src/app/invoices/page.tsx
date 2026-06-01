@@ -1,9 +1,296 @@
-import { redirect } from "next/navigation";
+import { AlertTriangle, CheckCircle, Clock, Receipt } from "lucide-react";
+import { TabStrip } from "@/components/ui/tab-strip";
+import { KpiTile } from "@/app/dashboard/kpi-tile";
+import { InvoiceRow } from "@/app/invoices/invoice-row";
+import { SendTestInvoiceButton } from "@/app/invoices/send-test-invoice-button";
+import { FutureInvoicesSection } from "@/app/invoices/future-invoices-section";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import {
+  getInvoiceSummary,
+  listFutureInvoices,
+  listInvoices,
+  type InvoiceListFilter,
+} from "@/lib/invoices";
 
-// /invoices is now a tab inside /finances. Keep this route alive as a
-// permanent redirect so existing bookmarks, inbound links, and any
-// stale references (e.g. revalidatePath calls, attribution rows) don't
-// 404 after the consolidation.
-export default function InvoicesIndexRedirect() {
-  redirect("/finances?tab=invoices");
+export const dynamic = "force-dynamic";
+
+const INVOICE_FILTERS: Array<{ value: InvoiceListFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "drafts", label: "Drafts" },
+  { value: "sent", label: "Sent" },
+  { value: "overdue", label: "Overdue" },
+  { value: "paid", label: "Paid" },
+  { value: "void", label: "Void" },
+];
+
+const STATUS_COPY: Record<string, { label: string; tone: string }> = {
+  DRAFT: { label: "Draft", tone: "rounded-full bg-court-surface-subtle text-court-fg" },
+  SENT: { label: "Sent", tone: "rounded-full bg-amber-50 text-amber-800 border border-amber-200" },
+  PAID: { label: "Paid", tone: "rounded-md border border-court-brand bg-transparent text-court-brand" },
+  VOID: { label: "Void", tone: "rounded-full bg-slate-100 text-slate-500 border border-slate-200" },
+};
+
+function formatUsd(cents: number): string {
+  return (cents / 100).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  });
+}
+
+function formatUsdDecimal(amount: unknown): string {
+  if (amount == null) return "—";
+  const n = Number(amount.toString());
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatDate(d: Date | null): string {
+  if (!d) return "—";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+// Render an em-dash when a string field is null, undefined, or whitespace-only
+// so empty cells share the same typographic anchor as our null money / null
+// date fallbacks instead of leaving a visually blank gap in the row.
+function orDash(v: string | null | undefined): string {
+  return v && v.trim() !== "" ? v : "—";
+}
+
+type RawParams = { filter?: string };
+type ParamsInput = Promise<RawParams> | RawParams;
+
+export default async function InvoicesPage({
+  searchParams,
+}: {
+  searchParams?: ParamsInput;
+}) {
+  const params = (await Promise.resolve(searchParams ?? {})) as RawParams;
+  const filter: InvoiceListFilter = (INVOICE_FILTERS.find(
+    (f) => f.value === params.filter,
+  )?.value ?? "all") as InvoiceListFilter;
+  const org = await getCurrentOrg();
+  const [invoices, summary, futureInvoices] = await Promise.all([
+    listInvoices(org.id, filter),
+    getInvoiceSummary(org.id),
+    listFutureInvoices(org.id),
+  ]);
+
+  return (
+    <div className="flex w-full flex-col gap-6">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
+        BILLED, COLLECTED &amp; OUTSTANDING
+      </p>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <KpiTile
+          label="Outstanding"
+          value={formatUsd(summary.outstandingCents)}
+          icon={Clock}
+          live={summary.outstandingCents > 0}
+        />
+        <KpiTile
+          label="Overdue"
+          value={formatUsd(summary.overdueCents)}
+          icon={AlertTriangle}
+          live={summary.overdueCents > 0}
+        />
+        <KpiTile
+          label="Billed This Quarter"
+          value={formatUsd(summary.billedThisQuarterCents)}
+          icon={Receipt}
+          live={summary.billedThisQuarterCents > 0}
+        />
+        <KpiTile
+          label="Collected This Quarter"
+          value={formatUsd(summary.collectedThisQuarterCents)}
+          icon={CheckCircle}
+          live={summary.collectedThisQuarterCents > 0}
+        />
+      </div>
+
+      <div className="rounded-3xl bg-court-surface shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
+        <div className="flex flex-col gap-3 border-b border-court-border p-6 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
+              Invoices
+            </p>
+            <h2 className="mt-1 font-serif text-xl font-bold tracking-tight text-court-fg">
+              {INVOICE_FILTERS.find((f) => f.value === filter)?.label ?? "All"} invoices
+            </h2>
+          </div>
+          <TabStrip<InvoiceListFilter>
+            ariaLabel="Invoice filter"
+            activeId={filter}
+            items={INVOICE_FILTERS.map((f) => ({
+              id: f.value,
+              label: f.label,
+              href:
+                f.value === "all"
+                  ? "/invoices"
+                  : `/invoices?filter=${f.value}`,
+            }))}
+          />
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-court-border bg-court-surface-subtle/50">
+                {[
+                  "Invoice",
+                  "Client",
+                  "Candidate / Role",
+                  "Amount",
+                  "Issued",
+                  "Due",
+                  "Status",
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="px-6 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted"
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {invoices.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-14 text-center text-[13px] text-court-fg-muted">
+                    No invoices yet.
+                  </td>
+                </tr>
+              ) : (
+                invoices.map((inv) => {
+                  const candName = inv.candidate
+                    ? orDash(`${inv.candidate.firstName ?? ""} ${inv.candidate.lastName ?? ""}`.trim())
+                    : "—";
+                  const status = STATUS_COPY[inv.status] ?? { label: inv.status, tone: "rounded-full bg-court-surface-subtle text-court-fg" };
+                  const isOverdue = inv.status === "SENT" && inv.dueDate && inv.dueDate < new Date();
+                  return (
+                    <InvoiceRow key={inv.id} href={`/invoices/${inv.id}`}>
+                      <td className="px-6 py-3 align-top">
+                        <span className="font-mono text-[12px] font-semibold text-court-fg">
+                          {orDash(inv.invoiceNumber)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3 align-top">
+                        <div className="font-medium text-court-fg">{orDash(inv.client?.name)}</div>
+                      </td>
+                      <td className="px-6 py-3 align-top">
+                        <div className="font-medium text-court-fg">{candName}</div>
+                        <div className="text-[12px] text-court-fg-muted">{orDash(inv.roleTitle)}</div>
+                      </td>
+                      <td className="px-6 py-3 align-top tabular-nums text-court-fg">{formatUsdDecimal(inv.feeAmount)}</td>
+                      <td className="px-6 py-3 align-top text-court-fg-muted">{formatDate(inv.startDate)}</td>
+                      <td className={"px-6 py-3 align-top " + (isOverdue ? "font-semibold text-red-700" : "text-court-fg-muted")}>
+                        {formatDate(inv.dueDate)}
+                      </td>
+                      <td className="px-6 py-3 align-top">
+                        <span
+                          className={
+                            "inline-flex items-center px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider " +
+                            status.tone
+                          }
+                        >
+                          {status.label}
+                        </span>
+                      </td>
+                    </InvoiceRow>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <SendTestInvoiceButton />
+      </div>
+
+      <FutureInvoicesSection count={futureInvoices.length}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-court-border bg-court-surface-subtle/50">
+                {[
+                  "Invoice",
+                  "Client",
+                  "Candidate / Role",
+                  "Amount",
+                  "Scheduled Date",
+                  "Status",
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="px-6 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted"
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {futureInvoices.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-6 py-14 text-center text-[13px] text-court-fg-muted"
+                  >
+                    No future installments scheduled.
+                  </td>
+                </tr>
+              ) : (
+                futureInvoices.map((inv) => {
+                  const candName = inv.candidate
+                    ? orDash(
+                        `${inv.candidate.firstName ?? ""} ${inv.candidate.lastName ?? ""}`.trim(),
+                      )
+                    : "—";
+                  return (
+                    <InvoiceRow key={inv.id} href={`/invoices/${inv.id}`}>
+                      <td className="px-6 py-3 align-top">
+                        <span className="font-mono text-[12px] font-semibold text-court-fg">
+                          {orDash(inv.invoiceNumber)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3 align-top">
+                        <div className="font-medium text-court-fg">
+                          {orDash(inv.client?.name)}
+                        </div>
+                      </td>
+                      <td className="px-6 py-3 align-top">
+                        <div className="font-medium text-court-fg">{candName}</div>
+                        <div className="text-[12px] text-court-fg-muted">
+                          {orDash(inv.roleTitle)}
+                        </div>
+                      </td>
+                      <td className="px-6 py-3 align-top tabular-nums text-court-fg">
+                        {formatUsdDecimal(inv.feeAmount)}
+                      </td>
+                      <td className="px-6 py-3 align-top text-court-fg-muted">
+                        {formatDate(inv.dueDate)}
+                      </td>
+                      <td className="px-6 py-3 align-top">
+                        <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-amber-800">
+                          Scheduled
+                        </span>
+                      </td>
+                    </InvoiceRow>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </FutureInvoicesSection>
+    </div>
+  );
 }
