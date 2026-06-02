@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-06-01 · Ace 75.0
+Last updated: 2026-06-02 · Ace 76.0
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -137,6 +137,12 @@ Mirrored in ACE_DESIGN.md. Apply to every email/invite composer.
 - **Every composer's To accepts multiple recipients as pick-or-type chips.** Reuse the existing chip widgets - `ContactComboMulti` in `EmailComposer`, the chip-rendering `AddressRow` in `MailComposer` (which keeps its live Gmail/contact server-search typeahead). Never reintroduce a single-select To. Send paths already take `to: string[]`; the field value stays a comma-string for `parseList` / `splitAddresses`.
 - **Cc = client contacts. Bcc = Austin only** (the team roster, `src/lib/team-contacts.ts` `TEAM_BCC_OPTIONS`). Client contacts must never leak into the Bcc pool. The calendar Guests field is a separate single-bucket field and is OUT of this standard - do not touch it.
 - **Invoice email recipients auto-populate** from the placement billing contact (To) + hiring manager (Cc), with a recipient-count greeting (1 -> "Hi [First],", 2 -> "Hi [First] and [First],", 3+ -> "Hi Team,"). The email-body start date must use the SAME placement start-date source + formatter as the PDF - never a separate date path (the UTC off-by-one trap).
+
+## Interview Scheduler Standard (added 2026-06-02 · Ace 76.0 - PERMANENT)
+Mirrored in ACE_DESIGN.md. The interview restructure (D1/D2/E) shipped this version; these are now standing rules, not a plan.
+- **ONE scheduler, one screen, one entry-point surface.** `ScheduleInterviewScreen` in `src/app/candidates/[id]/local-placement-rows.tsx` is the only interview scheduler. New + edit both run through it (`existingInterview` prop = edit mode). It is reached from the candidate profile Schedule Interview, the Clubhouse weekly-widget click, the calendar event Edit/Cancel, and the `?edit=interview` deep-link - all open this one screen. Do not reintroduce `ScheduleDialog`, `RescheduleDialog`, the two separate invite composers, or the `inviteFlow` state machine (all deleted).
+- **Interviewers are multi-chip and client-event-only.** The Interviewer field is the multi-chip `InlineContactMultiInput` (same widget Cc/Bcc use), in new + edit modes. Every interviewer attaches as a guest on the **CLIENT** invite event only - never the candidate event - and is **never auto-Cc'd** (Cc stays the separate client-contacts pool). Picked chips drop out of the remaining options. This is the interview-scheduler application of the Composer Recipient Standard above.
+- **Stored sent copy is the calendar source of truth.** Each sent invite's subject + body is stored per party (`Interview.sent{Client,Candidate}{Subject,Body,At}`); the calendar renders per-party events off what was actually emailed and the tile detail shows that stored copy. One Save drives the three-way notify choice (all / new-only / don't-send); "don't send updates" patches the Google event silently so Ace and Google never drift. Seed bodies into the editor / tile / Bcc copy through `htmlToReadableText` (the live calendar invite path is unchanged). Reuse the existing templates + send engine verbatim - do not fork the invite copy or send logic.
 
 ## UI Consistency Rules (added 2026-05-12 · Ace 43.0)
 - **TabStrip is the single source of truth.** All tab strips and filter pill groups across the app route through `src/components/ui/tab-strip.tsx`. No one-off pill groups anywhere — if a new surface needs filter pills or a tabbed selector, use TabStrip (link mode for navigation, controlled mode for in-page state).

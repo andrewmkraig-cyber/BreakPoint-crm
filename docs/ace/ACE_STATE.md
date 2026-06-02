@@ -1,8 +1,40 @@
 # ACE_STATE.md
-Last updated: 2026-06-01 · Ace 75.0
-Current Version: Ace 75.0
-Last Shipped: 2026-06-01
+Last updated: 2026-06-02 · Ace 76.0
+Current Version: Ace 76.0
+Last Shipped: 2026-06-02
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 76.0 (2026-06-02)
+
+The full interview restructure (D1 / D2 / E), shipped across `5376d95` through `add9811`, plus a closing batch of edit-mode, multi-interviewer, and widget fixes. The interview scheduler is now ONE scrolling screen and the ONLY scheduling entry point. No change to the existing per-recipient invite bodies/subjects or the working send engine - they are reused verbatim. New Interview columns (`sentCandidateSubject/Body/At`, `sentClientSubject/Body/At`) added for the stored "what the recipient saw" copy. `npm run build` exits 0 (save the two pre-existing react-hooks/exhaustive-deps warnings).
+
+**D1 - store what the recipient saw + model calendar events**
+- At invite send time Ace stores a verbatim copy of each sent invite's subject + body, **candidate and client separately** (the new `sent*` columns). The calendar renders per-party events off what was actually emailed; clicking an interview event shows the stored "what the recipient saw" detail with **Edit + Cancel**, not the generic event editor. The Clubhouse weekly widget stays **ONE** row per interview.
+
+**D2 - one Save, real update-choice, whole-interview Cancel**
+- ONE Save in the edit flow drives a three-way notify choice (**update all guests / only new guests / don't send updates**) via `updateInterview` `notifyMode`, applied per party event. Whole-interview **Cancel** carries a two-way notify choice (notify guests / don't). Candidate and client are separate Google events, so updates fire independently per party.
+
+**E / Pass 2a - calendar tiles + one Save on the generic editor**
+- Side-by-side calendar tiles: overlapping same-time events column-pack into narrow blocks via new packing logic in the calendar utils / week-view / day-view; all-day events stay full width. Clicking an interview tile opens the read-only sent-detail with Edit/Cancel. The three unlabeled Save buttons on the generic event editor collapsed to **one Save + notify prompt**. Deleted dead `dashboard/interview-invite-actions.ts`.
+
+**E / Pass 2b-i - the one-screen scheduler**
+- The multi-window schedule flow (`ScheduleDialog` + two invite composers + the `inviteFlow` state machine) was replaced by **ONE scrolling screen**, `ScheduleInterviewScreen` in `local-placement-rows.tsx`: header, type, date/start/end/tz, location, interviewer(s), **Cc = client contacts**, **Bcc = Austin**, a **Send Client Email** toggle + its own subject/body editor, a **Send Candidate Email** toggle + its own subject/body editor, and **ONE Send button** that fires whichever toggles are on (one `sendInterviewInvite` call per enabled toggle). Bodies/subjects reuse the existing templates + send engine verbatim. The **"Client will send invites"** toggle sends nothing and logs one event. **No attachment field** - the interview send path has no attachment channel, so it was omitted deliberately. The killed checkboxes (separate-email, anonymize, split-with-recruiter) were not reintroduced.
+
+**E / Pass 2b-ii + follow-ups - edit mode folded in, old paths deleted**
+- Edit mode folded into the **same** `ScheduleInterviewScreen` (`existingInterview` prop), pre-filled. `RescheduleDialog` + the dead `rescheduleInterview` server action + `RescheduleInterviewInput` type deleted. The job-pill **Edit Interview** button (styled like Edit Offer, sitting between Schedule and Offer) renders for an interviewing-stage candidate with a scheduled interview; the interview->job join was fixed read-side for Ace-native jobs (look up by the synthetic `rfJob.id` the interview was stored under, in addition to `ace:cuid`). The calendar drawer Edit + weekly-widget click + the `?edit=interview` deep-link all open the one screen in edit mode. On Save, an edited body pushes to the live Google event **gated by the notify choice** - "don't send updates" patches the event description silently (no email) so Ace and Google never drift.
+
+**Polish fixes**
+- Template picker + "Ace default copy" controls removed from the scheduler (the client editor auto-fills the Client Interview Confirmation template, the candidate editor the candidate-prep template, both editable inline). The HTML body tag-leak (`<p>`/`<br>` showing literally in the scheduler editor, the calendar tile detail, and the Bcc Gmail copy) fixed by routing seed bodies through the existing `htmlToReadableText` helper - the calendar invite path is unchanged. Sticky Save footer (`90dvh`) so Save is reachable at any screen height. Notes field removed from the scheduler. Auto-retry once on a transient Google `403 rateLimitExceeded` (safe - the quota rejection happens before any event is created). USED BY / UNUSED status badges removed from Settings template cards.
+
+**Bcc fixes**
+- The private Bcc copy now sends **only** to addresses in the Bcc field (the sender is no longer hardcoded as a recipient). `andrew@breakpointtalent.com` added to `TEAM_BCC_OPTIONS` as a selectable Bcc option alongside Austin. Selected Cc/Bcc options drop out of the remaining dropdown.
+
+**Edit-mode + multi-interviewer final fixes**
+- Both **Send Client / Candidate Email** toggles now **default ON in edit mode** with their editors shown - previously they were hidden when the invited-flags were false (never-emailed / client-will-send / pre-D1 interviews), the bug that made edit mode look like the old time-only popup. The interviewer field was restored to the multi-chip **`InlineContactMultiInput`** (the Ace 75.0 multi-recipient behavior had regressed in the rebuild) in **new + edit** modes - multiple interviewers attach to the **CLIENT event only**, never the candidate event, never auto-Cc'd, and picked chips drop from the options. Interviewer(s) prefill from the stored attendees in edit mode. The job-pill **Edit Interview** button only shows for an **upcoming** interview - once the scheduled time passes (the interview has taken place) it disappears until another is booked. The This Week widget renders all events per day (removed the Up-next `slice(0, 2)`; the 5-day strip was already uncapped).
+
+### Known / deferred from this session
+- **`updateInterview` `notifyMode` is global across both party events** - the notify choice is the master control on edits; the per-party Send toggle is fully wired for the newly-invited case. Acceptable as-is (see ACE_ROADMAP.md).
+- **On edit reopen, a previously-Cc'd client contact can appear as an interviewer chip** because the stored `clientAttendees` historically merged interviewer + Cc client contacts into one list. Cosmetic only (all are client-event guests; no Cc leak). A strict interviewer/Cc split would need a separate stored column - deferred, not scheduled (see ACE_ROADMAP.md).
 
 ## What Shipped in Ace 75.0 (2026-06-01)
 
@@ -152,12 +184,11 @@ Eleven-item session: scoreboard cancelled-placement accuracy, interview-pill ded
 
 ## Next Task
 
-**PRIORITY — Interview restructure (3 prompts D1 / D2 / E). Full plan in ACE_ROADMAP.md ▸ Next Up. Do NOT change the existing per-recipient invite bodies/subjects or the working send logic.**
-- **D1 — store what the recipient saw + model calendar events.** At invite send time, store a copy of each sent invite's subject + body (candidate + client stored separately). Render TWO calendar events per interview when both invites were sent, ONE when only one side was emailed, ONE when "client will send invites" (no emails sent by us). Each event titled with its own invite subject. Clubhouse weekly widget stays ONE entry per interview. Clicking an interview event shows the stored sent detail + Edit / Cancel.
-- **D2 — one Edit, one Save, real update-choice, whole-interview Cancel.** Edit + the weekly-widget click both open the single scheduler. Cancel cancels the WHOLE interview (both events) with the update-choice prompt. ONE Save that prompts update all guests / only new guests / don't send updates and actually drives who is emailed. Editing from the candidate profile updates BOTH events.
-- **E — single-screen Jobot-style scheduler (last).** One scrolling screen (type, date/time/tz, location, interviewers, Cc = client contacts, Bcc = Austin, attachment, Send-Candidate-Email toggle + its own subject/body, Send-Client-Email toggle + its own subject/body, one Send button). Retire all other interview-scheduling entry points.
+**The interview restructure (D1 / D2 / E) is DONE — shipped in Ace 76.0 (see What Shipped in Ace 76.0 above and ACE_ROADMAP.md ▸ Completed - Ace 76.0). The active queue is clear of the restructure.** Two deferred edge items from it are parked in ACE_ROADMAP.md (global `notifyMode`; interviewer/Cc chip merge on reopen) — neither is scheduled.
 
-**Surfaced this session (Ace 71.0) — queued, see ACE_ROADMAP.md Next Up for full detail:**
+**Next priority — pick from ACE_ROADMAP.md ▸ Next Up:** the action-row button audit (#1) and auto-geocoding the remaining 3 candidate-create paths (#2) are the front of the queue. Confirm the live deploy carried this session's interview-restructure ships first (the live deploy lags repo — `live-deploy-diverges-from-repo`).
+
+**Surfaced earlier (Ace 71.0) — queued, see ACE_ROADMAP.md Next Up for full detail:**
 - **NEW BUG (high priority): `/jobs/[id]` Matched tab shows 129 matched for EVERY job.** The matched count + list is not job-specific - it's returning a global candidate set instead of scoping per job. Diagnose the matched-candidates query scoping first (diagnose-only prompt before any fix).
 - **Toast style-switch regression.** The in-app toast theme picker (Ink especially) stopped applying / the "Try it: Email" demo fires a wrong-themed toast. Diagnose, then fix.
 - **Second icon fix - standalone-icon token sweep** + port the rainbow sidebar `iconColor` to `mobile-nav` (decision made: keep the rainbow, match desktop + mobile).
