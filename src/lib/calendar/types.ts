@@ -45,6 +45,11 @@ export type CalendarEvent = {
   // grid/widget as a pseudo-event (not a real Google CalendarEvent).
   // Clicking it opens the reminders panel editor, not the Google drawer.
   aceReminderId?: string;
+  // Notification leads carried on the reminder pseudo-event so a click on
+  // a PAST or beyond-top-10 reminder (which isn't in the panel's Upcoming
+  // list) can still seed a complete editor instead of silently doing
+  // nothing. Only set alongside aceReminderId.
+  reminderLeadsMin?: number[];
   // Interview restructure D1. Set when this calendar block belongs to an
   // Ace Interview row (mapped via the googleEventId → Interview.id pattern).
   // Drives the drawer's interview-aware Edit / Cancel and the stored

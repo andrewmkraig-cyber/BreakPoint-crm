@@ -257,14 +257,49 @@ export function CalendarView({
   const [editingReminderId, setEditingReminderId] = useState<string | null>(
     null,
   );
+  // A clicked reminder that ISN'T in the Upcoming list (it's past-due or
+  // beyond the top-10 cap) has no panel row to expand into an editor, so
+  // the click used to do nothing. We synthesize a one-off seed from the
+  // grid pseudo-event so EVERY reminder tile opens its editor on click.
+  const [editingSeed, setEditingSeed] = useState<CalendarReminder | null>(null);
   const openEdit = (ev: CalendarEvent) => {
     if (ev.aceReminderId) {
+      const inList = reminders.some((r) => r.id === ev.aceReminderId);
+      if (!inList) {
+        setEditingSeed({
+          id: ev.aceReminderId,
+          title: ev.title,
+          reminderAt: ev.startTime,
+          when: "",
+          abs: "",
+          source: "Ace",
+          notifyLeadsMin: ev.reminderLeadsMin ?? [15],
+        });
+      }
       setEditingReminderId(ev.aceReminderId);
       return;
     }
     setSelectedEvent(ev);
     setDrawerOpen(true);
   };
+  // Stop editing: clear both the id and any synthesized seed so a past
+  // reminder doesn't linger as a stray row after Cancel.
+  const stopEditingReminder = useCallback((id: string | null) => {
+    setEditingReminderId(id);
+    if (id === null) setEditingSeed(null);
+  }, []);
+  // The list the panel renders: the synthesized seed is prepended only
+  // while it's the active edit target and not already present.
+  const panelReminders = useMemo(() => {
+    if (
+      editingSeed &&
+      editingReminderId === editingSeed.id &&
+      !reminders.some((r) => r.id === editingSeed.id)
+    ) {
+      return [editingSeed, ...reminders];
+    }
+    return reminders;
+  }, [editingSeed, editingReminderId, reminders]);
   const closeDrawer = () => setDrawerOpen(false);
 
   const toggleMember = (id: string) =>
@@ -282,6 +317,7 @@ export function CalendarView({
     async (id: string) => {
       setReminders((prev) => prev.filter((r) => r.id !== id));
       setEditingReminderId((cur) => (cur === id ? null : cur));
+      setEditingSeed((cur) => (cur?.id === id ? null : cur));
       try {
         await deleteReminderAction(id);
       } catch (err) {
@@ -321,6 +357,7 @@ export function CalendarView({
           notifyLeadsMin,
         );
         setEditingReminderId(null);
+        setEditingSeed(null);
         router.refresh();
       } catch (err) {
         console.error("updateReminder failed", err);
@@ -402,9 +439,9 @@ export function CalendarView({
           currentWeekStart={currentWeekStart}
           today={today}
           onSelectDate={goToDate}
-          reminders={reminders}
+          reminders={panelReminders}
           editingReminderId={editingReminderId}
-          onEditReminder={setEditingReminderId}
+          onEditReminder={stopEditingReminder}
           onCreateReminder={handleCreateReminder}
           onUpdateReminder={handleUpdateReminder}
           onDeleteReminder={handleDeleteReminder}

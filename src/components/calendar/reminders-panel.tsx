@@ -95,6 +95,7 @@ export function CalendarRemindersPanel({
                     leads: r.notifyLeadsMin,
                   }}
                   onCancel={() => onEdit(null)}
+                  onDelete={() => onDelete(r.id)}
                   onSubmit={async (title, when, leads) => {
                     await onUpdate(r.id, title, when, leads);
                   }}
@@ -208,6 +209,7 @@ function ReminderForm({
   scrollIntoViewOnMount = false,
   onCancel,
   onSubmit,
+  onDelete,
 }: {
   initial?: { title: string; date: string; time: string; leads: number[] };
   submitLabel: string;
@@ -218,6 +220,10 @@ function ReminderForm({
   scrollIntoViewOnMount?: boolean;
   onCancel: () => void;
   onSubmit: (title: string, reminderAt: Date, leads: number[]) => Promise<void>;
+  // Edit mode only. When present, a red Delete control sits in the sticky
+  // footer alongside Cancel / Update so a reminder can be removed without
+  // hunting for the row's separate trash button.
+  onDelete?: () => void;
 }) {
   const today = useMemo(() => new Date(), []);
   const [title, setTitle] = useState(initial?.title ?? "");
@@ -259,37 +265,53 @@ function ReminderForm({
       ref={formRef}
       onSubmit={handleSubmit}
       // scroll-mt / scroll-mb give scrollIntoView breathing room so the
-      // form never butts right up against the rail's clip edge.
-      className="scroll-my-4 space-y-2.5 border-b border-court-border-soft bg-court-surface-subtle px-5 py-3.5"
+      // form never butts right up against the rail's clip edge. The body
+      // is capped + scrollable and the action row is a sticky footer
+      // (mirrors the 76.0 scheduler pattern) so Save / Delete are always
+      // reachable even when the left rail is shorter than the form.
+      className="scroll-my-4 border-b border-court-border-soft bg-court-surface-subtle"
     >
-      <input
-        ref={titleRef}
-        type="text"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        className="w-full rounded-lg border border-court-border bg-court-surface px-2.5 py-1.5 text-[12.5px] text-court-fg outline-none focus:border-court-brand/60 focus:ring-2 focus:ring-court-brand/20"
-      />
-      <div className="flex items-center gap-2">
+      <div className="max-h-[55vh] space-y-2.5 overflow-y-auto px-5 py-3.5">
         <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="flex-1 rounded-lg border border-court-border bg-court-surface px-2 py-1.5 text-[12px] text-court-fg outline-none focus:border-court-brand/60 focus:ring-2 focus:ring-court-brand/20"
+          ref={titleRef}
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="w-full rounded-lg border border-court-border bg-court-surface px-2.5 py-1.5 text-[12.5px] text-court-fg outline-none focus:border-court-brand/60 focus:ring-2 focus:ring-court-brand/20"
         />
-        <div className="flex-1">
-          <TimeSelect value={time} onChange={setTime} ariaLabel="Reminder time" />
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="flex-1 rounded-lg border border-court-border bg-court-surface px-2 py-1.5 text-[12px] text-court-fg outline-none focus:border-court-brand/60 focus:ring-2 focus:ring-court-brand/20"
+          />
+          <div className="flex-1">
+            <TimeSelect value={time} onChange={setTime} ariaLabel="Reminder time" />
+          </div>
+        </div>
+
+        {/* Notifications: stackable lead presets, default 15 min before. */}
+        <div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
+            Notify
+          </div>
+          <LeadTimePicker leads={leads} onChange={setLeads} />
         </div>
       </div>
 
-      {/* Notifications: stackable lead presets, default 15 min before. */}
-      <div>
-        <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
-          Notify
-        </div>
-        <LeadTimePicker leads={leads} onChange={setLeads} />
-      </div>
-
-      <div className="flex items-center justify-end gap-2 pt-1">
+      <div className="sticky bottom-0 flex items-center gap-2 border-t border-court-border-soft bg-court-surface-subtle px-5 py-3">
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 hover:text-red-700"
+          >
+            <Trash2 className="h-3 w-3" />
+            Delete
+          </button>
+        )}
+        <div className="flex-1" />
         <button
           type="button"
           onClick={onCancel}

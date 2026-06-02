@@ -27,6 +27,41 @@ const ALLOWED_LEADS = new Set([0, 15, 30, 60, 120, 1440]);
 // day.
 const ISO_WITH_OFFSET = /[T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$/;
 
+// Pull the leading wall-clock components (date + time) off an ISO string,
+// ignoring whatever offset was appended. Used by the Eastern re-anchor.
+const WALLCLOCK = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/;
+
+// The correct Eastern UTC offset for a given calendar date, DST-aware via
+// Intl. Probed at 12:00 UTC so we sit far from either DST edge and the
+// offset is unambiguous for the whole local day.
+function easternOffsetForDate(year: number, month: number, day: number): string {
+  const probe = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const raw =
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      timeZoneName: "longOffset",
+    })
+      .formatToParts(probe)
+      .find((p) => p.type === "timeZoneName")?.value ?? "GMT-05:00";
+  return raw.replace(/^GMT/, "").trim() || "-05:00";
+}
+
+// Force an offset-qualified ISO onto the correct Eastern wall-clock offset
+// for its OWN date. Every Ace reminder is Eastern (the reminder surfaces
+// hard-code ET; per-user tz is a future multi-user item), so re-stamping
+// the same wall-clock digits with the DST-correct ET offset makes a WRONG
+// offset impossible to silently skew: a correct -04:00 / -05:00 emission
+// is a no-op, while a stray `Z` or a non-ET offset (the 2-hour / 4-5 hour
+// skew class) is corrected back to the recruiter's intended Eastern time.
+// Naive strings never reach here — they're rejected first by ISO_WITH_OFFSET.
+export function reanchorToEastern(iso: string): string {
+  const m = iso.match(WALLCLOCK);
+  if (!m) return iso;
+  const [, y, mo, d, h, mi, s] = m;
+  const offset = easternOffsetForDate(Number(y), Number(mo), Number(d));
+  return `${y}-${mo}-${d}T${h}:${mi}:${s ?? "00"}${offset}`;
+}
+
 export type ParsedReminder =
   | { ok: true; title: string; reminderAtIso: string; notifyLeadsMin: number[] | undefined }
   | { ok: false; title: string; reason: string };
@@ -52,13 +87,24 @@ export function parseReminderToolInput(raw: unknown): ParsedReminder {
     return { ok: false, title, reason: "invalid date" };
   }
 
-  let notifyLeadsMin: number[] | undefined;
-  if (Array.isArray(input.notifyLeadsMin)) {
-    const cleaned = input.notifyLeadsMin.filter(
-      (n): n is number => typeof n === "number" && ALLOWED_LEADS.has(n),
-    );
-    notifyLeadsMin = cleaned.length > 0 ? cleaned : undefined;
+  // [reminder-tz-diag] TEMP — remove once Andrew confirms reminder times
+  // land correctly in prod. Re-anchor the wall-clock onto the DST-correct
+  // Eastern offset; log only when it actually corrects something so a
+  // wrong/`Z` offset can never skew silently.
+  const anchored = reanchorToEastern(iso);
+  if (anchored !== iso) {
+    // eslint-disable-next-line no-console
+    console.log("[reminder-tz-diag] reanchored", { from: iso, to: anchored, title });
   }
+  return { ok: true, title, reminderAtIso: anchored, notifyLeadsMin: sanitizeNotifyLeads(input) };
+}
 
-  return { ok: true, title, reminderAtIso: iso, notifyLeadsMin };
+// Keep only allowed leads; undefined when none survive so the server
+// action falls back to its standard single 15-minute lead.
+function sanitizeNotifyLeads(input: Record<string, unknown>): number[] | undefined {
+  if (!Array.isArray(input.notifyLeadsMin)) return undefined;
+  const cleaned = input.notifyLeadsMin.filter(
+    (n): n is number => typeof n === "number" && ALLOWED_LEADS.has(n),
+  );
+  return cleaned.length > 0 ? cleaned : undefined;
 }

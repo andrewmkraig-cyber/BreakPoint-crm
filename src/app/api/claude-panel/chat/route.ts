@@ -70,8 +70,8 @@ const SYSTEM_PROMPT =
   "Pass the user's wording through; the tools handle stop-word stripping, plural collapsing, and ranking on their side.\n" +
   "Tool results may include markdown links like [Name](/candidates/abc) and [Title](/jobs/xyz). Quote those links as-is in your answer so the recruiter can click straight to the record. Never strip the link, never paraphrase the URL.\n" +
   "Action tools (move_candidate_stage / add_note / draft_email / inactivate_job / privatize_job / reactivate_job / delete_job / delete_candidate / reset_activity_log / reset_placements / update_placement_field) are PROPOSALS, not executions. Calling one stops your turn and the recruiter gets a Confirm/Cancel card. Never call an action tool with invented ids; resolve real candidates / placements / clients / jobs via the search tools first. Job lifecycle routing: 'close out' / 'mark inactive' → inactivate_job; 'make private' / 'hide from active' → privatize_job; 'reopen' / 'reactivate' → reactivate_job. delete_job and delete_candidate are destructive and cascade. Only use them when the recruiter explicitly says 'delete' or 'permanently remove' the named record. " +
-  "Data-reset tools (reset_activity_log / reset_placements / update_placement_field) are destructive and require explicit recruiter intent. reset_activity_log wipes ActionLog rows in a date range (omit dateFrom/dateTo to wipe everything). reset_placements deletes Placements matching dateFrom/dateTo/stage filters and cascades to dependent Interview rows. update_placement_field edits exactly one field on one placement; the only editable fields are placedAt, startConfirmedAt, stage, feeAmount, offerReceivedAt. Resolve the placementId via search_candidates → get_pipeline first; never invent it. Use ISO 8601 (YYYY-MM-DD or full ISO timestamp) for any date value. Today's date is {{TODAY}} (Eastern Time). Use it to resolve relative phrases like 'this week' / 'last month' into ISO dates. " +
-  "Creating reminders - create_reminder is a DIRECT action, NOT a Confirm-card proposal: calling it writes an Ace reminder immediately and the recruiter gets a single summary receipt. Use it for 'remind me…' / 'add a reminder…' requests and for a pasted list of timed items - emit ONE create_reminder call PER reminder in the same turn (six reminders = six calls). reminderAtIso MUST carry an explicit Eastern Time offset: today is {{TODAY}} in Eastern Time and the current Eastern offset is {{ET_OFFSET}} (use -04:00 during EDT / -05:00 during EST to match the reminder's date). Example: 2026-06-10T15:00:00-04:00. A reminderAtIso WITHOUT an explicit offset is rejected, not created - never emit a bare/naive datetime. After calling create_reminder do not write any extra confirmation text - the receipt speaks for itself. " +
+  "Data-reset tools (reset_activity_log / reset_placements / update_placement_field) are destructive and require explicit recruiter intent. reset_activity_log wipes ActionLog rows in a date range (omit dateFrom/dateTo to wipe everything). reset_placements deletes Placements matching dateFrom/dateTo/stage filters and cascades to dependent Interview rows. update_placement_field edits exactly one field on one placement; the only editable fields are placedAt, startConfirmedAt, stage, feeAmount, offerReceivedAt. Resolve the placementId via search_candidates → get_pipeline first; never invent it. Use ISO 8601 (YYYY-MM-DD or full ISO timestamp) for any date value. The current Eastern Time is {{NOW_ET}} (today's date is {{TODAY}}). Use the current time to resolve relative phrases like 'this week' / 'last month' / 'this afternoon' into ISO dates. " +
+  "Creating reminders - create_reminder is a DIRECT action, NOT a Confirm-card proposal: calling it writes an Ace reminder immediately and the recruiter gets a single summary receipt. Use it for 'remind me…' / 'add a reminder…' requests and for a pasted list of timed items - emit ONE create_reminder call PER reminder in the same turn (six reminders = six calls). The CURRENT Eastern time is {{NOW_ET}} - resolve EVERY relative phrase against it: 'in 20 minutes' = {{NOW_ET}} + 20 min, 'in 2 hours' = {{NOW_ET}} + 2h, 'tonight' / 'tomorrow at 3pm' relative to that same clock. Do NOT guess the current time. reminderAtIso MUST carry an explicit Eastern Time offset: the current Eastern offset is {{ET_OFFSET}} (use -04:00 during EDT / -05:00 during EST to match the reminder's date). Example: at 2026-06-10T15:00:00-04:00, 'in 20 minutes' is 2026-06-10T15:20:00-04:00. A reminderAtIso WITHOUT an explicit offset is rejected, not created - never emit a bare/naive datetime. After calling create_reminder do not write any extra confirmation text - the receipt speaks for itself. " +
   "After calling an action tool do not write any more text. The card speaks for itself.";
 
 // Custom data tools — exposed to Claude so it can pull live records
@@ -178,7 +178,7 @@ const DATA_TOOLS: Anthropic.Tool[] = [
   {
     name: "create_reminder",
     description:
-      "Create one Ace reminder — a personal, time-anchored nudge that shows on the recruiter's calendar grid and the dashboard This Week widget. Use this for 'remind me…' / 'add a reminder…' requests and for a pasted list of timed items; emit ONE create_reminder call PER reminder (six items = six calls in the same turn). reminderAtIso MUST be a full ISO-8601 timestamp WITH an explicit Eastern Time offset (-04:00 during EDT, -05:00 during EST, matching the reminder's date) — e.g. 2026-06-10T15:00:00-04:00. A bare/naive datetime with no offset is rejected, not created. Resolve relative phrasing ('tomorrow', 'next Monday', '3pm') against today's Eastern date. create_reminder executes immediately with no Confirm card; do not also write a confirmation sentence afterward.",
+      "Create one Ace reminder — a personal, time-anchored nudge that shows on the recruiter's calendar grid and the dashboard This Week widget. Use this for 'remind me…' / 'add a reminder…' requests and for a pasted list of timed items; emit ONE create_reminder call PER reminder (six items = six calls in the same turn). reminderAtIso MUST be a full ISO-8601 timestamp WITH an explicit Eastern Time offset (-04:00 during EDT, -05:00 during EST, matching the reminder's date) — e.g. 2026-06-10T15:00:00-04:00. A bare/naive datetime with no offset is rejected, not created. Resolve relative phrasing ('in 20 minutes', 'in 2 hours', 'tonight', 'tomorrow', 'next Monday', '3pm') against the CURRENT Eastern time stated in the system instructions — never guess the current time. create_reminder executes immediately with no Confirm card; do not also write a confirmation sentence afterward.",
     input_schema: {
       type: "object",
       properties: {
@@ -1972,6 +1972,17 @@ async function executeTool(
 async function runCreateReminder(
   rawInput: unknown,
 ): Promise<{ ok: true; title: string } | { ok: false; title: string; reason: string }> {
+  // [reminder-tz-diag] TEMP — remove once Andrew confirms reminder times
+  // land correctly in prod. This is the RAW reminderAtIso the MODEL
+  // emitted, before any validation/re-anchor — the first hop, where a
+  // guessed base time or a wrong offset would first appear.
+  // eslint-disable-next-line no-console
+  console.log("[reminder-tz-diag] model-emitted", {
+    rawReminderAtIso:
+      rawInput && typeof rawInput === "object"
+        ? (rawInput as Record<string, unknown>).reminderAtIso
+        : undefined,
+  });
   const parsed = parseReminderToolInput(rawInput);
   if (!parsed.ok) {
     log("create_reminder", { title: parsed.title }, 0, `rejected: ${parsed.reason}`);
@@ -1988,14 +1999,26 @@ async function runCreateReminder(
   }
 }
 
-// Today's date in Eastern Time + the current Eastern UTC offset, both
-// injected into the system prompt. ET (not UTC) so "remind me tomorrow"
-// resolves against the recruiter's actual day even late at night; the
-// live offset (DST-correct via Intl) so the model emits -04:00 in summer
-// and -05:00 in winter. `longOffset` yields e.g. "GMT-04:00"; we
-// normalize to "-04:00". Vercel ships full ICU so longOffset is
-// available; if it ever isn't, we fall back to a safe EST default.
-function easternDateAndOffset(now: Date): { today: string; offset: string } {
+// Today's date + the CURRENT wall-clock time in Eastern, plus the live
+// Eastern UTC offset, all injected into the system prompt. ET (not UTC)
+// so "remind me tomorrow" resolves against the recruiter's actual day
+// even late at night; the live offset (DST-correct via Intl) so the
+// model emits -04:00 in summer and -05:00 in winter.
+//
+// `nowIso` is the keystone: WITHOUT a current time in the prompt the
+// model has no anchor for relative phrases like "in 20 minutes" / "in 2
+// hours" and silently GUESSES a base time — the live 2-hour skew we saw
+// (a wrong wall-clock base, not a timezone conversion error). Handing it
+// the real Eastern now closes that gap.
+//
+// `longOffset` yields e.g. "GMT-04:00"; we normalize to "-04:00".
+// `sv-SE` reliably yields 24-hour "YYYY-MM-DD HH:MM:SS". Vercel ships
+// full ICU; if it ever isn't, we fall back to a safe EST default.
+function easternDateAndOffset(now: Date): {
+  today: string;
+  offset: string;
+  nowIso: string;
+} {
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",
     year: "numeric",
@@ -2010,7 +2033,18 @@ function easternDateAndOffset(now: Date): { today: string; offset: string } {
       .formatToParts(now)
       .find((p) => p.type === "timeZoneName")?.value ?? "GMT-05:00";
   const offset = rawOffset.replace(/^GMT/, "").trim() || "-05:00";
-  return { today, offset };
+  const wall = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(now); // "2026-06-02 17:57:00"
+  const nowIso = `${wall.replace(" ", "T")}${offset}`;
+  return { today, offset, nowIso };
 }
 
 export async function POST(req: NextRequest) {
@@ -2203,10 +2237,22 @@ export async function POST(req: NextRequest) {
   // from Settings > Personal Trainer. Appended last so they sit
   // closest to the model's response and override any earlier prompt
   // that drifts. Same pattern as /api/ai-workspace/route.ts.
-  const { today, offset: etOffset } = easternDateAndOffset(new Date());
+  const { today, offset: etOffset, nowIso: etNowIso } = easternDateAndOffset(new Date());
+  // [reminder-tz-diag] TEMP — remove once Andrew confirms reminder times
+  // land correctly in prod. These are the exact values injected into the
+  // prompt this turn; with {{NOW_ET}} present the model anchors "in 20
+  // minutes" to the real Eastern now instead of guessing a base time.
+  // eslint-disable-next-line no-console
+  console.log("[reminder-tz-diag] prompt-injection", {
+    today,
+    etOffset,
+    etNowIso,
+  });
   const fullSystemPrompt =
     entityBlock +
-    SYSTEM_PROMPT.replace(/\{\{TODAY\}\}/g, today).replace(/\{\{ET_OFFSET\}\}/g, etOffset) +
+    SYSTEM_PROMPT.replace(/\{\{TODAY\}\}/g, today)
+      .replace(/\{\{ET_OFFSET\}\}/g, etOffset)
+      .replace(/\{\{NOW_ET\}\}/g, etNowIso) +
     (await buildPersonalTrainerBlock(org.id));
 
   // Mixed tool list: the existing server-managed web_search plus the
