@@ -2921,6 +2921,17 @@ function ScheduleInterviewScreen({
       }
     >
       <div className="space-y-4">
+        {/* TEMP DIAGNOSTIC MARKER (remove after the live-vs-repo divergence
+            is resolved). Proves which component the live route renders + why
+            edit mode might look "time-only": if no body editors show, the
+            cInv/candInv flags below are false. Bright pink so it can't be
+            missed in a screenshot. */}
+        <div className="rounded bg-pink-600 px-2 py-1 text-[11px] font-bold text-white">
+          EDITv2 · {isEdit ? "EDIT" : "NEW"}
+          {isEdit && (
+            <> · cInv={String(existingInterview?.clientInvited)} candInv={String(existingInterview?.candidateInvited)}</>
+          )}
+        </div>
         <ScheduleFields
           scheduledAt={scheduledAt}
           setScheduledAt={setScheduledAt}
