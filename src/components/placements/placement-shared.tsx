@@ -773,7 +773,7 @@ export function InlineContactMultiInput({
           onBlur={addTyped}
           onFocus={() => setOpen(true)}
           placeholder={selected.size === 0 ? placeholder : ""}
-          className="min-w-[160px] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none"
+          className="min-w-[160px] flex-1 bg-transparent px-1 py-0.5 text-sm text-court-fg outline-none placeholder:text-court-fg-muted"
         />
       </div>
       {open && (
