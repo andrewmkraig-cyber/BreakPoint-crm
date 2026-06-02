@@ -1908,7 +1908,12 @@ export function MailComposer({
             ) : (
               <Save className="h-3 w-3" />
             )}
-            Save
+            {/* INTENTIONAL exception to the Ace 71.0 "Save everywhere" label
+                standard: this composer footer button reads "Save Draft" (not
+                "Save") so it's unambiguous next to Send / Send Later that it
+                stashes a Gmail draft rather than saving a record. Do not revert
+                to "Save". */}
+            Save Draft
           </Button>
           <Button
             type="button"

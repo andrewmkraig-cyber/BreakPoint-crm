@@ -143,7 +143,7 @@ html[data-surface='clay'][data-theme='light'] {
   --court-sidebar-icon:             107  58  32; /* #6B3A20 */
   --court-sidebar-active-bg:        rgb(244 226 212); /* #F4E2D4 — less saturated active wash */
   --court-sidebar-active-fg:        139  50   8; /* #8B3208 */
-  --court-sidebar-card:             255 250 243; /* #FFFAF3 — profile card (== surface here) */
+  --court-sidebar-card:             var(--court-sidebar-bg); /* profile card == sidebar surface (was #FFFAF3, the content surface — mismatched the tan #E8D2BD sidebar in Clay light) */
   --court-sidebar-rail:             183  65  14; /* #B7410E */
 
   --court-brand:                     90 150  66; /* #5A9642 */

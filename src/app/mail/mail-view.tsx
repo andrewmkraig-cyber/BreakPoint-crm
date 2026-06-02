@@ -202,6 +202,15 @@ export function MailView({
     [labels],
   );
   const labelTree = useMemo(() => (labels ? buildLabelTree(labels) : []), [labels]);
+  // Draft count for the Drafts nav row, derived from the already-fetched
+  // Gmail labels (the system DRAFT label carries messagesTotal). No extra
+  // query — reuses the per-user labels fetch above, which is scoped to the
+  // signed-in user's own mailbox via their OAuth token. Renders "(N)" only
+  // when > 0; 0 shows nothing so Drafts looks exactly as it does today.
+  const draftCount = useMemo(
+    () => labels?.find((l) => l.id === "DRAFT")?.messagesTotal ?? 0,
+    [labels],
+  );
   // Flat list of every parent (has-children) node path, for the
   // Collapse all / Expand all toggle below the Inbox card.
   const parentLabelPaths = useMemo(() => {
@@ -1073,6 +1082,13 @@ export function MailView({
               >
                 <FileText className="h-4 w-4 shrink-0" />
                 <span className="flex-1 truncate">Drafts</span>
+                {/* Draft count as muted "(N)" at the row's right edge, matching
+                    the Inbox unread structure but at the nav label's muted
+                    metadata weight/size (not bold, no new color, not the
+                    tinted Inbox pill). Hidden at 0 so Drafts is unchanged. */}
+                {draftCount > 0 && (
+                  <span className="text-court-fg-muted">({draftCount})</span>
+                )}
               </button>
             </li>
           </ul>
