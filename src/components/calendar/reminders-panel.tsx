@@ -264,14 +264,14 @@ function ReminderForm({
     <form
       ref={formRef}
       onSubmit={handleSubmit}
-      // scroll-mt / scroll-mb give scrollIntoView breathing room so the
-      // form never butts right up against the rail's clip edge. The body
-      // is capped + scrollable and the action row is a sticky footer
-      // (mirrors the 76.0 scheduler pattern) so Save / Delete are always
-      // reachable even when the left rail is shorter than the form.
-      className="scroll-my-4 border-b border-court-border-soft bg-court-surface-subtle"
+      // The FORM itself is the viewport-bounded scroll container and the
+      // action row is a sticky footer pinned to the form's OWN bottom
+      // (mirrors the 76.0 scheduler pattern), so Save / Delete are always
+      // reachable no matter how short the left rail is. scroll-my-4 gives
+      // scrollIntoView breathing room off the rail's clip edge.
+      className="scroll-my-4 max-h-[60vh] overflow-y-auto border-b border-court-border-soft bg-court-surface-subtle"
     >
-      <div className="max-h-[55vh] space-y-2.5 overflow-y-auto px-5 py-3.5">
+      <div className="space-y-2.5 px-5 py-3.5">
         <input
           ref={titleRef}
           type="text"

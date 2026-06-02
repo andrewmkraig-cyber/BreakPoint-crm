@@ -96,15 +96,25 @@ export function CalendarLeftRail({
         today={today}
         onSelectDate={onSelectDate}
       />
-      <EventTypeLegend
-        selectedTypes={selectedEventTypes}
-        onToggle={onToggleEventType}
-      />
-      <TeamList
-        teamMembers={teamMembers}
-        hiddenMembers={hiddenMembers}
-        onToggleMember={onToggleMember}
-      />
+      {/* EVENT TYPES + TEAM share one card as two columns. Stacking them
+          as separate cards consumed ~120px of rail height and pushed the
+          Reminders panel below the fold; side-by-side reclaims that space
+          while keeping both columns wide enough to stay legible. */}
+      <div className="rounded-2xl border border-court-border bg-court-surface p-3.5 shadow-sm">
+        <div className="grid grid-cols-2 gap-3">
+          <EventTypeLegend
+            selectedTypes={selectedEventTypes}
+            onToggle={onToggleEventType}
+          />
+          <div className="border-l border-court-border-soft pl-3">
+            <TeamList
+              teamMembers={teamMembers}
+              hiddenMembers={hiddenMembers}
+              onToggleMember={onToggleMember}
+            />
+          </div>
+        </div>
+      </div>
       <CalendarRemindersPanel
         reminders={reminders}
         editingId={editingReminderId}
@@ -298,8 +308,12 @@ function EventTypeLegend({
   // type renders on the grid; clicking the last active chip clears
   // the filter and brings everyone back.
   const anySelected = selectedTypes.size > 0;
+  // Bare column content (no card chrome): the EVENT TYPES legend and the
+  // TEAM list now share ONE card laid out as two columns (see the rail),
+  // which reclaims a stacked card's height + padding so the Reminders
+  // panel rises into view instead of being pushed below the rail fold.
   return (
-    <div className="rounded-2xl border border-court-border bg-court-surface p-3.5 shadow-sm">
+    <div>
       <div className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-court-fg-muted">
         Event types
       </div>
@@ -357,8 +371,10 @@ function TeamList({
   hiddenMembers: Set<string>;
   onToggleMember: (id: string) => void;
 }) {
+  // Bare column content (no card chrome) - shares the EVENT TYPES card as
+  // the right-hand column. See the rail's combined filters card.
   return (
-    <div className="rounded-2xl border border-court-border bg-court-surface p-3.5 shadow-sm">
+    <div>
       <div className="mb-2.5 flex items-center justify-between">
         <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-court-fg-muted">
           Team
