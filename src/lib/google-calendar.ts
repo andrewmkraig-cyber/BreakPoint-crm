@@ -50,6 +50,34 @@ export async function getFreshAccessToken(userId: string): Promise<string> {
   return json.access_token;
 }
 
+// Google Calendar occasionally returns a transient 403 rateLimitExceeded
+// under burst load (e.g. creating both the client + candidate events back
+// to back). The request is rejected by quota BEFORE any event is created or
+// patched, so re-issuing the identical request cannot double-create — it is
+// safe to retry. Andrew hit this as "Some invites didn't send," then a
+// manual re-Send (unchanged) succeeded; this wraps that single retry so the
+// recruiter doesn't have to. Only a 403 whose body names a rate/quota limit
+// is retried (once, after a short backoff); auth/permission 403s pass
+// straight through. The original Response is returned untouched so callers
+// still read its body via .text()/.json() (we inspect a clone).
+const CALENDAR_RATE_LIMIT_RE = /rateLimitExceeded|userRateLimitExceeded|quotaExceeded|rate limit exceeded/i;
+
+async function calendarFetch(
+  input: string,
+  init: RequestInit,
+  attempt = 0,
+): Promise<Response> {
+  const res = await fetch(input, init);
+  if (res.status === 403 && attempt < 1) {
+    const text = await res.clone().text().catch(() => "");
+    if (CALENDAR_RATE_LIMIT_RE.test(text)) {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      return calendarFetch(input, init, attempt + 1);
+    }
+  }
+  return res;
+}
+
 export type CalendarAttendee = {
   email: string;
   displayName?: string;
@@ -164,7 +192,7 @@ export async function createCalendarEvent(
   url.searchParams.set("sendUpdates", sendUpdates);
   if (input.createMeet || willAttachExistingMeet) url.searchParams.set("conferenceDataVersion", "1");
 
-  const res = await fetch(url.toString(), {
+  const res = await calendarFetch(url.toString(), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -221,7 +249,7 @@ export async function getEventConferenceData(params: {
   const url = new URL(
     `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(params.eventId)}`,
   );
-  const res = await fetch(url.toString(), {
+  const res = await calendarFetch(url.toString(), {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
@@ -286,7 +314,7 @@ export async function patchCalendarEventDetails(
   if (input.attendees !== undefined) body.attendees = input.attendees;
   if (Object.keys(body).length === 0) return;
 
-  const res = await fetch(url.toString(), {
+  const res = await calendarFetch(url.toString(), {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -309,7 +337,7 @@ export async function getCalendarEventAttendees(params: {
   const url = new URL(
     `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(params.eventId)}`,
   );
-  const res = await fetch(url.toString(), {
+  const res = await calendarFetch(url.toString(), {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
@@ -348,7 +376,7 @@ export async function updateCalendarEvent(params: {
     end: { dateTime: end.toISOString(), timeZone: tz },
   };
   if (params.location !== undefined) patchBody.location = params.location;
-  const res = await fetch(url.toString(), {
+  const res = await calendarFetch(url.toString(), {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -381,7 +409,7 @@ export async function updateEventAsInvite(input: UpdateEventAsInviteInput): Prom
   const getUrl = new URL(
     `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(input.eventId)}`,
   );
-  const getRes = await fetch(getUrl.toString(), {
+  const getRes = await calendarFetch(getUrl.toString(), {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
@@ -417,7 +445,7 @@ export async function updateEventAsInvite(input: UpdateEventAsInviteInput): Prom
     `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(input.eventId)}`,
   );
   patchUrl.searchParams.set("sendUpdates", "all");
-  const patchRes = await fetch(patchUrl.toString(), {
+  const patchRes = await calendarFetch(patchUrl.toString(), {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -447,7 +475,7 @@ export async function addAttendeeToEvent(input: AddAttendeeInput): Promise<void>
   const getUrl = new URL(
     `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(input.eventId)}`,
   );
-  const getRes = await fetch(getUrl.toString(), {
+  const getRes = await calendarFetch(getUrl.toString(), {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
@@ -467,7 +495,7 @@ export async function addAttendeeToEvent(input: AddAttendeeInput): Promise<void>
     `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(input.eventId)}`,
   );
   patchUrl.searchParams.set("sendUpdates", sendUpdates);
-  const patchRes = await fetch(patchUrl.toString(), {
+  const patchRes = await calendarFetch(patchUrl.toString(), {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -495,7 +523,7 @@ export async function deleteCalendarEvent(params: {
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal)}/events/${encodeURIComponent(params.eventId)}`,
   );
   url.searchParams.set("sendUpdates", sendUpdates);
-  const res = await fetch(url.toString(), {
+  const res = await calendarFetch(url.toString(), {
     method: "DELETE",
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",

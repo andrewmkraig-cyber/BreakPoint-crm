@@ -98,11 +98,6 @@ export function TemplatesTriggersView({
     };
   }, [highlightedTriggerKey, tab]);
 
-  function onUsedByClick(triggerKey: string) {
-    setHighlightedTriggerKey(triggerKey);
-    changeTab("triggers");
-  }
-
   function onTemplateLinkClick(templateId: string) {
     setHighlightedTemplateId(templateId);
     changeTab("templates");
@@ -124,7 +119,6 @@ export function TemplatesTriggersView({
         <TemplatesView
           initial={templates}
           highlightedId={highlightedTemplateId}
-          onUsedByClick={onUsedByClick}
         />
       ) : (
         <TriggersView

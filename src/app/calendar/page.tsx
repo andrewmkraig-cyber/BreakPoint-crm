@@ -12,6 +12,7 @@ import type {
   CalendarReminder,
   CalendarTeamMember,
 } from "@/lib/calendar/types";
+import { htmlToReadableText } from "@/lib/merge-fields";
 import { prisma } from "@/lib/prisma";
 
 import { CalendarView } from "./calendar-view";
@@ -367,7 +368,12 @@ export default async function CalendarPage() {
     // drifts); the organizer tracking-event ("none") and any not-yet-stored
     // case fall back to the synced Google summary/description.
     const displayTitle = interviewMeta?.sentSubject ?? row.title;
-    const displayMeta = interviewMeta?.sentBody ?? row.description ?? undefined;
+    // Stored sent-copy bodies can be HTML (older client-confirmation sends);
+    // render them clean so the tile detail matches the real Google invite
+    // instead of showing literal <p>/<br>. No-ops on plain text.
+    const displayMeta = interviewMeta?.sentBody
+      ? htmlToReadableText(interviewMeta.sentBody)
+      : row.description ?? undefined;
     return {
       id: row.id,
       title: displayTitle,
@@ -392,7 +398,7 @@ export default async function CalendarPage() {
       interviewId: interviewMeta?.interviewId,
       interviewParty: interviewMeta?.party,
       sentSubject: interviewMeta?.sentSubject,
-      sentBody: interviewMeta?.sentBody,
+      sentBody: interviewMeta?.sentBody ? htmlToReadableText(interviewMeta.sentBody) : interviewMeta?.sentBody,
     };
   });
 

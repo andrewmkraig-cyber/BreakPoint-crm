@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, Link2, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -58,15 +58,11 @@ const FIELD_CLASS =
 export function TemplatesView({
   initial,
   highlightedId,
-  onUsedByClick,
 }: {
   initial: TemplateRow[];
   // Brief ring highlight + scrollIntoView target. Cleared by the
   // parent after the highlight pulse finishes.
   highlightedId?: string | null;
-  // Fires when a recruiter clicks a "Used by: <trigger>" badge so the
-  // parent can switch to the Triggers tab and scroll to that rule.
-  onUsedByClick?: (triggerKey: string) => void;
 }) {
   const [editing, setEditing] = useState<TemplateRow | "new" | null>(null);
   const [tab, setTab] = useState<TabId>("active");
@@ -117,7 +113,6 @@ export function TemplatesView({
             isLast={i === visible.length - 1}
             onEdit={() => setEditing(tpl)}
             highlighted={highlightedId === tpl.id}
-            onUsedByClick={onUsedByClick}
           />
         ))}
       </ul>
@@ -180,14 +175,12 @@ function TemplateCard({
   isLast,
   onEdit,
   highlighted,
-  onUsedByClick,
 }: {
   tpl: TemplateRow;
   isFirst: boolean;
   isLast: boolean;
   onEdit: () => void;
   highlighted?: boolean;
-  onUsedByClick?: (triggerKey: string) => void;
 }) {
   const router = useRouter();
   const [isDeleting, startDelete] = useTransition();
@@ -270,24 +263,6 @@ function TemplateCard({
               <span className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
                 {tpl.audience}
               </span>
-            )}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {tpl.usedBy.length === 0 ? (
-              <span className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
-                Unused
-              </span>
-            ) : (
-              tpl.usedBy.map((u) => (
-                <button
-                  key={u.triggerKey}
-                  type="button"
-                  onClick={() => onUsedByClick?.(u.triggerKey)}
-                  className="inline-flex items-center gap-1 rounded-md border border-court-brand/40 bg-court-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-court-brand-dark transition hover:bg-court-brand/15"
-                >
-                  <Link2 className="h-2.5 w-2.5" /> Used by: {u.label}
-                </button>
-              ))
             )}
           </div>
           <div className="mt-1 text-sm text-court-fg-muted">{tpl.subject}</div>

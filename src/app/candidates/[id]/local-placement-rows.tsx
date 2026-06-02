@@ -44,7 +44,6 @@ import {
   type InterviewType,
   type MeetingProvider,
 } from "@/app/candidates/[id]/interview-actions";
-import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 import { DateTime15Picker } from "@/components/datetime-15-picker";
 import { MeetingProviderSelect } from "@/components/meeting-provider-select";
 import {
@@ -55,7 +54,7 @@ import {
   parseEmailCsv,
 } from "@/components/placements/placement-shared";
 import { triggerCalendarSync } from "@/lib/calendar/trigger-sync";
-import { applyMergeFields as applyMergeFieldsClient, MERGE_FIELDS, type MergeFieldValues } from "@/lib/merge-fields";
+import { applyMergeFields as applyMergeFieldsClient, htmlToReadableText, MERGE_FIELDS, type MergeFieldValues } from "@/lib/merge-fields";
 // Canonical Lead Source options — shared with the RF PlacementDialog,
 // the /pipeline placement-edit-drawer, and the Financial Performance
 // By Source widget so all four surfaces agree on the bucket set. Added
@@ -2004,7 +2003,7 @@ function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; o
 
 // ---- Shared dialog primitives ----
 
-// Date/time/type/notes — interviewer is its own picker now (rendered by
+// Date/time/type — interviewer is its own picker now (rendered by
 // the caller so it can pass client context for the contact dropdown).
 function ScheduleFields(props: {
   scheduledAt: string;
@@ -2022,8 +2021,6 @@ function ScheduleFields(props: {
   setType: (t: InterviewType) => void;
   location: string;
   setLocation: (v: string) => void;
-  notes: string;
-  setNotes: (v: string) => void;
   interviewerSlot?: React.ReactNode;
   ccBccSlot?: React.ReactNode;
   // Renders directly under the Type select. Used by the schedule flow
@@ -2099,15 +2096,6 @@ function ScheduleFields(props: {
       )}
       {props.interviewerSlot}
       {props.ccBccSlot}
-      <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Notes</span>
-        <textarea
-          value={props.notes}
-          onChange={(e) => props.setNotes(e.target.value)}
-          rows={3}
-          className="mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-        />
-      </label>
     </div>
   );
 }
@@ -2217,7 +2205,10 @@ function ModalShell({
                   minWidth: resizable ? MODAL_MIN_W : undefined,
                   minHeight: resizable ? MODAL_MIN_H : undefined,
                   maxWidth: resizable ? "90vw" : undefined,
-                  maxHeight: resizable ? "90vh" : undefined,
+                  // dvh (dynamic viewport) not vh: on mobile/iOS a static
+                  // 90vh exceeds the visible area under the browser chrome,
+                  // pushing the pinned footer (Send/Save) below the fold.
+                  maxHeight: resizable ? "90dvh" : undefined,
                   transform:
                     draggable && (position.x !== 0 || position.y !== 0)
                       ? `translate3d(${position.x}px, ${position.y}px, 0)`
@@ -2437,25 +2428,24 @@ function defaultCandidateBody(type: InterviewType, location: string): string {
   );
 }
 
-// Per-party subject/body draft. While the recruiter hasn't touched a field,
-// it stays a live preview that re-resolves from its source template as the
-// schedule values change. The first manual edit (or token insert) freezes
-// that field so subsequent date/type changes never clobber the recruiter's
-// wording. Picking a saved template (or "Ace default") re-arms the preview.
+// Per-party subject/body draft. The source copy is always the saved
+// scheduling template for that party (client → "Client Interview
+// Confirmation", candidate → interview-prep), passed in as the default.
+// While the recruiter hasn't touched a field it stays a live preview that
+// re-resolves from that template as the schedule values change; the first
+// manual edit (or token insert) freezes the field so later date/type
+// changes never clobber the recruiter's wording.
 function useInviteDraft(defaultSubject: string, defaultBody: string, values: MergeFieldValues) {
-  const [chosen, setChosen] = useState<{ subject: string; body: string } | null>(null);
   const [subject, setSubjectState] = useState("");
   const [body, setBodyState] = useState("");
   const [subjectTouched, setSubjectTouched] = useState(false);
   const [bodyTouched, setBodyTouched] = useState(false);
-  const srcSubject = chosen?.subject ?? defaultSubject;
-  const srcBody = chosen?.body ?? defaultBody;
   useEffect(() => {
-    if (!subjectTouched) setSubjectState(applyMergeFieldsClient(srcSubject, values));
-  }, [srcSubject, values, subjectTouched]);
+    if (!subjectTouched) setSubjectState(applyMergeFieldsClient(defaultSubject, values));
+  }, [defaultSubject, values, subjectTouched]);
   useEffect(() => {
-    if (!bodyTouched) setBodyState(applyMergeFieldsClient(srcBody, values));
-  }, [srcBody, values, bodyTouched]);
+    if (!bodyTouched) setBodyState(applyMergeFieldsClient(defaultBody, values));
+  }, [defaultBody, values, bodyTouched]);
   return {
     subject,
     body,
@@ -2467,31 +2457,23 @@ function useInviteDraft(defaultSubject: string, defaultBody: string, values: Mer
       setBodyState(v);
       setBodyTouched(true);
     },
-    pick: (tpl: ActiveTemplateSummary | null) => {
-      setChosen(tpl ? { subject: tpl.subject, body: tpl.body } : null);
-      setSubjectTouched(false);
-      setBodyTouched(false);
-    },
   };
 }
 
-// Inline subject + body editor for one party, with a saved-template picker
-// and a merge-field inserter. Plain-text body (it becomes the Google event
+// Inline subject + body editor for one party, with a merge-field inserter.
+// The body auto-fills from the saved scheduling template for this party and
+// stays inline-editable. Plain-text body (it becomes the Google event
 // description) so no rich editor is needed.
 function InlineInviteEditor({
   subject,
   body,
   onSubjectChange,
   onBodyChange,
-  templates,
-  onPickTemplate,
 }: {
   subject: string;
   body: string;
   onSubjectChange: (v: string) => void;
   onBodyChange: (v: string) => void;
-  templates: ActiveTemplateSummary[];
-  onPickTemplate: (tpl: ActiveTemplateSummary | null) => void;
 }) {
   const subjectRef = useRef<HTMLInputElement | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
@@ -2523,26 +2505,6 @@ function InlineInviteEditor({
   return (
     <div className="space-y-2 rounded-lg border border-court-border/60 bg-court-surface-subtle/40 p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-1.5 text-[11px] text-court-fg-muted">
-          <span className="uppercase tracking-wider">Template</span>
-          <select
-            value=""
-            onChange={(e) => {
-              const v = e.target.value;
-              onPickTemplate(v ? (templates.find((t) => t.id === v) ?? null) : null);
-              e.target.selectedIndex = 0;
-            }}
-            className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg focus:border-brand focus:outline-none"
-          >
-            <option value="__pick">Use a template…</option>
-            <option value="">Ace default copy</option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </label>
         <label className="flex items-center gap-1.5 text-[11px] text-court-fg-muted">
           <span className="uppercase tracking-wider">Insert field</span>
           <select
@@ -2630,13 +2592,11 @@ function ScheduleInterviewScreen({
   const [location, setLocation] = useState("");
   const [ccCsv, setCcCsv] = useState("");
   const [bccCsv, setBccCsv] = useState("");
-  const [notes, setNotes] = useState("");
   // "Client will send invite": log the interview for tracking + credit, send
   // nothing. Same source="client_scheduled" path the old modal used.
   const [clientWillSendInvite, setClientWillSendInvite] = useState(false);
   const [sendClientEmail, setSendClientEmail] = useState(true);
   const [sendCandidateEmail, setSendCandidateEmail] = useState(true);
-  const [templates, setTemplates] = useState<ActiveTemplateSummary[]>([]);
   // Active interview-scheduling templates seed the per-party defaults (same
   // as the retired composers: clientTemplate?.subject ?? hardcoded fallback).
   const [schedTemplates, setSchedTemplates] = useState<
@@ -2661,21 +2621,6 @@ function ScheduleInterviewScreen({
         if (!cancelled) setMicrosoftConnected(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Load interview-category templates for the per-party template pickers.
-  useEffect(() => {
-    let cancelled = false;
-    void listActiveTemplates()
-      .then((list) => {
-        if (!cancelled) setTemplates(list.filter((t) => t.category === "interview"));
-      })
-      .catch(() => {
-        // Pickers just stay empty (Ace default copy still works).
-      });
     return () => {
       cancelled = true;
     };
@@ -2748,20 +2693,38 @@ function ScheduleInterviewScreen({
     recruiter,
   ]);
 
+  // Saved-template bodies can be stored as HTML (the rich-text Settings
+  // editor); the candidate-prep body happens to be plain text, the client
+  // confirmation body is HTML. htmlToReadableText converts <p>/<br>/entities
+  // to clean text (and no-ops on plain text) so the body reads clean in the
+  // editor, in the calendar event, in the stored sent-copy, and in the Bcc
+  // Gmail copy alike — matching what Google Calendar already renders.
   const clientDefaultSubject = useMemo(
-    () => schedTemplates.client?.subject ?? defaultClientSubject(type, candidateName, job.jobTitle),
+    () =>
+      schedTemplates.client?.subject
+        ? htmlToReadableText(schedTemplates.client.subject)
+        : defaultClientSubject(type, candidateName, job.jobTitle),
     [schedTemplates, type, candidateName, job.jobTitle],
   );
   const clientDefaultBody = useMemo(
-    () => schedTemplates.client?.body ?? defaultClientBody(type, location),
+    () =>
+      schedTemplates.client?.body
+        ? htmlToReadableText(schedTemplates.client.body)
+        : defaultClientBody(type, location),
     [schedTemplates, type, location],
   );
   const candidateDefaultSubject = useMemo(
-    () => schedTemplates.candidate?.subject ?? defaultCandidateSubject(type),
+    () =>
+      schedTemplates.candidate?.subject
+        ? htmlToReadableText(schedTemplates.candidate.subject)
+        : defaultCandidateSubject(type),
     [schedTemplates, type],
   );
   const candidateDefaultBody = useMemo(
-    () => schedTemplates.candidate?.body ?? defaultCandidateBody(type, location),
+    () =>
+      schedTemplates.candidate?.body
+        ? htmlToReadableText(schedTemplates.candidate.body)
+        : defaultCandidateBody(type, location),
     [schedTemplates, type, location],
   );
 
@@ -2803,7 +2766,7 @@ function ScheduleInterviewScreen({
           durationMin,
           type,
           attendees,
-          notes: notes.trim(),
+          notes: "",
           source: clientWillSendInvite ? "client_scheduled" : "ace_scheduled",
           jobTitle: job.jobTitle,
           clientName: job.clientName,
@@ -2937,8 +2900,6 @@ function ScheduleInterviewScreen({
           setType={setType}
           location={location}
           setLocation={setLocation}
-          notes={notes}
-          setNotes={setNotes}
           typeExtras={
             type === "video" && !clientWillSendInvite ? (
               <MeetingProviderSelect
@@ -3004,8 +2965,6 @@ function ScheduleInterviewScreen({
                 body={clientDraft.body}
                 onSubjectChange={clientDraft.setSubject}
                 onBodyChange={clientDraft.setBody}
-                templates={templates}
-                onPickTemplate={clientDraft.pick}
               />
             </InviteToggleSection>
 
@@ -3020,8 +2979,6 @@ function ScheduleInterviewScreen({
                 body={candidateDraft.body}
                 onSubjectChange={candidateDraft.setSubject}
                 onBodyChange={candidateDraft.setBody}
-                templates={templates}
-                onPickTemplate={candidateDraft.pick}
               />
             </InviteToggleSection>
           </>
