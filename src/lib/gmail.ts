@@ -401,8 +401,17 @@ export type GmailDraftCreateResult = {
 
 export async function createGmailDraft(input: SendEmailInput): Promise<GmailDraftCreateResult> {
   const accessToken = await getFreshAccessToken(input.userId);
-  const signed = await withSignature(input);
-  const raw = base64UrlEncode(buildRfc2822(signed));
+  // Drafts store the body EXACTLY as composed — the signature is NOT
+  // baked in here. It is appended only at true send time (sendGmail ->
+  // withSignature), matching normal-send behavior where the recruiter
+  // never sees the signature in the composer UI. Signing the stored
+  // draft caused the oversized-signature-on-reopen bug (the Save Draft
+  // body and the Send Later mirror draft both carried the full
+  // signature table, which the editor re-rendered unconstrained). A
+  // scheduled send still goes out signed: fireScheduledEmail sends the
+  // clean stored body through sendGmail, which appends the signature on
+  // dispatch.
+  const raw = base64UrlEncode(buildRfc2822(input));
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/drafts", {
     method: "POST",
     headers: {

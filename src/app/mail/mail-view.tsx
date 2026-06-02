@@ -83,6 +83,14 @@ export function MailView({
   // re-loads and re-opens it (otherwise detail would be cached and the
   // open-on-detail effect wouldn't fire again).
   const composerManagerForDrafts = useComposerManager();
+  // Gate for the draft hand-off effect below. The draft composer must
+  // open only when the recruiter actually CLICKS a draft row — never as
+  // a side effect of the mount-time auto-selection of the first inbox
+  // thread (a Send Later reply leaves a mirror draft on an inbox thread
+  // that can sit at the top of the list, which would otherwise pop a
+  // composer the moment Mail loads). Set true on a row click, consumed
+  // (reset) the one time the hand-off effect opens a composer.
+  const userSelectedThreadRef = useRef(false);
   // Bulk-selection set: thread IDs the user has checkbox-ticked.
   // Stays a Set so add/remove is cheap and Set identity changes
   // trigger re-renders only when the contents actually change.
@@ -415,6 +423,13 @@ export function MailView({
   // keeps the new send threaded with it on Send.
   useEffect(() => {
     if (!detail?.draftId || !detail.draftMessageId) return;
+    // Only auto-open when the recruiter clicked the draft row. On a
+    // mount auto-selection (or any non-click detail load) this ref is
+    // false, so Mail opens NO composer on its own. Consume the flag so a
+    // single click opens exactly one composer even if this effect re-runs
+    // (e.g. a provider re-render changing the manager identity).
+    if (!userSelectedThreadRef.current) return;
+    userSelectedThreadRef.current = false;
     const draftMessage =
       detail.messages.find((m) => m.id === detail.draftMessageId) ??
       detail.messages[detail.messages.length - 1];
@@ -1364,6 +1379,10 @@ export function MailView({
                   anySelected={selectedIds.size > 0}
                   selectedIds={selectedIds}
                   onOpen={() => {
+                    // Mark this as a user-initiated selection so the
+                    // draft hand-off effect is allowed to open a composer
+                    // (mount auto-select never sets this).
+                    userSelectedThreadRef.current = true;
                     setSelected(t.id);
                     setMobileThreadOpen(true);
                   }}

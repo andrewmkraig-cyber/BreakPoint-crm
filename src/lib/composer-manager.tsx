@@ -4,6 +4,9 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
+  useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -78,10 +81,38 @@ const ComposerManagerContext = createContext<{
 
 export function ComposerManagerProvider({ children }: { children: ReactNode }) {
   const [specs, setSpecs] = useState<Spec[]>([]);
+  // Mirror of `specs` for synchronous reads inside open() so the dedupe
+  // check below doesn't depend on a stale closure.
+  const specsRef = useRef<Spec[]>([]);
+  useEffect(() => {
+    specsRef.current = specs;
+  }, [specs]);
 
   const open = useCallback((input: OpenComposerInput): string => {
+    // Dedupe draft-keyed opens: a draft id can only have ONE composer
+    // open at a time. Without this, a single draft click that triggers
+    // the open path more than once (e.g. an effect re-firing) would
+    // stack two identical composers. Fresh (non-draft) composes are not
+    // deduped — multiple New-Email windows are allowed by design.
+    if (input.defaultDraftId) {
+      const existing = specsRef.current.find(
+        (s) => s.defaultDraftId === input.defaultDraftId,
+      );
+      if (existing) return existing.id;
+    }
     const id = `cmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setSpecs((prev) => [...prev, { id, ...input }]);
+    setSpecs((prev) => {
+      // Re-check inside the updater to close the same-tick race where two
+      // open() calls fire before specsRef has synced (functional updaters
+      // chain, so `prev` already includes the first call's spec).
+      if (
+        input.defaultDraftId &&
+        prev.some((s) => s.defaultDraftId === input.defaultDraftId)
+      ) {
+        return prev;
+      }
+      return [...prev, { id, ...input }];
+    });
     return id;
   }, []);
 
@@ -89,8 +120,14 @@ export function ComposerManagerProvider({ children }: { children: ReactNode }) {
     setSpecs((prev) => prev.filter((s) => s.id !== id));
   }, []);
 
+  // Stable context value so consumers (e.g. the Mail draft hand-off
+  // effect) don't see a new identity on every provider re-render — an
+  // unstable value here re-fired that effect and stacked a second
+  // composer.
+  const value = useMemo(() => ({ open, close }), [open, close]);
+
   return (
-    <ComposerManagerContext.Provider value={{ open, close }}>
+    <ComposerManagerContext.Provider value={value}>
       {children}
       {/* Open composers render OUTSIDE the page tree so they survive
           the page-component unmounting (e.g., user navigates from
