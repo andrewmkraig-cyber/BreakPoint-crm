@@ -188,26 +188,35 @@ export async function createJob(
     // a job in just KY (no city/zip) yields locations=["KY"]; an empty
     // form yields locations=[] (same as before).
     const locationCity = input.locationCity.trim();
-    const locationState = input.locationState.trim();
+    const locationState = input.locationState.trim().toUpperCase();
     const locationZip = input.locationZip.trim();
 
-    // Defense-in-depth: re-run the US location validation the form
-    // already performed via /api/location/validate-us. Only fires
-    // when at least one of the location fields is filled — blank
-    // values pass through (per the "do not block save if the city
-    // field is left blank" rule). Network errors fail open inside
-    // the helpers, matching the form's behavior.
-    if (locationCity) {
-      const cityCheck = await validateUsCity(locationCity);
-      if (!cityCheck.ok) {
-        return { ok: false, error: `City: ${cityCheck.message}` };
-      }
+    // City / State / Zip are REQUIRED on new jobs (server-side guard so a
+    // missing/invalid location can never slip past a client that skipped
+    // the form check). State must be a 2-letter abbreviation, Zip 5
+    // digits. This only governs the create path — existing jobs are
+    // untouched.
+    if (!locationCity) return { ok: false, error: "City is required." };
+    if (!locationState) return { ok: false, error: "State is required." };
+    if (!/^[A-Z]{2}$/.test(locationState)) {
+      return { ok: false, error: "State must be a 2-letter abbreviation." };
     }
-    if (locationZip) {
-      const zipCheck = await validateUsZip(locationZip);
-      if (!zipCheck.ok) {
-        return { ok: false, error: `Zip: ${zipCheck.message}` };
-      }
+    if (!locationZip) return { ok: false, error: "Zip is required." };
+    if (!/^\d{5}$/.test(locationZip)) {
+      return { ok: false, error: "Zip must be a 5-digit US zip code." };
+    }
+
+    // Defense-in-depth: re-run the US location validation the form
+    // already performed via /api/location/validate-us. Network errors
+    // fail open inside the helpers, matching the form's behavior, so a
+    // transient Nominatim/Zippopotam outage can't block a valid save.
+    const cityCheck = await validateUsCity(locationCity);
+    if (!cityCheck.ok) {
+      return { ok: false, error: `City: ${cityCheck.message}` };
+    }
+    const zipCheck = await validateUsZip(locationZip);
+    if (!zipCheck.ok) {
+      return { ok: false, error: `Zip: ${zipCheck.message}` };
     }
     const composedLocation = [
       [locationCity, locationState].filter(Boolean).join(", "),

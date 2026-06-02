@@ -43,8 +43,18 @@ export type JobOverviewPatch = {
   salaryCurrency?: string | null;
   salaryFrequency?: string | null;
   // Comma-free single value — the form splits multiple locations on the
-  // way in. An empty array clears the field.
+  // way in. An empty array clears the field. Legacy free-form path; the
+  // Overview edit form now sends the structured trio below instead and
+  // the action composes `locations` from them.
   locations?: string[];
+  // Structured location. When any of these is present the action treats
+  // location as the required City / State (2-letter) / Zip (5-digit)
+  // trio, validates it, writes all three columns, and composes the
+  // legacy `locations` array from them so downstream readers stay in
+  // sync. Enforced on every edit-save (see updateJobOverview).
+  locationCity?: string;
+  locationState?: string;
+  locationZip?: string;
   numberOfOpenings?: number | null;
   isOpen?: boolean;
   employmentType?: string | null;
@@ -78,13 +88,59 @@ export async function updateJobOverview(args: {
   }
 
   try {
+    // Rule 8: tenant-scope the lookup so a leaked id from another org
+    // can't be edited here. The page already loads this job org-scoped,
+    // so adding the org filter is a no-op for the legitimate caller.
+    const org = await getCurrentOrg();
     const job = await prisma.job.findFirst({
-      where: jobCuid ? { id: jobCuid } : { legacyRfId: jobRfId! },
+      where: {
+        ...(jobCuid ? { id: jobCuid } : { legacyRfId: jobRfId! }),
+        organizationId: org.id,
+      },
       select: { id: true, legacyRfId: true, lifecycle: true, isOpen: true },
     });
     if (!job) return { ok: false, error: "Job not found." };
 
     const data: Prisma.JobUpdateInput = {};
+
+    // Structured location. The Overview edit form sends City / State /
+    // Zip and they are REQUIRED on every save (enforce-on-edit). Same
+    // rule + validators as the New Job create path — no second
+    // validator. Compose the legacy `locations` array from the trio so
+    // the read-only Location cell + distance sub-line (which reads the
+    // structured columns) stay in sync. Existing loose-location jobs
+    // surface empty fields until the recruiter edits; once they save,
+    // they must provide a valid trio.
+    if (
+      patch.locationCity !== undefined ||
+      patch.locationState !== undefined ||
+      patch.locationZip !== undefined
+    ) {
+      const city = (patch.locationCity ?? "").trim();
+      const state = (patch.locationState ?? "").trim().toUpperCase();
+      const zip = (patch.locationZip ?? "").trim();
+      if (!city) return { ok: false, error: "City is required." };
+      if (!state) return { ok: false, error: "State is required." };
+      if (!/^[A-Z]{2}$/.test(state)) {
+        return { ok: false, error: "State must be a 2-letter abbreviation." };
+      }
+      if (!zip) return { ok: false, error: "Zip is required." };
+      if (!/^\d{5}$/.test(zip)) {
+        return { ok: false, error: "Zip must be a 5-digit US zip code." };
+      }
+      const cityCheck = await validateUsCity(city);
+      if (!cityCheck.ok) return { ok: false, error: `City: ${cityCheck.message}` };
+      const zipCheck = await validateUsZip(zip);
+      if (!zipCheck.ok) return { ok: false, error: `Zip: ${zipCheck.message}` };
+      data.locationCity = city;
+      data.locationState = state;
+      data.locationZip = zip;
+      const composed = [[city, state].filter(Boolean).join(", "), zip]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      data.locations = composed ? [composed] : [];
+    }
     if (patch.salaryRangeStart !== undefined) data.salaryRangeStart = patch.salaryRangeStart;
     if (patch.salaryRangeEnd !== undefined) data.salaryRangeEnd = patch.salaryRangeEnd;
     if (patch.salaryCurrency !== undefined) {

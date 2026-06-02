@@ -93,6 +93,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
   // before createJob. Cleared on every edit to the relevant field so
   // the message disappears as the recruiter retypes.
   const [cityErr, setCityErr] = useState<string | null>(null);
+  const [stateErr, setStateErr] = useState<string | null>(null);
   const [zipErr, setZipErr] = useState<string | null>(null);
   const [validatingLocation, setValidatingLocation] = useState(false);
   const [isPending, startSave] = useTransition();
@@ -338,6 +339,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
   async function onSubmit() {
     setErr(null);
     setCityErr(null);
+    setStateErr(null);
     setZipErr(null);
 
     if (!title.trim()) {
@@ -357,14 +359,40 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
       return;
     }
 
-    // Pre-save US location validation. Only fires when at least one
-    // of city / zip is filled — blank fields pass through. The same
-    // helpers run again inside the createJob server action as a
-    // defense-in-depth check, but doing the call here lets us point
-    // the recruiter at the right field on failure.
+    // City / State / Zip are REQUIRED on new jobs so a loose/region-only
+    // location can never be entered again. Block submit with inline
+    // errors when any is missing or malformed (State must be a 2-letter
+    // abbreviation, Zip 5 digits). The same guards run again inside the
+    // createJob server action — never trust client-only.
     const cityToCheck = locationCity.trim();
+    const stateToCheck = locationState.trim();
     const zipToCheck = locationZip.trim();
-    if (cityToCheck || zipToCheck) {
+    let locationInvalid = false;
+    if (!cityToCheck) {
+      setCityErr("City is required.");
+      locationInvalid = true;
+    }
+    if (!stateToCheck) {
+      setStateErr("State is required.");
+      locationInvalid = true;
+    } else if (!/^[A-Za-z]{2}$/.test(stateToCheck)) {
+      setStateErr("Use the 2-letter state abbreviation.");
+      locationInvalid = true;
+    }
+    if (!zipToCheck) {
+      setZipErr("Zip is required.");
+      locationInvalid = true;
+    } else if (!/^\d{5}$/.test(zipToCheck)) {
+      setZipErr("Enter a 5-digit US zip code.");
+      locationInvalid = true;
+    }
+    if (locationInvalid) return;
+
+    // Pre-save US location round-trip (Nominatim / Zippopotam). City +
+    // zip are now always present, so this always runs. The same helpers
+    // run again inside createJob as defense-in-depth; doing the call here
+    // lets us point the recruiter at the right field on failure.
+    {
       setValidatingLocation(true);
       try {
         const res = await fetch("/api/location/validate-us", {
@@ -649,7 +677,16 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               className="flex-1"
               error={cityErr}
             />
-            <CompactField label="State" value={locationState} onChange={setLocationState} className="flex-1" />
+            <CompactField
+              label="State"
+              value={locationState}
+              onChange={(v) => {
+                setLocationState(v);
+                if (stateErr) setStateErr(null);
+              }}
+              className="flex-1"
+              error={stateErr}
+            />
             <CompactField
               label="Zip"
               value={locationZip}

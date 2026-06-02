@@ -407,6 +407,12 @@ export default async function JobDetailPage({
     title: job.title,
     clientName: job.company || "",
     locations: overviewFields.locations,
+    // Structured location for the inline edit form. Pre-fills from the
+    // Job columns; null on loose/region-only legacy jobs (those render
+    // empty until the recruiter edits and supplies a valid trio).
+    locationCity: jobRow.locationCity,
+    locationState: jobRow.locationState,
+    locationZip: jobRow.locationZip,
     lifecycle,
     employmentType: overviewFields.employmentType,
     compensation: formatCompSummary(overviewFields),

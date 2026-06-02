@@ -25,6 +25,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
 import { LabeledField } from "@/app/candidates/[id]/editable-helpers";
+import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { JobOverviewActionButtons } from "@/app/jobs/[id]/job-overview-action-buttons";
 import {
@@ -47,6 +48,12 @@ export type JobOverviewSnapshot = {
   title: string;
   clientName: string;
   locations: string[];
+  // Structured location columns backing the inline edit form. Null on
+  // loose/region-only legacy jobs — those edit-fields render empty until
+  // the recruiter supplies a valid City / State / Zip trio on save.
+  locationCity: string | null;
+  locationState: string | null;
+  locationZip: string | null;
   lifecycle: JobLifecycle;
   employmentType: string | null;
   compensation: string;
@@ -68,7 +75,9 @@ export type JobOverviewSnapshot = {
 // doesn't fight the number parse until Save.
 type Draft = {
   employmentType: string;
-  locations: string;
+  locationCity: string;
+  locationState: string;
+  locationZip: string;
   salaryLo: string;
   salaryHi: string;
   salaryCcy: string;
@@ -79,7 +88,9 @@ type Draft = {
 function buildDraft(s: JobOverviewSnapshot): Draft {
   return {
     employmentType: s.employmentType ?? "",
-    locations: s.locations.join(", "),
+    locationCity: s.locationCity ?? "",
+    locationState: s.locationState ?? "",
+    locationZip: s.locationZip ?? "",
     salaryLo: s.salaryRangeStart != null ? String(s.salaryRangeStart) : "",
     salaryHi: s.salaryRangeEnd != null ? String(s.salaryRangeEnd) : "",
     salaryCcy: s.salaryCurrency ?? "USD",
@@ -103,6 +114,10 @@ export function JobOverviewTab({
   const [draft, setDraft] = useState<Draft>(() => buildDraft(snapshot));
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Per-field inline errors for the required City / State / Zip trio.
+  const [cityErr, setCityErr] = useState<string | null>(null);
+  const [stateErr, setStateErr] = useState<string | null>(null);
+  const [zipErr, setZipErr] = useState<string | null>(null);
 
   // Snapshot can change under us on revalidate. Refresh the read-only
   // state always; only re-seed the draft when we're not mid-edit so a
@@ -112,21 +127,57 @@ export function JobOverviewTab({
     if (!editing) setDraft(buildDraft(snapshot));
   }, [snapshot, editing]);
 
+  function clearLocationErrs() {
+    setCityErr(null);
+    setStateErr(null);
+    setZipErr(null);
+  }
+
   function startEdit() {
     setDraft(buildDraft(state));
     setErr(null);
+    clearLocationErrs();
     setEditing(true);
   }
 
   function onCancel() {
     setDraft(buildDraft(state));
     setErr(null);
+    clearLocationErrs();
     setEditing(false);
   }
 
   async function onSave() {
     if (saving) return;
     setErr(null);
+    clearLocationErrs();
+
+    // City / State / Zip are REQUIRED on every edit-save (enforce-on-
+    // edit). State must be a 2-letter abbreviation, Zip 5 digits. Same
+    // rule the New Job create path enforces; the server re-checks too.
+    const city = draft.locationCity.trim();
+    const stateAbbr = draft.locationState.trim();
+    const zip = draft.locationZip.trim();
+    let locationInvalid = false;
+    if (!city) {
+      setCityErr("City is required.");
+      locationInvalid = true;
+    }
+    if (!stateAbbr) {
+      setStateErr("State is required.");
+      locationInvalid = true;
+    } else if (!/^[A-Za-z]{2}$/.test(stateAbbr)) {
+      setStateErr("Use the 2-letter state abbreviation.");
+      locationInvalid = true;
+    }
+    if (!zip) {
+      setZipErr("Zip is required.");
+      locationInvalid = true;
+    } else if (!/^\d{5}$/.test(zip)) {
+      setZipErr("Enter a 5-digit US zip code.");
+      locationInvalid = true;
+    }
+    if (locationInvalid) return;
 
     const lo = parseMoney(draft.salaryLo);
     const hi = parseMoney(draft.salaryHi);
@@ -153,15 +204,43 @@ export function JobOverviewTab({
     }
 
     const ccy = draft.salaryCcy.trim().toUpperCase().slice(0, 3) || null;
-    const locationList = draft.locations
-      .split(",")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
     const employmentType = draft.employmentType.trim() || null;
+    const stateUpper = stateAbbr.toUpperCase();
+
+    setSaving(true);
+
+    // Pre-save US location round-trip (Nominatim / Zippopotam), same
+    // endpoint the New Job form uses, so a bad city/zip points at the
+    // right field. Network errors fail open server-side; the server
+    // re-runs the same validators as defense-in-depth.
+    try {
+      const vres = await fetch("/api/location/validate-us", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ city, zip }),
+      });
+      if (vres.ok) {
+        const vdata = (await vres.json()) as {
+          ok: boolean;
+          errors: { city?: string; zip?: string };
+        };
+        if (!vdata.ok) {
+          if (vdata.errors.city) setCityErr(vdata.errors.city);
+          if (vdata.errors.zip) setZipErr(vdata.errors.zip);
+          setSaving(false);
+          return;
+        }
+      }
+      // Non-ok response → fail open (matches the lib's policy).
+    } catch {
+      // Fail open on network errors — the server still re-validates.
+    }
 
     const patch: JobOverviewPatch = {
       employmentType,
-      locations: locationList,
+      locationCity: city,
+      locationState: stateUpper,
+      locationZip: zip,
       numberOfOpenings: openings,
       salaryRangeStart: lo,
       salaryRangeEnd: hi,
@@ -169,7 +248,6 @@ export function JobOverviewTab({
       salaryFrequency: draft.salaryFreq,
     };
 
-    setSaving(true);
     const res = await updateJobOverview({ jobRfId, jobCuid, patch });
     setSaving(false);
     if (!res.ok) {
@@ -184,10 +262,20 @@ export function JobOverviewTab({
       salaryCurrency: ccy,
       salaryFrequency: draft.salaryFreq,
     };
+    const composedLocation = [
+      [city, stateUpper].filter(Boolean).join(", "),
+      zip,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
     setState((s) => ({
       ...s,
       employmentType,
-      locations: locationList,
+      locationCity: city,
+      locationState: stateUpper,
+      locationZip: zip,
+      locations: composedLocation ? [composedLocation] : [],
       numberOfOpenings: openings,
       salaryRangeStart: lo,
       salaryRangeEnd: hi,
@@ -222,29 +310,56 @@ export function JobOverviewTab({
 
         {editing ? (
           <div className="mt-3 space-y-3 text-sm">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <LabeledField
                 label="Employment"
                 value={draft.employmentType}
                 onChange={(v) => setDraft({ ...draft, employmentType: v })}
                 placeholder="Full-time"
               />
-              <div className="sm:col-span-1">
-                <LabeledField
-                  label="Location"
-                  value={draft.locations}
-                  onChange={(v) => setDraft({ ...draft, locations: v })}
-                />
-                <p className="mt-1 text-[11px] text-court-fg-muted">
-                  Separate multiple locations with commas.
-                </p>
-              </div>
               <LabeledField
                 label="Openings"
                 type="number"
                 value={draft.openings}
                 onChange={(v) => setDraft({ ...draft, openings: v })}
                 placeholder="1"
+              />
+            </div>
+
+            {/* Location is the required City / State (2-letter) / Zip
+                (5-digit) trio — enforced on save, same as the New Job
+                form. Rect court-input-rect frame per the Input Field
+                Treatment. */}
+            <div className="pt-1 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+              Location
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <RectField
+                label="City"
+                value={draft.locationCity}
+                onChange={(v) => {
+                  setDraft({ ...draft, locationCity: v });
+                  if (cityErr) setCityErr(null);
+                }}
+                error={cityErr}
+              />
+              <RectField
+                label="State"
+                value={draft.locationState}
+                onChange={(v) => {
+                  setDraft({ ...draft, locationState: v });
+                  if (stateErr) setStateErr(null);
+                }}
+                error={stateErr}
+              />
+              <RectField
+                label="Zip"
+                value={draft.locationZip}
+                onChange={(v) => {
+                  setDraft({ ...draft, locationZip: v });
+                  if (zipErr) setZipErr(null);
+                }}
+                error={zipErr}
               />
             </div>
 
@@ -369,6 +484,39 @@ export function JobOverviewTab({
         {state.applyLink && <ApplyLinkSection url={state.applyLink} />}
       </section>
     </div>
+  );
+}
+
+// Rectangular form field (court-input-rect frame) with an optional
+// inline error, mirroring the New Job form's City/State/Zip treatment.
+// LabeledField uses the pill frame; the structured-location trio follows
+// the Input Field Treatment's rectangular variant for forms.
+function RectField({
+  label,
+  value,
+  onChange,
+  error,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  error?: string | null;
+  type?: string;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
+      <div className={cn(INPUT_FRAME_RECT_CLASS, "mt-1 w-full", error && "border-red-300 bg-red-50")}>
+        <input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={`${INPUT_CONTROL_CLASS} text-sm`}
+        />
+      </div>
+      {error && <span className="mt-1 block text-[11px] font-medium text-red-700">{error}</span>}
+    </label>
   );
 }
 

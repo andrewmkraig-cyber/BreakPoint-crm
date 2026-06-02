@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { geocodePill } from "@/lib/geocode";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -203,6 +204,19 @@ export async function POST(req: Request) {
   let imported = 0;
   let skipped = 0;
   let duplicates = 0;
+  // Geocode per imported row so a CSV-imported candidate gets a distance
+  // sub-line without waiting for the next scripts/geocode-candidates.ts
+  // run. A geocode miss/failure NEVER aborts the import (the row is
+  // already committed before the geocode runs, and the call is isolated
+  // in its own try/catch). To keep a large import from blowing the
+  // serverless function budget on serial Nominatim round-trips (~5s each
+  // worst case), inline geocoding is capped; rows past the cap keep
+  // lat/lng=null and the backfill script remains the net. The cap is
+  // reported back so it isn't a silent truncation.
+  const GEOCODE_INLINE_CAP = 75;
+  let geocoded = 0;
+  let geocodeAttempts = 0;
+  let geocodeDeferred = 0;
 
   for (const row of rows) {
     const firstName = clean(row[COL.firstName]);
@@ -222,8 +236,9 @@ export async function POST(req: Request) {
     const educations = collectEducations(row);
     const head = experiences[0];
 
+    const rowLocation = clean(row[COL.location]) || null;
     try {
-      await prisma.candidate.create({
+      const createdRow = await prisma.candidate.create({
         data: {
           firstName: firstName || lastName,
           lastName: firstName ? lastName || null : null,
@@ -231,18 +246,49 @@ export async function POST(req: Request) {
           phone: clean(row[COL.phone]) || null,
           currentDesignation: head?.title || null,
           currentOrganization: head?.company || null,
-          location: clean(row[COL.location]) || null,
+          location: rowLocation,
           linkedinProfile: clean(row[COL.linkedin]) || null,
           experience: experiences.length ? experiences : undefined,
           education: educations.length ? educations : undefined,
           createdById: user.id,
           organizationId: org.id,
         },
+        select: { id: true },
       });
       imported += 1;
       // Track this email so a later row in the same CSV with the same address
       // is counted as a duplicate without a failing insert + P2002 round trip.
       if (email) existingEmails.add(email);
+
+      // Awaited, failure-isolated, tenant-scoped geocode (same shape as
+      // createCandidate, Ace 68.0 / f2d48d8). The row is already imported
+      // above, so a null/throw here can't roll it back. geocodePill
+      // swallows 429 / timeout / errors and returns null.
+      if (rowLocation) {
+        if (geocodeAttempts < GEOCODE_INLINE_CAP) {
+          geocodeAttempts += 1;
+          try {
+            const hit = await geocodePill(rowLocation);
+            if (hit) {
+              await prisma.candidate.update({
+                where: { id: createdRow.id, organizationId: org.id },
+                data: { lat: hit.lat, lng: hit.lng },
+              });
+              geocoded += 1;
+            }
+          } catch (geoErr) {
+            // eslint-disable-next-line no-console
+            console.warn("[import-csv] geocode failed (row still imported)", {
+              candidateId: createdRow.id,
+              location: rowLocation,
+              err: geoErr instanceof Error ? geoErr.message : String(geoErr),
+            });
+          }
+        } else {
+          // Past the inline cap — leave lat/lng null for the backfill net.
+          geocodeDeferred += 1;
+        }
+      }
     } catch (err) {
       // Most likely a race on the email unique constraint (two rows in the
       // same CSV with the same address). Count as duplicate so the user sees
@@ -257,5 +303,18 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ imported, skipped, duplicates });
+  if (geocodeDeferred > 0) {
+    // Surface the cap so a partially-geocoded import isn't read as
+    // fully covered. The deferred rows are picked up by the backfill.
+    // eslint-disable-next-line no-console
+    console.log("[import-csv] geocode summary", {
+      imported,
+      geocoded,
+      geocodeAttempts,
+      geocodeDeferred,
+      cap: GEOCODE_INLINE_CAP,
+    });
+  }
+
+  return NextResponse.json({ imported, skipped, duplicates, geocoded, geocodeDeferred });
 }
