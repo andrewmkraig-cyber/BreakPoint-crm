@@ -915,6 +915,20 @@ export type UpdateInterviewInput = {
   jobTitle?: string;
   clientName?: string;
   candidateName?: string;
+  // 2b-ii: the one-screen edit scheduler passes the (possibly edited) per-party
+  // subject + body. When provided, the matching party's live Google event
+  // summary/description is overwritten and the stored sent-copy is updated —
+  // gated by notifyMode like the time patch (clobbering the recipient's prior
+  // copy is the intended edit behavior, superseding the old Ace 43 "leave the
+  // event body untouched" rule). Omitted (undefined) for a party preserves the
+  // prior behavior: the stored copy is only restamped for the new date/time.
+  clientSubject?: string;
+  clientBody?: string;
+  candidateSubject?: string;
+  candidateBody?: string;
+  // Private Bcc copy on edit (e.g. Austin / Andrew). Mirrors the send path:
+  // sent only to these addresses, never the calendar guests.
+  bcc?: string[];
 };
 
 export async function updateInterview(input: UpdateInterviewInput): Promise<Result> {
@@ -982,8 +996,55 @@ export async function updateInterview(input: UpdateInterviewInput): Promise<Resu
   // Newly-added attendees get an invite only in "all" / "new_only" mode;
   // "none" adds them silently with no notification email.
   const attendeeAddSendUpdates = input.notifyMode === "none" ? "none" : "all";
+
+  // Resolve each party's subject/body for this edit. When the caller passed a
+  // (possibly edited) body, that is the base; otherwise the existing stored
+  // copy is. Either way, when the time moved we restamp the baked-in date/time
+  // strings to the new time — so an UNedited body stays time-correct, and an
+  // edited body keeps the recruiter's wording (the restamp only swaps the old
+  // formatted date string, a no-op if they already changed it).
+  const timeMoved =
+    existing.scheduledAt.getTime() !== when.getTime() ||
+    existing.durationMin !== input.durationMin;
+  const resolveParty = (
+    providedSubject: string | undefined,
+    providedBody: string | undefined,
+    existingSubject: string | null,
+    existingBody: string | null,
+  ) => {
+    const subjectBase = providedSubject !== undefined ? providedSubject : existingSubject;
+    const bodyBase = providedBody !== undefined ? providedBody : existingBody;
+    const stamp = (s: string | null) =>
+      timeMoved
+        ? restampSentCopyDateTime(
+            s, existing.scheduledAt, when, existing.durationMin, input.durationMin, input.timeZone,
+          )
+        : s ?? null;
+    return { subject: stamp(subjectBase), body: stamp(bodyBase) };
+  };
+  const clientResolved = resolveParty(
+    input.clientSubject, input.clientBody, existing.sentClientSubject, existing.sentClientBody,
+  );
+  const candidateResolved = resolveParty(
+    input.candidateSubject, input.candidateBody, existing.sentCandidateSubject, existing.sentCandidateBody,
+  );
+
   try {
     for (const eventId of uniqueEventIds) {
+      // Route the per-party body push to its own event. With separate
+      // client/candidate invite events, only the client event should also
+      // receive the interviewer attendees; the candidate event stays private.
+      const isClientInviteEvent = existing.googleEventIdClient
+        ? eventId === existing.googleEventIdClient
+        : eventId === existing.googleEventIdMine && !existing.googleEventIdCandidate;
+      const isCandidateInviteEvent = eventId === existing.googleEventIdCandidate;
+      // Push the edited subject/body to the live event ONLY when the caller
+      // provided that party's body (the one-screen edit). Gated by notifyMode
+      // via fieldPatchSendUpdates: "all" emails the new copy, else it's a
+      // silent in-place update. A party with no edit (undefined) leaves its
+      // event summary/description untouched.
+      const pushClient = isClientInviteEvent && input.clientBody !== undefined;
+      const pushCandidate = isCandidateInviteEvent && input.candidateBody !== undefined;
       await patchCalendarEventDetails({
         userId: user.id,
         eventId,
@@ -992,17 +1053,17 @@ export async function updateInterview(input: UpdateInterviewInput): Promise<Resu
         durationMin: input.durationMin,
         timeZone: input.timeZone,
         location: input.location,
+        ...(pushCandidate
+          ? { summary: candidateResolved.subject ?? undefined, description: candidateResolved.body ?? undefined }
+          : pushClient
+            ? { summary: clientResolved.subject ?? undefined, description: clientResolved.body ?? undefined }
+            : {}),
       });
 
       // The edit modal's attendees are client-side interviewer contacts.
-      // With separate client/candidate invite events, only the client event
-      // should receive those attendees; the candidate event stays private.
       // "none" mode adds them silently; otherwise the new attendee(s) get a
       // fresh invitation while existing guests are never re-notified (the
       // field patch above already ran silently for new_only).
-      const isClientInviteEvent = existing.googleEventIdClient
-        ? eventId === existing.googleEventIdClient
-        : eventId === existing.googleEventIdMine && !existing.googleEventIdCandidate;
       if (isClientInviteEvent && input.attendees && input.attendees.length > 0) {
         const currentAttendees = await getCalendarEventAttendees({
           userId: user.id,
@@ -1039,33 +1100,20 @@ export async function updateInterview(input: UpdateInterviewInput): Promise<Resu
       ? (input.attendees as unknown as object)
       : (existing.clientAttendees as unknown as object | null) ?? undefined;
 
-  // D2: restamp the stored sent-copy (what the recipient saw) when the time
-  // moved, so the calendar's "what was emailed" detail no longer shows the
-  // old date/time. Best-effort string replacement keyed to the same
-  // formatters that produced the body — see restampSentCopyDateTime.
-  const timeMoved =
-    existing.scheduledAt.getTime() !== when.getTime() ||
-    existing.durationMin !== input.durationMin;
-  const sentCopyUpdate = timeMoved
-    ? {
-        sentCandidateSubject: restampSentCopyDateTime(
-          existing.sentCandidateSubject, existing.scheduledAt, when,
-          existing.durationMin, input.durationMin, input.timeZone,
-        ),
-        sentCandidateBody: restampSentCopyDateTime(
-          existing.sentCandidateBody, existing.scheduledAt, when,
-          existing.durationMin, input.durationMin, input.timeZone,
-        ),
-        sentClientSubject: restampSentCopyDateTime(
-          existing.sentClientSubject, existing.scheduledAt, when,
-          existing.durationMin, input.durationMin, input.timeZone,
-        ),
-        sentClientBody: restampSentCopyDateTime(
-          existing.sentClientBody, existing.scheduledAt, when,
-          existing.durationMin, input.durationMin, input.timeZone,
-        ),
-      }
-    : {};
+  // D2 + 2b-ii: update the stored sent-copy (what the recipient saw). Write a
+  // party's stored subject/body when it was edited (provided), OR — preserving
+  // the prior behavior — restamp it for the new date/time when the time moved
+  // and a copy already existed. clientResolved/candidateResolved already folded
+  // both cases (provided-or-existing, restamped when timeMoved) above.
+  const sentCopyUpdate: Record<string, string | null> = {};
+  if (input.clientSubject !== undefined || (timeMoved && existing.sentClientSubject))
+    sentCopyUpdate.sentClientSubject = clientResolved.subject;
+  if (input.clientBody !== undefined || (timeMoved && existing.sentClientBody))
+    sentCopyUpdate.sentClientBody = clientResolved.body;
+  if (input.candidateSubject !== undefined || (timeMoved && existing.sentCandidateSubject))
+    sentCopyUpdate.sentCandidateSubject = candidateResolved.subject;
+  if (input.candidateBody !== undefined || (timeMoved && existing.sentCandidateBody))
+    sentCopyUpdate.sentCandidateBody = candidateResolved.body;
 
   await prisma.interview.update({
     where: { id: input.interviewId },
@@ -1130,6 +1178,34 @@ export async function updateInterview(input: UpdateInterviewInput): Promise<Resu
       notifyMode: input.notifyMode,
     },
   });
+
+  // 2b-ii: private Bcc copy of the updated invite (e.g. Austin / Andrew),
+  // mirroring the send path — sent only to the addresses in the Bcc field,
+  // hidden from the calendar guests. Best-effort: never fails the edit.
+  const editBcc = (input.bcc ?? []).map((e) => e.trim()).filter(Boolean);
+  const bccCopyBody = clientResolved.body ?? candidateResolved.body;
+  if (editBcc.length > 0 && bccCopyBody) {
+    try {
+      const [primaryBcc, ...otherBcc] = editBcc;
+      await sendGmail({
+        userId: user.id,
+        from: user.email,
+        fromName: user.name ?? undefined,
+        to: [primaryBcc],
+        bcc: otherBcc.length > 0 ? otherBcc : undefined,
+        subject: clientResolved.subject ?? candidateResolved.subject ?? "Updated interview",
+        bodyText:
+          `You've been Bcc'd a private copy of this UPDATED interview invite. ` +
+          `The candidate and client do not see this message.\n\n${bccCopyBody}`,
+      });
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[interview-update] bcc copy send failed", {
+        interviewId: input.interviewId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
 
   revalidateForCandidate({ candidateRfId: existing.candidateRfId, candidateId: existing.candidateId });
   return { ok: true };
@@ -1525,14 +1601,18 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
         `You've been Bcc'd a private copy of this interview invite. ` +
         `The candidate and client do not see this message.\n\n` +
         `${resolvedBodyText}${meetForBody}`;
+      // Send ONLY to the addresses actually in the Bcc field — the sender
+      // (Andrew) is no longer auto-added. He gets a private copy only when
+      // he picks himself from TEAM_BCC_OPTIONS. The first recipient is the
+      // visible To; any others are Bcc'd so multiple private observers never
+      // see one another.
+      const [primaryBcc, ...otherBcc] = bccList;
       await sendGmail({
         userId: user.id,
         from: user.email,
         fromName: user.name ?? undefined,
-        // Send only to the Bcc recipients, hidden from each other via Bcc
-        // so multiple private observers never see one another.
-        to: [user.email],
-        bcc: bccList,
+        to: [primaryBcc],
+        bcc: otherBcc.length > 0 ? otherBcc : undefined,
         subject: resolvedSubject,
         bodyText: copyBody,
       });

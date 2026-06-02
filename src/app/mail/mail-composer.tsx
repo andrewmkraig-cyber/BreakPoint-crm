@@ -2012,7 +2012,7 @@ const ORG_MEMBER_SUGGESTIONS: Array<{ name: string; email: string }> = [
   { name: "Austin Barnard", email: "austin@breakpointtalent.com" },
 ];
 
-const TYPEAHEAD_MAX = 6;
+const TYPEAHEAD_MAX = 8;
 const TYPEAHEAD_DEBOUNCE_MS = 200;
 const TYPEAHEAD_MIN_LEN = 2;
 
@@ -2057,13 +2057,31 @@ function AddressRow({
   // ContactComboMulti chip model used for the EmailComposer Cc/Bcc fields.
   const [typed, setTyped] = useState("");
   // Fired once on first focus of a server-search row: warms the Gmail
-  // sent-mail snapshot in the background so the cold ~3-5s load is paid
-  // before the recruiter finishes typing, not on their first keystroke.
+  // sent-mail snapshot in the background. When the warm completes, we
+  // bump warmVersion so the current typed prefix refetches even if the
+  // recruiter stopped at "rec" and did not type another character.
   const warmedRef = useRef(false);
+  const warmControllerRef = useRef<AbortController | null>(null);
+  const [warmVersion, setWarmVersion] = useState(0);
+  useEffect(() => {
+    return () => {
+      warmControllerRef.current?.abort();
+    };
+  }, []);
   function warmContactSnapshot() {
     if (!serverSearch || warmedRef.current) return;
     warmedRef.current = true;
-    void fetch("/api/mail/contacts-search?warm=1", { cache: "no-store" }).catch(() => {});
+    const controller = new AbortController();
+    warmControllerRef.current = controller;
+    void fetch("/api/mail/contacts-search?warm=1&wait=1", {
+      signal: controller.signal,
+      cache: "no-store",
+    })
+      .then((res) => {
+        if (!res.ok || controller.signal.aborted) return;
+        setWarmVersion((v) => v + 1);
+      })
+      .catch(() => {});
   }
   const parseCsv = (raw: string): string[] =>
     raw.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
@@ -2157,13 +2175,12 @@ function AddressRow({
       controller.abort();
       window.clearTimeout(handle);
     };
-  }, [serverSearch, focused, currentSegment]);
+  }, [serverSearch, focused, currentSegment, warmVersion]);
 
   // Merge static suggestions + pickerOptions + server results. Server
-  // results are appended last so the static org members (Austin) hit
-  // the top of the dropdown when both match — matches the existing
-  // "Austin first" recruiter expectation. Dedupe is by email
-  // (lowercased) across all three sources.
+  // results already arrive relevance-ranked from the API; local pinned
+  // lists stay first for CC/BCC-only pools like Austin. Dedupe is by
+  // email (lowercased) across all three sources.
   const merged = (() => {
     const out: Array<{ name: string; email: string }> = [];
     const seen = new Set<string>();

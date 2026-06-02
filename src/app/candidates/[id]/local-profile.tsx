@@ -465,6 +465,14 @@ export async function LocalCandidateProfile({
       source: iv.source as LocalInterview["source"],
       meetLink: iv.meetLink,
       attendees,
+      location: iv.location,
+      // 2b-ii: stored sent copies + delivery flags for the edit scheduler.
+      sentClientSubject: iv.sentClientSubject,
+      sentClientBody: iv.sentClientBody,
+      sentCandidateSubject: iv.sentCandidateSubject,
+      sentCandidateBody: iv.sentCandidateBody,
+      clientInvited: iv.sentClientAt != null,
+      candidateInvited: iv.sentCandidateAt != null,
     });
     interviewsByJob.set(key, list);
   }

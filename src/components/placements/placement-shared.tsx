@@ -662,9 +662,16 @@ export function InlineContactMultiInput({
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const selected = new Set(parseEmailCsv(value));
-  const pinnedList = pinned ?? [];
+  // Already-selected addresses are dropped from the dropdown (the chip above
+  // already represents the pick) so a picked option disappears from the list
+  // without needing to click away — matching the other multi-recipient
+  // pickers. The chip's X is how you remove it.
+  const selectedLower = new Set(Array.from(selected).map((e) => e.toLowerCase()));
+  const pinnedList = (pinned ?? []).filter((p) => !selectedLower.has(p.email.toLowerCase()));
   const pinnedEmails = new Set(pinnedList.map((p) => p.email.toLowerCase()));
-  const rest = options.filter((o) => !pinnedEmails.has(o.email.toLowerCase()));
+  const rest = options.filter(
+    (o) => !pinnedEmails.has(o.email.toLowerCase()) && !selectedLower.has(o.email.toLowerCase()),
+  );
 
   // Ref holds the authoritative chip string in sync with mutations.
   // Rapid-fire clicks on dropdown options (pick contact A, then B

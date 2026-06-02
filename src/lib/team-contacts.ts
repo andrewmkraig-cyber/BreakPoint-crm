@@ -14,4 +14,12 @@ export const TEAM_BCC_OPTIONS: TeamContactOption[] = [
     name: "Austin Barnard",
     email: "austin@breakpointtalent.com",
   },
+  // Andrew is offered here so a private copy to HIMSELF is opt-in (pick it).
+  // The invite send no longer auto-includes the sender on every Bcc'd invite
+  // — only the addresses actually in the Bcc field receive the private copy.
+  {
+    id: "teammate-andrew",
+    name: "Andrew Kraig",
+    email: "andrew@breakpointtalent.com",
+  },
 ];

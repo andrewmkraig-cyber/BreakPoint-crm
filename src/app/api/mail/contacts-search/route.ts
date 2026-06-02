@@ -4,10 +4,14 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { getGmailSentRecipients } from "@/lib/gmail-recipients";
+import {
+  rankMailContactSuggestions,
+  type MailContactSuggestion,
+} from "@/lib/mail-contact-suggestions";
 
 // GET /api/mail/contacts-search?q=… — typeahead source for the mail
 // composer's To field. Three sources, all merged into a single
-// deduped { name, email } list (max 8), priority-sorted:
+// deduped { name, email } list (max 10), priority-sorted:
 //
 //   1. Candidates (firstName / lastName / email), org-scoped.
 //   2. Contacts (firstName / lastName / name + every entry in
@@ -18,10 +22,11 @@ import { getGmailSentRecipients } from "@/lib/gmail-recipients";
 //      against the query in-route so we hit Gmail at most once per
 //      30 min per user, not per keystroke.
 //
-// Sort order: exact email match → prefix-of-local-part →
-// prefix-of-name → contains. Within each tier, source rank wins
-// (Ace > Gmail) since manually curated contacts outrank random
-// sent-mail addresses.
+// Sort order is email-intent first: exact email → prefix-of-local-part
+// → prefix-of-name → prefix-of-domain → contains. This keeps
+// previously emailed external addresses (receipts@mercury.com) from
+// being buried under ACE candidates whose names happen to start with
+// the same letters.
 //
 // Contact.emails is text[] in Postgres; Prisma's array filters can't
 // do a partial-match on element contents, so the Contact branch
@@ -31,7 +36,7 @@ import { getGmailSentRecipients } from "@/lib/gmail-recipients";
 
 export const dynamic = "force-dynamic";
 
-const MAX_RESULTS = 8;
+const MAX_RESULTS = 10;
 const MIN_QUERY_LEN = 2;
 const PER_SOURCE_LIMIT = 20;
 
@@ -42,26 +47,6 @@ type ContactRow = {
   name: string | null;
   emails: string[] | null;
 };
-
-type Candidate = { name: string; email: string; sourceRank: number };
-
-// Score a candidate against the query. Higher is better.
-//   3 — exact email match
-//   2 — local-part starts with the query, or name starts with it
-//   1 — substring match anywhere
-//   0 — no match (caller filters these out)
-// sourceRank breaks ties: Ace candidates/contacts (rank 1) come
-// before Gmail history (rank 0) at the same score level.
-function scoreMatch(name: string, email: string, q: string): number {
-  const lowerEmail = email.toLowerCase();
-  const lowerName = name.toLowerCase();
-  if (lowerEmail === q) return 3;
-  const localPart = lowerEmail.split("@")[0] ?? "";
-  if (localPart.startsWith(q)) return 2;
-  if (lowerName.startsWith(q)) return 2;
-  if (lowerEmail.includes(q) || lowerName.includes(q)) return 1;
-  return 0;
-}
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -82,11 +67,21 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   // Warm-up ping fired when the composer opens: kick the Gmail snapshot
-  // load in the background (non-blocking) so the sent-mail history is
-  // ready by the time the recruiter starts typing, then return empty.
+  // load so the sent-mail history is ready by the time the recruiter
+  // starts typing. `wait=1` lets the client rerun the current prefix
+  // when the warm finishes; without it this stays the legacy fire-and-
+  // forget ping.
   if (url.searchParams.get("warm")) {
-    if (user) void getGmailSentRecipients(user.id, { wait: false });
-    return NextResponse.json({ ok: true, contacts: [] });
+    const wait = url.searchParams.get("wait") === "1";
+    const recipients = user
+      ? await getGmailSentRecipients(user.id, { wait })
+      : [];
+    return NextResponse.json({
+      ok: true,
+      contacts: [],
+      warmed: wait,
+      count: recipients.length,
+    });
   }
   const q = (url.searchParams.get("q") ?? "").trim();
   if (q.length < MIN_QUERY_LEN) {
@@ -143,50 +138,49 @@ export async function GET(req: NextRequest) {
   // Dedupe across all sources by lowercased email. Ace sources are
   // pushed first so the dedupe set keeps Ace versions of an address
   // (with the canonical Ace display name) over a Gmail header parse.
-  const byEmail = new Map<string, Candidate>();
+  const byEmail = new Map<string, MailContactSuggestion>();
 
-  function add(name: string, email: string | null | undefined, sourceRank: number) {
+  function add(
+    name: string,
+    email: string | null | undefined,
+    source: MailContactSuggestion["source"],
+    sourceIndex: number,
+  ) {
     if (!email) return;
     const key = email.toLowerCase();
     if (byEmail.has(key)) return;
     byEmail.set(key, {
       name: name.trim() || email,
       email,
-      sourceRank,
+      source,
+      sourceIndex,
     });
   }
 
-  for (const c of aceCandidates) {
+  for (let i = 0; i < aceCandidates.length; i++) {
+    const c = aceCandidates[i]!;
     const fullName = [c.firstName, c.lastName]
       .filter((s): s is string => Boolean(s))
       .join(" ")
       .trim();
-    add(fullName, c.email, 1);
+    add(fullName, c.email, "ace", i);
   }
-  for (const c of aceContacts) {
+  for (let i = 0; i < aceContacts.length; i++) {
+    const c = aceContacts[i]!;
     const display =
       c.name?.trim() ||
       [c.firstName, c.lastName].filter((s): s is string => Boolean(s)).join(" ").trim() ||
       "";
     for (const email of c.emails ?? []) {
-      add(display, email, 1);
+      add(display, email, "ace", aceCandidates.length + i);
     }
   }
-  for (const r of gmailRecipients) {
-    add(r.name, r.email, 0);
+  for (let i = 0; i < gmailRecipients.length; i++) {
+    const r = gmailRecipients[i]!;
+    add(r.name, r.email, "gmail", i);
   }
 
-  // Filter to entries that match the query, then sort by score and
-  // source rank. Equal-score-and-rank ties fall back to email order
-  // for stable output.
-  const scored = Array.from(byEmail.values())
-    .map((c) => ({ ...c, score: scoreMatch(c.name, c.email, lowerQ) }))
-    .filter((c) => c.score > 0)
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      if (b.sourceRank !== a.sourceRank) return b.sourceRank - a.sourceRank;
-      return a.email.localeCompare(b.email);
-    });
+  const scored = rankMailContactSuggestions(Array.from(byEmail.values()), lowerQ);
 
   return NextResponse.json({
     ok: true,

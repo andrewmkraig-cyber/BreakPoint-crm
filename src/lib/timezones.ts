@@ -103,3 +103,27 @@ function tzOffsetMs(d: Date, tz: string): number {
   );
   return asMillis - d.getTime();
 }
+
+// Inverse of wallClockInZoneToUTC: given a UTC instant and a zone, return the
+// `YYYY-MM-DDTHH:mm` wall-clock string as it reads IN that zone. Used to
+// pre-fill the interview edit scheduler's date/time picker from the stored
+// (UTC) scheduledAt without the browser's local zone entering the math, so a
+// 2 PM ET interview shows 2 PM when the recruiter reopens it to edit.
+export function utcToWallClockInZone(date: Date, tz: string): string {
+  if (Number.isNaN(date.getTime())) return "";
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts: Record<string, string> = {};
+  for (const p of dtf.formatToParts(date)) {
+    if (p.type !== "literal") parts[p.type] = p.value;
+  }
+  const hour = String(Number(parts.hour) % 24).padStart(2, "0");
+  return `${parts.year}-${parts.month}-${parts.day}T${hour}:${parts.minute}`;
+}

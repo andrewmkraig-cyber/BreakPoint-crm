@@ -67,6 +67,7 @@ import {
   DEFAULT_INTERVIEW_TIMEZONE,
   abbrForTimeZone,
   wallClockInZoneToUTC,
+  utcToWallClockInZone,
 } from "@/lib/timezones";
 import {
   formatInterviewDate,
@@ -109,6 +110,19 @@ export type LocalInterview = {
   source: "ace_scheduled" | "client_scheduled";
   meetLink: string | null;
   attendees: { name: string; email: string }[];
+  // In-person street address (Interview.location), so edit mode can re-seed it.
+  location: string | null;
+  // 2b-ii: the stored "what the recipient saw" sent copies (D1), threaded so
+  // the edit scheduler pre-fills each party's subject/body with what actually
+  // went out. The *Invited booleans (derived from the sent*At delivery flags)
+  // tell edit mode which party editors to render. Bodies may be HTML — the
+  // editor cleans them through htmlToReadableText on seed.
+  sentClientSubject: string | null;
+  sentClientBody: string | null;
+  sentCandidateSubject: string | null;
+  sentCandidateBody: string | null;
+  clientInvited: boolean;
+  candidateInvited: boolean;
 };
 
 // Slim snapshot of the placement row's seed values used by the
@@ -266,7 +280,13 @@ export function LocalPlacementRows({
   // which candidate URL to refresh.
   const [placementFor, setPlacementFor] = useState<LocalJobRow | null>(null);
   const [confirmFor, setConfirmFor] = useState<LocalJobRow | null>(null);
-  const [rescheduleFor, setRescheduleFor] = useState<LocalInterview | null>(null);
+  // 2b-ii: edit an existing interview through the one-screen scheduler. Holds
+  // both the interview and its owning job row (the scheduler needs the job for
+  // client contacts + header). Replaces the retired RescheduleDialog.
+  const [editInterview, setEditInterview] = useState<{
+    interview: LocalInterview;
+    job: LocalJobRow;
+  } | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -462,11 +482,16 @@ export function LocalPlacementRows({
     const edit = searchParams?.get("edit");
     const interviewId = searchParams?.get("interviewId");
     if (edit !== "interview" || !interviewId) return;
-    const target = jobsState
-      .flatMap((j) => j.interviews)
-      .find((iv) => iv.id === interviewId);
+    let target: { interview: LocalInterview; job: LocalJobRow } | null = null;
+    for (const j of jobsState) {
+      const iv = j.interviews.find((x) => x.id === interviewId);
+      if (iv) {
+        target = { interview: iv, job: j };
+        break;
+      }
+    }
     if (!target) return;
-    setRescheduleFor(target);
+    setEditInterview(target);
     const next = new URLSearchParams(searchParams?.toString() ?? "");
     next.delete("edit");
     next.delete("interviewId");
@@ -495,7 +520,7 @@ export function LocalPlacementRows({
             onOffer={() => setOfferFor(j)}
             onPlacement={() => setPlacementFor(j)}
             onConfirmStart={() => setConfirmFor(j)}
-            onEditInterview={(iv) => setRescheduleFor(iv)}
+            onEditInterview={(iv) => setEditInterview({ interview: iv, job: j })}
             onStageChange={handleStageChanged}
             embed={embed}
           />
@@ -561,8 +586,26 @@ export function LocalPlacementRows({
           }}
         />
       )}
-      {rescheduleFor && (
-        <RescheduleDialog interview={rescheduleFor} onClose={() => setRescheduleFor(null)} />
+      {editInterview && (
+        // 2b-ii: edit runs through the SAME one-screen scheduler, pre-filled.
+        <ScheduleInterviewScreen
+          candidateId={candidateId}
+          candidateName={candidateName}
+          candidate={{
+            firstName: candidateName.split(/\s+/)[0] ?? candidateName,
+            lastName: candidateName.split(/\s+/).slice(1).join(" "),
+            email: candidateEmail,
+            phone: candidatePhone,
+            location: candidateLocation,
+            currentTitle: candidateCurrentTitle,
+            currentEmployer: candidateCurrentEmployer,
+          }}
+          candidateEmail={candidateEmail}
+          recruiter={recruiter}
+          job={editInterview.job}
+          existingInterview={editInterview.interview}
+          onClose={() => setEditInterview(null)}
+        />
       )}
     </>
   );
@@ -729,6 +772,15 @@ function LocalJobActionRow({
   const nextInterview = job.interviews
     .filter((iv) => iv.status === "scheduled" && new Date(iv.scheduledAt).getTime() > Date.now())
     .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
+  // 2b-ii: the Edit Interview button shows once ANY non-cancelled interview
+  // exists for this job (not just at the interviewing stage). Target the next
+  // upcoming if there is one, else the most recent non-cancelled interview, so
+  // a past-but-not-cancelled interview can still be opened + edited.
+  const editableInterview =
+    nextInterview ??
+    job.interviews
+      .filter((iv) => iv.status !== "cancelled")
+      .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())[0];
   return (
     <div>
       <div className="flex items-center justify-between gap-3 px-3 py-1.5">
@@ -762,13 +814,16 @@ function LocalJobActionRow({
               <span className="hidden sm:inline">Submit</span>
             </Link>
           )}
-          {normalizedStage === "interviewing" && nextInterview && (
+          {editableInterview && (
+            // Blue schedule semantic (Icon Color rule). Opens the one-screen
+            // scheduler in edit mode pre-filled for this interview. Sits next
+            // to Schedule, which stays for booking an additional interview.
             <Button
               type="button"
               size="sm"
-              variant="secondary"
-              onClick={() => onEditInterview(nextInterview)}
-              title="Edit the upcoming interview"
+              variant="schedule"
+              onClick={() => onEditInterview(editableInterview)}
+              title="Edit this interview"
               className={CHIP_BTN_CLS}
             >
               <CalendarClock className="h-3 w-3" />
@@ -1861,146 +1916,6 @@ function formatMoney(amount: number, currency: string): string {
   }
 }
 
-// D2: the single in-place edit-interview scheduler. Reached from the job
-// pill's Edit Interview button AND from a calendar event / This Week widget
-// (which deep-link ?edit=interview&interviewId=). Keeps the time-only field
-// set for now (the full single-screen rebuild is E), but replaces the old
-// fire-immediately Reschedule with ONE Save that prompts a real three-way
-// update choice. The choice drives updateInterview's notifyMode, which sends
-// the update on the candidate event and the client event INDEPENDENTLY.
-function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; onClose: () => void }) {
-  const router = useRouter();
-  const [scheduledAt, setScheduledAt] = useState(toDatetimeLocalValue(interview.scheduledAt));
-  const [durationMin, setDurationMin] = useState(interview.durationMin);
-  const [timeZone, setTimeZone] = useState<string>(DEFAULT_INTERVIEW_TIMEZONE);
-  const [err, setErr] = useState<string | null>(null);
-  const [askNotify, setAskNotify] = useState(false);
-  const [isPending, startSave] = useTransition();
-
-  function onSave() {
-    setErr(null);
-    if (!scheduledAt) return setErr("Pick a date and time.");
-    // ONE Save → prompt the update-guests choice.
-    setAskNotify(true);
-  }
-
-  function commit(notifyMode: "all" | "new_only" | "none") {
-    setErr(null);
-    startSave(async () => {
-      const result = await updateInterview({
-        interviewId: interview.id,
-        // Same wall-clock-in-zone → UTC fix as the Schedule path.
-        scheduledAt: wallClockInZoneToUTC(scheduledAt, timeZone).toISOString(),
-        durationMin,
-        // Time-only edit reuses the existing interview type; location /
-        // attendees / phone / notes are left undefined so updateInterview
-        // preserves them (the full field set lands in E).
-        type: interview.type,
-        timeZone,
-        notifyMode,
-      });
-      if (!result.ok) {
-        setErr(result.error);
-        toast.error("Couldn't update interview", { description: result.error });
-        setAskNotify(false);
-        return;
-      }
-      toast.success("Interview updated");
-      onClose();
-      void triggerCalendarSync(router);
-      void upsertInterviewReminder(interview.id);
-    });
-  }
-
-  return (
-    <ModalShell
-      title="Edit interview"
-      onClose={onClose}
-      dismissOnOverlay={false}
-      draggable
-      resizable
-      footer={
-        askNotify ? (
-          <button
-            type="button"
-            onClick={() => setAskNotify(false)}
-            disabled={isPending}
-            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
-          >
-            Back
-          </button>
-        ) : (
-          <Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Save" />
-        )
-      }
-    >
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="block min-w-[16rem] flex-1 text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
-          <DateTime15Picker
-            value={scheduledAt}
-            onChange={setScheduledAt}
-            className="mt-1"
-            blockPast
-          />
-        </label>
-        <label className="block w-32 text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Time zone</span>
-          <select
-            value={timeZone}
-            onChange={(e) => setTimeZone(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-          >
-            {INTERVIEW_TIMEZONES.map((z) => (
-              <option key={z.iana} value={z.iana}>
-                {z.abbr}
-              </option>
-            ))}
-          </select>
-        </label>
-        <DurationSelect value={durationMin} onChange={setDurationMin} compact />
-      </div>
-
-      {askNotify && (
-        <div className="mt-4 rounded-lg border border-court-border bg-court-surface-subtle p-3.5">
-          <p className="text-sm font-medium text-court-fg">Send updated invites?</p>
-          <p className="mt-0.5 text-[12px] text-court-fg-muted">
-            The calendar time moves either way. This only controls who gets emailed.
-          </p>
-          <div className="mt-3 flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => commit("all")}
-              disabled={isPending}
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
-            >
-              {isPending && <Loader2 className="h-3 w-3 animate-spin" />}
-              Update all guests
-            </button>
-            <button
-              type="button"
-              onClick={() => commit("new_only")}
-              disabled={isPending}
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-court-border bg-court-surface px-4 py-2 text-xs font-medium text-court-fg shadow-sm transition hover:bg-court-surface-subtle disabled:opacity-60"
-            >
-              Update only new guests
-            </button>
-            <button
-              type="button"
-              onClick={() => commit("none")}
-              disabled={isPending}
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-court-border bg-court-surface px-4 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
-            >
-              Don&apos;t send updates
-            </button>
-          </div>
-        </div>
-      )}
-      {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
-    </ModalShell>
-  );
-}
-
 // ---- Shared dialog primitives ----
 
 // Date/time/type — interviewer is its own picker now (rendered by
@@ -2314,11 +2229,6 @@ function formatType(t: InterviewType): string {
   return "In-Person";
 }
 
-function toDatetimeLocalValue(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 // ---- invite composers ----
 
@@ -2567,6 +2477,7 @@ function ScheduleInterviewScreen({
   candidateEmail,
   recruiter,
   job,
+  existingInterview,
   onClose,
 }: {
   candidateId: string;
@@ -2575,25 +2486,42 @@ function ScheduleInterviewScreen({
   candidateEmail: string | null;
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
   job: LocalJobRow;
+  // 2b-ii: when present, the SAME screen runs in edit mode — pre-filled from
+  // this interview, ONE Save with a three-way notify choice driving
+  // updateInterview, no scheduleInterview call. Absent → new-interview mode,
+  // exactly as 2b-i (byte-for-byte unchanged).
+  existingInterview?: LocalInterview;
   onClose: () => void;
 }) {
   const router = useRouter();
-  // Starts empty so the recruiter makes a deliberate pick (matches the old
-  // modal + blockPast). The live email preview falls back to ~now+1h until a
-  // time is picked, then tracks it.
-  const [scheduledAt, setScheduledAt] = useState("");
-  const [durationMin, setDurationMin] = useState(30);
+  const isEdit = !!existingInterview;
+  // New mode starts empty so the recruiter makes a deliberate pick; edit mode
+  // pre-fills from the existing interview. timeZone defaults to ET in both (it
+  // isn't persisted), so the stored UTC time is shown as its ET wall-clock.
+  const [scheduledAt, setScheduledAt] = useState(() =>
+    existingInterview
+      ? utcToWallClockInZone(new Date(existingInterview.scheduledAt), DEFAULT_INTERVIEW_TIMEZONE)
+      : "",
+  );
+  const [durationMin, setDurationMin] = useState(existingInterview?.durationMin ?? 30);
   const [timeZone, setTimeZone] = useState<string>(DEFAULT_INTERVIEW_TIMEZONE);
-  const [type, setType] = useState<InterviewType>("video");
+  const [type, setType] = useState<InterviewType>(existingInterview?.type ?? "video");
   const [meetingType, setMeetingType] = useState<MeetingProvider>("google");
   const [microsoftConnected, setMicrosoftConnected] = useState(false);
-  const [interviewerName, setInterviewerName] = useState("");
-  const [interviewerEmail, setInterviewerEmail] = useState("");
-  const [location, setLocation] = useState("");
+  const [interviewerName, setInterviewerName] = useState(
+    existingInterview?.attendees[0]?.name ?? "",
+  );
+  const [interviewerEmail, setInterviewerEmail] = useState(
+    existingInterview?.attendees[0]?.email ?? "",
+  );
+  const [location, setLocation] = useState(existingInterview?.location ?? "");
   const [ccCsv, setCcCsv] = useState("");
   const [bccCsv, setBccCsv] = useState("");
+  // Edit mode: ONE Save flips to the three-way update-choice prompt.
+  const [askNotify, setAskNotify] = useState(false);
   // "Client will send invite": log the interview for tracking + credit, send
-  // nothing. Same source="client_scheduled" path the old modal used.
+  // nothing. Same source="client_scheduled" path the old modal used. (New mode
+  // only — an existing interview is already logged.)
   const [clientWillSendInvite, setClientWillSendInvite] = useState(false);
   const [sendClientEmail, setSendClientEmail] = useState(true);
   const [sendCandidateEmail, setSendCandidateEmail] = useState(true);
@@ -2699,33 +2627,44 @@ function ScheduleInterviewScreen({
   // to clean text (and no-ops on plain text) so the body reads clean in the
   // editor, in the calendar event, in the stored sent-copy, and in the Bcc
   // Gmail copy alike — matching what Google Calendar already renders.
+  // Edit mode seeds each party editor from the STORED sent copy (what the
+  // recipient actually saw), cleaned through htmlToReadableText. New mode seeds
+  // from the saved scheduling template (2b-i behavior, unchanged).
   const clientDefaultSubject = useMemo(
     () =>
-      schedTemplates.client?.subject
-        ? htmlToReadableText(schedTemplates.client.subject)
-        : defaultClientSubject(type, candidateName, job.jobTitle),
-    [schedTemplates, type, candidateName, job.jobTitle],
+      existingInterview?.sentClientSubject
+        ? htmlToReadableText(existingInterview.sentClientSubject)
+        : schedTemplates.client?.subject
+          ? htmlToReadableText(schedTemplates.client.subject)
+          : defaultClientSubject(type, candidateName, job.jobTitle),
+    [existingInterview, schedTemplates, type, candidateName, job.jobTitle],
   );
   const clientDefaultBody = useMemo(
     () =>
-      schedTemplates.client?.body
-        ? htmlToReadableText(schedTemplates.client.body)
-        : defaultClientBody(type, location),
-    [schedTemplates, type, location],
+      existingInterview?.sentClientBody
+        ? htmlToReadableText(existingInterview.sentClientBody)
+        : schedTemplates.client?.body
+          ? htmlToReadableText(schedTemplates.client.body)
+          : defaultClientBody(type, location),
+    [existingInterview, schedTemplates, type, location],
   );
   const candidateDefaultSubject = useMemo(
     () =>
-      schedTemplates.candidate?.subject
-        ? htmlToReadableText(schedTemplates.candidate.subject)
-        : defaultCandidateSubject(type),
-    [schedTemplates, type],
+      existingInterview?.sentCandidateSubject
+        ? htmlToReadableText(existingInterview.sentCandidateSubject)
+        : schedTemplates.candidate?.subject
+          ? htmlToReadableText(schedTemplates.candidate.subject)
+          : defaultCandidateSubject(type),
+    [existingInterview, schedTemplates, type],
   );
   const candidateDefaultBody = useMemo(
     () =>
-      schedTemplates.candidate?.body
-        ? htmlToReadableText(schedTemplates.candidate.body)
-        : defaultCandidateBody(type, location),
-    [schedTemplates, type, location],
+      existingInterview?.sentCandidateBody
+        ? htmlToReadableText(existingInterview.sentCandidateBody)
+        : schedTemplates.candidate?.body
+          ? htmlToReadableText(schedTemplates.candidate.body)
+          : defaultCandidateBody(type, location),
+    [existingInterview, schedTemplates, type, location],
   );
 
   const clientDraft = useInviteDraft(clientDefaultSubject, clientDefaultBody, values);
@@ -2856,36 +2795,126 @@ function ScheduleInterviewScreen({
     });
   }
 
+  // Edit mode: ONE Save → three-way update-choice prompt. The choice drives
+  // updateInterview's notifyMode (who gets emailed); the calendar time always
+  // moves regardless. The edited per-party bodies are pushed to the live
+  // event + stored copies for whichever party was originally invited.
+  function onSaveEdit() {
+    setErr(null);
+    if (!scheduledAt) return setErr("Pick a date and time.");
+    if (type === "in_person" && !location.trim()) {
+      return setErr("Address required for in-person interviews.");
+    }
+    setAskNotify(true);
+  }
+
+  function commitEdit(notifyMode: "all" | "new_only" | "none") {
+    if (!existingInterview) return;
+    setErr(null);
+    startSend(async () => {
+      // Interviewer + any Cc become guests on the client event (added per
+      // notify mode by updateInterview). Drop blanks.
+      const attendees = [
+        { name: interviewerName.trim(), email: interviewerEmail.trim() },
+        ...parseEmailCsv(ccCsv).map((email) => ({ name: "", email })),
+      ].filter((a) => a.email.length > 0);
+      const result = await updateInterview({
+        interviewId: existingInterview.id,
+        scheduledAt: wallClockInZoneToUTC(scheduledAt, timeZone).toISOString(),
+        durationMin,
+        type,
+        timeZone,
+        // type drives the address: clears it when switching away from in-person.
+        location: type === "in_person" ? location.trim() : "",
+        attendees,
+        notifyMode,
+        bcc: parseEmailCsv(bccCsv),
+        // Push edits only for the party that was actually invited (has a
+        // stored copy + live event). resolveForSend is a no-op here (stored
+        // copies carry the real Meet URL, not the token).
+        ...(existingInterview.clientInvited
+          ? { clientSubject: clientDraft.subject, clientBody: clientDraft.body }
+          : {}),
+        ...(existingInterview.candidateInvited
+          ? { candidateSubject: candidateDraft.subject, candidateBody: candidateDraft.body }
+          : {}),
+      });
+      if (!result.ok) {
+        setErr(result.error);
+        toast.error("Couldn't update interview", { description: result.error });
+        setAskNotify(false);
+        return;
+      }
+      toast.success("Interview updated");
+      void triggerCalendarSync(router);
+      void upsertInterviewReminder(existingInterview.id);
+      onClose();
+    });
+  }
+
   const emailEditorsDisabled = clientWillSendInvite;
 
   return (
     <ModalShell
-      title="Schedule interview"
+      title={isEdit ? "Edit interview" : "Schedule interview"}
       subtitle={`${candidateName} for ${job.jobTitle} at ${job.clientName}`}
       onClose={onClose}
       dismissOnOverlay={false}
       draggable
       resizable
       footer={
-        <>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isPending}
-            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
-          >
-            <X className="h-3 w-3" /> Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onSend}
-            disabled={isPending}
-            className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
-          >
-            {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-            {clientWillSendInvite ? "Schedule interview" : "Send"}
-          </button>
-        </>
+        isEdit ? (
+          askNotify ? (
+            <button
+              type="button"
+              onClick={() => setAskNotify(false)}
+              disabled={isPending}
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+            >
+              Back
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isPending}
+                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+              >
+                <X className="h-3 w-3" /> Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onSaveEdit}
+                disabled={isPending}
+                className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+              >
+                {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CalendarClock className="h-3 w-3" />}
+                Save
+              </button>
+            </>
+          )
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isPending}
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+            >
+              <X className="h-3 w-3" /> Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onSend}
+              disabled={isPending}
+              className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+            >
+              {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+              {clientWillSendInvite ? "Schedule interview" : "Send"}
+            </button>
+          </>
+        )
       }
     >
       <div className="space-y-4">
@@ -2901,7 +2930,9 @@ function ScheduleInterviewScreen({
           location={location}
           setLocation={setLocation}
           typeExtras={
-            type === "video" && !clientWillSendInvite ? (
+            // Provider (Meet/Teams) is fixed once an interview exists, so the
+            // picker is new-mode only; edit keeps the existing Meet.
+            type === "video" && !clientWillSendInvite && !isEdit ? (
               <MeetingProviderSelect
                 value={meetingType}
                 onChange={setMeetingType}
@@ -2933,26 +2964,30 @@ function ScheduleInterviewScreen({
           }
         />
 
-        <label
-          className="flex cursor-pointer items-start gap-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/60 p-3 text-sm"
-          title="Use this when the client is scheduling the interview themselves. We log it on your calendar for tracking + credit and skip the invite emails."
-        >
-          <input
-            type="checkbox"
-            checked={clientWillSendInvite}
-            onChange={(e) => setClientWillSendInvite(e.target.checked)}
-            className="mt-0.5 h-4 w-4 rounded border-court-border accent-brand-dark"
-          />
-          <span>
-            <span className="font-semibold text-court-fg">Client will send invite</span>
-            <span className="block text-xs text-court-fg-muted">
-              Log the interview on your calendar + activity log for tracking and credit. Skip the
-              candidate/client invite emails. The client is sending their own.
+        {/* "Client will send invite" is a new-interview-only concept. */}
+        {!isEdit && (
+          <label
+            className="flex cursor-pointer items-start gap-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/60 p-3 text-sm"
+            title="Use this when the client is scheduling the interview themselves. We log it on your calendar for tracking + credit and skip the invite emails."
+          >
+            <input
+              type="checkbox"
+              checked={clientWillSendInvite}
+              onChange={(e) => setClientWillSendInvite(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-court-border accent-brand-dark"
+            />
+            <span>
+              <span className="font-semibold text-court-fg">Client will send invite</span>
+              <span className="block text-xs text-court-fg-muted">
+                Log the interview on your calendar + activity log for tracking and credit. Skip the
+                candidate/client invite emails. The client is sending their own.
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+        )}
 
-        {!emailEditorsDisabled && (
+        {/* New mode: toggle sections decide whether to send each party. */}
+        {!isEdit && !emailEditorsDisabled && (
           <>
             <InviteToggleSection
               label="Send Client Email"
@@ -2982,6 +3017,69 @@ function ScheduleInterviewScreen({
               />
             </InviteToggleSection>
           </>
+        )}
+
+        {/* Edit mode: the bodies that actually went out, editable. Pushed to
+            the live event + stored copy on Save (per the notify choice). */}
+        {isEdit && existingInterview?.clientInvited && (
+          <div className="rounded-xl border border-court-border bg-court-surface p-3">
+            <div className="mb-2 text-[13px] font-semibold text-court-fg">Client email</div>
+            <InlineInviteEditor
+              subject={clientDraft.subject}
+              body={clientDraft.body}
+              onSubjectChange={clientDraft.setSubject}
+              onBodyChange={clientDraft.setBody}
+            />
+          </div>
+        )}
+        {isEdit && existingInterview?.candidateInvited && (
+          <div className="rounded-xl border border-court-border bg-court-surface p-3">
+            <div className="mb-2 text-[13px] font-semibold text-court-fg">Candidate email</div>
+            <InlineInviteEditor
+              subject={candidateDraft.subject}
+              body={candidateDraft.body}
+              onSubjectChange={candidateDraft.setSubject}
+              onBodyChange={candidateDraft.setBody}
+            />
+          </div>
+        )}
+
+        {/* Edit mode: ONE Save → three-way update-choice. The time always
+            moves; this only controls who is emailed. */}
+        {isEdit && askNotify && (
+          <div className="rounded-lg border border-court-border bg-court-surface-subtle p-3.5">
+            <p className="text-sm font-medium text-court-fg">Send updated invites?</p>
+            <p className="mt-0.5 text-[12px] text-court-fg-muted">
+              The calendar time moves either way. This only controls who gets emailed.
+            </p>
+            <div className="mt-3 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => commitEdit("all")}
+                disabled={isPending}
+                className="inline-flex items-center justify-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+              >
+                {isPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                Update all guests
+              </button>
+              <button
+                type="button"
+                onClick={() => commitEdit("new_only")}
+                disabled={isPending}
+                className="inline-flex items-center justify-center gap-1 rounded-md border border-court-border bg-court-surface px-4 py-2 text-xs font-medium text-court-fg shadow-sm transition hover:bg-court-surface-subtle disabled:opacity-60"
+              >
+                Update only new guests
+              </button>
+              <button
+                type="button"
+                onClick={() => commitEdit("none")}
+                disabled={isPending}
+                className="inline-flex items-center justify-center gap-1 rounded-md border border-court-border bg-court-surface px-4 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+              >
+                Don&apos;t send updates
+              </button>
+            </div>
+          </div>
         )}
 
         {err && (
