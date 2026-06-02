@@ -319,6 +319,92 @@ async function updateLocalCalendarEventDetails(args: {
   }
 }
 
+// When a per-party invite creates a BRAND-NEW Google event (the second
+// side of a two-party interview, or a party whose tracking event had to
+// be retired), mirror it into Neon immediately so /calendar + the
+// Clubhouse "This Week" widget render that party's tile right away
+// instead of waiting for the next on-demand Google sync. Without this the
+// freshly created client (or candidate) event has no CalendarEvent row,
+// so the grid groups by googleEventId off the mirror rows and shows only
+// the first party's tile — the D1 single-event regression. Upsert on the
+// same (organizationId, googleEventId, calendarId) key the sync uses so
+// the next full sync updates this row in place, never a duplicate.
+async function mirrorPartyInviteEvent(args: {
+  organizationId: string;
+  userEmail: string | null;
+  googleEventId: string;
+  title: string;
+  description: string;
+  startTime: Date;
+  endTime: Date;
+  location: string | null;
+  meetLink: string | null;
+  htmlLink: string | null;
+  attendees: { email: string; displayName?: string }[];
+  candidateId: string | null;
+  jobId: string | null;
+}): Promise<void> {
+  // Primary calendar id on Google Workspace == the user's email; matches
+  // how the New Event FAB mirrors (calendar/event-actions.ts) so the sync
+  // upsert key lines up and the row updates in place on the next pass.
+  const calendarId = args.userEmail ?? "primary";
+  const attendeeJson =
+    args.attendees.length > 0
+      ? args.attendees.map((a) => ({
+          email: a.email,
+          ...(a.displayName ? { displayName: a.displayName } : {}),
+          responseStatus: "needsAction",
+        }))
+      : null;
+  try {
+    await prisma.calendarEvent.upsert({
+      where: {
+        organizationId_googleEventId_calendarId: {
+          organizationId: args.organizationId,
+          googleEventId: args.googleEventId,
+          calendarId,
+        },
+      },
+      create: {
+        organizationId: args.organizationId,
+        googleEventId: args.googleEventId,
+        calendarId,
+        calendarName: "primary",
+        calendarColor: null,
+        title: args.title,
+        description: args.description || null,
+        startTime: args.startTime,
+        endTime: args.endTime,
+        allDay: false,
+        location: args.location,
+        meetLink: args.meetLink,
+        htmlLink: args.htmlLink,
+        attendees: attendeeJson ?? undefined,
+        candidateId: args.candidateId ?? undefined,
+        jobId: args.jobId ?? undefined,
+        typeOverride: "interview",
+        status: "CONFIRMED",
+        syncedAt: new Date(),
+      },
+      update: {
+        title: args.title,
+        description: args.description || null,
+        startTime: args.startTime,
+        endTime: args.endTime,
+        location: args.location,
+        meetLink: args.meetLink,
+        htmlLink: args.htmlLink,
+        ...(attendeeJson ? { attendees: attendeeJson } : {}),
+        typeOverride: "interview",
+        status: "CONFIRMED",
+        syncedAt: new Date(),
+      },
+    });
+  } catch {
+    // best-effort; the next /api/calendar/sync run will reconcile.
+  }
+}
+
 function calendarSummary(input: ScheduleInterviewInput): string {
   const who = input.candidateName || "Candidate";
   const job = input.jobTitle || "role";
@@ -1307,7 +1393,32 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
         } catch {
           // Best-effort cleanup; the new per-party invite is the source of truth.
         }
+        // Drop the retired tracking event's stale mirror so it can't keep
+        // rendering a phantom tile alongside the new per-party events.
+        await markLocalCalendarEventsCancelled({
+          organizationId: org.id,
+          googleEventIds: [retiredTrackingEventId],
+        });
       }
+      // D1 fix: mirror the freshly created party event into Neon now so the
+      // calendar + This Week widget render this party's tile immediately
+      // (each titled with its own stored sent subject). Without this only
+      // the first party's tile shows until the next Google sync runs.
+      await mirrorPartyInviteEvent({
+        organizationId: org.id,
+        userEmail: user.email ?? null,
+        googleEventId,
+        title,
+        description,
+        startTime: interview.scheduledAt,
+        endTime: new Date(interview.scheduledAt.getTime() + interview.durationMin * 60 * 1000),
+        location: calendarLocation ?? null,
+        meetLink: effectiveMeetLink,
+        htmlLink: created.htmlLink,
+        attendees: newAttendees,
+        candidateId: interview.candidateId ?? null,
+        jobId: interview.jobId ?? null,
+      });
     } catch (e) {
       return {
         ok: false,
