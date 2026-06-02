@@ -442,9 +442,10 @@ export async function getWeekData(
   }
 
   const todayEvents = events.filter((e) => formatYMD(e.startTime) === todayKey);
+  // Show EVERY upcoming event left today (no 2-cap) — the 5-day strip already
+  // renders all events per day, and the today list must match it.
   const upNextToday: UpNextRow[] = todayEvents
     .filter((e) => e.startTime.getTime() > now.getTime())
-    .slice(0, 2)
     .map((e) => {
       const min = Math.max(
         0,

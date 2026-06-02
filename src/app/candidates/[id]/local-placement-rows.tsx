@@ -50,7 +50,7 @@ import {
   CcBccPicker,
   ConfirmStartDialog,
   DurationSelect,
-  InterviewerPicker,
+  InlineContactMultiInput,
   parseEmailCsv,
 } from "@/components/placements/placement-shared";
 import { triggerCalendarSync } from "@/lib/calendar/trigger-sync";
@@ -2511,11 +2511,14 @@ function ScheduleInterviewScreen({
   const [type, setType] = useState<InterviewType>(existingInterview?.type ?? "video");
   const [meetingType, setMeetingType] = useState<MeetingProvider>("google");
   const [microsoftConnected, setMicrosoftConnected] = useState(false);
-  const [interviewerName, setInterviewerName] = useState(
-    existingInterview?.attendees[0]?.name ?? "",
-  );
-  const [interviewerEmail, setInterviewerEmail] = useState(
-    existingInterview?.attendees[0]?.email ?? "",
+  // Multi-interviewer: a comma-string of interviewer emails (the same chip
+  // model Cc/Bcc use), seeded in edit mode from ALL of the interview's stored
+  // client attendees so the original interviewer(s) carry in and Andrew can add
+  // more. Each interviewer attaches as a guest on the CLIENT invite event only.
+  const [interviewersCsv, setInterviewersCsv] = useState(
+    existingInterview
+      ? existingInterview.attendees.map((a) => a.email).filter(Boolean).join(", ")
+      : "",
   );
   const [location, setLocation] = useState(existingInterview?.location ?? "");
   const [ccCsv, setCcCsv] = useState("");
@@ -2526,16 +2529,12 @@ function ScheduleInterviewScreen({
   // nothing. Same source="client_scheduled" path the old modal used. (New mode
   // only — an existing interview is already logged.)
   const [clientWillSendInvite, setClientWillSendInvite] = useState(false);
-  // New mode: both default ON. Edit mode: ON for a party that was already
-  // invited (Save re-pushes its edited copy per the notify choice), OFF for a
-  // party never emailed — the editor still SHOWS so Andrew can flip it on and
-  // send a fresh invite through the same send path new-schedule uses.
-  const [sendClientEmail, setSendClientEmail] = useState(
-    existingInterview ? existingInterview.clientInvited : true,
-  );
-  const [sendCandidateEmail, setSendCandidateEmail] = useState(
-    existingInterview ? existingInterview.candidateInvited : true,
-  );
+  // Both editors default ON in every mode (new + edit) so the subject/body
+  // editors are open without reopening. In edit mode an ON party that was never
+  // invited gets a fresh invite on Save via the same send path new-schedule
+  // uses (gated by the notify choice — "don't send updates" suppresses it).
+  const [sendClientEmail, setSendClientEmail] = useState(true);
+  const [sendCandidateEmail, setSendCandidateEmail] = useState(true);
   // Active interview-scheduling templates seed the per-party defaults (same
   // as the retired composers: clientTemplate?.subject ?? hardcoded fallback).
   const [schedTemplates, setSchedTemplates] = useState<
@@ -2547,6 +2546,37 @@ function ScheduleInterviewScreen({
   // retry Send, and we don't re-fire a party invite that already went out.
   const scheduledRef = useRef<{ interviewId: string; meetLink: string | null } | null>(null);
   const sentRef = useRef<{ client: boolean; candidate: boolean }>({ client: false, candidate: false });
+
+  // Interviewer chip model. Options come from the job's client contacts (picked
+  // chips drop out of the list inside InlineContactMultiInput); a typed email is
+  // accepted too. Each selected email resolves to a name (client contact first,
+  // then the stored attendee name) so calendar guests carry display names. The
+  // FIRST interviewer is the primary client attendee that drives the invite's
+  // To + the [Interviewer] merge field; every interviewer is a guest on the
+  // client event. interviewerName/interviewerEmail keep their old names as the
+  // primary scalars so the rest of the send/merge code is unchanged.
+  const interviewerOptions = useMemo(
+    () =>
+      job.clientContacts
+        .map((c) => ({ id: String(c.id), name: c.name, email: c.email }))
+        .filter((c) => c.email),
+    [job.clientContacts],
+  );
+  const interviewerEmails = parseEmailCsv(interviewersCsv);
+  const resolveInterviewerName = (email: string): string => {
+    const lc = email.toLowerCase();
+    const fromContacts = job.clientContacts.find((c) => (c.email ?? "").toLowerCase() === lc);
+    if (fromContacts?.name) return fromContacts.name;
+    const fromExisting = existingInterview?.attendees.find((a) => a.email.toLowerCase() === lc);
+    return fromExisting?.name ?? "";
+  };
+  const interviewerList = interviewerEmails.map((email) => ({
+    name: resolveInterviewerName(email),
+    email,
+  }));
+  const primaryInterviewer = interviewerList[0] ?? null;
+  const interviewerName = primaryInterviewer?.name ?? "";
+  const interviewerEmail = primaryInterviewer?.email ?? "";
 
   useEffect(() => {
     let cancelled = false;
@@ -2692,7 +2722,7 @@ function ScheduleInterviewScreen({
       return setErr("Address required for in-person interviews.");
     }
     if (!clientWillSendInvite) {
-      if (sendClientEmail && !interviewerEmail.trim()) {
+      if (sendClientEmail && interviewerEmails.length === 0) {
         return setErr("Pick an interviewer (client contact) or turn off the client email.");
       }
       if (sendCandidateEmail && !candidateEmail) {
@@ -2704,9 +2734,8 @@ function ScheduleInterviewScreen({
       // interview that already exists rather than minting a duplicate.
       if (!scheduledRef.current) {
         const snapped = wallClockInZoneToUTC(scheduledAt, timeZone);
-        const attendees = interviewerName.trim()
-          ? [{ name: interviewerName.trim(), email: interviewerEmail.trim() }]
-          : [];
+        // Every interviewer is a guest on the client event.
+        const attendees = interviewerList;
         const result = await scheduleInterview({
           candidateId,
           placementId: job.placementId,
@@ -2757,7 +2786,10 @@ function ScheduleInterviewScreen({
           party: "client",
           attendeeEmail: interviewerEmail.trim(),
           attendeeName: interviewerName.trim() || undefined,
-          toEmails: [interviewerEmail.trim()],
+          // All interviewers ride the To so each attaches as a guest on the
+          // client event. Cc stays the separate client-contacts pool;
+          // interviewers are never auto-Cc'd.
+          toEmails: interviewerEmails,
           ccEmails: parseEmailCsv(ccCsv),
           bccEmails: parseEmailCsv(bccCsv),
           subject: resolveForSend(clientDraft.subject, sched.meetLink),
@@ -2819,7 +2851,7 @@ function ScheduleInterviewScreen({
     // A party toggled ON that was never invited will be sent a fresh invite on
     // commit; block early if its email is missing (mirrors the new-mode guard).
     if (existingInterview) {
-      if (sendClientEmail && !existingInterview.clientInvited && !interviewerEmail.trim()) {
+      if (sendClientEmail && !existingInterview.clientInvited && interviewerEmails.length === 0) {
         return setErr("Pick an interviewer (client contact) or turn off the client email.");
       }
       if (sendCandidateEmail && !existingInterview.candidateInvited && !candidateEmail) {
@@ -2834,10 +2866,10 @@ function ScheduleInterviewScreen({
     const ex = existingInterview;
     setErr(null);
     startSend(async () => {
-      // Interviewer + any Cc become guests on the client event (added per
+      // Every interviewer + any Cc become guests on the client event (added per
       // notify mode by updateInterview). Drop blanks.
       const attendees = [
-        { name: interviewerName.trim(), email: interviewerEmail.trim() },
+        ...interviewerList,
         ...parseEmailCsv(ccCsv).map((email) => ({ name: "", email })),
       ].filter((a) => a.email.length > 0);
       // Push a party's edited subject/body to its live event + stored copy only
@@ -2875,16 +2907,18 @@ function ScheduleInterviewScreen({
       // path new-schedule uses. The interview already exists, so
       // sendInterviewInvite creates that party's event, stores the sent copy,
       // and stamps its sentAt flag. The Meet link is already minted on the
-      // interview, so resolve the token against it.
+      // interview, so resolve the token against it. Gated by the notify choice:
+      // "don't send updates" suppresses the fresh invite too.
       const meet = ex.meetLink;
       const failures: string[] = [];
-      if (sendClientEmail && !ex.clientInvited && interviewerEmail.trim()) {
+      const mayNotify = notifyMode !== "none";
+      if (mayNotify && sendClientEmail && !ex.clientInvited && interviewerEmails.length > 0) {
         const res = await sendInterviewInvite({
           interviewId: ex.id,
           party: "client",
           attendeeEmail: interviewerEmail.trim(),
           attendeeName: interviewerName.trim() || undefined,
-          toEmails: [interviewerEmail.trim()],
+          toEmails: interviewerEmails,
           ccEmails: parseEmailCsv(ccCsv),
           bccEmails: parseEmailCsv(bccCsv),
           subject: resolveForSend(clientDraft.subject, meet),
@@ -2893,7 +2927,7 @@ function ScheduleInterviewScreen({
         });
         if (!res.ok) failures.push(`Client invite: ${res.error}`);
       }
-      if (sendCandidateEmail && !ex.candidateInvited && candidateEmail) {
+      if (mayNotify && sendCandidateEmail && !ex.candidateInvited && candidateEmail) {
         const res = await sendInterviewInvite({
           interviewId: ex.id,
           party: "candidate",
@@ -3011,15 +3045,17 @@ function ScheduleInterviewScreen({
             ) : null
           }
           interviewerSlot={
-            <InterviewerPicker
-              initialContacts={job.clientContacts}
-              name={interviewerName}
-              email={interviewerEmail}
-              onChange={(n, e) => {
-                setInterviewerName(n);
-                setInterviewerEmail(e);
-              }}
-            />
+            <label className="block text-sm">
+              <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+                Interviewer(s) · client contacts
+              </span>
+              <InlineContactMultiInput
+                value={interviewersCsv}
+                onChange={setInterviewersCsv}
+                options={interviewerOptions}
+                placeholder="Pick a client contact or type email…"
+              />
+            </label>
           }
           ccBccSlot={
             clientWillSendInvite ? null : (
