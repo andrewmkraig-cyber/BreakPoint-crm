@@ -114,10 +114,22 @@ async function attachDistanceLines(
           locationZip: true,
           locationCity: true,
           locationState: true,
+          // Legacy free-form "City, ST Zip" array. Used as the geocode
+          // fallback below when the structured columns were never
+          // populated (RF-imported jobs + any create path other than
+          // /jobs/new). scripts/geocode-jobs.ts backfills the structured
+          // columns from this; the fallback keeps the distance resolving
+          // in the meantime.
+          locations: true,
         },
       })
     : [];
-  type JobLoc = { zip: string | null; city: string | null; state: string | null };
+  type JobLoc = {
+    zip: string | null;
+    city: string | null;
+    state: string | null;
+    locations: string[];
+  };
   const jobLocByCuid = new Map<string, JobLoc>();
   const jobLocByRfId = new Map<number, JobLoc>();
   for (const j of jobLocRows) {
@@ -125,22 +137,35 @@ async function attachDistanceLines(
       zip: j.locationZip,
       city: j.locationCity,
       state: j.locationState,
+      locations: j.locations,
     };
     jobLocByCuid.set(j.id, loc);
     if (j.legacyRfId != null) jobLocByRfId.set(j.legacyRfId, loc);
   }
 
+  // First non-empty legacy locations[] entry (the composed "City, ST Zip"
+  // string from /jobs/new, or whatever an import left behind). The geocode
+  // fallback when no structured column is set.
+  const legacyLoc = (loc: JobLoc): string =>
+    (loc.locations.find((s) => (s ?? "").trim().length > 0) ?? "").trim();
   const jobLocKey = (loc: JobLoc): string => {
     const zip = (loc.zip ?? "").trim();
     if (zip) return `zip:${zip.toLowerCase()}`;
     const parts = [loc.city, loc.state].map((s) => (s ?? "").trim()).filter(Boolean);
-    return parts.length > 0 ? `cs:${parts.join(",").toLowerCase()}` : "";
+    if (parts.length > 0) return `cs:${parts.join(",").toLowerCase()}`;
+    const legacy = legacyLoc(loc);
+    return legacy ? `loc:${legacy.toLowerCase()}` : "";
   };
   const jobLocQuery = (loc: JobLoc): string => {
     const zip = (loc.zip ?? "").trim();
     if (zip) return zip;
     const parts = [loc.city, loc.state].map((s) => (s ?? "").trim()).filter(Boolean);
-    return parts.join(", ");
+    if (parts.length > 0) return parts.join(", ");
+    // Fallback: structured columns empty -> geocode the legacy free-form
+    // string. geocodePill handles "City, ST" already; un-geocodable blobs
+    // (e.g. "Northeast Ohio") return null and the sub-line blanks cleanly,
+    // exactly as an empty query does.
+    return legacyLoc(loc);
   };
   const uniqueJobLocs = new Map<string, JobLoc>();
   for (const r of targetRows) {
