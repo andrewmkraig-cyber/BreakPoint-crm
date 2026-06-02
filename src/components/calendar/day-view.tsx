@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { CalendarEvent, CalendarTeamMember } from "@/lib/calendar/types";
 import {
-  computeReminderLanes,
+  computeEventColumns,
   eventTypeMeta,
   fmtDateRange,
   fmtHour,
@@ -61,7 +61,7 @@ export function CalendarDayView({
       ),
   );
   const isToday = isSameDay(displayDate, today);
-  const lanes = computeReminderLanes(dayEvents);
+  const columns = computeEventColumns(dayEvents);
 
   // Local "now" ticking once a minute so the brand-green current-time
   // line drifts down the column while the page sits open. Initialized
@@ -166,19 +166,23 @@ export function CalendarDayView({
             const extraOwners = allOwners.length - visibleOwners.length;
             const guestCount = ev.guests?.length ?? 0;
             const isSelected = selectedId === ev.id;
-            // Split the column into left/right lanes when a reminder and
-            // event share this slot so neither tile covers the other.
-            const lane = lanes.get(ev.id) ?? "full";
-            const laneStyle =
-              lane === "left"
-                ? { left: 14, right: "calc(50% + 4px)" }
-                : lane === "right"
-                  ? { left: "calc(50% + 4px)", right: 24 }
-                  : { left: 14, right: 24 };
-            // Half-width lane tiles can't fit the rich header + title +
-            // detail rows without wrapping and clipping, so a collided
+            // Overlapping tiles (two interviews at the same time, a reminder
+            // sharing a slot) split the column into N side-by-side
+            // sub-columns so none covers another. 14px left gutter, 24px
+            // right gutter, 4px gap between columns; single tiles keep the
+            // full width.
+            const col = columns.get(ev.id) ?? { index: 0, count: 1 };
+            const multi = col.count > 1;
+            const laneStyle = multi
+              ? {
+                  left: `calc(14px + (100% - 38px) / ${col.count} * ${col.index})`,
+                  width: `calc((100% - 38px) / ${col.count} - 4px)`,
+                }
+              : { left: 14, right: 24 };
+            // Narrow column tiles can't fit the rich header + title +
+            // detail rows without wrapping and clipping, so a packed
             // tile renders a compact label + title pair instead.
-            if (lane !== "full") {
+            if (multi) {
               return (
                 <button
                   key={ev.id}

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef } from "react";
 
 import type { CalendarEvent, CalendarTeamMember } from "@/lib/calendar/types";
 import {
-  computeReminderLanes,
+  computeEventColumns,
   eventTypeMeta,
   fmtHour,
   hourToY,
@@ -157,7 +157,7 @@ export function CalendarWeekView({
           {weekDays.map((d, i) => {
             const isToday = isSameDay(d.fullDate, today);
             const dayEvents = eventsByDay[i];
-            const lanes = computeReminderLanes(dayEvents);
+            const columns = computeEventColumns(dayEvents);
             return (
               <div
                 key={d.key}
@@ -202,16 +202,19 @@ export function CalendarWeekView({
                   // top-right so they don't steal the title row in
                   // 30-minute events.
                   const showTime = height >= 32;
-                  // When a reminder and event share this slot, split the
-                  // column into left/right lanes so neither covers the
-                  // other. Non-colliding tiles keep the full width.
-                  const lane = lanes.get(ev.id) ?? "full";
-                  const laneStyle =
-                    lane === "left"
-                      ? { left: 4, right: "calc(50% + 2px)" }
-                      : lane === "right"
-                        ? { left: "calc(50% + 2px)", right: 4 }
-                        : null;
+                  // Overlapping tiles (two interviews at the same time, a
+                  // reminder sharing a slot) split the column into N
+                  // side-by-side sub-columns so none covers another.
+                  // Single tiles keep the full width via the class below.
+                  // 4px gutter each side, 3px gap between columns.
+                  const col = columns.get(ev.id) ?? { index: 0, count: 1 };
+                  const multi = col.count > 1;
+                  const laneStyle = multi
+                    ? {
+                        left: `calc(4px + (100% - 8px) / ${col.count} * ${col.index})`,
+                        width: `calc((100% - 8px) / ${col.count} - 3px)`,
+                      }
+                    : null;
                   return (
                     <button
                       key={ev.id}
@@ -222,7 +225,7 @@ export function CalendarWeekView({
                       }}
                       className={cn(
                         "absolute cursor-pointer overflow-hidden rounded-md border px-2 py-1 text-left leading-tight transition hover:-translate-y-px hover:shadow-sm",
-                        lane === "full" && "left-1 right-1",
+                        !multi && "left-1 right-1",
                         meta.pillClass,
                         isSelected &&
                           "outline-2 outline-offset-2 outline outline-court-brand",

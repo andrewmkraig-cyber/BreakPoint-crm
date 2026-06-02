@@ -10,6 +10,7 @@ import {
   MapPin,
   Plus,
   Trash2,
+  Users,
   Video,
   X,
 } from "lucide-react";
@@ -310,6 +311,9 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
   const [deleting, setDeleting] = useState(false);
   const [cancellingInterview, setCancellingInterview] = useState(false);
   const [cancelChoiceOpen, setCancelChoiceOpen] = useState(false);
+  // ONE Save on a generic edit opens this update-choice prompt (all /
+  // new-only / none) instead of three look-alike Save buttons.
+  const [saveChoiceOpen, setSaveChoiceOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // D1: an interview-linked calendar block carries its Interview.id + party.
@@ -368,6 +372,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
       // Reset the cancel-interview two-way choice so a half-opened prompt
       // never carries over to the next interview the drawer shows.
       setCancelChoiceOpen(false);
+      setSaveChoiceOpen(false);
     } else {
       const initialType: CalendarEventType = prefillType ?? "interview";
       setType(initialType);
@@ -740,6 +745,9 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               rows={1}
+              // Interview events are read-only here - the title is the
+              // stored invite subject and edits route through the scheduler.
+              readOnly={isInterviewEvent}
               className="mt-1 w-full resize-none overflow-hidden break-words bg-transparent font-serif text-[22px] font-bold leading-tight tracking-tight text-court-fg outline-none placeholder:text-court-fg-dim focus:outline-none"
             />
           </div>
@@ -842,6 +850,15 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
             </div>
           )}
 
+          {/* Read-only "what the recipient saw" detail for an interview
+              event. The full editor is intentionally hidden - editing
+              routes through the one scheduler via the strip's Edit
+              button, so a calendar tile never opens the generic editor. */}
+          {isInterviewEvent && event && <InterviewDetailCard event={event} />}
+
+          {/* Generic editor - shown for every non-interview event. */}
+          {!isInterviewEvent && (
+          <>
           {/* Type selector */}
           <div>
             <FieldLabel>Event type</FieldLabel>
@@ -1166,6 +1183,8 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
           <div className="flex items-center gap-2 text-[11px] text-court-fg-muted">
             <GoogleGlyph className="h-3.5 w-3.5" /> Synced from Google Calendar
           </div>
+          </>
+          )}
         </div>
 
         {/* Footer */}
@@ -1175,9 +1194,72 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
               {error}
             </div>
           )}
-          <div className="flex items-center gap-2.5">
-            {mode === "edit" ? (
-              <>
+          {mode === "edit" && isInterviewEvent ? (
+            // Interview events are read-only here; Edit / Cancel live in
+            // the strip above. Footer just offers a Close.
+            <div className="flex items-center gap-2.5">
+              <div className="flex-1" />
+              <Button variant="secondary" size="sm" onClick={onClose}>
+                Close
+              </Button>
+            </div>
+          ) : mode === "edit" ? (
+            saveChoiceOpen ? (
+              // ONE Save opened this. Pick who gets emailed; the Google
+              // event updates either way (doSave passes the choice through
+              // updateCalendarEventAction's notifyMode).
+              <div className="rounded-lg border border-court-border bg-court-surface p-3.5">
+                <p className="text-sm font-medium text-court-fg">
+                  Send updated invites?
+                </p>
+                <p className="mt-0.5 text-[12px] text-court-fg-muted">
+                  The event updates either way. This only controls who gets emailed.
+                </p>
+                <div className="mt-3 flex flex-col gap-2">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => doSave("all")}
+                    disabled={saving !== null}
+                  >
+                    {saving === "all" && <Loader2 className="h-3 w-3 animate-spin" />}
+                    Update all guests
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => doSave("new")}
+                    disabled={saving !== null || newGuests.length === 0}
+                    title={
+                      newGuests.length === 0
+                        ? "Add a guest to enable - emails only the new guests"
+                        : "Patch silently for existing guests, email only the new ones"
+                    }
+                  >
+                    {saving === "new" && <Loader2 className="h-3 w-3 animate-spin" />}
+                    Update only new guests
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => doSave("none")}
+                    disabled={saving !== null}
+                  >
+                    {saving === "none" && <Loader2 className="h-3 w-3 animate-spin" />}
+                    Don&apos;t send updates
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setSaveChoiceOpen(false)}
+                    disabled={saving !== null}
+                    className="mt-1 text-[11px] font-semibold text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+                  >
+                    Back
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2.5">
                 <Button
                   variant="reject"
                   size="sm"
@@ -1197,78 +1279,48 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => doSave("none")}
-                  disabled={!canSave || saving !== null || deleting}
-                  title="Patch Google silently - no emails go out, not even to new guests"
-                >
-                  {saving === "none" && (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  )}
-                  Save
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => doSave("new")}
-                  disabled={
-                    !canSave ||
-                    saving !== null ||
-                    deleting ||
-                    newGuests.length === 0
-                  }
-                  title={
-                    newGuests.length === 0
-                      ? "Add a guest to enable - sends an invite to new guests only"
-                      : "Patch silently for existing guests, email only the new ones"
-                  }
-                >
-                  {saving === "new" && (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  )}
-                  Save
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => doSave("all")}
-                  disabled={!canSave || saving !== null || deleting}
-                  title="Patch Google and email all guests about the change"
-                >
-                  {saving === "all" ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Check className="h-3 w-3" />
-                  )}
-                  Save
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  variant="secondary"
-                  size="sm"
                   onClick={onClose}
-                  disabled={creating}
+                  disabled={deleting}
                 >
                   Cancel
                 </Button>
-                <div className="flex-1" />
                 <Button
                   variant="primary"
                   size="sm"
-                  onClick={() => void doCreate()}
-                  disabled={!canCreate || creating}
+                  onClick={() => setSaveChoiceOpen(true)}
+                  disabled={!canSave || deleting}
                 >
-                  {creating ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Plus className="h-3 w-3" />
-                  )}
-                  Create event
+                  <Check className="h-3 w-3" />
+                  Save
                 </Button>
-              </>
-            )}
-          </div>
+              </div>
+            )
+          ) : (
+            <div className="flex items-center gap-2.5">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onClose}
+                disabled={creating}
+              >
+                Cancel
+              </Button>
+              <div className="flex-1" />
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => void doCreate()}
+                disabled={!canCreate || creating}
+              >
+                {creating ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Plus className="h-3 w-3" />
+                )}
+                Create event
+              </Button>
+            </div>
+          )}
         </div>
       </aside>
     </>
@@ -1440,6 +1492,85 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
       {children}
+    </div>
+  );
+}
+
+// Read-only detail for an interview calendar block: the when / where /
+// guests plus the verbatim invite copy the recipient was emailed (D1's
+// stored sent body, routed through event.meta by calendar/page.tsx). This
+// REPLACES the generic event editor for interview tiles so clicking one
+// shows what was sent, not a date/tz/guests form. Times render with the
+// same browser-local read the grid uses, so they match the tile.
+function InterviewDetailCard({ event }: { event: CalendarEvent }) {
+  const whenLabel = `${event.startTime.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  })} · ${event.startTime.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  })} – ${event.endTime.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  })}`;
+  const body = event.meta?.trim() ?? "";
+  const where = event.location?.trim() || null;
+  const meet = event.meetLink || null;
+  const guests = event.guests ?? [];
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2.5">
+        <div className="flex items-center gap-2 text-[13px] text-court-fg">
+          <Calendar className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
+          <span>{whenLabel}</span>
+        </div>
+        {meet && (
+          <a
+            href={meet}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 text-[13px] font-medium text-court-brand-dark hover:underline"
+          >
+            <Video className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{meet.replace(/^https?:\/\//, "")}</span>
+          </a>
+        )}
+        {where && (
+          <div className="flex items-center gap-2 text-[13px] text-court-fg">
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
+            <span className="truncate">{where}</span>
+          </div>
+        )}
+        {guests.length > 0 && (
+          <div className="flex items-start gap-2 text-[13px] text-court-fg">
+            <Users className="mt-0.5 h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
+            <span>{guests.join(", ")}</span>
+          </div>
+        )}
+      </div>
+      <div>
+        <FieldLabel>Message they received</FieldLabel>
+        {body ? (
+          isHtmlDescription(body) ? (
+            <div
+              className="max-h-[360px] overflow-auto rounded-[10px] border border-court-border bg-court-surface px-3 py-2.5 text-[13.5px] leading-relaxed text-court-fg [&_a]:break-words [&_a]:text-court-brand-dark [&_a]:underline"
+              dangerouslySetInnerHTML={{ __html: sanitizeDescriptionHtml(body) }}
+            />
+          ) : (
+            <div className="max-h-[360px] overflow-auto whitespace-pre-wrap rounded-[10px] border border-court-border bg-court-surface px-3 py-2.5 text-[13.5px] leading-relaxed text-court-fg">
+              {body}
+            </div>
+          )
+        ) : (
+          <div className="rounded-[10px] border border-court-border bg-court-surface px-3 py-2.5 text-[12.5px] text-court-fg-muted">
+            No invite was emailed for this side.
+          </div>
+        )}
+      </div>
+      <div className="flex items-center gap-2 text-[11px] text-court-fg-muted">
+        <GoogleGlyph className="h-3.5 w-3.5" /> Synced from Google Calendar
+      </div>
     </div>
   );
 }

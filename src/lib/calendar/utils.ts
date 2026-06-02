@@ -55,42 +55,89 @@ export type EventTypeMeta = {
 };
 
 // Sub-column placement for an event tile inside a single day column.
-// "full" keeps the whole width; "left" / "right" split the column when
-// a reminder shares a time slot with a real calendar event so neither
-// sits on top of the other.
-export type CalendarLane = "full" | "left" | "right";
+// `count` is how many tiles share the overlap cluster (1 = the tile owns
+// the full column width); `index` is this tile's 0-based slot from the
+// left. Two interviews at the same time end up as {index:0,count:2} and
+// {index:1,count:2} so they render side-by-side instead of stacked. A
+// reminder sharing a slot with an event falls out of the same math (the
+// reminder biases to the right column - see the sort below).
+export type EventColumn = { index: number; count: number };
 
 type LaneInput = {
   id: string;
   type: CalendarEventType;
   startTime: Date;
   endTime: Date;
+  allDay?: boolean;
 };
 
-function intervalsOverlap(a: LaneInput, b: LaneInput): boolean {
-  return (
-    a.startTime.getTime() < b.endTime.getTime() &&
-    b.startTime.getTime() < a.endTime.getTime()
-  );
-}
-
-// Reminder/event collisions only - general event/event overlap is left
-// as-is. A reminder that overlaps any real event drops into the right
-// lane; the events it overlaps drop into the left lane. Everything else
-// stays full width.
-export function computeReminderLanes(
+// Pack overlapping timed tiles into side-by-side columns. Two events that
+// share any time span split the column so neither covers the other -
+// generalizing the old reminder-only left/right split to any number of
+// overlapping tiles (the candidate + client interview events are the
+// driving case). All-day tiles are excluded from packing entirely: they
+// span the whole grid and must NOT shove timed events into narrow columns.
+//
+// Standard interval-graph sweep: sort by start, grow a cluster while the
+// next tile starts before the running cluster end, then greedily place
+// each tile in the first column whose previous occupant has ended.
+export function computeEventColumns(
   dayEvents: LaneInput[],
-): Map<string, CalendarLane> {
-  const lanes = new Map<string, CalendarLane>();
-  const reminders = dayEvents.filter((e) => e.type === "reminder");
-  const others = dayEvents.filter((e) => e.type !== "reminder");
-  for (const r of reminders) {
-    lanes.set(r.id, others.some((o) => intervalsOverlap(r, o)) ? "right" : "full");
+): Map<string, EventColumn> {
+  const result = new Map<string, EventColumn>();
+  const FULL: EventColumn = { index: 0, count: 1 };
+
+  // All-day tiles never participate; they keep the full width.
+  const timed = dayEvents.filter((e) => !e.allDay);
+  for (const e of dayEvents) {
+    if (e.allDay) result.set(e.id, FULL);
   }
-  for (const o of others) {
-    lanes.set(o.id, reminders.some((r) => intervalsOverlap(o, r)) ? "left" : "full");
+
+  // Sort by start asc; at equal starts put reminders last so a reminder
+  // sharing a slot with an event lands in the right-hand column (matches
+  // the prior reminder-to-the-right look). Then end asc, then id for a
+  // stable order across renders.
+  const sorted = [...timed].sort((a, b) => {
+    const s = a.startTime.getTime() - b.startTime.getTime();
+    if (s !== 0) return s;
+    const ar = a.type === "reminder" ? 1 : 0;
+    const br = b.type === "reminder" ? 1 : 0;
+    if (ar !== br) return ar - br;
+    const e = a.endTime.getTime() - b.endTime.getTime();
+    if (e !== 0) return e;
+    return a.id.localeCompare(b.id);
+  });
+
+  let i = 0;
+  while (i < sorted.length) {
+    const cluster: LaneInput[] = [sorted[i]];
+    let clusterEnd = sorted[i].endTime.getTime();
+    let j = i + 1;
+    while (j < sorted.length && sorted[j].startTime.getTime() < clusterEnd) {
+      cluster.push(sorted[j]);
+      clusterEnd = Math.max(clusterEnd, sorted[j].endTime.getTime());
+      j++;
+    }
+    // Greedy column assignment within the cluster.
+    const colEnd: number[] = [];
+    const colOf = new Map<string, number>();
+    for (const ev of cluster) {
+      let placed = colEnd.findIndex((end) => end <= ev.startTime.getTime());
+      if (placed === -1) {
+        placed = colEnd.length;
+        colEnd.push(ev.endTime.getTime());
+      } else {
+        colEnd[placed] = ev.endTime.getTime();
+      }
+      colOf.set(ev.id, placed);
+    }
+    const count = colEnd.length;
+    for (const ev of cluster) {
+      result.set(ev.id, { index: colOf.get(ev.id) ?? 0, count });
+    }
+    i = j;
   }
-  return lanes;
+  return result;
 }
 
 export function eventTypeMeta(t: CalendarEventType): EventTypeMeta {
