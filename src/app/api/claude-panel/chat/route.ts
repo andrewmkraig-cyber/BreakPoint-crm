@@ -16,6 +16,8 @@ import { getClientByIdentifier } from "@/lib/clients";
 import { getCandidateByIdentifier } from "@/lib/candidates";
 import { getJobByIdentifier } from "@/lib/jobs";
 import { formatLocation } from "@/lib/utils";
+import { createReminder } from "@/app/calendar/reminder-actions";
+import { parseReminderToolInput } from "@/lib/claude-panel/reminders";
 
 // Live Claude call for the global Claude Panel (Sparkles topbar
 // toggle). Streams text deltas as NDJSON events back to the client so
@@ -68,7 +70,8 @@ const SYSTEM_PROMPT =
   "Pass the user's wording through; the tools handle stop-word stripping, plural collapsing, and ranking on their side.\n" +
   "Tool results may include markdown links like [Name](/candidates/abc) and [Title](/jobs/xyz). Quote those links as-is in your answer so the recruiter can click straight to the record. Never strip the link, never paraphrase the URL.\n" +
   "Action tools (move_candidate_stage / add_note / draft_email / inactivate_job / privatize_job / reactivate_job / delete_job / delete_candidate / reset_activity_log / reset_placements / update_placement_field) are PROPOSALS, not executions. Calling one stops your turn and the recruiter gets a Confirm/Cancel card. Never call an action tool with invented ids; resolve real candidates / placements / clients / jobs via the search tools first. Job lifecycle routing: 'close out' / 'mark inactive' → inactivate_job; 'make private' / 'hide from active' → privatize_job; 'reopen' / 'reactivate' → reactivate_job. delete_job and delete_candidate are destructive and cascade. Only use them when the recruiter explicitly says 'delete' or 'permanently remove' the named record. " +
-  "Data-reset tools (reset_activity_log / reset_placements / update_placement_field) are destructive and require explicit recruiter intent. reset_activity_log wipes ActionLog rows in a date range (omit dateFrom/dateTo to wipe everything). reset_placements deletes Placements matching dateFrom/dateTo/stage filters and cascades to dependent Interview rows. update_placement_field edits exactly one field on one placement; the only editable fields are placedAt, startConfirmedAt, stage, feeAmount, offerReceivedAt. Resolve the placementId via search_candidates → get_pipeline first; never invent it. Use ISO 8601 (YYYY-MM-DD or full ISO timestamp) for any date value. Today's date is {{TODAY}}. Use it to resolve relative phrases like 'this week' / 'last month' into ISO dates. " +
+  "Data-reset tools (reset_activity_log / reset_placements / update_placement_field) are destructive and require explicit recruiter intent. reset_activity_log wipes ActionLog rows in a date range (omit dateFrom/dateTo to wipe everything). reset_placements deletes Placements matching dateFrom/dateTo/stage filters and cascades to dependent Interview rows. update_placement_field edits exactly one field on one placement; the only editable fields are placedAt, startConfirmedAt, stage, feeAmount, offerReceivedAt. Resolve the placementId via search_candidates → get_pipeline first; never invent it. Use ISO 8601 (YYYY-MM-DD or full ISO timestamp) for any date value. Today's date is {{TODAY}} (Eastern Time). Use it to resolve relative phrases like 'this week' / 'last month' into ISO dates. " +
+  "Creating reminders - create_reminder is a DIRECT action, NOT a Confirm-card proposal: calling it writes an Ace reminder immediately and the recruiter gets a single summary receipt. Use it for 'remind me…' / 'add a reminder…' requests and for a pasted list of timed items - emit ONE create_reminder call PER reminder in the same turn (six reminders = six calls). reminderAtIso MUST carry an explicit Eastern Time offset: today is {{TODAY}} in Eastern Time and the current Eastern offset is {{ET_OFFSET}} (use -04:00 during EDT / -05:00 during EST to match the reminder's date). Example: 2026-06-10T15:00:00-04:00. A reminderAtIso WITHOUT an explicit offset is rejected, not created - never emit a bare/naive datetime. After calling create_reminder do not write any extra confirmation text - the receipt speaks for itself. " +
   "After calling an action tool do not write any more text. The card speaks for itself.";
 
 // Custom data tools — exposed to Claude so it can pull live records
@@ -161,6 +164,41 @@ const DATA_TOOLS: Anthropic.Tool[] = [
             "True for past-tense / 'all-time' pipeline questions. Returns merged Placement + Interview history with no date filter. Optional, defaults to false.",
         },
       },
+    },
+  },
+  // create_reminder — a DIRECT-execute action tool (it is NOT in
+  // ACTION_TOOL_NAMES). The chat loop runs it server-side immediately,
+  // batches the results, and returns ONE summary receipt instead of a
+  // per-item Confirm card. Reminders are reversible Neon-only writes, so
+  // Andrew's directive is to fire them straight through; the only brake
+  // is a runaway-paste cap (>10 in one turn falls back to a single
+  // Confirm). The timestamp MUST carry an explicit ET offset — a naive
+  // datetime is rejected (the Vercel runtime would parse it as UTC and
+  // skew the reminder 4-5 hours).
+  {
+    name: "create_reminder",
+    description:
+      "Create one Ace reminder — a personal, time-anchored nudge that shows on the recruiter's calendar grid and the dashboard This Week widget. Use this for 'remind me…' / 'add a reminder…' requests and for a pasted list of timed items; emit ONE create_reminder call PER reminder (six items = six calls in the same turn). reminderAtIso MUST be a full ISO-8601 timestamp WITH an explicit Eastern Time offset (-04:00 during EDT, -05:00 during EST, matching the reminder's date) — e.g. 2026-06-10T15:00:00-04:00. A bare/naive datetime with no offset is rejected, not created. Resolve relative phrasing ('tomorrow', 'next Monday', '3pm') against today's Eastern date. create_reminder executes immediately with no Confirm card; do not also write a confirmation sentence afterward.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          description: "What to be reminded about, e.g. 'Call Sara Johnson'.",
+        },
+        reminderAtIso: {
+          type: "string",
+          description:
+            "ISO-8601 timestamp WITH an explicit Eastern offset (-04:00 EDT / -05:00 EST). Naive datetimes (no offset) are rejected.",
+        },
+        notifyLeadsMin: {
+          type: "array",
+          items: { type: "number" },
+          description:
+            "Optional minutes-before notification leads. Allowed values: 0, 15, 30, 60, 120, 1440. Defaults to 15 when omitted.",
+        },
+      },
+      required: ["title", "reminderAtIso"],
     },
   },
   // Action tools — these never execute server-side. The chat route
@@ -410,6 +448,12 @@ const ACTION_TOOL_NAMES = new Set([
 ]);
 
 const MAX_TOOL_ROUNDS = 4;
+
+// Runaway-paste brake for create_reminder. At or under this many creates
+// in a single assistant turn we fire them directly and return one
+// receipt; ABOVE it we fall back to a single batch Confirm card so a
+// huge accidental paste can't silently create dozens of reminders.
+const MAX_DIRECT_REMINDERS = 10;
 
 // Grammatical filler we strip before searching. Meaningful filter words
 // (open, active, current, remote, hired, etc.) intentionally aren't in
@@ -1918,6 +1962,57 @@ async function executeTool(
   }
 }
 
+// create_reminder execution. Unlike the action tools, this writes
+// directly (no Confirm card) — reminders are reversible and Andrew asked
+// for batch creation with a single summary receipt, not a per-item gate.
+// We validate the timestamp carries an explicit offset BEFORE writing so
+// a naive datetime is reported as a failure rather than landing 4-5 hours
+// skewed. createReminder() resolves org + user from the server session
+// itself (Rule 8 — no client-supplied tenant id passes through here).
+async function runCreateReminder(
+  rawInput: unknown,
+): Promise<{ ok: true; title: string } | { ok: false; title: string; reason: string }> {
+  const parsed = parseReminderToolInput(rawInput);
+  if (!parsed.ok) {
+    log("create_reminder", { title: parsed.title }, 0, `rejected: ${parsed.reason}`);
+    return parsed;
+  }
+  try {
+    await createReminder(parsed.title, parsed.reminderAtIso, parsed.notifyLeadsMin);
+    log("create_reminder", { title: parsed.title, reminderAtIso: parsed.reminderAtIso }, 1);
+    return { ok: true, title: parsed.title };
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : "create failed";
+    log("create_reminder", { title: parsed.title }, 0, `error: ${reason}`);
+    return { ok: false, title: parsed.title, reason };
+  }
+}
+
+// Today's date in Eastern Time + the current Eastern UTC offset, both
+// injected into the system prompt. ET (not UTC) so "remind me tomorrow"
+// resolves against the recruiter's actual day even late at night; the
+// live offset (DST-correct via Intl) so the model emits -04:00 in summer
+// and -05:00 in winter. `longOffset` yields e.g. "GMT-04:00"; we
+// normalize to "-04:00". Vercel ships full ICU so longOffset is
+// available; if it ever isn't, we fall back to a safe EST default.
+function easternDateAndOffset(now: Date): { today: string; offset: string } {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  const rawOffset =
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      timeZoneName: "longOffset",
+    })
+      .formatToParts(now)
+      .find((p) => p.type === "timeZoneName")?.value ?? "GMT-05:00";
+  const offset = rawOffset.replace(/^GMT/, "").trim() || "-05:00";
+  return { today, offset };
+}
+
 export async function POST(req: NextRequest) {
   // Auth gate — Claude Panel is org-scoped and there's no anonymous
   // path. getCurrentOrg() can fall back to DEFAULT_ORG_ID env, but
@@ -2108,10 +2203,10 @@ export async function POST(req: NextRequest) {
   // from Settings > Personal Trainer. Appended last so they sit
   // closest to the model's response and override any earlier prompt
   // that drifts. Same pattern as /api/ai-workspace/route.ts.
-  const today = new Date().toISOString().slice(0, 10);
+  const { today, offset: etOffset } = easternDateAndOffset(new Date());
   const fullSystemPrompt =
     entityBlock +
-    SYSTEM_PROMPT.replace("{{TODAY}}", today) +
+    SYSTEM_PROMPT.replace(/\{\{TODAY\}\}/g, today).replace(/\{\{ET_OFFSET\}\}/g, etOffset) +
     (await buildPersonalTrainerBlock(org.id));
 
   // Mixed tool list: the existing server-managed web_search plus the
@@ -2180,6 +2275,82 @@ export async function POST(req: NextRequest) {
             (b): b is Extract<typeof b, { type: "tool_use" }> => b.type === "tool_use",
           );
           if (toolUses.length === 0) break;
+
+          // create_reminder is a DIRECT action: execute server-side and
+          // return a single summary receipt, no per-item Confirm card.
+          // (Andrew's directive — reminders are reversible, so a batch of
+          // them shouldn't gate behind N confirmations.) The only brake
+          // is the runaway-paste cap: MORE than MAX_DIRECT_REMINDERS in
+          // one turn falls back to a single batch Confirm card so a huge
+          // accidental paste can't fire blind. Handled before the action
+          // tools, mirroring the "first special category wins + break"
+          // shape the action path already uses.
+          const reminderUses = toolUses.filter((tu) => tu.name === "create_reminder");
+          if (reminderUses.length > 0) {
+            conversation.push({ role: "assistant", content: finalMsg.content });
+
+            if (reminderUses.length > MAX_DIRECT_REMINDERS) {
+              // Over the cap — do NOT auto-fire. Emit ONE batch Confirm
+              // card carrying every reminder; the recruiter confirms and
+              // /api/claude-panel/action creates them (re-validated there).
+              const reminders = reminderUses.map((tu) => {
+                const inp = (tu.input && typeof tu.input === "object"
+                  ? tu.input
+                  : {}) as Record<string, unknown>;
+                return {
+                  title: typeof inp.title === "string" ? inp.title : "",
+                  reminderAtIso:
+                    typeof inp.reminderAtIso === "string" ? inp.reminderAtIso : "",
+                  notifyLeadsMin: Array.isArray(inp.notifyLeadsMin)
+                    ? inp.notifyLeadsMin.filter(
+                        (n): n is number => typeof n === "number",
+                      )
+                    : undefined,
+                };
+              });
+              send({
+                t: "action_pending",
+                id: reminderUses[0].id,
+                name: "create_reminders_batch",
+                input: { count: reminders.length },
+                resolved: {
+                  kind: "create_reminders_batch",
+                  description: `Create ${reminders.length} reminders?`,
+                  count: reminders.length,
+                  reminders,
+                },
+              });
+              log(
+                "action_pending",
+                { name: "create_reminders_batch", count: reminders.length },
+                0,
+              );
+              break;
+            }
+
+            // At or under the cap — fire them all, accumulate per-item
+            // results, and send a single receipt. No tool_result is fed
+            // back to Claude (the receipt is the turn's outcome), matching
+            // the action path's "card speaks for itself" rule.
+            const results = await Promise.all(
+              reminderUses.map((tu) => runCreateReminder(tu.input)),
+            );
+            const created = results.filter((r) => r.ok).length;
+            const failures = results
+              .filter(
+                (r): r is { ok: false; title: string; reason: string } => !r.ok,
+              )
+              .map((r) => ({ title: r.title, reason: r.reason }));
+            send({
+              t: "batch_receipt",
+              kind: "reminder",
+              created,
+              failed: failures.length,
+              failures,
+            });
+            log("create_reminder_batch", { requested: reminderUses.length }, created);
+            break;
+          }
 
           // Action tools end the turn — Claude is proposing a write the
           // recruiter must Confirm before it lands. We emit an

@@ -7,6 +7,8 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { logActivity } from "@/lib/activity";
 import { prisma } from "@/lib/prisma";
 import { deleteCandidate as deleteCandidateAction } from "@/app/candidates/[id]/actions";
+import { createReminder } from "@/app/calendar/reminder-actions";
+import { parseReminderToolInput } from "@/lib/claude-panel/reminders";
 import type { PlacementStage } from "@/lib/placements";
 
 // Executes confirmed Claude Panel proposals. The chat route never
@@ -947,6 +949,51 @@ export async function POST(req: Request) {
       ok: true,
       message: `Updated ${fieldName} on ${candName} · ${jobTitle}: ${oldValueLabel} → ${newValueLabel}.`,
     });
+  }
+
+  if (name === "create_reminders_batch") {
+    // The over-the-cap fallback from the chat route: the recruiter
+    // confirmed a bulk reminder create (>10 in one turn). The reminders
+    // ride in `resolved.reminders`. createReminder() self-scopes org +
+    // user from the session, so no client-supplied tenant id is trusted
+    // here (Rule 8). Each item is re-validated for an explicit offset;
+    // a naive one is reported as a failure, never created skewed.
+    const rawReminders = Array.isArray(resolved.reminders)
+      ? resolved.reminders
+      : [];
+    if (rawReminders.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "No reminders to create." },
+        { status: 400 },
+      );
+    }
+
+    let created = 0;
+    const failures: string[] = [];
+    for (const raw of rawReminders) {
+      const parsed = parseReminderToolInput(raw);
+      if (!parsed.ok) {
+        failures.push(`${parsed.title}: ${parsed.reason}`);
+        continue;
+      }
+      try {
+        await createReminder(parsed.title, parsed.reminderAtIso, parsed.notifyLeadsMin);
+        created++;
+      } catch (e) {
+        failures.push(
+          `${parsed.title}: ${e instanceof Error ? e.message : "create failed"}`,
+        );
+      }
+    }
+
+    const total = created + failures.length;
+    const message =
+      failures.length === 0
+        ? `Created ${created} reminder${created === 1 ? "" : "s"}.`
+        : `Created ${created} of ${total} reminder${
+            total === 1 ? "" : "s"
+          } — ${failures.length} failed: ${failures.slice(0, 5).join("; ")}.`;
+    return NextResponse.json({ ok: true, message });
   }
 
   return NextResponse.json(

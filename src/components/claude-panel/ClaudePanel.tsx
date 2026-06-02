@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { FileText, Image as ImageIcon, Loader2, Paperclip, Send, X } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  FileText,
+  Image as ImageIcon,
+  Loader2,
+  Paperclip,
+  Send,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   CLAUDE_PANEL_MIN_H,
@@ -132,6 +141,12 @@ type UpdatePlacementFieldResolved = {
   newValueRaw: string | number | null;
   validationError: string | null;
 };
+type CreateRemindersBatchResolved = {
+  kind: "create_reminders_batch";
+  description: string;
+  count: number;
+  reminders: Array<{ title: string; reminderAtIso: string; notifyLeadsMin?: number[] }>;
+};
 type UnknownResolved = { kind: "unknown"; description: string };
 type ActionResolved =
   | MoveResolved
@@ -143,6 +158,7 @@ type ActionResolved =
   | ResetActivityLogResolved
   | ResetPlacementsResolved
   | UpdatePlacementFieldResolved
+  | CreateRemindersBatchResolved
   | UnknownResolved;
 
 type ActionToolName =
@@ -156,7 +172,8 @@ type ActionToolName =
   | "delete_candidate"
   | "reset_activity_log"
   | "reset_placements"
-  | "update_placement_field";
+  | "update_placement_field"
+  | "create_reminders_batch";
 
 type ActionCard = {
   kind: "action";
@@ -168,7 +185,37 @@ type ActionCard = {
   resultMessage?: string;
 };
 
-type RenderItem = ChatMessage | ActionCard;
+// Single-line summary emitted after a batched direct-execute tool runs
+// (create_reminder today). Ephemeral like ActionCard — shown in-session
+// for the nice formatting; a one-line summary is also persisted as an
+// assistant message so the History tab + a reload still record it.
+type BatchReceipt = {
+  kind: "receipt";
+  id: string;
+  receiptKind: "reminder";
+  created: number;
+  failed: number;
+  failures: Array<{ title: string; reason: string }>;
+};
+
+type RenderItem = ChatMessage | ActionCard | BatchReceipt;
+
+// One-line summary string for a batch receipt — used for the persisted
+// assistant message (the in-session card renders its own richer view).
+function receiptLine(r: BatchReceipt): string {
+  const total = r.created + r.failed;
+  if (r.failed === 0) {
+    return `Added ${r.created} reminder${r.created === 1 ? "" : "s"}.`;
+  }
+  const reasons = r.failures
+    .map((f) => f.reason)
+    .filter(Boolean)
+    .slice(0, 3)
+    .join("; ");
+  return `Added ${r.created} of ${total} reminder${
+    total === 1 ? "" : "s"
+  } - ${r.failed} failed${reasons ? `: ${reasons}` : ""}.`;
+}
 
 // Sentinel id assigned to the assistant bubble while it's streaming.
 // Replaced with the persisted cuid once the final POST resolves.
@@ -804,6 +851,7 @@ export function ClaudePanel() {
     let assembled = "";
     let streamErr: string | null = null;
     const pendingActions: ActionCard[] = [];
+    const receipts: BatchReceipt[] = [];
     try {
       const res = await fetch("/api/claude-panel/chat", {
         method: "POST",
@@ -856,6 +904,10 @@ export function ClaudePanel() {
           name?: unknown;
           input?: unknown;
           resolved?: unknown;
+          kind?: unknown;
+          created?: unknown;
+          failed?: unknown;
+          failures?: unknown;
         };
         try {
           event = JSON.parse(line);
@@ -884,7 +936,8 @@ export function ClaudePanel() {
             event.name === "delete_candidate" ||
             event.name === "reset_activity_log" ||
             event.name === "reset_placements" ||
-            event.name === "update_placement_field")
+            event.name === "update_placement_field" ||
+            event.name === "create_reminders_batch")
         ) {
           const input =
             event.input && typeof event.input === "object"
@@ -907,6 +960,32 @@ export function ClaudePanel() {
             status: "pending",
           };
           pendingActions.push(card);
+        } else if (event.t === "batch_receipt" && event.kind === "reminder") {
+          // Single summary line for a batch of directly-executed
+          // reminders (the under-the-cap path). Collected here, appended
+          // to the thread when the stream finishes.
+          const created = typeof event.created === "number" ? event.created : 0;
+          const failed = typeof event.failed === "number" ? event.failed : 0;
+          const failures = Array.isArray(event.failures)
+            ? event.failures.flatMap((f) => {
+                if (!f || typeof f !== "object") return [];
+                const o = f as Record<string, unknown>;
+                return [
+                  {
+                    title: typeof o.title === "string" ? o.title : "",
+                    reason: typeof o.reason === "string" ? o.reason : "",
+                  },
+                ];
+              })
+            : [];
+          receipts.push({
+            kind: "receipt",
+            id: `receipt-${receipts.length}-${created}-${failed}`,
+            receiptKind: "reminder",
+            created,
+            failed,
+            failures,
+          });
         } else if (event.t === "error") {
           streamErr =
             typeof event.error === "string" ? event.error : "Stream error";
@@ -947,11 +1026,26 @@ export function ClaudePanel() {
     // swap the streaming bubble. If the bubble has no content AND
     // there's at least one pending action card, drop the empty
     // bubble entirely — the action card carries the visible meaning.
-    if (assembled.trim().length === 0 && pendingActions.length > 0) {
+    // Persist a one-line summary per batch receipt so the History tab +
+    // a reload still record what fired. Fire-and-forget and NOT appended
+    // to items in-session (the receipt card already shows the result),
+    // so there's no duplicate line this turn.
+    const persistReceipts = () => {
+      for (const r of receipts) {
+        void persist("assistant", receiptLine(r)).catch(() => {});
+      }
+    };
+
+    if (
+      assembled.trim().length === 0 &&
+      (pendingActions.length > 0 || receipts.length > 0)
+    ) {
       setItems((prev) => [
         ...prev.filter((it) => !(it.kind === "message" && it.id === STREAMING_ID)),
         ...pendingActions,
+        ...receipts,
       ]);
+      persistReceipts();
       setSending(false);
       return;
     }
@@ -963,7 +1057,9 @@ export function ClaudePanel() {
           it.kind === "message" && it.id === STREAMING_ID ? assistantRow : it,
         ),
         ...pendingActions,
+        ...receipts,
       ]);
+      persistReceipts();
     } catch {
       // Stream succeeded but persistence failed — keep the bubble
       // visible with the assembled content but mark it as unsaved by
@@ -976,6 +1072,7 @@ export function ClaudePanel() {
             : it,
         ),
         ...pendingActions,
+        ...receipts,
       ]);
     } finally {
       setSending(false);
@@ -1236,6 +1333,9 @@ export function ClaudePanel() {
                   />
                 );
               }
+              if (it.kind === "receipt") {
+                return <BatchReceiptLine key={it.id} receipt={it} />;
+              }
               const m = it;
               const isStreaming = m.id === STREAMING_ID;
               const isUser = m.role === "user";
@@ -1465,6 +1565,41 @@ function AttachmentChip({
   );
 }
 
+// Single-line receipt for a batch of directly-executed reminders (the
+// under-the-cap create_reminder path). All-success reads as a quiet
+// green-check pill; a partial result switches to an amber warning with
+// the per-item reasons below. All colors are Court Mode tokens (the
+// amber failure accent matches the Icon Semantic Color System's
+// warning = amber rule), legible in both light and dark.
+function BatchReceiptLine({ receipt }: { receipt: BatchReceipt }) {
+  const total = receipt.created + receipt.failed;
+  const allOk = receipt.failed === 0;
+  const noun = `reminder${total === 1 ? "" : "s"}`;
+  return (
+    <div className="mx-auto flex max-w-[95%] flex-col items-center gap-1 py-1 text-center">
+      <div className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-medium text-court-fg">
+        {allOk ? (
+          <CheckCircle2 className="h-3.5 w-3.5 text-court-brand-dark" />
+        ) : (
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+        )}
+        {allOk
+          ? `Added ${receipt.created} ${noun}`
+          : `Added ${receipt.created} of ${total} ${noun} · ${receipt.failed} failed`}
+      </div>
+      {receipt.failures.length > 0 && (
+        <div className="text-[11px] text-court-fg-muted">
+          {receipt.failures
+            .slice(0, 3)
+            .map((f) => `${f.title || "(untitled)"}: ${f.reason}`)
+            .join(" · ")}
+          {receipt.failures.length > 3 ? ` · +${receipt.failures.length - 3} more` : ""}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Inline confirmation card. Pending state shows green Confirm + grey
 // Cancel; running state disables both and spins; confirmed/cancelled
 // states fade the card and show the result line so the recruiter
@@ -1505,7 +1640,9 @@ function ActionConfirmCard({
               : "bg-court-surface-subtle text-court-fg-muted")
           }
         >
-          {card.name === "move_candidate_stage"
+          {card.name === "create_reminders_batch"
+            ? "Reminders"
+            : card.name === "move_candidate_stage"
             ? "Stage move"
             : card.name === "add_note"
               ? "Note"
@@ -1757,6 +1894,29 @@ function ActionCardLabel({ card }: { card: ActionCard }) {
           {r.newValueLabel}
         </span>
         .
+      </div>
+    );
+  }
+  if (r.kind === "create_reminders_batch") {
+    return (
+      <div className="text-sm leading-snug">
+        Create <span className="font-semibold">{r.count}</span> reminders.{" "}
+        <span className="text-xs text-court-fg-muted">
+          More than 10 at once — confirm before they&apos;re added.
+        </span>
+        {r.reminders.length > 0 && (
+          <ul className="mt-2 space-y-0.5 rounded-md border border-court-border bg-court-surface-subtle px-2 py-1.5 text-xs text-court-fg-muted">
+            {r.reminders.slice(0, 8).map((rm, i) => (
+              <li key={i} className="truncate">
+                <span className="text-court-fg">{rm.title || "(untitled)"}</span>
+                {rm.reminderAtIso ? ` · ${rm.reminderAtIso}` : ""}
+              </li>
+            ))}
+            {r.reminders.length > 8 && (
+              <li className="italic">+{r.reminders.length - 8} more</li>
+            )}
+          </ul>
+        )}
       </div>
     );
   }
