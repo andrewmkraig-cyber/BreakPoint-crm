@@ -58,28 +58,30 @@ export function CalendarRemindersPanel({
           {creating ? "Cancel" : "New"}
         </button>
       </div>
-      {creating && (
-        <ReminderForm
-          submitLabel="Save"
-          onCancel={() => setCreating(false)}
-          onSubmit={async (title, when, leads) => {
-            await onCreate(title, when, leads);
-            setCreating(false);
-          }}
-        />
-      )}
-      <ul>
-        {reminders.length === 0 ? (
-          <li className="px-5 py-8 text-center text-sm text-court-fg-muted">
-            No upcoming reminders.
-          </li>
-        ) : (
-          reminders.map((r) =>
-            editingId === r.id ? (
-              <li
-                key={r.id}
-                className="border-b border-court-border-soft last:border-b-0"
-              >
+      {/* The list (and the create form when open) scrolls WITHIN the
+          panel so 3+ reminders don't push the rail around - hover the
+          panel and scroll. divide-y draws separators only BETWEEN rows,
+          so there's never a line under the bottom-most reminder. */}
+      <div className="max-h-[42vh] overflow-y-auto">
+        {creating && (
+          <ReminderForm
+            submitLabel="Save"
+            onCancel={() => setCreating(false)}
+            onSubmit={async (title, when, leads) => {
+              await onCreate(title, when, leads);
+              setCreating(false);
+            }}
+          />
+        )}
+        <ul className="divide-y divide-court-border-soft">
+          {reminders.length === 0 ? (
+            <li className="px-5 py-8 text-center text-sm text-court-fg-muted">
+              No upcoming reminders.
+            </li>
+          ) : (
+            reminders.map((r) =>
+              editingId === r.id ? (
+                <li key={r.id}>
                 <ReminderForm
                   submitLabel="Update"
                   // Edit forms open either from the panel's own pencil or
@@ -114,7 +116,8 @@ export function CalendarRemindersPanel({
             ),
           )
         )}
-      </ul>
+        </ul>
+      </div>
     </div>
   );
 }
@@ -130,7 +133,7 @@ function ReminderRow({
 }) {
   const r = reminder;
   return (
-    <li className="flex items-start gap-3 border-b border-court-border-soft px-5 py-4 last:border-b-0">
+    <li className="flex items-start gap-3 px-5 py-4">
       {/* Green bell avatar - reminder type indicator (far left). */}
       <div
         className={cn(
@@ -264,12 +267,11 @@ function ReminderForm({
     <form
       ref={formRef}
       onSubmit={handleSubmit}
-      // The FORM itself is the viewport-bounded scroll container and the
-      // action row is a sticky footer pinned to the form's OWN bottom
-      // (mirrors the 76.0 scheduler pattern), so Save / Delete are always
-      // reachable no matter how short the left rail is. scroll-my-4 gives
-      // scrollIntoView breathing room off the rail's clip edge.
-      className="scroll-my-4 max-h-[60vh] overflow-y-auto border-b border-court-border-soft bg-court-surface-subtle"
+      // The reminders panel body is the single scroll container now (so
+      // 3+ reminders scroll within the panel), so the form just expands
+      // inline; scrollIntoViewOnMount + scroll-my-4 reveal the full form
+      // incl. its Delete/Cancel/Update row within that scroll area.
+      className="scroll-my-4 bg-court-surface-subtle"
     >
       <div className="space-y-2.5 px-5 py-3.5">
         <input
@@ -300,7 +302,7 @@ function ReminderForm({
         </div>
       </div>
 
-      <div className="sticky bottom-0 flex items-center gap-2 border-t border-court-border-soft bg-court-surface-subtle px-5 py-3">
+      <div className="flex items-center gap-2 border-t border-court-border-soft bg-court-surface-subtle px-5 py-3">
         {onDelete && (
           <button
             type="button"
