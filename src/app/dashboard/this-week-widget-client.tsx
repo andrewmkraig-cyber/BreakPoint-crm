@@ -243,8 +243,10 @@ export function ThisWeekWidgetClient({ initial }: Props) {
           plus a brand-colored day number so the eye lands on it first. */}
       <div className="mt-4 grid grid-cols-5 gap-1.5">
         {days.map((day) => {
-          const visible = day.events.slice(0, 5);
-          const overflow = day.events.length - visible.length;
+          // Show EVERY event for the day (no cap). Each event is a single
+          // compact line, so the cell grows to fit them all instead of
+          // truncating at a "+N more" tail.
+          const visible = day.events;
           return (
             <div
               key={day.key}
@@ -290,27 +292,24 @@ export function ThisWeekWidgetClient({ initial }: Props) {
                         onClick={() => openEvent(e.id)}
                         title={`${e.timeLabel} · ${e.title}`}
                         className={cn(
-                          "block min-w-0 truncate rounded-md border px-1.5 py-0.5 text-left leading-tight transition hover:brightness-95 focus:outline-none focus:ring-1 focus:ring-court-brand/40",
+                          // Single compact line: time + title inline, both
+                          // truncated, so many events fit in the day cell.
+                          "flex min-w-0 items-baseline gap-1 rounded-md border px-1.5 py-[1px] text-left leading-tight transition hover:brightness-95 focus:outline-none focus:ring-1 focus:ring-court-brand/40",
                           meta.pillClass,
                         )}
                       >
-                        <div className="truncate text-[9.5px] font-semibold opacity-80">
+                        <span className="shrink-0 text-[9px] font-semibold tabular-nums opacity-70">
                           {e.timeLabel}
-                        </div>
-                        <div className="truncate text-[10.5px] font-bold">
+                        </span>
+                        <span className="truncate text-[10px] font-bold">
                           {e.title}
-                        </div>
+                        </span>
                       </button>
                     );
                   })
                 )}
               </div>
-              {overflow > 0 && (
-                <div className="mt-auto pt-1 text-[10px] font-semibold text-court-fg-muted">
-                  +{overflow} more
-                </div>
-              )}
-              {day.isToday && overflow <= 0 && (
+              {day.isToday && (
                 <div className="mt-auto pt-1 text-[10px] font-semibold text-court-brand-dark">
                   Today
                 </div>

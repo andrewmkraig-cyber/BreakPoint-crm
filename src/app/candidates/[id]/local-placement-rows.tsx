@@ -814,22 +814,6 @@ function LocalJobActionRow({
               <span className="hidden sm:inline">Submit</span>
             </Link>
           )}
-          {editableInterview && (
-            // Blue schedule semantic (Icon Color rule). Opens the one-screen
-            // scheduler in edit mode pre-filled for this interview. Sits next
-            // to Schedule, which stays for booking an additional interview.
-            <Button
-              type="button"
-              size="sm"
-              variant="schedule"
-              onClick={() => onEditInterview(editableInterview)}
-              title="Edit this interview"
-              className={CHIP_BTN_CLS}
-            >
-              <CalendarClock className="h-3 w-3" />
-              <span className="hidden sm:inline">Edit Interview</span>
-            </Button>
-          )}
           {canSchedule && (
             <Button
               type="button"
@@ -841,6 +825,25 @@ function LocalJobActionRow({
             >
               <CalendarClock className="h-3 w-3" />
               <span className="hidden sm:inline">Schedule</span>
+            </Button>
+          )}
+          {editableInterview && (
+            // Sits between Schedule and Offer. Mirrors the Edit Offer chip
+            // (secondary outline + Edit3 pencil = edit semantic, Icon Color
+            // rule) so all "Edit X" pill actions read alike. Opens the
+            // one-screen scheduler in edit mode (existingInterview path),
+            // pre-filled for this interview — not the retired reschedule
+            // dialog. Schedule stays for booking an additional interview.
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => onEditInterview(editableInterview)}
+              title="Edit this interview"
+              className={CHIP_BTN_CLS}
+            >
+              <Edit3 className="h-3 w-3" />
+              <span className="hidden sm:inline">Edit Interview</span>
             </Button>
           )}
           {canExtendOffer && (

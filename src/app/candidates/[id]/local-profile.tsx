@@ -562,7 +562,28 @@ export async function LocalCandidateProfile({
           })
       : [];
     const rawDescription = typeof rfJob?.description === "string" ? rfJob.description : "";
-    const interviewKey = p.jobRfId != null ? `rf:${p.jobRfId}` : p.jobId ? `ace:${p.jobId}` : "";
+    // Interview join. scheduleInterview stored the interview with the SAME
+    // jobRfId the schedule call was made with — for Ace-native jobs that is
+    // the synthetic `syntheticIdFromCuid` id (rfJob.id), NOT the cuid and NOT
+    // p.jobRfId (which is null for Ace-native). So an Ace-native interview is
+    // keyed `rf:<synthetic>` while the placement only knew `ace:<cuid>`, and
+    // the two never matched — leaving job.interviews empty and the Edit
+    // Interview button hidden. Look up every key the interview could carry
+    // (real rfId, synthetic rfId, cuid), deduped by interview id.
+    const interviewKeys = [
+      p.jobRfId != null ? `rf:${p.jobRfId}` : null,
+      rfJob?.id != null ? `rf:${rfJob.id}` : null,
+      p.jobId ? `ace:${p.jobId}` : null,
+    ].filter((k): k is string => k != null);
+    const seenInterviewIds = new Set<string>();
+    const rowInterviews: LocalInterview[] = [];
+    for (const k of interviewKeys) {
+      for (const iv of interviewsByJob.get(k) ?? []) {
+        if (seenInterviewIds.has(iv.id)) continue;
+        seenInterviewIds.add(iv.id);
+        rowInterviews.push(iv);
+      }
+    }
     // Slim placement snapshot — drives the late-stage dialogs (Edit
     // Offer / Make Placement / Edit Placement) so they can seed their
     // form fields without an extra round trip. Dates are ISO strings
@@ -635,7 +656,7 @@ export async function LocalCandidateProfile({
       clientFeePct: resolvedClientFeePct,
       clientContacts,
       stage: p.stage,
-      interviews: interviewsByJob.get(interviewKey) ?? [],
+      interviews: rowInterviews,
       placement: placementSnapshot,
       // Lightweight presence flag only. getPlacementsForOrg returns the
       // full Placement row, so startConfirmationFile (Bytes) is already in
