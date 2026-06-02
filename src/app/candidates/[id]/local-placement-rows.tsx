@@ -772,15 +772,11 @@ function LocalJobActionRow({
   const nextInterview = job.interviews
     .filter((iv) => iv.status === "scheduled" && new Date(iv.scheduledAt).getTime() > Date.now())
     .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
-  // 2b-ii: the Edit Interview button shows once ANY non-cancelled interview
-  // exists for this job (not just at the interviewing stage). Target the next
-  // upcoming if there is one, else the most recent non-cancelled interview, so
-  // a past-but-not-cancelled interview can still be opened + edited.
-  const editableInterview =
-    nextInterview ??
-    job.interviews
-      .filter((iv) => iv.status !== "cancelled")
-      .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())[0];
+  // The Edit Interview button only targets an UPCOMING interview. Once an
+  // interview's scheduled time has passed (it has taken place) there is nothing
+  // left to reschedule, so the button disappears until another interview is
+  // booked — at which point nextInterview is set again and Edit returns.
+  const editableInterview = nextInterview;
   return (
     <div>
       <div className="flex items-center justify-between gap-3 px-3 py-1.5">
