@@ -6,6 +6,7 @@ import {
   tagThreadByAddresses,
 } from "@/lib/gmail";
 import { badgePayloadFields } from "@/lib/badge-math";
+import { checkGmailWebhookSecret } from "@/lib/gmail-webhook-auth";
 import { getUnreadCountsForOrg } from "@/lib/unread-counts";
 import { sendPushToUser, type PushPayload } from "@/lib/web-push";
 
@@ -195,9 +196,13 @@ async function sendNewMailPushes({
 export async function POST(req: NextRequest) {
   const expected = process.env.GMAIL_PUSH_SECRET;
   const provided = req.nextUrl.searchParams.get("secret");
-  if (!expected || provided !== expected) {
-    console.warn("[gmail webhook] rejected: bad or missing secret");
+  const secretDecision = checkGmailWebhookSecret({ expected, provided });
+  if (!secretDecision.accepted) {
+    console.warn("[gmail webhook] rejected: bad secret");
     return NextResponse.json({ ok: true });
+  }
+  if (secretDecision.reason === "missing-secret-fallback") {
+    console.warn("[gmail webhook] GMAIL_PUSH_SECRET missing; accepting Pub/Sub push");
   }
 
   let envelope: PubSubEnvelope;
