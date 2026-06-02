@@ -309,6 +309,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [cancellingInterview, setCancellingInterview] = useState(false);
+  const [cancelChoiceOpen, setCancelChoiceOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // D1: an interview-linked calendar block carries its Interview.id + party.
@@ -364,6 +365,9 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
       setAllDay(false);
       setMeetingType("google_meet");
       setTimeZone(DEFAULT_TIMEZONE);
+      // Reset the cancel-interview two-way choice so a half-opened prompt
+      // never carries over to the next interview the drawer shows.
+      setCancelChoiceOpen(false);
     } else {
       const initialType: CalendarEventType = prefillType ?? "interview";
       setType(initialType);
@@ -625,35 +629,29 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
     }
   }
 
-  // D1: wire to the EXISTING interview handlers. Cancel cancels the WHOLE
-  // interview (every Google event tied to it) via cancelInterview. Edit
-  // routes to the candidate profile, where the live interview edit /
-  // reschedule flow lives today. D2 replaces Edit with the single in-place
-  // scheduler and folds the multiple calendar Saves into one.
+  // D2: Edit opens the single in-place scheduler on the candidate profile,
+  // pre-filled for THIS interview, via the ?edit=interview&interviewId deep
+  // link (replaces D1's plain navigate-to-profile). Cancel cancels the WHOLE
+  // interview (every Google event tied to it) and prompts a two-way
+  // notify-guests choice that drives whether Google sends the cancellation
+  // notice on both events.
   function doEditInterview() {
     const candidateId = event?.candidateId;
-    if (!candidateId) {
+    if (!candidateId || !interviewId) {
       setError("Open this interview from the candidate's profile to edit it.");
       return;
     }
     onClose();
-    router.push(`/candidates/${candidateId}`);
+    router.push(`/candidates/${candidateId}?edit=interview&interviewId=${interviewId}`);
   }
 
-  async function doCancelInterview() {
+  async function doCancelInterview(notifyGuests: boolean) {
     if (!interviewId) return;
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm(
-        "Cancel this interview? Every calendar invite for it will be removed and guests notified.",
-      )
-    ) {
-      return;
-    }
+    setCancelChoiceOpen(false);
     setCancellingInterview(true);
     setError(null);
     try {
-      const res = await cancelInterview(interviewId);
+      const res = await cancelInterview(interviewId, { notifyGuests });
       if (!res.ok) {
         setError(res.error);
         return;
@@ -783,29 +781,64 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
               <div className="mt-1 text-[12px] text-court-fg-muted">
                 {interviewPartyLabel}
               </div>
-              <div className="mt-3 flex items-center gap-2.5">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={doEditInterview}
-                  disabled={cancellingInterview}
-                >
-                  Edit interview
-                </Button>
-                <Button
-                  variant="reject"
-                  size="sm"
-                  onClick={() => void doCancelInterview()}
-                  disabled={cancellingInterview}
-                >
-                  {cancellingInterview ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <X className="h-3 w-3" />
-                  )}
-                  Cancel interview
-                </Button>
-              </div>
+              {!cancelChoiceOpen ? (
+                <div className="mt-3 flex items-center gap-2.5">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={doEditInterview}
+                    disabled={cancellingInterview}
+                  >
+                    Edit interview
+                  </Button>
+                  <Button
+                    variant="reject"
+                    size="sm"
+                    onClick={() => setCancelChoiceOpen(true)}
+                    disabled={cancellingInterview}
+                  >
+                    {cancellingInterview ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <X className="h-3 w-3" />
+                    )}
+                    Cancel interview
+                  </Button>
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <p className="text-[12px] text-court-fg">
+                    Cancel the whole interview? This removes every calendar invite tied to it.
+                  </p>
+                  <div className="mt-2.5 flex flex-wrap items-center gap-2.5">
+                    <Button
+                      variant="reject"
+                      size="sm"
+                      onClick={() => void doCancelInterview(true)}
+                      disabled={cancellingInterview}
+                    >
+                      {cancellingInterview && <Loader2 className="h-3 w-3 animate-spin" />}
+                      Cancel &amp; notify guests
+                    </Button>
+                    <Button
+                      variant="reject"
+                      size="sm"
+                      onClick={() => void doCancelInterview(false)}
+                      disabled={cancellingInterview}
+                    >
+                      Cancel without notifying
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setCancelChoiceOpen(false)}
+                      disabled={cancellingInterview}
+                    >
+                      Keep interview
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

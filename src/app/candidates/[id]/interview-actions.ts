@@ -16,6 +16,11 @@ import {
   updateEventAsInvite,
 } from "@/lib/google-calendar";
 import { sendGmail } from "@/lib/gmail";
+import {
+  formatInterviewDate,
+  formatInterviewTime,
+  formatInterviewWhen,
+} from "@/lib/interview-format";
 import { createTeamsMeeting, getMicrosoftToken, TEAMS_TOKEN_EXPIRED_MESSAGE } from "@/lib/microsoft-graph";
 import { prisma } from "@/lib/prisma";
 import {
@@ -546,7 +551,16 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
 
 // ---- Cancel ----
 
-export async function cancelInterview(interviewId: string): Promise<Result> {
+// D2: cancel cancels the WHOLE interview (every Google event tied to it).
+// `notifyGuests` drives the two-way Cancel choice:
+//   - true  → Google sends the cancellation notice on every event.
+//   - false → events are deleted silently, no email.
+//   - undefined (legacy callers, e.g. the in-flight schedule abort) keeps
+//     the prior behavior: notify only when a party invite actually went out.
+export async function cancelInterview(
+  interviewId: string,
+  opts?: { notifyGuests?: boolean },
+): Promise<Result> {
   const user = await requireUser();
   if (!user) return { ok: false, error: "Not signed in." };
   try {
@@ -578,9 +592,12 @@ export async function cancelInterview(interviewId: string): Promise<Result> {
     const anyInviteSent = Boolean(
       existing.googleEventIdClient || existing.googleEventIdCandidate,
     );
+    // Explicit choice wins; legacy callers fall back to "notify iff an
+    // invite was actually sent".
+    const notifyGuests = opts?.notifyGuests ?? anyInviteSent;
     for (const id of uniqueEventIds) {
       try {
-        await deleteCalendarEvent({ userId: user.id, eventId: id, sendUpdates: anyInviteSent });
+        await deleteCalendarEvent({ userId: user.id, eventId: id, sendUpdates: notifyGuests });
       } catch {
         // best-effort
       }
@@ -740,24 +757,63 @@ export async function rescheduleInterview(input: RescheduleInterviewInput): Prom
   }
 }
 
+// D2: when an edit moves the interview time, the verbatim sent-copy stored
+// in D1 (sentCandidateBody/sentClientBody + subjects) still shows the OLD
+// date/time the recipient was originally emailed. The invite bodies bake the
+// date/time in as literal formatted strings (the `[Interview Date Time]` /
+// `[Interview Date]` / `[Interview Time]` / `[Interview Duration]` merge
+// fields are resolved at send time), so we restamp by string-replacing the
+// old formatted strings with the new ones using the SAME formatters that
+// produced them. Best-effort: if the formatted string isn't found (e.g. the
+// recruiter changed timezone too, or the body never referenced the time),
+// the replace is a safe no-op and the stored copy is left untouched.
+function restampSentCopyDateTime(
+  stored: string | null | undefined,
+  oldWhen: Date,
+  newWhen: Date,
+  oldDurationMin: number,
+  newDurationMin: number,
+  tz: string,
+): string | null {
+  if (!stored) return stored ?? null;
+  let out = stored;
+  // When (date + time, longest) first so its embedded time substring is
+  // swapped as a unit before the standalone time pass runs.
+  const pairs: Array<[string, string]> = [
+    [formatInterviewWhen(oldWhen, tz), formatInterviewWhen(newWhen, tz)],
+    [formatInterviewDate(oldWhen, tz), formatInterviewDate(newWhen, tz)],
+    [formatInterviewTime(oldWhen, tz), formatInterviewTime(newWhen, tz)],
+    [`${oldDurationMin} min`, `${newDurationMin} min`],
+  ];
+  for (const [from, to] of pairs) {
+    if (from && to && from !== to) out = out.split(from).join(to);
+  }
+  return out;
+}
+
 // ---- Update interview (full edit) ----
 //
 // Used by the edit-interview modal which needs to mutate every field a
 // recruiter can change (time, duration, type, location, interviewer, etc.)
-// AND offer two notify modes:
+// AND offer three notify modes — each driving the candidate event and the
+// client event INDEPENDENTLY (they are separate Google events):
 //
-//   - notifyMode: "all"      — patches the calendar event with sendUpdates
-//                              "all", so Google emails every attendee an
-//                              update.
-//   - notifyMode: "new_only" — patches non-attendee fields silently
-//                              (sendUpdates "none"), then patches the
-//                              attendee list adding only the new attendees
-//                              with sendUpdates "all". Existing attendees
-//                              see their calendar event update silently;
-//                              new attendees get a fresh invitation email.
+//   - notifyMode: "all"      — patches both events with sendUpdates "all",
+//                              so Google emails every guest on BOTH events
+//                              the update.
+//   - notifyMode: "new_only" — patches both events silently (sendUpdates
+//                              "none"), then adds only the newly-added
+//                              attendees (which attach to the client event)
+//                              with sendUpdates "all". Existing guests on
+//                              either event are NOT re-notified; only the
+//                              new attendee(s) get a fresh invitation email.
+//   - notifyMode: "none"     — patches both events silently (sendUpdates
+//                              "none"); no notification email goes out at
+//                              all, including to any newly-added attendee.
 //
-// The "interviewer" field in the modal is the primary client attendee.
-// Additional attendees would be plumbed via input.attendees in the future.
+// The calendar event time always moves on a date/time change regardless of
+// the chosen mode; only WHO gets emailed varies. The "interviewer" field in
+// the modal is the primary client attendee.
 
 export type UpdateInterviewInput = {
   interviewId: string;
@@ -769,7 +825,7 @@ export type UpdateInterviewInput = {
   attendees?: InterviewAttendee[];
   candidatePhone?: string;
   notes?: string;
-  notifyMode: "all" | "new_only";
+  notifyMode: "all" | "new_only" | "none";
   jobTitle?: string;
   clientName?: string;
   candidateName?: string;
@@ -803,6 +859,10 @@ export async function updateInterview(input: UpdateInterviewInput): Promise<Resu
       googleEventIdCandidate: true,
       candidateRfId: true,
       candidateId: true,
+      sentCandidateSubject: true,
+      sentCandidateBody: true,
+      sentClientSubject: true,
+      sentClientBody: true,
     },
   });
   if (!existing) return { ok: false, error: "Interview not found." };
@@ -826,41 +886,34 @@ export async function updateInterview(input: UpdateInterviewInput): Promise<Resu
   ].filter((id): id is string => Boolean(id));
   const uniqueEventIds = Array.from(new Set(allEventIds));
 
+  // The time/header field patch is sent to BOTH events independently.
+  // "all" emails every guest on each event; "new_only" and "none" patch
+  // silently. The time always moves regardless of mode — only WHO is
+  // emailed differs. `input.location` is passed through verbatim: when it
+  // is undefined the calendar location is left unchanged (a time-only edit
+  // must not wipe an in-person address).
+  const fieldPatchSendUpdates = input.notifyMode === "all" ? "all" : "none";
+  // Newly-added attendees get an invite only in "all" / "new_only" mode;
+  // "none" adds them silently with no notification email.
+  const attendeeAddSendUpdates = input.notifyMode === "none" ? "none" : "all";
   try {
     for (const eventId of uniqueEventIds) {
-      if (input.notifyMode === "all") {
-        // Single PATCH; let Google email everyone the diff. When the
-        // attendees array isn't included in the body, the existing
-        // guest list is preserved — we only force-update the time and
-        // header fields here. Adding a new interviewer via the modal
-        // is handled below via addAttendeeToEvent.
-        await patchCalendarEventDetails({
-          userId: user.id,
-          eventId,
-          sendUpdates: "all",
-          startISO: when.toISOString(),
-          durationMin: input.durationMin,
-          timeZone: input.timeZone,
-          location: input.location ?? "",
-        });
-      } else {
-        // Silent field patch first, then opt-in invitations for new
-        // attendees only. Existing attendees see their event update
-        // silently; new ones get a fresh invitation email.
-        await patchCalendarEventDetails({
-          userId: user.id,
-          eventId,
-          sendUpdates: "none",
-          startISO: when.toISOString(),
-          durationMin: input.durationMin,
-          timeZone: input.timeZone,
-          location: input.location ?? "",
-        });
-      }
+      await patchCalendarEventDetails({
+        userId: user.id,
+        eventId,
+        sendUpdates: fieldPatchSendUpdates,
+        startISO: when.toISOString(),
+        durationMin: input.durationMin,
+        timeZone: input.timeZone,
+        location: input.location,
+      });
 
       // The edit modal's attendees are client-side interviewer contacts.
       // With separate client/candidate invite events, only the client event
       // should receive those attendees; the candidate event stays private.
+      // "none" mode adds them silently; otherwise the new attendee(s) get a
+      // fresh invitation while existing guests are never re-notified (the
+      // field patch above already ran silently for new_only).
       const isClientInviteEvent = existing.googleEventIdClient
         ? eventId === existing.googleEventIdClient
         : eventId === existing.googleEventIdMine && !existing.googleEventIdCandidate;
@@ -881,7 +934,7 @@ export async function updateInterview(input: UpdateInterviewInput): Promise<Resu
           await patchCalendarEventDetails({
             userId: user.id,
             eventId,
-            sendUpdates: "all",
+            sendUpdates: attendeeAddSendUpdates,
             attendees: nextAttendees,
           });
         }
@@ -900,16 +953,47 @@ export async function updateInterview(input: UpdateInterviewInput): Promise<Resu
       ? (input.attendees as unknown as object)
       : (existing.clientAttendees as unknown as object | null) ?? undefined;
 
+  // D2: restamp the stored sent-copy (what the recipient saw) when the time
+  // moved, so the calendar's "what was emailed" detail no longer shows the
+  // old date/time. Best-effort string replacement keyed to the same
+  // formatters that produced the body — see restampSentCopyDateTime.
+  const timeMoved =
+    existing.scheduledAt.getTime() !== when.getTime() ||
+    existing.durationMin !== input.durationMin;
+  const sentCopyUpdate = timeMoved
+    ? {
+        sentCandidateSubject: restampSentCopyDateTime(
+          existing.sentCandidateSubject, existing.scheduledAt, when,
+          existing.durationMin, input.durationMin, input.timeZone,
+        ),
+        sentCandidateBody: restampSentCopyDateTime(
+          existing.sentCandidateBody, existing.scheduledAt, when,
+          existing.durationMin, input.durationMin, input.timeZone,
+        ),
+        sentClientSubject: restampSentCopyDateTime(
+          existing.sentClientSubject, existing.scheduledAt, when,
+          existing.durationMin, input.durationMin, input.timeZone,
+        ),
+        sentClientBody: restampSentCopyDateTime(
+          existing.sentClientBody, existing.scheduledAt, when,
+          existing.durationMin, input.durationMin, input.timeZone,
+        ),
+      }
+    : {};
+
   await prisma.interview.update({
     where: { id: input.interviewId },
     data: {
       scheduledAt: when,
       durationMin: input.durationMin,
       type: input.type,
-      location: input.location ?? null,
-      candidatePhone: input.candidatePhone ?? null,
-      notes: input.notes ?? null,
+      // Pass-through: only overwrite the address when the caller actually
+      // sent one. A time-only edit (undefined) leaves the stored address as-is.
+      ...(input.location !== undefined ? { location: input.location || null } : {}),
+      candidatePhone: input.candidatePhone ?? existing.candidatePhone,
+      ...(input.notes !== undefined ? { notes: input.notes || null } : {}),
       ...(clientAttendeesJson !== undefined ? { clientAttendees: clientAttendeesJson } : {}),
+      ...sentCopyUpdate,
       status: "scheduled",
     },
   });

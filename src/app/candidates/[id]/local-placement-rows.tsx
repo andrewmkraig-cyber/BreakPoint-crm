@@ -38,8 +38,8 @@ import { Button } from "@/components/ui/button";
 import {
   cancelInterview,
   getInterviewSchedulingTemplates,
-  rescheduleInterview,
   scheduleInterview,
+  updateInterview,
   sendInterviewInvite,
   upsertInterviewReminder,
   type InterviewType,
@@ -453,6 +453,27 @@ export function LocalPlacementRows({
     const next = new URLSearchParams(searchParams?.toString() ?? "");
     next.delete("schedule");
     next.delete("jobId");
+    const qs = next.toString();
+    router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+  }, [searchParams, pathname, router, jobsState]);
+
+  // D2: deep-link for the calendar event Edit button + the This Week widget
+  // click. Both route here via ?edit=interview&interviewId=<cuid> so the
+  // single edit scheduler opens in place, pre-filled for that interview —
+  // replacing D1's plain navigate-to-profile. Find the matching interview
+  // across every job pill's interviews[].
+  useEffect(() => {
+    const edit = searchParams?.get("edit");
+    const interviewId = searchParams?.get("interviewId");
+    if (edit !== "interview" || !interviewId) return;
+    const target = jobsState
+      .flatMap((j) => j.interviews)
+      .find((iv) => iv.id === interviewId);
+    if (!target) return;
+    setRescheduleFor(target);
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    next.delete("edit");
+    next.delete("interviewId");
     const qs = next.toString();
     router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
   }, [searchParams, pathname, router, jobsState]);
@@ -2166,31 +2187,51 @@ function formatMoney(amount: number, currency: string): string {
   }
 }
 
+// D2: the single in-place edit-interview scheduler. Reached from the job
+// pill's Edit Interview button AND from a calendar event / This Week widget
+// (which deep-link ?edit=interview&interviewId=). Keeps the time-only field
+// set for now (the full single-screen rebuild is E), but replaces the old
+// fire-immediately Reschedule with ONE Save that prompts a real three-way
+// update choice. The choice drives updateInterview's notifyMode, which sends
+// the update on the candidate event and the client event INDEPENDENTLY.
 function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; onClose: () => void }) {
   const router = useRouter();
   const [scheduledAt, setScheduledAt] = useState(toDatetimeLocalValue(interview.scheduledAt));
   const [durationMin, setDurationMin] = useState(interview.durationMin);
   const [timeZone, setTimeZone] = useState<string>(DEFAULT_INTERVIEW_TIMEZONE);
   const [err, setErr] = useState<string | null>(null);
+  const [askNotify, setAskNotify] = useState(false);
   const [isPending, startSave] = useTransition();
 
   function onSave() {
     setErr(null);
     if (!scheduledAt) return setErr("Pick a date and time.");
+    // ONE Save → prompt the update-guests choice.
+    setAskNotify(true);
+  }
+
+  function commit(notifyMode: "all" | "new_only" | "none") {
+    setErr(null);
     startSave(async () => {
-      const result = await rescheduleInterview({
+      const result = await updateInterview({
         interviewId: interview.id,
         // Same wall-clock-in-zone → UTC fix as the Schedule path.
         scheduledAt: wallClockInZoneToUTC(scheduledAt, timeZone).toISOString(),
         durationMin,
+        // Time-only edit reuses the existing interview type; location /
+        // attendees / phone / notes are left undefined so updateInterview
+        // preserves them (the full field set lands in E).
+        type: interview.type,
         timeZone,
+        notifyMode,
       });
       if (!result.ok) {
         setErr(result.error);
-        toast.error("Couldn't reschedule", { description: result.error });
+        toast.error("Couldn't update interview", { description: result.error });
+        setAskNotify(false);
         return;
       }
-      toast.success("Interview rescheduled");
+      toast.success("Interview updated");
       onClose();
       void triggerCalendarSync(router);
       void upsertInterviewReminder(interview.id);
@@ -2199,12 +2240,25 @@ function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; o
 
   return (
     <ModalShell
-      title="Reschedule interview"
+      title="Edit interview"
       onClose={onClose}
       dismissOnOverlay={false}
       draggable
       resizable
-      footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Reschedule" />}
+      footer={
+        askNotify ? (
+          <button
+            type="button"
+            onClick={() => setAskNotify(false)}
+            disabled={isPending}
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+          >
+            Back
+          </button>
+        ) : (
+          <Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Save" />
+        )
+      }
     >
       <div className="flex flex-wrap items-end gap-3">
         <label className="block min-w-[16rem] flex-1 text-sm">
@@ -2232,6 +2286,42 @@ function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; o
         </label>
         <DurationSelect value={durationMin} onChange={setDurationMin} compact />
       </div>
+
+      {askNotify && (
+        <div className="mt-4 rounded-lg border border-court-border bg-court-surface-subtle p-3.5">
+          <p className="text-sm font-medium text-court-fg">Send updated invites?</p>
+          <p className="mt-0.5 text-[12px] text-court-fg-muted">
+            The calendar time moves either way. This only controls who gets emailed.
+          </p>
+          <div className="mt-3 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => commit("all")}
+              disabled={isPending}
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+            >
+              {isPending && <Loader2 className="h-3 w-3 animate-spin" />}
+              Update all guests
+            </button>
+            <button
+              type="button"
+              onClick={() => commit("new_only")}
+              disabled={isPending}
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-court-border bg-court-surface px-4 py-2 text-xs font-medium text-court-fg shadow-sm transition hover:bg-court-surface-subtle disabled:opacity-60"
+            >
+              Update only new guests
+            </button>
+            <button
+              type="button"
+              onClick={() => commit("none")}
+              disabled={isPending}
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-court-border bg-court-surface px-4 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+            >
+              Don&apos;t send updates
+            </button>
+          </div>
+        </div>
+      )}
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
     </ModalShell>
   );
