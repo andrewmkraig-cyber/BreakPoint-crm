@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -36,7 +36,6 @@ import { toast } from "sonner";
 import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
 import { Button } from "@/components/ui/button";
 import {
-  cancelInterview,
   getInterviewSchedulingTemplates,
   scheduleInterview,
   updateInterview,
@@ -45,7 +44,7 @@ import {
   type InterviewType,
   type MeetingProvider,
 } from "@/app/candidates/[id]/interview-actions";
-import { EmailComposer, type EmailDraft } from "@/components/email-composer";
+import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 import { DateTime15Picker } from "@/components/datetime-15-picker";
 import { MeetingProviderSelect } from "@/components/meeting-provider-select";
 import {
@@ -53,11 +52,10 @@ import {
   ConfirmStartDialog,
   DurationSelect,
   InterviewerPicker,
-  buildCcBccOptions,
   parseEmailCsv,
 } from "@/components/placements/placement-shared";
 import { triggerCalendarSync } from "@/lib/calendar/trigger-sync";
-import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
+import { applyMergeFields as applyMergeFieldsClient, MERGE_FIELDS, type MergeFieldValues } from "@/lib/merge-fields";
 // Canonical Lead Source options — shared with the RF PlacementDialog,
 // the /pipeline placement-edit-drawer, and the Financial Performance
 // By Source widget so all four surfaces agree on the bucket set. Added
@@ -270,7 +268,6 @@ export function LocalPlacementRows({
   const [placementFor, setPlacementFor] = useState<LocalJobRow | null>(null);
   const [confirmFor, setConfirmFor] = useState<LocalJobRow | null>(null);
   const [rescheduleFor, setRescheduleFor] = useState<LocalInterview | null>(null);
-  const [inviteFlow, setInviteFlow] = useState<LocalInviteFlow | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -507,18 +504,26 @@ export function LocalPlacementRows({
       </div>
 
       {scheduleFor && (
-        // Schedule modal stays mounted while the invite composers
-        // are open on top of it — that way clicking Back on the
-        // candidate composer returns to the schedule modal with all
-        // values still populated.
-        <ScheduleDialog
+        // Ace E: ONE scrolling screen replaces the old Schedule modal +
+        // the two stacked invite composers + the inviteFlow step machine.
+        // It schedules and fires whichever invite toggles are on in a
+        // single Send, reusing scheduleInterview + sendInterviewInvite.
+        <ScheduleInterviewScreen
           candidateId={candidateId}
           candidateName={candidateName}
+          candidate={{
+            firstName: candidateName.split(/\s+/)[0] ?? candidateName,
+            lastName: candidateName.split(/\s+/).slice(1).join(" "),
+            email: candidateEmail,
+            phone: candidatePhone,
+            location: candidateLocation,
+            currentTitle: candidateCurrentTitle,
+            currentEmployer: candidateCurrentEmployer,
+          }}
+          candidateEmail={candidateEmail}
+          recruiter={recruiter}
           job={scheduleFor}
           onClose={() => setScheduleFor(null)}
-          onScheduled={(ctx) => {
-            setInviteFlow({ ...ctx, step: "candidate" });
-          }}
         />
       )}
       {offerFor && (
@@ -559,73 +564,6 @@ export function LocalPlacementRows({
       )}
       {rescheduleFor && (
         <RescheduleDialog interview={rescheduleFor} onClose={() => setRescheduleFor(null)} />
-      )}
-
-      {inviteFlow && inviteFlow.step === "candidate" && (
-        <LocalCandidateInviteComposer
-          invite={inviteFlow}
-          candidate={{
-            firstName: candidateName.split(/\s+/)[0] ?? candidateName,
-            lastName: candidateName.split(/\s+/).slice(1).join(" "),
-            email: candidateEmail,
-            phone: candidatePhone,
-            location: candidateLocation,
-            currentTitle: candidateCurrentTitle,
-            currentEmployer: candidateCurrentEmployer,
-          }}
-          candidateName={candidateName}
-          candidateEmail={candidateEmail}
-          recruiter={recruiter}
-          onClose={() => {
-            setInviteFlow(null);
-            setScheduleFor(null);
-          }}
-          onBack={() => {
-            const interviewId = inviteFlow.interviewId;
-            setInviteFlow(null);
-            void cancelInterview(interviewId).then((res) => {
-              if (!res.ok) {
-                toast.error("Couldn't cancel in-flight interview", { description: res.error });
-              }
-            });
-          }}
-          onSent={(meetLink) =>
-            setInviteFlow({
-              ...inviteFlow,
-              meetLink: meetLink ?? inviteFlow.meetLink,
-              step: "client",
-            })
-          }
-        />
-      )}
-      {inviteFlow && inviteFlow.step === "client" && (
-        <LocalClientInviteComposer
-          invite={inviteFlow}
-          candidate={{
-            firstName: candidateName.split(/\s+/)[0] ?? candidateName,
-            lastName: candidateName.split(/\s+/).slice(1).join(" "),
-            email: candidateEmail,
-            phone: candidatePhone,
-            location: candidateLocation,
-            currentTitle: candidateCurrentTitle,
-            currentEmployer: candidateCurrentEmployer,
-          }}
-          candidateName={candidateName}
-          candidateEmail={candidateEmail}
-          recruiter={recruiter}
-          onClose={() => {
-            setInviteFlow(null);
-            setScheduleFor(null);
-          }}
-          onBack={() => setInviteFlow({ ...inviteFlow, step: "candidate" })}
-          onSent={() => {
-            setInviteFlow(null);
-            setScheduleFor(null);
-            toast.success("Interview scheduled", {
-              description: "Candidate and client invites processed.",
-            });
-          }}
-        />
       )}
     </>
   );
@@ -1005,269 +943,6 @@ function LocalJobActionRow({
 // interview is still tracked (see `nextInterview` in LocalJobActionRow) only
 // to gate the Edit Interview button; the date/time itself lives in the
 // schedule/edit modal and on /calendar, not on the pill title line.
-
-function ScheduleDialog({
-  candidateId,
-  candidateName,
-  job,
-  onClose,
-  onScheduled,
-}: {
-  candidateId: string;
-  candidateName: string;
-  job: LocalJobRow;
-  onClose: () => void;
-  onScheduled: (ctx: Omit<LocalInviteFlow, "step">) => void;
-}) {
-  const router = useRouter();
-  const [scheduledAt, setScheduledAt] = useState("");
-  const [durationMin, setDurationMin] = useState(30);
-  const [timeZone, setTimeZone] = useState<string>(DEFAULT_INTERVIEW_TIMEZONE);
-  const [type, setType] = useState<InterviewType>("video");
-  const [meetingType, setMeetingType] = useState<MeetingProvider>("google");
-  const [microsoftConnected, setMicrosoftConnected] = useState(false);
-  const [interviewerName, setInterviewerName] = useState("");
-  const [interviewerEmail, setInterviewerEmail] = useState("");
-  const [location, setLocation] = useState("");
-  const [ccCsv, setCcCsv] = useState("");
-  const [bccCsv, setBccCsv] = useState("");
-  const [notes, setNotes] = useState("");
-  // When checked, the recruiter is logging an interview the client is
-  // scheduling themselves: we still write the Interview row + sync the
-  // recruiter's calendar + log the activity (so the interview credit
-  // lands), but we route through source="client_scheduled" and skip the
-  // candidate/client invite composers entirely — no emails go out to
-  // anyone. Folds the old "Client Sending Invite" button on the row
-  // into the schedule modal so there's one canonical scheduling entry.
-  const [clientWillSendInvite, setClientWillSendInvite] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [isPending, startSave] = useTransition();
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch("/api/auth/microsoft/status");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = (await res.json()) as { connected: boolean };
-        if (!cancelled) setMicrosoftConnected(Boolean(json.connected));
-      } catch {
-        if (!cancelled) setMicrosoftConnected(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  function onSave() {
-    setErr(null);
-    if (!scheduledAt) return setErr("Pick a date and time.");
-    if (type === "in_person" && !location.trim()) {
-      return setErr("Address required for in-person interviews.");
-    }
-    startSave(async () => {
-      // Interpret the wall-clock string in the PICKED zone — not the
-      // browser's local zone. The picker already enforces 15-min
-      // boundaries so no extra snap is needed. The prior
-      // `new Date(scheduledAt).toISOString()` parse was the root of
-      // the "EST event lands 4 hours earlier" bug on non-ET browsers.
-      const snapped = wallClockInZoneToUTC(scheduledAt, timeZone);
-      const attendees = interviewerName.trim()
-        ? [{ name: interviewerName.trim(), email: interviewerEmail.trim() }]
-        : [];
-      const result = await scheduleInterview({
-        candidateId,
-        // Pass the exact pill's Placement row so scheduling updates it in
-        // place instead of minting a duplicate interviewing pill.
-        placementId: job.placementId,
-        jobRfId: job.jobRfId,
-        clientRfId: job.clientRfId,
-        scheduledAt: snapped.toISOString(),
-        durationMin,
-        type,
-        attendees,
-        notes: notes.trim(),
-        // client_scheduled flips off the candidate/client email
-        // composers downstream; ace_scheduled keeps the existing
-        // Schedule → Candidate Invite → Client Invite chain.
-        source: clientWillSendInvite ? "client_scheduled" : "ace_scheduled",
-        jobTitle: job.jobTitle,
-        clientName: job.clientName,
-        candidateName,
-        location: type === "in_person" ? location.trim() : undefined,
-        timeZone,
-        // meetingType only matters for ace_scheduled (we create the
-        // Meet on Andrew's behalf). For client_scheduled the client
-        // creates the event themselves, so skip — no Meet link is
-        // generated either way.
-        meetingType:
-          clientWillSendInvite ? undefined : type === "video" ? meetingType : undefined,
-      });
-      if (!result.ok) {
-        setErr(result.error);
-        toast.error("Couldn't schedule", { description: result.error });
-        return;
-      }
-      // Same auto-sync the manual Sync button on /calendar fires, so
-      // the freshly created Google event lands in the local
-      // CalendarEvent mirror without the recruiter clicking Sync.
-      void triggerCalendarSync(router);
-      // Auto-fire the site-wide amber reminder toast an hour ahead of
-      // every interview. Best-effort: reminder failures never block the
-      // schedule success path.
-      void upsertInterviewReminder(result.value.interviewId);
-
-      // Client-scheduled branch: interview row + calendar + activity
-      // log are already written by scheduleInterview above (the
-      // recruiter gets the interview credit). Skip the invite
-      // composers entirely and close the modal — no emails are sent
-      // to candidate or client.
-      if (clientWillSendInvite) {
-        toast.success("Interview scheduled", {
-          description: "Logged for tracking. No invites were sent.",
-        });
-        onClose();
-        return;
-      }
-      // Same pre-fetch as the RF flow — templates seed the composers,
-      // failures fall back to hardcoded defaults silently.
-      let templates: { candidate: { subject: string; body: string } | null; client: { subject: string; body: string } | null } = {
-        candidate: null,
-        client: null,
-      };
-      try {
-        templates = await getInterviewSchedulingTemplates();
-      } catch {
-        // ignore
-      }
-      // Meet "Trusted by default" follow-up toast retired — see
-      // placement-flows.tsx scheduler for the rationale.
-      onScheduled({
-        interviewId: result.value.interviewId,
-        scheduledAtISO: snapped.toISOString(),
-        durationMin,
-        type,
-        meetLink: result.value.meetLink,
-        interviewLocation: type === "in_person" ? location.trim() : "",
-        jobTitle: job.jobTitle,
-        jobLocation: job.jobLocation,
-        jobDescription: job.jobDescription,
-        jobSalaryRange: job.jobSalaryRange,
-        clientName: job.clientName,
-        clientWebsite: job.clientWebsite,
-        clientLinkedIn: job.clientLinkedIn,
-        clientContacts: job.clientContacts,
-        clientContactName: interviewerName.trim(),
-        clientContactEmail: interviewerEmail.trim(),
-        ccEmails: parseEmailCsv(ccCsv),
-        bccEmails: parseEmailCsv(bccCsv),
-        timeZone,
-        candidateTemplate: templates.candidate,
-        clientTemplate: templates.client,
-      });
-    });
-  }
-
-  return (
-    <ModalShell
-      title="Schedule interview"
-      subtitle={`${job.jobTitle} · ${job.clientName}`}
-      onClose={onClose}
-      dismissOnOverlay={false}
-      draggable
-      resizable
-      footer={<Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Schedule Interview" />}
-    >
-      <ScheduleFields
-        scheduledAt={scheduledAt}
-        setScheduledAt={setScheduledAt}
-        durationMin={durationMin}
-        setDurationMin={setDurationMin}
-        timeZone={timeZone}
-        setTimeZone={setTimeZone}
-        type={type}
-        setType={setType}
-        location={location}
-        setLocation={setLocation}
-        notes={notes}
-        setNotes={setNotes}
-        typeExtras={
-          // Meeting-provider picker only matters on the ace_scheduled
-          // path (we mint the Meet on Andrew's behalf there). The
-          // client-scheduled tracking path doesn't create any join
-          // link, so hide the picker in that case. The Open-Meeting
-          // checkbox that used to live here was retired — Andrew's
-          // Workspace defaults Meet access to Open org-wide.
-          type === "video" && !clientWillSendInvite ? (
-            <MeetingProviderSelect
-              value={meetingType}
-              onChange={setMeetingType}
-              teamsConnected={microsoftConnected}
-            />
-          ) : null
-        }
-        interviewerSlot={
-          <InterviewerPicker
-            initialContacts={job.clientContacts}
-            name={interviewerName}
-            email={interviewerEmail}
-            onChange={(n, e) => {
-              setInterviewerName(n);
-              setInterviewerEmail(e);
-            }}
-          />
-        }
-        ccBccSlot={
-          // Cc/Bcc only ride on outbound invite emails; the
-          // client-scheduled path doesn't send any email at all, so
-          // suppress the picker rather than collect values that
-          // would silently be discarded.
-          clientWillSendInvite ? null : (
-            <CcBccPicker
-              clientContacts={job.clientContacts}
-              cc={ccCsv}
-              onCcChange={setCcCsv}
-              bcc={bccCsv}
-              onBccChange={setBccCsv}
-            />
-          )
-        }
-      />
-      <label
-        className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/60 p-3 text-sm"
-        title="Use this when the client is scheduling the interview themselves and sending their own invite. We'll log it on your calendar for tracking and credit, but skip the candidate/client invite emails Ace would otherwise send."
-      >
-        <input
-          type="checkbox"
-          checked={clientWillSendInvite}
-          onChange={(e) => setClientWillSendInvite(e.target.checked)}
-          className="mt-0.5 h-4 w-4 rounded border-court-border accent-brand-dark"
-        />
-        <span>
-          <span className="font-semibold text-court-fg">Client will send invite</span>
-          <span className="block text-xs text-court-fg-muted">
-            Log the interview on your calendar and activity log for tracking + credit.
-            Skip the candidate/client invite emails. The client is sending their own.
-          </span>
-        </span>
-      </label>
-      {err && (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
-          {err}
-          {err.includes("Reconnect in Settings") && (
-            <>
-              {" "}
-              <a href="/settings/connectors" className="font-semibold underline">
-                Go to Settings &gt; Connectors
-              </a>
-            </>
-          )}
-        </div>
-      )}
-    </ModalShell>
-  );
-}
 
 // Shared chip-size className used by every action button on the job pill.
 // Stage badges next door sit at px-2 py-0.5 text-[10px]; matching them
@@ -2720,229 +2395,699 @@ function buildValues(args: {
   };
 }
 
-function LocalClientInviteComposer({
-  invite,
-  candidate,
-  candidateName,
-  candidateEmail,
-  recruiter,
-  onClose,
-  onBack,
-  onSent,
-}: {
-  invite: LocalInviteFlow;
-  candidate: {
-    firstName: string;
-    lastName: string;
-    email: string | null;
-    phone: string | null;
-    location: string | null;
-    currentTitle: string | null;
-    currentEmployer: string | null;
-  };
-  candidateName: string;
-  candidateEmail: string | null;
-  recruiter: { firstName: string; fullName: string; email: string; phone: string };
-  onClose: () => void;
-  onBack?: () => void;
-  onSent: (meetLink?: string | null) => void;
-}) {
-  void candidateEmail;
-  const values = buildValues({ invite, candidate, recruiter });
-  const addrLine = invite.type === "in_person" && invite.interviewLocation
-    ? `\n• Location: ${invite.interviewLocation}`
-    : "";
-  // Only spells out the Meet join URL on the body when this is a video
-  // interview AND the Meet link is known. For the client invite (first
-  // party), invite.meetLink is still null when the body renders — the
-  // Meet is created by the server during send. Not a regression: the
-  // client gets the native calendar-invite Join button anyway, and the
-  // reason we care about this line is specifically to make sure the
-  // candidate (second party) sees the link explicitly.
-  const meetLine = invite.type === "video" && invite.meetLink
-    ? `\n• Join on Google Meet: [Interview Meet Link]`
-    : "";
-  // Active client-side template wins when seeded; otherwise the
-  // hardcoded composer default kicks in. Merge fields resolve against
-  // the same values map either way so [Job Title] / [Candidate Full
-  // Name] populate consistently.
-  const fallbackSubject =
-    `${formatType(invite.type)} Interview - ${candidateName || "Candidate"} - ${invite.jobTitle}`;
-  const fallbackBody =
+// ---- one-screen interview scheduler (Ace E) ----
+//
+// ONE scrolling screen replaces the old ScheduleDialog + the two stacked
+// invite composers + the inviteFlow step machine. The recruiter fills the
+// logistics, flips the two "Send …" toggles, edits each party's subject +
+// body inline, and clicks ONE Send. Send calls scheduleInterview once, then
+// sendInterviewInvite once per enabled toggle - the exact same engine the
+// retired composers used, so the SENT subject/body/Meet/Bcc behavior is
+// byte-for-byte unchanged. The default copy below is lifted verbatim from
+// the retired composers; merge tokens resolve via applyMergeFieldsClient
+// against the same buildValues map. The Meet link is the one token left for
+// send-time: scheduleInterview mints the Meet, so the URL isn't known while
+// the recruiter is still composing.
+const MEET_LINK_TOKEN = "[Interview Meet Link]";
+
+function defaultClientSubject(type: InterviewType, candidateName: string, jobTitle: string): string {
+  return `${formatType(type)} Interview - ${candidateName || "Candidate"} - ${jobTitle}`;
+}
+function defaultClientBody(type: InterviewType, location: string): string {
+  const addrLine = type === "in_person" && location ? `\n• Location: ${location}` : "";
+  const meetLine = type === "video" ? `\n• Join on Google Meet: ${MEET_LINK_TOKEN}` : "";
+  return (
     `Hi [Client Contact First Name],\n\nConfirming the interview with [Candidate Full Name] for the [Job Title] role. ` +
     `The calendar invite is on its way.\n\n` +
     `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]${addrLine}${meetLine}\n\n` +
-    `Reply to this email if anything needs to change.`;
-  const subject = applyMergeFieldsClient(invite.clientTemplate?.subject ?? fallbackSubject, values);
-  const body = applyMergeFieldsClient(invite.clientTemplate?.body ?? fallbackBody, values);
-  const ccPickerOptions = buildCcBccOptions(invite.clientContacts);
-  return (
-    <EmailComposer
-      title="Send client calendar invite"
-      subtitle={`${invite.jobTitle} · ${invite.clientName}`}
-      draftKey={`interview-invite-${invite.interviewId}-client`}
-      initial={{
-        to: invite.clientContactEmail ? [invite.clientContactEmail] : [],
-        cc: invite.ccEmails,
-        bcc: invite.bccEmails,
-        subject,
-        body,
-      }}
-      showTemplatePicker
-      templateFilter={(t) => t.category === "interview"}
-      resolveTemplate={(t) => ({
-        subject: applyMergeFieldsClient(t.subject, values),
-        body: applyMergeFieldsClient(t.body, values),
-      })}
-      // To is multi-recipient: pick from the client contacts or type any
-      // address, as chips (same component as Cc/Bcc). Every To recipient is
-      // sent (see onSend → toEmails), not just the first.
-      toOptions={ccPickerOptions}
-      ccOptions={ccPickerOptions}
-      // Bcc is the private team field — do NOT seed it with client contacts.
-      // Passing an empty pool lets EmailComposer surface ONLY its teammate
-      // roster (Austin) via BCC_TEAMMATE_OPTIONS; client contacts can no
-      // longer leak into the Bcc dropdown. The recruiter can still type any
-      // address. Cc keeps the client-contact list above.
-      bccOptions={[]}
-      mergeValues={values}
-      sendLabel="Send Invite"
-      onClose={onClose}
-      onBack={onBack}
-      backLabel="Back to candidate"
-      onSend={async (draft: EmailDraft) => {
-        if (draft.to.length === 0) {
-          toast.error("Add a client contact email");
-          throw new Error("No recipient");
-        }
-        const result = await sendInterviewInvite({
-          interviewId: invite.interviewId,
-          party: "client",
-          attendeeEmail: draft.to[0],
-          attendeeName: invite.clientContactName || undefined,
-          // Pass ALL To recipients (not just the first) so every one is
-          // added as a guest on the calendar invite.
-          toEmails: draft.to,
-          ccEmails: draft.cc,
-          bccEmails: draft.bcc,
-          subject: draft.subject,
-          bodyText: draft.body,
-          timeZone: invite.timeZone,
-        });
-        if (!result.ok) {
-          toast.error("Client invite failed", { description: result.error });
-          throw new Error(result.error);
-        }
-        toast.success("Client calendar invite sent", {
-          description: "They'll see Accept / Maybe / Decline in their inbox.",
-        });
-        onSent(result.value.meetLink);
-      }}
-    />
+    `Reply to this email if anything needs to change.`
   );
 }
-
-function LocalCandidateInviteComposer({
-  invite,
-  candidate,
-  candidateName,
-  candidateEmail,
-  recruiter,
-  onClose,
-  onBack,
-  onSent,
-}: {
-  invite: LocalInviteFlow;
-  candidate: {
-    firstName: string;
-    lastName: string;
-    email: string | null;
-    phone: string | null;
-    location: string | null;
-    currentTitle: string | null;
-    currentEmployer: string | null;
-  };
-  candidateName: string;
-  candidateEmail: string | null;
-  recruiter: { firstName: string; fullName: string; email: string; phone: string };
-  onClose: () => void;
-  onBack?: () => void;
-  onSent: (meetLink?: string | null) => void;
-}) {
-  void candidateName;
-  const values = buildValues({ invite, candidate, recruiter });
-  const addrLine = invite.type === "in_person" && invite.interviewLocation
-    ? `\n• Location: ${invite.interviewLocation}`
-    : "";
-  // By this composer the client invite has already been sent and
-  // invite.meetLink is populated (threaded back via LocalClientInvite's
-  // onDone). Spell out the Meet URL so the candidate sees it inline in
-  // the email body, not just on the native Calendar invite's Join
-  // button that Gmail renders above the description.
-  const meetLine = invite.type === "video" && invite.meetLink
-    ? `\n• Join on Google Meet: [Interview Meet Link]`
-    : "";
-  // Active candidate-prep template wins when seeded; otherwise the
-  // generic hardcoded default applies (keeps client's name off the
-  // candidate's shared calendar).
-  const fallbackSubject = `${formatType(invite.type)} Interview - BreakPoint Talent`;
-  const fallbackBody =
+function defaultCandidateSubject(type: InterviewType): string {
+  return `${formatType(type)} Interview - BreakPoint Talent`;
+}
+function defaultCandidateBody(type: InterviewType, location: string): string {
+  const addrLine = type === "in_person" && location ? `\n• Location: ${location}` : "";
+  const meetLine = type === "video" ? `\n• Join on Google Meet: ${MEET_LINK_TOKEN}` : "";
+  return (
     `Hi [Candidate First Name],\n\nYou are confirmed for your [Interview Type] interview with [Client Company Name] ` +
     `for the [Job Title] role. The calendar invite is on its way.\n\n` +
     `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]${addrLine}${meetLine}\n\n` +
-    `Good luck!`;
-  const subject = applyMergeFieldsClient(invite.candidateTemplate?.subject ?? fallbackSubject, values);
-  const body = applyMergeFieldsClient(invite.candidateTemplate?.body ?? fallbackBody, values);
+    `Good luck!`
+  );
+}
+
+// Per-party subject/body draft. While the recruiter hasn't touched a field,
+// it stays a live preview that re-resolves from its source template as the
+// schedule values change. The first manual edit (or token insert) freezes
+// that field so subsequent date/type changes never clobber the recruiter's
+// wording. Picking a saved template (or "Ace default") re-arms the preview.
+function useInviteDraft(defaultSubject: string, defaultBody: string, values: MergeFieldValues) {
+  const [chosen, setChosen] = useState<{ subject: string; body: string } | null>(null);
+  const [subject, setSubjectState] = useState("");
+  const [body, setBodyState] = useState("");
+  const [subjectTouched, setSubjectTouched] = useState(false);
+  const [bodyTouched, setBodyTouched] = useState(false);
+  const srcSubject = chosen?.subject ?? defaultSubject;
+  const srcBody = chosen?.body ?? defaultBody;
+  useEffect(() => {
+    if (!subjectTouched) setSubjectState(applyMergeFieldsClient(srcSubject, values));
+  }, [srcSubject, values, subjectTouched]);
+  useEffect(() => {
+    if (!bodyTouched) setBodyState(applyMergeFieldsClient(srcBody, values));
+  }, [srcBody, values, bodyTouched]);
+  return {
+    subject,
+    body,
+    setSubject: (v: string) => {
+      setSubjectState(v);
+      setSubjectTouched(true);
+    },
+    setBody: (v: string) => {
+      setBodyState(v);
+      setBodyTouched(true);
+    },
+    pick: (tpl: ActiveTemplateSummary | null) => {
+      setChosen(tpl ? { subject: tpl.subject, body: tpl.body } : null);
+      setSubjectTouched(false);
+      setBodyTouched(false);
+    },
+  };
+}
+
+// Inline subject + body editor for one party, with a saved-template picker
+// and a merge-field inserter. Plain-text body (it becomes the Google event
+// description) so no rich editor is needed.
+function InlineInviteEditor({
+  subject,
+  body,
+  onSubjectChange,
+  onBodyChange,
+  templates,
+  onPickTemplate,
+}: {
+  subject: string;
+  body: string;
+  onSubjectChange: (v: string) => void;
+  onBodyChange: (v: string) => void;
+  templates: ActiveTemplateSummary[];
+  onPickTemplate: (tpl: ActiveTemplateSummary | null) => void;
+}) {
+  const subjectRef = useRef<HTMLInputElement | null>(null);
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+  const lastField = useRef<"subject" | "body">("body");
+
+  function insertToken(token: string) {
+    const target = lastField.current === "subject" ? subjectRef.current : bodyRef.current;
+    const current = lastField.current === "subject" ? subject : body;
+    const apply = lastField.current === "subject" ? onSubjectChange : onBodyChange;
+    if (!target) {
+      apply(current + token);
+      return;
+    }
+    const start = target.selectionStart ?? current.length;
+    const end = target.selectionEnd ?? current.length;
+    const next = current.slice(0, start) + token + current.slice(end);
+    apply(next);
+    requestAnimationFrame(() => {
+      target.focus();
+      const caret = start + token.length;
+      try {
+        target.setSelectionRange(caret, caret);
+      } catch {
+        // some controls reject programmatic selection; harmless
+      }
+    });
+  }
+
   return (
-    <EmailComposer
-      title="Send candidate calendar invite"
-      subtitle={`${invite.jobTitle} · ${invite.clientName}`}
-      draftKey={`interview-invite-${invite.interviewId}-candidate`}
-      initial={{
-        to: candidateEmail ? [candidateEmail] : [],
-        cc: [],
-        bcc: [],
-        subject,
-        body,
-      }}
-      showTemplatePicker
-      templateFilter={(t) => t.category === "interview"}
-      resolveTemplate={(t) => ({
-        subject: applyMergeFieldsClient(t.subject, values),
-        body: applyMergeFieldsClient(t.body, values),
-      })}
-      hideCcField
-      hideBccField
-      mergeValues={values}
-      sendLabel="Send Invite"
-      onClose={onClose}
-      onBack={onBack}
-      backLabel="Back to schedule"
-      onSend={async (draft: EmailDraft) => {
-        if (draft.to.length === 0) {
-          toast.error("No candidate email on file");
-          throw new Error("No recipient");
+    <div className="space-y-2 rounded-lg border border-court-border/60 bg-court-surface-subtle/40 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1.5 text-[11px] text-court-fg-muted">
+          <span className="uppercase tracking-wider">Template</span>
+          <select
+            value=""
+            onChange={(e) => {
+              const v = e.target.value;
+              onPickTemplate(v ? (templates.find((t) => t.id === v) ?? null) : null);
+              e.target.selectedIndex = 0;
+            }}
+            className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg focus:border-brand focus:outline-none"
+          >
+            <option value="__pick">Use a template…</option>
+            <option value="">Ace default copy</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5 text-[11px] text-court-fg-muted">
+          <span className="uppercase tracking-wider">Insert field</span>
+          <select
+            value=""
+            onChange={(e) => {
+              if (e.target.value) insertToken(e.target.value);
+              e.target.selectedIndex = 0;
+            }}
+            className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg focus:border-brand focus:outline-none"
+          >
+            <option value="">Insert field…</option>
+            {MERGE_FIELDS.map((f) => (
+              <option key={f.token} value={f.token}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label className="block text-sm">
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Subject</span>
+        <input
+          ref={subjectRef}
+          type="text"
+          value={subject}
+          onFocus={() => (lastField.current = "subject")}
+          onChange={(e) => onSubjectChange(e.target.value)}
+          className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        />
+      </label>
+      <label className="block text-sm">
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Body</span>
+        <textarea
+          ref={bodyRef}
+          value={body}
+          onFocus={() => (lastField.current = "body")}
+          onChange={(e) => onBodyChange(e.target.value)}
+          rows={8}
+          className="mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm leading-relaxed text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        />
+      </label>
+    </div>
+  );
+}
+
+type ScheduleCandidate = {
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  location: string | null;
+  currentTitle: string | null;
+  currentEmployer: string | null;
+};
+
+function ScheduleInterviewScreen({
+  candidateId,
+  candidateName,
+  candidate,
+  candidateEmail,
+  recruiter,
+  job,
+  onClose,
+}: {
+  candidateId: string;
+  candidateName: string;
+  candidate: ScheduleCandidate;
+  candidateEmail: string | null;
+  recruiter: { firstName: string; fullName: string; email: string; phone: string };
+  job: LocalJobRow;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  // Starts empty so the recruiter makes a deliberate pick (matches the old
+  // modal + blockPast). The live email preview falls back to ~now+1h until a
+  // time is picked, then tracks it.
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [durationMin, setDurationMin] = useState(30);
+  const [timeZone, setTimeZone] = useState<string>(DEFAULT_INTERVIEW_TIMEZONE);
+  const [type, setType] = useState<InterviewType>("video");
+  const [meetingType, setMeetingType] = useState<MeetingProvider>("google");
+  const [microsoftConnected, setMicrosoftConnected] = useState(false);
+  const [interviewerName, setInterviewerName] = useState("");
+  const [interviewerEmail, setInterviewerEmail] = useState("");
+  const [location, setLocation] = useState("");
+  const [ccCsv, setCcCsv] = useState("");
+  const [bccCsv, setBccCsv] = useState("");
+  const [notes, setNotes] = useState("");
+  // "Client will send invite": log the interview for tracking + credit, send
+  // nothing. Same source="client_scheduled" path the old modal used.
+  const [clientWillSendInvite, setClientWillSendInvite] = useState(false);
+  const [sendClientEmail, setSendClientEmail] = useState(true);
+  const [sendCandidateEmail, setSendCandidateEmail] = useState(true);
+  const [templates, setTemplates] = useState<ActiveTemplateSummary[]>([]);
+  // Active interview-scheduling templates seed the per-party defaults (same
+  // as the retired composers: clientTemplate?.subject ?? hardcoded fallback).
+  const [schedTemplates, setSchedTemplates] = useState<
+    Awaited<ReturnType<typeof getInterviewSchedulingTemplates>>
+  >({ candidate: null, client: null });
+  const [err, setErr] = useState<string | null>(null);
+  const [isPending, startSend] = useTransition();
+  // Survives a partial failure: once scheduled we don't re-schedule on a
+  // retry Send, and we don't re-fire a party invite that already went out.
+  const scheduledRef = useRef<{ interviewId: string; meetLink: string | null } | null>(null);
+  const sentRef = useRef<{ client: boolean; candidate: boolean }>({ client: false, candidate: false });
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/microsoft/status");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = (await res.json()) as { connected: boolean };
+        if (!cancelled) setMicrosoftConnected(Boolean(json.connected));
+      } catch {
+        if (!cancelled) setMicrosoftConnected(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Load interview-category templates for the per-party template pickers.
+  useEffect(() => {
+    let cancelled = false;
+    void listActiveTemplates()
+      .then((list) => {
+        if (!cancelled) setTemplates(list.filter((t) => t.category === "interview"));
+      })
+      .catch(() => {
+        // Pickers just stay empty (Ace default copy still works).
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Seed the per-party defaults from the active scheduling templates, exactly
+  // as the retired composers did. Falls back to the hardcoded copy per side.
+  useEffect(() => {
+    let cancelled = false;
+    void getInterviewSchedulingTemplates()
+      .then((t) => {
+        if (!cancelled) setSchedTemplates(t);
+      })
+      .catch(() => {
+        // Keep the hardcoded fallbacks on failure.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Merge values for the live preview. Built from buildValues (verbatim) so
+  // the resolved copy matches the old composers exactly; the Meet link stays
+  // a token here and is spliced in at send once scheduleInterview mints it.
+  const values = useMemo<MergeFieldValues>(() => {
+    const whenISO = scheduledAt
+      ? wallClockInZoneToUTC(scheduledAt, timeZone).toISOString()
+      : new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const syntheticInvite: LocalInviteFlow = {
+      step: "candidate",
+      interviewId: "",
+      scheduledAtISO: whenISO,
+      durationMin,
+      type,
+      meetLink: null,
+      interviewLocation: type === "in_person" ? location : "",
+      jobTitle: job.jobTitle,
+      jobLocation: job.jobLocation,
+      jobDescription: job.jobDescription,
+      jobSalaryRange: job.jobSalaryRange,
+      clientName: job.clientName,
+      clientWebsite: job.clientWebsite,
+      clientLinkedIn: job.clientLinkedIn,
+      clientContacts: job.clientContacts,
+      clientContactName: interviewerName,
+      clientContactEmail: interviewerEmail,
+      ccEmails: parseEmailCsv(ccCsv),
+      bccEmails: parseEmailCsv(bccCsv),
+      timeZone,
+      candidateTemplate: null,
+      clientTemplate: null,
+    };
+    return {
+      ...buildValues({ invite: syntheticInvite, candidate, recruiter }),
+      // Keep the Meet token unresolved in the editor; resolve at send.
+      interviewMeetLink: MEET_LINK_TOKEN,
+    };
+  }, [
+    scheduledAt,
+    timeZone,
+    durationMin,
+    type,
+    location,
+    interviewerName,
+    interviewerEmail,
+    ccCsv,
+    bccCsv,
+    job,
+    candidate,
+    recruiter,
+  ]);
+
+  const clientDefaultSubject = useMemo(
+    () => schedTemplates.client?.subject ?? defaultClientSubject(type, candidateName, job.jobTitle),
+    [schedTemplates, type, candidateName, job.jobTitle],
+  );
+  const clientDefaultBody = useMemo(
+    () => schedTemplates.client?.body ?? defaultClientBody(type, location),
+    [schedTemplates, type, location],
+  );
+  const candidateDefaultSubject = useMemo(
+    () => schedTemplates.candidate?.subject ?? defaultCandidateSubject(type),
+    [schedTemplates, type],
+  );
+  const candidateDefaultBody = useMemo(
+    () => schedTemplates.candidate?.body ?? defaultCandidateBody(type, location),
+    [schedTemplates, type, location],
+  );
+
+  const clientDraft = useInviteDraft(clientDefaultSubject, clientDefaultBody, values);
+  const candidateDraft = useInviteDraft(candidateDefaultSubject, candidateDefaultBody, values);
+
+  function resolveForSend(text: string, meetLink: string | null): string {
+    return text.split(MEET_LINK_TOKEN).join(meetLink ?? "");
+  }
+
+  function onSend() {
+    setErr(null);
+    if (!scheduledAt) return setErr("Pick a date and time.");
+    if (type === "in_person" && !location.trim()) {
+      return setErr("Address required for in-person interviews.");
+    }
+    if (!clientWillSendInvite) {
+      if (sendClientEmail && !interviewerEmail.trim()) {
+        return setErr("Pick an interviewer (client contact) or turn off the client email.");
+      }
+      if (sendCandidateEmail && !candidateEmail) {
+        return setErr("No candidate email on file. Turn off the candidate email to continue.");
+      }
+    }
+    startSend(async () => {
+      // Schedule once. On a retry after a partial send failure we reuse the
+      // interview that already exists rather than minting a duplicate.
+      if (!scheduledRef.current) {
+        const snapped = wallClockInZoneToUTC(scheduledAt, timeZone);
+        const attendees = interviewerName.trim()
+          ? [{ name: interviewerName.trim(), email: interviewerEmail.trim() }]
+          : [];
+        const result = await scheduleInterview({
+          candidateId,
+          placementId: job.placementId,
+          jobRfId: job.jobRfId,
+          clientRfId: job.clientRfId,
+          scheduledAt: snapped.toISOString(),
+          durationMin,
+          type,
+          attendees,
+          notes: notes.trim(),
+          source: clientWillSendInvite ? "client_scheduled" : "ace_scheduled",
+          jobTitle: job.jobTitle,
+          clientName: job.clientName,
+          candidateName,
+          location: type === "in_person" ? location.trim() : undefined,
+          timeZone,
+          meetingType: clientWillSendInvite ? undefined : type === "video" ? meetingType : undefined,
+        });
+        if (!result.ok) {
+          setErr(result.error);
+          toast.error("Couldn't schedule", { description: result.error });
+          return;
         }
-        const result = await sendInterviewInvite({
-          interviewId: invite.interviewId,
+        scheduledRef.current = { interviewId: result.value.interviewId, meetLink: result.value.meetLink };
+        void triggerCalendarSync(router);
+        void upsertInterviewReminder(result.value.interviewId);
+      }
+      // scheduleInterview returns on failure above, so this is always set
+      // here; the guard satisfies the type-narrowing without a non-null `!`.
+      const sched = scheduledRef.current;
+      if (!sched) return;
+      const interviewId = sched.interviewId;
+
+      // Client-scheduled: no emails. The row + calendar + activity log are
+      // already written by scheduleInterview above (recruiter keeps credit).
+      if (clientWillSendInvite) {
+        toast.success("Interview scheduled", { description: "Logged for tracking. No invites were sent." });
+        onClose();
+        return;
+      }
+
+      const failures: string[] = [];
+      // Client invite first (it reuses the schedule-time tracking event;
+      // the candidate invite then gets its own event with the same Meet).
+      if (sendClientEmail && !sentRef.current.client) {
+        const res = await sendInterviewInvite({
+          interviewId,
+          party: "client",
+          attendeeEmail: interviewerEmail.trim(),
+          attendeeName: interviewerName.trim() || undefined,
+          toEmails: [interviewerEmail.trim()],
+          ccEmails: parseEmailCsv(ccCsv),
+          bccEmails: parseEmailCsv(bccCsv),
+          subject: resolveForSend(clientDraft.subject, sched.meetLink),
+          bodyText: resolveForSend(clientDraft.body, sched.meetLink),
+          timeZone,
+        });
+        if (res.ok) {
+          sentRef.current.client = true;
+          if (res.value.meetLink && !sched.meetLink) {
+            sched.meetLink = res.value.meetLink;
+          }
+        } else {
+          failures.push(`Client invite: ${res.error}`);
+        }
+      }
+      if (sendCandidateEmail && candidateEmail && !sentRef.current.candidate) {
+        const meet = sched.meetLink;
+        const res = await sendInterviewInvite({
+          interviewId,
           party: "candidate",
-          attendeeEmail: draft.to[0],
+          attendeeEmail: candidateEmail,
           attendeeName: candidateName || undefined,
           ccEmails: [],
           bccEmails: [],
-          subject: draft.subject,
-          bodyText: draft.body,
-          timeZone: invite.timeZone,
+          subject: resolveForSend(candidateDraft.subject, meet),
+          bodyText: resolveForSend(candidateDraft.body, meet),
+          timeZone,
         });
-        if (!result.ok) {
-          toast.error("Candidate invite failed", { description: result.error });
-          throw new Error(result.error);
+        if (res.ok) {
+          sentRef.current.candidate = true;
+        } else {
+          failures.push(`Candidate invite: ${res.error}`);
         }
-        toast.success("Candidate calendar invite sent", {
-          description: "They'll see Accept / Maybe / Decline in their inbox.",
-        });
-        onSent(result.value.meetLink);
-      }}
-    />
+      }
+
+      if (failures.length > 0) {
+        // Interview is scheduled; some invite(s) didn't send. Keep the screen
+        // open so Send can retry only the failed party (the others are marked
+        // sent and won't re-fire).
+        setErr(failures.join(" · "));
+        toast.error("Some invites didn't send", { description: failures.join(" · ") });
+        return;
+      }
+      toast.success("Interview scheduled", { description: "Invites sent." });
+      onClose();
+    });
+  }
+
+  const emailEditorsDisabled = clientWillSendInvite;
+
+  return (
+    <ModalShell
+      title="Schedule interview"
+      subtitle={`${candidateName} for ${job.jobTitle} at ${job.clientName}`}
+      onClose={onClose}
+      dismissOnOverlay={false}
+      draggable
+      resizable
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isPending}
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+          >
+            <X className="h-3 w-3" /> Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onSend}
+            disabled={isPending}
+            className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+          >
+            {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+            {clientWillSendInvite ? "Schedule interview" : "Send"}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <ScheduleFields
+          scheduledAt={scheduledAt}
+          setScheduledAt={setScheduledAt}
+          durationMin={durationMin}
+          setDurationMin={setDurationMin}
+          timeZone={timeZone}
+          setTimeZone={setTimeZone}
+          type={type}
+          setType={setType}
+          location={location}
+          setLocation={setLocation}
+          notes={notes}
+          setNotes={setNotes}
+          typeExtras={
+            type === "video" && !clientWillSendInvite ? (
+              <MeetingProviderSelect
+                value={meetingType}
+                onChange={setMeetingType}
+                teamsConnected={microsoftConnected}
+              />
+            ) : null
+          }
+          interviewerSlot={
+            <InterviewerPicker
+              initialContacts={job.clientContacts}
+              name={interviewerName}
+              email={interviewerEmail}
+              onChange={(n, e) => {
+                setInterviewerName(n);
+                setInterviewerEmail(e);
+              }}
+            />
+          }
+          ccBccSlot={
+            clientWillSendInvite ? null : (
+              <CcBccPicker
+                clientContacts={job.clientContacts}
+                cc={ccCsv}
+                onCcChange={setCcCsv}
+                bcc={bccCsv}
+                onBccChange={setBccCsv}
+              />
+            )
+          }
+        />
+
+        <label
+          className="flex cursor-pointer items-start gap-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/60 p-3 text-sm"
+          title="Use this when the client is scheduling the interview themselves. We log it on your calendar for tracking + credit and skip the invite emails."
+        >
+          <input
+            type="checkbox"
+            checked={clientWillSendInvite}
+            onChange={(e) => setClientWillSendInvite(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-court-border accent-brand-dark"
+          />
+          <span>
+            <span className="font-semibold text-court-fg">Client will send invite</span>
+            <span className="block text-xs text-court-fg-muted">
+              Log the interview on your calendar + activity log for tracking and credit. Skip the
+              candidate/client invite emails. The client is sending their own.
+            </span>
+          </span>
+        </label>
+
+        {!emailEditorsDisabled && (
+          <>
+            <InviteToggleSection
+              label="Send Client Email"
+              hint={interviewerEmail.trim() ? `To: ${interviewerEmail.trim()}` : "Pick an interviewer above"}
+              enabled={sendClientEmail}
+              onToggle={setSendClientEmail}
+            >
+              <InlineInviteEditor
+                subject={clientDraft.subject}
+                body={clientDraft.body}
+                onSubjectChange={clientDraft.setSubject}
+                onBodyChange={clientDraft.setBody}
+                templates={templates}
+                onPickTemplate={clientDraft.pick}
+              />
+            </InviteToggleSection>
+
+            <InviteToggleSection
+              label="Send Candidate Email"
+              hint={candidateEmail ? `To: ${candidateEmail}` : "No candidate email on file"}
+              enabled={sendCandidateEmail}
+              onToggle={setSendCandidateEmail}
+            >
+              <InlineInviteEditor
+                subject={candidateDraft.subject}
+                body={candidateDraft.body}
+                onSubjectChange={candidateDraft.setSubject}
+                onBodyChange={candidateDraft.setBody}
+                templates={templates}
+                onPickTemplate={candidateDraft.pick}
+              />
+            </InviteToggleSection>
+          </>
+        )}
+
+        {err && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+            {err}
+            {err.includes("Reconnect in Settings") && (
+              <>
+                {" "}
+                <a href="/settings/connectors" className="font-semibold underline">
+                  Go to Settings &gt; Connectors
+                </a>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </ModalShell>
+  );
+}
+
+// Toggle header + collapsible editor body for one invite party. The switch
+// matches the Ace reminder toggle pattern (Button Standard: rounded-full is
+// allowed on toggle switches).
+function InviteToggleSection({
+  label,
+  hint,
+  enabled,
+  onToggle,
+  children,
+}: {
+  label: string;
+  hint: string;
+  enabled: boolean;
+  onToggle: (v: boolean) => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-court-border bg-court-surface p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[13px] font-semibold text-court-fg">{label}</div>
+          <div className="truncate text-[11.5px] text-court-fg-muted">{hint}</div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          aria-label={label}
+          onClick={() => onToggle(!enabled)}
+          className={cn(
+            "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
+            enabled ? "bg-brand" : "bg-court-fg-muted/40",
+          )}
+        >
+          <span
+            className={cn(
+              "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
+              enabled ? "translate-x-5" : "translate-x-0.5",
+            )}
+          />
+        </button>
+      </div>
+      {enabled && <div className="mt-3">{children}</div>}
+    </div>
   );
 }
