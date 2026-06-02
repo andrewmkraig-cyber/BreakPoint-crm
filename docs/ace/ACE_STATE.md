@@ -1,8 +1,16 @@
 # ACE_STATE.md
-Last updated: 2026-06-02 · Ace 76.0
-Current Version: Ace 76.0
+Last updated: 2026-06-02 · Ace 77.0
+Current Version: Ace 77.0
 Last Shipped: 2026-06-02
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 77.0 (2026-06-02)
+
+Three-item mail/sidebar fix. No schema changes. `npm run build` exits 0 (save the two pre-existing react-hooks/exhaustive-deps warnings). Commit `068b659`.
+
+- **Mail composer footer button relabeled "Save" -> "Save Draft" (`src/app/mail/mail-composer.tsx`).** Label text only; the `onSaveDraft` handler, `variant="secondary"`, `Save` icon, and disabled logic are unchanged, and the send / draft-POST paths are untouched. This is an **INTENTIONAL documented exception** to the Ace 71.0 "Save everywhere" label standard - the footer sits next to Send / Send Later, so "Save Draft" disambiguates that it stashes a Gmail draft. (The Button Standard's Toolbar-buttons list already names "Save Draft" as a canonical toolbar label, so this aligns with it rather than violating it.) A code comment at the button marks the exception so a future label sweep won't revert it.
+- **Drafts nav row now shows a muted "(N)" draft count (`src/app/mail/mail-view.tsx`).** Derived from the already-fetched Gmail labels (`labels` state, system `DRAFT` label's `messagesTotal`) via a `useMemo` - **no new query**; the labels fetch is already scoped to the signed-in user's own mailbox via their OAuth token (Gmail drafts are per-user, not `organizationId`-scoped). Renders `(N)` as a `text-court-fg-muted` span at the row's right edge (regular weight, `text-sm`, NOT the tinted Inbox unread pill); at 0 it renders nothing so Drafts looks exactly as before. Inbox / Sent rows unchanged.
+- **Clay-LIGHT sidebar profile card token fix (`src/app/globals.css`).** The card (`bg-court-sidebar-card`) rendered near-white over the tan Clay-light sidebar because Clay light's `--court-sidebar-card` was set to `255 250 243` (#FFFAF3, the content `--court-surface` value) instead of the sidebar surface `--court-sidebar-bg` (`232 210 189` / #E8D2BD). Clay light was the only "(== surface here)" theme whose card token diverged from its sidebar-bg (Hard light/dark + Clay dark already match; Grass/Night use an intentional raised panel). Fixed by pointing the Clay-light card token at `var(--court-sidebar-bg)` (token reference, no hardcoded hex), so it can never drift again. Only the Clay-light line changed; the other 7 theme/mode combos are untouched, and Clay dark still reads correctly.
 
 ## What Shipped in Ace 76.0 (2026-06-02)
 

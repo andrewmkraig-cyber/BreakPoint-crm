@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-06-02 · Ace 76.0
+Last updated: 2026-06-02 · Ace 77.0
 
 ## Active Build Sequence
 
@@ -99,6 +99,10 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 77.0 Mail composer Save Draft label + Drafts nav count + Clay-light profile card token fix (June 2, 2026)
+
+Three-item mail/sidebar fix, no schema changes, `npm run build` exits 0. Commit `068b659`. (1) **Mail composer footer "Save" -> "Save Draft"** (`mail-composer.tsx`) - label only, an intentional documented exception to the 71.0 Save-everywhere standard (the Button Standard already names "Save Draft" as a toolbar label); handler/variant/icon/disabled and the send + draft-POST paths unchanged; a code comment marks the exception. (2) **Drafts nav row shows a muted "(N)" count** (`mail-view.tsx`) derived from the existing per-user Gmail labels fetch (system `DRAFT` `messagesTotal`) - no new query; hidden at 0; `text-court-fg-muted`, regular weight, not the tinted Inbox pill; Inbox/Sent unchanged. (3) **Clay-light sidebar profile card token fix** (`globals.css`) - Clay light's `--court-sidebar-card` was the content surface `#FFFAF3` instead of the tan sidebar surface `#E8D2BD`, so the card read near-white; pointed it at `var(--court-sidebar-bg)` (token reference, no hardcoded hex); only the Clay-light line changed, Clay dark + the other 6 combos untouched. Full detail in ACE_STATE.md under What Shipped in Ace 77.0.
 
 ## Completed - Ace 76.0 Interview restructure: one-screen scheduler + stored sent copy + per-party calendar events + multi-interviewer chips (June 2, 2026)
 

@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-06-02 · Ace 76.0
+Last updated: 2026-06-02 · Ace 77.0
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -116,7 +116,7 @@ Mirrored in ACE_DESIGN.md. Apply to any candidate→job distance and any pipelin
 
 ## Button Standard (added Ace 54.0 - DO NOT CHANGE)
 - Action row buttons (Submit, Apply, Keep, Reject, Add Note, Add to List): rounded-md, outlined, colored border + text, transparent background.
-- Toolbar buttons (Use Template, Insert Field, Edit with Claude, Delete, Save Draft, Send): rounded-md, outlined, NOT pill shaped.
+- Toolbar buttons (Use Template, Insert Field, Edit with Claude, Delete, Save Draft, Send): rounded-md, outlined, NOT pill shaped. **The mail composer footer button reads "Save Draft", a deliberate exception to the Ace 71.0 "Save everywhere" label standard (Ace 77.0) - it sits next to Send / Send Later, so the noun disambiguates that it stashes a Gmail draft. A code comment at the button marks it; do not revert it to "Save" in a future label sweep.**
 - Generate with Claude / Generate Resume / Generate JD: rounded-md, solid-filled dark (the `ai-primary` variant / `CLAUDE_PILL_CLASS` - graphite-leaning dark green fill), NOT outlined. Code is canonical: the shipped pill is solid-filled, superseding the older "dark green outlined" wording from the Ace 54.0 spec.
 - Primary CTA (New Candidate, New Job, + New X at page tops, Save, Create): rounded-md, tinted-green outline (`border border-court-brand bg-court-brand-tint text-court-brand-dark`, hover `bg-court-brand/25`). Code is canonical: the shipped primary is the tinted-green outline, NOT a solid `bg-court-brand text-white` fill - the older "filled green" wording from the Ace 54.0 spec is superseded.
 - Upload Resume: rounded-md, blue outlined (`border-blue-500 text-blue-600`).

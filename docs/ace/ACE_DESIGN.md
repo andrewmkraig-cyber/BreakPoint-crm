@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-06-02 · Ace 76.0
+Last updated: 2026-06-02 · Ace 77.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -337,6 +337,7 @@ Full token coverage on every page — no holdouts. Token names follow the same `
 
 ## Sidebar Profile Card Token (added Ace 65.0)
 - **`--court-sidebar-card` is a dedicated token for the sidebar profile card surface.** Added across all 8 Court Mode palettes (Hard / Clay / Grass / Night Court, light + dark each). The profile card previously borrowed a generic surface token that washed out against the deep-green sidebars on Grass and Night Court; the new token gives the card its own per-theme value so it reads with proper contrast on every palette. Use `--court-sidebar-card` for the sidebar profile card only - it is not a general surface token.
+- **Clay-light fix (Ace 77.0).** On the "flat" palettes (Hard light/dark, Clay light/dark) the card token must equal that palette's `--court-sidebar-bg` (no raised panel); only Grass + Night Court intentionally raise the card above the sidebar. Clay light had drifted - its `--court-sidebar-card` was set to the content `--court-surface` value (`#FFFAF3`) instead of the tan sidebar surface (`#E8D2BD`), so the card read near-white over the sidebar. It now points at `var(--court-sidebar-bg)` so the two can never diverge again. If you ever change a flat palette's sidebar-bg, the card follows automatically; do not reintroduce a separate hardcoded triple on a flat palette.
 
 ## Input Field Treatment (shipped Ace 66.0 - SOURCE OF TRUTH for input shape)
 - **Input fields have their own visual standard, separate from the Button Standard.** Buttons stay `rounded-md` per the Button Standard above; inputs do NOT follow the button shape rule.
