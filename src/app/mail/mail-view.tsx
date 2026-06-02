@@ -1197,7 +1197,7 @@ export function MailView({
           (dragging === "sidebar" ? "bg-brand/20" : "hover:bg-brand/10")
         }
       >
-        <span className="my-2 w-px self-stretch bg-court-border/70" />
+        <span className="w-full self-stretch bg-court-border/60" />
       </div>
 
       <aside
@@ -1388,7 +1388,7 @@ export function MailView({
           (dragging === "list" ? "bg-brand/20" : "hover:bg-brand/10")
         }
       >
-        <span className="my-2 w-px self-stretch bg-court-border/70" />
+        <span className="w-full self-stretch bg-court-border/60" />
       </div>
 
       <section

@@ -64,6 +64,15 @@ export function FloatingThreadWindow() {
   const { markThreadRead } = useMailContext();
 
   const [mounted, setMounted] = useState(false);
+  // On a phone the desktop draggable/resizable popup (default 680x520,
+  // grown to 760 tall on reply) is wider + taller than the viewport, so
+  // it overflowed the screen and pushed the header's X / Minimize off
+  // the right edge — the user got trapped with no reachable close. When
+  // the viewport is below the lg breakpoint we render the window as a
+  // viewport-bounded full-screen sheet (safe-area inset, body scrolls,
+  // X reachable at the top) and disable drag/resize. Desktop is
+  // unchanged. lg:1024px matches the /mail 3-pane breakpoint.
+  const [isMobile, setIsMobile] = useState(false);
   const [detail, setDetail] = useState<MailThreadDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +120,18 @@ export function FloatingThreadWindow() {
   // try to access document.
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // Track sub-lg viewports so the window can switch to the full-screen
+  // sheet layout. matchMedia handles orientation changes / rotation
+  // without a resize-spam listener.
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
   }, []);
 
   // Refetch the thread whenever the context's threadId changes OR the
@@ -409,14 +430,23 @@ export function FloatingThreadWindow() {
   const actionsDisabled = !detail || composerOpen;
   const threadIsUnread = detail?.labelIds?.includes("UNREAD") ?? false;
 
-  return createPortal(
-    <div
-      ref={windowRef}
-      role="dialog"
-      aria-label="Email thread"
-      onPointerDownCapture={bringToFront}
-      className="pointer-events-auto fixed flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
-      style={{
+  // Mobile: a viewport-bounded full-screen sheet inset by the safe-area
+  // (notch / home indicator) so the whole window — including the header
+  // X — sits inside the visible area and the email body scrolls inside
+  // instead of overflowing the screen. Desktop keeps the positioned,
+  // draggable + resizable popup exactly as before.
+  const containerStyle: React.CSSProperties = isMobile
+    ? {
+        left: "env(safe-area-inset-left, 0px)",
+        top: "env(safe-area-inset-top, 0px)",
+        width:
+          "calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))",
+        height:
+          "calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))",
+        zIndex: floatingZ,
+        contain: "layout paint",
+      }
+    : {
         left: `${pos.x}px`,
         top: `${pos.y}px`,
         width: `${size.w}px`,
@@ -426,13 +456,36 @@ export function FloatingThreadWindow() {
         // doesn't have to consider any ancestor (CSS containment).
         // Big perf win when ThreadDetail's email body is dense.
         contain: "layout paint",
-      }}
+      };
+
+  return createPortal(
+    <div
+      ref={windowRef}
+      role="dialog"
+      aria-label="Email thread"
+      onPointerDownCapture={bringToFront}
+      className={
+        "pointer-events-auto fixed flex flex-col overflow-hidden border border-court-border bg-court-surface shadow-2xl " +
+        (isMobile ? "rounded-none" : "rounded-xl")
+      }
+      style={containerStyle}
     >
       <div
-        onPointerDown={onHeaderPointerDown}
-        className="flex shrink-0 cursor-grab select-none items-center gap-2 border-b border-court-border px-3 py-1.5 active:cursor-grabbing"
+        onPointerDown={isMobile ? undefined : onHeaderPointerDown}
+        className={
+          "flex shrink-0 select-none items-center gap-2 border-b border-court-border px-3 py-1.5 " +
+          // Mobile: wrap the toolbar so the action buttons + Minimize/X
+          // can never push the X off the right edge of the sheet (the
+          // overflow-trap this fix closes). Desktop: single-row draggable
+          // title bar exactly as before.
+          (isMobile ? "flex-wrap" : "cursor-grab active:cursor-grabbing")
+        }
       >
-        <GripVertical className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
+        {/* Drag grip is desktop-only — there's no drag on the mobile
+            full-screen sheet, and dropping it frees header width. */}
+        {!isMobile && (
+          <GripVertical className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
+        )}
         <div className="min-w-0 flex-1 truncate text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
           {detail?.subject ?? (loading ? "Loading…" : "Email")}
         </div>
@@ -507,14 +560,19 @@ export function FloatingThreadWindow() {
           </div>
         )}
         <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setMinimized(!minimized)}
-            className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
-            aria-label={minimized ? "Restore" : "Minimize"}
-          >
-            <Minus className="h-4 w-4" />
-          </button>
+          {/* Minimize is a desktop windowing affordance — on the mobile
+              full-screen sheet it would leave an empty full-height shell,
+              so only the X (dismiss) shows there. */}
+          {!isMobile && (
+            <button
+              type="button"
+              onClick={() => setMinimized(!minimized)}
+              className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+              aria-label={minimized ? "Restore" : "Minimize"}
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+          )}
           <button
             type="button"
             onClick={close}
@@ -565,15 +623,17 @@ export function FloatingThreadWindow() {
               />
             )}
           </div>
-          <div
-            onPointerDown={onResizePointerDown}
-            aria-label="Resize"
-            className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize"
-            style={{
-              background:
-                "linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.18) 50%)",
-            }}
-          />
+          {!isMobile && (
+            <div
+              onPointerDown={onResizePointerDown}
+              aria-label="Resize"
+              className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize"
+              style={{
+                background:
+                  "linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.18) 50%)",
+              }}
+            />
+          )}
         </>
       )}
     </div>,

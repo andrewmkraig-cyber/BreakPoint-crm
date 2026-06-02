@@ -218,7 +218,7 @@ export function AppShell({
               {!dragging ? (
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none h-20 w-full bg-court-surface"
+                  className="pointer-events-none h-20 w-full border-b border-court-border/30 bg-court-surface"
                 />
               ) : null}
             </div>
