@@ -34,6 +34,29 @@ export function haversineMiles(
   return EARTH_RADIUS_MILES * c;
 }
 
+// Precision gate for a job-side distance geocode source. Only a precise
+// place may drive a distance: a 5-digit US ZIP, or a "City, ST" string
+// (a two-letter state token after a comma, optionally trailed by a ZIP,
+// e.g. "Solon, OH 44139"). A bare region / freeform blob (e.g.
+// "Northeast Ohio") returns false so the caller blanks the sub-line
+// instead of geocoding it to a regional centroid and showing a
+// fake-precise distance. Shared by both distance surfaces (the pipeline
+// jobLocQuery and the candidate-profile pill via formatDistanceSubLine)
+// so the rule lives in one place — never duplicated, never a second
+// geocoder. NOTE: deliberately NOT applied inside geocodePill, which the
+// candidate-search + backfill paths legitimately call on freeform input.
+const ZIP_QUERY_RE = /^\d{5}$/;
+// `\S` before the comma = non-empty city; `[A-Za-z]{2}` = state code;
+// `(?![A-Za-z])` = exactly two letters (so "OH" / "OH 44139" pass but a
+// full state name like "Ohio" does not — the /jobs/new form stores a
+// two-letter state).
+const CITY_STATE_QUERY_RE = /\S\s*,\s*[A-Za-z]{2}(?![A-Za-z])/;
+export function isPreciseGeocodeQuery(query: string | null | undefined): boolean {
+  const q = (query ?? "").trim();
+  if (!q) return false;
+  return ZIP_QUERY_RE.test(q) || CITY_STATE_QUERY_RE.test(q);
+}
+
 // Canonical distance sub-line format, shared by BOTH surfaces that show
 // a candidate→job distance (the pipeline Location cell and the candidate
 // profile job pill): one decimal place + the "mi" abbreviation. Same
@@ -65,6 +88,10 @@ export async function formatDistanceSubLine(
   const cityStateParts = [jobCity?.trim() ?? "", jobState?.trim() ?? ""].filter(Boolean);
   const query = zipTrimmed || cityStateParts.join(", ");
   if (!query) return "";
+  // Precision gate: only a 5-digit ZIP or "City, ST" drives a distance.
+  // A non-precise job location (a region/freeform string) blanks cleanly
+  // rather than resolving to a regional centroid (no dash, no "N/A").
+  if (!isPreciseGeocodeQuery(query)) return "";
 
   const jobHit: GeoHit | null = await geocodePill(query);
   if (!jobHit) return "";

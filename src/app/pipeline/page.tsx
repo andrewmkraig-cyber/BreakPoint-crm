@@ -30,7 +30,7 @@ import { getInterviewsForOrg } from "@/lib/interviews";
 import { resolveJobTitle } from "@/lib/job-title";
 import { formatLocation } from "@/lib/utils";
 import { geocodePill } from "@/lib/geocode";
-import { haversineMiles, formatMiles } from "@/lib/distance";
+import { haversineMiles, formatMiles, isPreciseGeocodeQuery } from "@/lib/distance";
 
 // Local helper for parsing the Json shape Prisma stores for
 // `Candidate.expectedSalary` (`{ number, currency }`). Returns null when
@@ -157,15 +157,19 @@ async function attachDistanceLines(
     return legacy ? `loc:${legacy.toLowerCase()}` : "";
   };
   const jobLocQuery = (loc: JobLoc): string => {
+    // Precision gate (shared isPreciseGeocodeQuery from src/lib/distance.ts):
+    // only a 5-digit ZIP or a "City, ST" string drives a distance. Every
+    // source — structured zip, structured "City, ST", and the legacy
+    // locations[] fallback — is gated, so a region/freeform blob (e.g.
+    // "Northeast Ohio" left in the RF raw cache) returns "" and the
+    // sub-line blanks cleanly instead of geocoding to a regional centroid.
     const zip = (loc.zip ?? "").trim();
-    if (zip) return zip;
+    if (zip) return isPreciseGeocodeQuery(zip) ? zip : "";
     const parts = [loc.city, loc.state].map((s) => (s ?? "").trim()).filter(Boolean);
-    if (parts.length > 0) return parts.join(", ");
-    // Fallback: structured columns empty -> geocode the legacy free-form
-    // string. geocodePill handles "City, ST" already; un-geocodable blobs
-    // (e.g. "Northeast Ohio") return null and the sub-line blanks cleanly,
-    // exactly as an empty query does.
-    return legacyLoc(loc);
+    const cityState = parts.join(", ");
+    if (cityState) return isPreciseGeocodeQuery(cityState) ? cityState : "";
+    const legacy = legacyLoc(loc);
+    return isPreciseGeocodeQuery(legacy) ? legacy : "";
   };
   const uniqueJobLocs = new Map<string, JobLoc>();
   for (const r of targetRows) {

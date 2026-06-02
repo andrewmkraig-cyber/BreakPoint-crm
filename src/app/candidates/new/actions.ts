@@ -295,35 +295,38 @@ export async function createCandidate(
       currentOrganization: created.currentOrganization,
     });
 
-    // Fire-and-forget geocode of the new candidate's location so the
-    // /pipeline Location distance sub-line works for them on next render
-    // without waiting for the one-shot scripts/geocode-candidates.ts
-    // backfill. We never await this: the create response returns before
-    // the geocode lands, so Nominatim latency / 429 / timeout never
-    // affects the user's "Save candidate" feedback. Failures (null
-    // result, fetch throw, prisma update error) are caught + logged but
-    // never surfaced — the row keeps lat/lng=null and the next backfill
-    // run will retry. Matches the existing chained-promise pattern at
-    // src/app/api/game-plan/find-matches/route.ts:408 (the only other
-    // fire-and-forget DB writer in this codebase).
+    // Geocode the new candidate's location so the /pipeline + profile
+    // distance sub-line works for them on the next render. This is now
+    // AWAITED before the action returns: the previous detached
+    // (non-awaited) promise was unreliable on Vercel serverless — the
+    // function can suspend right after responding, killing the in-flight
+    // geocode, so a new candidate's lat/lng would silently never land
+    // (the Jordan Miller / Jordan Ellis null-coord bug). Awaiting closes
+    // that race. A geocode MISS or failure must NEVER block or fail
+    // candidate creation: geocodePill already swallows fetch errors /
+    // 429 / timeout (5s AbortSignal) and returns null, and the inner
+    // try/catch here also isolates a prisma.update throw so it can't
+    // bubble to the outer create catch. On any miss the row keeps
+    // lat/lng=null exactly as before and scripts/geocode-candidates.ts
+    // remains the backfill safety net. Tenant-scoped on update (Rule 8).
     const candidateLocation = input.location.trim();
     if (candidateLocation) {
-      geocodePill(candidateLocation)
-        .then(async (hit) => {
-          if (!hit) return;
+      try {
+        const hit = await geocodePill(candidateLocation);
+        if (hit) {
           await prisma.candidate.update({
             where: { id: created.id, organizationId: org.id },
             data: { lat: hit.lat, lng: hit.lng },
           });
-        })
-        .catch((err) => {
-          // eslint-disable-next-line no-console
-          console.warn("[createCandidate] geocode follow-up failed", {
-            candidateId: created.id,
-            location: candidateLocation,
-            err: err instanceof Error ? err.message : String(err),
-          });
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[createCandidate] geocode failed (candidate still created)", {
+          candidateId: created.id,
+          location: candidateLocation,
+          err: err instanceof Error ? err.message : String(err),
         });
+      }
     }
 
     // Phase 5A.5.b: write a parallel CandidateResume row whenever the
