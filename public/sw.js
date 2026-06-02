@@ -1,6 +1,6 @@
 // Ace PWA service worker. Bump CACHE_NAME on any logic change so
 // the activate handler purges the previous shell.
-const CACHE_NAME = "ace-shell-v12";
+const CACHE_NAME = "ace-shell-v13";
 const PRECACHE_URLS = ["/", "/offline"];
 
 self.addEventListener("install", (event) => {
@@ -144,102 +144,112 @@ async function closeNotificationsByTags(tags) {
   }
 }
 
+function normalizePushData(raw) {
+  const data = raw && typeof raw === "object" ? raw : {};
+  const fallbackBody = typeof raw === "string" && raw.trim()
+    ? raw.trim()
+    : "Ace has a new update.";
+  const title = typeof data.title === "string" && data.title.trim()
+    ? data.title.trim()
+    : "Ace";
+  const body = typeof data.body === "string" && data.body.trim()
+    ? data.body
+    : fallbackBody;
+  return {
+    ...data,
+    title,
+    body,
+    url: typeof data.url === "string" && data.url ? data.url : "/",
+    tag: typeof data.tag === "string" && data.tag ? data.tag : undefined,
+  };
+}
+
+function readPushData(event) {
+  if (!event.data) return normalizePushData(null);
+  try {
+    const text = event.data.text();
+    if (!text) return normalizePushData(null);
+    try {
+      return normalizePushData(JSON.parse(text));
+    } catch {
+      return normalizePushData(text);
+    }
+  } catch {
+    return normalizePushData(null);
+  }
+}
+
 // Push handler. Payload shape comes from sendPushToUser /
-// sendPushToOrg in src/lib/web-push.ts - always JSON with at least
-// title + body, optionally url and tag. Tag dedupes: subsequent
-// pushes with the same tag replace the previous notification rather
-// than stacking (e.g. 5 texts in one thread => one notification).
+// sendPushToOrg in src/lib/web-push.ts - normally JSON with at least
+// title + body, optionally url and tag. Tag dedupes: subsequent pushes
+// with the same tag replace the previous notification rather than
+// stacking (e.g. 5 texts in one thread => one notification).
 //
-// Focus short-circuit: only suppress the system notification when a
-// same-origin Ace window is BOTH focused and visible. That is the one
-// case the in-app toast (mail-context, reminder-toast-provider, etc.)
-// already covers, so an OS notification would just duplicate it. A
-// window that is merely visible but not focused (desktop Ace sitting
-// in the background while another app is up) still gets the push, as
-// does any mobile PWA whose window is backgrounded. includeUncontrolled
-// covers windows that opened before this SW activated.
+// iOS/WebKit contract: every push event must result in a user-visible
+// notification. Do not suppress while Ace is focused, and do not return
+// early for missing / malformed data. Silent push handling can cause iOS
+// to drop or revoke the PushSubscription, which looks exactly like
+// "notifications and badges only update after opening the app".
 self.addEventListener("push", (event) => {
-  if (!event.data) return;
-  const data = event.data.json();
+  const data = readPushData(event);
   event.waitUntil(
-    self.clients
-      .matchAll({ type: "window", includeUncontrolled: true })
-      .then(async (clients) => {
-        const forceNotify = data.forceNotify === true;
-        await closeNotificationsByTags(data.closeTags);
-        const aceFocused = clients.some(
-          (c) =>
-            c.url.includes(self.location.origin) &&
-            c.focused &&
-            c.visibilityState === "visible",
-        );
-        // iOS/WebKit REQUIRES every received push to show a user-visible
-        // notification (the userVisibleOnly contract). A push handled
-        // silently spends from a hidden budget and, once exhausted, iOS
-        // unsubscribes the PushSubscription - which silently kills ALL
-        // background push delivery (the "badge only updates when the app is
-        // opened" regression). So the ONLY case we suppress the banner is
-        // when an Ace window is already focused + visible (the in-app toast
-        // covers it, and a focused window is not a background-budget event).
-        // There is no longer a silent `badge-sync` push type. forceNotify
-        // overrides the focus suppression for the Settings Test push.
-        if (forceNotify || !aceFocused) {
-          await self.registration.showNotification(data.title, {
-            body: data.body,
-            icon: "/icons/icon-192.png",
-            badge: "/icons/icon-192.png",
-            data: { url: data.url || "/" },
-            // Per-thread tag (sms-<id> / gmail-push) so a burst in one
-            // thread replaces its own banner instead of stacking, while
-            // different threads still surface separately. renotify re-alerts
-            // (sound/vibrate) when a replacement lands so a follow-up text
-            // isn't silently swapped in.
-            tag: data.tag,
-            renotify: true,
-          });
+    (async () => {
+      await closeNotificationsByTags(data.closeTags).catch(() => {});
+      await self.registration.showNotification(data.title, {
+        body: data.body,
+        icon: "/icons/icon-192.png",
+        badge: "/icons/icon-192.png",
+        data: { url: data.url },
+        // Per-thread tag (sms-<id> / gmail-push) so a burst in one
+        // thread replaces its own banner instead of stacking, while
+        // different threads still surface separately. renotify re-alerts
+        // (sound/vibrate) when a replacement lands so a follow-up text
+        // isn't silently swapped in.
+        ...(data.tag ? { tag: data.tag, renotify: true } : {}),
+      });
+
+      // Update badge count via badging API if supported. When Ace is
+      // closed there's no client to call setAppBadge, so the SW does
+      // it from here - otherwise the home-screen badge only appears
+      // after the user opens Ace and the poll fires.
+      //
+      // Payload contract (see src/lib/web-push.ts + unread-counts.ts):
+      // every mail/SMS/call push now carries a NUMERIC badgeCount
+      // equal to unread email threads + unread SMS conversations, so
+      // the common path is a straight setAppBadge(N):
+      //   badgeCount > 0  -> setAppBadge(N): the true combined total.
+      //   badgeCount === 0 -> clearAppBadge(): nothing left to read.
+      //   badgeCount null / missing -> fetch the live combined unread
+      //                     total from the server and set the badge
+      //                     from that; only if THAT fetch also fails do
+      //                     we leave the badge alone (the original
+      //                     last-resort behavior). Legacy pushes that
+      //                     predate the numeric contract, and the Quo
+      //                     SMS/call pushes that omit the count when it
+      //                     is unreliable, land here - and after a long
+      //                     idle a stale badge is worse than a re-derived
+      //                     one, so we self-heal rather than no-op.
+      //
+      // Awaited inside the outer waitUntil so the SW isn't killed
+      // before the badge promise resolves (iOS Safari especially is
+      // quick to kill SW work that escapes waitUntil).
+      if ("setAppBadge" in self.navigator) {
+        const n = data.badgeCount;
+        if (typeof n === "number") {
+          await applyBadge(n);
+        } else {
+          const total = await fetchUnreadTotal();
+          if (total !== null) await applyBadge(total);
         }
-        // Update badge count via badging API if supported. When Ace is
-        // closed there's no client to call setAppBadge, so the SW does
-        // it from here - otherwise the home-screen badge only appears
-        // after the user opens Ace and the poll fires.
-        //
-        // Payload contract (see src/lib/web-push.ts + unread-counts.ts):
-        // every mail/SMS/call push now carries a NUMERIC badgeCount
-        // equal to unread email threads + unread SMS conversations, so
-        // the common path is a straight setAppBadge(N):
-        //   badgeCount > 0  → setAppBadge(N): the true combined total.
-        //   badgeCount === 0 → clearAppBadge(): nothing left to read.
-        //   badgeCount null / missing → fetch the live combined unread
-        //                     total from the server and set the badge
-        //                     from that; only if THAT fetch also fails do
-        //                     we leave the badge alone (the original
-        //                     last-resort behavior). Legacy pushes that
-        //                     predate the numeric contract, and the Quo
-        //                     SMS/call pushes that omit the count when it
-        //                     is unreliable, land here - and after a long
-        //                     idle a stale badge is worse than a re-derived
-        //                     one, so we self-heal rather than no-op.
-        //
-        // Awaited inside the outer waitUntil so the SW isn't killed
-        // before the badge promise resolves (iOS Safari especially is
-        // quick to kill SW work that escapes waitUntil).
-        if ("setAppBadge" in self.navigator) {
-          const n = data.badgeCount;
-          if (typeof n === "number") {
-            await applyBadge(n);
-          } else {
-            const total = await fetchUnreadTotal();
-            if (total !== null) await applyBadge(total);
-          }
-        }
-        // Also tell any open Ace windows (even backgrounded ones) to
-        // refresh their unread counts immediately instead of waiting
-        // for the next 30s poll.
-        const windows = await self.clients.matchAll({ type: "window" });
-        windows.forEach((client) => {
-          client.postMessage({ type: "PUSH_RECEIVED" });
-        });
-      }),
+      }
+      // Also tell any open Ace windows (even backgrounded ones) to
+      // refresh their unread counts immediately instead of waiting
+      // for the next 30s poll.
+      const windows = await self.clients.matchAll({ type: "window" });
+      windows.forEach((client) => {
+        client.postMessage({ type: "PUSH_RECEIVED" });
+      });
+    })(),
   );
 });
 
