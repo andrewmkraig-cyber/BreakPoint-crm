@@ -12,7 +12,6 @@ import {
   getCalendarEventAttendees,
   getEventConferenceData,
   patchCalendarEventDetails,
-  updateCalendarEvent,
   updateEventAsInvite,
 } from "@/lib/google-calendar";
 import { sendGmail } from "@/lib/gmail";
@@ -736,110 +735,6 @@ export async function cancelInterview(
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Cancel failed." };
-  }
-}
-
-// ---- Reschedule ----
-
-export type RescheduleInterviewInput = {
-  interviewId: string;
-  scheduledAt: string;
-  durationMin?: number;
-  timeZone?: string;
-};
-
-export async function rescheduleInterview(input: RescheduleInterviewInput): Promise<Result> {
-  const user = await requireUser();
-  if (!user) return { ok: false, error: "Not signed in." };
-  if (!input.scheduledAt) return { ok: false, error: "Date/time is required." };
-  const when = new Date(input.scheduledAt);
-  if (Number.isNaN(when.getTime())) return { ok: false, error: "Invalid date/time." };
-
-  try {
-    const existing = await prisma.interview.findUnique({
-      where: { id: input.interviewId },
-      select: {
-        id: true,
-        status: true,
-        scheduledAt: true,
-        durationMin: true,
-        googleEventIdMine: true,
-        googleEventIdClient: true,
-        googleEventIdCandidate: true,
-        candidateRfId: true,
-        candidateId: true,
-      },
-    });
-    if (!existing) return { ok: false, error: "Interview not found." };
-    if (existing.status === "cancelled") return { ok: false, error: "Can't reschedule a cancelled interview." };
-
-    const durationMin = input.durationMin && input.durationMin > 0 ? input.durationMin : existing.durationMin;
-
-    // Push the new time to every related Google event. The first party can
-    // reuse googleEventIdMine, so dedupe before PATCHing to avoid duplicate
-    // attendee notifications.
-    const allEventIds = [
-      existing.googleEventIdMine,
-      existing.googleEventIdClient,
-      existing.googleEventIdCandidate,
-    ].filter((id): id is string => Boolean(id));
-    const uniqueEventIds = Array.from(new Set(allEventIds));
-    const anyInviteSent = Boolean(
-      existing.googleEventIdClient || existing.googleEventIdCandidate,
-    );
-    for (const id of uniqueEventIds) {
-      try {
-        await updateCalendarEvent({
-          userId: user.id,
-          eventId: id,
-          startISO: when.toISOString(),
-          durationMin,
-          sendUpdates: anyInviteSent,
-          timeZone: input.timeZone,
-        });
-      } catch (e) {
-        return {
-          ok: false,
-          error: e instanceof Error ? `Calendar update failed: ${e.message}` : "Calendar update failed.",
-        };
-      }
-    }
-
-    await prisma.interview.update({
-      where: { id: input.interviewId },
-      data: { scheduledAt: when, durationMin, status: "scheduled" },
-    });
-
-    // Push the new time onto the local CalendarEvent mirror so the
-    // /calendar grid + Clubhouse widget show the rescheduled time
-    // immediately, without waiting for the next on-demand Google sync.
-    const orgForReschedule = await getCurrentOrg();
-    const endTime = new Date(when.getTime() + durationMin * 60 * 1000);
-    await updateLocalCalendarEventsTime({
-      organizationId: orgForReschedule.id,
-      googleEventIds: uniqueEventIds,
-      startTime: when,
-      endTime,
-    });
-
-    const subjectId = existing.candidateRfId != null ? String(existing.candidateRfId) : existing.candidateId!;
-    await createActionLog({
-      userId: user.id,
-      actionType: "reschedule_interview",
-      subjectType: "candidate",
-      subjectId,
-      metadata: {
-        interviewId: input.interviewId,
-        from: existing.scheduledAt.toISOString(),
-        to: when.toISOString(),
-        durationMin,
-      },
-    });
-
-    revalidateForCandidate({ candidateRfId: existing.candidateRfId, candidateId: existing.candidateId });
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Reschedule failed." };
   }
 }
 
