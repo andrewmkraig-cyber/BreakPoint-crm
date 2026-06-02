@@ -43,6 +43,13 @@ type GmailHistoryEntry = {
       threadId: string;
     };
   }>;
+  labelsAdded?: Array<{
+    message?: {
+      id: string;
+      threadId: string;
+    };
+    labelIds?: string[];
+  }>;
 };
 
 type GmailHistoryResponse = {
@@ -58,6 +65,11 @@ type NewUnreadInboxThread = {
   body: string;
 };
 
+type HistoryMessageRef = {
+  messageId: string;
+  threadId: string;
+};
+
 function headerValue(headers: GmailHeader[] | undefined, name: string): string {
   if (!headers) return "";
   const lower = name.toLowerCase();
@@ -69,6 +81,34 @@ function displaySender(fromHeader: string, addresses: string[]): string {
   const beforeAngle = fromHeader.split("<")[0]?.trim();
   const cleaned = beforeAngle?.replace(/^"+|"+$/g, "").trim();
   return cleaned || addresses[0] || "New mail";
+}
+
+function collectHistoryMessageRefs(entries: GmailHistoryEntry[]): HistoryMessageRef[] {
+  const out: HistoryMessageRef[] = [];
+  const seen = new Set<string>();
+  const add = (message: { id?: string; threadId?: string } | undefined) => {
+    if (!message?.id || !message.threadId) return;
+    const key = `${message.id}:${message.threadId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ messageId: message.id, threadId: message.threadId });
+  };
+
+  for (const entry of entries) {
+    for (const item of entry.messagesAdded ?? []) {
+      add(item.message);
+    }
+    // Gmail can deliver an INBOX watch notice as a labelAdded history record
+    // instead of a messageAdded record. This is common for self-sent mail and
+    // for filter/client flows where the message exists before it lands in the
+    // Inbox. We still fetch current metadata below and require INBOX+UNREAD
+    // before notifying, so broadening this candidate set does not inflate.
+    for (const item of entry.labelsAdded ?? []) {
+      add(item.message);
+    }
+  }
+
+  return out;
 }
 
 async function fetchMessageMeta(
@@ -207,6 +247,7 @@ export async function POST(req: NextRequest) {
     );
     histUrl.searchParams.set("startHistoryId", watch.lastHistoryId);
     histUrl.searchParams.append("historyTypes", "messageAdded");
+    histUrl.searchParams.append("historyTypes", "labelAdded");
     const histRes = await fetch(histUrl.toString(), {
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
@@ -222,44 +263,40 @@ export async function POST(req: NextRequest) {
       const entries = histJson.history ?? [];
       const seenThreads = new Set<string>();
 
-      for (const entry of entries) {
-        for (const msgAdded of entry.messagesAdded ?? []) {
-          const m = msgAdded.message;
-          if (!m?.id || !m.threadId) continue;
-          if (seenThreads.has(m.threadId)) continue;
-          seenThreads.add(m.threadId);
+      for (const ref of collectHistoryMessageRefs(entries)) {
+        if (seenThreads.has(ref.threadId)) continue;
+        seenThreads.add(ref.threadId);
 
-          const meta = await fetchMessageMeta(accessToken, m.id);
-          if (!meta.addresses.length) continue;
+        const meta = await fetchMessageMeta(accessToken, ref.messageId);
+        if (!meta.addresses.length) continue;
 
-          try {
-            await tagThreadByAddresses({
-              threadId: m.threadId,
-              addresses: meta.addresses,
-              organizationId,
-            });
-            addedCount += 1;
-          } catch (err) {
-            console.error("[gmail webhook] tag failed", {
-              threadId: m.threadId,
-              err: err instanceof Error ? err.message : String(err),
-            });
-          }
+        try {
+          await tagThreadByAddresses({
+            threadId: ref.threadId,
+            addresses: meta.addresses,
+            organizationId,
+          });
+          addedCount += 1;
+        } catch (err) {
+          console.error("[gmail webhook] tag failed", {
+            threadId: ref.threadId,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
 
-          // The watch is INBOX-scoped but history.list isn't, so a
-          // concurrent Sent message could ride along. Gate on the real
-          // labels so the badge floor only counts genuine unread inbox
-          // arrivals and never inflates.
-          if (
-            meta.labelIds.includes("INBOX") &&
-            meta.labelIds.includes("UNREAD")
-          ) {
-            newUnreadInboxThreads.set(m.threadId, {
-              threadId: m.threadId,
-              title: displaySender(meta.from, meta.addresses),
-              body: meta.subject || "(no subject)",
-            });
-          }
+        // The watch is INBOX-scoped but history.list isn't, so a concurrent
+        // Sent message could ride along. Gate on the real current labels so
+        // the badge floor only counts genuine unread inbox arrivals and never
+        // inflates.
+        if (
+          meta.labelIds.includes("INBOX") &&
+          meta.labelIds.includes("UNREAD")
+        ) {
+          newUnreadInboxThreads.set(ref.threadId, {
+            threadId: ref.threadId,
+            title: displaySender(meta.from, meta.addresses),
+            body: meta.subject || "(no subject)",
+          });
         }
       }
     } else {
