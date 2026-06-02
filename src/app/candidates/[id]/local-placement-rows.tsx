@@ -2526,8 +2526,16 @@ function ScheduleInterviewScreen({
   // nothing. Same source="client_scheduled" path the old modal used. (New mode
   // only — an existing interview is already logged.)
   const [clientWillSendInvite, setClientWillSendInvite] = useState(false);
-  const [sendClientEmail, setSendClientEmail] = useState(true);
-  const [sendCandidateEmail, setSendCandidateEmail] = useState(true);
+  // New mode: both default ON. Edit mode: ON for a party that was already
+  // invited (Save re-pushes its edited copy per the notify choice), OFF for a
+  // party never emailed — the editor still SHOWS so Andrew can flip it on and
+  // send a fresh invite through the same send path new-schedule uses.
+  const [sendClientEmail, setSendClientEmail] = useState(
+    existingInterview ? existingInterview.clientInvited : true,
+  );
+  const [sendCandidateEmail, setSendCandidateEmail] = useState(
+    existingInterview ? existingInterview.candidateInvited : true,
+  );
   // Active interview-scheduling templates seed the per-party defaults (same
   // as the retired composers: clientTemplate?.subject ?? hardcoded fallback).
   const [schedTemplates, setSchedTemplates] = useState<
@@ -2808,11 +2816,22 @@ function ScheduleInterviewScreen({
     if (type === "in_person" && !location.trim()) {
       return setErr("Address required for in-person interviews.");
     }
+    // A party toggled ON that was never invited will be sent a fresh invite on
+    // commit; block early if its email is missing (mirrors the new-mode guard).
+    if (existingInterview) {
+      if (sendClientEmail && !existingInterview.clientInvited && !interviewerEmail.trim()) {
+        return setErr("Pick an interviewer (client contact) or turn off the client email.");
+      }
+      if (sendCandidateEmail && !existingInterview.candidateInvited && !candidateEmail) {
+        return setErr("No candidate email on file. Turn off the candidate email to continue.");
+      }
+    }
     setAskNotify(true);
   }
 
   function commitEdit(notifyMode: "all" | "new_only" | "none") {
     if (!existingInterview) return;
+    const ex = existingInterview;
     setErr(null);
     startSend(async () => {
       // Interviewer + any Cc become guests on the client event (added per
@@ -2821,8 +2840,15 @@ function ScheduleInterviewScreen({
         { name: interviewerName.trim(), email: interviewerEmail.trim() },
         ...parseEmailCsv(ccCsv).map((email) => ({ name: "", email })),
       ].filter((a) => a.email.length > 0);
+      // Push a party's edited subject/body to its live event + stored copy only
+      // when that party was ALREADY invited (has an event to patch) AND its
+      // toggle is on. A never-invited party has no event to patch — it gets a
+      // fresh invite via sendInterviewInvite below. resolveForSend is a no-op on
+      // a stored copy (it carries the real Meet URL, not the token).
+      const pushClient = ex.clientInvited && sendClientEmail;
+      const pushCandidate = ex.candidateInvited && sendCandidateEmail;
       const result = await updateInterview({
-        interviewId: existingInterview.id,
+        interviewId: ex.id,
         scheduledAt: wallClockInZoneToUTC(scheduledAt, timeZone).toISOString(),
         durationMin,
         type,
@@ -2832,13 +2858,8 @@ function ScheduleInterviewScreen({
         attendees,
         notifyMode,
         bcc: parseEmailCsv(bccCsv),
-        // Push edits only for the party that was actually invited (has a
-        // stored copy + live event). resolveForSend is a no-op here (stored
-        // copies carry the real Meet URL, not the token).
-        ...(existingInterview.clientInvited
-          ? { clientSubject: clientDraft.subject, clientBody: clientDraft.body }
-          : {}),
-        ...(existingInterview.candidateInvited
+        ...(pushClient ? { clientSubject: clientDraft.subject, clientBody: clientDraft.body } : {}),
+        ...(pushCandidate
           ? { candidateSubject: candidateDraft.subject, candidateBody: candidateDraft.body }
           : {}),
       });
@@ -2848,9 +2869,55 @@ function ScheduleInterviewScreen({
         setAskNotify(false);
         return;
       }
-      toast.success("Interview updated");
+
+      // Newly-emailed party: a toggle turned ON for a party that was NOT
+      // previously invited gets a fresh invite through the same working send
+      // path new-schedule uses. The interview already exists, so
+      // sendInterviewInvite creates that party's event, stores the sent copy,
+      // and stamps its sentAt flag. The Meet link is already minted on the
+      // interview, so resolve the token against it.
+      const meet = ex.meetLink;
+      const failures: string[] = [];
+      if (sendClientEmail && !ex.clientInvited && interviewerEmail.trim()) {
+        const res = await sendInterviewInvite({
+          interviewId: ex.id,
+          party: "client",
+          attendeeEmail: interviewerEmail.trim(),
+          attendeeName: interviewerName.trim() || undefined,
+          toEmails: [interviewerEmail.trim()],
+          ccEmails: parseEmailCsv(ccCsv),
+          bccEmails: parseEmailCsv(bccCsv),
+          subject: resolveForSend(clientDraft.subject, meet),
+          bodyText: resolveForSend(clientDraft.body, meet),
+          timeZone,
+        });
+        if (!res.ok) failures.push(`Client invite: ${res.error}`);
+      }
+      if (sendCandidateEmail && !ex.candidateInvited && candidateEmail) {
+        const res = await sendInterviewInvite({
+          interviewId: ex.id,
+          party: "candidate",
+          attendeeEmail: candidateEmail,
+          attendeeName: candidateName || undefined,
+          ccEmails: [],
+          bccEmails: [],
+          subject: resolveForSend(candidateDraft.subject, meet),
+          bodyText: resolveForSend(candidateDraft.body, meet),
+          timeZone,
+        });
+        if (!res.ok) failures.push(`Candidate invite: ${res.error}`);
+      }
+
       void triggerCalendarSync(router);
-      void upsertInterviewReminder(existingInterview.id);
+      void upsertInterviewReminder(ex.id);
+      if (failures.length > 0) {
+        // The time/body edit already landed; only the fresh invite(s) failed.
+        setErr(failures.join(" · "));
+        toast.error("Some invites didn't send", { description: failures.join(" · ") });
+        setAskNotify(false);
+        return;
+      }
+      toast.success("Interview updated");
       onClose();
     });
   }
@@ -2921,17 +2988,6 @@ function ScheduleInterviewScreen({
       }
     >
       <div className="space-y-4">
-        {/* TEMP DIAGNOSTIC MARKER (remove after the live-vs-repo divergence
-            is resolved). Proves which component the live route renders + why
-            edit mode might look "time-only": if no body editors show, the
-            cInv/candInv flags below are false. Bright pink so it can't be
-            missed in a screenshot. */}
-        <div className="rounded bg-pink-600 px-2 py-1 text-[11px] font-bold text-white">
-          EDITv2 · {isEdit ? "EDIT" : "NEW"}
-          {isEdit && (
-            <> · cInv={String(existingInterview?.clientInvited)} candInv={String(existingInterview?.candidateInvited)}</>
-          )}
-        </div>
         <ScheduleFields
           scheduledAt={scheduledAt}
           setScheduledAt={setScheduledAt}
@@ -3033,29 +3089,44 @@ function ScheduleInterviewScreen({
           </>
         )}
 
-        {/* Edit mode: the bodies that actually went out, editable. Pushed to
-            the live event + stored copy on Save (per the notify choice). */}
-        {isEdit && existingInterview?.clientInvited && (
-          <div className="rounded-xl border border-court-border bg-court-surface p-3">
-            <div className="mb-2 text-[13px] font-semibold text-court-fg">Client email</div>
-            <InlineInviteEditor
-              subject={clientDraft.subject}
-              body={clientDraft.body}
-              onSubjectChange={clientDraft.setSubject}
-              onBodyChange={clientDraft.setBody}
-            />
-          </div>
-        )}
-        {isEdit && existingInterview?.candidateInvited && (
-          <div className="rounded-xl border border-court-border bg-court-surface p-3">
-            <div className="mb-2 text-[13px] font-semibold text-court-fg">Candidate email</div>
-            <InlineInviteEditor
-              subject={candidateDraft.subject}
-              body={candidateDraft.body}
-              onSubjectChange={candidateDraft.setSubject}
-              onBodyChange={candidateDraft.setBody}
-            />
-          </div>
+        {/* Edit mode: ALWAYS show both party editors (toggle + subject + body),
+            exactly like new-schedule mode — never hidden by the invited flags.
+            Toggle defaults ON for a party already invited (Save re-pushes its
+            edited copy per the notify choice) and OFF for a party never emailed
+            (the editor still shows so Andrew can flip it on and send a fresh
+            invite). Each editor is seeded from the stored sent copy when present
+            and the scheduling-template default otherwise (see the *Default
+            memos above). */}
+        {isEdit && (
+          <>
+            <InviteToggleSection
+              label="Send Client Email"
+              hint={interviewerEmail.trim() ? `To: ${interviewerEmail.trim()}` : "Pick an interviewer above"}
+              enabled={sendClientEmail}
+              onToggle={setSendClientEmail}
+            >
+              <InlineInviteEditor
+                subject={clientDraft.subject}
+                body={clientDraft.body}
+                onSubjectChange={clientDraft.setSubject}
+                onBodyChange={clientDraft.setBody}
+              />
+            </InviteToggleSection>
+
+            <InviteToggleSection
+              label="Send Candidate Email"
+              hint={candidateEmail ? `To: ${candidateEmail}` : "No candidate email on file"}
+              enabled={sendCandidateEmail}
+              onToggle={setSendCandidateEmail}
+            >
+              <InlineInviteEditor
+                subject={candidateDraft.subject}
+                body={candidateDraft.body}
+                onSubjectChange={candidateDraft.setSubject}
+                onBodyChange={candidateDraft.setBody}
+              />
+            </InviteToggleSection>
+          </>
         )}
 
         {/* Edit mode: ONE Save → three-way update-choice. The time always

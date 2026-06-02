@@ -774,13 +774,6 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
 
         {/* Body */}
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
-          {/* TEMP DIAGNOSTIC MARKER (remove after the live-vs-repo divergence
-              is resolved). Confirms the live calendar/widget drawer is the
-              current build and that interview events show the read-only detail
-              with Edit -> the scheduler, not a generic time form. */}
-          <div className="rounded bg-pink-600 px-2 py-1 text-[11px] font-bold text-white">
-            DRAWERv2 · interview={String(isInterviewEvent)}
-          </div>
           {/* Interview-aware strip. Surfaces parity context ("what the
               recipient saw") plus Edit / Cancel wired to the existing
               interview handlers. Only for calendar blocks that map to an
