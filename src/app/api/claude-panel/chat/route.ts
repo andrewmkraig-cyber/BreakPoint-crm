@@ -72,7 +72,8 @@ const SYSTEM_PROMPT =
   "Action tools (move_candidate_stage / add_note / draft_email / inactivate_job / privatize_job / reactivate_job / delete_job / delete_candidate / reset_activity_log / reset_placements / update_placement_field) are PROPOSALS, not executions. Calling one stops your turn and the recruiter gets a Confirm/Cancel card. Never call an action tool with invented ids; resolve real candidates / placements / clients / jobs via the search tools first. Job lifecycle routing: 'close out' / 'mark inactive' → inactivate_job; 'make private' / 'hide from active' → privatize_job; 'reopen' / 'reactivate' → reactivate_job. delete_job and delete_candidate are destructive and cascade. Only use them when the recruiter explicitly says 'delete' or 'permanently remove' the named record. " +
   "Data-reset tools (reset_activity_log / reset_placements / update_placement_field) are destructive and require explicit recruiter intent. reset_activity_log wipes ActionLog rows in a date range (omit dateFrom/dateTo to wipe everything). reset_placements deletes Placements matching dateFrom/dateTo/stage filters and cascades to dependent Interview rows. update_placement_field edits exactly one field on one placement; the only editable fields are placedAt, startConfirmedAt, stage, feeAmount, offerReceivedAt. Resolve the placementId via search_candidates → get_pipeline first; never invent it. Use ISO 8601 (YYYY-MM-DD or full ISO timestamp) for any date value. The current Eastern Time is {{NOW_ET}} (today's date is {{TODAY}}). Use the current time to resolve relative phrases like 'this week' / 'last month' / 'this afternoon' into ISO dates. " +
   "Creating reminders - create_reminder is a DIRECT action, NOT a Confirm-card proposal: calling it writes an Ace reminder immediately and the recruiter gets a single summary receipt. Use it for 'remind me…' / 'add a reminder…' requests and for a pasted list of timed items - emit ONE create_reminder call PER reminder in the same turn (six reminders = six calls). The CURRENT Eastern time is {{NOW_ET}} - resolve EVERY relative phrase against it: 'in 20 minutes' = {{NOW_ET}} + 20 min, 'in 2 hours' = {{NOW_ET}} + 2h, 'tonight' / 'tomorrow at 3pm' relative to that same clock. Do NOT guess the current time. reminderAtIso MUST carry an explicit Eastern Time offset: the current Eastern offset is {{ET_OFFSET}} (use -04:00 during EDT / -05:00 during EST to match the reminder's date). Example: at 2026-06-10T15:00:00-04:00, 'in 20 minutes' is 2026-06-10T15:20:00-04:00. A reminderAtIso WITHOUT an explicit offset is rejected, not created - never emit a bare/naive datetime. After calling create_reminder do not write any extra confirmation text - the receipt speaks for itself. " +
-  "After calling an action tool do not write any more text. The card speaks for itself.";
+  "After calling an action tool do not write any more text. The card speaks for itself. " +
+  "BULK actions - when the recruiter wants the SAME action on MORE THAN ONE record at once ('make all active jobs inactive', 'reactivate every private job', 'delete these 5 candidates'), use the BULK tools, NOT N single-id calls. The bulk tools are inactivate_jobs { jobIds: [...] }, reactivate_jobs { jobIds: [...] }, delete_jobs { jobIds: [...] }, and delete_candidates { candidateIds: [...] }. The flow is always: FIRST enumerate the real target ids via a read tool (search_jobs / get_pipeline / search_candidates) - never invent ids - THEN emit ONE bulk call carrying EVERY id in the array (eleven jobs = one inactivate_jobs call with eleven ids, NOT eleven inactivate_job calls). One bulk call produces ONE Confirm card listing all the records. Use the single-id tools (inactivate_job / reactivate_job / delete_job / delete_candidate) only for a genuine one-off - a single named record. delete_jobs and delete_candidates are destructive and cascade; they still require Confirm, just one batched card for the whole set. If a read tool reports more total matches than it returned in one batch, page for the rest before the bulk call so the id set is complete.";
 
 // Custom data tools — exposed to Claude so it can pull live records
 // from Neon. Schemas mirror the parameters Andrew is most likely to ask
@@ -428,6 +429,74 @@ const DATA_TOOLS: Anthropic.Tool[] = [
       required: ["placementId", "fieldName", "newValue"],
     },
   },
+  {
+    name: "inactivate_jobs",
+    description:
+      "BULK inactivate: propose moving MULTIPLE jobs to the Inactive bucket (lifecycle=inactive, isOpen=false) in ONE turn. Use THIS - not repeated inactivate_job calls - whenever the recruiter wants more than one job inactivated at once ('inactivate all active jobs', 'close out these roles'). FIRST enumerate the real job ids via search_jobs, then call this ONCE with every jobId in the array. Never invent ids. Each id may be a cuid OR a legacy rfId. One call produces ONE Confirm card listing all the jobs.",
+    input_schema: {
+      type: "object",
+      properties: {
+        jobIds: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "All job ids to inactivate, gathered from search_jobs (each a cuid OR numeric legacyRfId). Pass the FULL set in one call - do not split into multiple calls.",
+        },
+      },
+      required: ["jobIds"],
+    },
+  },
+  {
+    name: "reactivate_jobs",
+    description:
+      "BULK reactivate: propose moving MULTIPLE jobs back to Active (lifecycle=active, isOpen=true) from Private or Inactive in ONE turn. Use THIS - not repeated reactivate_job calls - whenever the recruiter wants more than one job reactivated at once ('reactivate all private jobs', 'reopen these roles'). FIRST enumerate the real job ids via search_jobs, then call this ONCE with every jobId in the array. Never invent ids. Each id may be a cuid OR a legacy rfId. One call produces ONE Confirm card listing all the jobs.",
+    input_schema: {
+      type: "object",
+      properties: {
+        jobIds: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "All job ids to reactivate, gathered from search_jobs (each a cuid OR numeric legacyRfId). Pass the FULL set in one call - do not split into multiple calls.",
+        },
+      },
+      required: ["jobIds"],
+    },
+  },
+  {
+    name: "delete_jobs",
+    description:
+      "BULK delete: propose permanently deleting MULTIPLE jobs in ONE turn. The recruiter must Confirm before anything lands. Use THIS - not repeated delete_job calls - whenever the recruiter explicitly says 'delete' / 'remove' / 'permanently delete' more than one job at once. Never use for routine 'inactivate' / 'close out' requests, which use inactivate_jobs instead. FIRST enumerate the real job ids via search_jobs, then call this ONCE with every jobId in the array. Never invent ids. Each id may be a cuid OR a legacy rfId. Cascades through Placement / Interview / CandidateMatch rows for each job. One call produces ONE Confirm card listing every job that will be deleted.",
+    input_schema: {
+      type: "object",
+      properties: {
+        jobIds: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "All job ids to permanently delete, gathered from search_jobs (each a cuid OR numeric legacyRfId). Pass the FULL set in one call - do not split into multiple calls.",
+        },
+      },
+      required: ["jobIds"],
+    },
+  },
+  {
+    name: "delete_candidates",
+    description:
+      "BULK delete: propose permanently deleting MULTIPLE candidates in ONE turn. The recruiter must Confirm before anything lands. Use THIS - not repeated delete_candidate calls - ONLY when the recruiter explicitly says 'delete' / 'remove' / 'permanently delete' more than one candidate at once. FIRST enumerate the real candidate ids via search_candidates, then call this ONCE with every candidateId in the array. Never invent ids. Each id may be a cuid OR a numeric rfId. Cascades through Placement / Interview / CandidateResume / CandidateListMembership / CallLog / SmsMessage / GmailThreadTag rows for each candidate. One call produces ONE Confirm card listing every candidate that will be deleted.",
+    input_schema: {
+      type: "object",
+      properties: {
+        candidateIds: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "All candidate ids to permanently delete, gathered from search_candidates (each a cuid OR numeric rfId). Pass the FULL set in one call - do not split into multiple calls.",
+        },
+      },
+      required: ["candidateIds"],
+    },
+  },
 ];
 
 // Names of the client-managed action tools. The streaming loop matches
@@ -445,6 +514,22 @@ const ACTION_TOOL_NAMES = new Set([
   "reset_activity_log",
   "reset_placements",
   "update_placement_field",
+]);
+
+// Bulk action tools — the same lifecycle / destructive operations as the
+// single-id action tools above, but each carries an ARRAY of ids so the
+// model can act on a whole enumerated set in ONE turn ("make all active
+// jobs inactive", "delete these 5 candidates"). Kept OUT of
+// ACTION_TOOL_NAMES on purpose: the streaming loop routes bulk calls
+// through a dedicated branch that runs BEFORE the singular action branch
+// and collapses the whole array to ONE batched Confirm card (deletes stay
+// gated — the destructive-confirm rule), mirroring the reminder over-cap
+// batch-confirm path. Separate set = the two filters never overlap.
+const BULK_ACTION_TOOL_NAMES = new Set([
+  "inactivate_jobs",
+  "reactivate_jobs",
+  "delete_jobs",
+  "delete_candidates",
 ]);
 
 const MAX_TOOL_ROUNDS = 4;
@@ -1425,6 +1510,26 @@ type ActionResolution =
       candidateName: string;
     }
   | {
+      kind: "bulk_action";
+      description: string;
+      action:
+        | "inactivate_jobs"
+        | "reactivate_jobs"
+        | "delete_jobs"
+        | "delete_candidates";
+      verb: "Inactivate" | "Reactivate" | "Delete";
+      noun: "jobs" | "candidates";
+      destructive: boolean;     // delete_* — the card must keep its Confirm
+      count: number;            // resolved targets (cross-tenant/unknown dropped)
+      requestedCount: number;   // ids the model passed in
+      unresolvedCount: number;  // dropped ids → reported as per-item failures at execute time
+      cascadeNote: string | null; // deletes: the cascade scope warning for the card
+      // Full resolved cuid + display label list. Deletes show every NAME
+      // (not just a count) so the recruiter sees exactly what cascades.
+      // The executor (later prompt) acts on these canonical cuids.
+      items: Array<{ id: string; label: string }>;
+    }
+  | {
       kind: "reset_activity_log";
       description: string;
       count: number;
@@ -1700,6 +1805,82 @@ async function describeAction(
         description: `Permanently delete ${candidateName}. This cannot be undone.`,
         candidateId: candidate?.id ?? null,
         candidateName,
+      };
+    }
+
+    if (
+      name === "inactivate_jobs" ||
+      name === "reactivate_jobs" ||
+      name === "delete_jobs" ||
+      name === "delete_candidates"
+    ) {
+      const isCandidate = name === "delete_candidates";
+      const destructive =
+        name === "delete_jobs" || name === "delete_candidates";
+      const noun: "jobs" | "candidates" = isCandidate ? "candidates" : "jobs";
+      const verb: "Inactivate" | "Reactivate" | "Delete" =
+        name === "inactivate_jobs"
+          ? "Inactivate"
+          : name === "reactivate_jobs"
+            ? "Reactivate"
+            : "Delete";
+
+      const rawIds = isCandidate ? input.candidateIds : input.jobIds;
+      const ids = Array.isArray(rawIds)
+        ? rawIds.filter(
+            (x): x is string => typeof x === "string" && x.trim().length > 0,
+          )
+        : [];
+      const requestedCount = ids.length;
+
+      // Resolve every id to its real org-scoped display name. Tenant
+      // scoping lives in the resolvers (Rule 8): a cross-tenant or
+      // unknown id resolves to null and is silently DROPPED here — never
+      // acted on cross-tenant — and surfaces as an unresolvedCount the
+      // executor will report as a per-item failure in a later prompt.
+      // De-dupe by resolved cuid so a doubled id can't double-act.
+      const items: Array<{ id: string; label: string }> = [];
+      const seen = new Set<string>();
+      for (const ref of ids) {
+        if (isCandidate) {
+          const c = await resolveCandidate(ref, orgId);
+          if (!c || seen.has(c.id)) continue;
+          seen.add(c.id);
+          items.push({ id: c.id, label: joinName(c.firstName, c.lastName) });
+        } else {
+          const j = await resolveJobWithClient(ref, orgId);
+          if (!j || seen.has(j.id)) continue;
+          seen.add(j.id);
+          const clientName = j.client?.name ?? "(unknown client)";
+          items.push({ id: j.id, label: `${j.title} at ${clientName}` });
+        }
+      }
+
+      const count = items.length;
+      const unresolvedCount = requestedCount - count;
+      const singular = noun.slice(0, -1); // "jobs" → "job", "candidates" → "candidate"
+      const nounLabel = count === 1 ? singular : noun;
+      const cascadeNote = destructive
+        ? isCandidate
+          ? "Cascades through Placement / Interview / CandidateResume / CandidateListMembership / CallLog / SmsMessage / GmailThreadTag rows for each candidate."
+          : "Cascades through Placement / Interview / CandidateMatch rows for each job."
+        : null;
+      const description = destructive
+        ? `Permanently delete ${count} ${nounLabel}. This cannot be undone.`
+        : `${verb} ${count} ${nounLabel}.`;
+
+      return {
+        kind: "bulk_action",
+        description,
+        action: name,
+        verb,
+        noun,
+        destructive,
+        count,
+        requestedCount,
+        unresolvedCount,
+        cascadeNote,
+        items,
       };
     }
 
@@ -2374,6 +2555,49 @@ export async function POST(req: NextRequest) {
               failures,
             });
             log("create_reminder_batch", { requested: reminderUses.length }, created);
+            break;
+          }
+
+          // Bulk action tools (inactivate_jobs / reactivate_jobs /
+          // delete_jobs / delete_candidates) carry an ARRAY of ids and
+          // collapse the whole set to ONE batched Confirm card per call —
+          // mirroring the reminder over-cap batch-confirm branch above —
+          // instead of N per-item cards. Routed BEFORE the singular action
+          // branch so a bulk call wins-and-breaks; the singular filter
+          // below never sees these names (they're not in
+          // ACTION_TOOL_NAMES). Deletes stay gated behind this confirm
+          // (destructive-confirm rule — the card just batches the set).
+          // NOTHING executes here: we only emit the action_pending confirm
+          // PAYLOAD (one per bulk call, normally one). The executor that
+          // fires on Confirm is wired in a later prompt, so confirming the
+          // card does not yet act — that is expected at this step.
+          const bulkUses = toolUses.filter((tu) =>
+            BULK_ACTION_TOOL_NAMES.has(tu.name),
+          );
+          if (bulkUses.length > 0) {
+            conversation.push({ role: "assistant", content: finalMsg.content });
+            for (const tu of bulkUses) {
+              const resolved = await describeAction(tu.name, tu.input, org.id);
+              send({
+                t: "action_pending",
+                id: tu.id,
+                name: tu.name,
+                input: tu.input,
+                resolved,
+              });
+              log(
+                "action_pending",
+                {
+                  name: tu.name,
+                  count: resolved.kind === "bulk_action" ? resolved.count : 0,
+                  unresolved:
+                    resolved.kind === "bulk_action"
+                      ? resolved.unresolvedCount
+                      : 0,
+                },
+                0,
+              );
+            }
             break;
           }
 
