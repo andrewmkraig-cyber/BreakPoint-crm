@@ -14,6 +14,16 @@ import {
 } from "@/components/ui/data-table";
 import { TabStrip } from "@/components/ui/tab-strip";
 
+// Display-only: drop a trailing US zip (5-digit or ZIP+4) so the Location
+// column reads "City, ST" instead of "City, ST 01760". Applied at render
+// only — r.location keeps the full string so location search still matches
+// on zip. If stripping leaves nothing (a bare-zip row like "41042"), the
+// original is kept rather than rendering blank.
+function cityStateOnly(loc: string): string {
+  const out = loc.replace(/\s*,?\s*\d{5}(?:-\d{4})?\s*$/, "").trim();
+  return out || loc;
+}
+
 export type JobLifecycle = "active" | "private" | "inactive";
 
 export type OwnerScope = "mine" | "theirs" | "all";
@@ -228,7 +238,7 @@ export function JobsView(props: JobsViewProps) {
                     {r.location ? (
                       <span className="inline-flex items-center gap-1">
                         <MapPin className="h-3 w-3 text-court-fg-muted" />
-                        {r.location}
+                        {cityStateOnly(r.location)}
                       </span>
                     ) : (
                       "—"
