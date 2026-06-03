@@ -57,9 +57,11 @@ function coerceCriteria(
 export function VerticalsSection({
   verticals,
   sequences,
+  globalDailyCap,
 }: {
   verticals: VerticalRow[];
   sequences: string[];
+  globalDailyCap: number;
 }) {
   const [openVerticalId, setOpenVerticalId] = useState<string | null>(
     verticals[0]?.id ?? null,
@@ -140,6 +142,7 @@ export function VerticalsSection({
                               version={s.version}
                               savedSearchId={s.id}
                               sequences={sequences}
+                              globalDailyCap={globalDailyCap}
                               onDone={() => setEditingSearchId(null)}
                             />
                           )}
@@ -170,6 +173,7 @@ export function VerticalsSection({
                           version={0}
                           verticalId={v.id}
                           sequences={sequences}
+                          globalDailyCap={globalDailyCap}
                           onDone={() => setEditingSearchId(null)}
                         />
                       </div>
@@ -271,6 +275,7 @@ function SavedSearchEditForm({
   savedSearchId,
   verticalId,
   sequences,
+  globalDailyCap,
   onDone,
 }: {
   mode: "edit" | "create";
@@ -281,6 +286,7 @@ function SavedSearchEditForm({
   savedSearchId?: string;
   verticalId?: string;
   sequences: string[];
+  globalDailyCap: number;
   onDone: () => void;
 }) {
   const router = useRouter();
@@ -291,8 +297,18 @@ function SavedSearchEditForm({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  // A per-search cap can never exceed the org's global daily limit.
+  // `globalDailyCap` is the persisted value threaded down from the page;
+  // editing the global cap (Daily Limits section) triggers a soft
+  // refresh that re-flows the new value here, so this re-evaluates live.
+  const exceedsGlobal = !Number.isNaN(contactCap) && contactCap > globalDailyCap;
+
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (exceedsGlobal) {
+      setError(`Daily contact cap cannot exceed the global daily limit of ${globalDailyCap}.`);
+      return;
+    }
     const input = {
       name,
       // Empty field reads as NaN while editing; persist it as 0 (the
@@ -355,8 +371,14 @@ function SavedSearchEditForm({
             onChange={(e) =>
               setContactCap(e.target.value === "" ? NaN : Number(e.target.value))
             }
+            aria-invalid={exceedsGlobal}
             className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
           />
+          {exceedsGlobal && (
+            <span className="mt-1 block text-[11px] text-red-600 dark:text-red-300">
+              Lower to meet daily limit.
+            </span>
+          )}
         </Field>
       </div>
 
@@ -386,7 +408,7 @@ function SavedSearchEditForm({
         </button>
         <button
           type="submit"
-          disabled={pending}
+          disabled={pending || exceedsGlobal}
           className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
         >
           {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}

@@ -72,6 +72,23 @@ export async function deleteVertical(verticalId: string): Promise<void> {
 
 // ---- Saved searches ----
 
+// A per-search contact cap can never exceed the org's global daily
+// limit. Read the org's current globalDailyCap and reject anything
+// higher so a crafted request can't bypass the client-side check.
+// Mirrors the live validation in SavedSearchEditForm.
+async function assertContactCapWithinGlobal(orgId: string, contactCap: number): Promise<void> {
+  const config = await prisma.bdOrgConfig.findUnique({
+    where: { organizationId: orgId },
+    select: { globalDailyCap: true },
+  });
+  const globalDailyCap = config?.globalDailyCap ?? 80;
+  if (contactCap > globalDailyCap) {
+    throw new Error(
+      `Daily contact cap (${contactCap}) cannot exceed the global daily limit of ${globalDailyCap}. Lower to meet daily limit.`,
+    );
+  }
+}
+
 export async function createSavedSearch(verticalId: string, input: SavedSearchInput): Promise<string> {
   const org = await getCurrentOrg();
   const vertical = await prisma.vertical.findFirst({
@@ -79,13 +96,15 @@ export async function createSavedSearch(verticalId: string, input: SavedSearchIn
     select: { id: true },
   });
   if (!vertical) throw new Error("Vertical not found");
+  const contactCap = Math.max(0, Math.floor(input.contactCap));
+  await assertContactCapWithinGlobal(org.id, contactCap);
   const created = await prisma.savedSearch.create({
     data: {
       organizationId: org.id,
       verticalId: vertical.id,
       name: input.name.trim() || "Untitled search",
       criteria: input.criteria as unknown as Prisma.InputJsonValue,
-      contactCap: Math.max(0, Math.floor(input.contactCap)),
+      contactCap,
     },
     select: { id: true },
   });
@@ -117,13 +136,16 @@ export async function updateSavedSearch(
   });
   if (!existing) throw new Error("Saved search not found");
 
+  const contactCap = Math.max(0, Math.floor(input.contactCap));
+  await assertContactCapWithinGlobal(org.id, contactCap);
+
   await prisma.$transaction(async (tx) => {
     await tx.savedSearch.update({
       where: { id: existing.id },
       data: {
         name: input.name.trim() || "Untitled search",
         criteria: input.criteria as unknown as Prisma.InputJsonValue,
-        contactCap: Math.max(0, Math.floor(input.contactCap)),
+        contactCap,
       },
     });
     await tx.savedSearchVersion.create({

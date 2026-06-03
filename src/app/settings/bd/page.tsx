@@ -198,7 +198,11 @@ export default async function BdSettingsPage() {
         title="Verticals & Saved Searches"
         description="Targets for the morning TheirStack discovery run. Each saved search defines who Apollo enriches and which sequence picks them up."
       >
-        <VerticalsSection verticals={verticals} sequences={sequences.map((s) => s.name)} />
+        <VerticalsSection
+          verticals={verticals}
+          sequences={sequences.map((s) => s.name)}
+          globalDailyCap={limitsConfig.globalDailyCap}
+        />
       </CollapsibleSection>
 
       <CollapsibleSection
