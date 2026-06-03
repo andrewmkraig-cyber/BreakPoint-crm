@@ -6,7 +6,12 @@ Live at: ace.breakpointtalent.com
 
 ## What Shipped in Ace 79.0 (2026-06-03)
 
-A 16-item fix batch (numbered items across nine prompt batches) plus four same-session commits that were not in the original batch list. No blocking schema changes except the one nullable indexed column in Batch 7. `npm run build` exits 0 (save the two pre-existing react-hooks/exhaustive-deps warnings). **Batch 2 (calendar Event Types legend swatches / resume watermark default position / jobs Delete un-pin) is intentionally NOT in this shipped log - it was never committed on this branch this session; it is parked under ACE_ROADMAP.md ▸ Ace 79.0 open follow-ups as not-yet-shipped.**
+A 16-item fix batch (numbered items across nine prompt batches) plus four same-session commits that were not in the original batch list. No blocking schema changes except the one nullable indexed column in Batch 7. `npm run build` exits 0 (save the two pre-existing react-hooks/exhaustive-deps warnings). **Batch 2 has now shipped (`87e7599`) - see its entry below.**
+
+**Batch 2 - calendar legend / watermark / jobs Delete (`87e7599`)**
+- **Calendar Event Types legend swatches now match the tile source of truth** (`lib/calendar/utils.ts` `eventTypeMeta()`): the Interview and Client Call swatches in `left-rail.tsx` `EventTypeLegend()` were swapped. Corrected so Interview = blue, Client Call = green, Reminder = orange (amber), Other unchanged. Tile colors themselves untouched; only the legend chip/fill/ring tokens changed. Court Mode tokens only, no hex. Reminder tiles stay Ace-native (toast-only).
+- **Resume watermark logo default position moved from dead-center to top-right** (`resume-editor.tsx`): the one-shot seed coords now place the logo's normalized left/top edge at `1 - logoWidth/pageWidth - 0.03` / `0.03`. Drag + clamp logic (`onPagePointerMove`) untouched - the logo still drags freely from there; watermark export unchanged.
+- **jobs/[id] Delete button un-pinned** (`delete-job-button.tsx` + `page.tsx`): was `fixed bottom-3 right-3 z-30` rendered outside the tab conditional (all tabs). Now static inline `flex justify-end pt-8` at the end of the **Overview** tab content only, scrolling away with the page - matches `DeleteCandidateButton` (Profile) / `DeleteClientButton` (Overview) from `4155f68`. Confirm strip wrapper `pt-24 → pt-8`. Delete action + inline-confirm unchanged.
 
 **Batch 1 - cosmetics (`91649c7`)**
 - **My Jobs / My Clients owner dropdown shrunk to TabStrip pill height** on the Jobs + Clients list pages. The topbar + New button were intentionally LEFT as-is (already ~pill height, shared across 8 pages - per the Ace 40.0 keep-it-small decision).
