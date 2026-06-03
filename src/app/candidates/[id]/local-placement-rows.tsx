@@ -1775,13 +1775,11 @@ function ContactPickerCard({
                 label="Name"
                 value={row.name}
                 onChange={(v) => update(row.key, "name", v)}
-                placeholder="Contact name"
               />
               <OfferField
                 label="Email"
                 value={row.email}
                 onChange={(v) => update(row.key, "email", v)}
-                placeholder="name@client.com"
               />
               <button
                 type="button"

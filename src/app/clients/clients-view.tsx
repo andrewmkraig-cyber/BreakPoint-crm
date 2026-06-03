@@ -135,7 +135,7 @@ function OwnerScopeSelect({
         value={scope}
         onChange={(e) => onChange(e.target.value as OwnerScope)}
         aria-label="Filter clients by owner"
-        className="appearance-none rounded-md border border-court-brand/40 bg-court-brand/5 py-1.5 pl-3 pr-9 text-sm font-medium text-court-brand transition hover:bg-court-brand/10 focus:border-court-brand focus:outline-none focus:ring-2 focus:ring-court-brand/20"
+        className="appearance-none rounded-md border border-court-brand/40 bg-court-brand/5 py-1 pl-3 pr-9 text-[13px] font-medium text-court-brand transition hover:bg-court-brand/10 focus:border-court-brand focus:outline-none focus:ring-2 focus:ring-court-brand/20"
       >
         <option value="mine">My Clients</option>
         {otherFirst && <option value="theirs">{otherFirst}&apos;s Clients</option>}
