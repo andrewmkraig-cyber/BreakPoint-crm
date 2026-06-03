@@ -104,6 +104,7 @@ export default async function CalendarPage() {
 
   const now = new Date();
   const windowMs = 90 * 24 * 60 * 60 * 1000;
+  const reminderPastWindowStart = new Date(now.getTime() - windowMs);
 
   const [
     rowsRaw,
@@ -134,19 +135,17 @@ export default async function CalendarPage() {
       orderBy: { joinedAt: "asc" },
     }),
     // Standalone panel reminders only (event/interview-linked rows
-    // already render as their own events). Pulled across the same
-    // window as events so they can render on the grid; the panel slices
-    // out the upcoming ones below.
+    // already render as their own events). Keep the same 90-day
+    // trailing window for recently-missed reminders, but do not cap
+    // the future: a recruiter can create a December reminder from June
+    // and still expect it to appear when they navigate to that month.
     prisma.aceReminder.findMany({
       where: {
         organizationId: org.id,
         dismissed: false,
         calendarEventId: null,
         interviewId: null,
-        reminderAt: {
-          gte: new Date(now.getTime() - windowMs),
-          lte: new Date(now.getTime() + windowMs),
-        },
+        reminderAt: { gte: reminderPastWindowStart },
       },
       orderBy: { reminderAt: "asc" },
       select: { id: true, title: true, reminderAt: true, notifyLeadsMin: true },
@@ -431,7 +430,6 @@ export default async function CalendarPage() {
   // can tint it amber.
   const reminders: CalendarReminder[] = reminderRows
     .filter((r) => r.reminderAt.getTime() >= now.getTime())
-    .slice(0, 10)
     .map((r) => ({
       id: r.id,
       title: r.title,

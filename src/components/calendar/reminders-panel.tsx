@@ -36,8 +36,8 @@ export function CalendarRemindersPanel({
   const [creating, setCreating] = useState(false);
 
   return (
-    <div className="shrink-0 overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">
-      <div className="flex items-center justify-between border-b border-court-border px-5 py-4">
+    <div className="flex max-h-[440px] min-h-[220px] shrink-0 flex-col overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">
+      <div className="flex shrink-0 items-center justify-between border-b border-court-border px-5 py-4">
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
             Reminders
@@ -58,11 +58,7 @@ export function CalendarRemindersPanel({
           {creating ? "Cancel" : "New"}
         </button>
       </div>
-      {/* Natural height - the rail (single scroll container) scrolls to
-          reveal every reminder + the Google footer below, so the last
-          reminder is always reachable in full. divide-y draws separators
-          only BETWEEN rows - never under the bottom-most reminder. */}
-      <div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {creating && (
           <ReminderForm
             submitLabel="Save"
@@ -267,10 +263,8 @@ function ReminderForm({
     <form
       ref={formRef}
       onSubmit={handleSubmit}
-      // The reminders panel body is the single scroll container now (so
-      // 3+ reminders scroll within the panel), so the form just expands
-      // inline; scrollIntoViewOnMount + scroll-my-4 reveal the full form
-      // incl. its Delete/Cancel/Update row within that scroll area.
+      // The reminders panel body is the single scroll container now, so
+      // the form expands inline and scrollIntoView can reveal the footer.
       className="scroll-my-4 bg-court-surface-subtle"
     >
       <div className="space-y-2.5 px-5 py-3.5">
