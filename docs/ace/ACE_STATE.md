@@ -1,8 +1,50 @@
 # ACE_STATE.md
-Last updated: 2026-06-02 · Ace 78.0
-Current Version: Ace 78.0
-Last Shipped: 2026-06-02
+Last updated: 2026-06-03 · Ace 79.0
+Current Version: Ace 79.0
+Last Shipped: 2026-06-03
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 79.0 (2026-06-03)
+
+A 16-item fix batch (numbered items across nine prompt batches) plus four same-session commits that were not in the original batch list. No blocking schema changes except the one nullable indexed column in Batch 7. `npm run build` exits 0 (save the two pre-existing react-hooks/exhaustive-deps warnings). **Batch 2 (calendar Event Types legend swatches / resume watermark default position / jobs Delete un-pin) is intentionally NOT in this shipped log - it was never committed on this branch this session; it is parked under ACE_ROADMAP.md ▸ Ace 79.0 open follow-ups as not-yet-shipped.**
+
+**Batch 1 - cosmetics (`91649c7`)**
+- **My Jobs / My Clients owner dropdown shrunk to TabStrip pill height** on the Jobs + Clients list pages. The topbar + New button were intentionally LEFT as-is (already ~pill height, shared across 8 pages - per the Ace 40.0 keep-it-small decision).
+- **Submittal composer To/Cc/Bcc typed text recolored to `text-court-fg`** so it is legible on the dark modal (chip model + send path unchanged).
+- **Make Placement Billing/Hiring Name + Email placeholders removed** (fields render blank).
+
+**Batch 3 - jobs domain (`8ed85e5`; Location-column trim `9981b41`)**
+- **`+ New Job` on the client-overview Jobs header** routes to `/jobs/new?clientId=` with the client prefilled.
+- **Search Keywords converted to a pick-or-type pill input** (the stored value is still the comma-string the matcher + Boolean search read).
+- **Apply to Job dropdown filtered to ACTIVE jobs only**; the Keep picker derives from the same list, now active-only too.
+- **(`9981b41`)** jobs Location column drops the zip - shows City, ST only.
+
+**Batch 4 - shared masked-currency input (`4d75561`; comp `$` display prefix `2035632`)**
+- **One shared masked-currency input** (blank at rest, leading `$`, thousands commas, no USD suffix, emits a clean number on save) wired to candidate overview, job overview, the Offer modal, and the Make Placement modal. Fee % / flat-fee override / invoice math unchanged. The candidate comp DISPLAY also gained a `$` prefix ($60,000 USD).
+- **KNOWN cosmetic follow-ups:** the `120k` shorthand no longer works (digits only, per spec); the Make Placement free-text "Currency" field was left in place (the Offer modal already dropped its USD tag). See ACE_ROADMAP.md.
+
+**Batch 5 - interview scheduler (`877036d`)**
+- The **update-all / new-only / don't-send notify choice moved from an inline bottom panel into a `NotifyChoiceModal` popup on Save** (`commitEdit` / `updateInterview` `notifyMode` + the `mayNotify` gate byte-for-byte unchanged).
+- A **whole-interview red Cancel control added to `ScheduleInterviewScreen` edit mode**, reusing the existing `cancelInterview` two-way notify engine the calendar drawer uses. The Ace 76.0 "one Save drives the notify choice" standard still holds - this is a presentation move + the profile-path cancel, not a new engine.
+
+**Batch 6 - invoice email sign-off de-dupe (`eeac797`)**
+- Removed the hardcoded `Best,<br />${signer}` line from the invoice email body literal in `invoice-detail.tsx` `handleEmailDraft`, so the single branded sign-off comes from `withSignature` at true send only (the 78.0 send-time rule + 70.0 de-dupe stay intact).
+- **STILL OPEN (carried forward):** the Settings "Invoice Email" template still does NOT drive the populated body (the body is a hardcoded literal) - the Path-B template-wiring item, ACE_STATE.md:565.
+
+**Batch 7 - offer/placement note fanout (`6fe7313`)**
+- Added nullable indexed **`Note.sourcePlacementId`**. `recordLocalOffer` + `recordLocalPlacement` now upsert ONE shared Note keyed by (`sourcePlacementId`, `createdById`, org) attached to candidate + client + job (cuids only); blank notes skipped, failure-isolated (a note error never rolls back the deal), author-scoped like every other note.
+- **KNOWN follow-up:** the pipeline edit-drawer fanout was intentionally NOT wired (candidate-profile saves only). See ACE_ROADMAP.md.
+
+**Batch 8 / item #14 - placement propagation + map (`4e044cc`, `8b8c4a6`)**
+- **DIAGNOSED not-a-bug** for the reported repro: the test placement was CANCELLED with no invoice (correctly excluded everywhere) and its `expectedStartDate` + `placedAt` were BOTH Q2 (no quarter divergence). A live uncancelled placement propagates correctly across the revenue cards, map, Metrics Q2, and Clubhouse.
+- **Two real defects fixed:** (a) **map geocode fallback (`4e044cc`)** - cities not in the static `CITY_COORDS` table now resolve through the shared `src/lib/geocode.ts` Nominatim helper at data-build time (cached, the one-geocoder rule), so any city gets a dot, and the marker popup now shows client / candidate / fee / date per placement; (b) **map marker fill (`8b8c4a6`)** - dots are now FILLED with their payment-state color (reusing `STATUS_COLORS`, thin white outline for tile contrast) instead of green-fill-with-colored-ring.
+- **KNOWN LATENT, consciously not changed:** the Placements RevenueCards are still collection-gated (require a SENT/PAID invoice, or bucket uninvoiced by `placedAt` with a `feeTotal > 0` gate) - only bites a custom-terms (null `feeTotal`) or cross-quarter placement; revisit if that case ever surfaces. See ACE_ROADMAP.md.
+
+**Batch 9 / item #16 - cancel-placement state sync (`14ec315`)**
+- Split `onCancelled` off `onSaved` on `LocalPlacementDialog` so cancel optimistically stamps `"cancelled"` (it was wrongly reusing the save path's `"pending_start"`); the pill now flips straight to "Placement Cancelled" with the cancelled button set and the soft `router.refresh()` reconciles - no hard refresh. The save path still stamps `"pending_start"`.
+
+**Same-session extras (not in the original batch list)**
+- **Clickable links in email bodies (`77b7a95` -> `1a24235`).** Bare URLs / `www.` links / email addresses that sat as plain TEXT in a received email are now real clickable anchors. Final form lives in `EmailHtmlViewer`: it walks the parsed DOM's text nodes, skips anything already inside `<a>` / `<script>` / `<style>`, and wraps http(s) / www / mailto matches - covering BOTH HTML and plain-text (`<pre>`) bodies. Only http(s)/www/mailto hrefs are produced (never `javascript:` / `data:`), the href is set via the DOM (can't break out of an attribute), and when nothing matches the original html is returned byte-for-byte so newsletters with their own anchors / `<head>` styles are never reserialized. (`77b7a95` was a first plain-text-only pass in `gmail.ts`; it was reverted in favor of the viewer-level fix in `1a24235`, since `pickBestBody` prefers the `text/html` part so the plain-text branch never fired for HTML emails with bare-text URLs.)
 
 ## What Shipped in Ace 78.0 (2026-06-02)
 

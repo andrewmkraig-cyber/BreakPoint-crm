@@ -1,11 +1,15 @@
 # Ace Design System
-Last updated: 2026-06-02 · Ace 78.0
+Last updated: 2026-06-03 · Ace 79.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
 This doc is the source of truth for what Ace looks and feels like. Apply continuously when building new components and pages — not just during a final "polish phase." Polishing at the end is a trap; design rules should be enforced during build so we don't ship 50 components that all need to be redone.
 
 Design intent: Linear / Notion polish. Premium, minimal, sharp, intentional. Avoid boxy, muddy dark modes, generic SaaS look.
+
+## Ace 79.0 component + visual notes (2026-06-03)
+- **Masked currency input (shared).** Money fields - candidate + job comp overview, the Offer modal, and the Make Placement modal - use ONE shared masked-currency input: blank at rest, a leading `$` with thousands commas as digits are typed, no "USD" suffix, digits-only (the old `120k` shorthand no longer works, per spec), emitting a clean number on save. The comp DISPLAY carries the `$` prefix ($60,000 USD). Fee % / flat-fee-override / invoice math are unaffected. (Cosmetic follow-up: the Make Placement free-text "Currency" field is still present; the Offer modal already dropped its USD tag.)
+- **Placement map markers are FILLED with their payment-state color.** Each dot is filled with its placement's payment-state color (from `STATUS_COLORS`) with a thin white outline for tile contrast - NOT the prior green fill with a colored ring. Cities outside the static `CITY_COORDS` table resolve through the shared `src/lib/geocode.ts` Nominatim helper (cached, the one-geocoder rule from the Distance Standards) so any placement city gets a dot; the marker popup lists client / candidate / fee / date per placement.
 
 ## Design Philosophy
 
