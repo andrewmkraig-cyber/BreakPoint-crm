@@ -44,7 +44,7 @@ export async function PlacementsTab({
   const { eyebrow: periodEyebrow, rangeLabel: periodLabel } =
     timeRangeChrome(selection);
   const rows = await getPlacementsDashboardData(org.id, range);
-  const cities = aggregateByCity(rows);
+  const cities = await aggregateByCity(rows);
   const totalFee = cities.reduce((s, c) => s + c.totalFee, 0);
   const ledgerRows = toLedgerRows(rows);
   // Active guarantees: Billed (invoice SENT) or Paid (invoice PAID), with a

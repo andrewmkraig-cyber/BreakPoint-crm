@@ -59,6 +59,20 @@ function readSavedView(): SavedView | null {
   return null;
 }
 
+// Per-placement start date for the popup, e.g. "Jun 3, 2026". Pending
+// starts carry a future expected start; both render the same way. Null
+// (no resolved start date) reads as "Date TBD" — no em dash in the copy.
+function formatPlacementDate(iso: string | null): string {
+  if (!iso) return "Date TBD";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "Date TBD";
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 type Props = {
   cities: CityAggregate[];
 };
@@ -161,14 +175,50 @@ export function PlacementsLeafletMap({ cities }: Props) {
             }}
           >
             <Popup>
-              <div style={{ minWidth: "140px" }}>
+              <div style={{ minWidth: "180px", maxWidth: "260px" }}>
                 <div style={{ fontWeight: 700, marginBottom: 2 }}>
                   {city.city}
                 </div>
-                <div style={{ fontSize: 12 }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    marginBottom: 6,
+                    paddingBottom: 6,
+                    borderBottom: "1px solid rgba(0,0,0,0.1)",
+                  }}
+                >
                   {feeLabel} · {city.count}{" "}
                   {city.count === 1 ? "placement" : "placements"}
                 </div>
+                <ul
+                  style={{
+                    listStyle: "none",
+                    margin: 0,
+                    padding: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    maxHeight: "180px",
+                    overflowY: "auto",
+                  }}
+                >
+                  {city.placements.map((p, i) => (
+                    <li
+                      key={`${city.key}-${i}`}
+                      style={{ fontSize: 11, lineHeight: 1.35 }}
+                    >
+                      <div style={{ fontWeight: 600 }}>
+                        {p.client || "Unknown client"}
+                      </div>
+                      <div>{p.candidate || "Unknown candidate"}</div>
+                      <div style={{ color: "#475569" }}>
+                        {p.fee > 0
+                          ? `${formatMoneyShort(p.fee)} · ${formatPlacementDate(p.startDateIso)}`
+                          : formatPlacementDate(p.startDateIso)}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </div>
             </Popup>
             <Tooltip direction="bottom" offset={[0, radius]} opacity={0.9}>

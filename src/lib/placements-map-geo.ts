@@ -2,12 +2,17 @@ import type {
   PlacementsDashboardBillingStatus,
   PlacementsDashboardRow,
 } from "@/lib/placements-dashboard";
+import { geocodePill } from "@/lib/geocode";
 
-// Static city coordinate lookup. Equirectangular lng/lat. Kept local —
-// the placement map renders entirely from this table; we never call a
-// geocoder at render time. Cities not in this list are dropped from
-// the map (see aggregateByCity) rather than pinned to a fallback —
-// a wrong-place pin reads as a real datapoint and would mislead.
+// Static city coordinate lookup. Equirectangular lng/lat. This table is
+// a fast-path CACHE, not the gate: a city listed here resolves with zero
+// network cost, but a city NOT listed (e.g. Natick, MA) is resolved
+// server-side at data-build time through the shared Nominatim geocoder
+// (src/lib/geocode.ts — the same helper the pipeline distance sub-line
+// uses; one geocoder, never a second). Only a genuine geocode MISS
+// leaves a city without a dot, and even then it still appears in the
+// Revenue by City list. We never pin to a fallback centroid — a
+// wrong-place pin reads as a real datapoint and would mislead.
 export type CityCoord = { lng: number; lat: number };
 
 export const CITY_COORDS: ReadonlyMap<string, CityCoord> = new Map([
@@ -71,6 +76,17 @@ export const CITY_COORDS: ReadonlyMap<string, CityCoord> = new Map([
   ["Washington, DC", { lng: -77.04, lat: 38.91 }],
 ]);
 
+// One placement's detail, surfaced in the map popup as a per-placement
+// row. startDate is pre-serialized to an ISO string here so the cities
+// array crosses the server/client boundary without a Date object (same
+// pattern as toLedgerRows in placements-tab.tsx).
+export type CityPlacement = {
+  client: string;
+  candidate: string;
+  fee: number;
+  startDateIso: string | null;
+};
+
 export type CityAggregate = {
   city: string;
   // Normalized lookup key — "atlanta, ga" etc. Used for hover sync
@@ -81,9 +97,14 @@ export type CityAggregate = {
   totalFee: number;
   leadClient: string | null;
   statusMix: Record<PlacementsDashboardBillingStatus, number>;
-  // Null when the city isn't in CITY_COORDS — the row still appears in
-  // the Revenue by City list but the map filters it out so we don't
-  // pin to a fallback centroid (a wrong-place pin reads as real data).
+  // Per-placement breakdown at this city, sorted by fee desc. Powers the
+  // map popup's client / candidate / fee / date list.
+  placements: CityPlacement[];
+  // Null only when the city resolves through neither CITY_COORDS nor the
+  // Nominatim geocoder — the row still appears in the Revenue by City
+  // list but the map filters it out so we don't pin to a fallback
+  // centroid (a wrong-place pin reads as real data). A geocode miss
+  // blanks cleanly; it never throws.
   lat: number | null;
   lng: number | null;
 };
@@ -101,7 +122,9 @@ function cityOnly(normalized: string): string {
   return idx >= 0 ? normalized.slice(0, idx).trim() : normalized;
 }
 
-export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[] {
+export async function aggregateByCity(
+  rows: PlacementsDashboardRow[],
+): Promise<CityAggregate[]> {
   const buckets = new Map<
     string,
     {
@@ -111,6 +134,7 @@ export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[]
       totalFee: number;
       clientFees: Map<string, number>;
       statusMix: Record<PlacementsDashboardBillingStatus, number>;
+      placements: CityPlacement[];
     }
   >();
 
@@ -135,6 +159,7 @@ export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[]
           PENDING_START: 0,
           OVERDUE: 0,
         },
+        placements: [],
       };
       buckets.set(key, bucket);
     }
@@ -142,6 +167,12 @@ export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[]
     const fee = row.feeAmount && row.feeAmount > 0 ? row.feeAmount : 0;
     bucket.totalFee += fee;
     bucket.statusMix[row.billingStatus] += 1;
+    bucket.placements.push({
+      client: row.clientName ?? "",
+      candidate: row.candidateFullName ?? "",
+      fee,
+      startDateIso: row.startDate ? row.startDate.toISOString() : null,
+    });
     if (row.clientName) {
       bucket.clientFees.set(
         row.clientName,
@@ -168,10 +199,6 @@ export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[]
   buckets.forEach((bucket) => {
     const coord =
       coordIndex.get(bucket.key) ?? coordIndex.get(cityOnly(bucket.key));
-    // Cities with no coord match are kept in the aggregate (so they
-    // appear in the Revenue by City list) but carry null lat/lng — the
-    // leaflet map filters those out at render time rather than pinning
-    // to a fallback centroid.
     let leadClient: string | null = null;
     let leadFee = -1;
     bucket.clientFees.forEach((fee, name) => {
@@ -180,6 +207,7 @@ export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[]
         leadFee = fee;
       }
     });
+    bucket.placements.sort((a, b) => b.fee - a.fee);
     aggregates.push({
       city: bucket.city,
       key: bucket.key,
@@ -187,10 +215,32 @@ export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[]
       totalFee: bucket.totalFee,
       leadClient,
       statusMix: bucket.statusMix,
+      placements: bucket.placements,
+      // Fast-path: a CITY_COORDS hit resolves with zero network cost.
+      // A miss leaves null here and falls through to the geocoder below.
       lat: coord?.lat ?? null,
       lng: coord?.lng ?? null,
     });
   });
+
+  // Second pass: any city the static table didn't cover gets resolved
+  // server-side through the shared Nominatim geocoder (cached). Run the
+  // misses in parallel — geocodePill dedups by key and caches null hits,
+  // so a 429 or un-geocodable string blanks cleanly (city stays in the
+  // Revenue by City list, just no dot) and never throws. CITY_COORDS
+  // hits skip this entirely, so known cities have no behavior change.
+  const misses = aggregates.filter((a) => a.lat == null || a.lng == null);
+  if (misses.length > 0) {
+    await Promise.all(
+      misses.map(async (agg) => {
+        const hit = await geocodePill(agg.city);
+        if (hit) {
+          agg.lat = hit.lat;
+          agg.lng = hit.lng;
+        }
+      }),
+    );
+  }
 
   aggregates.sort((a, b) => b.totalFee - a.totalFee || b.count - a.count);
   return aggregates;
