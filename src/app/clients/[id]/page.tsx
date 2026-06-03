@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ShieldCheck, Briefcase, Eye } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Briefcase, Eye, Plus } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { getCurrentUserId } from "@/lib/auth/getCurrentUserId";
 import { ClaimClientButton } from "@/app/clients/[id]/claim-client-button";
@@ -444,9 +444,22 @@ export default async function ClientDetailPage({
           <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm lg:col-span-3">
             <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
               <h2 className="font-serif text-lg font-semibold text-court-fg">Jobs</h2>
-              <span className="text-xs text-court-fg-muted">
-                {openJobs.length} open · {closedJobs.length} closed
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-court-fg-muted">
+                  {openJobs.length} open · {closedJobs.length} closed
+                </span>
+                {canWrite && (
+                  // Primary CTA (Button Standard: tinted-green outline). Carries
+                  // this client's cuid through the route so /jobs/new opens with
+                  // the client field pre-selected.
+                  <Link
+                    href={`/jobs/new?clientId=${client.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> New Job
+                  </Link>
+                )}
+              </div>
             </div>
             {openJobs.length + closedJobs.length === 0 ? (
               <div className="px-5 py-12 text-center text-sm text-court-fg-muted">No jobs yet for this client.</div>

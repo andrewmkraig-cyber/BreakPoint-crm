@@ -389,7 +389,17 @@ export async function LocalCandidateProfile({
   }
 
   const openJobs: LocalOpenJob[] = allJobs
-    .filter((j) => j.is_open !== false)
+    // ACTIVE-status jobs only (item #12). isOpen=true covers BOTH "active"
+    // AND "private" lifecycles, so the old `is_open !== false` filter let
+    // private jobs into the Apply / Keep pickers. Mirror the canonical
+    // /jobs Active-tab test: private/inactive excluded, else fall back to
+    // isOpen. _lifecycle is carried on every row by getRfJobsForOrg (org-
+    // scoped, Rule 8).
+    .filter((j) => {
+      const lc = (j as { _lifecycle?: string | null })._lifecycle;
+      if (lc === "private" || lc === "inactive") return false;
+      return j.is_open !== false;
+    })
     .map((raw) => {
       const j = normalizeJob(raw);
       const client = j.companyId != null ? clientById.get(j.companyId) : null;

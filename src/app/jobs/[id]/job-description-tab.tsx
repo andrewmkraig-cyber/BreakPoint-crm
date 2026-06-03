@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Loader2, Pencil, Save, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
@@ -110,10 +110,31 @@ export function JobDescriptionTab({
   );
 }
 
-// Recruiter-tunable keyword list that feeds Find Matches scoring and
-// any Boolean candidate search built off this job. Plain text — the
-// readers (find-matches, boolean search) split + lowercase as needed.
-// Save-on-blur lets the recruiter tab away without a save button.
+// Split a stored comma-separated keyword string into pills: trim, drop
+// blanks, dedupe case-insensitively (first-seen casing wins). Mirrors the
+// readers' splitKeywords (find-matches) / buildSeedQuery (boolean search)
+// so the round-trip is lossless and the matcher sees the same tokens.
+function keywordsToPills(raw: string | null | undefined): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of (raw ?? "").split(",")) {
+    const t = part.trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out;
+}
+
+// Recruiter-tunable keyword list that feeds Find Matches scoring and any
+// Boolean candidate search built off this job. Pick-or-type pill input
+// modeled on the email To chip field: Enter / comma commits a pill, pills
+// are removable, an explicit Save persists. The STORED value stays a
+// comma-separated string (pills joined with ", ") so the readers
+// (find-matches splitKeywords, boolean search buildSeedQuery) — which both
+// split on "," and trim — keep working unchanged.
 function SearchKeywordsCard({
   jobId,
   initialKeywords,
@@ -121,16 +142,51 @@ function SearchKeywordsCard({
   jobId: string;
   initialKeywords: string | null;
 }) {
-  const [value, setValue] = useState(initialKeywords ?? "");
+  const [pills, setPills] = useState<string[]>(() => keywordsToPills(initialKeywords));
+  const [input, setInput] = useState("");
   const [saving, setSaving] = useState(false);
-  // Last value successfully committed to the server. Used to short-
-  // circuit no-op blurs (open → focus → blur without typing) so we
-  // don't fire a write or a toast for unchanged input.
-  const lastSavedRef = useRef(initialKeywords ?? "");
+  // Snapshot of the last value committed to the server (joined string), so
+  // Save disables when nothing changed and re-enables after an edit.
+  const [lastSaved, setLastSaved] = useState(() => keywordsToPills(initialKeywords).join(", "));
 
-  async function commit() {
-    const next = value.trim();
-    if (next === lastSavedRef.current.trim()) return;
+  const current = pills.join(", ");
+  const dirty = current !== lastSaved;
+
+  function commitPill(raw: string) {
+    const t = raw.trim().replace(/,+$/, "").trim();
+    if (!t) return;
+    setPills((prev) =>
+      prev.some((p) => p.toLowerCase() === t.toLowerCase()) ? prev : [...prev, t],
+    );
+    setInput("");
+  }
+
+  function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" || e.key === "," || e.key === "Tab") {
+      // Tab still commits but should not trap focus when the input is empty.
+      if (e.key === "Tab" && !input.trim()) return;
+      e.preventDefault();
+      commitPill(input);
+    } else if (e.key === "Backspace" && !input && pills.length > 0) {
+      setPills((prev) => prev.slice(0, -1));
+    }
+  }
+
+  function removePill(target: string) {
+    setPills((prev) => prev.filter((p) => p !== target));
+  }
+
+  async function onSave() {
+    // Fold any half-typed text in the buffer into a pill before saving.
+    const finalPills = (() => {
+      const t = input.trim().replace(/,+$/, "").trim();
+      if (t && !pills.some((p) => p.toLowerCase() === t.toLowerCase())) return [...pills, t];
+      return pills;
+    })();
+    if (finalPills !== pills) setPills(finalPills);
+    setInput("");
+
+    const next = finalPills.join(", ");
     setSaving(true);
     try {
       const res = await saveJobSearchKeywords({ jobId, keywords: next });
@@ -138,7 +194,7 @@ function SearchKeywordsCard({
         toast.error("Couldn't save keywords", { description: res.error });
         return;
       }
-      lastSavedRef.current = next;
+      setLastSaved(next);
       toast.success("Keywords saved");
     } finally {
       setSaving(false);
@@ -151,25 +207,57 @@ function SearchKeywordsCard({
         <div>
           <h2 className="font-serif text-lg font-semibold text-court-fg">Search Keywords</h2>
           <p className="text-[11px] text-court-fg-muted">
-            Used for Find Matches scoring and Boolean candidate search.
+            Used for Find Matches scoring and Boolean candidate search. Press Enter or comma to add.
           </p>
         </div>
+      </div>
+
+      {/* Chip field — same shell + chip treatment as the email To field. */}
+      <div className="mt-3 flex min-h-[40px] w-full flex-wrap items-center gap-1.5 rounded-md border border-court-border bg-court-bg px-2 py-1.5 text-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20">
+        {pills.map((p) => (
+          <span
+            key={p}
+            className="inline-flex items-center gap-1 rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] text-court-fg"
+          >
+            {p}
+            <button
+              type="button"
+              onClick={() => removePill(p)}
+              className="text-court-fg-muted hover:text-court-fg"
+              aria-label={`Remove ${p}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={onKeyDown}
+          onBlur={() => commitPill(input)}
+          placeholder={pills.length === 0 ? "Add a keyword…" : ""}
+          className="min-w-[8rem] flex-1 bg-transparent px-1 py-0.5 text-sm text-court-fg outline-none placeholder:text-court-fg-muted"
+        />
+      </div>
+
+      <div className="mt-3 flex items-center justify-end gap-3">
         {saving && (
           <span className="inline-flex items-center gap-1 text-[11px] text-court-fg-muted">
             <Loader2 className="h-3 w-3 animate-spin" /> Saving…
           </span>
         )}
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          onClick={() => void onSave()}
+          disabled={saving || (!dirty && !input.trim())}
+        >
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          Save
+        </Button>
       </div>
-      <textarea
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={() => void commit()}
-        rows={3}
-        className={cn(
-          "mt-3 w-full resize-y rounded-md border border-court-border bg-court-bg px-3 py-2 text-sm text-court-fg shadow-sm",
-          "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-        )}
-      />
     </div>
   );
 }

@@ -69,10 +69,18 @@ type SalaryFrequency = "yearly" | "hourly";
 
 // Phase 2: clients dropdown carries cuids (Ace-native + RF-imported) — the
 // form submits clientId directly to the Neon-native createJob action.
-export function NewJobForm({ clients }: { clients: Array<{ id: string; name: string }> }) {
+export function NewJobForm({
+  clients,
+  defaultClientId = "",
+}: {
+  clients: Array<{ id: string; name: string }>;
+  // Pre-selected client cuid when launched from a client overview's
+  // "+ New Job" button. Validated against the org-scoped list server-side.
+  defaultClientId?: string;
+}) {
   const router = useRouter();
   const [title, setTitle] = useState("");
-  const [clientId, setClientId] = useState<string>("");
+  const [clientId, setClientId] = useState<string>(defaultClientId);
   // Location is split into three searchable parts. The createJob action
   // composes the legacy `locations` array string ("City, ST Zip") from
   // these so existing readers stay untouched. State accepts the 2-letter
