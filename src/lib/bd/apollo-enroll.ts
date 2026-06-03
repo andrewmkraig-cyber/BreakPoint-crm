@@ -170,6 +170,51 @@ async function apolloSearchPeople(
   }
 }
 
+// "City, State" → "City": everything before the first comma, trimmed.
+// No comma → the whole string trimmed. The Posting Job City custom field
+// holds the city alone, not the full location string.
+export function cityOnly(location: string): string {
+  const comma = location.indexOf(",");
+  return (comma === -1 ? location : location.slice(0, comma)).trim();
+}
+
+// Apollo's contact create/update response wraps the record under `contact`.
+type ApolloContactResponse = { contact?: { id?: string } };
+
+// Resolves the sending mailbox id required by the add_contact_ids
+// (sequence enrollment) endpoint. Prefers the APOLLO_EMAIL_ACCOUNT_ID
+// override; otherwise picks the team's default active linked mailbox,
+// falling back to the first active one. Never guesses an id.
+export async function apolloResolveEmailAccountId(apiKey: string): Promise<string | null> {
+  const override = process.env.APOLLO_EMAIL_ACCOUNT_ID;
+  if (override) return override;
+  try {
+    const res = await fetch(`${APOLLO_BASE}/api/v1/email_accounts`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
+    });
+    if (!res.ok) {
+      console.warn(`[Apollo] email_accounts list failed: ${res.status} ${res.statusText}`);
+      return null;
+    }
+    const data = (await res.json()) as {
+      email_accounts?: Array<{ id?: string; active?: boolean; default?: boolean }>;
+    };
+    const accounts = Array.isArray(data.email_accounts) ? data.email_accounts : [];
+    const chosen =
+      accounts.find((a) => a.default && a.active) ??
+      accounts.find((a) => a.active) ??
+      accounts[0];
+    return chosen?.id ?? null;
+  } catch (err) {
+    console.warn(
+      `[Apollo] email_accounts list threw:`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
 export type EnrollPayload = {
   first_name?: string;
   last_name?: string;
@@ -181,34 +226,69 @@ export type EnrollPayload = {
   typed_custom_fields: Record<string, string>;
 };
 
+// Two Apollo calls per contact: (1) create/update the contact WITH the
+// typed_custom_fields, capturing the returned contact id; (2) enroll that
+// id into the sequence via add_contact_ids. Passing sequence_id on the
+// contact-create call does NOT enroll — Apollo ignores it — so the second
+// call is mandatory. Both use the X-Api-Key header.
 export async function apolloEnrollContact(
   apiKey: string,
   sequenceId: string,
+  emailAccountId: string,
   payload: EnrollPayload,
 ): Promise<boolean> {
+  const who = `${payload.organization_name}/${payload.first_name ?? "—"} ${payload.last_name ?? ""}`;
   try {
     console.log(`[Apollo] typed_custom_fields →`, JSON.stringify(payload.typed_custom_fields));
-    const res = await fetch(`${APOLLO_BASE}/api/v1/contacts`, {
+
+    // 1) Create/update the contact with the custom fields.
+    const createRes = await fetch(`${APOLLO_BASE}/api/v1/contacts`, {
       method: "POST",
       // Apollo requires the API key in the X-Api-Key header; passing it in
       // the JSON body is rejected with 422 INVALID_API_KEY_LOCATION.
       headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
-      body: JSON.stringify({
-        sequence_id: sequenceId,
-        ...payload,
-      }),
+      body: JSON.stringify({ ...payload }),
     });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
+    if (!createRes.ok) {
+      const text = await createRes.text().catch(() => "");
       console.warn(
-        `[Apollo] enroll contact failed (${payload.organization_name}/${payload.first_name ?? "—"} ${payload.last_name ?? ""}): ${res.status} ${res.statusText} ${text.slice(0, 200)}`,
+        `[Apollo] create contact failed (${who}): ${createRes.status} ${createRes.statusText} ${text.slice(0, 200)}`,
+      );
+      return false;
+    }
+    const created = (await createRes.json()) as ApolloContactResponse;
+    const contactId = created.contact?.id;
+    if (!contactId) {
+      console.warn(`[Apollo] create contact returned no contact id (${who})`);
+      return false;
+    }
+
+    // 2) Enroll the contact into the sequence. This is the call that
+    //    actually populates contact_campaign_statuses.
+    // This endpoint reads its params from the query string — sending them
+    // only in the JSON body yields 422 "Please specify a emailer_campaign_id
+    // and send_email_from_email_account_id".
+    const enrollUrl = new URL(
+      `${APOLLO_BASE}/api/v1/emailer_campaigns/${sequenceId}/add_contact_ids`,
+    );
+    enrollUrl.searchParams.set("emailer_campaign_id", sequenceId);
+    enrollUrl.searchParams.set("send_email_from_email_account_id", emailAccountId);
+    enrollUrl.searchParams.append("contact_ids[]", contactId);
+    const enrollRes = await fetch(enrollUrl, {
+      method: "POST",
+      headers: { "X-Api-Key": apiKey },
+    });
+    if (!enrollRes.ok) {
+      const text = await enrollRes.text().catch(() => "");
+      console.warn(
+        `[Apollo] sequence enroll failed (${who}, contactId=${contactId}): ${enrollRes.status} ${enrollRes.statusText} ${text.slice(0, 200)}`,
       );
       return false;
     }
     return true;
   } catch (err) {
     console.warn(
-      `[Apollo] enroll contact threw:`,
+      `[Apollo] enroll contact threw (${who}):`,
       err instanceof Error ? err.message : err,
     );
     return false;
@@ -286,6 +366,19 @@ export async function enrollCompaniesInApollo(
     return { enrolled: 0, capped: false };
   }
 
+  // Sequence enrollment needs a sending mailbox id. Resolve once per run.
+  const emailAccountId = await apolloResolveEmailAccountId(apiKey);
+  if (!emailAccountId) {
+    console.warn(
+      `[Apollo] runId=${run.id} cannot enroll: no sending mailbox resolved (set APOLLO_EMAIL_ACCOUNT_ID or link a mailbox in Apollo)`,
+    );
+    await prisma.bDRun.update({
+      where: { id: run.id },
+      data: { status: "COMPLETE", completedAt: new Date() },
+    });
+    return { enrolled: 0, capped: false };
+  }
+
   let enrolledThisRun = 0;
 
   for (const c of companies) {
@@ -315,13 +408,13 @@ export async function enrollCompaniesInApollo(
     const typedCustomFields: Record<string, string> = {
       "6a207e120239f0000c18decd": c.jobTitle,
       "6a207e2290a45c00208eccbb": c.jobUrl ?? "",
-      "6a207f8bc3715c0010ae118e": c.jobLocation,
+      "6a207f8bc3715c0010ae118e": cityOnly(c.jobLocation),
     };
 
     if (candidates.length > 0) {
       for (const p of candidates) {
         if (remaining <= 0) break;
-        const ok = await apolloEnrollContact(apiKey, sequenceId, {
+        const ok = await apolloEnrollContact(apiKey, sequenceId, emailAccountId, {
           first_name: p.first_name ?? undefined,
           last_name: p.last_name ?? undefined,
           email: p.email ?? undefined,
@@ -345,7 +438,7 @@ export async function enrollCompaniesInApollo(
       // Apollo found no decision-makers — enroll a company-level
       // placeholder so the run still records the BD touch. Apollo's
       // sequence will treat the org_name + title as the address.
-      const ok = await apolloEnrollContact(apiKey, sequenceId, {
+      const ok = await apolloEnrollContact(apiKey, sequenceId, emailAccountId, {
         organization_name: c.companyName,
         typed_custom_fields: typedCustomFields,
       });

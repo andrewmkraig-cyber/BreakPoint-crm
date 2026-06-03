@@ -18,7 +18,12 @@
  * Leave this script in place for now; it is inert unless run with the
  * prod APOLLO_API_KEY present in the environment.
  */
-import { apolloEnrollContact, type EnrollPayload } from "@/lib/bd/apollo-enroll";
+import {
+  apolloEnrollContact,
+  apolloResolveEmailAccountId,
+  cityOnly,
+  type EnrollPayload,
+} from "@/lib/bd/apollo-enroll";
 import { getDefaultApolloSequence } from "@/lib/bd/apollo-sequences";
 
 // Hardcoded test values — these populate the three real Apollo custom
@@ -47,6 +52,12 @@ async function main() {
     process.exit(1);
   }
 
+  const emailAccountId = await apolloResolveEmailAccountId(apiKey);
+  if (!emailAccountId) {
+    console.error("[test] No sending mailbox resolved — aborting.");
+    process.exit(1);
+  }
+
   const payload: EnrollPayload = {
     first_name: "Andrew",
     last_name: "Kraig",
@@ -56,18 +67,20 @@ async function main() {
     typed_custom_fields: {
       [FIELD_ID_JOB_TITLE]: TEST_JOB_TITLE,
       [FIELD_ID_JOB_URL]: TEST_JOB_URL,
-      [FIELD_ID_JOB_CITY]: TEST_JOB_LOCATION,
+      // Exercise the city-only trim: "Chicago, Illinois" → "Chicago".
+      [FIELD_ID_JOB_CITY]: cityOnly(TEST_JOB_LOCATION),
     },
   };
 
   console.log("[test] enrolling test contact:", payload.email);
   console.log("[test] sequence_id:", sequenceId);
+  console.log("[test] send_email_from_email_account_id:", emailAccountId);
   console.log(
     "[test] expected typed_custom_fields:",
     JSON.stringify(payload.typed_custom_fields),
   );
 
-  const ok = await apolloEnrollContact(apiKey, sequenceId, payload);
+  const ok = await apolloEnrollContact(apiKey, sequenceId, emailAccountId, payload);
 
   console.log(`[test] apolloEnrollContact returned: ${ok}`);
   if (!ok) {
