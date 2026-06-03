@@ -10,6 +10,7 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { generateSubmittalWriteup } from "@/lib/claude";
 import { sendGmail, type GmailAttachment } from "@/lib/gmail";
 import { getResumeBytes } from "@/lib/resume-bytes";
+import { fanOutPlacementNote } from "@/lib/notes/placement-fanout";
 import { prisma } from "@/lib/prisma";
 import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
 import { submittalToHtml, submittalToPlainText } from "@/lib/submittal-format";
@@ -1003,9 +1004,26 @@ export async function recordLocalOffer(
       },
     });
 
+    // Fan the offer note out to the candidate, client, and job profiles as
+    // ONE shared note keyed by this placement (no-op when the note is blank;
+    // updates in place on re-save). cuids only — RF stand-ins aren't
+    // Note-connectable.
+    await fanOutPlacementNote({
+      organizationId: org.id,
+      createdById: user.id,
+      placementId: input.placementId,
+      title: "Offer note",
+      body: input.notes,
+      candidateId: placement.candidateId,
+      clientId: placement.clientId,
+      jobId: placement.jobId,
+    });
+
     if (placement.candidateId) revalidatePath(`/candidates/${placement.candidateId}`);
     if (placement.candidateRfId != null) revalidatePath(`/candidates/${placement.candidateRfId}`);
     revalidatePath(`/pipeline`);
+    if (placement.clientId) revalidatePath(`/clients/${placement.clientId}`);
+    if (placement.jobId) revalidatePath(`/jobs/${placement.jobId}`);
 
     // Auto-fire the Offer Extended template to the candidate, same as
     // the RF recordOffer flow. Trigger metadata routes through
@@ -1226,6 +1244,20 @@ export async function recordLocalPlacement(
       },
     });
 
+    // Advance the SAME shared note this deal carried at offer time (keyed by
+    // placementId) — body becomes the placement note, attachments re-point to
+    // the current candidate/client/job. No second note row; no-op when blank.
+    await fanOutPlacementNote({
+      organizationId: org.id,
+      createdById: user.id,
+      placementId: input.placementId,
+      title: "Placement note",
+      body: input.notes,
+      candidateId: placement.candidateId,
+      clientId: placement.clientId,
+      jobId: placement.jobId,
+    });
+
     // Fan out to every surface a placement edit can move — dashboard
     // (Momentum / Recent Deal Moves / Offer-to-Start), Placements
     // ledger, Pipeline, Finances cash forecast, candidate profile, and
@@ -1233,6 +1265,8 @@ export async function recordLocalPlacement(
     // dashboard refreshed, so an edit to an existing pending_start /
     // hired row never bubbled to /placements / /finances / /clients.
     await revalidatePlacementSurfaces(row.id, org.id);
+    // Refresh the job profile too so its notes feed shows the fanned note.
+    if (placement.jobId) revalidatePath(`/jobs/${placement.jobId}`);
 
     // Auto-fire the Offer Accepted template to the client (with the
     // candidate CCed by template wiring). Mirrors the RF recordPlacement

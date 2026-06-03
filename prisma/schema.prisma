@@ -2107,6 +2107,14 @@ model Note {
   // to assign explicit positions. Tied positions break by updatedAt
   // desc so brand-new notes still float above the reordered set.
   position       Int      @default(0)
+  // When set, this note was auto-fanned out from an offer/placement save
+  // (local-placement-actions.ts). It is the idempotency key: the fanout
+  // upserts ONE note per placement deal keyed by (sourcePlacementId,
+  // createdById, organizationId), so re-saving an offer or advancing it to
+  // placement updates the same row instead of creating a duplicate on the
+  // candidate/client/job profiles. Plain scalar tag (no FK relation) so the
+  // column stays additive and a placement delete never cascades the note.
+  sourcePlacementId String? @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2118,6 +2126,7 @@ model Note {
   jobs         Job[]        @relation("NoteJobs")
 
   @@index([organizationId, createdById, updatedAt])
+  @@index([sourcePlacementId])
 }
 
 // Status lifecycle for a "Send Later" scheduled email.
