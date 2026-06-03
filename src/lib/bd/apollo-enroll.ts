@@ -169,7 +169,7 @@ async function apolloSearchPeople(
   }
 }
 
-type EnrollPayload = {
+export type EnrollPayload = {
   first_name?: string;
   last_name?: string;
   email?: string;
@@ -180,7 +180,7 @@ type EnrollPayload = {
   typed_custom_fields: Record<string, string>;
 };
 
-async function apolloEnrollContact(
+export async function apolloEnrollContact(
   apiKey: string,
   sequenceId: string,
   payload: EnrollPayload,
