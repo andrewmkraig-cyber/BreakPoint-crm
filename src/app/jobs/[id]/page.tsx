@@ -481,11 +481,18 @@ export default async function JobDetailPage({
       <div className="space-y-3">
         <JobTabs slug={slug} tab={tab} />
         {tab === "overview" ? (
-          <JobOverviewTab
-            snapshot={overviewSnapshot}
-            jobRfId={rfId}
-            jobCuid={isAceNative ? jobRow.id : null}
-          />
+          <>
+            <JobOverviewTab
+              snapshot={overviewSnapshot}
+              jobRfId={rfId}
+              jobCuid={isAceNative ? jobRow.id : null}
+            />
+            {/* Delete lives inline at the very end of the Overview
+                surface (not the other tabs) and scrolls away with the
+                page — mirrors DeleteCandidateButton (Profile tab) and
+                DeleteClientButton (Overview tab) from 4155f68. */}
+            <DeleteJobButton jobId={jobRow.id} jobTitle={job.title} />
+          </>
         ) : tab === "description" ? (
           <JobDescriptionTab
             jobId={jobRow.id}
@@ -529,8 +536,6 @@ export default async function JobDetailPage({
           <TabStub label={JOB_TABS.find((t) => t.id === tab)?.label ?? ""} />
         )}
       </div>
-
-      <DeleteJobButton jobId={jobRow.id} jobTitle={job.title} />
     </div>
   );
 }

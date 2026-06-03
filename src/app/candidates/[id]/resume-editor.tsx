@@ -199,10 +199,16 @@ export function ResumeEditor({
     if (pages.length === 0) return;
     defaultLogoPlacedRef.current = true;
     const first = pages[0];
+    // Default landing spot is the top-right corner with a small inset.
+    // xNorm/yNorm are the logo's normalized LEFT/TOP edge, so the right
+    // edge sits at (1 - margin): left = 1 - logoWidth/pageWidth - margin.
+    // Drag logic (onPagePointerMove) is untouched — this only seeds the
+    // first position; the recruiter can drag freely from here.
+    const DEFAULT_LOGO_MARGIN = 0.03;
     setLogo({
       pageIndex: 0,
-      xNorm: 0.5 - DEFAULT_LOGO_WIDTH / 2 / first.widthPx,
-      yNorm: 0.5,
+      xNorm: 1 - DEFAULT_LOGO_WIDTH / first.widthPx - DEFAULT_LOGO_MARGIN,
+      yNorm: DEFAULT_LOGO_MARGIN,
       widthPx: DEFAULT_LOGO_WIDTH,
     });
   }, [pages]);

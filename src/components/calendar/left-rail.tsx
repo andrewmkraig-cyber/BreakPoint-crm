@@ -282,18 +282,23 @@ function EventTypeLegend({
     ring: string;
   }> = [
     {
+      // Swatches mirror the tile source of truth in
+      // lib/calendar/utils.ts eventTypeMeta(): Interview tiles are
+      // blue (bg-blue-50), Client Call tiles are brand/green
+      // (bg-court-brand-tint). The legend previously had these two
+      // swapped; keep them in sync with the tiles, not the reverse.
       label: "Interview",
       type: "interview",
-      chip: "bg-court-brand-tint",
-      fill: "bg-court-brand",
-      ring: "border-court-brand",
+      chip: "bg-blue-50 dark:bg-blue-950/40",
+      fill: "bg-blue-500 dark:bg-blue-600",
+      ring: "border-blue-300 dark:border-blue-700",
     },
     {
       label: "Client Call",
       type: "client",
-      chip: "bg-blue-50 dark:bg-blue-950/40",
-      fill: "bg-blue-500 dark:bg-blue-600",
-      ring: "border-blue-300 dark:border-blue-700",
+      chip: "bg-court-brand-tint",
+      fill: "bg-court-brand",
+      ring: "border-court-brand",
     },
     {
       label: "Reminder",
