@@ -3,6 +3,7 @@
 import { useId, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
+import { MaskedCurrencyInput } from "@/components/ui/masked-currency-input";
 
 export function SectionCard({
   title,
@@ -32,6 +33,7 @@ export function LabeledField({
   placeholder,
   disabled,
   suffix,
+  currency,
 }: {
   label: string;
   value: string;
@@ -39,6 +41,12 @@ export function LabeledField({
   type?: string;
   placeholder?: string;
   disabled?: boolean;
+  // When true the inner input is the shared MaskedCurrencyInput: blank at
+  // rest, a leading "$" appears as digits are typed, thousands commas
+  // auto-insert, and onChange emits clean digits only. Mutually
+  // exclusive with `suffix` (the USD suffix is dropped on currency
+  // fields). Omit to keep the plain text input byte-identical.
+  currency?: boolean;
   // Static chrome rendered after the input (e.g. "USD" on the salary
   // field). pointer-events-none + select-none + aria-hidden + cursor-
   // default make it visually look like a unit indicator but actually
@@ -89,14 +97,24 @@ export function LabeledField({
     <label className="block text-sm">
       <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
       <div className={cn(INPUT_FRAME_CLASS, "mt-1 w-full", disabled && "opacity-60")}>
-        <input
-          type={type}
-          value={value}
-          disabled={disabled}
-          placeholder={placeholder}
-          onChange={(e) => onChange(e.target.value)}
-          className={`${INPUT_CONTROL_CLASS} text-sm`}
-        />
+        {currency ? (
+          <MaskedCurrencyInput
+            value={value}
+            disabled={disabled}
+            placeholder={placeholder}
+            onChange={onChange}
+            className={`${INPUT_CONTROL_CLASS} text-sm`}
+          />
+        ) : (
+          <input
+            type={type}
+            value={value}
+            disabled={disabled}
+            placeholder={placeholder}
+            onChange={(e) => onChange(e.target.value)}
+            className={`${INPUT_CONTROL_CLASS} text-sm`}
+          />
+        )}
       </div>
     </label>
   );

@@ -44,6 +44,7 @@ import {
   type InterviewType,
   type MeetingProvider,
 } from "@/app/candidates/[id]/interview-actions";
+import { MaskedCurrencyInput } from "@/components/ui/masked-currency-input";
 import { DateTime15Picker } from "@/components/datetime-15-picker";
 import { MeetingProviderSelect } from "@/components/meeting-provider-select";
 import {
@@ -1128,22 +1129,19 @@ function OfferDialog({
         {/* USD is the only allowed currency on offer rows (Ace fix 2026-05-27).
             The `currency` state still defaults to "USD" and is written to
             Placement.offerCurrency / acceptedCurrency on save — the dropdown
-            is gone but the DB column stays populated. Negatives are blocked
-            at the input layer (strip "-") and rechecked on submit + server.
-            "USD" now renders as an inert suffix on the salary input (Ace
-            fix 67.10): pointer-events-none + select-none + aria-hidden
-            so the recruiter can't click into it to edit or delete it —
-            replaced the in-label "($USD)" string that let clicks
-            forward focus into the salary input. Numeric placeholders
-            on every offer field were stripped — text-only ghost prompts
-            stay, but anything that visually looked like a real number
-            sitting in the input is gone, so a fresh Make Offer renders
-            all four fields visually empty. */}
+            is gone but the DB column stays populated. The salary + fee $
+            fields now use the shared MaskedCurrencyInput (`currency` prop):
+            blank at rest, a leading "$" + thousands commas appear as digits
+            are typed, no USD suffix, and the masked input strips every
+            non-digit (including "-") before emitting, so negatives can't be
+            entered and the on-submit/server negative checks remain as
+            defense-in-depth. Fee % stays a plain field (it takes decimals,
+            not dollars). A fresh Make Offer renders all fields blank. */}
         <OfferField
           label="Offered salary"
           value={salary}
-          onChange={(v) => setSalary(v.replace(/-/g, ""))}
-          suffix="USD"
+          onChange={setSalary}
+          currency
         />
         <div className="sm:col-span-2">
           <OfferField label="Offered title" value={title} onChange={setTitle} />
@@ -1154,11 +1152,12 @@ function OfferDialog({
           value={feePct}
           onChange={(v) => setFeePct(v.replace(/-/g, ""))}
         />
-        <OfferField label="Min fee" value={minFee} onChange={setMinFee} />
+        <OfferField label="Min fee" value={minFee} onChange={setMinFee} currency />
         <OfferField
           label="Fee amount (flat, overrides calc)"
           value={feeAmountOverride}
           onChange={setFeeAmountOverride}
+          currency
         />
         <label className="block text-sm sm:col-span-2">
           <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Notes</span>
@@ -1478,14 +1477,16 @@ function LocalPlacementDialog({
           label="Accepted salary"
           value={acceptedSalary}
           onChange={setAcceptedSalary}
+          currency
         />
         <OfferField label="Currency" value={currency} onChange={setCurrency} />
         <OfferField label="Fee %" value={feePct} onChange={setFeePct} />
-        <OfferField label="Min fee" value={minFee} onChange={setMinFee} />
+        <OfferField label="Min fee" value={minFee} onChange={setMinFee} currency />
         <OfferField
           label="Fee amount (flat, overrides calc)"
           value={feeAmountOverride}
           onChange={setFeeAmountOverride}
+          currency
         />
         <OfferField
           label="Guarantee period (days)"
@@ -1820,12 +1821,18 @@ function OfferField({
   placeholder,
   type = "text",
   suffix,
+  currency,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   type?: "text" | "date";
+  // When true the inner input is the shared MaskedCurrencyInput: blank at
+  // rest, leading "$" + thousands commas as digits are typed, onChange
+  // emits clean digits only. Drops the USD suffix (mutually exclusive
+  // with `suffix`). Omit to keep the plain input byte-identical.
+  currency?: boolean;
   // Static chrome rendered after the input (e.g. "USD" on the salary
   // field). pointer-events-none + select-none + aria-hidden + cursor-
   // default make it visually look like a unit indicator but actually
@@ -1868,16 +1875,27 @@ function OfferField({
       </div>
     );
   }
+  const inputClass =
+    "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20";
   return (
     <label className="block text-sm">
       <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-      />
+      {currency ? (
+        <MaskedCurrencyInput
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          className={inputClass}
+        />
+      ) : (
+        <input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className={inputClass}
+        />
+      )}
     </label>
   );
 }

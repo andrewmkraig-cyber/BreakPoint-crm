@@ -389,11 +389,13 @@ export function JobOverviewTab({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <LabeledField
                 label="Salary low"
+                currency
                 value={draft.salaryLo}
                 onChange={(v) => setDraft({ ...draft, salaryLo: v })}
               />
               <LabeledField
                 label="Salary high"
+                currency
                 value={draft.salaryHi}
                 onChange={(v) => setDraft({ ...draft, salaryHi: v })}
               />

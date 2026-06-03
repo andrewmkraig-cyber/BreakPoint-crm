@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { Button } from "@/components/ui/button";
+import { MaskedCurrencyInput } from "@/components/ui/masked-currency-input";
 import { cn, formatLocation } from "@/lib/utils";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 import { buildTokenColorMap } from "@/app/candidates/[id]/resume-matches-rail";
@@ -228,11 +229,10 @@ export function CandidateCompactOverview({
             />
           </EditField>
           <EditField label="Comp">
-            <input
-              type="text"
+            <MaskedCurrencyInput
               value={compDraft}
               disabled={isSaving}
-              onChange={(e) => setCompDraft(e.target.value)}
+              onChange={setCompDraft}
               className={EDIT_INPUT_CLASS}
             />
           </EditField>
@@ -528,16 +528,15 @@ function formatCompForDisplay(
   return currency ? `${formatted} ${currency}` : formatted;
 }
 
-// Seed for the inline input. Bare-number form keeps the editor terse —
-// typing 1 character to bump 120k → 130k beats clearing "120,000 USD"
-// first. parseCompensation accepts both shapes on save.
+// Seed for the inline Comp input. Returns clean digits only ("120000"),
+// which MaskedCurrencyInput re-formats to "$120,000" for display — so an
+// existing saved comp loads already formatted. parseCompensation strips
+// "$"/commas on save, so the round-trip stays a plain number.
 function formatCompForEdit(
   value: CandidateCompactOverviewExpectedSalary | null,
 ): string {
   if (!value?.number || !Number.isFinite(value.number)) return "";
-  const n = value.number;
-  if (n >= 1000 && n % 1000 === 0) return `${n / 1000}k`;
-  return String(n);
+  return String(Math.round(value.number));
 }
 
 function parseCompensation(raw: string): number | null {
