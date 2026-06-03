@@ -300,7 +300,6 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
       // returns "" for empty/missing, so the || "TBD" fallback stands.
       const startLabel = formatInvoiceDateLabelFromIso(startDate) || "TBD";
       const dueLabel = formatInvoiceDateLabelFromIso(dueDate) || "TBD";
-      const signer = props.accountExecName || "Andrew";
       const subject = `Invoice from ${props.billingCompanyName} - ${candidateClause}placement (${props.invoiceNumber})`;
       // Suppress the "of $X" clause when the fee isn't captured so we
       // don't ship a "for the placement fee of —" sentence. formatUsd
@@ -314,7 +313,10 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
         `Attached is invoice ${props.invoiceNumber} for the placement fee${feeOfClause}, with a start date of ${startLabel}. Payment is due ${dueLabel}.`,
         `ACH, wire, and check details are inside the PDF. Please reference ${props.invoiceNumber} on payment. If anything looks off or you need a different billing contact on file, just reply here and we'll sort it out.`,
         `We appreciate you trusting ${props.billingCompanyName} with this search, and we hope to continue to support your hiring needs in the future.`,
-        `Best,<br />${signer}`,
+        // No text sign-off here: the single branded sign-off (name/title/logo)
+        // is supplied by withSignature at true send only (Ace 78.0), de-duped
+        // on the "-- " delimiter (Ace 70.0). A hardcoded "Best, {signer}" line
+        // here produced a duplicate sign-off in the populated invoice email.
       ];
       const body = paragraphs.map((p) => `<p>${p}</p>`).join("");
       // To = every billing contact email; CC = every hiring contact email,
