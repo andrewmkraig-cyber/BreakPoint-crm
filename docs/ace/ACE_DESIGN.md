@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-06-03 · Ace 79.0
+Last updated: 2026-06-03 · Ace 80.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 

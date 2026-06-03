@@ -1,8 +1,31 @@
 # ACE_STATE.md
-Last updated: 2026-06-03 · Ace 79.0
-Current Version: Ace 79.0
+Last updated: 2026-06-03 · Ace 80.0
+Current Version: Ace 80.0
 Last Shipped: 2026-06-03
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 80.0 (2026-06-03) - BD Engine: Apollo enrollment rewrite + TheirStack discovery fix
+
+The BD outbound path was fully broken in prod (Apollo 422'd on every enroll; TheirStack 422'd on every first/no-history discovery). Both are now fixed end-to-end: Run Discovery Now returns companies, and Approve & Enroll writes contacts into Apollo with the correct job-posting merge fields. The Apollo sequence "Activate" toggle is deliberately still OFF - nothing sends live until a real approve-and-inspect pass is done. `npm run build` exits 0 (save the two pre-existing react-hooks/exhaustive-deps warnings). No schema changes.
+
+**Apollo enroll path rewritten (`src/lib/bd/apollo-enroll.ts`, called from `src/app/bd/launch/bd-run-actions.ts`)**
+- **Custom fields sent via `typed_custom_fields` keyed by the REAL Apollo custom field IDs** (recorded permanently in ACE_RULES.md ▸ BD Engine Rules so no future session re-discovers them):
+  - Posting Job Title = `6a207e120239f0000c18decd`
+  - Posting Job URL = `6a207e2290a45c00208eccbb`
+  - Posting Job City = `6a207f8bc3715c0010ae118e`
+  - These are **CONTACT** custom fields in Apollo. The email-template merge vars are `{{contact.Posting Job Title}}`, `{{contact.Posting Job URL}}`, `{{contact.Posting Job City}}`. **The original bug was using Apollo's built-in `{{job_title}}`** - that is the contact's OWN title (the wrong field), so every outbound email referenced the prospect's job instead of the role we're pitching. (`b5fc59c`)
+- **Apollo API key now sent in the `X-Api-Key` HEADER, not the JSON body.** The old body placement 422'd - prod was fully broken. Applies to BOTH `apolloEnrollContact` and `apolloSearchPeople`. (`84df40f`)
+- **Enrollment is now TWO calls** (`b4e217c`): (1) `POST /api/v1/contacts` with `typed_custom_fields` + `run_dedupe:true`, capture the returned contact id; (2) `POST /api/v1/emailer_campaigns/{sequence_id}/add_contact_ids` with params in the **QUERY STRING** (`emailer_campaign_id`, `send_email_from_email_account_id`, `contact_ids[]`). **Passing `sequence_id` on contact-create does NOT enroll** - Apollo silently ignores it; the second add-contact-ids call is mandatory.
+- **`run_dedupe:true` on contact-create** (`140b527`) so returning prospects UPDATE instead of duplicating.
+- **Posting Job City trimmed to city-only via `cityOnly()`** (everything before the first comma) - TheirStack returns "City, State", we store "Chicago".
+- **Sequence / mailbox resolution** via `apolloResolveEmailAccountId`: `APOLLO_EMAIL_ACCOUNT_ID` env override, else the team default active mailbox (`a.kraig@breakpoint-talent.com` / `69cac1772e443a000dfc7970`). Sequence id falls back to registry `6a06068f8142ee001d2b3dd2` (the real "Tax BD Sequence"). NOTE: the in-app label "BD Outbound v1" in `apollo-sequences.ts` is a hardcoded placeholder NAME that does NOT match the real Apollo sequence name - cosmetic mislabel, not yet fixed.
+- **`candidate_summary` generation removed** - it was Apollo-ignored and read nowhere. `generateCandidateSummary` / `genericCandidateSummary` + the Claude imports were deleted as dead code. If a per-candidate pitch line is wanted later, wire it as a 4th `typed_custom_field`.
+
+**TheirStack discovery fix (`src/lib/bd/theirstack-provider.ts`, `4f233cc`)**
+- **Always send `posted_at_max_age_days`** (integer days) on every `/v1/jobs/search` so TheirStack's mandatory-filter requirement is satisfied. Derived from `postedSince` when a prior run exists (whole days, min 1), else default **7**. The old code only sent `posted_at_gte` conditionally, so a first run / a run with no prior `AWAITING_APPROVAL`/`COMPLETE` `BDRun` sent NO mandatory filter and TheirStack 422'd "Missing mandatory filter - at least one of [posted_at_max_age_days, posted_at_gte, ...] must be provided" - discovery silently returned nothing. Both the cron and "Run Discovery Now" route through this one provider, so one fix covers both. Confirmed working: Run Discovery Now now returns companies. (Live authenticated 200 not re-run locally - prod `THEIRSTACK_API_KEY` is Sensitive in Vercel so `vercel env pull` returns it empty; the field name + shape are confirmed by TheirStack's own 422 message.)
+
+**Test scaffold left in repo (test-only)**
+- `scripts/test-apollo-enroll.ts` - a one-off single-contact enroll test (`35462ae`). `apolloEnrollContact` + the `EnrollPayload` type were exported from `apollo-enroll.ts` to support it. Test-only; not wired into any product path.
 
 ## What Shipped in Ace 79.0 (2026-06-03)
 

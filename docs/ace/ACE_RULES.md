@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-06-03 · Ace 79.0
+Last updated: 2026-06-03 · Ace 80.0
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -93,7 +93,23 @@ Claude must ask Andrew a full set of scoping questions before writing any BD Pha
 - **Vercel cron uses UTC, not ET**. 6 AM ET = 10:00 UTC currently, 11:00 UTC after DST. Vercel does not retry failed crons — Ace owns retries via the BDRun state machine (status fields and explicit re-queue actions).
 - **BD approval queue**: discovery runs surface companies, the BDRun stops at status `AWAITING_APPROVAL`, Andrew reviews on Today's Launch, Approve & Enroll fires Apollo. No silent auto-enroll.
 - **Shared warmed domain pool**: bulk email to candidates and BD outbound share the same 5 warmed domains. Combined daily volume must stay under per-domain warm capacity (~30-50/day per domain). The send scheduler accounts for both queues — they do not have independent budgets.
-- **Apollo API key**: stored in Vercel as `APOLLO_API_KEY`. Apollo Professional plan does not allow scoped keys, so the master key is the only option — name it "Ace BD Engine" so revocation has a clean audit trail.
+- **Apollo API key**: stored in Vercel as `APOLLO_API_KEY`. Apollo Professional plan does not allow scoped keys, so the master key is the only option — name it "Ace BD Engine" so revocation has a clean audit trail. **The key MUST be sent in the `X-Api-Key` request HEADER, never in the JSON body** (body placement 422s — this broke prod in Ace 80.0). Applies to every Apollo REST call (`apolloEnrollContact`, `apolloSearchPeople`, `apolloResolveEmailAccountId`). The prod key is marked **Sensitive** in Vercel, so `vercel env pull` returns it EMPTY — it cannot be pulled for local testing; paste it manually when a live call is needed.
+
+## Apollo Enrollment Rules (added 2026-06-03 · Ace 80.0 — PERMANENT, full detail in ACE_STATE.md ▸ Ace 80.0)
+The BD Approve & Enroll path (`src/lib/bd/apollo-enroll.ts`, called from `src/app/bd/launch/bd-run-actions.ts`). These are the load-bearing facts a future session must not re-discover.
+- **Job-posting context is written as `typed_custom_fields` keyed by the REAL Apollo custom field IDs — record them here permanently:**
+  - **Posting Job Title = `6a207e120239f0000c18decd`**
+  - **Posting Job URL = `6a207e2290a45c00208eccbb`**
+  - **Posting Job City = `6a207f8bc3715c0010ae118e`**
+  - These are **CONTACT** custom fields. The email-template merge vars are `{{contact.Posting Job Title}}`, `{{contact.Posting Job URL}}`, `{{contact.Posting Job City}}`. **NEVER use Apollo's built-in `{{job_title}}`** — that is the contact's own title (the wrong field). That was the original Ace 80.0 bug.
+- **Enrollment is TWO calls, in order:** (1) `POST /api/v1/contacts` with `typed_custom_fields` + `run_dedupe:true`, capture the returned contact id; (2) `POST /api/v1/emailer_campaigns/{sequence_id}/add_contact_ids` with params in the **QUERY STRING** (`emailer_campaign_id`, `send_email_from_email_account_id`, `contact_ids[]`). **Passing `sequence_id` on contact-create does NOT enroll** — Apollo ignores it; the second call is mandatory.
+- **`run_dedupe:true`** on contact-create so returning prospects update instead of duplicating.
+- **Posting Job City is trimmed city-only** via `cityOnly()` (everything before the first comma) — TheirStack returns "City, State", Apollo stores "Chicago".
+- **Sequence + mailbox IDs:** default active mailbox `a.kraig@breakpoint-talent.com` = `69cac1772e443a000dfc7970` (overridable via `APOLLO_EMAIL_ACCOUNT_ID`); sequence fallback `6a06068f8142ee001d2b3dd2` = the real "Tax BD Sequence". The in-app "BD Outbound v1" label in `apollo-sequences.ts` is a cosmetic placeholder that does NOT match the real Apollo sequence name.
+- **The Apollo sequence "Activate" toggle stays OFF** until a real approve-and-inspect pass is done. Never run the sequence live without that gate.
+
+## TheirStack Discovery Rule (added 2026-06-03 · Ace 80.0 — PERMANENT)
+- **Every TheirStack `/v1/jobs/search` request MUST carry at least one mandatory filter** (`posted_at_max_age_days` / `posted_at_gte` / `posted_at_lte` / `job_id_or` / `company_name_or` / ...) or it 422s "Missing mandatory filter". `job_title_or` + `limit` do NOT count. `TheirStackProvider` now ALWAYS sends `posted_at_max_age_days` (integer days, derived from `postedSince` when a prior run exists, else default 7) so the cron AND Run Discovery Now both pass. Do not make the date filter conditional again.
 
 ## Job + JD Rules (added 2026-05-12 · Ace 40.0)
 - **Job slug is the cuid**. `createJob` returns `slug: job.id` (the cuid). `/jobs` row navigation routes via the cuid carried on `_aceJobId` (the RFJobWithAce shim's carry-along), never `legacyRfId` and never the synthetic negative djb2 hash of the cuid. The djb2 hash exists only as a numeric stand-in inside the `RFJob.id` field for shim compatibility — it must never appear in a URL.

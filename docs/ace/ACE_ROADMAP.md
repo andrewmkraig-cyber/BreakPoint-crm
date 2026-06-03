@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-06-03 · Ace 79.0
+Last updated: 2026-06-03 · Ace 80.0
 
 ## Active Build Sequence
 
@@ -41,6 +41,15 @@ The first write capability (create reminders) shipped Ace 78.0. The rest of the 
 - **RevenueCards collection-gating + `placedAt` bucketing (known latent, item #14).** Placements RevenueCards require a SENT/PAID invoice, or bucket uninvoiced placements by `placedAt` with a `feeTotal > 0` gate - so a custom-terms (null `feeTotal`) or cross-quarter placement can be under-counted. Consciously not changed in 79.0; revisit only if that case surfaces in real data.
 - **Pipeline edit-drawer note fanout (Batch 7 deferred).** The offer/placement shared-note fanout (`Note.sourcePlacementId` upsert) fires on candidate-profile saves only; the `/pipeline` placement edit-drawer save path does not fan the note out. Wire it through the same upsert when picked up.
 - **Make Placement free-text Currency field cleanup (Batch 4).** The Offer modal dropped its USD tag, but the Make Placement modal still carries a free-text "Currency" field. Cosmetic; remove or lock it to USD to match.
+
+### Ace 80.0 open follow-ups - BD Engine (not done)
+All are known-and-deferred from the Ace 80.0 Apollo/TheirStack session. None block BD outbound, which is now working on the 4 healthy mailboxes.
+- **`andrew@breakpoint-talent.com` mailbox is "Sending disabled" in Apollo.** A 535 auth failure from an old run disabled it and it was never re-enabled; reconnecting via Configure mailbox with Zoho `smtp.zoho.com:465` did NOT clear it. BD is running on the other 4 healthy mailboxes. Low priority - revisit if send volume needs the 5th mailbox.
+- **Ace BD settings shows all 5 mailboxes "Healthy" but Apollo has `andrew@` disabled.** Ace matches mailbox health by DOMAIN (all 5 share `breakpoint-talent.com`) so it can't tell them apart. Display bug, harmless. Fix later by matching on the specific mailbox identity, not the domain.
+- **"BD Outbound v1" sequence mislabel.** `apollo-sequences.ts` carries a hardcoded placeholder sequence NAME ("BD Outbound v1") that does not match the real Apollo sequence ("Tax BD Sequence", id `6a06068f8142ee001d2b3dd2`). Cosmetic; relabel to the real name.
+- **Apollo sequence "Activate" toggle stays OFF intentionally** - never run the sequence live until a real approve-and-inspect pass is done. Tracked as a gate, not a bug.
+- **Daily-limits redundancy + oversized "40" font + blackout windows are stored-but-NOT-enforced** on the BD settings surface - all noted in this session but NOT fixed. Wire enforcement (or remove the dead controls) when BD send cadence is hardened.
+- **Test-contact cleanup (done in Apollo UI).** A few "BD field test" `andrew@breakpoint-talent.com` test contacts created during Ace 80.0 testing were cleaned up in the Apollo UI. Recorded for audit; no further action.
 
 ## Queued From Session
 Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.
