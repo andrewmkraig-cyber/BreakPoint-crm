@@ -241,13 +241,15 @@ export async function apolloEnrollContact(
   try {
     console.log(`[Apollo] typed_custom_fields →`, JSON.stringify(payload.typed_custom_fields));
 
-    // 1) Create/update the contact with the custom fields.
+    // 1) Create/update the contact with the custom fields. run_dedupe:true
+    //    makes Apollo update an existing contact with the same email instead
+    //    of creating a duplicate (the endpoint defaults to false).
     const createRes = await fetch(`${APOLLO_BASE}/api/v1/contacts`, {
       method: "POST",
       // Apollo requires the API key in the X-Api-Key header; passing it in
       // the JSON body is rejected with 422 INVALID_API_KEY_LOCATION.
       headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
-      body: JSON.stringify({ ...payload }),
+      body: JSON.stringify({ ...payload, run_dedupe: true }),
     });
     if (!createRes.ok) {
       const text = await createRes.text().catch(() => "");
