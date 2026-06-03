@@ -20,8 +20,6 @@ import {
   type CityAggregate,
 } from "@/lib/placements-map-geo";
 
-const BRAND_GREEN = "#5A9642";
-
 // When every placement coordinate falls within this much lat/lng span,
 // we zoom to fit the cluster instead of showing the full US. Two degrees
 // is roughly metro-area scale (Pittsburgh ⇄ Cleveland is ~1.1° apart),
@@ -159,7 +157,11 @@ export function PlacementsLeafletMap({ cities }: Props) {
 
       {mappable.map((city) => {
         const radius = bubbleRadius(city.totalFee, maxFee);
-        const borderColor = STATUS_COLORS[dominantStatus(city.statusMix)];
+        // Whole dot is painted with the payment-state color — the same
+        // STATUS_COLORS resolver the legend swatches use (Paid green,
+        // Invoice Draft slate, Pending start dark-red, etc.). No green
+        // fill anymore; the state is the fill, not a ring.
+        const stateColor = STATUS_COLORS[dominantStatus(city.statusMix)];
         const feeLabel =
           city.totalFee > 0 ? formatMoneyShort(city.totalFee) : "—";
         return (
@@ -168,10 +170,13 @@ export function PlacementsLeafletMap({ cities }: Props) {
             center={[city.lat, city.lng]}
             radius={radius}
             pathOptions={{
-              color: borderColor,
-              weight: 2,
-              fillColor: BRAND_GREEN,
-              fillOpacity: 0.85,
+              // Thin neutral white outline only — keeps the colored dot
+              // legible against both the bright OSM tiles (light mode)
+              // and the darkened tiles in Court Mode dark themes.
+              color: "#FFFFFF",
+              weight: 1.5,
+              fillColor: stateColor,
+              fillOpacity: 0.9,
             }}
           >
             <Popup>
