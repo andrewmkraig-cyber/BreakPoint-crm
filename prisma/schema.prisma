@@ -1795,6 +1795,12 @@ model BDRun {
   discoveredPayload Json?
   approvedAt        DateTime?
   enrolledCount     Int         @default(0)
+  // Manual "Run Discovery Now" override: max contacts to enroll per
+  // company at approve time. Null on the scheduled morning cron and on
+  // legacy runs, both of which fall back to the hardcoded default of 4
+  // in enrollCompaniesInApollo. Companies count is not stored — it's
+  // consumed inline during the discovery request, not at enroll time.
+  maxContactsPerCompany Int?
   // Launch-time snapshot the cron reads when it picks the run up:
   // contact cap, sequence id, rotation pool, etc. Shape will drift
   // as we wire Apollo, so it stays as Json instead of a column wave.

@@ -190,7 +190,10 @@ type TriggerResult =
   | { success: true; runId: string; discoveredCount: number }
   | { success: false; error: string };
 
-export async function triggerManualDiscovery(): Promise<TriggerResult> {
+export async function triggerManualDiscovery(opts?: {
+  companies?: number;
+  maxContactsPerCompany?: number;
+}): Promise<TriggerResult> {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
     return { success: false, error: "CRON_SECRET not configured" };
@@ -200,7 +203,17 @@ export async function triggerManualDiscovery(): Promise<TriggerResult> {
     const host = h.get("host");
     if (!host) return { success: false, error: "Cannot resolve request host" };
     const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-    const url = `${proto}://${host}/api/cron/bd-discovery`;
+    // Thread the popup's overrides through to the cron as query params.
+    // Omitting them (the scheduled cron path) keeps today's defaults.
+    const params = new URLSearchParams();
+    if (opts?.companies && opts.companies > 0) {
+      params.set("companies", String(Math.floor(opts.companies)));
+    }
+    if (opts?.maxContactsPerCompany && opts.maxContactsPerCompany > 0) {
+      params.set("maxContactsPerCompany", String(Math.floor(opts.maxContactsPerCompany)));
+    }
+    const qs = params.toString();
+    const url = `${proto}://${host}/api/cron/bd-discovery${qs ? `?${qs}` : ""}`;
 
     const res = await fetch(url, {
       method: "GET",

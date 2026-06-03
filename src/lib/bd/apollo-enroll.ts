@@ -202,6 +202,7 @@ type ApolloPerson = {
 async function apolloSearchPeople(
   apiKey: string,
   companyName: string,
+  perPage: number,
 ): Promise<ApolloPerson[]> {
   try {
     const res = await fetch(`${APOLLO_BASE}/api/v1/mixed_people/search`, {
@@ -211,7 +212,7 @@ async function apolloSearchPeople(
         api_key: apiKey,
         q_organization_name: companyName,
         person_titles: TARGET_TITLES,
-        per_page: 4,
+        per_page: perPage,
       }),
     });
     if (!res.ok) {
@@ -283,13 +284,17 @@ export async function enrollCompaniesInApollo(
 ): Promise<EnrollResult> {
   const run = await prisma.bDRun.findFirst({
     where: { id: runId, organizationId: orgId },
-    select: { id: true, discoveredPayload: true, status: true },
+    select: { id: true, discoveredPayload: true, status: true, maxContactsPerCompany: true },
   });
   if (!run) {
     return { enrolled: 0, capped: false };
   }
 
   const companies = extractDiscovered(run.discoveredPayload);
+  // Per-run override from the "Run Discovery Now" popup; null on the
+  // scheduled cron + legacy runs, which keep the original default of 4.
+  // The daily-cap clamp below still bounds the total regardless of this.
+  const perCompany = run.maxContactsPerCompany ?? 4;
 
   const orgConfig = await prisma.bdOrgConfig.findUnique({
     where: { organizationId: orgId },
@@ -358,8 +363,11 @@ export async function enrollCompaniesInApollo(
             title: cc.title || undefined,
             organization_name: c.companyName,
           }))
-        : await apolloSearchPeople(apiKey, c.companyName);
-    const candidates = people.slice(0, Math.min(4, remaining));
+        : await apolloSearchPeople(apiKey, c.companyName, perCompany);
+    // Math.min keeps the daily-cap clamp intact: no matter how high
+    // perCompany is, `remaining` (dailyCap - enrolledToday) still bounds
+    // how many we enroll, so the global contact cap always holds.
+    const candidates = people.slice(0, Math.min(perCompany, remaining));
 
     // One Claude call per company — every contact enrolled here gets
     // the same 4-bullet block. Cheaper than per-contact and the pitch

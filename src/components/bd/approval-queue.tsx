@@ -13,9 +13,18 @@ import {
   type PendingBDRun,
   type SerializedOutreachHistory,
 } from "@/app/bd/launch/bd-run-actions";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 
 const MAX_PREVIEW_ROWS = 5;
 const MAX_DISPLAYED_CONTACTS = 5;
+
+// Defaults the "Run Discovery Now" popup pre-fills. Mirror today's
+// hardcoded behavior: 25 companies pulled, up to 4 contacts/company
+// enrolled at approve time.
+const DEFAULT_COMPANIES = 25;
+const DEFAULT_CONTACTS_PER_COMPANY = 4;
 
 type Props = {
   initialRuns: PendingBDRun[];
@@ -53,6 +62,7 @@ export function ApprovalQueue({ initialRuns }: Props) {
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [triggerError, setTriggerError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [discoveryOpen, setDiscoveryOpen] = useState(false);
   const [isTriggering, startTriggering] = useTransition();
   const [curated, setCurated] = useState<CuratedByRun>(() => {
     const seed: CuratedByRun = {};
@@ -150,11 +160,12 @@ export function ApprovalQueue({ initialRuns }: Props) {
     }
   }
 
-  function onTrigger() {
+  function onRunDiscovery(companies: number, maxContactsPerCompany: number) {
     setTriggerError(null);
     startTriggering(async () => {
-      const res = await triggerManualDiscovery();
+      const res = await triggerManualDiscovery({ companies, maxContactsPerCompany });
       if (res.success) {
+        setDiscoveryOpen(false);
         router.refresh();
       } else {
         setTriggerError(res.error);
@@ -170,7 +181,10 @@ export function ApprovalQueue({ initialRuns }: Props) {
         </p>
         <button
           type="button"
-          onClick={onTrigger}
+          onClick={() => {
+            setTriggerError(null);
+            setDiscoveryOpen(true);
+          }}
           disabled={isTriggering}
           className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-60"
         >
@@ -182,6 +196,16 @@ export function ApprovalQueue({ initialRuns }: Props) {
           Run Discovery Now
         </button>
       </div>
+
+      {discoveryOpen && (
+        <DiscoveryModal
+          submitting={isTriggering}
+          onCancel={() => {
+            if (!isTriggering) setDiscoveryOpen(false);
+          }}
+          onConfirm={onRunDiscovery}
+        />
+      )}
 
       {triggerError && (
         <p className="text-xs text-red-600 dark:text-red-300">{triggerError}</p>
@@ -215,6 +239,121 @@ export function ApprovalQueue({ initialRuns }: Props) {
         </div>
       )}
     </section>
+  );
+}
+
+// Popup for "Run Discovery Now". Two editable inputs pre-filled with the
+// standing defaults: how many companies to discover (a free pull, no cap
+// gate) and the max contacts per company to enroll at approve time (still
+// bounded by the global daily cap downstream).
+function DiscoveryModal({
+  submitting,
+  onCancel,
+  onConfirm,
+}: {
+  submitting: boolean;
+  onCancel: () => void;
+  onConfirm: (companies: number, maxContactsPerCompany: number) => void;
+}) {
+  const [companies, setCompanies] = useState<number>(DEFAULT_COMPANIES);
+  const [perCompany, setPerCompany] = useState<number>(DEFAULT_CONTACTS_PER_COMPANY);
+
+  const companiesValid = !Number.isNaN(companies) && companies > 0;
+  const perCompanyValid = !Number.isNaN(perCompany) && perCompany > 0;
+  const canConfirm = companiesValid && perCompanyValid && !submitting;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="bd-discovery-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl border border-court-border bg-court-surface p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2
+              id="bd-discovery-title"
+              className="font-serif text-lg font-bold tracking-tight text-court-fg"
+            >
+              Run discovery now
+            </h2>
+            <p className="mt-1 text-sm text-court-fg-muted">
+              Pull a fresh batch of companies for approval. This surfaces a list to
+              review; nothing sends until you approve and enroll.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={submitting}
+            className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-60"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="block text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
+              Number of companies
+            </span>
+            <div className={cn(INPUT_FRAME_RECT_CLASS, "mt-1 w-full")}>
+              <input
+                type="number"
+                min={1}
+                value={Number.isNaN(companies) ? "" : companies}
+                onChange={(e) =>
+                  setCompanies(e.target.value === "" ? NaN : Number(e.target.value))
+                }
+                className={`${INPUT_CONTROL_CLASS} text-sm`}
+              />
+            </div>
+          </label>
+
+          <label className="block">
+            <span className="block text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
+              Max contacts per company
+            </span>
+            <div className={cn(INPUT_FRAME_RECT_CLASS, "mt-1 w-full")}>
+              <input
+                type="number"
+                min={1}
+                value={Number.isNaN(perCompany) ? "" : perCompany}
+                onChange={(e) =>
+                  setPerCompany(e.target.value === "" ? NaN : Number(e.target.value))
+                }
+                className={`${INPUT_CONTROL_CLASS} text-sm`}
+              />
+            </div>
+          </label>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="secondary" size="sm" onClick={onCancel} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => onConfirm(companies, perCompany)}
+            disabled={!canConfirm}
+          >
+            {submitting ? (
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-1.5 h-4 w-4" />
+            )}
+            Run discovery
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 

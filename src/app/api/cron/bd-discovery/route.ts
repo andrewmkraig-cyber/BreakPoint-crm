@@ -149,6 +149,24 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // Manual "Run Discovery Now" overrides arrive as query params; the
+  // scheduled cron passes none, so both fall back to today's behavior
+  // (25 companies, enroll-time default of 4 contacts/company). Companies
+  // is a free pull — overriding maxResults only changes how many jobs
+  // TheirStack surfaces for approval, never the send budget. Clamp both
+  // to sane ceilings so a typo can't fire an enormous request.
+  const sp = req.nextUrl.searchParams;
+  const companiesParam = Number.parseInt(sp.get("companies") ?? "", 10);
+  const maxResults =
+    Number.isFinite(companiesParam) && companiesParam > 0
+      ? Math.min(companiesParam, 200)
+      : MAX_RESULTS;
+  const perCompanyParam = Number.parseInt(sp.get("maxContactsPerCompany") ?? "", 10);
+  const maxContactsPerCompany =
+    Number.isFinite(perCompanyParam) && perCompanyParam > 0
+      ? Math.min(perCompanyParam, 100)
+      : null;
+
   const lastRun = await prisma.bDRun.findFirst({
     where: {
       organizationId,
@@ -212,6 +230,7 @@ export async function GET(req: NextRequest) {
       status: "RUNNING",
       discoveryProvider: "theirstack",
       startedAt: new Date(),
+      maxContactsPerCompany,
     },
   });
 
@@ -219,7 +238,7 @@ export async function GET(req: NextRequest) {
     const raw = await new TheirStackProvider().discoverJobs({
       verticals: DISCOVERY_TITLES,
       locations: [],
-      maxResults: MAX_RESULTS,
+      maxResults,
       postedSince,
     });
 
