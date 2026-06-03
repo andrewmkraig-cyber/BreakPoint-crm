@@ -14,9 +14,12 @@ import { cn } from "@/lib/utils";
 import { fetchWithRetry } from "@/lib/retry-fetch";
 
 // Topbar weather chip with a hover-only forecast popover. Reads the
-// browser's geolocation ONCE, caches the result in localStorage, and
-// hits Open-Meteo (free, no API key) for the current conditions plus
-// 6-hour hourly and 7-day daily slices, refreshing every 30 min.
+// browser's LIVE geolocation on every load (per device, not per
+// account) so the chip follows wherever this device currently is —
+// desktop in one city and the phone in another each show their own
+// place. It hits Open-Meteo (free, no API key) for the current
+// conditions plus 24-hour hourly and 7-day daily slices, and the
+// weather data itself refreshes every 30 min.
 //
 // Both the Open-Meteo forecast and the BigDataCloud reverse-geocode go
 // through same-origin proxies (`/api/weather` + `/api/weather/geocode`).
@@ -26,17 +29,23 @@ import { fetchWithRetry } from "@/lib/retry-fetch";
 // keeps the browser on its own origin so CORS is impossible and a
 // transient 502 is just a 502 we can retry.
 //
-// First visit: prompt the browser for geolocation. User's decision
-// (granted coords / denied) is persisted to localStorage so subsequent
-// sessions never re-prompt — the browser-level permission state alone
-// isn't enough because dismissed prompts ("X" without choosing) leave
-// the state at `prompt` and the OS would re-ask on every PWA launch.
+// Location source of truth (per device, live):
+//   1. Live `navigator.geolocation` read on each load (and on app
+//      focus, throttled). When permission is already granted this is
+//      silent — no prompt — so it just follows the moving device.
+//   2. If the live read is denied / unavailable / times out, fall back
+//      to the LAST KNOWN coords cached in localStorage (if any), so a
+//      momentary GPS failure doesn't lose the recruiter's real city.
+//   3. If there are no cached coords either, fall back to Chagrin
+//      Falls, OH so the chip ALWAYS renders something — an empty topbar
+//      slot reads as a regression.
 //
-// If geolocation is unavailable or denied, we fall back to Chagrin
-// Falls, OH so the chip always renders. The recruiter caught it
-// disappearing whenever the browser revoked the permission, and an
-// empty topbar slot looked like a regression. A fixed fallback also
-// keeps desktop and mobile showing the same place when GPS is off.
+// We render off the best-known coords immediately (step 2/3) so the
+// chip is never blank, then replace with the live reading the moment it
+// resolves. This deliberately replaces the old "read once, cache
+// forever" behavior that pinned the chip to wherever the recruiter
+// first granted permission (it was stuck on Solon, OH after a single
+// grant there).
 
 const REFRESH_MS = 30 * 60 * 1000;
 // 24-hour hourly window. The popover's hourly strip is horizontally
@@ -51,19 +60,26 @@ const DAYS_AHEAD = 7;
 const FALLBACK_LAT = 41.4312;
 const FALLBACK_LON = -81.3901;
 
-// localStorage key that holds the user's geolocation decision + last
-// captured coords. Bumping the version suffix invalidates every stored
-// cache (used if the shape below changes incompatibly later).
+// localStorage key that holds the user's last geolocation decision +
+// last captured coords. This is ONLY a graceful-degradation cache now
+// (last-known coords for when a live read fails); the live read is
+// always the source of truth. Bumping the version suffix invalidates
+// every stored cache (used if the shape below changes incompatibly).
 const LOCATION_CACHE_KEY = "ace-weather-location-v1";
-// Coords are refreshed in the background once a day so a relocating
-// recruiter doesn't get stuck on stale lat/lon forever. The cache stays
-// usable past this age — we just kick off a silent re-fetch.
-const LOCATION_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+// Re-read the live device location when the app regains focus, but no
+// more often than this so we follow a moving device without hammering
+// GPS or the weather/geocode proxies. The 30-min REFRESH_MS data loop
+// runs independently of this.
+const LIVE_REREAD_THROTTLE_MS = 10 * 60 * 1000;
 
 type LocationCache = {
-  // 'granted'  → coords resolved from geolocation; lat/lon present.
-  // 'denied'   → user declined; we use the Chagrin Falls fallback and
-  //              must NEVER prompt again on subsequent loads.
+  // 'granted' → coords resolved from a live geolocation read; lat/lon
+  //             present. Kept as the last-known fallback for next time
+  //             a live read fails.
+  // 'denied'  → the last live read was permission-denied. We keep any
+  //             prior lat/lon as a last-known fallback and don't force
+  //             a prompt, but we still attempt a silent live read in
+  //             case the OS permission has since been re-granted.
   decision: "granted" | "denied";
   lat?: number;
   lon?: number;
@@ -552,6 +568,13 @@ export function WeatherWidget() {
   useEffect(() => {
     let cancelled = false;
     let intervalId: number | undefined;
+    // The coords the periodic refresh + focus re-read operate on. They
+    // start at the best-known value (cached / fallback) and get replaced
+    // by every successful live read so the device follows the recruiter.
+    let curLat = FALLBACK_LAT;
+    let curLon = FALLBACK_LON;
+    // Throttle marker for the on-focus live re-read.
+    let lastLiveReadAt = 0;
 
     async function fetchWeather(lat: number, lon: number) {
       // Same-origin proxy at /api/weather (server-side hits Open-Meteo
@@ -681,85 +704,102 @@ export function WeatherWidget() {
       }
     }
 
-    function startWith(lat: number, lon: number, source: string) {
-      console.log("[weather] starting fetch loop", { lat, lon, source });
+    // Point the chip at a set of coords: fetch the weather and resolve a
+    // human "City, ST" label for the popover header. Updates the active
+    // coords the periodic refresh runs on. `source` only drives the
+    // header label: live + last-known coords reverse-geocode to the real
+    // city; the fixed fallback uses its known label without a network
+    // call so it stays stable.
+    function applyCoords(lat: number, lon: number, source: string) {
+      curLat = lat;
+      curLon = lon;
+      console.log("[weather] applying coords", { lat, lon, source });
       void fetchWeather(lat, lon);
-      // Resolve the lat/lon into a human label for the popover header.
-      // Fallback sources already have a known label so we skip the
-      // network call to keep the popover header stable on permission
-      // denial. Cached/live geolocation both reverse-geocode so the
-      // returning user sees their actual city, not "Your Location".
       const isUserLocation =
         source === "geolocation" || source === "geolocation-cached";
       if (isUserLocation) {
         void reverseGeocode(lat, lon).then((label) => {
           if (cancelled) return;
-          if (label) setLocation(label);
-          else setLocation("Your Location");
+          setLocation(label ?? "Your Location");
         });
       } else {
         setLocation("Chagrin Falls, OH");
       }
-      intervalId = window.setInterval(
-        () => void fetchWeather(lat, lon),
-        REFRESH_MS,
-      );
     }
 
-    // Silently re-capture coords in the background when our cached pair
-    // is older than LOCATION_CACHE_MAX_AGE_MS. The active fetch loop
-    // keeps running on the stale coords either way, so a denial here
-    // doesn't take the chip down — we just keep what we had.
-    function refreshCoordsIfStale(prev: LocationCache) {
-      if (!navigator.geolocation) return;
-      const stale =
-        !prev.capturedAt ||
-        Date.now() - prev.capturedAt > LOCATION_CACHE_MAX_AGE_MS;
-      if (!stale) return;
+    // Read the device's CURRENT location live and switch the chip to it.
+    // When permission is already granted this is silent (no prompt); on
+    // a fresh 'prompt' state it shows the one system ask. On any failure
+    // we keep whatever is already rendered (cached / fallback) so the
+    // chip never goes blank, and we remember a hard permission denial so
+    // we don't force a prompt path. maximumAge:0 forces a fresh fix
+    // rather than letting the OS hand back a stale cached position.
+    function liveRead() {
+      if (typeof navigator === "undefined" || !navigator.geolocation) return;
+      lastLiveReadAt = Date.now();
       navigator.geolocation.getCurrentPosition(
         (pos) => {
+          if (cancelled) return;
           writeLocationCache({
             decision: "granted",
             lat: pos.coords.latitude,
             lon: pos.coords.longitude,
             capturedAt: Date.now(),
           });
+          applyCoords(
+            pos.coords.latitude,
+            pos.coords.longitude,
+            "geolocation",
+          );
         },
-        () => {
-          // Background refresh failed (could be a transient denial or
-          // network issue); keep the stale coords so the chip stays up.
+        (err) => {
+          if (cancelled) return;
+          console.warn(
+            "[weather] live geolocation read failed; keeping last-known/fallback",
+            err,
+          );
+          // Record a hard denial (preserving any last-known coords) so
+          // we don't keep forcing a prompt, but a transient timeout
+          // leaves the prior decision intact.
+          if (err && err.code === err.PERMISSION_DENIED) {
+            const prev = readLocationCache();
+            writeLocationCache({
+              decision: "denied",
+              lat: prev?.lat,
+              lon: prev?.lon,
+              capturedAt: prev?.capturedAt,
+            });
+          }
         },
-        { timeout: 5000 },
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 0 },
       );
     }
 
     async function bootstrap() {
-      // 1) localStorage cache wins over everything. A prior 'denied'
-      //    NEVER re-prompts; a prior 'granted' uses cached coords
-      //    immediately (and silently refreshes them once a day).
+      // 1) Render immediately off the best-known coords so the chip is
+      //    never blank while the live read resolves: last-known cached
+      //    coords if we have them, otherwise the Chagrin Falls fallback.
       const cached = readLocationCache();
-      if (cached?.decision === "denied") {
-        startWith(FALLBACK_LAT, FALLBACK_LON, "fallback-cached-denied");
-        return;
-      }
-      if (
-        cached?.decision === "granted" &&
-        typeof cached.lat === "number" &&
-        typeof cached.lon === "number"
-      ) {
-        startWith(cached.lat, cached.lon, "geolocation-cached");
-        refreshCoordsIfStale(cached);
-        return;
+      if (typeof cached?.lat === "number" && typeof cached?.lon === "number") {
+        applyCoords(cached.lat, cached.lon, "geolocation-cached");
+      } else {
+        applyCoords(FALLBACK_LAT, FALLBACK_LON, "fallback");
       }
 
-      // 2) No cache yet. Before triggering a prompt, peek at the
-      //    Permissions API — if the browser itself remembers a denial
-      //    (e.g. user blocked the site permanently in Site Settings),
-      //    cache that and skip the prompt entirely. Permissions API is
-      //    not universally available (older Safari), so failures here
-      //    fall through to the normal getCurrentPosition path.
+      // 2) Periodic weather refresh on whatever coords are currently
+      //    active (live reads swap curLat/curLon underneath it).
+      intervalId = window.setInterval(() => {
+        if (!cancelled) void fetchWeather(curLat, curLon);
+      }, REFRESH_MS);
+
+      // 3) Live-read the device's current location. Peek at the
+      //    Permissions API first: a hard 'denied' means we stay on the
+      //    last-known/fallback already rendered and skip the prompt
+      //    path; 'granted' reads silently; 'prompt' shows the one ask.
+      //    Permissions API is missing on older Safari — fall through to
+      //    a direct live read there.
+      if (typeof navigator === "undefined" || !navigator.geolocation) return;
       if (
-        typeof navigator !== "undefined" &&
         navigator.permissions &&
         typeof navigator.permissions.query === "function"
       ) {
@@ -771,56 +811,39 @@ export function WeatherWidget() {
             name: "geolocation" as PermissionName,
           });
           if (cancelled) return;
-          if (status.state === "denied") {
-            writeLocationCache({ decision: "denied" });
-            startWith(FALLBACK_LAT, FALLBACK_LON, "fallback-permissions-denied");
-            return;
-          }
-          // 'granted' or 'prompt' — fall through. 'granted' won't show
-          // a system prompt; 'prompt' will (this is the once-ever ask).
+          // Follow a later OS-level grant without a reload (e.g. the user
+          // flips the PWA's location permission on in Settings).
+          status.onchange = () => {
+            if (!cancelled && status.state === "granted") liveRead();
+          };
+          if (status.state === "denied") return; // stay on fallback
         } catch {
-          // Permissions API unsupported — fall through to prompt path.
+          // Permissions API unsupported — fall through to a live read.
         }
       }
-
-      // 3) First-ever visit: trigger the browser prompt exactly once and
-      //    persist whatever the user decides so we never bother them
-      //    again.
-      if (typeof navigator !== "undefined" && navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            if (cancelled) return;
-            writeLocationCache({
-              decision: "granted",
-              lat: pos.coords.latitude,
-              lon: pos.coords.longitude,
-              capturedAt: Date.now(),
-            });
-            startWith(pos.coords.latitude, pos.coords.longitude, "geolocation");
-          },
-          (err) => {
-            if (cancelled) return;
-            // Persist the denial so the next mount short-circuits in
-            // step (1) without ever calling getCurrentPosition again.
-            writeLocationCache({ decision: "denied" });
-            console.warn(
-              "[weather] geolocation denied, caching denial and using Chagrin Falls fallback",
-              err,
-            );
-            startWith(FALLBACK_LAT, FALLBACK_LON, "fallback-denied-this-mount");
-          },
-          { timeout: 5000 },
-        );
-      } else {
-        startWith(FALLBACK_LAT, FALLBACK_LON, "fallback-no-geolocation");
-      }
+      liveRead();
     }
 
     void bootstrap();
 
+    // Re-read the live location when the app regains focus / becomes
+    // visible (the recruiter walked somewhere and reopened the PWA),
+    // throttled to LIVE_REREAD_THROTTLE_MS so we follow a moving device
+    // without hammering GPS or the proxies.
+    function maybeRefocusRead() {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible")
+        return;
+      if (Date.now() - lastLiveReadAt < LIVE_REREAD_THROTTLE_MS) return;
+      liveRead();
+    }
+    window.addEventListener("focus", maybeRefocusRead);
+    document.addEventListener("visibilitychange", maybeRefocusRead);
+
     return () => {
       cancelled = true;
       if (intervalId !== undefined) window.clearInterval(intervalId);
+      window.removeEventListener("focus", maybeRefocusRead);
+      document.removeEventListener("visibilitychange", maybeRefocusRead);
     };
   }, []);
 
