@@ -133,7 +133,9 @@ export function BdEngineSection({ config }: { config: BdEngineConfig }) {
               min={1}
               max={200}
               value={Number.isNaN(dailyCap) ? "" : dailyCap}
-              onChange={(e) => setDailyCap(Number(e.target.value))}
+              onChange={(e) =>
+                setDailyCap(e.target.value === "" ? NaN : Number(e.target.value))
+              }
               className="w-24 rounded-md border border-court-border bg-court-surface px-2 py-1 text-right text-sm tabular-nums text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
             />
           </div>

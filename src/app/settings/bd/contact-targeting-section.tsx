@@ -50,7 +50,9 @@ function VerticalTargetingCard({ row }: { row: ContactTargetingRow }) {
           primaryTitles: primary,
           smallFirmFallbackTitles: smallFirm,
           practiceSpecificTitles: practice,
-          maxPerFirm,
+          // Empty field reads as NaN while editing; persist it as 1 (the
+          // floor the server already clamps to) instead of NaN.
+          maxPerFirm: Number.isNaN(maxPerFirm) ? 1 : maxPerFirm,
         });
         router.refresh();
       } catch (e) {
@@ -92,8 +94,10 @@ function VerticalTargetingCard({ row }: { row: ContactTargetingRow }) {
             type="number"
             min={1}
             max={20}
-            value={maxPerFirm}
-            onChange={(e) => setMaxPerFirm(Number(e.target.value) || 1)}
+            value={Number.isNaN(maxPerFirm) ? "" : maxPerFirm}
+            onChange={(e) =>
+              setMaxPerFirm(e.target.value === "" ? NaN : Number(e.target.value))
+            }
             className="mt-1 block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
           />
         </label>

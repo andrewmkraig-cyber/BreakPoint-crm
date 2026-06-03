@@ -295,7 +295,10 @@ function SavedSearchEditForm({
     e.preventDefault();
     const input = {
       name,
-      contactCap,
+      // Empty field reads as NaN while editing; persist it as 0 (the
+      // floor the server already clamps to) instead of letting NaN
+      // through.
+      contactCap: Number.isNaN(contactCap) ? 0 : contactCap,
       criteria: {
         apolloSequenceId: sequence,
         locationOverride: locationOverride.trim(),
@@ -348,8 +351,10 @@ function SavedSearchEditForm({
           <input
             type="number"
             min={0}
-            value={contactCap}
-            onChange={(e) => setContactCap(Number(e.target.value))}
+            value={Number.isNaN(contactCap) ? "" : contactCap}
+            onChange={(e) =>
+              setContactCap(e.target.value === "" ? NaN : Number(e.target.value))
+            }
             className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
           />
         </Field>
