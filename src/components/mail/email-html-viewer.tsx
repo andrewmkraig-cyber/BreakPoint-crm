@@ -111,6 +111,120 @@ function measureEmailDocumentHeight(doc: Document): number {
   return Math.ceil(max);
 }
 
+// Turn bare URLs / www links / email addresses that sit as plain TEXT in
+// the body into real clickable anchors. Plain-text emails (account
+// activations, password resets) and HTML emails that paste a raw link
+// instead of wrapping it in <a> both leave the recruiter with inert text
+// to copy-paste. We walk the parsed DOM's text nodes (decoded text, so no
+// HTML-entity boundary ambiguity) and skip anything already inside an
+// <a>/<script>/<style>, so existing links and newsletter markup are never
+// touched. Only http(s)/www/mailto targets are produced — never
+// javascript:/data: — and the href is set via the DOM (not string concat)
+// so it can't break out of an attribute. When nothing matches we return
+// the original html byte-for-byte, so richly-formatted newsletters (which
+// already carry their own anchors) never get reserialized.
+function linkifyHtml(html: string): string {
+  if (!html) return html;
+  if (typeof window === "undefined" || typeof window.DOMParser === "undefined") {
+    return html;
+  }
+  // Cheap pre-check: skip the parse entirely when the body has nothing
+  // that could become a link.
+  if (!/(?:https?:\/\/|www\.|@)/i.test(html)) return html;
+
+  let doc: Document;
+  try {
+    doc = new window.DOMParser().parseFromString(html, "text/html");
+  } catch {
+    return html;
+  }
+  if (!doc.body) return html;
+
+  const SKIP_TAGS = new Set(["A", "SCRIPT", "STYLE", "TEXTAREA", "NOSCRIPT"]);
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  const targets: Text[] = [];
+  let current = walker.nextNode();
+  while (current) {
+    const node = current as Text;
+    current = walker.nextNode();
+    const value = node.nodeValue;
+    if (!value || !/(?:https?:\/\/|www\.|@)/i.test(value)) continue;
+    let skip = false;
+    let parent = node.parentElement;
+    while (parent && parent !== doc.body) {
+      if (SKIP_TAGS.has(parent.tagName)) {
+        skip = true;
+        break;
+      }
+      parent = parent.parentElement;
+    }
+    if (skip) continue;
+    targets.push(node);
+  }
+
+  let changed = false;
+  for (const node of targets) {
+    const frag = buildLinkFragment(node.nodeValue ?? "", doc);
+    if (frag && node.parentNode) {
+      node.parentNode.replaceChild(frag, node);
+      changed = true;
+    }
+  }
+  if (!changed) return html;
+  // Reserialize the FULL document (not just body) so a newsletter's
+  // <head>/<style> survives — buildSrcDoc handles the <html>/<head> shape.
+  return `<!doctype html>${doc.documentElement.outerHTML}`;
+}
+
+// URL (group 1) or email address (group 2). The URL branch is greedy and
+// listed first so an "@" inside a URL is consumed by the URL, not matched
+// as an email.
+const LINKIFY_RE =
+  /((?:https?:\/\/|www\.)[^\s<>"']+)|([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/gi;
+
+function buildLinkFragment(text: string, doc: Document): DocumentFragment | null {
+  const re = new RegExp(LINKIFY_RE.source, "gi");
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let any = false;
+  const frag = doc.createDocumentFragment();
+  while ((m = re.exec(text)) !== null) {
+    const isEmail = m[2] != null;
+    let token = m[0];
+    // Peel trailing sentence punctuation / closing brackets so they stay
+    // as plain text rather than 404-ing inside the href.
+    let trailing = "";
+    const trail = token.match(/[.,;:!?)\]}'"]+$/);
+    if (trail && !isEmail) {
+      trailing = token.slice(token.length - trail[0].length);
+      token = token.slice(0, token.length - trail[0].length);
+    }
+    if (!token) continue;
+    if (m.index > last) {
+      frag.appendChild(doc.createTextNode(text.slice(last, m.index)));
+    }
+    const a = doc.createElement("a");
+    const href = isEmail
+      ? `mailto:${token}`
+      : /^www\./i.test(token)
+        ? `https://${token}`
+        : token;
+    a.setAttribute("href", href);
+    a.setAttribute("target", "_blank");
+    a.setAttribute("rel", "noopener noreferrer");
+    a.textContent = token;
+    frag.appendChild(a);
+    if (trailing) frag.appendChild(doc.createTextNode(trailing));
+    last = m.index + m[0].length;
+    any = true;
+  }
+  if (!any) return null;
+  if (last < text.length) {
+    frag.appendChild(doc.createTextNode(text.slice(last)));
+  }
+  return frag;
+}
+
 // Wrap the email body in a full HTML document so the iframe has a real
 // <head> for the <base target=...> + baseline CSS. Three cases:
 //   1. Body already has <head>  → splice our injection in.
@@ -136,7 +250,7 @@ export function EmailHtmlViewer({ html }: { html: string }) {
   const [height, setHeight] = useState<number>(MIN_EMAIL_HEIGHT);
   const [loadTick, setLoadTick] = useState(0);
 
-  const srcDoc = useMemo(() => buildSrcDoc(html, EMAIL_CSS), [html]);
+  const srcDoc = useMemo(() => buildSrcDoc(linkifyHtml(html), EMAIL_CSS), [html]);
 
   useEffect(() => {
     setHeight(MIN_EMAIL_HEIGHT);
