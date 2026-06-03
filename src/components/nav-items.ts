@@ -71,8 +71,8 @@ export const NAV_GROUPS: ReadonlyArray<NavGroupData> = [
   {
     title: "CRM",
     items: [
-      { href: "/bd", label: "BD", icon: Megaphone, iconColor: "text-rose-400" },
       { href: "/clients", label: "Clients", icon: Building2, iconColor: "text-cyan-400" },
+      { href: "/bd", label: "BD", icon: Megaphone, iconColor: "text-rose-400" },
     ],
   },
   {
@@ -80,7 +80,7 @@ export const NAV_GROUPS: ReadonlyArray<NavGroupData> = [
     items: [
       { href: "/invoices", label: "Invoices", icon: Receipt, iconColor: "text-lime-400" },
       { href: "/expenses", label: "Expenses", icon: Wallet, iconColor: "text-amber-400" },
-      { href: "/notes", label: "Notes", icon: StickyNote, iconColor: "text-yellow-400" },
+      { href: "/notes", label: "Notes", icon: StickyNote, iconColor: "text-pink-400" },
     ],
   },
   {
