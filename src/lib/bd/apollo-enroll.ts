@@ -1,6 +1,4 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
-import { CLAUDE_MODEL, getClaude } from "@/lib/claude";
 import { getDefaultApolloSequence } from "@/lib/bd/apollo-sequences";
 
 // Cap is enforced against everything enrolled today across the org's
@@ -63,6 +61,9 @@ type DiscoveredItem = {
   companyName: string;
   jobTitle: string;
   jobUrl?: string;
+  // "City, State" string from the discovery provider (TheirStack/JSearch).
+  // Empty string when the payload entry carries no location.
+  jobLocation: string;
   // Andrew-curated contact list captured at approval time. When present
   // and non-empty, the enroll loop uses these instead of re-querying
   // Apollo for decision-makers.
@@ -86,6 +87,12 @@ function extractDiscovered(payload: unknown): DiscoveredItem[] {
           : typeof obj.jobPostingUrl === "string"
             ? obj.jobPostingUrl
             : "";
+    const jobLocation =
+      typeof obj.jobLocation === "string"
+        ? obj.jobLocation
+        : typeof obj.job_location === "string"
+          ? obj.job_location
+          : "";
     const curatedContacts: CuratedContact[] = [];
     if (Array.isArray(obj.contacts)) {
       for (const raw of obj.contacts) {
@@ -98,7 +105,13 @@ function extractDiscovered(payload: unknown): DiscoveredItem[] {
         curatedContacts.push({ firstName, lastName, title });
       }
     }
-    out.push({ companyName, jobTitle, jobUrl: rawUrl || undefined, curatedContacts });
+    out.push({
+      companyName,
+      jobTitle,
+      jobUrl: rawUrl || undefined,
+      jobLocation,
+      curatedContacts,
+    });
   }
   return out;
 }
@@ -111,83 +124,6 @@ function formatCuratedContacts(contacts: CuratedContact[]): string {
       return c.title ? `${name} (${c.title})` : name;
     })
     .join(", ");
-}
-
-function genericCandidateSummary(jobTitle: string): string {
-  const role = jobTitle.trim() || "this role";
-  return [
-    `• Proven ${role} background with direct, relevant experience`,
-    `• Track record of delivering measurable impact in similar functions`,
-    `• Strong communication and stakeholder skills for cross-team work`,
-    `• Ready to step in quickly with minimal ramp-up time`,
-  ].join("\n");
-}
-
-// Sends a single short call to Claude per discovered job to produce a
-// 4-bullet candidate profile we attach to every Apollo contact enrolled
-// at that company. The summary is the BD pitch's load-bearing line — if
-// Claude fails (timeout, key unset, malformed output) we fall back to a
-// generic 4-bullet block keyed off the job title so enrollment is never
-// blocked on the AI step.
-async function generateCandidateSummary(
-  jobTitle: string,
-  companyName: string,
-  jobPostingUrl?: string,
-): Promise<string> {
-  const titleForFallback = jobTitle.trim() || "this role";
-
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return genericCandidateSummary(titleForFallback);
-  }
-
-  // No description scraping in Phase 2 — we only have a job URL string.
-  // Pass the first 500 chars of the URL plus the job title so Claude has
-  // something concrete to anchor on; spec said "or just job title if no
-  // description" and the URL is a halfway anchor.
-  const urlSnippet = (jobPostingUrl ?? "").slice(0, 500);
-  const descBlock = urlSnippet
-    ? `Job URL (first 500 chars): ${urlSnippet}`
-    : `(No description available. Derive solely from the job title.)`;
-
-  const prompt =
-    `You are a recruiter writing a 4-bullet candidate summary for a cold BD email. ` +
-    `Based on this job posting, write 4 concise bullets describing the ideal candidate ` +
-    `profile you would bring for this role. Each bullet should be 10-15 words max. ` +
-    `No intros, no headers, just 4 bullets starting with •. ` +
-    `Job title: ${titleForFallback}. Company: ${companyName}. ` +
-    `Job description snippet: ${descBlock}`;
-
-  try {
-    const anthropic = getClaude();
-    const response = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 300,
-      messages: [{ role: "user", content: prompt }],
-    });
-    const raw = response.content
-      .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
-      .trim();
-    const bullets = raw
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => l.startsWith("•"))
-      .slice(0, 4);
-    if (bullets.length < 4) {
-      console.warn(
-        `[Apollo] candidate summary parse short (${bullets.length}/4) for "${companyName}". Falling back to generic`,
-      );
-      return genericCandidateSummary(titleForFallback);
-    }
-    return bullets.join("\n");
-  } catch (err) {
-    console.warn(
-      `[Apollo] candidate summary threw for "${companyName}":`,
-      err instanceof Error ? err.message : err,
-    );
-    return genericCandidateSummary(titleForFallback);
-  }
 }
 
 type ApolloPerson = {
@@ -239,9 +175,9 @@ type EnrollPayload = {
   email?: string;
   title?: string;
   organization_name: string;
-  job_title: string;
-  job_posting_url?: string;
-  candidate_summary?: string;
+  // Apollo ignores raw top-level job_* keys; job context must be written
+  // as typed_custom_fields keyed by the real Apollo custom field IDs.
+  typed_custom_fields: Record<string, string>;
 };
 
 async function apolloEnrollContact(
@@ -250,6 +186,7 @@ async function apolloEnrollContact(
   payload: EnrollPayload,
 ): Promise<boolean> {
   try {
+    console.log(`[Apollo] typed_custom_fields →`, JSON.stringify(payload.typed_custom_fields));
     const res = await fetch(`${APOLLO_BASE}/api/v1/contacts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -369,14 +306,15 @@ export async function enrollCompaniesInApollo(
     // how many we enroll, so the global contact cap always holds.
     const candidates = people.slice(0, Math.min(perCompany, remaining));
 
-    // One Claude call per company — every contact enrolled here gets
-    // the same 4-bullet block. Cheaper than per-contact and the pitch
-    // is the same regardless of which decision-maker fielded it.
-    const candidateSummary = await generateCandidateSummary(
-      c.jobTitle,
-      c.companyName,
-      c.jobUrl,
-    );
+    // The three job-context values Apollo stores as contact custom
+    // fields, keyed by their real Apollo custom field IDs. Identical for
+    // every contact enrolled at this company. Keys are always present;
+    // jobUrl/jobLocation fall back to "" rather than being omitted.
+    const typedCustomFields: Record<string, string> = {
+      "6a207e120239f0000c18decd": c.jobTitle,
+      "6a207e2290a45c00208eccbb": c.jobUrl ?? "",
+      "6a207f8bc3715c0010ae118e": c.jobLocation,
+    };
 
     if (candidates.length > 0) {
       for (const p of candidates) {
@@ -387,9 +325,7 @@ export async function enrollCompaniesInApollo(
           email: p.email ?? undefined,
           title: p.title ?? undefined,
           organization_name: p.organization_name ?? c.companyName,
-          job_title: c.jobTitle,
-          job_posting_url: c.jobUrl,
-          candidate_summary: candidateSummary,
+          typed_custom_fields: typedCustomFields,
         });
         if (ok) {
           enrolledThisRun += 1;
@@ -409,9 +345,7 @@ export async function enrollCompaniesInApollo(
       // sequence will treat the org_name + title as the address.
       const ok = await apolloEnrollContact(apiKey, sequenceId, {
         organization_name: c.companyName,
-        job_title: c.jobTitle,
-        job_posting_url: c.jobUrl,
-        candidate_summary: candidateSummary,
+        typed_custom_fields: typedCustomFields,
       });
       if (ok) {
         enrolledThisRun += 1;
