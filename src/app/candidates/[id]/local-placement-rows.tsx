@@ -570,6 +570,17 @@ export function LocalPlacementRows({
             handleStageChanged(placementFor.jobRfId, "pending_start");
             setPlacementFor(null);
           }}
+          onCancelled={() => {
+            // Cancel stamps the optimistic stage as "cancelled" (NOT the
+            // save path's "pending_start"), so the pill flips straight to
+            // "Placement Cancelled" with the cancelled button set and the
+            // soft router.refresh() reconciles cleanly — the held
+            // "cancelled" matches the server "cancelled" cancelPlacement
+            // writes, so the pendingStages hold releases without a hard
+            // reload (see handleStageChanged + the jobs-mirror effect).
+            handleStageChanged(placementFor.jobRfId, "cancelled");
+            setPlacementFor(null);
+          }}
         />
       )}
       {confirmFor && (
@@ -1208,6 +1219,7 @@ function LocalPlacementDialog({
   job,
   onClose,
   onSaved,
+  onCancelled,
 }: {
   job: LocalJobRow;
   onClose: () => void;
@@ -1215,6 +1227,12 @@ function LocalPlacementDialog({
   // pill's optimistic stage to "pending_start" without waiting on the
   // revalidatePath round trip.
   onSaved: () => void;
+  // Fired after cancelPlacement resolves. Kept separate from onSaved so the
+  // cancel path stamps the optimistic stage as "cancelled" instead of the
+  // save path's "pending_start" — otherwise the held "pending_start" never
+  // matches the server's "cancelled" and the pill is stuck on the wrong
+  // stage until a hard reload.
+  onCancelled: () => void;
 }) {
   const router = useRouter();
   const snap = job.placement ?? null;
@@ -1436,7 +1454,7 @@ function LocalPlacementDialog({
       toast.success("Placement cancelled", {
         description: "Hidden from dashboards, map, and pipeline. Toggle Show Cancelled in /pipeline to re-find it.",
       });
-      onSaved();
+      onCancelled();
       onClose();
       router.refresh();
     });
