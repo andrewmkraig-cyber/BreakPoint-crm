@@ -147,6 +147,25 @@ type CreateRemindersBatchResolved = {
   count: number;
   reminders: Array<{ title: string; reminderAtIso: string; notifyLeadsMin?: number[] }>;
 };
+// Bulk action proposal (inactivate_jobs / reactivate_jobs / delete_jobs /
+// delete_candidates) — ONE card for the whole set. Mirrors the
+// resolved.kind="bulk_action" payload the chat route's describeAction
+// emits: verb + entity noun + resolved count, the full per-item name
+// list, and (for deletes) the cascade warning. One Confirm fires the
+// whole batch via the bulk executor; there is no per-item gate.
+type BulkActionResolved = {
+  kind: "bulk_action";
+  description: string;
+  action: "inactivate_jobs" | "reactivate_jobs" | "delete_jobs" | "delete_candidates";
+  verb: "Inactivate" | "Reactivate" | "Delete";
+  noun: "jobs" | "candidates";
+  destructive: boolean;
+  count: number;
+  requestedCount: number;
+  unresolvedCount: number;
+  cascadeNote: string | null;
+  items: Array<{ id: string; label: string }>;
+};
 type UnknownResolved = { kind: "unknown"; description: string };
 type ActionResolved =
   | MoveResolved
@@ -159,6 +178,7 @@ type ActionResolved =
   | ResetPlacementsResolved
   | UpdatePlacementFieldResolved
   | CreateRemindersBatchResolved
+  | BulkActionResolved
   | UnknownResolved;
 
 type ActionToolName =
@@ -173,7 +193,11 @@ type ActionToolName =
   | "reset_activity_log"
   | "reset_placements"
   | "update_placement_field"
-  | "create_reminders_batch";
+  | "create_reminders_batch"
+  | "inactivate_jobs"
+  | "reactivate_jobs"
+  | "delete_jobs"
+  | "delete_candidates";
 
 type ActionCard = {
   kind: "action";
@@ -199,6 +223,10 @@ type BatchReceipt = {
   kind: "receipt";
   id: string;
   receiptKind: "reminder" | "job" | "candidate";
+  // Action verb for the headline ("Added" for reminders, "Inactivated" /
+  // "Reactivated" / "Deleted" for bulk job/candidate batches). Defaults
+  // to "Added" when absent so the reminder path is unchanged.
+  verb?: string;
   created: number;
   failed: number;
   failures: Array<{ title: string; reason: string }>;
@@ -210,17 +238,20 @@ type RenderItem = ChatMessage | ActionCard | BatchReceipt;
 // assistant message (the in-session card renders its own richer view).
 function receiptLine(r: BatchReceipt): string {
   const total = r.created + r.failed;
+  const verb = r.verb ?? "Added";
+  const word = r.receiptKind === "reminder" ? "reminder" : r.receiptKind;
+  const noun = (n: number) => `${word}${n === 1 ? "" : "s"}`;
   if (r.failed === 0) {
-    return `Added ${r.created} reminder${r.created === 1 ? "" : "s"}.`;
+    return `${verb} ${r.created} ${noun(r.created)}.`;
   }
   const reasons = r.failures
     .map((f) => f.reason)
     .filter(Boolean)
     .slice(0, 3)
     .join("; ");
-  return `Added ${r.created} of ${total} reminder${
-    total === 1 ? "" : "s"
-  } - ${r.failed} failed${reasons ? `: ${reasons}` : ""}.`;
+  return `${verb} ${r.created} of ${total} ${noun(
+    total,
+  )} - ${r.failed} failed${reasons ? `: ${reasons}` : ""}.`;
 }
 
 // Sentinel id assigned to the assistant bubble while it's streaming.
@@ -943,7 +974,11 @@ export function ClaudePanel() {
             event.name === "reset_activity_log" ||
             event.name === "reset_placements" ||
             event.name === "update_placement_field" ||
-            event.name === "create_reminders_batch")
+            event.name === "create_reminders_batch" ||
+            event.name === "inactivate_jobs" ||
+            event.name === "reactivate_jobs" ||
+            event.name === "delete_jobs" ||
+            event.name === "delete_candidates")
         ) {
           const input =
             event.input && typeof event.input === "object"
@@ -1124,9 +1159,78 @@ export function ClaudePanel() {
         subject?: string;
         body?: string;
         redirect?: string;
+        receipt?: unknown;
       };
       if (!res.ok || !data.ok) {
         throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      // Bulk actions return a structured receipt instead of a single
+      // result line — the executor already ran the WHOLE batch in this
+      // one POST. Flip the card to confirmed (no inline result line) and
+      // push ONE BatchReceiptLine summarizing the outcome, mirroring the
+      // reminder receipt path. No redirect for bulk (the recruiter isn't
+      // on one deleted record's page); a refresh re-renders open lists.
+      if (data.receipt && typeof data.receipt === "object") {
+        router.refresh();
+        const rec = data.receipt as Record<string, unknown>;
+        const receiptKind =
+          rec.receiptKind === "job" || rec.receiptKind === "candidate"
+            ? rec.receiptKind
+            : "reminder";
+        const done = typeof rec.done === "number" ? rec.done : 0;
+        const failed = typeof rec.failed === "number" ? rec.failed : 0;
+        const failures = Array.isArray(rec.failures)
+          ? rec.failures.flatMap((f) => {
+              if (!f || typeof f !== "object") return [];
+              const o = f as Record<string, unknown>;
+              return [
+                {
+                  title:
+                    typeof o.label === "string"
+                      ? o.label
+                      : typeof o.title === "string"
+                        ? o.title
+                        : "",
+                  reason: typeof o.reason === "string" ? o.reason : "",
+                },
+              ];
+            })
+          : [];
+        // Past tense for the completed-outcome receipt: the resolved verb
+        // is present tense ("Inactivate") and all three end in "e", so
+        // "+d" gives "Inactivated" / "Reactivated" / "Deleted".
+        const verb =
+          card.resolved.kind === "bulk_action"
+            ? `${card.resolved.verb}d`
+            : undefined;
+        const receipt: BatchReceipt = {
+          kind: "receipt",
+          id: `receipt-${actionId}`,
+          receiptKind,
+          verb,
+          created: done,
+          failed,
+          failures,
+        };
+        setItems((prev) => [
+          ...prev.map((it) =>
+            it.kind === "action" && it.id === actionId
+              ? { ...it, status: "confirmed" as const }
+              : it,
+          ),
+          receipt,
+        ]);
+        try {
+          const row = await persist(
+            "assistant",
+            data.message ?? receiptLine(receipt),
+          );
+          setItems((prev) => [...prev, row]);
+        } catch {
+          // Persistence failure is non-fatal — the receipt already shows
+          // the outcome inline.
+        }
+        return;
       }
       // draft_email branch: pop the global mail composer with the
       // pre-filled draft. The recruiter still has to click Send.
@@ -1580,7 +1684,12 @@ function AttachmentChip({
 function BatchReceiptLine({ receipt }: { receipt: BatchReceipt }) {
   const total = receipt.created + receipt.failed;
   const allOk = receipt.failed === 0;
-  const noun = `reminder${total === 1 ? "" : "s"}`;
+  // Reminder path is unchanged ("Added N reminders"); bulk job/candidate
+  // batches carry their own verb ("Inactivated" / "Reactivated" /
+  // "Deleted") and noun. Same green-check / amber-triangle chrome.
+  const verb = receipt.verb ?? "Added";
+  const word = receipt.receiptKind === "reminder" ? "reminder" : receipt.receiptKind;
+  const noun = `${word}${total === 1 ? "" : "s"}`;
   return (
     <div className="mx-auto flex max-w-[95%] flex-col items-center gap-1 py-1 text-center">
       <div className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-medium text-court-fg">
@@ -1590,8 +1699,8 @@ function BatchReceiptLine({ receipt }: { receipt: BatchReceipt }) {
           <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
         )}
         {allOk
-          ? `Added ${receipt.created} ${noun}`
-          : `Added ${receipt.created} of ${total} ${noun} · ${receipt.failed} failed`}
+          ? `${verb} ${receipt.created} ${noun}`
+          : `${verb} ${receipt.created} of ${total} ${noun} · ${receipt.failed} failed`}
       </div>
       {receipt.failures.length > 0 && (
         <div className="text-[11px] text-court-fg-muted">
@@ -1640,6 +1749,8 @@ function ActionConfirmCard({
             "mt-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider " +
             (card.name === "delete_job" ||
             card.name === "delete_candidate" ||
+            card.name === "delete_jobs" ||
+            card.name === "delete_candidates" ||
             card.name === "reset_activity_log" ||
             card.name === "reset_placements"
               ? "bg-red-100 text-red-700"
@@ -1648,6 +1759,14 @@ function ActionConfirmCard({
         >
           {card.name === "create_reminders_batch"
             ? "Reminders"
+            : card.name === "inactivate_jobs"
+            ? "Inactivate jobs"
+            : card.name === "reactivate_jobs"
+            ? "Reactivate jobs"
+            : card.name === "delete_jobs"
+            ? "Delete jobs"
+            : card.name === "delete_candidates"
+            ? "Delete candidates"
             : card.name === "move_candidate_stage"
             ? "Stage move"
             : card.name === "add_note"
@@ -1921,6 +2040,50 @@ function ActionCardLabel({ card }: { card: ActionCard }) {
             {r.reminders.length > 8 && (
               <li className="italic">+{r.reminders.length - 8} more</li>
             )}
+          </ul>
+        )}
+      </div>
+    );
+  }
+  if (r.kind === "bulk_action") {
+    // Header: "Inactivate 11 jobs?" / "Delete 11 jobs?". The entity noun
+    // singularizes at count 1. For deletes we ALWAYS show the full name
+    // list (scrollable) plus the cascade warning in red-600 — the
+    // recruiter sees exactly what will cascade. Non-destructive batches
+    // cap the list at 8 with a "+N more" tail.
+    const headerNoun = r.count === 1 ? r.noun.slice(0, -1) : r.noun;
+    const shown = r.destructive ? r.items : r.items.slice(0, 8);
+    const moreCount = r.items.length - shown.length;
+    return (
+      <div className="text-sm leading-snug">
+        <div>
+          {r.verb} <span className="font-semibold">{r.count}</span> {headerNoun}?
+          {r.destructive && (
+            <span className="ml-1 text-xs italic text-red-600">
+              {r.cascadeNote ? `${r.cascadeNote} ` : ""}This cannot be undone.
+            </span>
+          )}
+        </div>
+        {r.unresolvedCount > 0 && (
+          <div className="mt-0.5 text-xs text-court-fg-muted">
+            {r.unresolvedCount} not found in your workspace and will be skipped.
+          </div>
+        )}
+        {r.items.length > 0 && (
+          <ul
+            className={
+              "mt-2 space-y-0.5 rounded-md border border-court-border bg-court-surface-subtle px-2 py-1.5 text-xs text-court-fg-muted" +
+              // Deletes show the FULL list — scroll it rather than cap it
+              // (non-destructive batches cap at 8 + "+N more" above).
+              (r.destructive ? " max-h-48 overflow-y-auto" : "")
+            }
+          >
+            {shown.map((it) => (
+              <li key={it.id} className="truncate">
+                <span className="text-court-fg">{it.label}</span>
+              </li>
+            ))}
+            {moreCount > 0 && <li className="italic">+{moreCount} more</li>}
           </ul>
         )}
       </div>
