@@ -49,17 +49,6 @@ export async function createReminder(
     throw new Error("Invalid reminder time");
   }
 
-  // [reminder-tz-diag] TEMP — remove once Andrew confirms reminder times
-  // land correctly in prod. Shows the exact string that crossed the
-  // boundary vs the absolute instant + the Eastern wall-clock it resolves
-  // to, so a skew is visible at the storage hop.
-  // eslint-disable-next-line no-console
-  console.log("[reminder-tz-diag] createReminder.store", {
-    reminderAtIso,
-    storedUtc: reminderAt.toISOString(),
-    storedEastern: reminderAt.toLocaleString("en-US", { timeZone: "America/New_York" }),
-  });
-
   const row = await prisma.aceReminder.create({
     data: {
       organizationId: org.id,

@@ -429,19 +429,6 @@ export default async function CalendarPage() {
   // client re-derives it on its own polling tick if needed. `urgent`
   // is true for anything due within the next 30 minutes so the panel
   // can tint it amber.
-  // [reminder-tz-diag] TEMP — remove once Andrew confirms reminder times
-  // land correctly in prod. The Upcoming list keeps only reminders at or
-  // after `now`; this compares ABSOLUTE instants (both UTC under the
-  // hood), so there is no ET/UTC boundary bug here — a correctly-timed
-  // future reminder appears. The 4 PM skewed reminder was dropped only
-  // because Item A stored it in the past.
-  // eslint-disable-next-line no-console
-  console.log("[reminder-tz-diag] upcoming-filter", {
-    nowUtc: now.toISOString(),
-    nowEastern: now.toLocaleString("en-US", { timeZone: "America/New_York" }),
-    total: reminderRows.length,
-    future: reminderRows.filter((r) => r.reminderAt.getTime() >= now.getTime()).length,
-  });
   const reminders: CalendarReminder[] = reminderRows
     .filter((r) => r.reminderAt.getTime() >= now.getTime())
     .slice(0, 10)

@@ -1972,17 +1972,6 @@ async function executeTool(
 async function runCreateReminder(
   rawInput: unknown,
 ): Promise<{ ok: true; title: string } | { ok: false; title: string; reason: string }> {
-  // [reminder-tz-diag] TEMP — remove once Andrew confirms reminder times
-  // land correctly in prod. This is the RAW reminderAtIso the MODEL
-  // emitted, before any validation/re-anchor — the first hop, where a
-  // guessed base time or a wrong offset would first appear.
-  // eslint-disable-next-line no-console
-  console.log("[reminder-tz-diag] model-emitted", {
-    rawReminderAtIso:
-      rawInput && typeof rawInput === "object"
-        ? (rawInput as Record<string, unknown>).reminderAtIso
-        : undefined,
-  });
   const parsed = parseReminderToolInput(rawInput);
   if (!parsed.ok) {
     log("create_reminder", { title: parsed.title }, 0, `rejected: ${parsed.reason}`);
@@ -2238,16 +2227,6 @@ export async function POST(req: NextRequest) {
   // closest to the model's response and override any earlier prompt
   // that drifts. Same pattern as /api/ai-workspace/route.ts.
   const { today, offset: etOffset, nowIso: etNowIso } = easternDateAndOffset(new Date());
-  // [reminder-tz-diag] TEMP — remove once Andrew confirms reminder times
-  // land correctly in prod. These are the exact values injected into the
-  // prompt this turn; with {{NOW_ET}} present the model anchors "in 20
-  // minutes" to the real Eastern now instead of guessing a base time.
-  // eslint-disable-next-line no-console
-  console.log("[reminder-tz-diag] prompt-injection", {
-    today,
-    etOffset,
-    etNowIso,
-  });
   const fullSystemPrompt =
     entityBlock +
     SYSTEM_PROMPT.replace(/\{\{TODAY\}\}/g, today)

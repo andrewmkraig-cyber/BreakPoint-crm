@@ -1,8 +1,42 @@
 # ACE_STATE.md
-Last updated: 2026-06-02 · Ace 77.0
-Current Version: Ace 77.0
+Last updated: 2026-06-02 · Ace 78.0
+Current Version: Ace 78.0
 Last Shipped: 2026-06-02
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 78.0 (2026-06-02)
+
+Mail polish, pipeline-distance accuracy, required job location, email draft/signature fixes, the first Ace Assistant write capability (create reminders), and the topbar weather live-location fix. Plus the session-close cleanup: the temporary `[reminder-tz-diag]` logging was removed from all 4 files it lived in (`reminder-actions.ts`, `calendar/page.tsx`, `claude-panel/chat/route.ts`, `claude-panel/reminders.ts`) - the `reanchorToEastern` guard it sat beside is permanent and stays. No blocking schema changes; `npm run build` exits 0 (save the two pre-existing react-hooks/exhaustive-deps warnings). The same-day Ace 77.0 mail cosmetic batch (`068b659`: Save -> Save Draft, Drafts (N) count, Clay-light card token) is logged separately under Ace 77.0 below and not repeated here.
+
+**Mail visual gaps + mobile email viewer (`63c476e`)**
+- `/mail` border/divider gaps closed: the search-bar lines run full-width, the top header divider extends to the sidebar via the resize-handle filler, the subject/body divider runs full-left, and the thread-column gutter dividers run full width/height. The mobile/PWA toast-opened email viewer (`FloatingThreadWindow`) now renders as a **viewport-bounded full-screen sheet below `lg`** with safe-area insets, internal scroll, and a reachable close button; the desktop floating window is unchanged.
+
+**Pipeline + profile distance accuracy (`af0b76a`, `f2d48d8`)**
+- **Job-side distance query falls back to `Job.locations[0]`** when the structured city/state/zip columns are empty, so jobs stored only with a loose location string still geocode for the distance sub-line.
+- **`scripts/geocode-jobs.ts`** added (parse-only, idempotent, org-scoped). Run against BreakPoint: **9 jobs updated** (7 Springfield OH, 2 Florence KY), **5 correctly skipped** (3x Remote, "Northeast Ohio", bare "Springfield" with no state).
+- **`createCandidate` geocode changed from detached fire-and-forget to AWAITED + failure-isolated** - this was the root cause of candidates that had a location but null `lat/lng` on Vercel serverless (the detached promise was being killed when the serverless function returned before it resolved).
+- **Precision gate `isPreciseGeocodeQuery` in `src/lib/distance.ts`** blanks the distance for non-precise location strings, so a region like "Northeast Ohio" no longer produces a misleading centroid distance. Applied to **both** the pipeline Location cell and the candidate-profile job pill.
+
+**Required job location + CSV geocode (`271d4ac`)**
+- **City + State (2-letter) + Zip (5-digit) are now REQUIRED** on NEW job create AND on the job-edit **Details** surface (new structured City/State/Zip fields added there; enforced client + server). Existing loose-location jobs are unaffected until they're next edited.
+- **CSV-import candidate path now awaits geocode per row**, capped at **75 inline**; the rest fall to the backfill script (`scripts/geocode-candidates.ts`). The invoice-demo and match-by-name create paths are intentionally **NOT** geocoded - they create location-less candidates, so geocoding there would be dead code.
+- **`updateJobOverview` lookup made org-scoped** (Rule 8 fix).
+
+**Email draft / signature fixes (`a6ad368`)**
+- **Signature no longer baked into stored drafts or scheduled (Send Later) bodies.** `withSignature` now fires only at **true send** (immediate send and scheduled-dispatch), so saved drafts and scheduled bodies are clean and the oversized-signature-in-editor bug is gone.
+- Navigating to the Mail tab **no longer auto-opens a composer** (gated on an explicit user-thread-selection ref). The composer manager `open()` **dedupes by draft id** so one trigger opens exactly one composer (fixed the double-composer).
+- **NOTE (pre-existing data, not retroactively cleaned):** Gmail drafts created BEFORE this deploy still carry the baked-in signature until they're resent or deleted.
+
+**Ace Assistant creates reminders - first write capability (`86c873a`, `71b3ba8`, `fea6a2d`)**
+- NEW assistant capability: a `create_reminder` tool that **executes DIRECTLY server-side** with **no per-item Confirm/Cancel card**. This is a documented, intentional exception to the Confirm-card pattern, justified because reminder creates are **reversible and explicitly user-requested**; destructive tools KEEP their card. (See ACE_RULES.md ▸ Ace Assistant Write-Tool Pattern.)
+- One assistant turn fires N creates; a single **`batch_receipt`** summary line renders in the panel ("Added 6 reminders"). Over-10 creates in one turn fall back to a single confirm card.
+- **Timezone:** the model is injected `{{NOW_ET}}` (live ET wall-clock) + `{{ET_OFFSET}}` (DST-correct) and resolves relative phrases ("in 20 minutes") against it. A `reanchorToEastern` guard forces any `reminderAtIso` onto the correct ET offset (defense-in-depth), and naive datetimes (no offset) are rejected. **Root cause of the original skew was a MISSING current-time injection** (the model had no "now" to anchor relative phrases against), not a UTC conversion bug.
+- **Reminder edit panel in the calendar left rail:** click-to-open for any tile (including past / 11th-and-later), a red **Delete** added, sticky viewport-bounded footer. EVENT TYPES + TEAM consolidated into a two-column card to reclaim vertical space so the edit form fits. Reminders stay Ace-native (toast-only, never pushed to Google).
+- **KNOWN follow-up (not done):** the reminder edit panel is desktop-only (`hidden lg:flex`); mobile/PWA click-to-edit would need consolidating into `CalendarEventDrawer` - deferred (see ACE_ROADMAP.md).
+
+**Topbar weather live location (`647d532`)**
+- The topbar weather chip now reads **LIVE per-device geolocation on each load** instead of reusing a once-saved coordinate. Root cause: `weather-widget.tsx` `bootstrap()` returned immediately on the cached-granted branch (`startWith(cached.lat, cached.lon, ...)` ~line 750), and the once-a-day staleness refresh only rewrote localStorage - it never re-fetched the live session - so a single permission grant in Solon pinned the chip to Solon forever.
+- New behavior: live `getCurrentPosition` on each load (silent when permission is already granted) plus a focus/visibility re-read throttled to once per 10 min; weather data still refreshes every 30 min. **Fallback order: live read -> last-known cached coords -> Chagrin Falls, OH default** - the chip is never blank. Works on desktop + iOS PWA with Permissions-API state handling (a hard "denied" stays on the fallback without re-prompting; an `onchange` listener picks up a later OS grant). Per-device: a laptop and a phone show their own cities independently.
 
 ## What Shipped in Ace 77.0 (2026-06-02)
 

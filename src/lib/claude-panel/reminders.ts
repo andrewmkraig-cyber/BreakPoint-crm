@@ -87,15 +87,9 @@ export function parseReminderToolInput(raw: unknown): ParsedReminder {
     return { ok: false, title, reason: "invalid date" };
   }
 
-  // [reminder-tz-diag] TEMP — remove once Andrew confirms reminder times
-  // land correctly in prod. Re-anchor the wall-clock onto the DST-correct
-  // Eastern offset; log only when it actually corrects something so a
-  // wrong/`Z` offset can never skew silently.
+  // Defense-in-depth: re-anchor the wall-clock onto the DST-correct
+  // Eastern offset so a wrong / `Z` offset can never skew silently.
   const anchored = reanchorToEastern(iso);
-  if (anchored !== iso) {
-    // eslint-disable-next-line no-console
-    console.log("[reminder-tz-diag] reanchored", { from: iso, to: anchored, title });
-  }
   return { ok: true, title, reminderAtIso: anchored, notifyLeadsMin: sanitizeNotifyLeads(input) };
 }
 
