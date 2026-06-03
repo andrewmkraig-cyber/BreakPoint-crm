@@ -524,7 +524,7 @@ function formatCompForDisplay(
       ? value.currency.trim()
       : null;
   if (num == null) return currency ?? "";
-  const formatted = new Intl.NumberFormat("en-US").format(num);
+  const formatted = `$${new Intl.NumberFormat("en-US").format(num)}`;
   return currency ? `${formatted} ${currency}` : formatted;
 }
 
