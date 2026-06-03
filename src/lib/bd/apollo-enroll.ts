@@ -143,9 +143,10 @@ async function apolloSearchPeople(
   try {
     const res = await fetch(`${APOLLO_BASE}/api/v1/mixed_people/search`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      // Apollo requires the API key in the X-Api-Key header; passing it in
+      // the JSON body is rejected with 422 INVALID_API_KEY_LOCATION.
+      headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
       body: JSON.stringify({
-        api_key: apiKey,
         q_organization_name: companyName,
         person_titles: TARGET_TITLES,
         per_page: perPage,
@@ -189,9 +190,10 @@ export async function apolloEnrollContact(
     console.log(`[Apollo] typed_custom_fields →`, JSON.stringify(payload.typed_custom_fields));
     const res = await fetch(`${APOLLO_BASE}/api/v1/contacts`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      // Apollo requires the API key in the X-Api-Key header; passing it in
+      // the JSON body is rejected with 422 INVALID_API_KEY_LOCATION.
+      headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
       body: JSON.stringify({
-        api_key: apiKey,
         sequence_id: sequenceId,
         ...payload,
       }),
