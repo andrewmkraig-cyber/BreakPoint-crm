@@ -87,20 +87,28 @@ export function CalendarLeftRail({
 }: Props) {
   return (
     <aside
+      // The rail is the SINGLE scroll container: every card keeps its
+      // natural height (all shrink-0) and the rail scrolls as one when the
+      // stack is taller than the viewport. One scroll region means the
+      // bottom-most reminder + the Google footer are always reachable -
+      // no nested panel scroll that could run past the rail's clip edge
+      // (the earlier max-h-[42vh] inner scroll clipped the last reminder).
       className="hidden w-[280px] shrink-0 flex-col gap-4 overflow-y-auto pb-4 pr-1 lg:flex"
       style={{ maxHeight: "calc(100vh - 13rem)" }}
     >
-      <MiniMonth
-        monthStart={monthStart}
-        currentWeekStart={currentWeekStart}
-        today={today}
-        onSelectDate={onSelectDate}
-      />
+      <div className="shrink-0">
+        <MiniMonth
+          monthStart={monthStart}
+          currentWeekStart={currentWeekStart}
+          today={today}
+          onSelectDate={onSelectDate}
+        />
+      </div>
       {/* EVENT TYPES + TEAM share one card as two columns. Stacking them
           as separate cards consumed ~120px of rail height and pushed the
           Reminders panel below the fold; side-by-side reclaims that space
           while keeping both columns wide enough to stay legible. */}
-      <div className="rounded-2xl border border-court-border bg-court-surface p-3.5 shadow-sm">
+      <div className="shrink-0 rounded-2xl border border-court-border bg-court-surface p-3.5 shadow-sm">
         <div className="grid grid-cols-2 gap-3">
           <EventTypeLegend
             selectedTypes={selectedEventTypes}
@@ -444,7 +452,7 @@ function TeamList({
 
 function GoogleSyncFooter() {
   return (
-    <div className="flex items-center gap-1.5 px-1 text-[10.5px] text-court-fg-muted">
+    <div className="flex shrink-0 items-center gap-1.5 px-1 text-[10.5px] text-court-fg-muted">
       <GoogleGlyph className="h-3 w-3" />
       Google · Connected
     </div>

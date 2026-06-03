@@ -36,7 +36,7 @@ export function CalendarRemindersPanel({
   const [creating, setCreating] = useState(false);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">
+    <div className="shrink-0 overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">
       <div className="flex items-center justify-between border-b border-court-border px-5 py-4">
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
@@ -58,11 +58,11 @@ export function CalendarRemindersPanel({
           {creating ? "Cancel" : "New"}
         </button>
       </div>
-      {/* The list (and the create form when open) scrolls WITHIN the
-          panel so 3+ reminders don't push the rail around - hover the
-          panel and scroll. divide-y draws separators only BETWEEN rows,
-          so there's never a line under the bottom-most reminder. */}
-      <div className="max-h-[42vh] overflow-y-auto">
+      {/* Natural height - the rail (single scroll container) scrolls to
+          reveal every reminder + the Google footer below, so the last
+          reminder is always reachable in full. divide-y draws separators
+          only BETWEEN rows - never under the bottom-most reminder. */}
+      <div>
         {creating && (
           <ReminderForm
             submitLabel="Save"
