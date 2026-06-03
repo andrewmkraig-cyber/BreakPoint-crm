@@ -88,7 +88,6 @@ export default async function LaunchPage() {
 
   return (
     <div className="flex w-full flex-col gap-6">
-      <ApprovalQueue initialRuns={pendingRuns} />
       <LaunchView
         verticals={verticals}
         savedSearches={savedSearches}
@@ -98,6 +97,7 @@ export default async function LaunchPage() {
         contactsUsedToday={contactsUsedToday}
         pauseAll={PAUSE_ALL}
       />
+      <ApprovalQueue initialRuns={pendingRuns} />
     </div>
   );
 }

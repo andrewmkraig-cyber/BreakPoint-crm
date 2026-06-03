@@ -116,9 +116,6 @@ export function LaunchView({
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
               Today&apos;s Launch
             </p>
-            <h2 className="mt-1 font-serif text-xl font-bold tracking-tight text-court-fg">
-              Ready to roll outbound
-            </h2>
           </div>
           <LastRunChip lastRun={lastRun} />
         </div>

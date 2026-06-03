@@ -177,7 +177,7 @@ export function ApprovalQueue({ initialRuns }: Props) {
     <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
-          Discovery Queue
+          Today&apos;s Batch
         </p>
         <button
           type="button"

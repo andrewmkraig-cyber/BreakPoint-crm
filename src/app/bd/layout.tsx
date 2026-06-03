@@ -15,9 +15,9 @@ type BdTabId = "launch" | "client-signal" | "campaigns" | "activity";
 
 const TABS: ReadonlyArray<TabStripItem<BdTabId>> = [
   { id: "launch", label: "Today's Launch", href: "/bd/launch" },
-  { id: "client-signal", label: "Client Signal", href: "/bd/client-signal" },
   { id: "campaigns", label: "Active Campaigns", href: "/bd/campaigns" },
   { id: "activity", label: "Activity", href: "/bd/activity" },
+  { id: "client-signal", label: "Client Signals", href: "/bd/client-signal" },
 ];
 
 function resolveTab(pathname: string): BdTabId {

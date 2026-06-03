@@ -117,9 +117,6 @@ export default async function CampaignsPage() {
         <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-court-brand-dark">
           Active Campaigns
         </p>
-        <h1 className="font-serif text-2xl font-bold text-court-fg sm:text-3xl">
-          Outbound in flight
-        </h1>
       </header>
 
       <CampaignsList rows={rows} />

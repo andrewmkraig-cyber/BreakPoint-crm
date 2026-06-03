@@ -110,11 +110,8 @@ export default async function ClientSignalPage({
     <section className="flex w-full flex-col gap-6">
       <header className="flex flex-col gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
-          Client Signal
+          Client Signals
         </p>
-        <h2 className="font-serif text-xl font-bold tracking-tight text-court-fg">
-          Existing clients hiring publicly
-        </h2>
       </header>
 
       <TabStrip<Filter> items={tabs} activeId={filter} ariaLabel="Client Signal filters" />

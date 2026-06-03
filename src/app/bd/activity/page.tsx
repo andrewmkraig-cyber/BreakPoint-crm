@@ -115,9 +115,6 @@ export default async function ActivityPage({
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           Activity
         </p>
-        <h2 className="font-serif text-xl font-bold tracking-tight text-court-fg">
-          What BD has been up to
-        </h2>
       </header>
 
       <TabStrip<Filter> items={tabs} activeId={filter} ariaLabel="Activity filters" />
