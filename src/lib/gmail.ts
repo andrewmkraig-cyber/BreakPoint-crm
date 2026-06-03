@@ -708,7 +708,7 @@ export async function getGmailThread(userId: string, threadId: string): Promise<
       let bodyHtml = body
         ? body.mimeType === "text/html"
           ? body.data
-          : `<pre class="whitespace-pre-wrap font-sans text-sm text-court-fg">${escapeHtml(body.data)}</pre>`
+          : `<pre class="whitespace-pre-wrap font-sans text-sm text-court-fg">${escapeHtmlAndLinkify(body.data)}</pre>`
         : `<p class="text-xs text-court-fg-muted">(no body content)</p>`;
       // Inline `<img src="cid:...">` references (Gmail's MIME-internal
       // image refs) by rewriting them to data: URIs sourced from the
@@ -792,6 +792,43 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+// Escape a plain-text body for HTML rendering AND turn bare http(s) URLs
+// into clickable anchors. Plain-text emails (account-activation links,
+// password resets, etc.) ship the URL as raw text; without this they
+// render as inert text in the <pre> viewer and the recruiter has to
+// copy-paste. We linkify on the RAW string (locating URL spans first,
+// escaping each segment as we emit) so escaped entities like &amp; can't
+// confuse the URL boundary. Only http/https is matched — never
+// javascript:/data:, so there's no scheme-injection path — and the href
+// is itself escaped so it can't break out of the attribute. The iframe's
+// injected <base target="_blank"> opens these in a new tab.
+function escapeHtmlAndLinkify(s: string): string {
+  // Match an http(s) URL up to the first whitespace or angle bracket.
+  const urlRe = /https?:\/\/[^\s<>"']+/g;
+  let out = "";
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = urlRe.exec(s)) !== null) {
+    out += escapeHtml(s.slice(last, m.index));
+    let url = m[0];
+    // Peel trailing sentence punctuation that almost never belongs to the
+    // URL (e.g. "visit https://x.com." or a parenthetical) so it stays as
+    // plain text after the link rather than 404-ing inside the href.
+    let trailing = "";
+    const trail = url.match(/[.,;:!?)\]}'"]+$/);
+    if (trail) {
+      trailing = url.slice(url.length - trail[0].length);
+      url = url.slice(0, url.length - trail[0].length);
+    }
+    const escUrl = escapeHtml(url);
+    out += `<a href="${escUrl}" target="_blank" rel="noopener noreferrer">${escUrl}</a>`;
+    out += escapeHtml(trailing);
+    last = m.index + m[0].length;
+  }
+  out += escapeHtml(s.slice(last));
+  return out;
 }
 
 // ---- cid: → data: image inlining ----
