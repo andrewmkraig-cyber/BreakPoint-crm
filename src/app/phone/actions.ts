@@ -112,7 +112,16 @@ export async function markThreadRead(threadId: string): Promise<{ updated: numbe
 
   if (threadId.startsWith("unk:")) {
     const digits = threadId.slice("unk:".length).replace(/\D/g, "").slice(-10);
-    if (digits.length !== 10) return { updated: 0 };
+    // Short codes (5–6 digit verification senders like 22395) and any
+    // sub-10-digit sender are valid threads: /api/phone/threads keys them
+    // by the SAME slice(-10) of their digits, and the right(…,10) match
+    // below already works for any length (right of a 5-digit number is the
+    // whole code, so it only matches rows whose number IS that short code,
+    // never a 10-digit number ending in those digits). The old
+    // `digits.length !== 10` guard silently no-op'd every short-code thread,
+    // so those text notifications could never be cleared. Only bail when
+    // there are no digits at all (malformed/empty key).
+    if (!digits) return { updated: 0 };
     // No way to express "fromNumber ends with these 10 digits" in
     // Prisma's typed updateMany — drop to raw SQL. Same WHERE shape
     // as /api/phone/threads' normalizeOther grouping so the rows we
