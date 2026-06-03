@@ -40,6 +40,7 @@ import {
   scheduleInterview,
   updateInterview,
   sendInterviewInvite,
+  cancelInterview,
   upsertInterviewReminder,
   type InterviewType,
   type MeetingProvider,
@@ -2535,8 +2536,12 @@ function ScheduleInterviewScreen({
   const [location, setLocation] = useState(existingInterview?.location ?? "");
   const [ccCsv, setCcCsv] = useState("");
   const [bccCsv, setBccCsv] = useState("");
-  // Edit mode: ONE Save flips to the three-way update-choice prompt.
+  // Edit mode: ONE Save opens the three-way update-choice modal (Item #9).
   const [askNotify, setAskNotify] = useState(false);
+  // Item #15: whole-interview Cancel (edit mode only). cancelChoiceOpen reveals
+  // the two-way notify-guests choice; cancelPending tracks the in-flight delete.
+  const [cancelChoiceOpen, setCancelChoiceOpen] = useState(false);
+  const [cancelPending, startCancelInterview] = useTransition();
   // "Client will send invite": log the interview for tracking + credit, send
   // nothing. Same source="client_scheduled" path the old modal used. (New mode
   // only — an existing interview is already logged.)
@@ -2968,9 +2973,33 @@ function ScheduleInterviewScreen({
     });
   }
 
+  // Item #15: whole-interview Cancel from the candidate-profile edit path.
+  // Reuses the cancelInterview engine verbatim (the SAME action the calendar
+  // drawer calls) with the same two-way notify-guests choice, so the status
+  // flip to cancelled + the local calendar-row mirror behave identically and
+  // Ace + Google never drift. On success, refresh so the job pill updates.
+  function doCancelInterview(notifyGuests: boolean) {
+    if (!existingInterview) return;
+    const id = existingInterview.id;
+    setErr(null);
+    startCancelInterview(async () => {
+      const res = await cancelInterview(id, { notifyGuests });
+      if (!res.ok) {
+        setErr(res.error);
+        toast.error("Couldn't cancel interview", { description: res.error });
+        return;
+      }
+      toast.success("Interview cancelled");
+      void triggerCalendarSync(router);
+      router.refresh();
+      onClose();
+    });
+  }
+
   const emailEditorsDisabled = clientWillSendInvite;
 
   return (
+    <>
     <ModalShell
       title={isEdit ? "Edit interview" : "Schedule interview"}
       subtitle={`${candidateName} for ${job.jobTitle} at ${job.clientName}`}
@@ -2980,36 +3009,28 @@ function ScheduleInterviewScreen({
       resizable
       footer={
         isEdit ? (
-          askNotify ? (
+          // Item #9: footer is plain Cancel + Save. Save opens the notify-choice
+          // modal (NotifyChoiceModal) which owns its own Back/dismiss; the old
+          // footer Save->Back swap is gone.
+          <>
             <button
               type="button"
-              onClick={() => setAskNotify(false)}
+              onClick={onClose}
               disabled={isPending}
               className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
             >
-              Back
+              <X className="h-3 w-3" /> Cancel
             </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={isPending}
-                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
-              >
-                <X className="h-3 w-3" /> Cancel
-              </button>
-              <button
-                type="button"
-                onClick={onSaveEdit}
-                disabled={isPending}
-                className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
-              >
-                {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CalendarClock className="h-3 w-3" />}
-                Save
-              </button>
-            </>
-          )
+            <button
+              type="button"
+              onClick={onSaveEdit}
+              disabled={isPending}
+              className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+            >
+              {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CalendarClock className="h-3 w-3" />}
+              Save
+            </button>
+          </>
         ) : (
           <>
             <button
@@ -3177,41 +3198,65 @@ function ScheduleInterviewScreen({
           </>
         )}
 
-        {/* Edit mode: ONE Save → three-way update-choice. The time always
-            moves; this only controls who is emailed. */}
-        {isEdit && askNotify && (
-          <div className="rounded-lg border border-court-border bg-court-surface-subtle p-3.5">
-            <p className="text-sm font-medium text-court-fg">Send updated invites?</p>
-            <p className="mt-0.5 text-[12px] text-court-fg-muted">
-              The calendar time moves either way. This only controls who gets emailed.
-            </p>
-            <div className="mt-3 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => commitEdit("all")}
-                disabled={isPending}
-                className="inline-flex items-center justify-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
-              >
-                {isPending && <Loader2 className="h-3 w-3 animate-spin" />}
-                Update all guests
-              </button>
-              <button
-                type="button"
-                onClick={() => commitEdit("new_only")}
-                disabled={isPending}
-                className="inline-flex items-center justify-center gap-1 rounded-md border border-court-border bg-court-surface px-4 py-2 text-xs font-medium text-court-fg shadow-sm transition hover:bg-court-surface-subtle disabled:opacity-60"
-              >
-                Update only new guests
-              </button>
-              <button
-                type="button"
-                onClick={() => commitEdit("none")}
-                disabled={isPending}
-                className="inline-flex items-center justify-center gap-1 rounded-md border border-court-border bg-court-surface px-4 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
-              >
-                Don&apos;t send updates
-              </button>
-            </div>
+        {/* Item #15: whole-interview Cancel — edit mode only. Sits at the
+            bottom of the body above a border-t divider, styled like the red
+            Cancel Placement button. Reveals the same two-way notify choice the
+            calendar drawer uses; both call cancelInterview verbatim. */}
+        {isEdit && existingInterview && (
+          <div className="mt-4 border-t border-court-border/40 pt-3">
+            {!cancelChoiceOpen ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setCancelChoiceOpen(true)}
+                  disabled={cancelPending || isPending}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-red-50/50 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
+                >
+                  {cancelPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <AlertTriangle className="h-3 w-3" />
+                  )}
+                  Cancel interview
+                </button>
+                <p className="mt-1 text-[11px] text-court-fg-muted">
+                  Cancels the whole interview and removes every calendar invite tied to it.
+                </p>
+              </>
+            ) : (
+              <div>
+                <p className="text-[12px] text-court-fg">
+                  Cancel the whole interview? This removes every calendar invite tied to it.
+                </p>
+                <div className="mt-2.5 flex flex-wrap items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => doCancelInterview(true)}
+                    disabled={cancelPending}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-red-50/50 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
+                  >
+                    {cancelPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                    Cancel &amp; notify guests
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => doCancelInterview(false)}
+                    disabled={cancelPending}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-red-50/50 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
+                  >
+                    Cancel without notifying
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCancelChoiceOpen(false)}
+                    disabled={cancelPending}
+                    className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+                  >
+                    Keep interview
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -3230,6 +3275,87 @@ function ScheduleInterviewScreen({
         )}
       </div>
     </ModalShell>
+    {/* Item #9: the three-way notify choice is now a small modal layered over
+        the scheduler on Save. It owns its own Back/dismiss; the three buttons
+        keep their exact labels + their existing commitEdit() wiring. */}
+    {isEdit && askNotify && (
+      <NotifyChoiceModal
+        onChoose={commitEdit}
+        onBack={() => setAskNotify(false)}
+        isPending={isPending}
+      />
+    )}
+    </>
+  );
+}
+
+// Item #9: small modal for the edit-mode update-choice. Layered over the
+// scheduler (z above ModalShell's z-[200]); portals to body so the backdrop
+// covers the viewport. The three choices wire straight into commitEdit, which
+// owns the close-on-success / close-on-error behavior; updateInterview's
+// notifyMode engine and the mayNotify gate are unchanged.
+function NotifyChoiceModal({
+  onChoose,
+  onBack,
+  isPending,
+}: {
+  onChoose: (mode: "all" | "new_only" | "none") => void;
+  onBack: () => void;
+  isPending: boolean;
+}) {
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[210] overflow-y-auto bg-ink/40 p-4 sm:p-6"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex min-h-full items-center justify-center">
+        <div className="w-full max-w-sm rounded-xl border border-court-border bg-court-surface p-5 shadow-xl">
+          <p className="text-sm font-semibold text-court-fg">Send updated invites?</p>
+          <p className="mt-0.5 text-[12px] text-court-fg-muted">
+            The calendar time moves either way. This only controls who gets emailed.
+          </p>
+          <div className="mt-4 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => onChoose("all")}
+              disabled={isPending}
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+            >
+              {isPending && <Loader2 className="h-3 w-3 animate-spin" />}
+              Update all guests
+            </button>
+            <button
+              type="button"
+              onClick={() => onChoose("new_only")}
+              disabled={isPending}
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-court-border bg-court-surface px-4 py-2 text-xs font-medium text-court-fg shadow-sm transition hover:bg-court-surface-subtle disabled:opacity-60"
+            >
+              Update only new guests
+            </button>
+            <button
+              type="button"
+              onClick={() => onChoose("none")}
+              disabled={isPending}
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-court-border bg-court-surface px-4 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+            >
+              Don&apos;t send updates
+            </button>
+          </div>
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={onBack}
+              disabled={isPending}
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+            >
+              Back
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
