@@ -186,13 +186,19 @@ type ActionCard = {
 };
 
 // Single-line summary emitted after a batched direct-execute tool runs
-// (create_reminder today). Ephemeral like ActionCard — shown in-session
-// for the nice formatting; a one-line summary is also persisted as an
-// assistant message so the History tab + a reload still record it.
+// (create_reminder) or a confirmed bulk action lands (inactivate_jobs /
+// reactivate_jobs / delete_jobs / delete_candidates). Ephemeral like
+// ActionCard — shown in-session for the nice formatting; a one-line
+// summary is also persisted as an assistant message so the History tab +
+// a reload still record it. `receiptKind` is the noun so one receipt
+// system covers reminders AND the bulk job/candidate batches (no fork).
+// The bulk render that consumes the "job" / "candidate" kinds lands in
+// the next (UI) prompt; the type is widened here so that prompt only has
+// to render, not reshape.
 type BatchReceipt = {
   kind: "receipt";
   id: string;
-  receiptKind: "reminder";
+  receiptKind: "reminder" | "job" | "candidate";
   created: number;
   failed: number;
   failures: Array<{ title: string; reason: string }>;

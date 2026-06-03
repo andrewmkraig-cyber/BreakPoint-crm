@@ -996,6 +996,224 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, message });
   }
 
+  if (
+    name === "inactivate_jobs" ||
+    name === "reactivate_jobs" ||
+    name === "delete_jobs" ||
+    name === "delete_candidates"
+  ) {
+    // BULK action confirmed by the recruiter. The chat route's
+    // describeAction already resolved each id to a canonical org-scoped
+    // cuid and shipped them in resolved.items ([{ id, label }]); we
+    // RE-RESOLVE every id org-scoped AGAIN inside the loop (Rule 8,
+    // defense-in-depth — never trust the client array) and run the EXACT
+    // per-item mutation the matching single-id handler runs:
+    //   • inactivate_jobs / reactivate_jobs → the same prisma.job.update
+    //     lifecycle write + logActivity (no-op when already in target).
+    //   • delete_jobs → logActivity-before + prisma.job.delete, the same
+    //     DB-level cascade (Placement / Interview / CandidateMatch) the
+    //     single delete_job uses — NO new or widened cascade.
+    //   • delete_candidates → deleteCandidateAction, the same cascading
+    //     transaction the profile Delete button + single delete_candidate
+    //     call (8 child tables + Candidate).
+    // One item failing is caught and recorded — it NEVER aborts the
+    // batch; succeeded items stay committed. Revalidation runs ONCE after
+    // the loop over the collected path set, never per item, and the bulk
+    // path deliberately returns NO redirect (unlike single delete, the
+    // recruiter isn't sitting on one deleted record's detail page — the
+    // client router.refresh() re-renders whatever list is open).
+    const isCandidate = name === "delete_candidates";
+    const isDelete = name === "delete_jobs" || name === "delete_candidates";
+    const noun: "job" | "candidate" = isCandidate ? "candidate" : "job";
+    const target: "active" | "inactive" | null =
+      name === "inactivate_jobs"
+        ? "inactive"
+        : name === "reactivate_jobs"
+          ? "active"
+          : null;
+
+    // Work list: prefer the resolved cuid list from the chat route; fall
+    // back to the raw id array in input when resolved.items is absent
+    // (forged / legacy POST). label is carried only for failure copy.
+    type WorkItem = { ref: string; label: string };
+    const work: WorkItem[] = [];
+    const rawItems = Array.isArray(resolved.items) ? resolved.items : [];
+    if (rawItems.length > 0) {
+      for (const it of rawItems) {
+        if (!it || typeof it !== "object") continue;
+        const o = it as Record<string, unknown>;
+        const ref = typeof o.id === "string" ? o.id : "";
+        if (!ref) continue;
+        work.push({ ref, label: typeof o.label === "string" ? o.label : ref });
+      }
+    } else {
+      const rawIds = isCandidate ? input.candidateIds : input.jobIds;
+      if (Array.isArray(rawIds)) {
+        for (const r of rawIds) {
+          if (typeof r === "string" && r.trim()) work.push({ ref: r, label: r });
+        }
+      }
+    }
+
+    if (work.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "No targets to act on." },
+        { status: 400 },
+      );
+    }
+
+    let done = 0;
+    const failures: Array<{ label: string; reason: string }> = [];
+    const paths = new Set<string>();
+    paths.add(isCandidate ? "/candidates" : "/jobs");
+    if (!isCandidate) paths.add("/pipeline");
+
+    for (const item of work) {
+      try {
+        if (isCandidate) {
+          const candidate = await resolveCandidate(item.ref, org.id);
+          if (!candidate) {
+            failures.push({ label: item.label, reason: "not found in this org" });
+            continue;
+          }
+          const result = await deleteCandidateAction(candidate.id);
+          if (!result.ok) {
+            failures.push({
+              label: item.label,
+              reason: result.error || "delete failed",
+            });
+            continue;
+          }
+          paths.add(`/candidates/${candidate.id}`);
+          if (candidate.rfId != null) paths.add(`/candidates/${candidate.rfId}`);
+          done++;
+        } else {
+          const fallback = await resolveJob(item.ref, org.id);
+          const job = fallback
+            ? await prisma.job.findFirst({
+                where: { id: fallback.id, organizationId: org.id },
+                select: {
+                  id: true,
+                  legacyRfId: true,
+                  title: true,
+                  isOpen: true,
+                  lifecycle: true,
+                  clientId: true,
+                },
+              })
+            : null;
+          if (!job) {
+            failures.push({ label: item.label, reason: "not found in this org" });
+            continue;
+          }
+
+          if (isDelete) {
+            // logActivity BEFORE the delete so the audit row survives the
+            // cascade (same ordering as the single delete_job handler).
+            await logActivity({
+              organizationId: org.id,
+              userId: user.id,
+              actionType: "job_deleted",
+              targetType: "job",
+              targetId: job.id,
+              metadata: {
+                jobTitle: job.title,
+                clientId: job.clientId,
+                legacyRfId: job.legacyRfId,
+                source: "claude_panel_bulk",
+              },
+            });
+            await prisma.job.delete({ where: { id: job.id } });
+            paths.add(`/jobs/${job.id}`);
+            if (job.legacyRfId != null) paths.add(`/jobs/${job.legacyRfId}`);
+            if (job.clientId) paths.add(`/clients/${job.clientId}`);
+            done++;
+          } else {
+            // Lifecycle update — identical logic to the single handler,
+            // including the already-in-target no-op (counts as done: the
+            // desired end state is reached, mirroring the single handler
+            // returning ok for "already X").
+            const current: "active" | "private" | "inactive" =
+              job.lifecycle === "private" ||
+              job.lifecycle === "inactive" ||
+              job.lifecycle === "active"
+                ? job.lifecycle
+                : job.isOpen
+                  ? "active"
+                  : "inactive";
+            if (target && current !== target) {
+              await prisma.job.update({
+                where: { id: job.id },
+                data: { lifecycle: target, isOpen: target !== "inactive" },
+              });
+              await logActivity({
+                organizationId: org.id,
+                userId: user.id,
+                actionType:
+                  target === "inactive" ? "job_inactivated" : "job_reactivated",
+                targetType: "job",
+                targetId: job.id,
+                metadata: {
+                  jobTitle: job.title,
+                  fromLifecycle: current,
+                  toLifecycle: target,
+                  source: "claude_panel_bulk",
+                },
+              });
+            }
+            paths.add(`/jobs/${job.id}`);
+            if (job.legacyRfId != null) paths.add(`/jobs/${job.legacyRfId}`);
+            done++;
+          }
+        }
+      } catch (e) {
+        failures.push({
+          label: item.label,
+          reason: e instanceof Error ? e.message : "action failed",
+        });
+      }
+    }
+
+    // ONE revalidation pass after the whole batch — never per item.
+    Array.from(paths).forEach((p) => revalidatePath(p));
+
+    const total = done + failures.length;
+    const verbPast =
+      name === "inactivate_jobs"
+        ? "Inactivated"
+        : name === "reactivate_jobs"
+          ? "Reactivated"
+          : "Deleted";
+    const nounPl = (n: number) => `${noun}${n === 1 ? "" : "s"}`;
+    const message =
+      failures.length === 0
+        ? `${verbPast} ${done} ${nounPl(done)}.`
+        : `${verbPast} ${done} of ${total} ${nounPl(total)} - ${
+            failures.length
+          } failed: ${failures
+            .slice(0, 5)
+            .map((f) => `${f.label}: ${f.reason}`)
+            .join("; ")}.`;
+
+    // The receipt object is the batched-receipt DATA: it mirrors the
+    // BatchReceipt shape (receiptKind = the noun, done/total/failed +
+    // per-item failures) so the NEXT (UI) prompt can render a styled
+    // BatchReceiptLine without reshaping. No SSE batch_receipt is sent
+    // here — bulk executes on the action POST, so the receipt rides this
+    // JSON response, consumed by handleConfirmAction.
+    return NextResponse.json({
+      ok: true,
+      message,
+      receipt: {
+        receiptKind: noun,
+        done,
+        total,
+        failed: failures.length,
+        failures,
+      },
+    });
+  }
+
   return NextResponse.json(
     { ok: false, error: `Unknown action: ${name}` },
     { status: 400 },
