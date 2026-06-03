@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Rocket, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ApprovalQueue } from "@/components/bd/approval-queue";
+import type { PendingBDRun } from "./bd-run-actions";
 
 export type VerticalOption = { id: string; name: string; slug: string };
 export type SavedSearchOption = {
@@ -36,18 +38,20 @@ type Props = {
   defaultContactCap: number;
   contactsUsedToday: number;
   pauseAll: boolean;
+  initialRuns: PendingBDRun[];
 };
 
-// Launch CTA reads as a light amber-tinted pill rather than a solid
-// orange button so it sits inside the Court Mode palette without
+// Launch CTA reads as a light amber-tinted button rather than a solid
+// orange one so it sits inside the Court Mode palette without
 // dominating the page. Amber is the only semantic accent that earns a
 // surface here (per the BD handoff) and the styling mirrors the
 // `Sent` invoice badge in /finances: amber-50 wash, amber-100
 // hairline, amber-700 ink. Dark modes (Clay / Night) flip to a
 // translucent amber-950 wash with amber-200 ink so the button stays
-// legible without losing the amber identity.
+// legible without losing the amber identity. Sized to match the BD
+// Settings button exactly (px-2.5 py-1 text-[13px], rounded-md, w-auto).
 const LAUNCH_CTA_CLASS =
-  "inline-flex items-center gap-2 rounded-md border border-amber-100 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 shadow-sm transition hover:border-amber-200 hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:border-amber-800 dark:hover:bg-amber-950/60";
+  "inline-flex items-center gap-1.5 rounded-md border border-amber-100 bg-amber-50 px-2.5 py-1 text-[13px] font-medium text-amber-700 shadow-sm transition hover:border-amber-200 hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:border-amber-800 dark:hover:bg-amber-950/60";
 
 const ESTIMATED_CONTACTS_PER_COMPANY = 4;
 const SEQUENCE_NAME_PLACEHOLDER = "BD Outbound v1";
@@ -60,6 +64,7 @@ export function LaunchView({
   defaultContactCap,
   contactsUsedToday,
   pauseAll,
+  initialRuns,
 }: Props) {
   const router = useRouter();
   const [verticalId, setVerticalId] = useState<string | null>(verticals[0]?.id ?? null);
@@ -108,109 +113,125 @@ export function LaunchView({
     }
   }
 
+  const noVerticals = verticals.length === 0;
+
+  // Slot 1 - Vertical chip + Saved Search dropdown, seated directly under
+  // the page heading by ApprovalQueue.
+  const controls = noVerticals ? (
+    <EmptyState message="No verticals configured yet. Add one in BD Settings (coming soon)." />
+  ) : (
+    <div className="flex flex-col gap-5">
+      <div>
+        <label className="block text-xs font-semibold uppercase tracking-wide text-court-fg-muted">
+          Vertical
+        </label>
+        <div className="mt-2 inline-flex flex-wrap items-center gap-1.5 rounded-lg border border-court-border bg-court-surface-subtle p-1">
+          {verticals.map((v) => {
+            const active = v.id === verticalId;
+            return (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => setVerticalId(v.id)}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
+                  active
+                    ? "bg-court-surface text-court-brand-dark shadow-sm"
+                    : "text-court-fg-muted hover:bg-court-surface/70 hover:text-court-fg",
+                )}
+              >
+                {v.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <label
+          htmlFor="bd-saved-search"
+          className="block text-xs font-semibold uppercase tracking-wide text-court-fg-muted"
+        >
+          Saved search
+        </label>
+        <select
+          id="bd-saved-search"
+          value={savedSearchId ?? ""}
+          onChange={(e) => setSavedSearchId(e.target.value || null)}
+          disabled={visibleSearches.length === 0}
+          className="mt-2 block w-full max-w-md rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {visibleSearches.length === 0 ? (
+            <option value="">No saved searches for this vertical</option>
+          ) : (
+            <>
+              <option value="">Select a saved search…</option>
+              {visibleSearches.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </>
+          )}
+        </select>
+      </div>
+    </div>
+  );
+
+  // Slot 2 - green run-summary line, below the table. Last-run pill rides
+  // top-right of this block.
+  const summary = noVerticals ? null : (
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <PreviewChip
+        contactCap={contactCap}
+        estimatedCompanies={Math.max(1, Math.round(contactCap / ESTIMATED_CONTACTS_PER_COMPANY))}
+        sequenceName={SEQUENCE_NAME_PLACEHOLDER}
+        domains={domains}
+      />
+      <LastRunChip lastRun={lastRun} />
+    </div>
+  );
+
+  // Slot 3 - primary CTA, sized to the BD Settings button. ApprovalQueue
+  // renders this immediately before its own Run Discovery Now button.
+  const launchButton = noVerticals ? null : (
+    <button
+      type="button"
+      disabled={!canLaunch}
+      onClick={() => setConfirmOpen(true)}
+      className={LAUNCH_CTA_CLASS}
+    >
+      <Rocket className="h-3.5 w-3.5" />
+      Launch BD Run
+    </button>
+  );
+
+  // Slot 4 - launch-ability hints, shown beneath the button row.
+  const launchHint = noVerticals ? null : (
+    <>
+      {dailyCapHit && (
+        <span className="text-xs text-court-fg-muted">
+          Daily cap of {contactCap} contacts already used today.
+        </span>
+      )}
+      {pauseAll && (
+        <span className="text-xs text-court-fg-muted">BD is paused (see BD Settings).</span>
+      )}
+      {!savedSearchId && visibleSearches.length > 0 && (
+        <span className="text-xs text-court-fg-muted">Pick a saved search to launch.</span>
+      )}
+    </>
+  );
+
   return (
     <>
-      <section className="rounded-2xl border border-court-border bg-court-surface p-6 shadow-sm sm:p-8">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
-              Today&apos;s Launch
-            </p>
-          </div>
-          <LastRunChip lastRun={lastRun} />
-        </div>
-
-        {verticals.length === 0 ? (
-          <EmptyState message="No verticals configured yet. Add one in BD Settings (coming soon)." />
-        ) : (
-          <>
-            <div className="mt-6">
-              <label className="block text-xs font-semibold uppercase tracking-wide text-court-fg-muted">
-                Vertical
-              </label>
-              <div className="mt-2 inline-flex flex-wrap items-center gap-1.5 rounded-lg border border-court-border bg-court-surface-subtle p-1">
-                {verticals.map((v) => {
-                  const active = v.id === verticalId;
-                  return (
-                    <button
-                      key={v.id}
-                      type="button"
-                      onClick={() => setVerticalId(v.id)}
-                      className={cn(
-                        "rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
-                        active
-                          ? "bg-court-surface text-court-brand-dark shadow-sm"
-                          : "text-court-fg-muted hover:bg-court-surface/70 hover:text-court-fg",
-                      )}
-                    >
-                      {v.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="mt-5">
-              <label
-                htmlFor="bd-saved-search"
-                className="block text-xs font-semibold uppercase tracking-wide text-court-fg-muted"
-              >
-                Saved search
-              </label>
-              <select
-                id="bd-saved-search"
-                value={savedSearchId ?? ""}
-                onChange={(e) => setSavedSearchId(e.target.value || null)}
-                disabled={visibleSearches.length === 0}
-                className="mt-2 block w-full max-w-md rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {visibleSearches.length === 0 ? (
-                  <option value="">No saved searches for this vertical</option>
-                ) : (
-                  <>
-                    <option value="">Select a saved search…</option>
-                    {visibleSearches.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </>
-                )}
-              </select>
-            </div>
-
-            <PreviewChip
-              contactCap={contactCap}
-              estimatedCompanies={Math.max(1, Math.round(contactCap / ESTIMATED_CONTACTS_PER_COMPANY))}
-              sequenceName={SEQUENCE_NAME_PLACEHOLDER}
-              domains={domains}
-            />
-
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                disabled={!canLaunch}
-                onClick={() => setConfirmOpen(true)}
-                className={LAUNCH_CTA_CLASS}
-              >
-                <Rocket className="h-4 w-4" />
-                Launch BD Run
-              </button>
-              {dailyCapHit && (
-                <span className="text-xs text-court-fg-muted">
-                  Daily cap of {contactCap} contacts already used today.
-                </span>
-              )}
-              {pauseAll && (
-                <span className="text-xs text-court-fg-muted">BD is paused (see BD Settings).</span>
-              )}
-              {!savedSearchId && visibleSearches.length > 0 && (
-                <span className="text-xs text-court-fg-muted">Pick a saved search to launch.</span>
-              )}
-            </div>
-          </>
-        )}
-      </section>
+      <ApprovalQueue
+        initialRuns={initialRuns}
+        controls={controls}
+        summary={summary}
+        launchButton={launchButton}
+        launchHint={launchHint}
+      />
 
       {confirmOpen && (
         <ConfirmModal
@@ -280,13 +301,13 @@ function PreviewChip({
   // org has fewer than 5 sending domains configured.
   const slots: ReadonlyArray<DomainPreview | null> = Array.from({ length: 5 }, (_, i) => domains[i] ?? null);
   return (
-    <div className="mt-5 inline-flex w-fit max-w-full flex-wrap items-center gap-x-3 gap-y-2 self-start rounded-lg border border-court-brand/30 bg-court-brand-tint px-3 py-1.5 text-[13px] text-court-brand-dark">
-      <span className="font-semibold">{estimatedCompanies} companies</span>
-      <span className="text-court-brand-dark/60">→</span>
-      <span className="font-semibold">up to {contactCap} contacts</span>
-      <span className="text-court-brand-dark/60">·</span>
+    <div className="inline-flex w-fit max-w-full flex-wrap items-center gap-x-3 gap-y-2 self-start rounded-lg border border-court-brand/30 bg-court-brand-tint px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
+      <span>{estimatedCompanies} companies</span>
+      <span className="text-court-brand/60">→</span>
+      <span>up to {contactCap} contacts</span>
+      <span className="text-court-brand/60">·</span>
       <span>{sequenceName}</span>
-      <span className="text-court-brand-dark/60">·</span>
+      <span className="text-court-brand/60">·</span>
       <span className="inline-flex items-center gap-1" aria-label="Rotating sending domains">
         {slots.map((slot, i) => (
           <span

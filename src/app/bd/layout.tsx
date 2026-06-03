@@ -14,7 +14,7 @@ import { TabStrip, type TabStripItem } from "@/components/ui/tab-strip";
 type BdTabId = "launch" | "client-signal" | "campaigns" | "activity";
 
 const TABS: ReadonlyArray<TabStripItem<BdTabId>> = [
-  { id: "launch", label: "Today's Launch", href: "/bd/launch" },
+  { id: "launch", label: "Today's Batch", href: "/bd/launch" },
   { id: "campaigns", label: "Active Campaigns", href: "/bd/campaigns" },
   { id: "activity", label: "Activity", href: "/bd/activity" },
   { id: "client-signal", label: "Client Signals", href: "/bd/client-signal" },

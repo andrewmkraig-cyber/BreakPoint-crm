@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw, X, RotateCcw } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -28,6 +28,15 @@ const DEFAULT_CONTACTS_PER_COMPANY = 4;
 
 type Props = {
   initialRuns: PendingBDRun[];
+  // Slots supplied by LaunchView so the whole Today's Batch page renders as
+  // one column in a fixed order: heading -> controls -> table -> summary ->
+  // buttons. Keeping LaunchView's launch state in LaunchView (and the run
+  // table state here) lets each component own its own state while this host
+  // controls the top-to-bottom layout.
+  controls?: ReactNode;
+  summary?: ReactNode;
+  launchButton?: ReactNode;
+  launchHint?: ReactNode;
 };
 
 type ContactCarousel = {
@@ -56,7 +65,13 @@ function initialCarouselsForRun(run: PendingBDRun): Record<string, ContactCarous
   return out;
 }
 
-export function ApprovalQueue({ initialRuns }: Props) {
+export function ApprovalQueue({
+  initialRuns,
+  controls,
+  summary,
+  launchButton,
+  launchHint,
+}: Props) {
   const router = useRouter();
   const [runs, setRuns] = useState<PendingBDRun[]>(initialRuns);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
@@ -174,11 +189,60 @@ export function ApprovalQueue({ initialRuns }: Props) {
   }
 
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <section className="flex w-full flex-col gap-6">
+      {/* 1 - page heading, seated above everything like the other BD pages. */}
+      <header className="flex flex-col gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           Today&apos;s Batch
         </p>
+      </header>
+
+      {/* 2 - Vertical chip + Saved Search dropdown. */}
+      {controls}
+
+      {/* 3 - discovery results table. The empty state is the empty version
+          of the run-card list. */}
+      <div className="flex flex-col gap-3">
+        {triggerError && (
+          <p className="text-xs text-red-600 dark:text-red-300">{triggerError}</p>
+        )}
+        {actionError && (
+          <p className="text-xs text-red-600 dark:text-red-300">{actionError}</p>
+        )}
+
+        {runs.length === 0 ? (
+          <p className="text-xs text-court-fg-muted">
+            No discovery runs awaiting approval.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {runs.map((run) => (
+              <RunCard
+                key={run.id}
+                run={run}
+                carousels={curated[run.id] ?? {}}
+                busy={pendingIds.has(run.id)}
+                onApprove={() => onApprove(run.id)}
+                onDismiss={() => onDismiss(run.id)}
+                onRemoveContact={(companyKey, contactId) =>
+                  onRemoveContact(run.id, companyKey, contactId)
+                }
+                onSwapContact={(companyKey, contactId) =>
+                  onSwapContact(run.id, companyKey, contactId)
+                }
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 4 - green run-summary line (with the Last run pill top-right). */}
+      {summary}
+
+      {/* 5 - buttons last: Launch BD Run, then Run Discovery Now. Both match
+          the BD Settings button size and stay w-auto. */}
+      <div className="flex flex-wrap items-center gap-2">
+        {launchButton}
         <button
           type="button"
           onClick={() => {
@@ -186,7 +250,7 @@ export function ApprovalQueue({ initialRuns }: Props) {
             setDiscoveryOpen(true);
           }}
           disabled={isTriggering}
-          className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[13px] font-medium text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isTriggering ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -195,6 +259,7 @@ export function ApprovalQueue({ initialRuns }: Props) {
           )}
           Run Discovery Now
         </button>
+        {launchHint}
       </div>
 
       {discoveryOpen && (
@@ -205,38 +270,6 @@ export function ApprovalQueue({ initialRuns }: Props) {
           }}
           onConfirm={onRunDiscovery}
         />
-      )}
-
-      {triggerError && (
-        <p className="text-xs text-red-600 dark:text-red-300">{triggerError}</p>
-      )}
-      {actionError && (
-        <p className="text-xs text-red-600 dark:text-red-300">{actionError}</p>
-      )}
-
-      {runs.length === 0 ? (
-        <p className="text-xs text-court-fg-muted">
-          No discovery runs awaiting approval.
-        </p>
-      ) : (
-        <div className="space-y-3">
-          {runs.map((run) => (
-            <RunCard
-              key={run.id}
-              run={run}
-              carousels={curated[run.id] ?? {}}
-              busy={pendingIds.has(run.id)}
-              onApprove={() => onApprove(run.id)}
-              onDismiss={() => onDismiss(run.id)}
-              onRemoveContact={(companyKey, contactId) =>
-                onRemoveContact(run.id, companyKey, contactId)
-              }
-              onSwapContact={(companyKey, contactId) =>
-                onSwapContact(run.id, companyKey, contactId)
-              }
-            />
-          ))}
-        </div>
       )}
     </section>
   );

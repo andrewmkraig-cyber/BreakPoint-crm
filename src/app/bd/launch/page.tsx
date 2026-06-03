@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
-import { ApprovalQueue } from "@/components/bd/approval-queue";
 import { getPendingBDRuns } from "./bd-run-actions";
 import { LaunchView, type VerticalOption, type SavedSearchOption, type LastRun } from "./launch-view";
 
@@ -96,8 +95,8 @@ export default async function LaunchPage() {
         defaultContactCap={orgDailyCap}
         contactsUsedToday={contactsUsedToday}
         pauseAll={PAUSE_ALL}
+        initialRuns={pendingRuns}
       />
-      <ApprovalQueue initialRuns={pendingRuns} />
     </div>
   );
 }
