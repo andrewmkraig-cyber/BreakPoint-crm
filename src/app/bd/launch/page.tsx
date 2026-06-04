@@ -13,7 +13,7 @@ const DEFAULT_DAILY_CONTACT_CAP = 80;
 export default async function LaunchPage() {
   const org = await getCurrentOrg();
 
-  const [verticalRows, savedSearchRows, domains, lastRunRow, todaysRuns, orgConfig, pendingRuns] = await Promise.all([
+  const [verticalRows, savedSearchRows, domains, lastRunRow, orgConfig, pendingRuns] = await Promise.all([
     prisma.vertical.findMany({
       where: { organizationId: org.id, active: true },
       orderBy: { name: "asc" },
@@ -35,25 +35,12 @@ export default async function LaunchPage() {
       orderBy: { createdAt: "desc" },
       select: { id: true, status: true, createdAt: true, metrics: true },
     }),
-    // Today's completed runs — used to compute daily contact usage
-    // against the cap. Phase 1: metrics is always null because nothing
-    // actually completes a run yet, so the sum is 0 and the launch
-    // button never trips the cap-hit branch.
-    prisma.bDRun.findMany({
-      where: {
-        organizationId: org.id,
-        createdAt: { gte: startOfTodayUtc() },
-        status: "COMPLETE",
-      },
-      select: { metrics: true },
-    }),
-    // /settings/bd writes here. pauseAll gates the Launch CTA;
-    // globalDailyCap is the fallback when neither SavedSearch.contactCap
-    // nor the legacy DEFAULT_DAILY_CONTACT_CAP applies.
+    // /settings/bd writes here. globalDailyCap is the fallback when
+    // neither SavedSearch.contactCap nor the legacy
+    // DEFAULT_DAILY_CONTACT_CAP applies.
     prisma.bdOrgConfig.findUnique({ where: { organizationId: org.id } }),
     getPendingBDRuns(),
   ]);
-  const PAUSE_ALL = orgConfig?.pauseAll ?? false;
   const orgDailyCap = orgConfig?.globalDailyCap ?? DEFAULT_DAILY_CONTACT_CAP;
 
   const verticals: VerticalOption[] = verticalRows.map((v) => ({
@@ -68,11 +55,6 @@ export default async function LaunchPage() {
     name: s.name,
     contactCap: s.contactCap ?? orgDailyCap,
   }));
-
-  const contactsUsedToday = todaysRuns.reduce((sum, r) => {
-    const c = (r.metrics as { contacts?: unknown } | null)?.contacts;
-    return sum + (typeof c === "number" ? c : 0);
-  }, 0);
 
   const lastRun: LastRun | null = lastRunRow
     ? {
@@ -93,15 +75,8 @@ export default async function LaunchPage() {
         domains={domains.map((d) => ({ domain: d.domain, status: d.status }))}
         lastRun={lastRun}
         defaultContactCap={orgDailyCap}
-        contactsUsedToday={contactsUsedToday}
-        pauseAll={PAUSE_ALL}
         initialRuns={pendingRuns}
       />
     </div>
   );
-}
-
-function startOfTodayUtc(): Date {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }

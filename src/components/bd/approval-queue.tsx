@@ -30,13 +30,10 @@ type Props = {
   initialRuns: PendingBDRun[];
   // Slots supplied by LaunchView so the whole Today's Batch page renders as
   // one column in a fixed order: heading -> controls -> table -> summary ->
-  // buttons. Keeping LaunchView's launch state in LaunchView (and the run
-  // table state here) lets each component own its own state while this host
-  // controls the top-to-bottom layout.
+  // Run Discovery Now button. Each component owns its own state while this
+  // host controls the top-to-bottom layout.
   controls?: ReactNode;
   summary?: ReactNode;
-  launchButton?: ReactNode;
-  launchHint?: ReactNode;
   // Pill + BD Settings button seated top-right inside the card.
   cardHeaderRight?: ReactNode;
 };
@@ -71,8 +68,6 @@ export function ApprovalQueue({
   initialRuns,
   controls,
   summary,
-  launchButton,
-  launchHint,
   cardHeaderRight,
 }: Props) {
   const router = useRouter();
@@ -258,10 +253,10 @@ export function ApprovalQueue({
         {/* Green run-summary line. */}
         {summary}
 
-        {/* Buttons last: Launch BD Run, then Run Discovery Now. Both match
-            the BD Settings button size and stay w-auto. */}
+        {/* Run Discovery Now is the only action in this row, left-aligned.
+            Sized to match the BD Settings button (px-2.5 py-1 text-[13px],
+            rounded-md, w-auto). Opens the Run discovery dialog. */}
         <div className="flex flex-wrap items-center gap-2">
-          {launchButton}
           <button
             type="button"
             onClick={() => {
@@ -278,7 +273,6 @@ export function ApprovalQueue({
             )}
             Run Discovery Now
           </button>
-          {launchHint}
         </div>
       </div>
 

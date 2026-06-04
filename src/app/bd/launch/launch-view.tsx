@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Rocket, Loader2, X, Settings2 } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ApprovalQueue } from "@/components/bd/approval-queue";
 import type { PendingBDRun } from "./bd-run-actions";
@@ -37,22 +36,8 @@ type Props = {
   domains: DomainPreview[];
   lastRun: LastRun | null;
   defaultContactCap: number;
-  contactsUsedToday: number;
-  pauseAll: boolean;
   initialRuns: PendingBDRun[];
 };
-
-// Launch CTA reads as a light amber-tinted button rather than a solid
-// orange one so it sits inside the Court Mode palette without
-// dominating the page. Amber is the only semantic accent that earns a
-// surface here (per the BD handoff) and the styling mirrors the
-// `Sent` invoice badge in /finances: amber-50 wash, amber-100
-// hairline, amber-700 ink. Dark modes (Clay / Night) flip to a
-// translucent amber-950 wash with amber-200 ink so the button stays
-// legible without losing the amber identity. Sized to match the BD
-// Settings button exactly (px-2.5 py-1 text-[13px], rounded-md, w-auto).
-const LAUNCH_CTA_CLASS =
-  "inline-flex items-center gap-1.5 rounded-md border border-amber-100 bg-amber-50 px-2.5 py-1 text-[13px] font-medium text-amber-700 shadow-sm transition hover:border-amber-200 hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:border-amber-800 dark:hover:bg-amber-950/60";
 
 const ESTIMATED_CONTACTS_PER_COMPANY = 4;
 const SEQUENCE_NAME_PLACEHOLDER = "BD Outbound v1";
@@ -63,11 +48,8 @@ export function LaunchView({
   domains,
   lastRun,
   defaultContactCap,
-  contactsUsedToday,
-  pauseAll,
   initialRuns,
 }: Props) {
-  const router = useRouter();
   const [verticalId, setVerticalId] = useState<string | null>(verticals[0]?.id ?? null);
   const visibleSearches = useMemo(
     () => savedSearches.filter((s) => s.verticalId === verticalId),
@@ -83,36 +65,6 @@ export function LaunchView({
 
   const selectedSearch = visibleSearches.find((s) => s.id === savedSearchId) ?? null;
   const contactCap = selectedSearch?.contactCap ?? defaultContactCap;
-  const dailyCapHit = contactsUsedToday >= contactCap;
-
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const canLaunch = !!savedSearchId && !pauseAll && !dailyCapHit && !submitting;
-
-  async function handleLaunch() {
-    if (!verticalId || !savedSearchId) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/bd/runs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ verticalId, savedSearchId }),
-      });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error ?? `Launch failed (HTTP ${res.status})`);
-      }
-      setConfirmOpen(false);
-      router.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Launch failed");
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   const noVerticals = verticals.length === 0;
 
@@ -205,64 +157,13 @@ export function LaunchView({
     />
   );
 
-  // Slot 3 - primary CTA, sized to the BD Settings button. ApprovalQueue
-  // renders this immediately before its own Run Discovery Now button.
-  const launchButton = noVerticals ? null : (
-    <button
-      type="button"
-      disabled={!canLaunch}
-      onClick={() => setConfirmOpen(true)}
-      className={LAUNCH_CTA_CLASS}
-    >
-      <Rocket className="h-3.5 w-3.5" />
-      Launch BD Run
-    </button>
-  );
-
-  // Slot 4 - launch-ability hints, shown beneath the button row.
-  const launchHint = noVerticals ? null : (
-    <>
-      {dailyCapHit && (
-        <span className="text-xs text-court-fg-muted">
-          Daily cap of {contactCap} contacts already used today.
-        </span>
-      )}
-      {pauseAll && (
-        <span className="text-xs text-court-fg-muted">BD is paused (see BD Settings).</span>
-      )}
-      {!savedSearchId && visibleSearches.length > 0 && (
-        <span className="text-xs text-court-fg-muted">Pick a saved search to launch.</span>
-      )}
-    </>
-  );
-
   return (
-    <>
-      <ApprovalQueue
-        initialRuns={initialRuns}
-        controls={controls}
-        summary={summary}
-        launchButton={launchButton}
-        launchHint={launchHint}
-        cardHeaderRight={cardHeaderRight}
-      />
-
-      {confirmOpen && (
-        <ConfirmModal
-          onCancel={() => {
-            if (!submitting) setConfirmOpen(false);
-          }}
-          onConfirm={handleLaunch}
-          submitting={submitting}
-          error={error}
-          contactCap={contactCap}
-          estimatedCompanies={Math.max(1, Math.round(contactCap / ESTIMATED_CONTACTS_PER_COMPANY))}
-          sequenceName={SEQUENCE_NAME_PLACEHOLDER}
-          domains={domains}
-          searchName={selectedSearch?.name ?? ""}
-        />
-      )}
-    </>
+    <ApprovalQueue
+      initialRuns={initialRuns}
+      controls={controls}
+      summary={summary}
+      cardHeaderRight={cardHeaderRight}
+    />
   );
 }
 
@@ -340,97 +241,6 @@ function PreviewChip({
           />
         ))}
       </span>
-    </div>
-  );
-}
-
-function ConfirmModal({
-  onCancel,
-  onConfirm,
-  submitting,
-  error,
-  contactCap,
-  estimatedCompanies,
-  sequenceName,
-  domains,
-  searchName,
-}: {
-  onCancel: () => void;
-  onConfirm: () => void;
-  submitting: boolean;
-  error: string | null;
-  contactCap: number;
-  estimatedCompanies: number;
-  sequenceName: string;
-  domains: DomainPreview[];
-  searchName: string;
-}) {
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="bd-confirm-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
-      onClick={onCancel}
-    >
-      <div
-        className="w-full max-w-md rounded-2xl border border-court-border bg-court-surface p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 id="bd-confirm-title" className="font-serif text-lg font-bold tracking-tight text-court-fg">
-              Launch this BD run?
-            </h2>
-            <p className="mt-1 text-sm text-court-fg-muted">
-              Enqueues {searchName ? <em className="not-italic font-medium text-court-fg">“{searchName}”</em> : "the selected search"} for the next morning scan.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="mt-4">
-          <PreviewChip
-            contactCap={contactCap}
-            estimatedCompanies={estimatedCompanies}
-            sequenceName={sequenceName}
-            domains={domains}
-          />
-        </div>
-
-        {error && (
-          <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
-            {error}
-          </div>
-        )}
-
-        <div className="mt-6 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={submitting}
-            className="inline-flex items-center rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm font-medium text-court-fg shadow-sm transition hover:bg-court-surface-subtle disabled:opacity-60"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={submitting}
-            className={LAUNCH_CTA_CLASS}
-          >
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
-            Launch
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
