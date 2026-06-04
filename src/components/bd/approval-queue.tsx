@@ -14,6 +14,7 @@ import {
   type SerializedOutreachHistory,
 } from "@/app/bd/launch/bd-run-actions";
 import { cn } from "@/lib/utils";
+import { formatBdDateTime } from "@/app/bd/date-format";
 import { Button } from "@/components/ui/button";
 import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 
@@ -443,7 +444,7 @@ function RunCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
-            {formatRunDate(run.createdAt)}
+            {formatBdDateTime(new Date(run.createdAt))}
           </p>
           <p className="mt-1 font-serif text-xl font-bold tracking-tight text-court-fg">
             {run.discoveredCount} {run.discoveredCount === 1 ? "company" : "companies"} discovered
@@ -600,18 +601,6 @@ function ContactsRow({
       })}
     </div>
   );
-}
-
-const RUN_DATE_FMT = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
-
-function formatRunDate(iso: string): string {
-  return RUN_DATE_FMT.format(new Date(iso));
 }
 
 function providerLabel(provider: string): string {

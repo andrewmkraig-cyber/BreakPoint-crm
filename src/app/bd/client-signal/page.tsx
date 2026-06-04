@@ -57,6 +57,7 @@ export default async function ClientSignalPage({
         jobTitle: true,
         jobLocation: true,
         jobPostingUrl: true,
+        postedAt: true,
         discoveredAt: true,
         status: true,
         source: true,
@@ -78,7 +79,9 @@ export default async function ClientSignalPage({
     matchedClientHref: clientHref(s.client),
     jobTitle: s.jobTitle,
     jobLocation: s.jobLocation,
-    postedLabel: formatDaysAgo(s.discoveredAt, nowMs),
+    // Real posting date when we captured it; fall back to discoveredAt for
+    // older rows where postedAt is null so the row still shows a date.
+    postedLabel: formatDaysAgo(s.postedAt ?? s.discoveredAt, nowMs),
     jobPostingUrl: s.jobPostingUrl,
     status: s.status,
     source: s.source === "CLIENT_MONITOR" ? "CLIENT_MONITOR" : "BD_DISCOVERY",

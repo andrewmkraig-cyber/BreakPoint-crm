@@ -14,6 +14,12 @@ const THEIRSTACK_ENDPOINT = "https://api.theirstack.com/v1/jobs/search";
 // We deliberately do NOT send posted_at_gte: it is a date-only field, so the
 // full ISO timestamp from postedSince 422s on every run after the first.
 const DEFAULT_POSTED_MAX_AGE_DAYS = 7;
+// Hard ceiling on the recency window. The window widens to "days since the
+// last successful run" so a normal cadence never misses a posting, but a
+// long gap between successful runs (sparse runs, an outage) would otherwise
+// pull the window wide open and surface very old postings. Cap it at 14 days
+// so the worst case is still recent.
+const MAX_POSTED_MAX_AGE_DAYS = 14;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 interface TheirStackJob {
@@ -48,7 +54,9 @@ export class TheirStackProvider implements JobDiscoveryProvider {
     if (params.postedSince) {
       const days = Math.ceil((Date.now() - params.postedSince.getTime()) / MS_PER_DAY);
       if (Number.isFinite(days) && days >= 1) {
-        postedMaxAgeDays = days;
+        // Cap at MAX_POSTED_MAX_AGE_DAYS so a sparse-run gap can never pull
+        // very old postings into the batch.
+        postedMaxAgeDays = Math.min(days, MAX_POSTED_MAX_AGE_DAYS);
       }
     }
 
