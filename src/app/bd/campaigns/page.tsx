@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { dedupeDiscoveredByCompany } from "@/lib/bd/discovered-company";
 import { formatBdDate } from "../date-format";
 
 import { CampaignsList, type CampaignRowProps } from "./campaigns-list";
@@ -50,6 +51,10 @@ export default async function CampaignsPage() {
       id: true,
       status: true,
       createdAt: true,
+      approvedAt: true,
+      discoveredCount: true,
+      enrolledCount: true,
+      discoveredPayload: true,
       plan: true,
       discoveryProvider: true,
       vertical: { select: { name: true } },
@@ -92,21 +97,50 @@ export default async function CampaignsPage() {
       run.campaigns.map((c) => c.id),
       eventsByCampaign,
     );
-    // Sequence name preference: plan snapshot (set at launch time) →
-    // discovery-provider label (so cron-discovered rows don't all read
-    // "BD Outbound v1" by copy-paste).
+    // The companies actually enrolled in this campaign are the single
+    // most distinguishing thing a row carries — two org-wide cron runs
+    // share every label fallback but enroll different companies. Dedupe
+    // with the SAME helper the detail page and enroll extractor use so
+    // the count here matches what the campaign actually pushed to Apollo.
+    const companies = dedupeDiscoveredByCompany(run.discoveredPayload);
+    const companyNames = companies.map((c) => c.companyName).filter(Boolean);
+    // discoveredPayload can be empty on a legacy/partial run; fall back
+    // to the stored counters so the row never reads "0 companies" for a
+    // run that genuinely enrolled some.
+    const companyCount =
+      companyNames.length > 0
+        ? companyNames.length
+        : run.discoveredCount || run.enrolledCount || 0;
+    // Sequence/label preference: plan snapshot (set at launch time) →
+    // the real linked Campaign name → discovery-provider label as a last
+    // resort (so cron-discovered rows don't all read "TheirStack
+    // Discovery" by copy-paste).
     const planSequence =
       typeof plan?.sequenceName === "string" && plan.sequenceName.trim()
         ? plan.sequenceName.trim()
         : null;
-    const sequenceName = planSequence ?? providerLabel(run.discoveryProvider);
+    const campaignTitle = run.campaigns.find((c) => c.name?.trim())?.name?.trim() ?? null;
+    const sequenceName =
+      planSequence ?? campaignTitle ?? providerLabel(run.discoveryProvider);
+    // Primary identity line: real saved-search name → real campaign name
+    // → the enrolled companies themselves. Only when there is genuinely
+    // nothing to show do we fall back to the generic discovery string.
+    const campaignName =
+      run.savedSearch?.name ??
+      campaignTitle ??
+      (companyNames.length > 0 ? null : "Org-wide BD discovery");
     return {
       runId: run.id,
       verticalName: run.vertical?.name ?? "Discovery",
-      campaignName: run.savedSearch?.name ?? "Org-wide BD discovery",
+      campaignName,
+      companyCount,
+      companyNames: companyNames.slice(0, 3),
       sequenceName,
-      startedLabel: formatBdDate(run.createdAt),
-      dayNumber: computeDayNumber(run.createdAt, nowMs),
+      // approvedAt is when the user enrolled the campaign; createdAt is
+      // discovery time. Prefer the enroll moment, fall back for legacy
+      // rows approved before approvedAt was being stamped.
+      startedLabel: formatBdDate(run.approvedAt ?? run.createdAt),
+      dayNumber: computeDayNumber(run.approvedAt ?? run.createdAt, nowMs),
       totals,
       domains: planDomains.slice(0, 5).map((name) => ({
         name,

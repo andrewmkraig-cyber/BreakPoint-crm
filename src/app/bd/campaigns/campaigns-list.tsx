@@ -24,7 +24,12 @@ type DomainSlot = { name: string; status: string };
 export type CampaignRowProps = {
   runId: string;
   verticalName: string;
-  campaignName: string;
+  // Null when there is no saved-search / campaign name and the companies
+  // themselves carry the identity — the row then leads with the company
+  // line instead of a generic title.
+  campaignName: string | null;
+  companyCount: number;
+  companyNames: ReadonlyArray<string>;
   sequenceName: string;
   startedLabel: string;
   dayNumber: number;
@@ -61,6 +66,8 @@ function CampaignRow({
   runId,
   verticalName,
   campaignName,
+  companyCount,
+  companyNames,
   sequenceName,
   startedLabel,
   dayNumber,
@@ -71,13 +78,31 @@ function CampaignRow({
   const openedPct = totals.sent === 0 ? 0 : totals.opened / totals.sent;
   const repliedPct = totals.sent === 0 ? 0 : totals.replied / totals.sent;
   const bouncedPct = totals.sent === 0 ? 0 : totals.bounced / totals.sent;
+  // Apollo writes CampaignEvent rows asynchronously; a freshly enrolled
+  // campaign legitimately shows all zeros until the first webhook lands.
+  // Flag it so an all-zero metrics row reads as "pending" rather than
+  // broken — we do NOT fabricate any counts.
+  const hasActivity =
+    totals.sent + totals.opened + totals.replied + totals.bounced + totals.unsub > 0;
+  // "Acme, Globex, Initech" — the companies enrolled are what actually
+  // tells two org-wide campaigns apart; the count caps the visible names.
+  const companyLabel =
+    companyNames.length > 0
+      ? companyNames.join(", ") +
+        (companyCount > companyNames.length ? ` +${companyCount - companyNames.length}` : "")
+      : null;
+  // Lead line: explicit name when we have one, otherwise the company
+  // summary, otherwise a neutral fallback so the row is never blank.
+  const title =
+    campaignName ??
+    (companyCount > 0 ? `${companyCount} ${companyCount === 1 ? "company" : "companies"}` : "Campaign");
 
   return (
     <div className="group relative flex items-center gap-4 p-5 transition-colors hover:bg-court-surface-subtle">
       <Link
         href={`/bd/campaigns/${runId}`}
         className="absolute inset-0"
-        aria-label={`Open ${campaignName}`}
+        aria-label={`Open ${title}`}
       />
       <div className="relative z-10 min-w-0 flex-1 pointer-events-none">
         <div className="flex flex-wrap items-center gap-2">
@@ -88,9 +113,12 @@ function CampaignRow({
             Day {dayNumber} of {SEQUENCE_DAYS}
           </span>
         </div>
-        <p className="mt-1 truncate text-sm font-semibold text-court-fg">{campaignName}</p>
+        <p className="mt-1 truncate text-sm font-semibold text-court-fg">{title}</p>
+        {companyLabel ? (
+          <p className="mt-0.5 truncate text-xs font-medium text-court-fg">{companyLabel}</p>
+        ) : null}
         <p className="mt-0.5 truncate text-xs text-court-fg-muted">
-          Started {startedLabel} · Sequence {sequenceName}
+          Enrolled {startedLabel} · Sequence {sequenceName}
         </p>
 
         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs">
@@ -110,9 +138,11 @@ function CampaignRow({
             accent={bouncedPct > BOUNCE_RED_THRESHOLD ? "red" : undefined}
           />
           <Metric label="Unsub" value={totals.unsub.toString()} />
-          <span className="text-court-fg-dim" aria-label="Sparkline placeholder">
-            —
-          </span>
+          {hasActivity ? null : (
+            <span className="text-[11px] italic text-court-fg-dim">
+              awaiting Apollo activity
+            </span>
+          )}
         </div>
       </div>
 
