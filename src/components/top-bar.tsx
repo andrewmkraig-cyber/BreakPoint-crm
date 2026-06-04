@@ -88,12 +88,6 @@ export function TopBar() {
           used to close out this row is gone - the sidebar/drawer
           profile card is the single source for profile. */}
       <div className="ml-auto flex h-14 items-center gap-2 md:ml-0 md:h-auto md:gap-3">
-        {/* Hamburger menu - PWA ONLY (hidden at md+). Moved up out of the
-            search row so it sits at the head of the right-aligned action
-            cluster; the search bar gets the whole second line to itself. */}
-        <div className="md:hidden">
-          <MobileNav />
-        </div>
         {/* Light/Dark toggle - DESKTOP ONLY (hidden below md). On the
             mobile PWA this control moves into the hamburger drawer (below
             Settings) so the topbar icon row stays on one line. Same h-10
@@ -224,6 +218,13 @@ export function TopBar() {
         />
         <WeatherWidget />
         <CalendarPopoverButton />
+        {/* Hamburger menu - PWA ONLY (hidden at md+). Pinned to the far
+            right end of the action cluster so it's the last (right-most)
+            control on the mobile PWA header. Desktop is unaffected since
+            this wrapper is md:hidden. */}
+        <div className="md:hidden">
+          <MobileNav />
+        </div>
       </div>
     </header>
   );
