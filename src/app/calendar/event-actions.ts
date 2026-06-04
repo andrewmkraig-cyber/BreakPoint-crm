@@ -42,8 +42,9 @@ export type UpdateCalendarEventInput = {
   // below.
   startISO?: string;
   endISO?: string;
-  // YYYY-MM-DD from the drawer date field. Required for all-day edits.
-  date: string;
+  // YYYY-MM-DD from the drawer date field. Present in the current client
+  // and optional so older cached clients still hit the server action safely.
+  date?: string;
   allDay?: boolean;
   location: string | null;
   notes: string | null;
@@ -91,6 +92,13 @@ function isForbiddenGoogleError(e: unknown): boolean {
   return /\(403\)/.test(msg) || /forbidden/i.test(msg);
 }
 
+function utcDateOnly(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export type UpdateCalendarEventResult =
   | { ok: true }
   | { ok: false; error: string };
@@ -116,9 +124,14 @@ export async function updateCalendarEventAction(
 ): Promise<UpdateCalendarEventResult> {
   const { userId, row } = await loadSelfAndRow(input.id);
 
-  const isAllDay = input.allDay === true;
+  const isAllDay = input.allDay ?? row.allDay;
+  const allDayDate = isAllDay
+    ? input.date ??
+      (input.startISO ? utcDateOnly(new Date(input.startISO)) : undefined) ??
+      utcDateOnly(row.startTime)
+    : undefined;
   const range = isAllDay
-    ? buildStartEndForDay(input.date)
+    ? buildStartEndForDay(allDayDate!)
     : buildStartEndForTimedISO(input.startISO ?? "", input.endISO ?? "");
   const start = range.startDate;
   const end = range.endDate;
@@ -158,7 +171,7 @@ export async function updateCalendarEventAction(
         eventId: row.googleEventId,
         calendarId: row.calendarId,
         sendUpdates: "all",
-        allDayDate: isAllDay ? input.date : undefined,
+        allDayDate,
         startISO: isAllDay ? undefined : input.startISO,
         durationMin: isAllDay ? undefined : durationMin,
         timeZone: isAllDay ? undefined : tz,
@@ -175,7 +188,7 @@ export async function updateCalendarEventAction(
         eventId: row.googleEventId,
         calendarId: row.calendarId,
         sendUpdates: "none",
-        allDayDate: isAllDay ? input.date : undefined,
+        allDayDate,
         startISO: isAllDay ? undefined : input.startISO,
         durationMin: isAllDay ? undefined : durationMin,
         timeZone: isAllDay ? undefined : tz,
@@ -204,7 +217,7 @@ export async function updateCalendarEventAction(
         eventId: row.googleEventId,
         calendarId: row.calendarId,
         sendUpdates: "none",
-        allDayDate: isAllDay ? input.date : undefined,
+        allDayDate,
         startISO: isAllDay ? undefined : input.startISO,
         durationMin: isAllDay ? undefined : durationMin,
         timeZone: isAllDay ? undefined : tz,
