@@ -5,14 +5,17 @@ import { useRouter } from "next/navigation";
 import { ExternalLink, MapPin, Clock, Mail, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { ClientLogo } from "@/components/client-logo";
+import { ClientLogo } from "@/components/clients/client-logo";
 import { cn } from "@/lib/utils";
 import { markSignalActed, markSignalDismissed } from "./actions";
 
 export type SignalRowData = {
   id: string;
   companyName: string;
-  logoUrl: string | null;
+  // Client domain (Client.domain) - the SAME field the Clients page keys its
+  // logo on, so Client Signals shows the identical favicon. null falls back to
+  // the initials chip in ClientLogo.
+  domain: string | null;
   matchedClientHref: string | null;
   jobTitle: string;
   jobLocation: string | null;
@@ -59,7 +62,7 @@ export function SignalRow(props: SignalRowData) {
   return (
     <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1.5fr)_auto] sm:items-center sm:p-5">
       <div className="flex items-center gap-3">
-        <ClientLogo name={props.companyName} logoUrl={props.logoUrl} size={32} />
+        <ClientLogo name={props.companyName} domain={props.domain} size={32} />
         <div className="min-w-0">
           {props.matchedClientHref ? (
             <a

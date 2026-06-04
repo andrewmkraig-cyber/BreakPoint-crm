@@ -18,15 +18,29 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
 
+// One ADDITIONAL job beyond a company's primary. Carried alongside the
+// count so the "+N more role(s)" note can deep-link to another posting.
+// url is null when that collapsed job had no posting link.
+export type ExtraRole = {
+  title: string;
+  url: string | null;
+};
+
 // One deduped company group. `primary` is the raw payload object of the
 // FIRST job seen for this company (its title/location/posting link are the
 // ones shown + enrolled); `extraRoleCount` is how many ADDITIONAL jobs the
-// same company had, surfaced as a muted "+N more role(s)" note.
+// same company had, surfaced as a muted "+N more role(s)" note. `extraRoles`
+// carries the {title,url} of those collapsed jobs (length === extraRoleCount)
+// so the note can open one of the other postings. This is pure extra
+// metadata: it does NOT affect dedup order or primary-company identity, so
+// the index-alignment the queue popup and enroll extractor depend on is
+// untouched.
 export type DedupedDiscoveredEntry = {
   primary: Record<string, unknown>;
   companyName: string;
   domain: string;
   extraRoleCount: number;
+  extraRoles: ExtraRole[];
 };
 
 // Dedup key: the recovered domain when present (companies are the same
@@ -59,9 +73,10 @@ export function dedupeDiscoveredByCompany(payload: unknown): DedupedDiscoveredEn
     const existing = byKey.get(key);
     if (existing) {
       existing.extraRoleCount += 1;
+      existing.extraRoles.push({ title: recoverJobTitle(obj), url: recoverJobPostingUrl(obj) });
       continue;
     }
-    byKey.set(key, { primary: obj, companyName, domain, extraRoleCount: 0 });
+    byKey.set(key, { primary: obj, companyName, domain, extraRoleCount: 0, extraRoles: [] });
     order.push(key);
   }
   return order.map((k) => byKey.get(k) as DedupedDiscoveredEntry);
@@ -122,4 +137,18 @@ export function recoverDomain(obj: Record<string, unknown>): string {
   }
 
   return "";
+}
+
+// Job title for an extra (collapsed) role; "" when none was stored.
+function recoverJobTitle(obj: Record<string, unknown>): string {
+  return trimmedString(obj.jobTitle);
+}
+
+// Posting URL for an extra (collapsed) role. Mirrors the field set the
+// queue serializer and enroll extractor resolve (jobPostingUrl/jobUrl/url);
+// null when the collapsed job carried no posting link.
+function recoverJobPostingUrl(obj: Record<string, unknown>): string | null {
+  const url =
+    trimmedString(obj.jobPostingUrl) || trimmedString(obj.jobUrl) || trimmedString(obj.url);
+  return url || null;
 }

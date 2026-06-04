@@ -61,7 +61,7 @@ export default async function ClientSignalPage({
         discoveredAt: true,
         status: true,
         source: true,
-        client: { select: { id: true, legacyRfId: true, logoUrl: true } },
+        client: { select: { id: true, legacyRfId: true, domain: true } },
       },
     }),
     prisma.clientSignal.count({ where: { organizationId: org.id } }),
@@ -75,7 +75,9 @@ export default async function ClientSignalPage({
   const signals: SignalRowData[] = rows.map((s) => ({
     id: s.id,
     companyName: s.companyName,
-    logoUrl: s.client?.logoUrl ?? null,
+    // Key the logo on the matched client's domain (same source as the
+    // Clients page). Soft matches with no client get null -> initials chip.
+    domain: s.client?.domain ?? null,
     matchedClientHref: clientHref(s.client),
     jobTitle: s.jobTitle,
     jobLocation: s.jobLocation,

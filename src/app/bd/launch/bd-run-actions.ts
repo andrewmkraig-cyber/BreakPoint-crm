@@ -35,6 +35,9 @@ export type DiscoveredCompanyLite = {
   // Additional jobs the same company had beyond the primary shown here.
   // Drives the muted "+N more role(s)" note; 0 when the company had one job.
   extraRoleCount: number;
+  // {title,url} of those additional jobs (length === extraRoleCount) so the
+  // note can open one of the other postings. url is null when unknown.
+  extraRoles: { title: string; url: string | null }[];
   history: SerializedOutreachHistory;
   contacts: ApolloContact[];
 };
@@ -111,6 +114,7 @@ export async function getPendingBDRuns(): Promise<PendingBDRun[]> {
         jobLocation: c.jobLocation,
         jobPostingUrl: c.jobPostingUrl,
         extraRoleCount: c.extraRoleCount,
+        extraRoles: c.extraRoles,
         history: {
           runCount: h.runCount,
           contactsTriedTotal: h.contactsTriedTotal,
@@ -264,6 +268,7 @@ type DiscoveredCompanyRaw = {
   jobLocation: string;
   jobPostingUrl: string | null;
   extraRoleCount: number;
+  extraRoles: { title: string; url: string | null }[];
   persistedContacts: ApolloContact[];
 };
 
@@ -299,6 +304,7 @@ function extractDiscoveredCompaniesRaw(payload: unknown): DiscoveredCompanyRaw[]
       jobLocation,
       jobPostingUrl,
       extraRoleCount: entry.extraRoleCount,
+      extraRoles: entry.extraRoles,
       persistedContacts: parsePersistedContacts(obj.contacts),
     };
   });

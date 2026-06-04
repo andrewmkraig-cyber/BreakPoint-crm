@@ -61,6 +61,37 @@ function moreRolesLabel(extra: number): string {
   return `+${extra} more role${extra === 1 ? "" : "s"}`;
 }
 
+// The "+N more role(s)" note. When any collapsed extra role kept a posting
+// URL, the note becomes a link to the first such posting (new tab); with no
+// URL anywhere it stays plain muted text. stopPropagation keeps a click from
+// also firing the surrounding card's open-popup handler.
+function MoreRolesNote({
+  count,
+  extraRoles,
+  className,
+}: {
+  count: number;
+  extraRoles: { title: string; url: string | null }[];
+  className: string;
+}) {
+  if (count <= 0) return null;
+  const target = extraRoles.find((r) => r.url)?.url ?? null;
+  if (!target) {
+    return <span className={className}>{moreRolesLabel(count)}</span>;
+  }
+  return (
+    <a
+      href={target}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      className={cn(className, "cursor-pointer hover:text-court-brand-dark hover:underline")}
+    >
+      {moreRolesLabel(count)}
+    </a>
+  );
+}
+
 function initialCarouselsForRun(run: PendingBDRun): Record<string, ContactCarousel> {
   const out: Record<string, ContactCarousel> = {};
   for (const c of run.discoveredPayload) {
@@ -432,11 +463,11 @@ function CompanySelectionModal({
                     {company.jobTitle ? (
                       <p className="truncate text-xs font-medium text-court-brand">
                         {company.jobTitle}
-                        {company.extraRoleCount > 0 ? (
-                          <span className="ml-1.5 font-normal text-court-fg-dim">
-                            {moreRolesLabel(company.extraRoleCount)}
-                          </span>
-                        ) : null}
+                        <MoreRolesNote
+                          count={company.extraRoleCount}
+                          extraRoles={company.extraRoles}
+                          className="ml-1.5 font-normal text-court-fg-dim"
+                        />
                       </p>
                     ) : null}
                     {company.jobLocation ? (
@@ -626,9 +657,6 @@ function RunCard({
             {run.discoveredCount} {run.discoveredCount === 1 ? "company" : "companies"} discovered
           </p>
         </div>
-        <span className="inline-flex items-center rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
-          {providerLabel(run.discoveryProvider)}
-        </span>
       </div>
 
       {preview.length > 0 && (
@@ -643,11 +671,11 @@ function RunCard({
                   {c.jobTitle && (
                     <span className="text-[12px] text-court-fg-muted">{c.jobTitle}</span>
                   )}
-                  {c.extraRoleCount > 0 && (
-                    <span className="text-[11px] text-court-fg-dim">
-                      {moreRolesLabel(c.extraRoleCount)}
-                    </span>
-                  )}
+                  <MoreRolesNote
+                    count={c.extraRoleCount}
+                    extraRoles={c.extraRoles}
+                    className="text-[11px] text-court-fg-dim"
+                  />
                 </div>
                 <OutreachHistoryRow history={c.history} />
                 <ContactsRow
@@ -779,9 +807,4 @@ function ContactsRow({
       })}
     </div>
   );
-}
-
-function providerLabel(provider: string): string {
-  if (provider === "theirstack") return "TheirStack";
-  return provider;
 }
