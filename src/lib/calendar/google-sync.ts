@@ -68,6 +68,17 @@ function pickMeetLink(ev: GoogleEvent): string | null {
   return video?.uri ?? null;
 }
 
+function dateOnlyToDisplayDate(date: string): Date {
+  const [year, month, day] = date.split("-").map((n) => Number.parseInt(n, 10));
+  if (![year, month, day].every((n) => Number.isFinite(n))) {
+    return new Date(date);
+  }
+  // Keep date-only Google events inside the intended local calendar day.
+  // `new Date("YYYY-MM-DD")` is midnight UTC, which renders as the prior
+  // evening in Eastern time and makes all-day events look like timed ones.
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+}
+
 type GoogleEventsResponse = {
   items?: GoogleEvent[];
 };
@@ -180,11 +191,17 @@ export async function syncGoogleCalendars(
         continue;
       }
 
-      const startSource = ev.start?.dateTime ?? ev.start?.date;
-      const endSource = ev.end?.dateTime ?? ev.end?.date;
-      const startTime = startSource ? new Date(startSource) : new Date(now);
-      const endTime = endSource ? new Date(endSource) : new Date(now);
       const allDay = !ev.start?.dateTime;
+      const startTime = ev.start?.dateTime
+        ? new Date(ev.start.dateTime)
+        : ev.start?.date
+          ? dateOnlyToDisplayDate(ev.start.date)
+          : new Date(now);
+      const endTime = ev.end?.dateTime
+        ? new Date(ev.end.dateTime)
+        : ev.end?.date
+          ? dateOnlyToDisplayDate(ev.end.date)
+          : new Date(now);
       const status: "CONFIRMED" | "TENTATIVE" =
         ev.status === "tentative" ? "TENTATIVE" : "CONFIRMED";
 

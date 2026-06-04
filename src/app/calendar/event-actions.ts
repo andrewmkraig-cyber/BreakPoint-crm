@@ -40,8 +40,11 @@ export type UpdateCalendarEventInput = {
   // <input type="time"> in America/New_York. We trust the caller to
   // hand us valid ISO; bad input fails at new Date() validation
   // below.
-  startISO: string;
-  endISO: string;
+  startISO?: string;
+  endISO?: string;
+  // YYYY-MM-DD from the drawer date field. Required for all-day edits.
+  date: string;
+  allDay?: boolean;
   location: string | null;
   notes: string | null;
   // Guests added via the typeahead this session. We merge them onto
@@ -113,15 +116,13 @@ export async function updateCalendarEventAction(
 ): Promise<UpdateCalendarEventResult> {
   const { userId, row } = await loadSelfAndRow(input.id);
 
-  const start = new Date(input.startISO);
-  const end = new Date(input.endISO);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    throw new Error("Invalid start/end time");
-  }
-  if (end.getTime() <= start.getTime()) {
-    throw new Error("End must be after start");
-  }
-  const durationMin = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60_000));
+  const isAllDay = input.allDay === true;
+  const range = isAllDay
+    ? buildStartEndForDay(input.date)
+    : buildStartEndForTimedISO(input.startISO ?? "", input.endISO ?? "");
+  const start = range.startDate;
+  const end = range.endDate;
+  const durationMin = range.durationMin;
   const tz = input.timeZone || DEFAULT_TIMEZONE;
 
   const existingAttendees: AttendeeJson[] =
@@ -157,9 +158,10 @@ export async function updateCalendarEventAction(
         eventId: row.googleEventId,
         calendarId: row.calendarId,
         sendUpdates: "all",
-        startISO: input.startISO,
-        durationMin,
-        timeZone: tz,
+        allDayDate: isAllDay ? input.date : undefined,
+        startISO: isAllDay ? undefined : input.startISO,
+        durationMin: isAllDay ? undefined : durationMin,
+        timeZone: isAllDay ? undefined : tz,
         summary: input.title,
         description: input.notes ?? "",
         location: input.location,
@@ -173,9 +175,10 @@ export async function updateCalendarEventAction(
         eventId: row.googleEventId,
         calendarId: row.calendarId,
         sendUpdates: "none",
-        startISO: input.startISO,
-        durationMin,
-        timeZone: tz,
+        allDayDate: isAllDay ? input.date : undefined,
+        startISO: isAllDay ? undefined : input.startISO,
+        durationMin: isAllDay ? undefined : durationMin,
+        timeZone: isAllDay ? undefined : tz,
         summary: input.title,
         description: input.notes ?? "",
         location: input.location,
@@ -201,9 +204,10 @@ export async function updateCalendarEventAction(
         eventId: row.googleEventId,
         calendarId: row.calendarId,
         sendUpdates: "none",
-        startISO: input.startISO,
-        durationMin,
-        timeZone: tz,
+        allDayDate: isAllDay ? input.date : undefined,
+        startISO: isAllDay ? undefined : input.startISO,
+        durationMin: isAllDay ? undefined : durationMin,
+        timeZone: isAllDay ? undefined : tz,
         summary: input.title,
         description: input.notes ?? "",
         location: input.location,
@@ -239,6 +243,7 @@ export async function updateCalendarEventAction(
       location: input.location,
       startTime: start,
       endTime: end,
+      allDay: isAllDay,
       attendees: mergedAttendees as unknown as object,
       typeOverride: input.type,
       syncedAt: new Date(),
@@ -545,6 +550,7 @@ export async function createCalendarEventAction(
       description,
       startISO: range.startISO,
       durationMin: range.durationMin,
+      allDayDate: input.allDay ? input.date : undefined,
       createMeet: wantsMeet,
       location: mirroredLocation ?? undefined,
       // Notify recipients so the invite lands in their inbox.

@@ -71,6 +71,10 @@ function deriveType(title: string, calendarName: string): CalendarEventType {
   return "other";
 }
 
+function allDayDisplayDate(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0));
+}
+
 function formatRelative(target: Date, base: Date): string {
   const diffMs = target.getTime() - base.getTime();
   const absMin = Math.round(Math.abs(diffMs) / 60000);
@@ -373,11 +377,13 @@ export default async function CalendarPage() {
     const displayMeta = interviewMeta?.sentBody
       ? htmlToReadableText(interviewMeta.sentBody)
       : row.description ?? undefined;
+    const displayStart = row.allDay ? allDayDisplayDate(row.startTime) : row.startTime;
+    const displayEnd = row.allDay ? allDayDisplayDate(row.endTime) : row.endTime;
     return {
       id: row.id,
       title: displayTitle,
-      startTime: row.startTime,
-      endTime: row.endTime,
+      startTime: displayStart,
+      endTime: displayEnd,
       allDay: row.allDay,
       type: linkedInterview ? "interview" : overrideType ?? deriveType(row.title, row.calendarName),
       meta: displayMeta,

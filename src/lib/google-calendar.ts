@@ -78,6 +78,18 @@ async function calendarFetch(
   return res;
 }
 
+function addDaysToDateOnly(date: string, days: number): string {
+  const [year, month, day] = date.split("-").map((n) => Number.parseInt(n, 10));
+  if (![year, month, day].every((n) => Number.isFinite(n))) {
+    throw new Error("Invalid all-day event date");
+  }
+  const next = new Date(Date.UTC(year, month - 1, day + days, 12, 0, 0));
+  const y = next.getUTCFullYear();
+  const m = String(next.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(next.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 export type CalendarAttendee = {
   email: string;
   displayName?: string;
@@ -94,6 +106,8 @@ export type CreateCalendarEventInput = {
   description?: string;
   startISO: string;
   durationMin: number;
+  // YYYY-MM-DD. When set, Google receives date-only start/end fields.
+  allDayDate?: string;
   attendees?: CalendarAttendee[];
   // If true, Google creates a Meet conference and returns the link in the
   // response's conferenceData.entryPoints. Only meaningful for video interviews.
@@ -139,8 +153,12 @@ export async function createCalendarEvent(
   const body: Record<string, unknown> = {
     summary: input.summary,
     description: input.description ?? "",
-    start: { dateTime: start.toISOString(), timeZone: tz },
-    end: { dateTime: end.toISOString(), timeZone: tz },
+    start: input.allDayDate
+      ? { date: input.allDayDate }
+      : { dateTime: start.toISOString(), timeZone: tz },
+    end: input.allDayDate
+      ? { date: addDaysToDateOnly(input.allDayDate, 1) }
+      : { dateTime: end.toISOString(), timeZone: tz },
     // Guests can pull others in + see the guest list by default. The
     // previous per-event "Open meeting" toggle on the scheduler was
     // retired in favor of the org-wide Google Calendar / Meet setting
@@ -284,6 +302,8 @@ export type PatchCalendarEventDetailsInput = {
   sendUpdates: "all" | "none" | "externalOnly";
   startISO?: string;
   durationMin?: number;
+  // YYYY-MM-DD. When set, patch start/end as an all-day date range.
+  allDayDate?: string;
   timeZone?: string;
   summary?: string;
   description?: string;
@@ -301,7 +321,10 @@ export async function patchCalendarEventDetails(
   );
   url.searchParams.set("sendUpdates", input.sendUpdates);
   const body: Record<string, unknown> = {};
-  if (input.startISO && input.durationMin != null) {
+  if (input.allDayDate) {
+    body.start = { date: input.allDayDate };
+    body.end = { date: addDaysToDateOnly(input.allDayDate, 1) };
+  } else if (input.startISO && input.durationMin != null) {
     const start = new Date(input.startISO);
     const end = new Date(start.getTime() + input.durationMin * 60 * 1000);
     const tz = input.timeZone || "America/New_York";

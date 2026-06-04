@@ -106,6 +106,12 @@ function toDateInput(d: Date): string {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
+function toUtcDateInput(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 function toTimeInput(d: Date): string {
   const h = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
@@ -286,11 +292,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
   // create/edit actions interpret startTime/endTime in this zone and
   // send Google both the resolved instant and this zone for display.
   const [timeZone, setTimeZone] = useState(DEFAULT_TIMEZONE);
-  // Create-only: all-day blocks render in Google as a date range with
-  // no time. Edit mode ignores this - Google's PATCH path through
-  // updateCalendarEventAction always sends start/end as ISO timed
-  // strings, so flipping allDay in edit would be a no-op against the
-  // existing event.
+  // All-day blocks render in Google as a date range with no time.
   const [allDay, setAllDay] = useState(false);
   // Create-only meeting type. "google_meet" is the recruiter's
   // default; reminders override to "none" so a personal block doesn't
@@ -347,7 +349,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
     if (event) {
       setType(event.type);
       setTitle(event.title);
-      setDate(toDateInput(event.startTime));
+      setDate(event.allDay ? toUtcDateInput(event.startTime) : toDateInput(event.startTime));
       setStartTime(toTimeInput(event.startTime));
       setEndTime(toTimeInput(event.endTime));
       // The drawer's Location row prefers meetLink for display, but
@@ -366,7 +368,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
       setReminderOn(
         event.type === "interview" ? true : (event.reminderEnabled ?? false),
       );
-      setAllDay(false);
+      setAllDay(event.type === "reminder" ? false : (event.allDay ?? false));
       setMeetingType("google_meet");
       setTimeZone(DEFAULT_TIMEZONE);
       // Reset the cancel-interview two-way choice so a half-opened prompt
@@ -442,6 +444,9 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
   // Edit mode leaves the existing time untouched.
   function pickType(next: CalendarEventType) {
     setType(next);
+    if (next === "reminder") {
+      setAllDay(false);
+    }
     if (mode !== "create") return;
     if (next === "reminder") {
       const start = reminderDefaultTime();
@@ -451,9 +456,6 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
       );
       setDate((d) => d || toDateInput(start));
       setMeetingType("none");
-      // The all-day toggle is hidden for reminders; clear any prior
-      // all-day choice so the Time field can't get stranded.
-      setAllDay(false);
     } else {
       setMeetingType((m) => (m === "none" ? "google_meet" : m));
     }
@@ -506,23 +508,33 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
     setSaving(notifyMode);
     setError(null);
     try {
-      const startDate = zonedToInstant(date, startTime, timeZone);
+      const startDate = allDay ? null : zonedToInstant(date, startTime, timeZone);
       // Reminders carry no Ends field; pin a 15-min block so Google
       // and the validation below always have a valid range.
       const endDate = isReminder
-        ? new Date(startDate.getTime() + REMINDER_DEFAULT_LEAD_MS)
-        : zonedToInstant(date, endTime, timeZone);
-      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+        ? new Date(startDate!.getTime() + REMINDER_DEFAULT_LEAD_MS)
+        : allDay
+          ? null
+          : zonedToInstant(date, endTime, timeZone);
+      if (
+        !allDay &&
+        (!startDate ||
+          !endDate ||
+          Number.isNaN(startDate.getTime()) ||
+          Number.isNaN(endDate.getTime()))
+      ) {
         throw new Error("Invalid date or time.");
       }
-      if (endDate.getTime() <= startDate.getTime()) {
+      if (!allDay && endDate!.getTime() <= startDate!.getTime()) {
         throw new Error("End time must be after start time.");
       }
       const res = await updateCalendarEventAction({
         id: event.id,
         title: title.trim(),
-        startISO: startDate.toISOString(),
-        endISO: endDate.toISOString(),
+        date,
+        startISO: allDay ? undefined : startDate!.toISOString(),
+        endISO: allDay ? undefined : endDate!.toISOString(),
+        allDay,
         location: location.trim() || null,
         notes: notes.trim() || null,
         newGuests,
@@ -911,7 +923,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
             {/* Reminders hide the timezone selector and fire in ET (see
                 the hard-coded REMINDER_TIMEZONE in doCreate). Timed events
                 keep the picker. */}
-            {!isReminder && (
+            {!isReminder && !allDay && (
               <div>
                 <FieldLabel>Timezone</FieldLabel>
                 <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
@@ -991,38 +1003,48 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
             </div>
           )}
 
-          {/* All-day + meeting type (create only). All-day is a
-              create-time choice - Google's PATCH path the edit
-              flow uses doesn't switch a timed event to all-day, so
-              hiding the toggle in edit avoids a no-op control.
-              Reminders hide both: a personal Ace toast has no all-day
-              span and no video link. */}
-          {mode === "create" && !isReminder && (
-            <div className="grid grid-cols-2 gap-3">
+          {/* All-day + meeting type. Reminders hide both: a personal Ace
+              toast has no all-day span and no video link. */}
+          {!isReminder && (
+            <div className={cn("grid gap-3", mode === "create" ? "grid-cols-2" : "grid-cols-1")}>
               <div>
                 <FieldLabel>All day</FieldLabel>
                 <label className="flex h-[38px] items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[12.5px] text-court-fg-muted">
                   <input
                     type="checkbox"
                     checked={allDay}
-                    onChange={(e) => setAllDay(e.target.checked)}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setAllDay(next);
+                      if (
+                        !next &&
+                        (!Number.isFinite(minutesOf(startTime)) ||
+                          !Number.isFinite(minutesOf(endTime)) ||
+                          minutesOf(endTime) <= minutesOf(startTime))
+                      ) {
+                        setStartTime("09:00");
+                        setEndTime("10:00");
+                      }
+                    }}
                     className="h-3.5 w-3.5 cursor-pointer accent-court-brand"
                   />
                   Block the whole day
                 </label>
               </div>
-              <div>
-                <FieldLabel>Meeting type</FieldLabel>
-                <select
-                  value={meetingType}
-                  onChange={(e) => setMeetingType(e.target.value as CreateMeetingType)}
-                  className="h-[38px] w-full rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus:border-court-brand focus:outline-none focus:ring-2 focus:ring-court-brand/20"
-                >
-                  {MEETING_TYPE_OPTS.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
-              </div>
+              {mode === "create" && (
+                <div>
+                  <FieldLabel>Meeting type</FieldLabel>
+                  <select
+                    value={meetingType}
+                    onChange={(e) => setMeetingType(e.target.value as CreateMeetingType)}
+                    className="h-[38px] w-full rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus:border-court-brand focus:outline-none focus:ring-2 focus:ring-court-brand/20"
+                  >
+                    {MEETING_TYPE_OPTS.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           )}
 
