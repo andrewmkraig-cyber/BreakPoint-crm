@@ -206,15 +206,18 @@ export function ApprovalQueue({
           shadow). Order top-to-bottom: header-right pill/settings ->
           controls -> table -> summary -> buttons. */}
       <div className="flex flex-col gap-6 rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
-        {/* Last run pill + BD Settings, top-right inside the card. */}
-        {cardHeaderRight && (
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {cardHeaderRight}
-          </div>
-        )}
-
-        {/* Vertical chip + Saved Search dropdown. */}
-        {controls}
+        {/* Top band: controls seated at the very top-left and the Last run
+            pill + BD Settings top-right, on the same row, so the body
+            starts at the top of the card instead of floating far down. */}
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          {/* Vertical chip + Saved Search dropdown. */}
+          <div className="min-w-0 flex-1">{controls}</div>
+          {cardHeaderRight && (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {cardHeaderRight}
+            </div>
+          )}
+        </div>
 
         {/* Discovery results table. The empty state is the empty version
             of the run-card list. */}
