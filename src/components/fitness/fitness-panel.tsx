@@ -12,10 +12,10 @@ import {
 import { createPortal } from "react-dom";
 import {
   Activity,
-  BicepsFlexed,
   Check,
   ChevronDown,
   ChevronRight,
+  Copy,
   Footprints,
   GripVertical,
   Loader2,
@@ -31,14 +31,17 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { BarbellIcon } from "@/components/fitness/barbell-icon";
 import { Button } from "@/components/ui/button";
 import { TabStrip } from "@/components/ui/tab-strip";
 import {
   FITNESS_BODY_PARTS,
+  createAppleHealthConnection,
   createFitnessExercise,
   getFitnessSnapshot,
   saveFitnessWorkout,
   type FitnessExercise,
+  type FitnessHealthConnectionSetup,
   type FitnessRange,
   type FitnessSavedExerciseSummary,
   type FitnessSnapshot,
@@ -88,6 +91,15 @@ function shortDate(iso: string): string {
     month: "short",
     day: "numeric",
   }).format(date);
+}
+
+function shortDateTime(iso: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(iso));
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -224,6 +236,9 @@ export function FitnessPanel() {
   const [historyRange, setHistoryRange] = useState<FitnessRange>("week");
   const [historyBodyPart, setHistoryBodyPart] = useState("All");
   const [stepsExpanded, setStepsExpanded] = useState(false);
+  const [healthSetup, setHealthSetup] =
+    useState<FitnessHealthConnectionSetup | null>(null);
+  const [healthConnecting, setHealthConnecting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const rest = useRestTimer();
 
@@ -513,6 +528,31 @@ export function FitnessPanel() {
     }
   }
 
+  async function onCreateAppleHealthConnection() {
+    setHealthConnecting(true);
+    try {
+      const result = await createAppleHealthConnection();
+      setHealthSetup(result.setup ?? null);
+      setSnapshot((current) =>
+        current
+          ? {
+              ...current,
+              steps: {
+                ...current.steps,
+                connected: result.connected,
+                lastSyncAt: result.lastSyncAt,
+              },
+            }
+          : current,
+      );
+      toast.success("Apple Health connector created");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Apple Health setup failed");
+    } finally {
+      setHealthConnecting(false);
+    }
+  }
+
   if (!open || typeof document === "undefined") return null;
 
   if (minimized) {
@@ -522,7 +562,7 @@ export function FitnessPanel() {
         onClick={restore}
         className="fixed bottom-5 right-5 z-[1100] inline-flex items-center gap-2 rounded-md border border-court-brand bg-court-surface px-3 py-2 text-sm font-semibold text-court-brand-dark shadow-lg transition hover:bg-court-brand-tint"
       >
-        <BicepsFlexed className="h-4 w-4" strokeWidth={2.4} />
+        <BarbellIcon className="h-4 w-4" />
         Fitness
       </button>,
       document.body,
@@ -557,7 +597,7 @@ export function FitnessPanel() {
         <GripVertical className="mt-1 h-4 w-4 shrink-0 text-court-fg-muted" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <BicepsFlexed className="h-4 w-4 text-court-brand" strokeWidth={2.4} />
+            <BarbellIcon className="h-4 w-4 text-court-brand" />
             <h2 className="font-serif text-lg font-semibold leading-none text-court-fg">
               Fitness
             </h2>
@@ -624,6 +664,8 @@ export function FitnessPanel() {
                 restRemaining={rest.remaining}
                 saveSummary={saveSummary}
                 canSave={hasCompleteSet}
+                healthSetup={healthSetup}
+                healthConnecting={healthConnecting}
                 onDateChange={(next) => {
                   setDate(next);
                   setSaveSummary(null);
@@ -648,6 +690,7 @@ export function FitnessPanel() {
                 onAddCustomExercise={onAddCustomExercise}
                 onSave={onSaveWorkout}
                 onDone={close}
+                onCreateAppleHealthConnection={onCreateAppleHealthConnection}
                 onRestartRest={rest.start}
                 onSkipRest={rest.reset}
                 stepsExpanded={stepsExpanded}
@@ -662,8 +705,11 @@ export function FitnessPanel() {
                 days={filteredHistory}
                 stats={historyStats}
                 stepsExpanded={stepsExpanded}
+                healthSetup={healthSetup}
+                healthConnecting={healthConnecting}
                 onRangeChange={setHistoryRange}
                 onBodyPartChange={setHistoryBodyPart}
+                onCreateAppleHealthConnection={onCreateAppleHealthConnection}
                 onToggleStepsExpanded={() => setStepsExpanded((v) => !v)}
               />
             ) : null}
@@ -690,15 +736,21 @@ export function FitnessPanel() {
 function StepsHeader({
   steps,
   expanded,
+  healthSetup,
+  healthConnecting,
   onToggleExpanded,
+  onCreateAppleHealthConnection,
 }: {
   steps: FitnessSnapshot["steps"];
   expanded: boolean;
+  healthSetup: FitnessHealthConnectionSetup | null;
+  healthConnecting: boolean;
   onToggleExpanded: () => void;
+  onCreateAppleHealthConnection: () => void;
 }) {
   if (!steps.connected) {
     return (
-      <div className="rounded-md border border-court-border bg-court-surface-subtle p-3">
+      <div className="space-y-3 rounded-md border border-court-border bg-court-surface-subtle p-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <span className="grid h-9 w-9 place-items-center rounded-md bg-court-surface text-court-brand">
@@ -709,15 +761,28 @@ function StepsHeader({
                 Apple Health not connected
               </p>
               <p className="text-xs text-court-fg-muted">
-                Steps will appear after Ace has a real Apple Health connection.
+                Generate a private Shortcut token, then have your iPhone post
+                daily step totals into Ace.
               </p>
             </div>
           </div>
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs font-semibold text-court-fg-muted">
-            <Activity className="h-3.5 w-3.5" />
-            Setup needed
-          </span>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onCreateAppleHealthConnection}
+            disabled={healthConnecting}
+            className="shrink-0"
+          >
+            {healthConnecting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Activity className="h-3.5 w-3.5" />
+            )}
+            Setup
+          </Button>
         </div>
+        {healthSetup ? <AppleHealthSetup setup={healthSetup} /> : null}
       </div>
     );
   }
@@ -764,6 +829,11 @@ function StepsHeader({
                 </span>
               ) : null}
             </div>
+            {steps.lastSyncAt ? (
+              <p className="mt-0.5 text-[11px] text-court-fg-muted">
+                Last synced {shortDateTime(steps.lastSyncAt)}
+              </p>
+            ) : null}
           </div>
         </div>
         <Button
@@ -777,6 +847,11 @@ function StepsHeader({
           Connected
         </Button>
       </div>
+      {healthSetup ? (
+        <div className="mt-3">
+          <AppleHealthSetup setup={healthSetup} />
+        </div>
+      ) : null}
       <button
         type="button"
         onClick={onToggleExpanded}
@@ -815,6 +890,63 @@ function StepsHeader({
   );
 }
 
+function AppleHealthSetup({
+  setup,
+}: {
+  setup: FitnessHealthConnectionSetup;
+}) {
+  return (
+    <div className="space-y-2 rounded-md border border-court-border bg-court-surface p-3">
+      <p className="text-xs font-semibold uppercase text-court-fg-muted">
+        iPhone Shortcut setup
+      </p>
+      <CopyRow label="URL" value={setup.ingestUrl} />
+      <CopyRow label="Token" value={setup.token} secret />
+      <div className="space-y-1 text-xs text-court-fg-muted">
+        <p>1. Shortcuts: Get Health Samples for Steps, grouped by day.</p>
+        <p>2. Sum the samples and POST JSON to the URL above.</p>
+        <p>3. Body: token, date as YYYY-MM-DD, and steps.</p>
+      </div>
+    </div>
+  );
+}
+
+function CopyRow({
+  label,
+  value,
+  secret = false,
+}: {
+  label: string;
+  value: string;
+  secret?: boolean;
+}) {
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label} copied`);
+    } catch {
+      toast.error(`${label} failed to copy`);
+    }
+  }
+
+  return (
+    <div className="grid grid-cols-[3rem_minmax(0,1fr)_2rem] items-center gap-2">
+      <span className="text-xs font-semibold text-court-fg-muted">{label}</span>
+      <code className="truncate rounded-md bg-court-surface-subtle px-2 py-1 text-[11px] text-court-fg">
+        {secret ? `${value.slice(0, 8)}...${value.slice(-6)}` : value}
+      </code>
+      <button
+        type="button"
+        onClick={copy}
+        className="grid h-8 w-8 place-items-center rounded-md border border-court-border text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
+        aria-label={`Copy ${label}`}
+      >
+        <Copy className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
 function RecordTab(props: {
   snapshot: FitnessSnapshot;
   date: string;
@@ -828,6 +960,8 @@ function RecordTab(props: {
   restRemaining: number;
   saveSummary: FitnessSavedExerciseSummary[] | null;
   canSave: boolean;
+  healthSetup: FitnessHealthConnectionSetup | null;
+  healthConnecting: boolean;
   stepsExpanded: boolean;
   onDateChange: (date: string) => void;
   onDayTypeChange: (dayType: string) => void;
@@ -853,6 +987,7 @@ function RecordTab(props: {
   onAddCustomExercise: () => void;
   onSave: () => void;
   onDone: () => void;
+  onCreateAppleHealthConnection: () => void;
   onRestartRest: () => void;
   onSkipRest: () => void;
   onToggleStepsExpanded: () => void;
@@ -862,7 +997,10 @@ function RecordTab(props: {
       <StepsHeader
         steps={props.snapshot.steps}
         expanded={props.stepsExpanded}
+        healthSetup={props.healthSetup}
+        healthConnecting={props.healthConnecting}
         onToggleExpanded={props.onToggleStepsExpanded}
+        onCreateAppleHealthConnection={props.onCreateAppleHealthConnection}
       />
 
       <div className="grid gap-3">
@@ -1379,8 +1517,11 @@ function HistoryTab({
   days,
   stats,
   stepsExpanded,
+  healthSetup,
+  healthConnecting,
   onRangeChange,
   onBodyPartChange,
+  onCreateAppleHealthConnection,
   onToggleStepsExpanded,
 }: {
   snapshot: FitnessSnapshot;
@@ -1389,8 +1530,11 @@ function HistoryTab({
   days: FitnessWorkoutDay[];
   stats: ReturnType<typeof buildHistoryStats>;
   stepsExpanded: boolean;
+  healthSetup: FitnessHealthConnectionSetup | null;
+  healthConnecting: boolean;
   onRangeChange: (range: FitnessRange) => void;
   onBodyPartChange: (bodyPart: string) => void;
+  onCreateAppleHealthConnection: () => void;
   onToggleStepsExpanded: () => void;
 }) {
   return (
@@ -1398,7 +1542,10 @@ function HistoryTab({
       <StepsHeader
         steps={snapshot.steps}
         expanded={stepsExpanded}
+        healthSetup={healthSetup}
+        healthConnecting={healthConnecting}
         onToggleExpanded={onToggleStepsExpanded}
+        onCreateAppleHealthConnection={onCreateAppleHealthConnection}
       />
       <TabStrip
         items={RANGE_TABS}

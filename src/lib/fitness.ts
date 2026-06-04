@@ -171,6 +171,7 @@ export type FitnessSnapshot = {
     yesterday: FitnessStepsDay | null;
     series30: FitnessStepsDay[];
     connected: boolean;
+    lastSyncAt: string | null;
   };
 };
 
@@ -219,6 +220,20 @@ export type FitnessCreateExercisePayload = {
   defaultDay?: string | null;
 };
 
+export type FitnessHealthConnectionSetup = {
+  token: string;
+  ingestUrl: string;
+  source: string;
+};
+
+export type FitnessHealthConnectionResponse = {
+  ok: true;
+  connected: boolean;
+  source: string;
+  lastSyncAt: string | null;
+  setup?: FitnessHealthConnectionSetup;
+};
+
 export function slugifyFitnessName(name: string): string {
   return name
     .trim()
@@ -264,4 +279,12 @@ export async function createFitnessExercise(
     body: JSON.stringify(payload),
   });
   return readJson<{ ok: true; exercise: FitnessExercise }>(res);
+}
+
+export async function createAppleHealthConnection(): Promise<FitnessHealthConnectionResponse> {
+  const res = await fetch("/api/fitness/steps/connect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  return readJson<FitnessHealthConnectionResponse>(res);
 }

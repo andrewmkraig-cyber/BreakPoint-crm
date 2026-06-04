@@ -1,4 +1,5 @@
 import { getServerSession } from "next-auth";
+import { createHash, randomBytes } from "crypto";
 
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
@@ -32,6 +33,8 @@ type WorkoutDayWithDetails = Awaited<
   ReturnType<typeof fetchWorkoutDayByDate>
 >;
 
+export const APPLE_HEALTH_SOURCE = "apple-health-shortcut";
+
 export function isoDateOnly(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -59,6 +62,14 @@ export function shiftDate(date: Date, days: number): Date {
   const next = new Date(date);
   next.setUTCDate(next.getUTCDate() + days);
   return next;
+}
+
+export function createFitnessHealthToken(): string {
+  return randomBytes(32).toString("hex");
+}
+
+export function hashFitnessHealthToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
 }
 
 export async function requireFitnessContext(): Promise<FitnessContext> {
@@ -262,7 +273,7 @@ export async function fetchStepSeries(
     return {
       date: iso,
       steps: row?.steps ?? 0,
-      source: row?.source ?? "apple-health-stub",
+      source: row?.source ?? APPLE_HEALTH_SOURCE,
     };
   });
   return {
@@ -270,10 +281,31 @@ export async function fetchStepSeries(
       series30.find((row) => row.date === todayIso) ?? {
         date: todayIso,
         steps: 0,
-        source: "apple-health-stub",
+        source: APPLE_HEALTH_SOURCE,
       },
     yesterday: series30.find((row) => row.date === yesterdayIso) ?? null,
     series30,
+  };
+}
+
+export async function fetchAppleHealthConnection(
+  organizationId: string,
+  userId: string,
+): Promise<{ connected: boolean; source: string; lastSyncAt: string | null }> {
+  const connection = await prisma.fitnessHealthConnection.findUnique({
+    where: {
+      organizationId_userId_source: {
+        organizationId,
+        userId,
+        source: APPLE_HEALTH_SOURCE,
+      },
+    },
+    select: { enabled: true, lastSyncAt: true, source: true },
+  });
+  return {
+    connected: !!connection?.enabled,
+    source: APPLE_HEALTH_SOURCE,
+    lastSyncAt: connection?.lastSyncAt?.toISOString() ?? null,
   };
 }
 

@@ -79,6 +79,7 @@ model User {
   workouts              Workout[]
   workoutSets           WorkoutSet[]
   dailySteps            DailySteps[]
+  fitnessHealthConnections FitnessHealthConnection[]
 }
 
 // Per-user branding for the email signature, resume header, and any
@@ -1152,6 +1153,7 @@ model Organization {
   workouts             Workout[]
   workoutSets          WorkoutSet[]
   dailySteps           DailySteps[]
+  fitnessHealthConnections FitnessHealthConnection[]
 }
 
 // One row per org holding the Microsoft Graph OAuth tokens that let us
@@ -1493,6 +1495,24 @@ model DailySteps {
   @@unique([organizationId, userId, date])
   @@index([organizationId, date])
   @@index([userId, date])
+}
+
+model FitnessHealthConnection {
+  id             String    @id @default(cuid())
+  organizationId String
+  userId         String
+  source         String    @default("apple-health-shortcut")
+  tokenHash      String    @unique
+  enabled        Boolean   @default(true)
+  lastSyncAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, source])
+  @@index([organizationId, userId])
 }
 
 // Phase 5A.4: per-org candidate lists. Recruiter-curated buckets of

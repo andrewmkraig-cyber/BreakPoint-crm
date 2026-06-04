@@ -1,7 +1,6 @@
 "use client";
 
-import { BicepsFlexed } from "lucide-react";
-
+import { BarbellIcon } from "@/components/fitness/barbell-icon";
 import { useFitnessPanel } from "@/lib/fitness-panel-context";
 
 export function FitnessFAB() {
@@ -27,7 +26,7 @@ export function FitnessFAB() {
       >
         Fitness
       </span>
-      <BicepsFlexed className="h-5 w-5" strokeWidth={2.4} />
+      <BarbellIcon className="h-5 w-5" />
     </button>
   );
 }

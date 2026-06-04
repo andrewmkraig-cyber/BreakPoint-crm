@@ -4,6 +4,7 @@ import {
   FitnessHttpError,
   ensureFitnessDefaults,
   fetchAccessibleExercises,
+  fetchAppleHealthConnection,
   fetchHistoryDays,
   fetchStepSeries,
   fetchWorkoutDayByDate,
@@ -53,12 +54,13 @@ export async function GET(req: NextRequest) {
     const today = todayInEastern();
 
     await ensureFitnessDefaults(ctx.organizationId);
-    const [exercises, selectedDay, history, steps] =
+    const [exercises, selectedDay, history, steps, healthConnection] =
       await Promise.all([
         fetchAccessibleExercises(ctx.organizationId, ctx.userId),
         fetchWorkoutDayByDate(ctx.organizationId, ctx.userId, selectedDate),
         fetchHistoryDays(ctx.organizationId, ctx.userId),
         fetchStepSeries(ctx.organizationId, ctx.userId, today),
+        fetchAppleHealthConnection(ctx.organizationId, ctx.userId),
       ]);
     const metadata = publicFitnessMetadata();
 
@@ -71,7 +73,7 @@ export async function GET(req: NextRequest) {
       exercises,
       selectedDay: selectedDay ? serializeWorkoutDay(selectedDay) : null,
       history,
-      steps: { ...steps, connected: false },
+      steps: { ...steps, ...healthConnection },
     });
   } catch (error) {
     return toErrorResponse(error);
