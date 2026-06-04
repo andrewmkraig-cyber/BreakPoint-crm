@@ -6,7 +6,11 @@ import type { DiscoveredCompany } from "@/lib/bd/job-discovery-provider";
 import { syncClientSignals } from "@/lib/bd/client-signal-sync";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// Safety margin only. The real fix for the 504 is the abort timeouts on the
+// TheirStack/JSearch fetches and the wall-clock budget on the client-monitor
+// sweep (theirstack-provider.ts, jsearch-provider.ts, client-signal-sync.ts);
+// the discovery call itself is, and always was, a single TheirStack POST.
+export const maxDuration = 120;
 
 // The role titles sent as job_title_or. The big-4/agency exclusion, the
 // company-name include/exclude, and the employee-count floor now live in

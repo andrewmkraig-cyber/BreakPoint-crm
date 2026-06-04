@@ -13,6 +13,17 @@ import { fetchJSearchPostingsByDomain, type JSearchPosting } from "@/lib/bd/jsea
 
 const THEIRSTACK_ENDPOINT = "https://api.theirstack.com/v1/jobs/search";
 
+// Per-client fetch abort ceiling. The monitor loops one TheirStack POST
+// (then a JSearch fallback) per client; without a per-call ceiling a
+// single slow client stalls the whole sweep. Abort each at 10s.
+const CLIENT_FETCH_TIMEOUT_MS = 10_000;
+// Wall-clock budget for the entire monitor sweep. Discovery has already
+// been written to the DB (status AWAITING_APPROVAL) before this runs, and
+// a partial sweep is non-fatal (next daily tick continues), so we stop
+// scanning new clients once the sweep has run this long rather than let N
+// sequential per-client calls push the invocation past its function limit.
+const SYNC_BUDGET_MS = 20_000;
+
 type TheirStackJob = {
   company_name?: string;
   company?: { name?: string; domain?: string };
@@ -43,17 +54,25 @@ async function fetchClientPostings(
   apiKey: string,
   domain: string,
 ): Promise<TheirStackJob[]> {
-  const res = await fetch(THEIRSTACK_ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      company_domain_or: [domain],
-      limit: 10,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CLIENT_FETCH_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(THEIRSTACK_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        company_domain_or: [domain],
+        limit: 10,
+      }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!res.ok) return [];
   const payload = (await res.json().catch(() => null)) as
     | { data?: TheirStackJob[] }
@@ -96,8 +115,19 @@ export async function syncClientSignals(
   let skipped = 0;
   let fallbackClients = 0;
   const now = new Date();
+  const start = Date.now();
 
   for (const client of clients) {
+    // Stop scanning new clients once the sweep has spent its wall-clock
+    // budget. Discovery is already persisted and a partial sweep is
+    // non-fatal, so this protects the shared cron invocation from N
+    // sequential per-client calls overrunning the function limit.
+    if (Date.now() - start > SYNC_BUDGET_MS) {
+      console.warn(
+        `[client-signal-sync] budget ${SYNC_BUDGET_MS}ms reached; stopped after scanning=${clientsScanned} of ${clients.length} clients`,
+      );
+      break;
+    }
     const domain = normalizeDomain(client.domain);
     if (!domain) {
       skipped += 1;

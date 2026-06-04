@@ -6,6 +6,13 @@ import type {
 
 const THEIRSTACK_ENDPOINT = "https://api.theirstack.com/v1/jobs/search";
 
+// Hard abort ceiling for the single discovery POST. TheirStack has been
+// observed taking 42s+ on one request, which alone blows the cron's
+// function budget. Abort at 25s so one slow response fails the run
+// cleanly (caught by the route, marked FAILED with a clear message)
+// instead of hanging until the platform 504s.
+const THEIRSTACK_TIMEOUT_MS = 25_000;
+
 // TheirStack now rejects any /jobs/search request that lacks at least one
 // "mandatory" filter (posted_at_max_age_days / posted_at_gte / posted_at_lte /
 // job_id_or / company_name_or / ...) with a 422. job_title_or and limit do not
@@ -163,14 +170,32 @@ export class TheirStackProvider implements JobDiscoveryProvider {
       JSON.stringify(body),
     );
 
-    const res = await fetch(THEIRSTACK_ENDPOINT, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
+    // Abort the single discovery POST at THEIRSTACK_TIMEOUT_MS so one slow
+    // response can never consume the whole cron budget. On abort we throw a
+    // clear, distinct error that the route surfaces as the run's errorMessage.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), THEIRSTACK_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(THEIRSTACK_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new Error(
+          `TheirStackProvider: request timed out after ${THEIRSTACK_TIMEOUT_MS / 1000}s`,
+        );
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");

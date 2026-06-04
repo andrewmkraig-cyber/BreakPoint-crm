@@ -9,6 +9,12 @@
 
 const JSEARCH_ENDPOINT = "https://jsearch.p.rapidapi.com/search";
 
+// Abort ceiling for the fallback lookup. JSearch (RapidAPI) is only hit
+// when a client's TheirStack lookup came back empty, and any failure
+// already degrades to [], so a timeout simply means "no fallback rows
+// for this client" rather than a hung request eating the cron budget.
+const JSEARCH_TIMEOUT_MS = 10_000;
+
 export type JSearchPosting = {
   jobTitle: string;
   jobLocation: string | null;
@@ -79,6 +85,8 @@ export async function fetchJSearchPostingsByDomain(input: {
   url.searchParams.set("date_posted", "month");
 
   let payload: JSearchResponse | null = null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), JSEARCH_TIMEOUT_MS);
   try {
     const res = await fetch(url.toString(), {
       method: "GET",
@@ -87,11 +95,14 @@ export async function fetchJSearchPostingsByDomain(input: {
         "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
       },
       cache: "no-store",
+      signal: controller.signal,
     });
     if (!res.ok) return [];
     payload = (await res.json().catch(() => null)) as JSearchResponse | null;
   } catch {
     return [];
+  } finally {
+    clearTimeout(timeout);
   }
   const rows = Array.isArray(payload?.data) ? payload!.data : [];
   if (rows.length === 0) return [];
