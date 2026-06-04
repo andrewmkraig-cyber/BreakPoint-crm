@@ -35,20 +35,43 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   };
 }
 
-function readableTextColor(hex: string): string {
+function rgbToHex({ r, g, b }: { r: number; g: number; b: number }): string {
+  return `#${[r, g, b]
+    .map((n) =>
+      Math.round(Math.max(0, Math.min(255, n)))
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
+
+function mixRgb(
+  base: { r: number; g: number; b: number },
+  target: { r: number; g: number; b: number },
+  amount: number,
+): { r: number; g: number; b: number } {
+  return {
+    r: base.r + (target.r - base.r) * amount,
+    g: base.g + (target.g - base.g) * amount,
+    b: base.b + (target.b - base.b) * amount,
+  };
+}
+
+function googleTintStyle(hex: string): Record<string, string> | undefined {
   const rgb = hexToRgb(hex);
-  if (!rgb) return "#111827";
-  const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
-  return luminance > 0.58 ? "#111827" : "#ffffff";
+  if (!rgb) return undefined;
+  const white = { r: 255, g: 255, b: 255 };
+  const black = { r: 0, g: 0, b: 0 };
+  return {
+    backgroundColor: rgbToHex(mixRgb(rgb, white, 0.82)),
+    borderColor: rgbToHex(mixRgb(rgb, white, 0.18)),
+    color: rgbToHex(mixRgb(rgb, black, 0.42)),
+  };
 }
 
 export function googleEventColorStyle(
   color: string | null | undefined,
 ): Record<string, string> | undefined {
-  if (!color || !hexToRgb(color)) return undefined;
-  return {
-    backgroundColor: color,
-    borderColor: color,
-    color: readableTextColor(color),
-  };
+  if (!color) return undefined;
+  return googleTintStyle(color);
 }
