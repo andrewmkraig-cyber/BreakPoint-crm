@@ -108,6 +108,10 @@ export type CreateCalendarEventInput = {
   durationMin: number;
   // YYYY-MM-DD. When set, Google receives date-only start/end fields.
   allDayDate?: string;
+  // YYYY-MM-DD EXCLUSIVE end for a multi-day all-day block (Google's
+  // end.date is the day AFTER the last covered day). Omit for a single-day
+  // all-day event and the end defaults to allDayDate + 1.
+  allDayEndDate?: string;
   attendees?: CalendarAttendee[];
   // If true, Google creates a Meet conference and returns the link in the
   // response's conferenceData.entryPoints. Only meaningful for video interviews.
@@ -157,7 +161,7 @@ export async function createCalendarEvent(
       ? { date: input.allDayDate }
       : { dateTime: start.toISOString(), timeZone: tz },
     end: input.allDayDate
-      ? { date: addDaysToDateOnly(input.allDayDate, 1) }
+      ? { date: input.allDayEndDate ?? addDaysToDateOnly(input.allDayDate, 1) }
       : { dateTime: end.toISOString(), timeZone: tz },
     // Guests can pull others in + see the guest list by default. The
     // previous per-event "Open meeting" toggle on the scheduler was
@@ -304,6 +308,9 @@ export type PatchCalendarEventDetailsInput = {
   durationMin?: number;
   // YYYY-MM-DD. When set, patch start/end as an all-day date range.
   allDayDate?: string;
+  // YYYY-MM-DD EXCLUSIVE end for a multi-day all-day block. Omit for a
+  // single-day all-day event; end defaults to allDayDate + 1.
+  allDayEndDate?: string;
   timeZone?: string;
   summary?: string;
   description?: string;
@@ -323,7 +330,9 @@ export async function patchCalendarEventDetails(
   const body: Record<string, unknown> = {};
   if (input.allDayDate) {
     body.start = { date: input.allDayDate };
-    body.end = { date: addDaysToDateOnly(input.allDayDate, 1) };
+    body.end = {
+      date: input.allDayEndDate ?? addDaysToDateOnly(input.allDayDate, 1),
+    };
   } else if (input.startISO && input.durationMin != null) {
     const start = new Date(input.startISO);
     const end = new Date(start.getTime() + input.durationMin * 60 * 1000);

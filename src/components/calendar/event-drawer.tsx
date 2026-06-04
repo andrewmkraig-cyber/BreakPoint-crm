@@ -286,6 +286,11 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
   // up to three. Only read when type === "reminder" on create.
   const [leads, setLeads] = useState<number[]>([15]);
   const [date, setDate] = useState("");
+  // LAST covered day for an all-day block (YYYY-MM-DD). Equal to `date` for
+  // a single-day all-day event; later than it for a multi-day span. Only
+  // read when allDay is true. Named distinctly from the timed end-instant
+  // locals inside doSave/doCreate to avoid shadowing.
+  const [allDayEnd, setAllDayEnd] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   // Recruiter-pickable timezone for the wall-clock entered above. The
@@ -350,6 +355,13 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
       setType(event.type);
       setTitle(event.title);
       setDate(event.allDay ? toUtcDateInput(event.startTime) : toDateInput(event.startTime));
+      // All-day endTime is the EXCLUSIVE end (the day AFTER the last covered
+      // day); back up one day to show the recruiter the real last day.
+      setAllDayEnd(
+        event.allDay
+          ? toUtcDateInput(new Date(event.endTime.getTime() - 24 * 60 * 60 * 1000))
+          : toDateInput(event.startTime),
+      );
       setStartTime(toTimeInput(event.startTime));
       setEndTime(toTimeInput(event.endTime));
       // The drawer's Location row prefers meetLink for display, but
@@ -386,6 +398,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
         // type later has a valid range instead of a blank Ends field.
         const start = reminderDefaultTime();
         setDate(toDateInput(prefill?.date ?? start));
+        setAllDayEnd(toDateInput(prefill?.date ?? start));
         setStartTime(toTimeInput(start));
         setEndTime(
           toTimeInput(new Date(start.getTime() + REMINDER_DEFAULT_LEAD_MS)),
@@ -396,6 +409,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
         // form has a valid range without the recruiter having to tab
         // through both fields.
         setDate(toDateInput(prefill.date));
+        setAllDayEnd(toDateInput(prefill.date));
         if (prefill.hour != null) {
           const h = prefill.hour;
           const m = prefill.minute ?? 0;
@@ -414,6 +428,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
         // fire immediately without the recruiter typing a date.
         const now = roundUpQuarter(new Date());
         setDate(toDateInput(now));
+        setAllDayEnd(toDateInput(now));
         setStartTime(toTimeInput(now));
         const end = new Date(now.getTime() + 60 * 60 * 1000);
         setEndTime(toTimeInput(end));
@@ -532,6 +547,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
         id: event.id,
         title: title.trim(),
         date,
+        endDate: allDay ? allDayEnd || date : undefined,
         startISO: allDay ? undefined : startDate!.toISOString(),
         endISO: allDay ? undefined : endDate!.toISOString(),
         allDay,
@@ -611,6 +627,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
       const res = await createCalendarEventAction({
         title: title.trim(),
         date,
+        endDate: allDay ? allDayEnd || date : undefined,
         startISO,
         endISO,
         allDay,
@@ -915,11 +932,34 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
                 <input
                   type="date"
                   value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setDate(next);
+                    // Keep the all-day end on or after the start.
+                    if (next && (!allDayEnd || allDayEnd < next)) setAllDayEnd(next);
+                  }}
                   className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none"
                 />
               </div>
             </div>
+            {/* All-day blocks span a date range, so they get an End date
+                field instead of the timezone / time pickers. Single-day
+                stays single-day until the recruiter pushes this out. */}
+            {allDay && !isReminder && (
+              <div>
+                <FieldLabel>End date</FieldLabel>
+                <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
+                  <Calendar className="h-3.5 w-3.5 text-court-fg-muted" />
+                  <input
+                    type="date"
+                    value={allDayEnd}
+                    min={date || undefined}
+                    onChange={(e) => setAllDayEnd(e.target.value)}
+                    className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none"
+                  />
+                </div>
+              </div>
+            )}
             {/* Reminders hide the timezone selector and fire in ET (see
                 the hard-coded REMINDER_TIMEZONE in doCreate). Timed events
                 keep the picker. */}
@@ -1016,6 +1056,12 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
                     onChange={(e) => {
                       const next = e.target.checked;
                       setAllDay(next);
+                      if (next) {
+                        // Seed the end date to the start day so a freshly
+                        // toggled all-day block is single-day until the
+                        // recruiter extends it.
+                        setAllDayEnd((d) => (d && d >= date ? d : date));
+                      }
                       if (
                         !next &&
                         (!Number.isFinite(minutesOf(startTime)) ||

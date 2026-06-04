@@ -13,9 +13,12 @@ import {
   fmtTime,
 } from "@/lib/calendar/utils";
 import {
+  allDayFirstDay,
+  allDayLastDay,
   decimalHour,
   getWeekdayLong,
   isSameDay,
+  startOfDay,
 } from "@/lib/calendar/week";
 import { cn } from "@/lib/utils";
 
@@ -54,12 +57,23 @@ export function CalendarDayView({
   onEventClick,
   onSlotClick,
 }: Props) {
+  const visibleForMember = (e: CalendarEvent) =>
+    !(
+      e.ownerKeys.length > 0 && e.ownerKeys.every((k) => hiddenMembers.has(k))
+    );
   const dayEvents = events.filter(
     (e) =>
-      isSameDay(e.startTime, displayDate) &&
-      !(
-        e.ownerKeys.length > 0 && e.ownerKeys.every((k) => hiddenMembers.has(k))
-      ),
+      !e.allDay && isSameDay(e.startTime, displayDate) && visibleForMember(e),
+  );
+  // All-day blocks covering this day render in a band above the time grid.
+  // endTime is the exclusive end, so the inclusive last day is one back.
+  const dayStart = startOfDay(displayDate);
+  const allDayEvents = events.filter(
+    (e) =>
+      e.allDay &&
+      visibleForMember(e) &&
+      allDayFirstDay(e.startTime).getTime() <= dayStart.getTime() &&
+      allDayLastDay(e.endTime).getTime() >= dayStart.getTime(),
   );
   const isToday = isSameDay(displayDate, today);
   const columns = computeEventColumns(dayEvents);
@@ -107,6 +121,37 @@ export function CalendarDayView({
           {isToday && <> · It is {fmtTime(liveNow)}</>}
         </div>
       </div>
+
+      {allDayEvents.length > 0 && (
+        <div className="shrink-0 border-b border-court-border px-7 py-2">
+          <div className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.14em] text-court-fg-muted">
+            All-day
+          </div>
+          <div className="flex flex-col gap-1">
+            {allDayEvents.map((ev) => {
+              const meta = eventTypeMeta(ev.type);
+              const colorStyle = googleEventColorStyle(ev.calendarColor);
+              return (
+                <button
+                  key={ev.id}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEventClick(ev);
+                  }}
+                  className={cn(
+                    "flex h-7 items-center overflow-hidden rounded-md border px-3 text-[12.5px] font-semibold leading-none transition hover:-translate-y-px hover:shadow-sm",
+                    colorStyle ? "shadow-sm" : meta.pillClass,
+                  )}
+                  style={colorStyle ?? undefined}
+                >
+                  <span className="truncate">{ev.title}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div
         ref={bodyRef}

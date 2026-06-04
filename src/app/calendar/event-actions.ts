@@ -45,6 +45,9 @@ export type UpdateCalendarEventInput = {
   // YYYY-MM-DD from the drawer date field. Present in the current client
   // and optional so older cached clients still hit the server action safely.
   date?: string;
+  // YYYY-MM-DD LAST covered day for a multi-day all-day block. Optional so
+  // older cached clients (which only sent `date`) keep working as single-day.
+  endDate?: string;
   allDay?: boolean;
   location: string | null;
   notes: string | null;
@@ -131,12 +134,16 @@ export async function updateCalendarEventAction(
       utcDateOnly(row.startTime)
     : undefined;
   const range = isAllDay
-    ? buildStartEndForDay(allDayDate!)
+    ? buildStartEndForDay(allDayDate!, input.endDate)
     : buildStartEndForTimedISO(input.startISO ?? "", input.endISO ?? "");
   const start = range.startDate;
   const end = range.endDate;
   const durationMin = range.durationMin;
   const tz = input.timeZone || DEFAULT_TIMEZONE;
+  // Google's end.date is exclusive — range.endDate is already the day after
+  // the last covered day (noon UTC), so utcDateOnly hands the API the right
+  // boundary for both single- and multi-day all-day blocks.
+  const allDayEndDate = isAllDay ? utcDateOnly(end) : undefined;
 
   const existingAttendees: AttendeeJson[] =
     (row.attendees as AttendeeJson[] | null) ?? [];
@@ -172,6 +179,7 @@ export async function updateCalendarEventAction(
         calendarId: row.calendarId,
         sendUpdates: "all",
         allDayDate,
+        allDayEndDate,
         startISO: isAllDay ? undefined : input.startISO,
         durationMin: isAllDay ? undefined : durationMin,
         timeZone: isAllDay ? undefined : tz,
@@ -189,6 +197,7 @@ export async function updateCalendarEventAction(
         calendarId: row.calendarId,
         sendUpdates: "none",
         allDayDate,
+        allDayEndDate,
         startISO: isAllDay ? undefined : input.startISO,
         durationMin: isAllDay ? undefined : durationMin,
         timeZone: isAllDay ? undefined : tz,
@@ -218,6 +227,7 @@ export async function updateCalendarEventAction(
         calendarId: row.calendarId,
         sendUpdates: "none",
         allDayDate,
+        allDayEndDate,
         startISO: isAllDay ? undefined : input.startISO,
         durationMin: isAllDay ? undefined : durationMin,
         timeZone: isAllDay ? undefined : tz,
@@ -372,6 +382,9 @@ export type CreateCalendarEventInput = {
   // Required when allDay is true. YYYY-MM-DD - the server builds a
   // midnight-to-midnight ET range from it.
   date: string;
+  // Optional LAST covered day (YYYY-MM-DD) for a multi-day all-day block.
+  // Omit for a single-day all-day event.
+  endDate?: string;
   // For timed events the client (browser, always in ET for our
   // recruiters) builds the wall-clock as a local Date and hands us
   // its toISOString(). Doing this on the client mirrors
@@ -422,23 +435,45 @@ export type CreateCalendarEventResult =
 // we still store concrete Date objects (midnight to midnight ET) so
 // the grid math reuses the same code path as timed events.
 
-function buildStartEndForDay(date: string): { startISO: string; endISO: string; durationMin: number; startDate: Date; endDate: Date } {
-  // YYYY-MM-DD → assume midnight ET → 24h block
+function parseDateOnly(date: string): [number, number, number] {
   const parts = date.split("-");
   if (parts.length !== 3) throw new Error("Invalid date");
   const [y, m, d] = parts.map((p) => Number.parseInt(p, 10));
   if (![y, m, d].every((n) => Number.isFinite(n))) {
     throw new Error("Invalid date");
   }
+  return [y, m, d];
+}
+
+// Builds the stored Date range for an all-day block. `date` is the first
+// covered day (YYYY-MM-DD); `endDateInclusive`, when supplied, is the LAST
+// covered day (also YYYY-MM-DD) for a multi-day span. We store endDate as
+// the EXCLUSIVE end (the day AFTER the last covered day) so it matches
+// Google's end.date and the grid's endTime-minus-one-day math. A missing,
+// invalid, or earlier-than-start end collapses to a single day.
+function buildStartEndForDay(
+  date: string,
+  endDateInclusive?: string,
+): { startISO: string; endISO: string; durationMin: number; startDate: Date; endDate: Date } {
+  // YYYY-MM-DD → assume midnight ET → date-only block.
+  const [y, m, d] = parseDateOnly(date);
   // 12:00 UTC keeps us inside the same calendar day for ET regardless
   // of DST - the grid only reads startTime.getDate() / .getMonth() /
   // .getFullYear() in local time, and ET is always UTC-4 or UTC-5.
   const startDate = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-  const endDate = new Date(Date.UTC(y, m - 1, d + 1, 12, 0, 0));
+  let endDate = new Date(Date.UTC(y, m - 1, d + 1, 12, 0, 0));
+  if (endDateInclusive) {
+    const [ey, em, ed] = parseDateOnly(endDateInclusive);
+    // +1 day → exclusive end.
+    const candidate = new Date(Date.UTC(ey, em - 1, ed + 1, 12, 0, 0));
+    if (candidate.getTime() > startDate.getTime()) {
+      endDate = candidate;
+    }
+  }
   return {
     startISO: startDate.toISOString(),
     endISO: endDate.toISOString(),
-    durationMin: 24 * 60,
+    durationMin: Math.round((endDate.getTime() - startDate.getTime()) / 60_000),
     startDate,
     endDate,
   };
@@ -503,7 +538,7 @@ export async function createCalendarEventAction(
       return { ok: false, error: "Missing start/end time." };
     }
     const range = input.allDay
-      ? buildStartEndForDay(input.date)
+      ? buildStartEndForDay(input.date, input.endDate)
       : buildStartEndForTimedISO(input.startISO!, input.endISO!);
 
     // Teams requires its own connected token at the org level - fail
@@ -564,6 +599,9 @@ export async function createCalendarEventAction(
       startISO: range.startISO,
       durationMin: range.durationMin,
       allDayDate: input.allDay ? input.date : undefined,
+      // Exclusive end for a multi-day all-day block (range.endDate is the
+      // day after the last covered day, in noon-UTC form).
+      allDayEndDate: input.allDay ? utcDateOnly(range.endDate) : undefined,
       createMeet: wantsMeet,
       location: mirroredLocation ?? undefined,
       // Notify recipients so the invite lands in their inbox.

@@ -10,14 +10,20 @@ import {
   eventTypeMeta,
   fmtHour,
   hourToY,
+  packLanes,
   SLOT_HEIGHT,
 } from "@/lib/calendar/utils";
 import {
+  allDayFirstDay,
+  allDayLastDay,
+  dayOffsetFrom,
   decimalHour,
   getFullWeekDays,
   isSameDay,
 } from "@/lib/calendar/week";
 import { cn } from "@/lib/utils";
+
+const clampIdx = (n: number) => Math.max(0, Math.min(6, n));
 
 // Full 24-hour grid. The body scrolls inside a fixed-height container
 // so the rest of the page never gets pushed off-screen.
@@ -62,6 +68,9 @@ export function CalendarWeekView({
   const eventsByDay = useMemo(() => {
     const out: CalendarEvent[][] = weekDays.map(() => []);
     for (const e of events) {
+      // All-day events render in the band above the time grid, not in a
+      // timed column — their start/end carry no meaningful hour.
+      if (e.allDay) continue;
       if (
         e.ownerKeys.length > 0 &&
         e.ownerKeys.every((k) => hiddenMembers.has(k))
@@ -72,6 +81,48 @@ export function CalendarWeekView({
       out[idx]?.push(e);
     }
     return out;
+  }, [events, hiddenMembers, weekDays]);
+
+  // All-day events drawn as spanning bars in a band above the time grid.
+  // Each is clamped to the visible week's columns and lane-packed so
+  // overlapping multi-day blocks stack instead of colliding.
+  const allDayLayout = useMemo(() => {
+    const weekStartDay = weekDays[0].fullDate;
+    const weekEndDay = weekDays[6].fullDate;
+    const slots = events
+      .filter(
+        (e) =>
+          e.allDay &&
+          !(
+            e.ownerKeys.length > 0 &&
+            e.ownerKeys.every((k) => hiddenMembers.has(k))
+          ),
+      )
+      .map((e) => ({
+        ev: e,
+        first: allDayFirstDay(e.startTime),
+        last: allDayLastDay(e.endTime),
+      }))
+      .filter(
+        ({ first, last }) =>
+          last.getTime() >= weekStartDay.getTime() &&
+          first.getTime() <= weekEndDay.getTime(),
+      )
+      .map(({ ev, first, last }) => {
+        const rawStart = dayOffsetFrom(weekStartDay, first);
+        const rawEnd = dayOffsetFrom(weekStartDay, last);
+        return {
+          ev,
+          startIdx: clampIdx(rawStart),
+          endIdx: clampIdx(rawEnd),
+          startsBefore: rawStart < 0,
+          endsAfter: rawEnd > 6,
+          lane: 0,
+        };
+      });
+    const lanes = packLanes(slots);
+    slots.forEach((s, i) => (s.lane = lanes[i]));
+    return { slots, laneCount: lanes.length ? Math.max(...lanes) + 1 : 0 };
   }, [events, hiddenMembers, weekDays]);
 
   // Scrollable body that holds the full 24-hour grid. We scroll to
@@ -133,6 +184,52 @@ export function CalendarWeekView({
           );
         })}
       </div>
+
+      {/* All-day band — spanning bars for date-range blocks, pinned above
+          the scrollable time grid. */}
+      {allDayLayout.laneCount > 0 && (
+        <div
+          className="grid shrink-0 border-b border-court-border"
+          style={{ gridTemplateColumns: "56px repeat(7, minmax(0, 1fr))" }}
+        >
+          <div className="flex items-start justify-end px-2 py-1 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-court-fg-muted">
+            All-day
+          </div>
+          <div
+            className="col-span-7 grid grid-cols-7 gap-y-0.5 py-1"
+            style={{ gridAutoRows: "20px" }}
+          >
+            {allDayLayout.slots.map((slot) => {
+              const meta = eventTypeMeta(slot.ev.type);
+              const colorStyle = googleEventColorStyle(slot.ev.calendarColor);
+              return (
+                <button
+                  key={slot.ev.id}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEventClick(slot.ev);
+                  }}
+                  title={slot.ev.title}
+                  className={cn(
+                    "mx-0.5 flex h-5 cursor-pointer items-center overflow-hidden border px-2 text-[11px] font-semibold leading-none transition hover:-translate-y-px hover:shadow-sm",
+                    slot.startsBefore ? "" : "rounded-l",
+                    slot.endsAfter ? "" : "rounded-r",
+                    colorStyle ? "shadow-sm" : meta.pillClass,
+                  )}
+                  style={{
+                    gridColumn: `${slot.startIdx + 1} / span ${slot.endIdx - slot.startIdx + 1}`,
+                    gridRow: slot.lane + 1,
+                    ...(colorStyle ?? {}),
+                  }}
+                >
+                  <span className="truncate">{slot.ev.title}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Grid body — scrolls vertically so the calendar surface stays
           a fixed size on screen no matter how tall the 24-hour grid

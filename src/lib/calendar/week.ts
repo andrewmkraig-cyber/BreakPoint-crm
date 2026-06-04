@@ -97,6 +97,30 @@ export function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// All-day events store endTime as the EXCLUSIVE end — noon UTC of the day
+// AFTER the last covered day, mirroring Google Calendar's end.date. These
+// helpers turn an all-day event's stored start/end into the local midnight
+// of its FIRST and LAST covered days so the grids can draw the block across
+// every day it actually spans. (startTime/endTime are stamped at noon UTC,
+// which lands on the same calendar day in ET, so startOfDay is safe.)
+export function allDayFirstDay(startTime: Date): Date {
+  return startOfDay(startTime);
+}
+export function allDayLastDay(endTimeExclusive: Date): Date {
+  return addDays(startOfDay(endTimeExclusive), -1);
+}
+
+// 0-based column offset of `day` from the Mon-anchored `weekStart`. May fall
+// outside 0..6 when the day sits in an adjacent week; callers clamp. Rounds
+// a day-count so the ET DST hour shift can't bump the result by one.
+export function dayOffsetFrom(weekStart: Date, day: Date): number {
+  return Math.round(
+    (startOfDay(day).getTime() - startOfDay(weekStart).getTime()) / DAY_MS,
+  );
+}
+
 // Decimal-hour representation of a Date's local time-of-day. 9:30 AM
 // returns 9.5. Used by the grid to position events against the hourly
 // row scale shared with hourToY in utils.ts.

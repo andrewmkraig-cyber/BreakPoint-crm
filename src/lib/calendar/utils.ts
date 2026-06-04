@@ -140,6 +140,41 @@ export function computeEventColumns(
   return result;
 }
 
+// Greedy lane packing for multi-day all-day bars. Each item carries an
+// inclusive [startIdx, endIdx] column range; the returned array gives the
+// lane (stacked row) each item lands in, in the SAME order it came in.
+// Items are placed longest-first within equal starts so wide spans claim a
+// lane before the short ones that nest under them, and an item reuses the
+// first lane whose previous occupant ended before this one starts. Keeping
+// a stable lane per event is what lets the month band line a span up across
+// the cells it covers instead of jogging row-to-row.
+export function packLanes(
+  items: { startIdx: number; endIdx: number }[],
+): number[] {
+  const order = items
+    .map((_, i) => i)
+    .sort((a, b) => {
+      const s = items[a].startIdx - items[b].startIdx;
+      if (s !== 0) return s;
+      return (
+        items[b].endIdx - items[b].startIdx - (items[a].endIdx - items[a].startIdx)
+      );
+    });
+  const laneEnds: number[] = [];
+  const lanes = new Array<number>(items.length).fill(0);
+  for (const i of order) {
+    let placed = laneEnds.findIndex((end) => end < items[i].startIdx);
+    if (placed === -1) {
+      placed = laneEnds.length;
+      laneEnds.push(items[i].endIdx);
+    } else {
+      laneEnds[placed] = items[i].endIdx;
+    }
+    lanes[i] = placed;
+  }
+  return lanes;
+}
+
 export function eventTypeMeta(t: CalendarEventType): EventTypeMeta {
   switch (t) {
     case "interview":

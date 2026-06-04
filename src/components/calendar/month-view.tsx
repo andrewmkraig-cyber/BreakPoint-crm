@@ -4,13 +4,30 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { CalendarEvent, CalendarTeamMember } from "@/lib/calendar/types";
 import { googleEventColorStyle } from "@/lib/calendar/google-colors";
-import { eventTypeMeta, fmtTime } from "@/lib/calendar/utils";
+import { eventTypeMeta, fmtTime, packLanes } from "@/lib/calendar/utils";
 import {
   addDays,
+  allDayFirstDay,
+  allDayLastDay,
+  dayOffsetFrom,
   getMondayOfWeek,
   isSameDay,
 } from "@/lib/calendar/week";
 import { cn } from "@/lib/utils";
+
+const clampIdx = (n: number) => Math.max(0, Math.min(6, n));
+
+// One drawn segment of an all-day block inside a single week row. A
+// multi-day event produces one slot per week it touches; the lane keeps it
+// on the same stacked row across the cells it covers so it reads as one bar.
+type AllDaySlot = {
+  ev: CalendarEvent;
+  startIdx: number; // first covered column in this week, clamped 0..6
+  endIdx: number; // last covered column in this week, clamped 0..6
+  lane: number;
+  startsBefore: boolean; // span began in an earlier week
+  endsAfter: boolean; // span continues into a later week
+};
 
 type Props = {
   events: CalendarEvent[];
@@ -95,6 +112,49 @@ export function CalendarMonthView({
     return map;
   }, [events, hiddenMembers]);
 
+  // Multi-day all-day events are drawn as continuous bars in a band at the
+  // top of each cell, NOT in the per-day chip stack. We lay them out one
+  // week row at a time: clamp each spanning event to the week's columns,
+  // then lane-pack so a bar keeps the same stacked row across every cell it
+  // covers. `laneCount` per week tells each cell how many band rows to draw
+  // (occupied or empty) so neighbours stay vertically aligned.
+  const allDayBandByWeek = useMemo(() => {
+    const allDay = events.filter(
+      (e) =>
+        e.allDay &&
+        !(
+          e.ownerKeys.length > 0 &&
+          e.ownerKeys.every((k) => hiddenMembers.has(k))
+        ),
+    );
+    return weeks.map((week) => {
+      const weekStart = week[0].date;
+      const weekEnd = week[6].date;
+      const slots: AllDaySlot[] = [];
+      for (const ev of allDay) {
+        const first = allDayFirstDay(ev.startTime);
+        const last = allDayLastDay(ev.endTime);
+        // Skip events that don't touch this week at all.
+        if (last.getTime() < weekStart.getTime()) continue;
+        if (first.getTime() > weekEnd.getTime()) continue;
+        const rawStart = dayOffsetFrom(weekStart, first);
+        const rawEnd = dayOffsetFrom(weekStart, last);
+        slots.push({
+          ev,
+          startIdx: clampIdx(rawStart),
+          endIdx: clampIdx(rawEnd),
+          lane: 0,
+          startsBefore: rawStart < 0,
+          endsAfter: rawEnd > 6,
+        });
+      }
+      const lanes = packLanes(slots);
+      slots.forEach((s, i) => (s.lane = lanes[i]));
+      const laneCount = lanes.length ? Math.max(...lanes) + 1 : 0;
+      return { slots, laneCount };
+    });
+  }, [events, hiddenMembers, weeks]);
+
   // Single open popover at a time, keyed by the cell's date. Click on
   // a different "+N more" pill moves the popover; click anywhere else
   // dismisses via the document-level mousedown listener. `placement`
@@ -155,8 +215,12 @@ export function CalendarMonthView({
           week.map((cell, di) => {
             const cellKey = dateKey(cell.date);
             const dayEvents = eventsByDateKey.get(cellKey) ?? [];
-            const visible = dayEvents.slice(0, MAX_VISIBLE_EVENTS);
-            const overflow = dayEvents.length - visible.length;
+            // All-day events render in the band above; only timed events
+            // fill the per-day chip stack + "+N more" overflow.
+            const timed = dayEvents.filter((e) => !e.allDay);
+            const visible = timed.slice(0, MAX_VISIBLE_EVENTS);
+            const overflow = timed.length - visible.length;
+            const band = allDayBandByWeek[wi];
             const popoverOpen = popover?.dayKey === cellKey;
             return (
               <div
@@ -187,6 +251,33 @@ export function CalendarMonthView({
                     {cell.date.getDate()}
                   </span>
                 </div>
+                {/* All-day band: one fixed-height row per lane so multi-day
+                    bars line up across the week. Each cell draws either the
+                    bar segment covering it or an empty spacer. */}
+                {band.laneCount > 0 && (
+                  <div className="mt-1 flex flex-col gap-0.5">
+                    {Array.from({ length: band.laneCount }, (_, lane) => {
+                      const slot = band.slots.find(
+                        (s) =>
+                          s.lane === lane &&
+                          di >= s.startIdx &&
+                          di <= s.endIdx,
+                      );
+                      if (!slot) {
+                        return <div key={lane} className="h-[18px]" />;
+                      }
+                      return (
+                        <AllDayBar
+                          key={lane}
+                          slot={slot}
+                          di={di}
+                          selfKey={selfKey}
+                          onClick={onEventClick}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
                 {/* Events area: overflow-hidden so chips never bleed
                     past the +N more pill at the bottom of the cell. */}
                 <div className="mt-1.5 flex min-h-0 flex-1 flex-col gap-1 overflow-hidden">
@@ -231,7 +322,7 @@ export function CalendarMonthView({
                       })}
                     </div>
                     <div className="space-y-1">
-                      {dayEvents.map((ev) => (
+                      {timed.map((ev) => (
                         <EventChip
                           key={ev.id}
                           ev={ev}
@@ -312,6 +403,58 @@ function EventChip({
         </span>
         {ev.title}
       </div>
+    </div>
+  );
+}
+
+// One week-row segment of an all-day block. Rounds only on the span's true
+// start/end (square, border-dropped, and bled with a negative margin into
+// the cell padding everywhere else) so consecutive days touch and read as a
+// single continuous bar. The title shows on the start day and again at each
+// week wrap (Monday); continuation cells render a same-height blank bar.
+function AllDayBar({
+  slot,
+  di,
+  selfKey,
+  onClick,
+}: {
+  slot: AllDaySlot;
+  di: number;
+  selfKey: string | null;
+  onClick: (ev: CalendarEvent) => void;
+}) {
+  const { ev } = slot;
+  const meta = eventTypeMeta(ev.type);
+  const colorStyle = googleEventColorStyle(ev.calendarColor);
+  const isOwned =
+    selfKey == null ||
+    ev.ownerKeys.length === 0 ||
+    ev.ownerKeys.includes(selfKey);
+  const isStart = di === slot.startIdx && !slot.startsBefore;
+  const isEnd = di === slot.endIdx && !slot.endsAfter;
+  const roundLeft = isStart || di === 0;
+  const roundRight = isEnd || di === 6;
+  const showTitle = isStart || di === 0;
+  return (
+    <div
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick(ev);
+      }}
+      title={ev.title}
+      className={cn(
+        "flex h-[18px] cursor-pointer items-center overflow-hidden border px-1.5 text-[11px] font-semibold leading-none",
+        roundLeft ? "rounded-l" : "-ml-2 border-l-0",
+        roundRight ? "rounded-r" : "-mr-2 border-r-0",
+        colorStyle
+          ? "shadow-sm"
+          : isOwned
+            ? meta.pillClass
+            : "border-court-border bg-court-surface-subtle text-court-fg",
+      )}
+      style={colorStyle ?? undefined}
+    >
+      <span className="truncate">{showTitle ? ev.title : " "}</span>
     </div>
   );
 }
