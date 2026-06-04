@@ -22,6 +22,64 @@ const DEFAULT_POSTED_MAX_AGE_DAYS = 7;
 const MAX_POSTED_MAX_AGE_DAYS = 14;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+// Fixed public-accounting filter set, validated live against the
+// TheirStack /jobs/search API. These param names and values are exact;
+// do not rename or normalize them. The role titles (job_title_or) and the
+// result limit still come from the caller (the cron's DISCOVERY_TITLES and
+// maxResults); everything below is the proven server-side filter that
+// replaces the old JS post-filtering in the cron route.
+//
+// job_location_or is the US location TheirStack expects: an array holding a
+// single { id } object. It is NOT a string and NOT a country code.
+const JOB_TITLE_NOT = ["international", "M&A", "consultant", "corporate", "private"];
+const JOB_LOCATION_OR = [{ id: 6252001 }];
+const COMPANY_NAME_PARTIAL_MATCH_OR = [
+  "CPA",
+  "CPAs",
+  "Certified Public Accountants",
+  "Public Accountants",
+  "Accountancy",
+  "Accounting & Advisory",
+  "Tax & Advisory",
+  "Audit & Assurance",
+  "Assurance",
+  "Advisory Services",
+  "Business Advisors",
+  "Professional Services",
+  "LLP",
+  "PLLC",
+  "Partners",
+  "& Co.",
+  "& Company",
+  "Associates",
+  "Group",
+  "Firm",
+  "Advisors",
+  "Advisers",
+  "Services Group",
+  "Tax Services",
+  "Accounting Services",
+];
+const COMPANY_NAME_PARTIAL_MATCH_NOT = [
+  "recruiter",
+  "recruitment",
+  "consultants",
+  "recruiting",
+  "kpmg",
+  "deloitte",
+  "ey",
+  "pwc",
+  "international",
+];
+const COMPANY_ID_NOT = [
+  "9trcU3IKUWbcTmr7BRisQQ==",
+  "Ih2GPgyZGEXRsHdpDEArHA==",
+  "wXu2OHHp69Ku5scBm3x5iQ==",
+  "zscMff/ViJUt4UJ7eNYsuA==",
+  "AdVU9cpoTXv0tPRU8lZ8kQ==",
+];
+const MIN_EMPLOYEE_COUNT = 10;
+
 interface TheirStackJob {
   company_name?: string;
   // TheirStack returns the company name as a plain STRING at `company`
@@ -75,9 +133,16 @@ export class TheirStackProvider implements JobDiscoveryProvider {
 
     const body: Record<string, unknown> = {
       job_title_or: params.verticals,
-      company_location_pattern_or: params.locations,
-      limit: params.maxResults,
+      job_title_not: JOB_TITLE_NOT,
+      job_location_or: JOB_LOCATION_OR,
+      company_name_partial_match_or: COMPANY_NAME_PARTIAL_MATCH_OR,
+      company_name_partial_match_not: COMPANY_NAME_PARTIAL_MATCH_NOT,
+      company_id_not: COMPANY_ID_NOT,
+      min_employee_count: MIN_EMPLOYEE_COUNT,
       posted_at_max_age_days: postedMaxAgeDays,
+      limit: params.maxResults,
+      blur_company_data: false,
+      include_total_results: false,
     };
     // posted_at_gte is intentionally NOT sent. TheirStack's posted_at_gte
     // is a date-only field; a full ISO timestamp (what postedSince would
@@ -88,6 +153,15 @@ export class TheirStackProvider implements JobDiscoveryProvider {
     if (typeof params.minRevenue === "number") {
       body.company_revenue_usd_gte = params.minRevenue;
     }
+
+    // [bd-discovery][theirstack-body][diag] log the exact constructed body so
+    // the param names + values can be eyeballed in prod logs against the live
+    // TheirStack search. The API key rides in the Authorization header, not
+    // the body, so this is safe to log. Remove once the query is confirmed.
+    console.log(
+      "[bd-discovery][theirstack-body][diag]",
+      JSON.stringify(body),
+    );
 
     const res = await fetch(THEIRSTACK_ENDPOINT, {
       method: "POST",

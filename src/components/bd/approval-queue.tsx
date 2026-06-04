@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition, type ReactNode } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw, X, RotateCcw, ExternalLink, Eye, MapPin } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -590,20 +590,6 @@ function RunCard({
   const preview = run.discoveredPayload.slice(0, MAX_PREVIEW_ROWS);
   const overflow = run.discoveredCount - preview.length;
 
-  // Block approval if any previewed company has zero contacts left after
-  // edits. Companies beyond the preview window can't be edited so we
-  // don't consider them here.
-  const companiesWithNoContacts = useMemo(
-    () =>
-      preview.filter((c) => {
-        const carousel = carousels[normalizeCompanyKey(c.companyName)];
-        if (!carousel) return false;
-        return carousel.displayed.length === 0;
-      }),
-    [preview, carousels],
-  );
-  const approveBlocked = companiesWithNoContacts.length > 0;
-
   return (
     // The whole card opens the company-selection popup. Inner interactive
     // controls (contact chips, the action buttons) stopPropagation so they
@@ -664,14 +650,6 @@ function RunCard({
         </ul>
       )}
 
-      {approveBlocked && (
-        <p className="mt-3 text-[11px] text-amber-700 dark:text-amber-400">
-          {companiesWithNoContacts.length === 1
-            ? `${companiesWithNoContacts[0]?.companyName} has no contacts. Add at least one to approve.`
-            : `${companiesWithNoContacts.length} companies have no contacts. Restore at least one each to approve.`}
-        </p>
-      )}
-
       <div className="mt-5 flex flex-wrap gap-2">
         <button
           type="button"
@@ -703,12 +681,10 @@ function RunCard({
 }
 
 function OutreachHistoryRow({ history }: { history: SerializedOutreachHistory }) {
+  // No prior outreach is the expected default at discovery, so render
+  // nothing rather than a noise badge. Real outreach history still shows.
   if (history.runCount === 0) {
-    return (
-      <span className="inline-flex w-fit items-center rounded-full border border-court-border bg-court-surface-subtle px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-court-fg-muted">
-        No prior outreach
-      </span>
-    );
+    return null;
   }
   const runLabel = `${history.runCount} time${history.runCount === 1 ? "" : "s"}`;
   const contactLabel = `${history.contactsTriedTotal} contact${history.contactsTriedTotal === 1 ? "" : "s"} tried`;
@@ -732,12 +708,11 @@ function ContactsRow({
   onRemove: (contactId: string) => void;
   onSwap: (contactId: string) => void;
 }) {
+  // Contacts are only found at Apollo enroll (after approval), so an empty
+  // carousel is the expected state at discovery. Render nothing instead of
+  // a noise badge; the chips still render once contacts exist.
   if (!carousel || carousel.displayed.length === 0) {
-    return (
-      <span className="inline-flex w-fit items-center rounded-full border border-court-border bg-court-surface-subtle px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-court-fg-muted">
-        No contacts found
-      </span>
-    );
+    return null;
   }
   const swapAvailable = carousel.pool.length > 0;
   return (

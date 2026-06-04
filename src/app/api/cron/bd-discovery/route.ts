@@ -8,37 +8,18 @@ import { syncClientSignals } from "@/lib/bd/client-signal-sync";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+// The role titles sent as job_title_or. The big-4/agency exclusion, the
+// company-name include/exclude, and the employee-count floor now live in
+// the TheirStack request body (theirstack-provider.ts) as proven
+// server-side filters, so the cron no longer post-filters by company name
+// or headcount.
 const DISCOVERY_TITLES = [
   "Tax Manager",
   "Senior Tax Accountant",
   "Tax Senior",
   "Tax Supervisor",
-  "Audit Senior",
-  "Audit Supervisor",
-  "Audit Manager",
 ];
 
-const BIG4_AND_CONSULTING = [
-  "Deloitte",
-  "PwC",
-  "Ernst & Young",
-  "EY",
-  "KPMG",
-  "Accenture",
-];
-
-const STAFFING_KEYWORDS = [
-  "Staffing",
-  "Recruiting",
-  "Talent",
-  "Search Group",
-  "Search Firm",
-  "Placement",
-  "Headhunt",
-];
-
-const MIN_HEADCOUNT = 10;
-const MAX_HEADCOUNT = 300;
 const MAX_RESULTS = 25;
 const DEDUP_WINDOW_DAYS = 30;
 
@@ -51,11 +32,6 @@ function isAuthorized(req: NextRequest): boolean {
 
 function fingerprint(companyName: string, jobTitle: string): string {
   return `${companyName.trim().toLowerCase()}|${jobTitle.trim().toLowerCase()}`;
-}
-
-function nameMatchesAny(name: string, keywords: string[]): boolean {
-  const lower = name.toLowerCase();
-  return keywords.some((kw) => lower.includes(kw.toLowerCase()));
 }
 
 // Strip the common legal-entity tails so "Acme LLC" and "Acme Inc."
@@ -92,30 +68,6 @@ function isExcludedByClients(companyName: string, clientNorms: string[]): boolea
     if (norm.includes(client) || client.includes(norm)) return true;
   }
   return false;
-}
-
-function extractEmployeeCount(raw: unknown): number | null {
-  if (!raw || typeof raw !== "object") return null;
-  const r = raw as Record<string, unknown>;
-  const candidateFields = [
-    r.company_employee_count,
-    r.num_employees,
-    r.employee_count,
-    r.employees,
-  ];
-  const company = r.company;
-  if (company && typeof company === "object") {
-    const c = company as Record<string, unknown>;
-    candidateFields.push(c.num_employees, c.employee_count, c.employees);
-  }
-  for (const v of candidateFields) {
-    if (typeof v === "number" && Number.isFinite(v)) return v;
-    if (typeof v === "string") {
-      const n = Number(v);
-      if (Number.isFinite(n)) return n;
-    }
-  }
-  return null;
 }
 
 export async function GET(req: NextRequest) {
@@ -242,31 +194,16 @@ export async function GET(req: NextRequest) {
       postedSince,
     });
 
-    let excludedCount = 0;
-    const afterExclusions = raw.filter((r) => {
-      if (
-        nameMatchesAny(r.companyName, BIG4_AND_CONSULTING) ||
-        nameMatchesAny(r.companyName, STAFFING_KEYWORDS)
-      ) {
-        excludedCount++;
-        return false;
-      }
-      return true;
-    });
-
+    // Big-4/agency exclusion and the employee-count floor are now done
+    // server-side in the TheirStack request body, so the only post-filters
+    // left here are the 30-day dedup and the client-signal routing below.
     let dedupFilteredCount = 0;
-    const afterDedup = afterExclusions.filter((r) => {
+    const afterDedup = raw.filter((r) => {
       if (dedupSet.has(fingerprint(r.companyName, r.jobTitle))) {
         dedupFilteredCount++;
         return false;
       }
       return true;
-    });
-
-    const afterHeadcount: DiscoveredCompany[] = afterDedup.filter((r) => {
-      const headcount = extractEmployeeCount(r.rawPayload);
-      if (headcount == null) return true;
-      return headcount >= MIN_HEADCOUNT && headcount <= MAX_HEADCOUNT;
     });
 
     // Client matches used to be dropped here. Now they're routed to
@@ -276,7 +213,7 @@ export async function GET(req: NextRequest) {
     // a soft match where the resolver couldn't pick a single client.
     let clientExcludedCount = 0;
     const clientSignalCandidates: { row: DiscoveredCompany; clientId: string | null }[] = [];
-    const afterClientExclusion: DiscoveredCompany[] = afterHeadcount.filter((r) => {
+    const afterClientExclusion: DiscoveredCompany[] = afterDedup.filter((r) => {
       if (isExcludedByClients(r.companyName, clientNorms)) {
         clientExcludedCount++;
         const match = resolveClientMatch(r.companyName);
@@ -335,7 +272,7 @@ export async function GET(req: NextRequest) {
     }
 
     console.log(
-      `[bd-discovery] runId=${run.id} raw=${raw.length} excluded=${excludedCount} dedupFiltered=${dedupFilteredCount} clientExcluded=${clientExcludedCount} clientSignals=${clientSignalsWritten} final=${afterClientExclusion.length}`,
+      `[bd-discovery] runId=${run.id} raw=${raw.length} dedupFiltered=${dedupFilteredCount} clientExcluded=${clientExcludedCount} clientSignals=${clientSignalsWritten} final=${afterClientExclusion.length}`,
     );
 
     await prisma.bDRun.update({
@@ -372,7 +309,6 @@ export async function GET(req: NextRequest) {
       runId: run.id,
       status: "AWAITING_APPROVAL",
       discoveredCount: afterClientExclusion.length,
-      excludedCount,
       dedupFilteredCount,
       clientExcludedCount,
       clientSignalsWritten,
