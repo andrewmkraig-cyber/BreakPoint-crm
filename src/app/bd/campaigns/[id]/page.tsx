@@ -4,6 +4,7 @@ import { ArrowLeft, ExternalLink, MapPin } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { ClientLogo } from "@/components/clients/client-logo";
+import { recoverCompanyName, recoverDomain } from "@/lib/bd/discovered-company";
 import { formatBdDateTime } from "../../date-format";
 
 export const dynamic = "force-dynamic";
@@ -100,14 +101,19 @@ export default async function CampaignDetailPage({
         ) : (
           <ul className="mt-4 flex flex-col gap-2">
             {companies.map((company, idx) => {
-              const name = company.companyName?.trim() || "Unknown company";
+              // Recover name/domain from rawPayload for runs stored with
+              // empty companyName (provider mapping defect); new runs use
+              // the stored field directly.
+              const name =
+                recoverCompanyName(company as Record<string, unknown>) || "Unknown company";
+              const domain = recoverDomain(company as Record<string, unknown>);
               const url = company.jobPostingUrl?.trim();
               return (
                 <li
                   key={`${name}-${company.jobTitle ?? ""}-${idx}`}
                   className="flex items-start gap-3 rounded-xl border border-court-border bg-court-surface-subtle p-3"
                 >
-                  <ClientLogo domain={company.domain} name={name} size={40} />
+                  <ClientLogo domain={domain} name={name} size={40} />
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <p className="truncate text-sm font-semibold text-court-fg">{name}</p>
                     {company.jobTitle ? (

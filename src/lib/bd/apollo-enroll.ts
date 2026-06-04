@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getDefaultApolloSequence } from "@/lib/bd/apollo-sequences";
+import { recoverCompanyName } from "@/lib/bd/discovered-company";
 
 // Cap is enforced against everything enrolled today across the org's
 // BDRuns, where "today" is calendar day in America/New_York. The cron
@@ -76,7 +77,10 @@ function extractDiscovered(payload: unknown): DiscoveredItem[] {
   for (const item of payload) {
     if (!item || typeof item !== "object") continue;
     const obj = item as Record<string, unknown>;
-    const companyName = typeof obj.companyName === "string" ? obj.companyName : "";
+    // Recover name from rawPayload for runs stored with empty companyName.
+    // Must mirror extractDiscoveredCompaniesRaw exactly so this list stays
+    // index-aligned with the approval popup's per-company selection.
+    const companyName = recoverCompanyName(obj);
     if (!companyName) continue;
     const jobTitle = typeof obj.jobTitle === "string" ? obj.jobTitle : "";
     const rawUrl =

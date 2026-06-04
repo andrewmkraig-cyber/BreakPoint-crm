@@ -24,7 +24,11 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 interface TheirStackJob {
   company_name?: string;
-  company?: { name?: string; domain?: string; website?: string };
+  // TheirStack returns the company name as a plain STRING at `company`
+  // (e.g. "HSBC"), with the structured record at `company_object`. The
+  // older object-shaped `company` is kept in the union for other providers.
+  company?: string | { name?: string; domain?: string; website?: string };
+  company_object?: { name?: string; domain?: string; website?: string };
   company_domain?: string;
   domain?: string;
   job_title?: string;
@@ -35,6 +39,15 @@ interface TheirStackJob {
   job_url?: string;
   apply_url?: string;
   [key: string]: unknown;
+}
+
+// `company` is a string on TheirStack jobs but an object on some other
+// providers; pull `name`/`domain` only when it is actually an object.
+function companyObjectField(
+  company: TheirStackJob["company"],
+  field: "name" | "domain" | "website",
+): string | undefined {
+  return company && typeof company === "object" ? company[field] : undefined;
 }
 
 export class TheirStackProvider implements JobDiscoveryProvider {
@@ -100,8 +113,20 @@ export class TheirStackProvider implements JobDiscoveryProvider {
         : [];
 
     return rows.map((row) => ({
-      companyName: row.company_name ?? row.company?.name ?? "",
-      domain: row.company_domain ?? row.domain ?? row.company?.domain ?? row.company?.website ?? "",
+      companyName:
+        row.company_name ??
+        (typeof row.company === "string" ? row.company : undefined) ??
+        row.company_object?.name ??
+        companyObjectField(row.company, "name") ??
+        "",
+      domain:
+        row.company_domain ??
+        row.domain ??
+        row.company_object?.domain ??
+        row.company_object?.website ??
+        companyObjectField(row.company, "domain") ??
+        companyObjectField(row.company, "website") ??
+        "",
       jobTitle: row.job_title ?? row.title ?? "",
       jobLocation: row.job_location ?? row.location ?? "",
       jobPostingUrl: row.url ?? row.job_url ?? row.apply_url,

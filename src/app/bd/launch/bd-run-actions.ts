@@ -11,6 +11,7 @@ import {
   type CompanyOutreachHistory,
 } from "@/lib/bd/bd-history";
 import { fetchApolloContacts, type ApolloContact } from "@/lib/bd/apollo-contacts";
+import { recoverCompanyName, recoverDomain } from "@/lib/bd/discovered-company";
 
 export type { ApolloContact };
 
@@ -265,9 +266,13 @@ function extractDiscoveredCompaniesRaw(payload: unknown): DiscoveredCompanyRaw[]
   for (const item of payload) {
     if (!item || typeof item !== "object") continue;
     const obj = item as Record<string, unknown>;
-    const companyName = typeof obj.companyName === "string" ? obj.companyName : "";
+    // Recover name/domain from rawPayload for runs stored with empty
+    // companyName (provider mapping defect). New runs hit the stored
+    // field directly. This keeps the popup list aligned with the card's
+    // discoveredCount so a counted run renders all of its companies.
+    const companyName = recoverCompanyName(obj);
     const jobTitle = typeof obj.jobTitle === "string" ? obj.jobTitle : "";
-    const domain = typeof obj.domain === "string" ? obj.domain : "";
+    const domain = recoverDomain(obj);
     const jobLocation =
       typeof obj.jobLocation === "string"
         ? obj.jobLocation
