@@ -14,6 +14,7 @@ import { useSpotifyPanel } from "@/components/spotify-panel/SpotifyPanelProvider
 import { useCourtMode } from "@/lib/court-mode";
 import { WeatherWidget } from "@/components/weather-widget";
 import { CalendarPopoverButton } from "@/components/calendar-popover-button";
+import { FitnessFAB } from "@/components/fitness/fitness-fab";
 
 export function TopBar() {
   const { open: claudeOpen, toggle: toggleClaude } = useClaudePanel();
@@ -144,6 +145,7 @@ export function TopBar() {
           </span>
           <InConversation size={22} />
         </button>
+        <FitnessFAB />
         <button
           type="button"
           onClick={toggleYouTube}
