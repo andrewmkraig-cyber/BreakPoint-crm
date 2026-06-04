@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getDefaultApolloSequence } from "@/lib/bd/apollo-sequences";
-import { recoverCompanyName } from "@/lib/bd/discovered-company";
+import { dedupeDiscoveredByCompany } from "@/lib/bd/discovered-company";
 
 // Cap is enforced against everything enrolled today across the org's
 // BDRuns, where "today" is calendar day in America/New_York. The cron
@@ -72,16 +72,12 @@ type DiscoveredItem = {
 };
 
 function extractDiscovered(payload: unknown): DiscoveredItem[] {
-  if (!Array.isArray(payload)) return [];
-  const out: DiscoveredItem[] = [];
-  for (const item of payload) {
-    if (!item || typeof item !== "object") continue;
-    const obj = item as Record<string, unknown>;
-    // Recover name from rawPayload for runs stored with empty companyName.
-    // Must mirror extractDiscoveredCompaniesRaw exactly so this list stays
-    // index-aligned with the approval popup's per-company selection.
-    const companyName = recoverCompanyName(obj);
-    if (!companyName) continue;
+  // Dedup to one entry per company via the SAME shared helper the queue
+  // serializer uses (bd-run-actions.ts extractDiscoveredCompaniesRaw), so
+  // this list stays index-aligned with the approval popup's per-company
+  // selection. Each company enrolls once, off the FIRST job (entry.primary).
+  return dedupeDiscoveredByCompany(payload).map((entry) => {
+    const obj = entry.primary;
     const jobTitle = typeof obj.jobTitle === "string" ? obj.jobTitle : "";
     const rawUrl =
       typeof obj.jobUrl === "string"
@@ -109,15 +105,14 @@ function extractDiscovered(payload: unknown): DiscoveredItem[] {
         curatedContacts.push({ firstName, lastName, title });
       }
     }
-    out.push({
-      companyName,
+    return {
+      companyName: entry.companyName,
       jobTitle,
       jobUrl: rawUrl || undefined,
       jobLocation,
       curatedContacts,
-    });
-  }
-  return out;
+    };
+  });
 }
 
 function formatCuratedContacts(contacts: CuratedContact[]): string {

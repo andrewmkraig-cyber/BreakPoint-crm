@@ -55,6 +55,12 @@ function normalizeCompanyKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
+// Muted "+N more role(s)" note shown next to a company's primary job title
+// when discovery surfaced the same company across multiple postings.
+function moreRolesLabel(extra: number): string {
+  return `+${extra} more role${extra === 1 ? "" : "s"}`;
+}
+
 function initialCarouselsForRun(run: PendingBDRun): Record<string, ContactCarousel> {
   const out: Record<string, ContactCarousel> = {};
   for (const c of run.discoveredPayload) {
@@ -274,7 +280,7 @@ export function ApprovalQueue({
               setDiscoveryOpen(true);
             }}
             disabled={isTriggering}
-            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[13px] font-medium text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex w-auto items-center gap-1.5 rounded-md border border-amber-400 bg-amber-50 px-2.5 py-1 text-[13px] font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60"
           >
             {isTriggering ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -426,6 +432,11 @@ function CompanySelectionModal({
                     {company.jobTitle ? (
                       <p className="truncate text-xs font-medium text-court-brand">
                         {company.jobTitle}
+                        {company.extraRoleCount > 0 ? (
+                          <span className="ml-1.5 font-normal text-court-fg-dim">
+                            {moreRolesLabel(company.extraRoleCount)}
+                          </span>
+                        ) : null}
                       </p>
                     ) : null}
                     {company.jobLocation ? (
@@ -632,6 +643,11 @@ function RunCard({
                   {c.jobTitle && (
                     <span className="text-[12px] text-court-fg-muted">{c.jobTitle}</span>
                   )}
+                  {c.extraRoleCount > 0 && (
+                    <span className="text-[11px] text-court-fg-dim">
+                      {moreRolesLabel(c.extraRoleCount)}
+                    </span>
+                  )}
                 </div>
                 <OutreachHistoryRow history={c.history} />
                 <ContactsRow
@@ -658,9 +674,9 @@ function RunCard({
             onView();
           }}
           disabled={busy}
-          className="inline-flex items-center gap-2 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex w-auto items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-2.5 py-1 text-[13px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <Eye className="h-4 w-4" />
+          <Eye className="h-3.5 w-3.5" />
           View
         </button>
         <button
@@ -670,9 +686,9 @@ function RunCard({
             onDismiss();
           }}
           disabled={busy}
-          className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex w-auto items-center gap-1.5 rounded-md px-2.5 py-1 text-[13px] font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+          {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           Dismiss
         </button>
       </div>

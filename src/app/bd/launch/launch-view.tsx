@@ -139,7 +139,7 @@ export function LaunchView({
       <LastRunChip lastRun={lastRun} />
       <Link
         href="/settings/bd"
-        className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[13px] font-medium text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg"
+        className="inline-flex w-auto items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-2.5 py-1 text-[13px] font-medium text-court-fg shadow-sm transition hover:bg-court-surface"
       >
         <Settings2 className="h-3.5 w-3.5" />
         BD Settings
@@ -216,7 +216,7 @@ function PreviewChip({
   // org has fewer than 5 sending domains configured.
   const slots: ReadonlyArray<DomainPreview | null> = Array.from({ length: 5 }, (_, i) => domains[i] ?? null);
   return (
-    <div className="inline-flex w-fit max-w-full flex-wrap items-center gap-x-3 gap-y-2 self-start rounded-lg border border-court-brand/30 bg-court-brand-tint px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
+    <div className="inline-flex w-fit max-w-full flex-wrap items-center gap-x-2 gap-y-1 self-start rounded-lg border border-court-brand/30 bg-court-brand-tint px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand">
       <span>{estimatedCompanies} companies</span>
       <span className="text-court-brand/60">→</span>
       <span>up to {contactCap} contacts</span>

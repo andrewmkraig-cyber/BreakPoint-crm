@@ -11,7 +11,7 @@ import {
   type CompanyOutreachHistory,
 } from "@/lib/bd/bd-history";
 import { fetchApolloContacts, type ApolloContact } from "@/lib/bd/apollo-contacts";
-import { recoverCompanyName, recoverDomain } from "@/lib/bd/discovered-company";
+import { dedupeDiscoveredByCompany } from "@/lib/bd/discovered-company";
 
 export type { ApolloContact };
 
@@ -32,6 +32,9 @@ export type DiscoveredCompanyLite = {
   // jobPostingUrl is null when no posting URL was captured.
   jobLocation: string;
   jobPostingUrl: string | null;
+  // Additional jobs the same company had beyond the primary shown here.
+  // Drives the muted "+N more role(s)" note; 0 when the company had one job.
+  extraRoleCount: number;
   history: SerializedOutreachHistory;
   contacts: ApolloContact[];
 };
@@ -91,7 +94,9 @@ export async function getPendingBDRuns(): Promise<PendingBDRun[]> {
 
   return rawRuns.map((r) => ({
     id: r.id,
-    discoveredCount: r.discoveredCount,
+    // Count reflects DEDUPED unique companies, not the raw job count stored
+    // on the run, so "N companies discovered" matches the rendered list.
+    discoveredCount: r.companies.length,
     discoveredPayload: r.companies.map((c) => {
       const key = companyKey(c.companyName, c.domain);
       const h = historyByCompany.get(key) ?? {
@@ -105,6 +110,7 @@ export async function getPendingBDRuns(): Promise<PendingBDRun[]> {
         domain: c.domain,
         jobLocation: c.jobLocation,
         jobPostingUrl: c.jobPostingUrl,
+        extraRoleCount: c.extraRoleCount,
         history: {
           runCount: h.runCount,
           contactsTriedTotal: h.contactsTriedTotal,
@@ -257,22 +263,19 @@ type DiscoveredCompanyRaw = {
   domain: string;
   jobLocation: string;
   jobPostingUrl: string | null;
+  extraRoleCount: number;
   persistedContacts: ApolloContact[];
 };
 
 function extractDiscoveredCompaniesRaw(payload: unknown): DiscoveredCompanyRaw[] {
-  if (!Array.isArray(payload)) return [];
-  const out: DiscoveredCompanyRaw[] = [];
-  for (const item of payload) {
-    if (!item || typeof item !== "object") continue;
-    const obj = item as Record<string, unknown>;
-    // Recover name/domain from rawPayload for runs stored with empty
-    // companyName (provider mapping defect). New runs hit the stored
-    // field directly. This keeps the popup list aligned with the card's
-    // discoveredCount so a counted run renders all of its companies.
-    const companyName = recoverCompanyName(obj);
+  // Dedup to one entry per company via the shared helper so this list stays
+  // index-aligned with the enroll extractor (apollo-enroll.ts) -- the popup's
+  // per-company checkbox selection maps to enroll by array index. The primary
+  // job's fields are read from `entry.primary` (recovered name/domain handle
+  // older runs stored with empty companyName from the provider mapping defect).
+  return dedupeDiscoveredByCompany(payload).map((entry) => {
+    const obj = entry.primary;
     const jobTitle = typeof obj.jobTitle === "string" ? obj.jobTitle : "";
-    const domain = recoverDomain(obj);
     const jobLocation =
       typeof obj.jobLocation === "string"
         ? obj.jobLocation
@@ -289,11 +292,16 @@ function extractDiscoveredCompaniesRaw(payload: unknown): DiscoveredCompanyRaw[]
           : typeof obj.url === "string"
             ? obj.url
             : null;
-    const persistedContacts = parsePersistedContacts(obj.contacts);
-    if (companyName)
-      out.push({ companyName, jobTitle, domain, jobLocation, jobPostingUrl, persistedContacts });
-  }
-  return out;
+    return {
+      companyName: entry.companyName,
+      jobTitle,
+      domain: entry.domain,
+      jobLocation,
+      jobPostingUrl,
+      extraRoleCount: entry.extraRoleCount,
+      persistedContacts: parsePersistedContacts(obj.contacts),
+    };
+  });
 }
 
 function parsePersistedContacts(value: unknown): ApolloContact[] {
