@@ -135,7 +135,7 @@ export function MobileNav() {
             : "Open navigation menu"
         }
         aria-expanded={open}
-        className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg transition hover:border-court-accent/40 md:hidden"
+        className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-court-border bg-court-surface text-court-fg transition hover:border-court-accent/40 md:hidden"
       >
         <Menu className="h-5 w-5" />
         {/* Total inbox-activity overlay: mail + text unread combined, so

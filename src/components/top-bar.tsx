@@ -62,15 +62,12 @@ export function TopBar() {
         <TopBarPageTitle />
       </div>
 
-      {/* Row 2 on PWA: hamburger + search bar, hamburger to the LEFT of
-          the search input. `order-last w-full` drops the whole group to
-          its own line beneath row 1; `md:contents` dissolves the wrapper
-          on desktop so the hamburger (hidden at md+) and the search box
-          return to their single-row desktop positions unchanged. */}
+      {/* Row 2 on PWA: the search bar gets its own full-width line beneath
+          row 1. The hamburger now lives up in the action-button cluster
+          (below), so search is alone here. `order-last w-full` drops it to
+          its own line; `md:contents` dissolves the wrapper on desktop so
+          the search box returns to its single-row desktop position. */}
       <div className="order-last flex w-full items-center gap-2 md:order-none md:contents">
-        <div className="flex h-14 items-center md:hidden">
-          <MobileNav />
-        </div>
         <div className="min-w-0 flex-1 md:w-56 md:flex-none lg:ml-8 lg:w-64 xl:ml-12 xl:w-80 2xl:w-96">
           <div className="rounded-full border border-court-border bg-court-surface transition focus-within:border-court-accent">
             <TopBarSearch />
@@ -90,7 +87,13 @@ export function TopBar() {
           weather chip, and the calendar chip. The profile avatar that
           used to close out this row is gone - the sidebar/drawer
           profile card is the single source for profile. */}
-      <div className="flex h-14 items-center gap-3 md:h-auto">
+      <div className="ml-auto flex h-14 items-center gap-2 md:ml-0 md:h-auto md:gap-3">
+        {/* Hamburger menu - PWA ONLY (hidden at md+). Moved up out of the
+            search row so it sits at the head of the right-aligned action
+            cluster; the search bar gets the whole second line to itself. */}
+        <div className="md:hidden">
+          <MobileNav />
+        </div>
         {/* Light/Dark toggle - DESKTOP ONLY (hidden below md). On the
             mobile PWA this control moves into the hamburger drawer (below
             Settings) so the topbar icon row stays on one line. Same h-10
