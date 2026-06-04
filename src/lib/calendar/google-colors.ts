@@ -35,37 +35,14 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   };
 }
 
-function rgbToHex({ r, g, b }: { r: number; g: number; b: number }): string {
-  return `#${[r, g, b]
-    .map((n) =>
-      Math.round(Math.max(0, Math.min(255, n)))
-        .toString(16)
-        .padStart(2, "0"),
-    )
-    .join("")}`;
-}
-
-function mixRgb(
-  base: { r: number; g: number; b: number },
-  target: { r: number; g: number; b: number },
-  amount: number,
-): { r: number; g: number; b: number } {
-  return {
-    r: base.r + (target.r - base.r) * amount,
-    g: base.g + (target.g - base.g) * amount,
-    b: base.b + (target.b - base.b) * amount,
-  };
-}
-
 function googleTintStyle(hex: string): Record<string, string> | undefined {
-  const rgb = hexToRgb(hex);
-  if (!rgb) return undefined;
-  const white = { r: 255, g: 255, b: 255 };
-  const black = { r: 0, g: 0, b: 0 };
+  const normalized = hex.trim().replace(/^#/, "");
+  if (!hexToRgb(normalized)) return undefined;
+  const color = `#${normalized}`;
   return {
-    backgroundColor: rgbToHex(mixRgb(rgb, white, 0.82)),
-    borderColor: rgbToHex(mixRgb(rgb, white, 0.18)),
-    color: rgbToHex(mixRgb(rgb, black, 0.42)),
+    backgroundColor: `color-mix(in srgb, ${color} 18%, rgb(var(--court-surface)) 82%)`,
+    borderColor: `color-mix(in srgb, ${color} 72%, rgb(var(--court-surface)) 28%)`,
+    color: `color-mix(in srgb, ${color} 72%, rgb(var(--court-fg)) 28%)`,
   };
 }
 
