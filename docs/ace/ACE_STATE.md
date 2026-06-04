@@ -1,8 +1,48 @@
 # ACE_STATE.md
-Last updated: 2026-06-03 · Ace 80.0
-Current Version: Ace 80.0
-Last Shipped: 2026-06-03
+Last updated: 2026-06-04 · Ace 81.0
+Current Version: Ace 81.0
+Last Shipped: 2026-06-04
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 81.0 (2026-06-03 to 2026-06-04) - BD Engine: tabs/Today's Batch cleanup, real TheirStack saved-search query, timeout hardening, Active Campaigns row identity. PLUS a critical external-webhook credit-drain finding.
+
+All BD-engine work below is pushed to main and `npm run build` exits 0. No schema changes this session.
+
+**BD tabs + Today's Batch shell**
+- BD tabs reordered: **Today's Batch, Active Campaigns, Activity, Client Signals**. Page subtitles removed.
+- Today's Batch is now a **single card container**. Run Discovery Now (amber) + BD Settings (neutral grey) resized to the standard button size. Last-run pill moved inside the card.
+- The old **"Launch BD Run" button was DELETED** - it was dead (wrote a `QUEUED` BDRun that nothing consumes).
+
+**Discovery query REWRITTEN to Andrew's live-validated TheirStack body (`src/lib/bd/theirstack-provider.ts`)**
+- Ace previously ran its OWN hardcoded broad query and ignored the user's TheirStack saved search. It now sends Andrew's live-validated body:
+  - `job_title_or` ["Tax Manager","Senior Tax Accountant","Tax Senior","Tax Supervisor"]; plus a `job_title_not` exclusion list.
+  - `job_location_or` `[{id:6252001}]` (US) - the **object shape, NOT `country_code`**.
+  - `company_name_partial_match_or` - 26 firm-name strings (CPA / LLP / Partners / & Co. / Associates / etc.); `company_name_partial_match_not` (recruiter / big-4 / etc.); `company_id_not` - 5 big-4 ids.
+  - `min_employee_count` 10; `limit` 25; `blur_company_data` false; **`posted_at_max_age_days` capped at MAX 14**.
+- A temporary log tagged **`[bd-discovery][theirstack-body][diag]`** is still in that file (queued for removal - see ROADMAP cleanup).
+
+**Timeout hardening**
+- 25s `AbortController` on the discovery POST.
+- 10s + 20s budget on the client-signal sweep (`src/lib/bd/client-signal-sync.ts`).
+- 10s on the jsearch fallback.
+- cron route `maxDuration` 120 (`src/app/api/cron/bd-discovery/route.ts`).
+
+**Name recovery + dedup helpers (`src/lib/bd/discovered-company.ts`)**
+- `recoverCompanyName`, `recoverDomain`, `dedupeDiscoveredByCompany` applied in ONE shared place so the Review-companies popup and the enroll extractor stay index-aligned.
+
+**Approval + Active Campaigns surfaces**
+- **Approved-leads detail view** (real company list with favicons) and a **"Review companies" popup selector** (all checked by default; uncheck to exclude; Approve & Enroll enrolls only the selected companies via `selectedIndexes`).
+- **Client Signals favicons** fixed to the Google favicon service keyed on `Client.domain`.
+- **Active Campaigns rows** now lead with the real deduped enrolled company names, label the date **"Enrolled"** (`approvedAt`), and show a muted **"awaiting Apollo activity"** hint when metrics are all zero. Files: `src/app/bd/campaigns/page.tsx`, `src/app/bd/campaigns/campaigns-list.tsx`.
+
+### CRITICAL - External TheirStack webhook (credit drain + safety)
+- TheirStack support (Christian Palou) confirmed an **external webhook named "Ace BD Engine"**, tied to saved search **"BreakPoint BD-Tax"**, live on the TheirStack account **since May 14**. It scans every 3 hours and POSTs each matching Tax Manager job to `https://ace.breakpointtalent.com/api/webhooks/theirstack`, spending **1 TheirStack credit per delivered job (~951 credits consumed this way)**.
+- This webhook runs a **BROAD saved search with NO firm-name filter**. It is the **suspected source of the unrecognized "AHF" and "American Express" rows** on Active Campaigns (large corporate tax departments, not CPA firms).
+- The webhook is **INTENTIONALLY LEFT ON**. It must NOT be killed until next session confirms (a) the daily cron is fully self-contained and does NOT depend on this webhook, and (b) `/api/webhooks/theirstack` does NOT auto-create campaigns or auto-enroll to Apollo.
+- **The TheirStack API key was exposed in chat earlier this session and still needs to be ROTATED.**
+
+### GO-LIVE GATE
+Apollo sequence **"Tax BD Sequence"** (id `6a06068f8142ee001d2b3dd2`) activation is **BLOCKED** until the webhook path is confirmed safe. Risk: if `/api/webhooks/theirstack` auto-enrolls, activating Apollo could email companies like American Express that were never approved. See ACE_ROADMAP.md ▸ Next Session (items 1-2).
 
 ## What Shipped in Ace 80.0 (2026-06-03) - BD Engine: Apollo enrollment rewrite + TheirStack discovery fix
 
