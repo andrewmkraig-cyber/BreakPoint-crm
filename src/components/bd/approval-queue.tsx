@@ -37,6 +37,8 @@ type Props = {
   summary?: ReactNode;
   launchButton?: ReactNode;
   launchHint?: ReactNode;
+  // Pill + BD Settings button seated top-right inside the card.
+  cardHeaderRight?: ReactNode;
 };
 
 type ContactCarousel = {
@@ -71,6 +73,7 @@ export function ApprovalQueue({
   summary,
   launchButton,
   launchHint,
+  cardHeaderRight,
 }: Props) {
   const router = useRouter();
   const [runs, setRuns] = useState<PendingBDRun[]>(initialRuns);
@@ -190,76 +193,90 @@ export function ApprovalQueue({
 
   return (
     <section className="flex w-full flex-col gap-6">
-      {/* 1 - page heading, seated above everything like the other BD pages. */}
+      {/* Page heading stays ABOVE the card, like the other BD pages seat
+          their eyebrow above their list panel. */}
       <header className="flex flex-col gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           Today&apos;s Batch
         </p>
       </header>
 
-      {/* 2 - Vertical chip + Saved Search dropdown. */}
-      {controls}
-
-      {/* 3 - discovery results table. The empty state is the empty version
-          of the run-card list. */}
-      <div className="flex flex-col gap-3">
-        {triggerError && (
-          <p className="text-xs text-red-600 dark:text-red-300">{triggerError}</p>
-        )}
-        {actionError && (
-          <p className="text-xs text-red-600 dark:text-red-300">{actionError}</p>
-        )}
-
-        {runs.length === 0 ? (
-          <p className="text-xs text-court-fg-muted">
-            No discovery runs awaiting approval.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {runs.map((run) => (
-              <RunCard
-                key={run.id}
-                run={run}
-                carousels={curated[run.id] ?? {}}
-                busy={pendingIds.has(run.id)}
-                onApprove={() => onApprove(run.id)}
-                onDismiss={() => onDismiss(run.id)}
-                onRemoveContact={(companyKey, contactId) =>
-                  onRemoveContact(run.id, companyKey, contactId)
-                }
-                onSwapContact={(companyKey, contactId) =>
-                  onSwapContact(run.id, companyKey, contactId)
-                }
-              />
-            ))}
+      {/* Single contained card holding the whole batch body. Matches the
+          dashboard big-panel chrome (rounded-3xl surface + two-tier
+          shadow). Order top-to-bottom: header-right pill/settings ->
+          controls -> table -> summary -> buttons. */}
+      <div className="flex flex-col gap-6 rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
+        {/* Last run pill + BD Settings, top-right inside the card. */}
+        {cardHeaderRight && (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {cardHeaderRight}
           </div>
         )}
-      </div>
 
-      {/* 4 - green run-summary line (with the Last run pill top-right). */}
-      {summary}
+        {/* Vertical chip + Saved Search dropdown. */}
+        {controls}
 
-      {/* 5 - buttons last: Launch BD Run, then Run Discovery Now. Both match
-          the BD Settings button size and stay w-auto. */}
-      <div className="flex flex-wrap items-center gap-2">
-        {launchButton}
-        <button
-          type="button"
-          onClick={() => {
-            setTriggerError(null);
-            setDiscoveryOpen(true);
-          }}
-          disabled={isTriggering}
-          className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[13px] font-medium text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isTriggering ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3.5 w-3.5" />
+        {/* Discovery results table. The empty state is the empty version
+            of the run-card list. */}
+        <div className="flex flex-col gap-3">
+          {triggerError && (
+            <p className="text-xs text-red-600 dark:text-red-300">{triggerError}</p>
           )}
-          Run Discovery Now
-        </button>
-        {launchHint}
+          {actionError && (
+            <p className="text-xs text-red-600 dark:text-red-300">{actionError}</p>
+          )}
+
+          {runs.length === 0 ? (
+            <p className="text-xs text-court-fg-muted">
+              No discovery runs awaiting approval.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {runs.map((run) => (
+                <RunCard
+                  key={run.id}
+                  run={run}
+                  carousels={curated[run.id] ?? {}}
+                  busy={pendingIds.has(run.id)}
+                  onApprove={() => onApprove(run.id)}
+                  onDismiss={() => onDismiss(run.id)}
+                  onRemoveContact={(companyKey, contactId) =>
+                    onRemoveContact(run.id, companyKey, contactId)
+                  }
+                  onSwapContact={(companyKey, contactId) =>
+                    onSwapContact(run.id, companyKey, contactId)
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Green run-summary line. */}
+        {summary}
+
+        {/* Buttons last: Launch BD Run, then Run Discovery Now. Both match
+            the BD Settings button size and stay w-auto. */}
+        <div className="flex flex-wrap items-center gap-2">
+          {launchButton}
+          <button
+            type="button"
+            onClick={() => {
+              setTriggerError(null);
+              setDiscoveryOpen(true);
+            }}
+            disabled={isTriggering}
+            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[13px] font-medium text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isTriggering ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            Run Discovery Now
+          </button>
+          {launchHint}
+        </div>
       </div>
 
       {discoveryOpen && (

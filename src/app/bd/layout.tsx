@@ -30,18 +30,24 @@ function resolveTab(pathname: string): BdTabId {
 export default function BdLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/bd/launch";
   const active = resolveTab(pathname);
+  // Today's Batch renders its own BD Settings button inside its card, so
+  // hide the shared top-row one there to avoid a duplicate. The other
+  // three tabs keep it in the top row exactly as before.
+  const showBdSettings = active !== "launch";
 
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <TabStrip<BdTabId> items={TABS} activeId={active} ariaLabel="BD sections" />
-        <Link
-          href="/settings/bd"
-          className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[13px] font-medium text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg"
-        >
-          <Settings2 className="h-3.5 w-3.5" />
-          BD Settings
-        </Link>
+        {showBdSettings && (
+          <Link
+            href="/settings/bd"
+            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[13px] font-medium text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+            BD Settings
+          </Link>
+        )}
       </header>
       <div className="min-w-0">{children}</div>
     </div>

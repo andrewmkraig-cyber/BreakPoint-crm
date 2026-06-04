@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Rocket, Loader2, X } from "lucide-react";
+import Link from "next/link";
+import { Rocket, Loader2, X, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ApprovalQueue } from "@/components/bd/approval-queue";
 import type { PendingBDRun } from "./bd-run-actions";
@@ -178,18 +179,30 @@ export function LaunchView({
     </div>
   );
 
-  // Slot 2 - green run-summary line, below the table. Last-run pill rides
-  // top-right of this block.
-  const summary = noVerticals ? null : (
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <PreviewChip
-        contactCap={contactCap}
-        estimatedCompanies={Math.max(1, Math.round(contactCap / ESTIMATED_CONTACTS_PER_COMPANY))}
-        sequenceName={SEQUENCE_NAME_PLACEHOLDER}
-        domains={domains}
-      />
+  // Top-right of the card - Last run pill + the page-local BD Settings
+  // button. The shared top-row BD Settings is hidden on /bd/launch (see
+  // bd/layout.tsx) so this is the only Settings entry on this page.
+  const cardHeaderRight = (
+    <>
       <LastRunChip lastRun={lastRun} />
-    </div>
+      <Link
+        href="/settings/bd"
+        className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[13px] font-medium text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg"
+      >
+        <Settings2 className="h-3.5 w-3.5" />
+        BD Settings
+      </Link>
+    </>
+  );
+
+  // Slot 2 - green run-summary line, below the table.
+  const summary = noVerticals ? null : (
+    <PreviewChip
+      contactCap={contactCap}
+      estimatedCompanies={Math.max(1, Math.round(contactCap / ESTIMATED_CONTACTS_PER_COMPANY))}
+      sequenceName={SEQUENCE_NAME_PLACEHOLDER}
+      domains={domains}
+    />
   );
 
   // Slot 3 - primary CTA, sized to the BD Settings button. ApprovalQueue
@@ -231,6 +244,7 @@ export function LaunchView({
         summary={summary}
         launchButton={launchButton}
         launchHint={launchHint}
+        cardHeaderRight={cardHeaderRight}
       />
 
       {confirmOpen && (
