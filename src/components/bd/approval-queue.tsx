@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, RefreshCw, X, RotateCcw } from "lucide-react";
+import { Loader2, RefreshCw, X, RotateCcw, ExternalLink, Eye, MapPin } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 import {
@@ -17,6 +17,8 @@ import { cn } from "@/lib/utils";
 import { formatBdDateTime } from "@/app/bd/date-format";
 import { Button } from "@/components/ui/button";
 import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
+import { ClientLogo } from "@/components/clients/client-logo";
+import { Modal } from "@/components/placements/placement-shared";
 
 const MAX_PREVIEW_ROWS = 5;
 const MAX_DISPLAYED_CONTACTS = 5;
@@ -77,6 +79,9 @@ export function ApprovalQueue({
   const [triggerError, setTriggerError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
+  // Which run's company-selection popup is open (null = none). The popup
+  // is where Approve & Enroll now lives.
+  const [viewRunId, setViewRunId] = useState<string | null>(null);
   const [isTriggering, startTriggering] = useTransition();
   const [curated, setCurated] = useState<CuratedByRun>(() => {
     const seed: CuratedByRun = {};
@@ -138,11 +143,15 @@ export function ApprovalQueue({
     return out;
   }
 
-  async function onApprove(runId: string) {
+  // Enrolls only the companies whose indexes the popup passed in. The
+  // curated per-company contact lists still ride along so contact-level
+  // edits made on the card are preserved.
+  async function onApprove(runId: string, selectedIndexes: number[]) {
     setActionError(null);
     markPending(runId, true);
-    const res = await approveBDRun(runId, buildCuratedPayload(runId));
+    const res = await approveBDRun(runId, buildCuratedPayload(runId), selectedIndexes);
     if (res.success) {
+      setViewRunId(null);
       setRuns((prev) => prev.filter((r) => r.id !== runId));
       setCurated((prev) => {
         const next = { ...prev };
@@ -237,7 +246,7 @@ export function ApprovalQueue({
                   run={run}
                   carousels={curated[run.id] ?? {}}
                   busy={pendingIds.has(run.id)}
-                  onApprove={() => onApprove(run.id)}
+                  onView={() => setViewRunId(run.id)}
                   onDismiss={() => onDismiss(run.id)}
                   onRemoveContact={(companyKey, contactId) =>
                     onRemoveContact(run.id, companyKey, contactId)
@@ -286,7 +295,163 @@ export function ApprovalQueue({
           onConfirm={onRunDiscovery}
         />
       )}
+
+      {viewRunId &&
+        (() => {
+          const run = runs.find((r) => r.id === viewRunId);
+          if (!run) return null;
+          const busy = pendingIds.has(run.id);
+          return (
+            <CompanySelectionModal
+              run={run}
+              busy={busy}
+              onClose={() => {
+                if (!busy) setViewRunId(null);
+              }}
+              onApprove={(selectedIndexes) => onApprove(run.id, selectedIndexes)}
+            />
+          );
+        })()}
     </section>
+  );
+}
+
+// Company-selection popup for one discovered run. Lists every company in
+// the run's payload with a checkbox (all checked by default), a live
+// "Enroll X of N" count, and a single Approve & Enroll action that enrolls
+// only the checked companies (by their index in this list). Reuses the
+// shared Modal chrome and the campaigns/[id] company-row markup.
+function CompanySelectionModal({
+  run,
+  busy,
+  onClose,
+  onApprove,
+}: {
+  run: PendingBDRun;
+  busy: boolean;
+  onClose: () => void;
+  onApprove: (selectedIndexes: number[]) => void;
+}) {
+  const companies = run.discoveredPayload;
+  const [selected, setSelected] = useState<Set<number>>(
+    () => new Set(companies.map((_, i) => i)),
+  );
+
+  const allSelected = companies.length > 0 && selected.size === companies.length;
+
+  function toggle(i: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(companies.map((_, i) => i)));
+  }
+
+  const footer = (
+    <>
+      <Button variant="secondary" size="sm" onClick={onClose} disabled={busy}>
+        Cancel
+      </Button>
+      <Button
+        variant="primary"
+        size="sm"
+        disabled={busy || selected.size === 0}
+        onClick={() =>
+          onApprove(Array.from(selected).sort((a, b) => a - b))
+        }
+      >
+        {busy && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+        Approve &amp; Enroll
+      </Button>
+    </>
+  );
+
+  return (
+    <Modal
+      title="Review companies"
+      subtitle={`Enroll ${selected.size} of ${companies.length}`}
+      onClose={onClose}
+      footer={footer}
+      wide
+    >
+      {companies.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-court-border bg-court-surface-subtle p-6 text-sm text-court-fg-muted">
+          No companies were discovered for this run.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={toggleAll}
+              className="text-xs font-medium text-court-brand transition-colors hover:text-court-brand-dark"
+            >
+              {allSelected ? "Clear all" : "Select all"}
+            </button>
+            <span className="text-xs font-medium text-court-fg-muted">
+              {selected.size} of {companies.length} selected
+            </span>
+          </div>
+
+          <ul className="flex flex-col gap-2">
+            {companies.map((company, idx) => {
+              const name = company.companyName?.trim() || "Unknown company";
+              const url = company.jobPostingUrl?.trim();
+              const checked = selected.has(idx);
+              return (
+                <li
+                  key={`${name}-${company.jobTitle ?? ""}-${idx}`}
+                  className={cn(
+                    "flex items-start gap-3 rounded-xl border p-3 transition-colors",
+                    checked
+                      ? "border-court-border bg-court-surface-subtle"
+                      : "border-court-border bg-court-surface opacity-60",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggle(idx)}
+                    aria-label={`Enroll ${name}`}
+                    className="mt-1 h-4 w-4 shrink-0 accent-court-brand"
+                  />
+                  <ClientLogo domain={company.domain} name={name} size={40} />
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <p className="truncate text-sm font-semibold text-court-fg">{name}</p>
+                    {company.jobTitle ? (
+                      <p className="truncate text-xs font-medium text-court-brand">
+                        {company.jobTitle}
+                      </p>
+                    ) : null}
+                    {company.jobLocation ? (
+                      <p className="flex items-center gap-1 truncate text-xs text-court-fg-muted">
+                        <MapPin className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{company.jobLocation}</span>
+                      </p>
+                    ) : null}
+                  </div>
+                  {url ? (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex shrink-0 items-center gap-1 self-center rounded-lg border border-court-border bg-court-surface px-2.5 py-1.5 text-xs font-medium text-court-fg-muted transition-colors hover:text-court-fg"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> Job
+                    </a>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -409,7 +574,7 @@ function RunCard({
   run,
   carousels,
   busy,
-  onApprove,
+  onView,
   onDismiss,
   onRemoveContact,
   onSwapContact,
@@ -417,7 +582,7 @@ function RunCard({
   run: PendingBDRun;
   carousels: Record<string, ContactCarousel>;
   busy: boolean;
-  onApprove: () => void;
+  onView: () => void;
   onDismiss: () => void;
   onRemoveContact: (companyKey: string, contactId: string) => void;
   onSwapContact: (companyKey: string, contactId: string) => void;
@@ -440,7 +605,21 @@ function RunCard({
   const approveBlocked = companiesWithNoContacts.length > 0;
 
   return (
-    <div className="rounded-2xl border border-court-border bg-court-surface p-6 shadow-sm">
+    // The whole card opens the company-selection popup. Inner interactive
+    // controls (contact chips, the action buttons) stopPropagation so they
+    // keep their own behavior without also firing the card's open.
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onView}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onView();
+        }
+      }}
+      className="cursor-pointer rounded-2xl border border-court-border bg-court-surface p-6 shadow-sm transition-colors hover:border-court-brand/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/50"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
@@ -496,16 +675,22 @@ function RunCard({
       <div className="mt-5 flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={onApprove}
-          disabled={busy || approveBlocked}
+          onClick={(e) => {
+            e.stopPropagation();
+            onView();
+          }}
+          disabled={busy}
           className="inline-flex items-center gap-2 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-          Approve &amp; Enroll
+          <Eye className="h-4 w-4" />
+          View
         </button>
         <button
           type="button"
-          onClick={onDismiss}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDismiss();
+          }}
           disabled={busy}
           className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-60"
         >
@@ -556,7 +741,9 @@ function ContactsRow({
   }
   const swapAvailable = carousel.pool.length > 0;
   return (
-    <div className="flex flex-wrap gap-1.5">
+    // Interactive zone: swap/remove buttons and the LinkedIn link manage
+    // their own clicks, so stop the card-level open from also firing here.
+    <div className="flex flex-wrap gap-1.5" onClick={(e) => e.stopPropagation()}>
       {carousel.displayed.map((contact) => {
         const fullName = [contact.firstName, contact.lastName].filter(Boolean).join(" ") || "(unnamed)";
         return (

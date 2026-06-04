@@ -26,6 +26,11 @@ export type DiscoveredCompanyLite = {
   companyName: string;
   jobTitle: string;
   domain: string;
+  // Surfaced from the raw stored payload for the approval popup's company
+  // rows. jobLocation is "" when the discovery entry carried no location;
+  // jobPostingUrl is null when no posting URL was captured.
+  jobLocation: string;
+  jobPostingUrl: string | null;
   history: SerializedOutreachHistory;
   contacts: ApolloContact[];
 };
@@ -97,6 +102,8 @@ export async function getPendingBDRuns(): Promise<PendingBDRun[]> {
         companyName: c.companyName,
         jobTitle: c.jobTitle,
         domain: c.domain,
+        jobLocation: c.jobLocation,
+        jobPostingUrl: c.jobPostingUrl,
         history: {
           runCount: h.runCount,
           contactsTriedTotal: h.contactsTriedTotal,
@@ -121,6 +128,10 @@ type ApproveResult =
 export async function approveBDRun(
   runId: string,
   curatedContacts?: Record<string, ApolloContact[]>,
+  // Company subset selected in the approval popup, as indexes into the
+  // rendered company list. Omitted = enroll every company (back-compat
+  // with the pre-popup call site and any caller that wants the whole run).
+  selectedIndexes?: number[],
 ): Promise<ApproveResult> {
   const org = await getCurrentOrg();
   const existing = await prisma.bDRun.findUnique({
@@ -157,7 +168,7 @@ export async function approveBDRun(
     where: { id: runId },
     data: updateData as never,
   });
-  const result = await enrollCompaniesInApollo(runId, org.id);
+  const result = await enrollCompaniesInApollo(runId, org.id, selectedIndexes);
   revalidatePath("/bd/launch");
   return { success: true, runId, enrolled: result.enrolled, capped: result.capped };
 }
@@ -243,6 +254,8 @@ type DiscoveredCompanyRaw = {
   companyName: string;
   jobTitle: string;
   domain: string;
+  jobLocation: string;
+  jobPostingUrl: string | null;
   persistedContacts: ApolloContact[];
 };
 
@@ -255,8 +268,25 @@ function extractDiscoveredCompaniesRaw(payload: unknown): DiscoveredCompanyRaw[]
     const companyName = typeof obj.companyName === "string" ? obj.companyName : "";
     const jobTitle = typeof obj.jobTitle === "string" ? obj.jobTitle : "";
     const domain = typeof obj.domain === "string" ? obj.domain : "";
+    const jobLocation =
+      typeof obj.jobLocation === "string"
+        ? obj.jobLocation
+        : typeof obj.job_location === "string"
+          ? obj.job_location
+          : "";
+    // Mirror the enroll extractor's URL resolution so the popup link and
+    // the Apollo custom field read the same source field.
+    const jobPostingUrl =
+      typeof obj.jobPostingUrl === "string"
+        ? obj.jobPostingUrl
+        : typeof obj.jobUrl === "string"
+          ? obj.jobUrl
+          : typeof obj.url === "string"
+            ? obj.url
+            : null;
     const persistedContacts = parsePersistedContacts(obj.contacts);
-    if (companyName) out.push({ companyName, jobTitle, domain, persistedContacts });
+    if (companyName)
+      out.push({ companyName, jobTitle, domain, jobLocation, jobPostingUrl, persistedContacts });
   }
   return out;
 }

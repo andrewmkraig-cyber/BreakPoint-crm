@@ -302,6 +302,13 @@ export type EnrollResult = { enrolled: number; capped: boolean };
 export async function enrollCompaniesInApollo(
   runId: string,
   orgId: string,
+  // Optional company subset chosen in the approval popup. Indexes align
+  // with the rendered company list: both this extractor and the queue's
+  // extractDiscoveredCompaniesRaw skip only companyName-empty entries, in
+  // order, so index i refers to the same company on both sides. Undefined
+  // enrolls every company (scheduled cron + legacy + back-compat). An
+  // explicit empty array enrolls nothing.
+  selectedIndexes?: number[],
 ): Promise<EnrollResult> {
   const run = await prisma.bDRun.findFirst({
     where: { id: runId, organizationId: orgId },
@@ -311,7 +318,11 @@ export async function enrollCompaniesInApollo(
     return { enrolled: 0, capped: false };
   }
 
-  const companies = extractDiscovered(run.discoveredPayload);
+  const allCompanies = extractDiscovered(run.discoveredPayload);
+  const companies =
+    selectedIndexes === undefined
+      ? allCompanies
+      : allCompanies.filter((_, i) => selectedIndexes.includes(i));
   // Per-run override from the "Run Discovery Now" popup; null on the
   // scheduled cron + legacy runs, which keep the original default of 4.
   // The daily-cap clamp below still bounds the total regardless of this.
