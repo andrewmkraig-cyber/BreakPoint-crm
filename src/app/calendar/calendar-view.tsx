@@ -117,7 +117,7 @@ export function CalendarView({
   reminders: initialReminders,
 }: Props) {
   const router = useRouter();
-  const [view, setView] = useState<CalendarView>("week");
+  const [view, setView] = useState<CalendarView>("month");
   // hiddenMembers is the single source of truth for which member's
   // events are showing. The top "My Calendar / Team" tabs and the
   // left-rail checkboxes both mutate this same Set - clicking either
