@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { formatBdDateTime } from "../../date-format";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export default async function CampaignDetailPage({
           {run.savedSearch?.name ?? "Org-wide BD discovery"}
         </h2>
         <p className="text-sm text-court-fg-muted">
-          Status {run.status} · Started {run.createdAt.toLocaleString()}
+          Status {run.status} · Started {formatBdDateTime(run.createdAt)}
         </p>
       </header>
 

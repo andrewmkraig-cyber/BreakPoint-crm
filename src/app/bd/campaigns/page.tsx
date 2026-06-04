@@ -36,9 +36,13 @@ export default async function CampaignsPage() {
   const runs = await prisma.bDRun.findMany({
     where: {
       organizationId: org.id,
-      // Archived rows tombstone-only: keep BDActivity history but pull
-      // them out of Active Campaigns.
-      status: { not: "DISMISSED" },
+      // Active Campaigns shows only runs that became real enrolled
+      // campaigns. APPROVED = user clicked Approve & Enroll; COMPLETE =
+      // enrollment finished. Everything else (QUEUED / RUNNING / FAILED /
+      // AWAITING_APPROVAL / DISMISSED) is pre-campaign or junk and is
+      // surfaced elsewhere: AWAITING_APPROVAL lives in Today's Batch, and
+      // history is read from BDActivity, not BDRun.status.
+      status: { in: ["APPROVED", "COMPLETE"] },
     },
     orderBy: { createdAt: "desc" },
     take: 100,

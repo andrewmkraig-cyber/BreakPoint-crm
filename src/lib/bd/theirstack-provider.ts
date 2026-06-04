@@ -9,10 +9,10 @@ const THEIRSTACK_ENDPOINT = "https://api.theirstack.com/v1/jobs/search";
 // TheirStack now rejects any /jobs/search request that lacks at least one
 // "mandatory" filter (posted_at_max_age_days / posted_at_gte / posted_at_lte /
 // job_id_or / company_name_or / ...) with a 422. job_title_or and limit do not
-// count. posted_at_gte is only present when we have a prior run to anchor to,
-// so it cannot be relied on for the first discovery. We therefore always send
-// posted_at_max_age_days (integer days) so every call -- cron and Run Discovery
-// Now -- satisfies the requirement.
+// count. We therefore always send posted_at_max_age_days (integer days) so
+// every call -- cron and Run Discovery Now -- satisfies the requirement.
+// We deliberately do NOT send posted_at_gte: it is a date-only field, so the
+// full ISO timestamp from postedSince 422s on every run after the first.
 const DEFAULT_POSTED_MAX_AGE_DAYS = 7;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -58,9 +58,12 @@ export class TheirStackProvider implements JobDiscoveryProvider {
       limit: params.maxResults,
       posted_at_max_age_days: postedMaxAgeDays,
     };
-    if (params.postedSince) {
-      body.posted_at_gte = params.postedSince.toISOString();
-    }
+    // posted_at_gte is intentionally NOT sent. TheirStack's posted_at_gte
+    // is a date-only field; a full ISO timestamp (what postedSince would
+    // serialize to) 422s on every run after the first. The always-present
+    // posted_at_max_age_days above is the mandatory recency filter and is
+    // already widened from postedSince at the top of this method, so the
+    // window is covered without the timestamp param.
     if (typeof params.minRevenue === "number") {
       body.company_revenue_usd_gte = params.minRevenue;
     }
