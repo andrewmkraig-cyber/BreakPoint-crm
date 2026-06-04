@@ -10,9 +10,10 @@ import {
 
 const DEFAULT_W = 460;
 const DEFAULT_H = 640;
-const MIN_W = 340;
+const MIN_W = 300;
 const MIN_H = 420;
 const EDGE_GAP = 20;
+const MOBILE_GAP = 8;
 
 export type FitnessPanelPosition = { x: number; y: number };
 export type FitnessPanelSize = { w: number; h: number };
@@ -50,14 +51,14 @@ function defaultDock(): {
   }
   const mobile = window.innerWidth < 640;
   const w = mobile
-    ? Math.max(MIN_W, window.innerWidth - EDGE_GAP * 2)
+    ? Math.max(280, window.innerWidth - MOBILE_GAP * 2)
     : DEFAULT_W;
   const h = mobile
-    ? Math.max(MIN_H, window.innerHeight - 120)
+    ? Math.max(MIN_H, window.innerHeight - MOBILE_GAP * 2)
     : Math.min(DEFAULT_H, window.innerHeight - EDGE_GAP * 2);
   return {
     position: mobile
-      ? { x: EDGE_GAP, y: 84 }
+      ? { x: MOBILE_GAP, y: MOBILE_GAP }
       : {
           x: Math.max(EDGE_GAP, window.innerWidth - w - EDGE_GAP),
           y: Math.max(EDGE_GAP, window.innerHeight - h - EDGE_GAP),

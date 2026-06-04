@@ -12,6 +12,7 @@ import {
 import { createPortal } from "react-dom";
 import {
   Activity,
+  ArrowLeft,
   Check,
   ChevronDown,
   ChevronRight,
@@ -26,6 +27,7 @@ import {
   Save,
   SkipForward,
   TimerReset,
+  Trash2,
   Trophy,
   X,
 } from "lucide-react";
@@ -69,6 +71,9 @@ const RANGE_TABS = [
   { id: "month", label: "Month" },
   { id: "all", label: "All-time" },
 ] satisfies Array<{ id: FitnessRange; label: string }>;
+
+const DEFAULT_REST_MS = 120_000;
+const REST_INCREMENT_MS = 60_000;
 
 function todayIsoEt(): string {
   const fmt = new Intl.DateTimeFormat("en-CA", {
@@ -174,7 +179,9 @@ function useRestTimer() {
     return () => window.clearInterval(id);
   }, [restEndsAt]);
 
-  const remaining = restEndsAt ? Math.max(0, Math.ceil((restEndsAt - now) / 1000)) : 0;
+  const remaining = restEndsAt
+    ? Math.max(0, Math.ceil((restEndsAt - now) / 1000))
+    : 0;
   useEffect(() => {
     if (restEndsAt && remaining === 0) {
       const timeout = window.setTimeout(() => setRestEndsAt(null), 600);
@@ -184,7 +191,18 @@ function useRestTimer() {
 
   return {
     remaining,
-    start: () => setRestEndsAt(Date.now() + 90_000),
+    start: () => {
+      const timestamp = Date.now();
+      setNow(timestamp);
+      setRestEndsAt(timestamp + DEFAULT_REST_MS);
+    },
+    addMinute: () => {
+      const timestamp = Date.now();
+      setNow(timestamp);
+      setRestEndsAt(
+        (current) => Math.max(current ?? 0, timestamp) + REST_INCREMENT_MS,
+      );
+    },
     reset: () => setRestEndsAt(null),
   };
 }
@@ -291,7 +309,9 @@ export function FitnessPanel() {
 
   const selectedExercises = useMemo(() => {
     if (!snapshot) return [];
-    const byId = new Map(snapshot.exercises.map((exercise) => [exercise.id, exercise]));
+    const byId = new Map(
+      snapshot.exercises.map((exercise) => [exercise.id, exercise]),
+    );
     const dayDefaults = snapshot.exercises.filter(
       (exercise) => exercise.defaultDay === dayType,
     );
@@ -299,8 +319,12 @@ export function FitnessPanel() {
       .map((id) => byId.get(id))
       .filter((exercise): exercise is FitnessExercise => Boolean(exercise));
     const merged = new Map<string, FitnessExercise>();
-    [...dayDefaults, ...drafted].forEach((exercise) => merged.set(exercise.id, exercise));
-    return Array.from(merged.values()).sort((a, b) => a.sortOrder - b.sortOrder);
+    [...dayDefaults, ...drafted].forEach((exercise) =>
+      merged.set(exercise.id, exercise),
+    );
+    return Array.from(merged.values()).sort(
+      (a, b) => a.sortOrder - b.sortOrder,
+    );
   }, [dayType, drafts, snapshot]);
 
   const filteredHistory = useMemo(() => {
@@ -312,12 +336,14 @@ export function FitnessPanel() {
     );
   }, [historyBodyPart, historyRange, snapshot]);
 
-  const historyStats = useMemo(() => buildHistoryStats(filteredHistory), [
-    filteredHistory,
-  ]);
+  const historyStats = useMemo(
+    () => buildHistoryStats(filteredHistory),
+    [filteredHistory],
+  );
 
   const startDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest("button,input,select,[role='tab']")) return;
+    if ((e.target as HTMLElement).closest("button,input,select,[role='tab']"))
+      return;
     if (!position) return;
     bringToFront();
     dragRef.current = {
@@ -334,8 +360,16 @@ export function FitnessPanel() {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return;
     setPosition({
-      x: clamp(drag.baseX + e.clientX - drag.startX, 8, window.innerWidth - size.w - 8),
-      y: clamp(drag.baseY + e.clientY - drag.startY, 8, window.innerHeight - size.h - 8),
+      x: clamp(
+        drag.baseX + e.clientX - drag.startX,
+        8,
+        window.innerWidth - size.w - 8,
+      ),
+      y: clamp(
+        drag.baseY + e.clientY - drag.startY,
+        8,
+        window.innerHeight - size.h - 8,
+      ),
     });
   };
 
@@ -424,16 +458,65 @@ export function FitnessPanel() {
   ) {
     const current = drafts[exercise.id]?.sets[setIndex]?.[field] ?? "";
     const base = parseDraftNumber(current) ?? 0;
-    updateDraftSet(exercise, setIndex, field, String(Math.max(0, base + amount)));
+    updateDraftSet(
+      exercise,
+      setIndex,
+      field,
+      String(Math.max(0, base + amount)),
+    );
   }
 
   function addSet(exercise: FitnessExercise) {
     setDrafts((prev) => ({
       ...prev,
       [exercise.id]: {
-        sets: [...(prev[exercise.id]?.sets ?? []), buildEmptySet()],
+        sets: [
+          ...(prev[exercise.id]?.sets ?? [buildEmptySet()]),
+          buildEmptySet(),
+        ],
       },
     }));
+    setSaveSummary(null);
+    setDirty(true);
+  }
+
+  function duplicateLastSet(exercise: FitnessExercise) {
+    setDrafts((prev) => {
+      const currentSets = prev[exercise.id]?.sets ?? [buildEmptySet()];
+      const lastSet = currentSets[currentSets.length - 1] ?? buildEmptySet();
+      return {
+        ...prev,
+        [exercise.id]: {
+          sets: [
+            ...currentSets,
+            {
+              weight: lastSet.weight,
+              reps: lastSet.reps,
+              rpe: lastSet.rpe,
+            },
+          ],
+        },
+      };
+    });
+    setSaveSummary(null);
+    setDirty(true);
+  }
+
+  function removeSet(exercise: FitnessExercise, setIndex: number) {
+    setDrafts((prev) => {
+      const currentSets = prev[exercise.id]?.sets ?? [buildEmptySet()];
+      const nextSets =
+        currentSets.length <= 1
+          ? [buildEmptySet()]
+          : currentSets.filter((_, index) => index !== setIndex);
+      return {
+        ...prev,
+        [exercise.id]: {
+          sets: nextSets,
+        },
+      };
+    });
+    setSaveSummary(null);
     setDirty(true);
   }
 
@@ -456,6 +539,7 @@ export function FitnessPanel() {
         },
       };
     });
+    setSaveSummary(null);
     setDirty(true);
     rest.start();
   }
@@ -466,6 +550,7 @@ export function FitnessPanel() {
       delete next[exerciseId];
       return next;
     });
+    setSaveSummary(null);
     setDirty(true);
   }
 
@@ -547,7 +632,9 @@ export function FitnessPanel() {
       );
       toast.success("Apple Health connector created");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Apple Health setup failed");
+      toast.error(
+        err instanceof Error ? err.message : "Apple Health setup failed",
+      );
     } finally {
       setHealthConnecting(false);
     }
@@ -572,8 +659,14 @@ export function FitnessPanel() {
   const panelStyle: CSSProperties = {
     left: position?.x ?? 20,
     top: position?.y ?? 84,
-    width: Math.min(size.w, typeof window === "undefined" ? size.w : window.innerWidth - 16),
-    height: Math.min(size.h, typeof window === "undefined" ? size.h : window.innerHeight - 16),
+    width: Math.min(
+      size.w,
+      typeof window === "undefined" ? size.w : window.innerWidth - 16,
+    ),
+    height: Math.min(
+      size.h,
+      typeof window === "undefined" ? size.h : window.innerHeight - 16,
+    ),
     zIndex: z,
   };
 
@@ -583,7 +676,7 @@ export function FitnessPanel() {
       role="dialog"
       aria-label="Fitness"
       onPointerDown={bringToFront}
-      className="fixed flex min-h-[420px] min-w-[340px] flex-col overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-2xl"
+      className="fixed flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-2xl"
       style={panelStyle}
     >
       <div
@@ -639,7 +732,7 @@ export function FitnessPanel() {
         />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4">
         {loading ? (
           <div className="grid h-full min-h-72 place-items-center text-court-fg-muted">
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -673,7 +766,7 @@ export function FitnessPanel() {
                 onDayTypeChange={(next) => {
                   setDayType(next);
                   setDrafts(buildDraftsForDay(snapshot, next));
-                  setDirty(true);
+                  setDirty(false);
                   setSaveSummary(null);
                 }}
                 onDayLabelChange={(id, label) =>
@@ -683,6 +776,8 @@ export function FitnessPanel() {
                 onSetChange={updateDraftSet}
                 onBump={bumpDraft}
                 onAddSet={addSet}
+                onDuplicateLastSet={duplicateLastSet}
+                onRemoveSet={removeSet}
                 onRepeat={repeatLast}
                 onRemoveExercise={removeExercise}
                 onCustomNameChange={setCustomName}
@@ -692,6 +787,7 @@ export function FitnessPanel() {
                 onDone={close}
                 onCreateAppleHealthConnection={onCreateAppleHealthConnection}
                 onRestartRest={rest.start}
+                onAddRestMinute={rest.addMinute}
                 onSkipRest={rest.reset}
                 stepsExpanded={stepsExpanded}
                 onToggleStepsExpanded={() => setStepsExpanded((v) => !v)}
@@ -718,7 +814,7 @@ export function FitnessPanel() {
       </div>
 
       <div
-        className="absolute bottom-0 right-0 h-5 w-5 cursor-nwse-resize"
+        className="absolute bottom-0 right-0 hidden h-5 w-5 cursor-nwse-resize sm:block"
         aria-hidden="true"
         onPointerDown={startResize}
         onPointerMove={moveResize}
@@ -812,7 +908,9 @@ function StepsHeader({
             <Footprints className="h-5 w-5" />
           </span>
           <div className="min-w-0">
-            <p className="text-xs font-medium text-court-fg-muted">Steps today</p>
+            <p className="text-xs font-medium text-court-fg-muted">
+              Steps today
+            </p>
             <div className="flex items-baseline gap-2">
               <span className="text-xl font-bold tabular-nums text-court-fg">
                 {steps.today.steps.toLocaleString()}
@@ -821,7 +919,9 @@ function StepsHeader({
                 <span
                   className={cn(
                     "text-xs font-semibold tabular-nums",
-                    delta >= 0 ? "text-court-brand-dark" : "text-court-fg-muted",
+                    delta >= 0
+                      ? "text-court-brand-dark"
+                      : "text-court-fg-muted",
                   )}
                 >
                   {delta >= 0 ? "+" : ""}
@@ -879,7 +979,9 @@ function StepsHeader({
             </p>
           </div>
           <div className="rounded-md bg-court-surface px-2 py-1">
-            <p className="font-semibold uppercase text-court-fg-muted">30 avg</p>
+            <p className="font-semibold uppercase text-court-fg-muted">
+              30 avg
+            </p>
             <p className="font-bold tabular-nums text-court-fg">
               {avg30.toLocaleString()}
             </p>
@@ -890,11 +992,7 @@ function StepsHeader({
   );
 }
 
-function AppleHealthSetup({
-  setup,
-}: {
-  setup: FitnessHealthConnectionSetup;
-}) {
+function AppleHealthSetup({ setup }: { setup: FitnessHealthConnectionSetup }) {
   return (
     <div className="space-y-2 rounded-md border border-court-border bg-court-surface p-3">
       <p className="text-xs font-semibold uppercase text-court-fg-muted">
@@ -980,50 +1078,93 @@ function RecordTab(props: {
     amount: number,
   ) => void;
   onAddSet: (exercise: FitnessExercise) => void;
+  onDuplicateLastSet: (exercise: FitnessExercise) => void;
+  onRemoveSet: (exercise: FitnessExercise, setIndex: number) => void;
   onRepeat: (exercise: FitnessExercise) => void;
   onRemoveExercise: (exerciseId: string) => void;
   onCustomNameChange: (name: string) => void;
   onCustomBodyPartChange: (bodyPart: string) => void;
-  onAddCustomExercise: () => void;
+  onAddCustomExercise: () => void | Promise<void>;
   onSave: () => void;
   onDone: () => void;
   onCreateAppleHealthConnection: () => void;
   onRestartRest: () => void;
+  onAddRestMinute: () => void;
   onSkipRest: () => void;
   onToggleStepsExpanded: () => void;
 }) {
+  const [recordMode, setRecordMode] = useState<"days" | "workout">("days");
+  const [showCustomForm, setShowCustomForm] = useState(false);
+
+  useEffect(() => {
+    setRecordMode("days");
+    setShowCustomForm(false);
+  }, [props.date]);
+
+  const dayLabel = props.dayLabels[props.dayType] ?? props.dayType;
+
+  function handleDaySelect(next: string) {
+    props.onDayTypeChange(next);
+    setRecordMode("workout");
+  }
+
+  if (recordMode === "days") {
+    return (
+      <div className="space-y-4">
+        <StepsHeader
+          steps={props.snapshot.steps}
+          expanded={props.stepsExpanded}
+          healthSetup={props.healthSetup}
+          healthConnecting={props.healthConnecting}
+          onToggleExpanded={props.onToggleStepsExpanded}
+          onCreateAppleHealthConnection={props.onCreateAppleHealthConnection}
+        />
+
+        <div className="grid gap-3">
+          <label className="min-w-0 text-xs font-semibold text-court-fg-muted">
+            Date
+            <input
+              type="date"
+              value={props.date}
+              onChange={(e) => props.onDateChange(e.target.value)}
+              className="mt-1 h-9 w-full rounded-md border border-court-border bg-court-surface px-3 text-sm text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/30"
+            />
+          </label>
+        </div>
+
+        <DayPickerRows
+          dayTypes={props.snapshot.dayTypes}
+          activeDayType={props.dayType}
+          dayLabels={props.dayLabels}
+          editingDay={props.editingDay}
+          onSelect={handleDaySelect}
+          onLabelChange={props.onDayLabelChange}
+          onEditingDayChange={props.onEditingDayChange}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      <StepsHeader
-        steps={props.snapshot.steps}
-        expanded={props.stepsExpanded}
-        healthSetup={props.healthSetup}
-        healthConnecting={props.healthConnecting}
-        onToggleExpanded={props.onToggleStepsExpanded}
-        onCreateAppleHealthConnection={props.onCreateAppleHealthConnection}
-      />
-
-      <div className="grid gap-3">
-        <label className="min-w-0 text-xs font-semibold text-court-fg-muted">
-          Date
-          <input
-            type="date"
-            value={props.date}
-            onChange={(e) => props.onDateChange(e.target.value)}
-            className="mt-1 h-9 w-full rounded-md border border-court-border bg-court-surface px-3 text-sm text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/30"
-          />
-        </label>
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setRecordMode("days")}
+          className="inline-flex h-10 items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-sm font-semibold text-court-fg transition hover:bg-court-surface-subtle"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Days
+        </button>
+        <div className="min-w-0 text-right">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-court-fg-muted">
+            Recording
+          </p>
+          <p className="truncate text-lg font-semibold text-court-fg">
+            {dayLabel}
+          </p>
+        </div>
       </div>
-
-      <DayPickerRows
-        dayTypes={props.snapshot.dayTypes}
-        activeDayType={props.dayType}
-        dayLabels={props.dayLabels}
-        editingDay={props.editingDay}
-        onSelect={props.onDayTypeChange}
-        onLabelChange={props.onDayLabelChange}
-        onEditingDayChange={props.onEditingDayChange}
-      />
 
       <div className="space-y-3">
         {props.selectedExercises.map((exercise) => (
@@ -1034,45 +1175,70 @@ function RecordTab(props: {
             onSetChange={props.onSetChange}
             onBump={props.onBump}
             onAddSet={props.onAddSet}
+            onDuplicateLastSet={props.onDuplicateLastSet}
+            onRemoveSet={props.onRemoveSet}
             onRepeat={props.onRepeat}
             onRemove={props.onRemoveExercise}
           />
         ))}
       </div>
 
-      <div className="rounded-md border border-court-border p-3">
-        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
-          <input
-            value={props.customName}
-            onChange={(e) => props.onCustomNameChange(e.target.value)}
-            placeholder="Custom exercise"
-            className="h-9 min-w-0 rounded-md border border-court-border bg-court-surface px-3 text-sm text-court-fg placeholder:text-court-fg-muted focus:outline-none focus:ring-2 focus:ring-court-brand/30"
-          />
-          <select
-            value={props.customBodyPart}
-            onChange={(e) => props.onCustomBodyPartChange(e.target.value)}
-            className="h-9 rounded-md border border-court-border bg-court-surface px-2 text-sm text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/30"
-          >
-            {FITNESS_BODY_PARTS.filter((part) => part !== "All").map((part) => (
-              <option key={part}>{part}</option>
-            ))}
-          </select>
-          <Button type="button" variant="secondary" size="sm" onClick={props.onAddCustomExercise}>
-            <Plus className="h-3.5 w-3.5" />
-            Add
-          </Button>
+      {showCustomForm ? (
+        <div className="rounded-md border border-court-border p-3">
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem_auto]">
+            <input
+              value={props.customName}
+              onChange={(e) => props.onCustomNameChange(e.target.value)}
+              placeholder="Custom exercise"
+              className="h-9 min-w-0 rounded-md border border-court-border bg-court-surface px-3 text-sm text-court-fg placeholder:text-court-fg-muted focus:outline-none focus:ring-2 focus:ring-court-brand/30"
+            />
+            <select
+              value={props.customBodyPart}
+              onChange={(e) => props.onCustomBodyPartChange(e.target.value)}
+              className="h-9 rounded-md border border-court-border bg-court-surface px-2 text-sm text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/30"
+            >
+              {FITNESS_BODY_PARTS.filter((part) => part !== "All").map(
+                (part) => (
+                  <option key={part}>{part}</option>
+                ),
+              )}
+            </select>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={async () => {
+                if (!props.customName.trim()) return;
+                await props.onAddCustomExercise();
+                setShowCustomForm(false);
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add
+            </Button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowCustomForm(true)}
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-sm font-semibold text-court-fg transition hover:bg-court-surface-subtle"
+        >
+          <Plus className="h-4 w-4" />
+          Add custom exercise
+        </button>
+      )}
 
       {props.saveSummary ? (
         <SaveSummaryCards summaries={props.saveSummary} onDone={props.onDone} />
       ) : null}
 
-      <div className="sticky bottom-0 z-10 -mx-4 space-y-2 border-t border-court-border bg-court-surface/95 px-4 py-3 backdrop-blur">
+      <div className="space-y-2 border-t border-court-border pt-3">
         {props.restRemaining > 0 ? (
           <RestTimerBar
             seconds={props.restRemaining}
             onRestart={props.onRestartRest}
+            onAddMinute={props.onAddRestMinute}
             onSkip={props.onSkipRest}
           />
         ) : null}
@@ -1080,7 +1246,7 @@ function RecordTab(props: {
           type="button"
           onClick={props.onSave}
           disabled={!props.canSave}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-md border-2 border-court-brand bg-transparent px-4 py-2.5 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand-tint focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/50 disabled:cursor-not-allowed disabled:opacity-45"
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-court-brand bg-transparent px-3 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand-tint focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/50 disabled:cursor-not-allowed disabled:opacity-45"
         >
           <Save className="h-4 w-4" />
           Save workout
@@ -1171,10 +1337,12 @@ function DayPickerRows({
 function RestTimerBar({
   seconds,
   onRestart,
+  onAddMinute,
   onSkip,
 }: {
   seconds: number;
   onRestart: () => void;
+  onAddMinute: () => void;
   onSkip: () => void;
 }) {
   const mins = Math.floor(seconds / 60);
@@ -1192,6 +1360,14 @@ function RestTimerBar({
         aria-label="Restart rest timer"
       >
         <RefreshCcw className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={onAddMinute}
+        className="inline-flex h-8 items-center justify-center rounded-md border border-court-brand/50 bg-court-surface/70 px-2 text-xs font-bold hover:bg-court-surface"
+        aria-label="Add one minute to rest timer"
+      >
+        +1 min
       </button>
       <button
         type="button"
@@ -1242,7 +1418,10 @@ function SaveSummaryCards({
             ) : null}
           </div>
           <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
-            <SummaryMetric label="Top" value={`${niceNumber(summary.topWeightLbs)} lb`} />
+            <SummaryMetric
+              label="Top"
+              value={`${niceNumber(summary.topWeightLbs)} lb`}
+            />
             <SummaryMetric label="Sets" value={summary.setCount} />
             <SummaryMetric label="Volume" value={niceNumber(summary.volume)} />
           </div>
@@ -1284,6 +1463,8 @@ function ExerciseCard({
   onSetChange,
   onBump,
   onAddSet,
+  onDuplicateLastSet,
+  onRemoveSet,
   onRepeat,
   onRemove,
 }: {
@@ -1302,6 +1483,8 @@ function ExerciseCard({
     amount: number,
   ) => void;
   onAddSet: (exercise: FitnessExercise) => void;
+  onDuplicateLastSet: (exercise: FitnessExercise) => void;
+  onRemoveSet: (exercise: FitnessExercise, setIndex: number) => void;
   onRepeat: (exercise: FitnessExercise) => void;
   onRemove: (exerciseId: string) => void;
 }) {
@@ -1401,10 +1584,12 @@ function ExerciseCard({
                       onChange={(value) =>
                         onSetChange(exercise, index, "reps", value)
                       }
-                      onStep={(amount) => onBump(exercise, index, "reps", amount)}
+                      onStep={(amount) =>
+                        onBump(exercise, index, "reps", amount)
+                      }
                     />
                   </div>
-                  <div className="mt-2 grid grid-cols-[1.5rem_minmax(0,6rem)_auto] items-center gap-2">
+                  <div className="mt-2 grid grid-cols-[1.5rem_minmax(0,6rem)_auto_2rem] items-center gap-2">
                     <span />
                     <input
                       inputMode="decimal"
@@ -1425,13 +1610,21 @@ function ExerciseCard({
                     >
                       {set.isPr || draftPr ? "PR" : volume}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveSet(exercise, index)}
+                      className="grid h-8 w-8 place-items-center rounded-md border border-court-border bg-court-surface text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+                      aria-label={`Remove set ${index + 1}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 </div>
               );
             })}
           </div>
 
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             <Button
               type="button"
               variant="secondary"
@@ -1440,7 +1633,17 @@ function ExerciseCard({
               className="flex-1"
             >
               <Plus className="h-3.5 w-3.5" />
-              Set
+              Blank
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => onDuplicateLastSet(exercise)}
+              className="flex-1"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Duplicate
             </Button>
             {exercise.isCustom ? (
               <button
@@ -1580,7 +1783,9 @@ function HistoryTab({
               className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-court-border px-3 py-2 text-sm"
             >
               <div className="min-w-0">
-                <p className="truncate font-semibold text-court-fg">{row.name}</p>
+                <p className="truncate font-semibold text-court-fg">
+                  {row.name}
+                </p>
                 <p className="truncate text-xs text-court-fg-muted">
                   {row.sessions} sessions · {niceNumber(row.volume)} lb volume
                 </p>
@@ -1604,11 +1809,18 @@ function HistoryTab({
 
       <div className="space-y-2">
         {days.slice(0, 12).map((day) => (
-          <div key={day.id} className="rounded-md border border-court-border p-3">
+          <div
+            key={day.id}
+            className="rounded-md border border-court-border p-3"
+          >
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="font-semibold text-court-fg">{shortDate(day.date)}</p>
-                <p className="truncate text-xs text-court-fg-muted">{day.dayType}</p>
+                <p className="font-semibold text-court-fg">
+                  {shortDate(day.date)}
+                </p>
+                <p className="truncate text-xs text-court-fg-muted">
+                  {day.dayType}
+                </p>
               </div>
               <div className="text-right text-xs text-court-fg-muted">
                 <p>{day.totalSets} sets</p>
@@ -1660,16 +1872,14 @@ function buildHistoryStats(days: FitnessWorkoutDay[]) {
     pr += day.prCount;
     let top = 0;
     for (const workout of day.workouts) {
-      const row =
-        exerciseMap.get(workout.exerciseName) ??
-        {
-          name: workout.exerciseName,
-          sessions: 0,
-          volume: 0,
-          topWeightLbs: null,
-          firstTopWeightLbs: null,
-          lastTopWeightLbs: null,
-        };
+      const row = exerciseMap.get(workout.exerciseName) ?? {
+        name: workout.exerciseName,
+        sessions: 0,
+        volume: 0,
+        topWeightLbs: null,
+        firstTopWeightLbs: null,
+        lastTopWeightLbs: null,
+      };
       row.sessions += 1;
       row.volume += workout.totalVolume;
       let workoutTop: number | null = null;
@@ -1827,7 +2037,9 @@ function TrendChart({
               strokeWidth="3"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className={s.tone === "brand" ? "text-court-brand" : "text-court-fg-muted"}
+              className={
+                s.tone === "brand" ? "text-court-brand" : "text-court-fg-muted"
+              }
             />
           ))}
         </svg>
