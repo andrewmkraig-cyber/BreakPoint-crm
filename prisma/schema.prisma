@@ -74,6 +74,11 @@ model User {
   pushSubscriptions     PushSubscription[]
   notes                 Note[]
   scheduledEmails       ScheduledEmail[]
+  fitnessExercises      Exercise[]
+  workoutDays           WorkoutDay[]
+  workouts              Workout[]
+  workoutSets           WorkoutSet[]
+  dailySteps            DailySteps[]
 }
 
 // Per-user branding for the email signature, resume header, and any
@@ -1142,6 +1147,11 @@ model Organization {
   triggerRules         TriggerRule[]
   notes                Note[]
   scheduledEmails      ScheduledEmail[]
+  fitnessExercises     Exercise[]
+  workoutDays          WorkoutDay[]
+  workouts             Workout[]
+  workoutSets          WorkoutSet[]
+  dailySteps           DailySteps[]
 }
 
 // One row per org holding the Microsoft Graph OAuth tokens that let us
@@ -1372,6 +1382,117 @@ model PersonalTrainerRule {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, createdAt])
+}
+
+// Ace Fitness: one workout session per recruiter per date. The row is
+// org-scoped for tenant cleanup and user-owned so Andrew and Austin can
+// track private sessions without commingling live workout data.
+model WorkoutDay {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  date           DateTime @db.Date
+  dayType        String
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workouts     Workout[]
+
+  @@unique([organizationId, userId, date])
+  @@index([organizationId, date])
+  @@index([userId, date])
+}
+
+// Shared default exercises live at ownerKey="default"; custom exercises
+// carry ownerKey=userId and userId=<creator>. Routes only expose defaults
+// plus the signed-in user's custom rows, which keeps customs private.
+model Exercise {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String?
+  ownerKey       String   @default("default")
+  name           String
+  slug           String
+  bodyPart       String
+  defaultDay     String?
+  sortOrder      Int      @default(0)
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workouts     Workout[]
+
+  @@unique([organizationId, ownerKey, slug])
+  @@index([organizationId, isDefault, sortOrder])
+  @@index([organizationId, userId])
+  @@index([organizationId, bodyPart])
+}
+
+model Workout {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  workoutDayId   String
+  exerciseId     String
+  exerciseName   String?
+  performedAt    DateTime @default(now())
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workoutDay   WorkoutDay   @relation(fields: [workoutDayId], references: [id], onDelete: Cascade)
+  exercise     Exercise     @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
+  sets         WorkoutSet[]
+
+  @@index([organizationId, userId, performedAt])
+  @@index([workoutDayId])
+  @@index([exerciseId, performedAt])
+}
+
+model WorkoutSet {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  workoutId      String
+  setNumber      Int
+  weightLbs      Float?
+  reps           Int?
+  rpe            Float?
+  isPr           Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workout      Workout      @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+
+  @@unique([workoutId, setNumber])
+  @@index([organizationId, userId])
+}
+
+model DailySteps {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  date           DateTime @db.Date
+  steps          Int      @default(0)
+  source         String   @default("manual")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, date])
+  @@index([organizationId, date])
+  @@index([userId, date])
 }
 
 // Phase 5A.4: per-org candidate lists. Recruiter-curated buckets of

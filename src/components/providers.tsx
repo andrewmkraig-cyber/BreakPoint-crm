@@ -15,6 +15,7 @@ import { FloatingThreadProvider } from "@/lib/floating-thread-context";
 import { PhonePanelsProvider } from "@/lib/phone-panels-context";
 import { FindMatchesProvider } from "@/lib/find-matches-context";
 import { ClaudePanelProvider } from "@/lib/claude-panel-context";
+import { FitnessPanelProvider } from "@/lib/fitness-panel-context";
 import { CalendarDrawerProvider } from "@/lib/calendar-drawer-context";
 import { YouTubePanelProvider } from "@/components/youtube-panel/YouTubePanelProvider";
 import { SpotifyPanelProvider } from "@/components/spotify-panel/SpotifyPanelProvider";
@@ -23,6 +24,7 @@ import { FloatingThreadWindow } from "@/components/mail/floating-thread-window";
 import { GlobalPhonePanels } from "@/components/phone/global-phone-panels";
 import { FindMatchesPanel } from "@/components/game-plan/find-matches-panel";
 import { ClaudePanel } from "@/components/claude-panel/ClaudePanel";
+import { FitnessPanel } from "@/components/fitness/fitness-panel";
 import { YouTubePanel } from "@/components/youtube-panel/YouTubePanel";
 import { SpotifyPanel } from "@/components/spotify-panel/SpotifyPanel";
 import { GlobalCalendarDrawer } from "@/components/calendar/global-calendar-drawer";
@@ -58,33 +60,36 @@ export function Providers({ children }: { children: ReactNode }) {
             <PhonePanelsProvider>
               <FindMatchesProvider>
                 <ClaudePanelProvider>
-                  <CalendarDrawerProvider>
-                    <YouTubePanelProvider>
-                      <SpotifyPanelProvider>
-                        {children}
-                        <MinimizedTray />
-                        <FloatingThreadWindow />
-                        <GlobalPhonePanels />
-                        <FindMatchesPanel />
-                        <ClaudePanel />
-                        <GlobalCalendarDrawer />
-                        <YouTubePanel />
-                        <SpotifyPanel />
-                        <Toaster
-                          position={toastPosition}
-                          richColors
-                          closeButton
-                          toastOptions={{
-                            style: {
-                              fontFamily:
-                                "var(--font-inter), system-ui, sans-serif",
-                            },
-                          }}
-                        />
-                        <ToastStackControls stackDir={stackDir} />
-                      </SpotifyPanelProvider>
-                    </YouTubePanelProvider>
-                  </CalendarDrawerProvider>
+                  <FitnessPanelProvider>
+                    <CalendarDrawerProvider>
+                      <YouTubePanelProvider>
+                        <SpotifyPanelProvider>
+                          {children}
+                          <MinimizedTray />
+                          <FloatingThreadWindow />
+                          <GlobalPhonePanels />
+                          <FindMatchesPanel />
+                          <ClaudePanel />
+                          <FitnessPanel />
+                          <GlobalCalendarDrawer />
+                          <YouTubePanel />
+                          <SpotifyPanel />
+                          <Toaster
+                            position={toastPosition}
+                            richColors
+                            closeButton
+                            toastOptions={{
+                              style: {
+                                fontFamily:
+                                  "var(--font-inter), system-ui, sans-serif",
+                              },
+                            }}
+                          />
+                          <ToastStackControls stackDir={stackDir} />
+                        </SpotifyPanelProvider>
+                      </YouTubePanelProvider>
+                    </CalendarDrawerProvider>
+                  </FitnessPanelProvider>
                 </ClaudePanelProvider>
               </FindMatchesProvider>
             </PhonePanelsProvider>
