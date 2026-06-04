@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { CalendarEvent, CalendarTeamMember } from "@/lib/calendar/types";
+import { googleEventColorStyle } from "@/lib/calendar/google-colors";
 import { eventTypeMeta, fmtTime } from "@/lib/calendar/utils";
 import {
   addDays,
@@ -262,6 +263,8 @@ function EventChip({
   selfKey: string | null;
   onClick: (ev: CalendarEvent) => void;
 }) {
+  const meta = eventTypeMeta(ev.type);
+  const colorStyle = googleEventColorStyle(ev.calendarColor);
   if (ev.allDay) {
     // Owned = self is an owner (or no owners at all, which we treat
     // as a personal event). Team-only events render in the neutral
@@ -279,16 +282,18 @@ function EventChip({
         }}
         className={cn(
           "w-full cursor-pointer truncate rounded border px-1.5 py-0.5 text-[11px] font-semibold leading-tight",
-          isOwned
-            ? "border-court-brand/40 bg-court-brand-tint text-court-brand-dark"
-            : "border-court-border bg-court-surface-subtle text-court-fg",
+          colorStyle
+            ? "shadow-sm"
+            : isOwned
+              ? meta.pillClass
+              : "border-court-border bg-court-surface-subtle text-court-fg",
         )}
+        style={colorStyle}
       >
         {ev.title}
       </div>
     );
   }
-  const meta = eventTypeMeta(ev.type);
   return (
     <div
       onClick={(e) => {
@@ -297,8 +302,9 @@ function EventChip({
       }}
       className={cn(
         "cursor-pointer truncate rounded border px-1.5 py-0.5 text-[11px] leading-tight",
-        meta.pillClass,
+        colorStyle ? "font-semibold shadow-sm" : meta.pillClass,
       )}
+      style={colorStyle}
     >
       <div className="truncate font-semibold">
         <span className="font-medium opacity-70">

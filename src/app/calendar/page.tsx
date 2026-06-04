@@ -12,6 +12,7 @@ import type {
   CalendarReminder,
   CalendarTeamMember,
 } from "@/lib/calendar/types";
+import { isSuppressedGoogleMirror } from "@/lib/calendar/suppressed-google-mirrors";
 import { htmlToReadableText } from "@/lib/merge-fields";
 import { prisma } from "@/lib/prisma";
 
@@ -75,6 +76,9 @@ function allDayDisplayDate(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0));
 }
 
+const PAST_WINDOW_DAYS = 90;
+const FUTURE_WINDOW_DAYS = 400;
+
 function formatRelative(target: Date, base: Date): string {
   const diffMs = target.getTime() - base.getTime();
   const absMin = Math.round(Math.abs(diffMs) / 60000);
@@ -107,8 +111,10 @@ export default async function CalendarPage() {
   const selfEmail = session?.user?.email?.toLowerCase() ?? null;
 
   const now = new Date();
-  const windowMs = 90 * 24 * 60 * 60 * 1000;
-  const reminderPastWindowStart = new Date(now.getTime() - windowMs);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const windowStart = new Date(now.getTime() - PAST_WINDOW_DAYS * dayMs);
+  const windowEnd = new Date(now.getTime() + FUTURE_WINDOW_DAYS * dayMs);
+  const reminderPastWindowStart = windowStart;
 
   const [
     rowsRaw,
@@ -123,8 +129,8 @@ export default async function CalendarPage() {
         organizationId: org.id,
         status: { not: "CANCELLED" },
         startTime: {
-          gte: new Date(now.getTime() - windowMs),
-          lte: new Date(now.getTime() + windowMs),
+          gte: windowStart,
+          lte: windowEnd,
         },
       },
       orderBy: { startTime: "asc" },
@@ -171,8 +177,8 @@ export default async function CalendarPage() {
         organizationId: org.id,
         status: "cancelled",
         scheduledAt: {
-          gte: new Date(now.getTime() - windowMs),
-          lte: new Date(now.getTime() + windowMs),
+          gte: windowStart,
+          lte: windowEnd,
         },
         OR: [
           { googleEventIdMine: { not: null } },
@@ -191,8 +197,8 @@ export default async function CalendarPage() {
         organizationId: org.id,
         status: { not: "cancelled" },
         scheduledAt: {
-          gte: new Date(now.getTime() - windowMs),
-          lte: new Date(now.getTime() + windowMs),
+          gte: windowStart,
+          lte: windowEnd,
         },
         OR: [
           { googleEventIdMine: { not: null } },
@@ -220,7 +226,11 @@ export default async function CalendarPage() {
       .flatMap((iv) => [iv.googleEventIdMine, iv.googleEventIdClient, iv.googleEventIdCandidate])
       .filter((id): id is string => Boolean(id)),
   );
-  const rows = rowsRaw.filter((row) => !cancelledGoogleEventIds.has(row.googleEventId));
+  const rows = rowsRaw.filter(
+    (row) =>
+      !cancelledGoogleEventIds.has(row.googleEventId) &&
+      !isSuppressedGoogleMirror(row.title, row.startTime),
+  );
   // Map each interview-owned googleEventId → its Interview.id + which party
   // the event represents + the verbatim subject/body that party was emailed.
   // This is the existing googleEventId → Interview.id pattern, enriched so

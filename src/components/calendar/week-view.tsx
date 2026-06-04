@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 
 import type { CalendarEvent, CalendarTeamMember } from "@/lib/calendar/types";
+import { googleEventColorStyle } from "@/lib/calendar/google-colors";
 import {
   computeEventColumns,
   eventTypeMeta,
@@ -182,6 +183,7 @@ export function CalendarWeekView({
                 {/* Events */}
                 {dayEvents.map((ev) => {
                   const meta = eventTypeMeta(ev.type);
+                  const colorStyle = googleEventColorStyle(ev.calendarColor);
                   const start = decimalHour(ev.startTime);
                   const end = decimalHour(ev.endTime);
                   const top = hourToY(start);
@@ -226,11 +228,11 @@ export function CalendarWeekView({
                       className={cn(
                         "absolute cursor-pointer overflow-hidden rounded-md border px-2 py-1 text-left leading-tight transition hover:-translate-y-px hover:shadow-sm",
                         !multi && "left-1 right-1",
-                        meta.pillClass,
+                        colorStyle ? "shadow-sm" : meta.pillClass,
                         isSelected &&
                           "outline-2 outline-offset-2 outline outline-court-brand",
                       )}
-                      style={{ top, height, ...(laneStyle ?? {}) }}
+                      style={{ top, height, ...(laneStyle ?? {}), ...(colorStyle ?? {}) }}
                     >
                       {owners.length > 0 && (
                         <span className="absolute right-1 top-1 flex -space-x-1">

@@ -4,6 +4,8 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { getFreshAccessToken } from "@/lib/google-calendar";
+import { googleEventColor, GOOGLE_EVENT_COLORS } from "@/lib/calendar/google-colors";
+import { isSuppressedGoogleMirror } from "@/lib/calendar/suppressed-google-mirrors";
 
 // Pulls every readable Google Calendar the user has access to and mirrors
 // a ±90-day event window into CalendarEvent. Designed to be called on
@@ -17,7 +19,8 @@ import { getFreshAccessToken } from "@/lib/google-calendar";
 // throw a distinct "No Google account linked." error the route layer
 // surfaces verbatim.
 
-const WINDOW_DAYS = 90;
+const PAST_WINDOW_DAYS = 90;
+const FUTURE_WINDOW_DAYS = 400;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 type GoogleCalendarListItem = {
@@ -49,6 +52,7 @@ type GoogleEvent = {
   status?: string;
   summary?: string;
   description?: string;
+  colorId?: string;
   start?: GoogleEventTime;
   end?: GoogleEventTime;
   location?: string;
@@ -81,6 +85,11 @@ function dateOnlyToDisplayDate(date: string): Date {
 
 type GoogleEventsResponse = {
   items?: GoogleEvent[];
+  nextPageToken?: string;
+};
+
+type GoogleColorsResponse = {
+  event?: Record<string, { background?: string }>;
 };
 
 export type SyncResult = {
@@ -126,8 +135,20 @@ export async function syncGoogleCalendars(
   const calendars = listJson.items ?? [];
 
   const now = Date.now();
-  const timeMin = new Date(now - WINDOW_DAYS * DAY_MS).toISOString();
-  const timeMax = new Date(now + WINDOW_DAYS * DAY_MS).toISOString();
+  const windowStart = new Date(now - PAST_WINDOW_DAYS * DAY_MS);
+  const windowEnd = new Date(now + FUTURE_WINDOW_DAYS * DAY_MS);
+  const timeMin = windowStart.toISOString();
+  const timeMax = windowEnd.toISOString();
+  const colorRes = await fetch("https://www.googleapis.com/calendar/v3/colors", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  const colorJson = colorRes.ok
+    ? ((await colorRes.json()) as GoogleColorsResponse)
+    : ({ event: undefined } satisfies GoogleColorsResponse);
+  const eventColors = colorJson.event ?? Object.fromEntries(
+    Object.entries(GOOGLE_EVENT_COLORS).map(([id, background]) => [id, { background }]),
+  );
 
   let eventsSynced = 0;
 
@@ -144,29 +165,38 @@ export async function syncGoogleCalendars(
     if (cal.accessRole === "reader") continue;
     if (!cal.id) continue;
 
-    const url = new URL(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events`,
-    );
-    url.searchParams.set("timeMin", timeMin);
-    url.searchParams.set("timeMax", timeMax);
-    url.searchParams.set("maxResults", "500");
-    url.searchParams.set("singleEvents", "true");
-    url.searchParams.set("orderBy", "startTime");
+    const seenEventIds = new Set<string>();
+    let pageToken: string | undefined;
+    let calendarReadOk = true;
 
-    const eventsRes = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      cache: "no-store",
-    });
-    if (!eventsRes.ok) {
-      // 404/410 on a calendar we just listed is benign (deleted between
-      // calls); 403 means downgraded access. Skip and continue — one bad
-      // calendar shouldn't take down the whole sync.
-      continue;
-    }
-    const eventsJson = (await eventsRes.json()) as GoogleEventsResponse;
-    const events = eventsJson.items ?? [];
+    do {
+      const url = new URL(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events`,
+      );
+      url.searchParams.set("timeMin", timeMin);
+      url.searchParams.set("timeMax", timeMax);
+      url.searchParams.set("maxResults", "500");
+      url.searchParams.set("singleEvents", "true");
+      url.searchParams.set("orderBy", "startTime");
+      if (pageToken) url.searchParams.set("pageToken", pageToken);
 
-    for (const ev of events) {
+      const eventsRes = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
+      if (!eventsRes.ok) {
+        // 404/410 on a calendar we just listed is benign (deleted between
+        // calls); 403 means downgraded access. Skip and continue — one bad
+        // calendar shouldn't take down the whole sync.
+        calendarReadOk = false;
+        pageToken = undefined;
+        break;
+      }
+      const eventsJson = (await eventsRes.json()) as GoogleEventsResponse;
+      const events = eventsJson.items ?? [];
+      pageToken = eventsJson.nextPageToken;
+
+      for (const ev of events) {
       if (!ev.id) continue;
       // Google may still surface a cancelled event in a window-scoped
       // list (status === "cancelled"). Don't skip — that left stale
@@ -202,11 +232,18 @@ export async function syncGoogleCalendars(
         : ev.end?.date
           ? dateOnlyToDisplayDate(ev.end.date)
           : new Date(now);
+      if (isSuppressedGoogleMirror(ev.summary, startTime)) {
+        continue;
+      }
+
+      seenEventIds.add(ev.id);
+
       const status: "CONFIRMED" | "TENTATIVE" =
         ev.status === "tentative" ? "TENTATIVE" : "CONFIRMED";
 
       const meetLink = pickMeetLink(ev);
       const htmlLink = ev.htmlLink ?? null;
+      const eventColor = googleEventColor(ev.colorId, eventColors);
 
       await prisma.calendarEvent.upsert({
         where: {
@@ -221,7 +258,7 @@ export async function syncGoogleCalendars(
           googleEventId: ev.id,
           calendarId: cal.id,
           calendarName: cal.summary ?? "primary",
-          calendarColor: cal.backgroundColor ?? null,
+          calendarColor: eventColor,
           title: ev.summary ?? "(No title)",
           description: ev.description ?? null,
           startTime,
@@ -238,7 +275,7 @@ export async function syncGoogleCalendars(
         },
         update: {
           calendarName: cal.summary ?? "primary",
-          calendarColor: cal.backgroundColor ?? null,
+          calendarColor: eventColor,
           title: ev.summary ?? "(No title)",
           description: ev.description ?? null,
           startTime,
@@ -255,6 +292,22 @@ export async function syncGoogleCalendars(
         },
       });
       eventsSynced += 1;
+      }
+    } while (pageToken);
+
+    if (calendarReadOk) {
+      await prisma.calendarEvent.updateMany({
+        where: {
+          organizationId,
+          calendarId: cal.id,
+          status: { not: "CANCELLED" },
+          startTime: { gte: windowStart, lt: windowEnd },
+          ...(seenEventIds.size > 0
+            ? { googleEventId: { notIn: Array.from(seenEventIds) } }
+            : {}),
+        },
+        data: { status: "CANCELLED", syncedAt: new Date() },
+      });
     }
   }
 

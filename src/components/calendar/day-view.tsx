@@ -4,6 +4,7 @@ import { MapPin, Plus, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { CalendarEvent, CalendarTeamMember } from "@/lib/calendar/types";
+import { googleEventColorStyle } from "@/lib/calendar/google-colors";
 import {
   computeEventColumns,
   eventTypeMeta,
@@ -149,6 +150,7 @@ export function CalendarDayView({
           ))}
           {dayEvents.map((ev) => {
             const meta = eventTypeMeta(ev.type);
+            const colorStyle = googleEventColorStyle(ev.calendarColor);
             const start = decimalHour(ev.startTime);
             const end = decimalHour(ev.endTime);
             const top = (start - START_HOUR) * SLOT;
@@ -193,16 +195,16 @@ export function CalendarDayView({
                   }}
                   className={cn(
                     "absolute cursor-pointer overflow-hidden rounded-lg border px-3 py-1.5 text-left leading-tight transition hover:-translate-y-px hover:shadow-sm",
-                    meta.pillClass,
+                    colorStyle ? "shadow-sm" : meta.pillClass,
                     isSelected &&
                       "outline outline-2 outline-offset-2 outline-court-brand",
                   )}
-                  style={{ top, height, ...laneStyle }}
+                  style={{ top, height, ...laneStyle, ...(colorStyle ?? {}) }}
                 >
                   <div className="truncate text-[10px] font-bold uppercase tracking-[0.1em]">
                     {meta.label}
                   </div>
-                  <div className="truncate text-[12.5px] font-semibold text-court-fg">
+                  <div className={cn("truncate text-[12.5px] font-semibold", colorStyle ? "text-current" : "text-court-fg")}>
                     {ev.title}
                   </div>
                   {height >= 58 && (
@@ -223,11 +225,11 @@ export function CalendarDayView({
                 }}
                 className={cn(
                   "absolute cursor-pointer overflow-hidden rounded-lg border px-4 py-3 text-left transition hover:-translate-y-px hover:shadow-sm",
-                  meta.pillClass,
+                  colorStyle ? "shadow-sm" : meta.pillClass,
                   isSelected &&
                     "outline outline-2 outline-offset-2 outline-court-brand",
                 )}
-                style={{ top, height, ...laneStyle }}
+                style={{ top, height, ...laneStyle, ...(colorStyle ?? {}) }}
               >
                 <div className="flex items-start gap-3">
                   <div className="flex-1">
@@ -240,11 +242,11 @@ export function CalendarDayView({
                         {fmtDateRange(ev.startTime, ev.endTime)}
                       </span>
                     </div>
-                    <div className="mt-1 font-serif text-base font-semibold text-court-fg">
+                    <div className={cn("mt-1 font-serif text-base font-semibold", colorStyle ? "text-current" : "text-court-fg")}>
                       {ev.title}
                     </div>
                     {ev.meta && (
-                      <div className="text-[12.5px] text-court-fg">{ev.meta}</div>
+                      <div className={cn("text-[12.5px]", colorStyle ? "text-current opacity-90" : "text-court-fg")}>{ev.meta}</div>
                     )}
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-[11.5px]">
                       {ev.location && (
