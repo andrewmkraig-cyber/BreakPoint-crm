@@ -78,14 +78,13 @@ export function TopBar() {
 
       <div className="hidden flex-1 lg:block" />
 
-      {/* Primary action cluster. Mobile right-aligns these on their own row
-          so the + / assistant / workout controls sit on the right edge. The
-          hamburger sits left of the desktop-matching theme/+ pair. Desktop
-          keeps the same single-row order it already had. */}
+      {/* Primary action cluster. Mobile puts the hamburger on the far left of
+          this row while the theme / + / assistant / workout controls stay
+          grouped on the right. Desktop keeps the same single-row order it
+          already had. */}
       <div className="order-3 ml-auto flex h-10 w-full items-center justify-end gap-2 md:order-none md:ml-0 md:h-auto md:w-auto md:gap-3">
-        {/* Hamburger menu - PWA ONLY (hidden at md+). Sits to the left of
-            the + button in the mobile action row. */}
-        <div className="md:hidden">
+        {/* Hamburger menu - PWA ONLY (hidden at md+). */}
+        <div className="mr-auto md:hidden">
           <MobileNav />
         </div>
         {/* Light/Dark toggle. Same h-10 w-10 icon-button vocabulary as the
