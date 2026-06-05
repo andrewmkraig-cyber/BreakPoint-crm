@@ -1,8 +1,26 @@
 # ACE_STATE.md
-Last updated: 2026-06-05 · Ace 86.0
-Current Version: Ace 86.0
+Last updated: 2026-06-05 · Ace 87.0
+Current Version: Ace 87.0
 Last Shipped: 2026-06-05
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 87.0 (2026-06-05) - BD Apollo enrollment: find-the-person path fix + 422 fix + dedup reset
+
+BD enrollment was discovering companies but enrolling nobody (nameless org-only shells). This session diagnosed the root cause read-only, then shipped the find-the-person fix, the Apollo 422 fix, and a prod dedup reset so the broken runs' companies can resurface. All items pushed to main; `npm run build` exits 0. No schema changes.
+
+- **Root-cause diagnosis (read-only).** The Apollo enrollment bug traced to three faults: (a) the people-search step was **disconnected from the enroll path** - discovery found companies but the contact lookup never resolved real people; (b) **wrong hardcoded titles** were used instead of the BD Settings titles; (c) when no person resolved, the run wrote a **nameless org-only shell** and counted it as discovered, so it both polluted Active Campaigns and seeded the dedup window. No code touched in the diagnosis pass.
+- **Prompt 1 - find-the-person path fixed (`cf61095`).** Backfills the company **domain during discovery** so the contact search has something to key on; **collapsed the contact lookup to a single domain + BD-Settings-titles people search** (was a disconnected/wrong-title query); **deleted the hardcoded HR/exec fallback** title union; and now **skips the company instead of writing a nameless shell** when no people are found. Net: runs either enroll a real, named contact or cleanly skip - no more shells.
+- **Apollo 422 fixed (`b1ce721`).** The people-search call 422'd on the org-domains filter. Renamed `organization_domains` to **`q_organization_domains_list`** (the field name Apollo's People Search actually accepts).
+- **Dedup reset applied to prod (`b0432f5`).** Added `scripts/clear-bd-dedup-for-empty-runs.ts` - nulls `discoveredPayload` on `COMPLETE` runs with `enrolledCount = 0` so the 30-day dedup window (`api/cron/bd-discovery`) stops blocking those never-enrolled companies from re-discovery. Dry-run by default, `--apply` to write, org-scoped. **Ran `--apply` against prod**: cleared 1 run (`cmq10k2840001jv04ckjv9207`, discovered=1/enrolled=0), freeing 1 company/job fingerprint for the next cron run.
+
+### Queued bugs (Ace 87.0, not yet fixed)
+- **Manufacturing-tab no-saved-search guard.** The Manufacturing vertical tab needs a guard for the no-saved-search case (currently unhandled).
+- **Auto-refresh after a discovery run.** Today's Batch does not auto-refresh once a discovery run completes; the user has to manually reload to see new results.
+
+### Next task (Ace 88.0 candidate) - finish the BD enrollment arc
+1. **Prompt 2 - email reveal.** Add a per-contact `people/match` call with `reveal_personal_emails=true` so enrolled contacts carry a real email (gated per-contact, not bulk).
+2. **Prompt 3 - dry-run verify.** End-to-end dry-run verification of the full discover -> find-person -> reveal-email path before going live.
+3. **Activate ON.** Flip the Apollo sequence "Tax BD Sequence" activation ON only after Prompt 3 confirms the path enrolls real, named, emailable contacts.
 
 ## What Shipped in Ace 82.0-86.0 (2026-06-05) - BD Engine hardening: webhook retirement, Today's Batch redesign, BD Settings overhaul, Client Signals + sweep
 

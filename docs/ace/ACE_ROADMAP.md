@@ -1,10 +1,20 @@
 # Ace Roadmap
-Last updated: 2026-06-05 · Ace 86.0
+Last updated: 2026-06-05 · Ace 87.0
 
 ## Active Build Sequence
 
-### NEXT - TheirStack dynamic per-vertical discovery query
-The cron (`src/app/api/cron/bd-discovery/route.ts`) still discovers off hardcoded `DISCOVERY_TITLES` + `locations: []` and never reads the BD Settings saved searches / verticals (diagnosed Ace 83.0). Make discovery **dynamic per vertical**: the cron reads the BD Settings verticals + their saved searches to build the TheirStack query (titles, and the location override once `job_location_or` geonames-id mapping is solved). This is the priority item for the next session - it makes the Verticals/Saved Search UI actually drive discovery instead of being display-only.
+### NEXT - Finish the BD Apollo enrollment arc (Ace 87.0 -> 88.0)
+Ace 87.0 fixed the find-the-person path (single domain+BD-Settings-titles people search, no nameless shells), the Apollo People Search 422 (`q_organization_domains_list`), and reset the dedup window for zero-enrolled COMPLETE runs. Remaining sequence to take BD outbound live:
+1. **Prompt 2 - email reveal.** Per-contact `people/match` with `reveal_personal_emails=true` so each enrolled contact carries a real personal email (per-contact reveal, not bulk).
+2. **Prompt 3 - dry-run verify.** End-to-end dry run of discover -> find-person -> reveal-email; confirm real named, emailable contacts before going live.
+3. **Activate ON.** Flip the Apollo "Tax BD Sequence" (id `6a06068f8142ee001d2b3dd2`) activation ON only after Prompt 3 passes. This is the long-blocked GO-LIVE GATE.
+
+Queued bugs from Ace 87.0 (each needs its own prompt):
+- **Manufacturing-tab no-saved-search guard** - the Manufacturing vertical tab is unguarded when no saved search exists.
+- **Auto-refresh after a discovery run** - Today's Batch doesn't refresh on run completion; requires a manual reload.
+
+### THEN - TheirStack dynamic per-vertical discovery query
+The cron (`src/app/api/cron/bd-discovery/route.ts`) still discovers off hardcoded `DISCOVERY_TITLES` + `locations: []` and never reads the BD Settings saved searches / verticals (diagnosed Ace 83.0). Make discovery **dynamic per vertical**: the cron reads the BD Settings verticals + their saved searches to build the TheirStack query (titles, and the location override once `job_location_or` geonames-id mapping is solved). It makes the Verticals/Saved Search UI actually drive discovery instead of being display-only.
 
 ### DONE this session (Ace 82.0-86.0) - BD webhook safety + Today's Batch redesign
 The prior priority block (queued at Ace 81.0 close) is complete. Retained here as a closed record.
