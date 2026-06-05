@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
 import { CalendarEventDrawer } from "@/components/calendar/event-drawer";
+import { googleEventColorStyle } from "@/lib/calendar/google-colors";
 import type { CalendarEvent, CalendarEventType } from "@/lib/calendar/types";
 import { eventTypeMeta } from "@/lib/calendar/utils";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,10 @@ export type DayCellEvent = {
   type: CalendarEventType;
   title: string;
   timeLabel: string;
+  // Resolved Google Calendar hex (per-event color) when set; the widget
+  // tints the pill with it so colors match /calendar exactly. Falls back
+  // to the event-type color when absent.
+  calendarColor?: string;
 };
 
 export type DayCell = {
@@ -41,6 +46,7 @@ export type UpNextRow = {
   type: CalendarEventType;
   title: string;
   meta: string;
+  calendarColor?: string;
 };
 
 export type LaterRow = {
@@ -50,6 +56,7 @@ export type LaterRow = {
   type: CalendarEventType;
   title: string;
   meta: string;
+  calendarColor?: string;
 };
 
 // Vertical strip down the left edge of each schedule row. Blue for
@@ -285,17 +292,22 @@ export function ThisWeekWidgetClient({ initial }: Props) {
                 ) : (
                   visible.map((e) => {
                     const meta = eventTypeMeta(e.type);
+                    // Same precedence as /calendar: the per-event Google
+                    // color wins (inline tint), the event-type class is the
+                    // fallback when an event has no color.
+                    const colorStyle = googleEventColorStyle(e.calendarColor);
                     return (
                       <button
                         key={e.id}
                         type="button"
                         onClick={() => openEvent(e.id)}
                         title={`${e.timeLabel} · ${e.title}`}
+                        style={colorStyle}
                         className={cn(
                           // Single compact line: time + title inline, both
                           // truncated, so many events fit in the day cell.
                           "flex min-w-0 items-baseline gap-1 rounded-md border px-1.5 py-[1px] text-left leading-tight transition hover:brightness-95 focus:outline-none focus:ring-1 focus:ring-court-brand/40",
-                          meta.pillClass,
+                          colorStyle ? "font-semibold shadow-sm" : meta.pillClass,
                         )}
                       >
                         <span className="shrink-0 text-[9px] font-semibold tabular-nums opacity-70">
@@ -347,6 +359,7 @@ export function ThisWeekWidgetClient({ initial }: Props) {
                   name={r.title}
                   meta={r.meta}
                   type={r.type}
+                  calendarColor={r.calendarColor}
                   onClick={() => openEvent(r.id)}
                 />
               </li>
@@ -381,6 +394,7 @@ export function ThisWeekWidgetClient({ initial }: Props) {
                   name={r.title}
                   meta={r.meta}
                   type={r.type}
+                  calendarColor={r.calendarColor}
                   onClick={() => openEvent(r.id)}
                 />
               </li>
@@ -414,6 +428,7 @@ function ScheduleRow({
   name,
   meta,
   type,
+  calendarColor,
   onClick,
 }: {
   topLabel: string;
@@ -421,8 +436,13 @@ function ScheduleRow({
   name: string;
   meta: string;
   type: CalendarEventType;
+  calendarColor?: string;
   onClick: () => void;
 }) {
+  // Per-event Google color wins over the event-type color so the strip +
+  // chip read the same hue as the matching pill on /calendar; the type
+  // colors stay the fallback for events Google didn't color.
+  const chipStyle = googleEventColorStyle(calendarColor);
   return (
     <button
       type="button"
@@ -442,8 +462,9 @@ function ScheduleRow({
       <span
         className={cn(
           "my-1 w-[3px] self-stretch shrink-0 rounded-[2px]",
-          STRIP_BG[type],
+          !calendarColor && STRIP_BG[type],
         )}
+        style={calendarColor ? { backgroundColor: calendarColor } : undefined}
       />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13.5px] font-semibold text-court-fg">
@@ -458,8 +479,9 @@ function ScheduleRow({
       <span
         className={cn(
           "shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em]",
-          PILL_CLASS[type],
+          !chipStyle && PILL_CLASS[type],
         )}
+        style={chipStyle}
       >
         {PILL_LABEL[type]}
       </span>

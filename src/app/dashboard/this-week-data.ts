@@ -147,13 +147,28 @@ function formatDurationLabel(min: number): string {
 
 // Secondary line under the event title in the Up Next / Later rows.
 // Prefer location (most concrete), then guest list (truncated to two),
-// then the calendar name as a last-resort label.
-function deriveRowMeta(ev: CalendarEvent): string {
+// then the calendar name as a last-resort label. Andrew's own identity
+// (his email shows up as a sole attendee and as his primary calendar's
+// name) is filtered out everywhere - the dashboard is his own view, so
+// "andrew@breakpointtalent.com" under every event is just noise.
+function deriveRowMeta(
+  ev: CalendarEvent,
+  self: { name: string | null; email: string | null },
+): string {
+  const selfKeys = new Set(
+    [self.email, self.name]
+      .filter((s): s is string => Boolean(s && s.trim()))
+      .map((s) => s.trim().toLowerCase()),
+  );
+  const isSelf = (s: string) => selfKeys.has(s.trim().toLowerCase());
+
   if (ev.location && ev.location.trim().length > 0) return ev.location.trim();
   if (ev.guests && ev.guests.length > 0) {
-    return ev.guests.slice(0, 2).join(" · ");
+    const others = ev.guests.filter((g) => g.trim().length > 0 && !isSelf(g));
+    if (others.length > 0) return others.slice(0, 2).join(" · ");
   }
-  return ev.calendarName ?? "";
+  if (ev.calendarName && !isSelf(ev.calendarName)) return ev.calendarName;
+  return "";
 }
 
 export async function getWeekData(
@@ -438,6 +453,7 @@ export async function getWeekData(
       type: ev.type,
       title: ev.title,
       timeLabel: formatTimeLabel(ev.startTime),
+      calendarColor: ev.calendarColor,
     });
   }
 
@@ -457,7 +473,8 @@ export async function getWeekData(
         durationLabel: formatDurationLabel(min),
         type: e.type,
         title: e.title,
-        meta: deriveRowMeta(e),
+        meta: deriveRowMeta(e, selfPerson),
+        calendarColor: e.calendarColor,
       };
     });
 
@@ -472,7 +489,8 @@ export async function getWeekData(
     timeLabel: formatTimeLabel(e.startTime),
     type: e.type,
     title: e.title,
-    meta: deriveRowMeta(e),
+    meta: deriveRowMeta(e, selfPerson),
+    calendarColor: e.calendarColor,
   }));
   const laterRows = laterRowsAll.slice(0, 4);
   const laterOverflow = Math.max(0, laterRowsAll.length - laterRows.length);
