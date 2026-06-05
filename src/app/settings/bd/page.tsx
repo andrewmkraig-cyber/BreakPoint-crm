@@ -136,11 +136,15 @@ export default async function BdSettingsPage() {
     };
   });
 
-  const mailboxByDomain = apolloMailboxes
-    ? new Map(apolloMailboxes.map((m) => [m.domain, m]))
+  // Match each sending mailbox by its FULL email address, not by domain.
+  // Several mailboxes share one sending domain, so a domain-keyed map
+  // collapsed them to a single Apollo status for every row. The
+  // SendingDomain.domain column stores the full mailbox address.
+  const mailboxByEmail = apolloMailboxes
+    ? new Map(apolloMailboxes.map((m) => [m.email, m]))
     : null;
   const domains: DomainRow[] = sendingDomainsRaw.map((d, i) => {
-    const match = mailboxByDomain?.get(d.domain.toLowerCase()) ?? null;
+    const match = mailboxByEmail?.get(d.domain.toLowerCase()) ?? null;
     return {
       id: d.id,
       domain: d.domain,
@@ -155,6 +159,7 @@ export default async function BdSettingsPage() {
             ? {
                 state: "matched",
                 connection: match.status,
+                sendingDisabled: match.sendingDisabled,
                 dailyLimit: match.dailyLimit,
                 sentToday: match.sentToday,
               }

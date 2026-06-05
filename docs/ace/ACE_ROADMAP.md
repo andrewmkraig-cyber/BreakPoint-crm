@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-06-05 · Ace 84.0
+Last updated: 2026-06-05 · Ace 85.0
 
 ## Active Build Sequence
 
@@ -9,11 +9,11 @@ This is the priority block for the next session, queued at Ace 81.0 close. Do it
 1. **DIAGNOSE `/api/webhooks/theirstack` (READ-ONLY, no edits, report first).** Answer: what does this endpoint do when it receives a job from TheirStack? Does it create `BDRun` rows? Create campaigns? Auto-enroll contacts to Apollo? Does the daily cron (`src/app/api/cron/bd-discovery/route.ts`) depend on this webhook/endpoint in any way, or is the cron fully self-contained? Confirm whether **AHF** and **American Express** entered via this path. Cite files + lines.
 2. **Based on that diagnosis:** confirm the cron stands alone, then provide the safe steps to **retire the webhook path**; remove AHF and American Express from Active Campaigns and from Apollo if they were enrolled; guarantee no auto-enroll can fire when Apollo is activated. (Also rotate the exposed TheirStack API key - see ACE_STATE.md ▸ CRITICAL.)
 3. **TODAY'S BATCH REDESIGN.** Read `src/components/bd/approval-queue.tsx` and `src/app/bd/launch/launch-view.tsx` IN FULL first. KPI tiles row (Discovered Today / Enrolled / Last Run), a view toggle, cleaner card grid, "Review all" action. MUST conform to Andrew's button standards (the prior mockup did NOT). Build shared chrome - do NOT pattern-match the mockup. See ACE_DESIGN.md ▸ Today's Batch target layout.
-4. **CLEANUP (queued - do NOT do at close):**
-   - Remove the `[bd-discovery][theirstack-body][diag]` log in `theirstack-provider.ts`.
-   - Delete the dead `POST /api/bd/runs` route.
-   - Delete unused `src/components/client-logo.tsx`.
-   - The BD Settings "pause all" toggle writes a column nothing reads (no-op) - either wire it or remove it.
+4. **CLEANUP:**
+   - ~~Remove the `[bd-discovery][theirstack-body][diag]` log in `theirstack-provider.ts`.~~ DONE Ace 85.0.
+   - ~~Delete the dead `POST /api/bd/runs` route.~~ DONE Ace 85.0 (confirmed no in-app caller).
+   - ~~Delete unused `src/components/client-logo.tsx`.~~ DONE Ace 85.0 (zero imports).
+   - **STILL OPEN:** The BD Settings "pause all" toggle writes a column nothing reads (no-op) - either wire it or remove it.
 
 ### Next Up
 

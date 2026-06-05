@@ -2,7 +2,22 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { X, Save, Loader2 } from "lucide-react";
+import { X, Save, Loader2, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  horizontalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
 import { saveContactTargeting } from "./actions";
 
@@ -41,13 +56,13 @@ function VerticalTargetingCard({ row }: { row: ContactTargetingRow }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  function onSave() {
+  function persist(nextPrimary: string[]) {
     setError(null);
     startTransition(async () => {
       try {
         await saveContactTargeting({
           verticalId: row.verticalId,
-          primaryTitles: primary,
+          primaryTitles: nextPrimary,
           smallFirmFallbackTitles: smallFirm,
           practiceSpecificTitles: practice,
           // Empty field reads as NaN while editing; persist it as 1 (the
@@ -61,6 +76,17 @@ function VerticalTargetingCard({ row }: { row: ContactTargetingRow }) {
     });
   }
 
+  function onSave() {
+    persist(primary);
+  }
+
+  // Drag-to-reorder commits the new priority order to the DB immediately
+  // (no Save click needed) so the enroll path reads the latest sequence.
+  function onReorderPrimary(next: string[]) {
+    setPrimary(next);
+    persist(next);
+  }
+
   return (
     <div className="rounded-lg border border-court-border bg-court-surface p-4">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-court-brand-dark">
@@ -70,9 +96,12 @@ function VerticalTargetingCard({ row }: { row: ContactTargetingRow }) {
       <div className="mt-4 flex flex-col gap-4">
         <TitleTierField
           label="Primary titles"
-          hint="Decision-makers Ace prefers first. Always considered; up to the per-firm cap."
+          hint="Decision-makers Ace prefers first. Drag to reorder priority — order saves immediately. Always considered; up to the per-firm cap."
           titles={primary}
           onChange={setPrimary}
+          sortable
+          onReorder={onReorderPrimary}
+          reordering={pending}
         />
         <TitleTierField
           label="Small-firm fallback"
@@ -129,14 +158,28 @@ function TitleTierField({
   hint,
   titles,
   onChange,
+  sortable = false,
+  onReorder,
+  reordering = false,
 }: {
   label: string;
   hint: string;
   titles: string[];
   onChange: (titles: string[]) => void;
+  // When set, chips become drag-to-reorder handles and onReorder fires
+  // with the new order (which the parent persists immediately).
+  sortable?: boolean;
+  onReorder?: (titles: string[]) => void;
+  reordering?: boolean;
 }) {
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Distance constraint so a click on the chip (or its remove button)
+  // doesn't start a drag — only an actual drag past 5px activates.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
 
   function commitDraft() {
     const tokens = draft
@@ -152,6 +195,15 @@ function TitleTierField({
     onChange(titles.filter((_, i) => i !== idx));
   }
 
+  function onDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = titles.indexOf(String(active.id));
+    const newIndex = titles.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+    onReorder?.(arrayMove(titles, oldIndex, newIndex));
+  }
+
   // Whitespace clicks on the chip row should focus the input, not
   // bubble into the chip's remove button. The remove button stops
   // propagation so this handler only runs on actual whitespace.
@@ -159,19 +211,12 @@ function TitleTierField({
     inputRef.current?.focus();
   }
 
-  return (
-    <div className="block">
-      <span className="block text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
-        {label}
-      </span>
-      <span className="mt-0.5 block text-[11px] text-court-fg-dim">{hint}</span>
-      <div
-        onClick={focusInputOnRowClick}
-        className={cn(
-          "mt-1 flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2 py-1.5",
-        )}
-      >
-        {titles.map((t, i) => (
+  const chipRow = (
+    <>
+      {titles.map((t, i) =>
+        sortable ? (
+          <SortableChip key={t} title={t} onRemove={() => removeTag(i)} />
+        ) : (
           <span
             key={`${t}-${i}`}
             className="inline-flex items-center gap-1 rounded-full bg-court-brand-tint px-2 py-0.5 text-[11px] font-medium text-court-brand-dark"
@@ -194,7 +239,37 @@ function TitleTierField({
               <X className="h-3 w-3" />
             </button>
           </span>
-        ))}
+        ),
+      )}
+    </>
+  );
+
+  return (
+    <div className="block">
+      <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
+        {label}
+        {reordering && <Loader2 className="h-3 w-3 animate-spin text-court-fg-dim" />}
+      </span>
+      <span className="mt-0.5 block text-[11px] text-court-fg-dim">{hint}</span>
+      <div
+        onClick={focusInputOnRowClick}
+        className={cn(
+          "mt-1 flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2 py-1.5",
+        )}
+      >
+        {sortable ? (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={onDragEnd}
+          >
+            <SortableContext items={titles} strategy={horizontalListSortingStrategy}>
+              {chipRow}
+            </SortableContext>
+          </DndContext>
+        ) : (
+          chipRow
+        )}
         <input
           ref={inputRef}
           type="text"
@@ -210,5 +285,43 @@ function TitleTierField({
         />
       </div>
     </div>
+  );
+}
+
+// A single drag-to-reorder primary-title chip. The whole chip is the
+// drag handle (grip icon is an affordance). The remove button stops
+// pointer/click propagation so deleting never starts a drag.
+function SortableChip({ title, onRemove }: { title: string; onRemove: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: title });
+
+  return (
+    <span
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      {...attributes}
+      {...listeners}
+      className={cn(
+        "inline-flex cursor-grab touch-none items-center gap-1 rounded-full bg-court-brand-tint px-2 py-0.5 text-[11px] font-medium text-court-brand-dark active:cursor-grabbing",
+        isDragging && "opacity-60 shadow-sm",
+      )}
+    >
+      <GripVertical className="h-3 w-3 text-court-brand-dark/50" />
+      {title}
+      <button
+        type="button"
+        // Keep the remove click from being swallowed by the drag listeners.
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove();
+        }}
+        aria-label={`Remove ${title}`}
+        className="text-court-brand-dark/70 hover:text-court-brand-dark"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </span>
   );
 }

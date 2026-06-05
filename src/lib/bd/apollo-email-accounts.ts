@@ -9,6 +9,10 @@ export type ApolloMailbox = {
   email: string;
   domain: string;
   status: "Connected" | "Disconnected";
+  // Apollo reports the account as linked but with outbound sending turned
+  // off (paused/disabled). Distinct from Disconnected — the mailbox is
+  // present, it just won't send. Surfaced as a red "Disabled" chip.
+  sendingDisabled: boolean;
   dailyLimit: number | null;
   sentToday: number | null;
 };
@@ -23,6 +27,11 @@ type ApolloEmailAccountRaw = {
   emails_sent_today?: number;
   sent_today?: number;
   emails_sent?: number;
+  // Sending-disabled signals. Apollo's shape varies by account type, so
+  // accept any of the known flags / a "disabled" status string.
+  sending_disabled?: boolean;
+  is_sending_disabled?: boolean;
+  sending_enabled?: boolean;
 };
 
 function domainFromEmail(email: string): string {
@@ -60,16 +69,23 @@ export async function fetchApolloMailboxes(): Promise<ApolloMailbox[] | null> {
     for (const a of list) {
       const email = (a.email ?? "").trim().toLowerCase();
       if (!email) continue;
+      const statusStr = typeof a.status === "string" ? a.status.toLowerCase() : "";
       const isActive =
         typeof a.active === "boolean"
           ? a.active
-          : typeof a.status === "string"
-            ? a.status.toLowerCase() === "active" || a.status.toLowerCase() === "connected"
+          : statusStr
+            ? statusStr === "active" || statusStr === "connected"
             : true;
+      const sendingDisabled =
+        a.sending_disabled === true ||
+        a.is_sending_disabled === true ||
+        a.sending_enabled === false ||
+        statusStr.includes("disabled");
       out.push({
         email,
         domain: domainFromEmail(email),
         status: isActive ? "Connected" : "Disconnected",
+        sendingDisabled,
         dailyLimit: pickNumber(a.send_limit_per_day, a.daily_email_limit, a.sending_limit_per_day),
         sentToday: pickNumber(a.emails_sent_today, a.sent_today, a.emails_sent),
       });

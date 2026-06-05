@@ -161,15 +161,6 @@ export class TheirStackProvider implements JobDiscoveryProvider {
       body.company_revenue_usd_gte = params.minRevenue;
     }
 
-    // [bd-discovery][theirstack-body][diag] log the exact constructed body so
-    // the param names + values can be eyeballed in prod logs against the live
-    // TheirStack search. The API key rides in the Authorization header, not
-    // the body, so this is safe to log. Remove once the query is confirmed.
-    console.log(
-      "[bd-discovery][theirstack-body][diag]",
-      JSON.stringify(body),
-    );
-
     // Abort the single discovery POST at THEIRSTACK_TIMEOUT_MS so one slow
     // response can never consume the whole cron budget. On abort we throw a
     // clear, distinct error that the route surfaces as the run's errorMessage.

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getDefaultApolloSequence } from "@/lib/bd/apollo-sequences";
 import { dedupeDiscoveredByCompany } from "@/lib/bd/discovered-company";
+import { DEFAULT_CONTACT_TARGETING } from "@/lib/bd/apollo-contacts";
 
 // Cap is enforced against everything enrolled today across the org's
 // BDRuns, where "today" is calendar day in America/New_York. The cron
@@ -8,24 +9,55 @@ import { dedupeDiscoveredByCompany } from "@/lib/bd/discovered-company";
 // we look up the live offset on each call.
 const ZONE = "America/New_York";
 
-// Decision-makers we want Apollo to surface at each target company.
-// Order matters loosely (HR-side first because that's who fields BD
-// pitches in the verticals we work), but Apollo returns up to per_page
-// across all of them without rank-weighting, so this is essentially
-// the union we accept.
-const TARGET_TITLES = [
-  "Head of People",
-  "CHRO",
-  "VP HR",
-  "Head of Talent Acquisition",
-  "TA Director",
-  "CEO",
-  "Founder",
-  "Managing Partner",
-  "Owner",
-];
+// How many people to pull from Apollo per company before priority-ranking.
+// Larger than any per-firm cap so the stored title order actually decides
+// which contacts survive the slice rather than Apollo's return order.
+const SEARCH_PER_PAGE = 25;
 
 const APOLLO_BASE = "https://api.apollo.io";
+
+// Reads the vertical's stored primary-title priority order (the
+// drag-reordered list from Contact Targeting). Falls back to the
+// hardcoded default order when no row / empty list exists so enrollment
+// always has a deterministic priority sequence to rank by.
+async function loadPrimaryTitleOrder(
+  orgId: string,
+  verticalId: string | null,
+): Promise<string[]> {
+  const row = verticalId
+    ? await prisma.bdContactTargeting.findFirst({
+        where: { organizationId: orgId, verticalId },
+        select: { primaryTitles: true },
+      })
+    : null;
+  return row && row.primaryTitles.length > 0
+    ? row.primaryTitles
+    : DEFAULT_CONTACT_TARGETING.primaryTitles;
+}
+
+// Priority rank of a contact's title: the index of the FIRST stored
+// title it matches (case-insensitive substring, same matching the
+// approval preview uses). Unmatched titles sort last. Lower = higher
+// priority, so the per-firm slice keeps the most-wanted decision-makers.
+function titleRank(title: string, orderedTitles: string[]): number {
+  const lower = (title ?? "").toLowerCase();
+  for (let i = 0; i < orderedTitles.length; i++) {
+    if (lower.includes(orderedTitles[i].toLowerCase())) return i;
+  }
+  return Number.MAX_SAFE_INTEGER;
+}
+
+// Stable sort of Apollo people into the stored priority sequence. Ties
+// (equal rank, including all-unmatched) keep Apollo's original order.
+function orderByTitlePriority(
+  people: ApolloPerson[],
+  orderedTitles: string[],
+): ApolloPerson[] {
+  return people
+    .map((p, i) => ({ p, i, rank: titleRank(p.title ?? "", orderedTitles) }))
+    .sort((a, b) => (a.rank === b.rank ? a.i - b.i : a.rank - b.rank))
+    .map((x) => x.p);
+}
 
 function easternMidnightUtc(now: Date = new Date()): Date {
   const ymd = new Intl.DateTimeFormat("en-CA", {
@@ -137,7 +169,7 @@ type ApolloPerson = {
 async function apolloSearchPeople(
   apiKey: string,
   companyName: string,
-  perPage: number,
+  titles: string[],
 ): Promise<ApolloPerson[]> {
   try {
     const res = await fetch(`${APOLLO_BASE}/api/v1/mixed_people/search`, {
@@ -147,8 +179,11 @@ async function apolloSearchPeople(
       headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
       body: JSON.stringify({
         q_organization_name: companyName,
-        person_titles: TARGET_TITLES,
-        per_page: perPage,
+        // Stored primary-title priority order (drag-reordered in Contact
+        // Targeting). Apollo's fuzzy match returns them unranked, so the
+        // caller re-ranks by this same order before applying the cap.
+        person_titles: titles,
+        per_page: SEARCH_PER_PAGE,
       }),
     });
     if (!res.ok) {
@@ -311,11 +346,22 @@ export async function enrollCompaniesInApollo(
 ): Promise<EnrollResult> {
   const run = await prisma.bDRun.findFirst({
     where: { id: runId, organizationId: orgId },
-    select: { id: true, discoveredPayload: true, status: true, maxContactsPerCompany: true },
+    select: {
+      id: true,
+      verticalId: true,
+      discoveredPayload: true,
+      status: true,
+      maxContactsPerCompany: true,
+    },
   });
   if (!run) {
     return { enrolled: 0, capped: false };
   }
+
+  // Stored primary-title priority order for this run's vertical. Used to
+  // both seed the Apollo people search and rank its results so the
+  // per-firm cap keeps the highest-priority decision-makers.
+  const primaryTitleOrder = await loadPrimaryTitleOrder(orgId, run.verticalId);
 
   const allCompanies = extractDiscovered(run.discoveredPayload);
   const companies =
@@ -401,13 +447,20 @@ export async function enrollCompaniesInApollo(
     // before this UI shipped (no curated array on the payload entry).
     const people: ApolloPerson[] =
       c.curatedContacts.length > 0
-        ? c.curatedContacts.map((cc) => ({
+        ? // Andrew already curated and ordered these on the queue card —
+          // preserve his sequence verbatim.
+          c.curatedContacts.map((cc) => ({
             first_name: cc.firstName || undefined,
             last_name: cc.lastName || undefined,
             title: cc.title || undefined,
             organization_name: c.companyName,
           }))
-        : await apolloSearchPeople(apiKey, c.companyName, perCompany);
+        : // Live fallback: rank Apollo's unordered return by the stored
+          // primary-title priority so the cap keeps the most-wanted titles.
+          orderByTitlePriority(
+            await apolloSearchPeople(apiKey, c.companyName, primaryTitleOrder),
+            primaryTitleOrder,
+          );
     // Math.min keeps the daily-cap clamp intact: no matter how high
     // perCompany is, `remaining` (dailyCap - enrolledToday) still bounds
     // how many we enroll, so the global contact cap always holds.

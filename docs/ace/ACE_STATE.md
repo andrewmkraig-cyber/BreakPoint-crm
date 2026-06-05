@@ -1,8 +1,17 @@
 # ACE_STATE.md
-Last updated: 2026-06-05 · Ace 84.0
-Current Version: Ace 84.0
+Last updated: 2026-06-05 · Ace 85.0
+Current Version: Ace 85.0
 Last Shipped: 2026-06-05
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 85.0 (2026-06-05) - BD: drag-to-reorder Primary Titles + per-mailbox Apollo health + cleanup
+
+All items pushed to main; `npm run build` exits 0. No schema changes. Files: `src/app/settings/bd/contact-targeting-section.tsx`, `src/lib/bd/apollo-enroll.ts`, `src/lib/bd/apollo-email-accounts.ts`, `src/app/settings/bd/page.tsx`, `src/app/settings/bd/domains-section.tsx`, `src/lib/bd/theirstack-provider.ts`. Deleted: `src/app/api/bd/runs/route.ts`, `src/components/client-logo.tsx`.
+
+- **Primary Titles chips are now drag-to-reorder (priority order).** Used `@dnd-kit/core` + `@dnd-kit/sortable` (already installed). Each chip is the drag handle (grip affordance + whole-chip listeners); `PointerSensor` distance:5 so a click/remove never starts a drag. On drop, the new order is set locally AND persisted immediately via the existing `saveContactTargeting` upsert (no Save click) - `cleanTitles`' `Set` preserves array order, so the stored `BdContactTargeting.primaryTitles String[]` is the priority sequence. Only the Primary tier is sortable; small-firm/practice tiers unchanged. Spinner shows on the label during persist.
+- **Enroll path now honors the stored title order.** `apollo-enroll.ts` previously sent a hardcoded `TARGET_TITLES` union and took Apollo's arbitrary return order. Removed `TARGET_TITLES`. Now loads the run's vertical (`BDRun.verticalId`) -> `BdContactTargeting.primaryTitles` (falls back to `DEFAULT_CONTACT_TARGETING.primaryTitles`), sends that as `person_titles`, fetches 25, then `orderByTitlePriority` re-ranks results by first-matching stored title index (case-insensitive substring; unmatched last; stable) before the per-firm cap slice. Curated-contact path keeps Andrew's hand-ordered sequence verbatim.
+- **Mailbox health: each row shows its OWN Apollo status.** `page.tsx` matched mailboxes by domain-part (`mailboxByDomain`), collapsing every same-domain mailbox to one status. Now keyed by full email (`mailboxByEmail`, matched against `SendingDomain.domain` which stores the full address). Added `sendingDisabled` to `ApolloMailbox` (derived from `sending_disabled`/`is_sending_disabled`/`sending_enabled:false`/status contains "disabled"); a found-but-disabled mailbox renders a red "Disabled" chip instead of the green Connected chip.
+- **Cleanup.** Removed the `[bd-discovery][theirstack-body][diag]` console.log from `theirstack-provider.ts`. Deleted dead `POST /api/bd/runs` route (no in-app caller; runs are created via `bd-run-actions.ts`; it was the only writer of real `BDRun.plan` data but was never invoked, so the campaigns plan-snapshot card still renders defensively from `{}` exactly as before - no runtime change). Deleted unused `src/components/client-logo.tsx` (zero imports; live component is `components/clients/client-logo.tsx`).
 
 ## What Shipped in Ace 84.0 (2026-06-05) - BD limits: honest location-override hint + per-vertical cap auto-distribute
 

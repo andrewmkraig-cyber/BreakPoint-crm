@@ -18,6 +18,7 @@ export type ApolloMailboxState =
   | {
       state: "matched";
       connection: "Connected" | "Disconnected";
+      sendingDisabled: boolean;
       dailyLimit: number | null;
       sentToday: number | null;
     };
@@ -388,19 +389,24 @@ function ApolloMailboxCell({ apollo }: { apollo: ApolloMailboxState }) {
   if (apollo.state === "not-found") {
     return <span className="text-[11px] text-court-fg-muted">Not found in Apollo</span>;
   }
-  const connectedCls =
-    apollo.connection === "Connected"
+  // A linked mailbox with sending turned off is a red "Disabled" chip —
+  // it outranks the Connected/Disconnected state because it's the reason
+  // the slot won't send even though Apollo shows it as present.
+  const chipCls = apollo.sendingDisabled
+    ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
+    : apollo.connection === "Connected"
       ? "border-court-brand/30 bg-court-brand-tint text-court-brand-dark"
       : "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200";
+  const chipLabel = apollo.sendingDisabled ? "Disabled" : apollo.connection;
   return (
     <div className="flex flex-col gap-0.5 text-[11px] text-court-fg-muted">
       <span
         className={cn(
           "inline-flex w-fit items-center rounded-full border px-2 py-0.5 font-semibold",
-          connectedCls,
+          chipCls,
         )}
       >
-        {apollo.connection}
+        {chipLabel}
       </span>
       <span className="tabular-nums">
         Daily limit: {apollo.dailyLimit ?? "—"}
