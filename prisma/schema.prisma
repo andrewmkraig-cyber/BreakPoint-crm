@@ -2065,6 +2065,13 @@ model BdOrgConfig {
   globalDailyCap Int     @default(80)
   pauseAll       Boolean @default(false)
 
+  // Rotating cursor for the daily client-signal sweep (client-signal-sync.ts).
+  // The sweep runs under a 20s wall-clock budget, so on a large client book a
+  // single run can't scan everyone. We store the id of the last client examined
+  // and resume after it next run, wrapping around, so every client is eventually
+  // covered. Reset to null when a sweep completes a full uninterrupted loop.
+  lastSignalCursorId String?
+
   blackoutWeekends   Boolean @default(false)
   blackoutHolidays   Boolean @default(false)
   blackoutBefore7am  Boolean @default(false)

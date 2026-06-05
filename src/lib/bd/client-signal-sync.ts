@@ -66,7 +66,7 @@ async function fetchClientPostings(
       },
       body: JSON.stringify({
         company_domain_or: [domain],
-        limit: 10,
+        limit: 25,
       }),
       signal: controller.signal,
     });
@@ -105,10 +105,34 @@ export async function syncClientSignals(
     return { clientsScanned: 0, postingsUpserted: 0, skipped: 0, fallbackClients: 0 };
   }
 
-  const clients = await prisma.client.findMany({
+  // Stable id ordering so the rotating cursor below has a deterministic
+  // sequence to resume within. cuid string order matches `orderBy id asc`.
+  const allClients = await prisma.client.findMany({
     where: { organizationId },
     select: { id: true, name: true, domain: true },
+    orderBy: { id: "asc" },
   });
+
+  // Rotating cursor. The 20s budget means a large client book can't be
+  // scanned in one sweep, so we resume after the last client examined and
+  // wrap around — guaranteeing every client is eventually covered. The
+  // cursor is reset to null once a sweep completes a full uninterrupted
+  // loop (see the persist step after the loop).
+  const config = await prisma.bdOrgConfig.upsert({
+    where: { organizationId },
+    create: { organizationId },
+    update: {},
+    select: { lastSignalCursorId: true },
+  });
+  const cursor = config.lastSignalCursorId;
+  let clients = allClients;
+  if (cursor && allClients.length > 0) {
+    // First client strictly after the cursor; -1 means the cursor was the
+    // last id (or now points past the book), so we start from the top.
+    const idx = allClients.findIndex((c) => c.id > cursor);
+    const startAt = idx === -1 ? 0 : idx;
+    clients = [...allClients.slice(startAt), ...allClients.slice(0, startAt)];
+  }
 
   let clientsScanned = 0;
   let postingsUpserted = 0;
@@ -116,6 +140,11 @@ export async function syncClientSignals(
   let fallbackClients = 0;
   const now = new Date();
   const start = Date.now();
+  // Last client we committed to examining this sweep (scanned or skipped).
+  // Drives the persisted cursor. completedFullLoop flips false the moment
+  // the budget truncates the sweep.
+  let lastProcessedId: string | null = null;
+  let completedFullLoop = true;
 
   for (const client of clients) {
     // Stop scanning new clients once the sweep has spent its wall-clock
@@ -123,13 +152,21 @@ export async function syncClientSignals(
     // non-fatal, so this protects the shared cron invocation from N
     // sequential per-client calls overrunning the function limit.
     if (Date.now() - start > SYNC_BUDGET_MS) {
+      completedFullLoop = false;
       console.warn(
         `[client-signal-sync] budget ${SYNC_BUDGET_MS}ms reached; stopped after scanning=${clientsScanned} of ${clients.length} clients`,
       );
       break;
     }
+    // Advance the cursor for every client we reach, scanned or skipped, so
+    // a run that stalls on a stretch of domain-less clients still makes
+    // forward progress through the book.
+    lastProcessedId = client.id;
     const domain = normalizeDomain(client.domain);
     if (!domain) {
+      console.warn(
+        `[client-signal-sync] skipping client="${client.name}" reason="no domain"`,
+      );
       skipped += 1;
       continue;
     }
@@ -260,6 +297,23 @@ export async function syncClientSignals(
         );
       }
     }
+  }
+
+  // Persist the rotating cursor. A full uninterrupted loop resets to null
+  // so the next sweep starts from the top of the id order; a budget-
+  // truncated sweep stores the last client examined so the next run
+  // resumes after it and the rest of the book gets covered.
+  const nextCursor = completedFullLoop ? null : lastProcessedId;
+  try {
+    await prisma.bdOrgConfig.update({
+      where: { organizationId },
+      data: { lastSignalCursorId: nextCursor },
+    });
+  } catch (err) {
+    console.warn(
+      `[client-signal-sync] failed to persist cursor (${nextCursor}):`,
+      err instanceof Error ? err.message : err,
+    );
   }
 
   return { clientsScanned, postingsUpserted, skipped, fallbackClients };
