@@ -801,7 +801,7 @@ function RunCard({
             onView();
           }}
           disabled={busy}
-          className="inline-flex w-auto items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-2.5 py-1 text-[13px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex w-auto items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-2.5 py-1 text-[13px] font-medium text-court-fg shadow-sm transition hover:bg-court-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Eye className="h-3.5 w-3.5" />
           Review all
