@@ -45,6 +45,8 @@ import type { ActiveTemplateSummary } from "@/app/email/actions";
 import { MailComposer, type ComposerStateSnapshot } from "@/app/mail/mail-composer";
 import { BdReplyPromptBanner } from "@/app/mail/bd-reply-prompt-banner";
 
+const MAIL_THREAD_DRAG_MIME = "application/x-mail-thread-ids";
+
 // Two-pane Mail Tab layout. The server fetched the thread list; the
 // client manages selection + loads each thread's detail on demand.
 // Selection is kept in component state, not the URL — the Mail Tab
@@ -467,13 +469,24 @@ export function MailView({
     currentUserFullName,
   ]);
 
+  function removableSourceLabelIds(targetLabelId: string): string[] {
+    if (!selectedLabel) return [];
+    if (selectedLabel.id === targetLabelId) return [];
+    if (selectedLabel.id === "SENT" || selectedLabel.id === "DRAFT") return [];
+    return [selectedLabel.id];
+  }
+
+  function shouldPruneAfterMove(targetLabelId: string): boolean {
+    return (selectedLabel?.id ?? "INBOX") !== targetLabelId;
+  }
+
   async function moveThread(id: string, labelId: string, labelName: string) {
     setMoving(id);
     try {
       const res = await fetch(`/api/mail/threads/${encodeURIComponent(id)}/move`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ labelId }),
+        body: JSON.stringify({ labelId, removeLabelIds: removableSourceLabelIds(labelId) }),
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) {
@@ -482,10 +495,12 @@ export function MailView({
         });
         return;
       }
-      setThreads((prev) => prev.filter((t) => t.id !== id));
-      if (selected === id) {
-        setSelected(null);
-        setDetail(null);
+      if (shouldPruneAfterMove(labelId)) {
+        setThreads((prev) => prev.filter((t) => t.id !== id));
+        if (selected === id) {
+          setSelected(null);
+          setDetail(null);
+        }
       }
       toast.success(`Moved to ${labelName}`);
     } catch (e) {
@@ -528,6 +543,70 @@ export function MailView({
       toast.error("Couldn't create label", {
         description: e instanceof Error ? e.message : "unknown error",
       });
+    }
+  }
+
+  async function ensureDropLabel(
+    labelId: string | null,
+    labelName: string,
+  ): Promise<{ id: string; name: string } | null> {
+    if (labelId) return { id: labelId, name: labelName };
+    const existing = labels?.find(
+      (label) =>
+        (label.type === undefined || label.type === "user") &&
+        label.name === labelName,
+    );
+    if (existing) return { id: existing.id, name: existing.name };
+
+    try {
+      const res = await fetch("/api/mail/labels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: labelName }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.label?.id) {
+        toast.error("Couldn't create parent label", {
+          description: body?.error ?? `HTTP ${res.status}`,
+        });
+        return null;
+      }
+      const newLabel = body.label as { id: string; name: string };
+      setLabels((prev) =>
+        prev
+          ? [...prev, { id: newLabel.id, name: newLabel.name, type: "user", messagesTotal: 0 }]
+          : prev,
+      );
+      return newLabel;
+    } catch (e) {
+      toast.error("Couldn't create parent label", {
+        description: e instanceof Error ? e.message : "unknown error",
+      });
+      return null;
+    }
+  }
+
+  async function moveDroppedThreadsToLabel(
+    threadIds: string[],
+    labelId: string | null,
+    labelName: string,
+  ) {
+    if (threadIds.length === 0) return;
+    const target = await ensureDropLabel(labelId, labelName);
+    if (!target) return;
+    if (threadIds.length === 1) {
+      void moveThread(threadIds[0], target.id, target.name);
+    } else {
+      void bulkMove(target.id, target.name, threadIds);
+    }
+  }
+
+  function moveDroppedThreadsToInbox(threadIds: string[]) {
+    if (threadIds.length === 0) return;
+    if (threadIds.length === 1) {
+      void moveThread(threadIds[0], "INBOX", "Inbox");
+    } else {
+      void bulkMove("INBOX", "Inbox", threadIds);
     }
   }
 
@@ -756,12 +835,13 @@ export function MailView({
   async function bulkMove(labelId: string, labelName: string, explicitIds?: string[]) {
     const ids = explicitIds ?? Array.from(selectedIds);
     if (ids.length === 0) return;
+    const removeLabelIds = removableSourceLabelIds(labelId);
     setBulkBusy(true);
     const result = await runBulk(ids, async (id) => {
       const res = await fetch(`/api/mail/threads/${encodeURIComponent(id)}/move`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ labelId }),
+        body: JSON.stringify({ labelId, removeLabelIds }),
       });
       return res.ok;
     });
@@ -963,6 +1043,7 @@ export function MailView({
     [],
   );
   const currentFolderName = selectedLabel ? selectedLabel.name : "Inbox";
+  const [inboxDragOver, setInboxDragOver] = useState(false);
 
   return (
     <div
@@ -1032,11 +1113,30 @@ export function MailView({
           <button
             type="button"
             onClick={() => selectLabel(null)}
+            onDragOver={(e) => {
+              if (!hasMailThreadDragPayload(e.dataTransfer)) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              if (!inboxDragOver) setInboxDragOver(true);
+            }}
+            onDragLeave={(e) => {
+              const next = e.relatedTarget;
+              if (next instanceof Node && e.currentTarget.contains(next)) return;
+              setInboxDragOver(false);
+            }}
+            onDrop={(e) => {
+              if (!hasMailThreadDragPayload(e.dataTransfer)) return;
+              e.preventDefault();
+              setInboxDragOver(false);
+              moveDroppedThreadsToInbox(parseMailThreadDragPayload(e.dataTransfer));
+            }}
             className={
               "flex min-h-9 w-full items-center gap-2 rounded-md border px-3 py-1.5 text-left transition " +
-              (!selectedLabel
-                ? "border-court-brand bg-transparent font-semibold text-court-brand"
-                : "border-transparent font-medium text-court-fg hover:bg-court-surface-subtle")
+              (inboxDragOver
+                ? "border-court-brand bg-court-brand/10 font-semibold text-court-brand ring-1 ring-court-brand/30"
+                : !selectedLabel
+                  ? "border-court-brand bg-transparent font-semibold text-court-brand"
+                  : "border-transparent font-medium text-court-fg hover:bg-court-surface-subtle")
             }
           >
             <MailIcon className="h-4 w-4 shrink-0" />
@@ -1125,11 +1225,7 @@ export function MailView({
                     selectedLabel={selectedLabel}
                     onSelect={selectLabel}
                     onDropThread={({ threadIds, labelId, labelName }) => {
-                      if (threadIds.length === 1) {
-                        void moveThread(threadIds[0], labelId, labelName);
-                      } else if (threadIds.length > 1) {
-                        void bulkMove(labelId, labelName, threadIds);
-                      }
+                      void moveDroppedThreadsToLabel(threadIds, labelId, labelName);
                     }}
                     onRenameLabel={renameLabel}
                     onDeleteLabel={deleteLabel}
@@ -1509,7 +1605,7 @@ function ThreadRow({
           selectedIds.has(t.id) && selectedIds.size > 0
             ? Array.from(selectedIds)
             : [t.id];
-        e.dataTransfer.setData("application/x-mail-thread-ids", JSON.stringify(ids));
+        e.dataTransfer.setData(MAIL_THREAD_DRAG_MIME, JSON.stringify(ids));
         e.dataTransfer.effectAllowed = "move";
         const ghost = document.createElement("div");
         const sender = document.createElement("span");
@@ -2832,6 +2928,23 @@ function buildLabelTree(
   return roots;
 }
 
+function hasMailThreadDragPayload(dataTransfer: DataTransfer): boolean {
+  return Array.from(dataTransfer.types).includes(MAIL_THREAD_DRAG_MIME);
+}
+
+function parseMailThreadDragPayload(dataTransfer: DataTransfer): string[] {
+  const raw = dataTransfer.getData(MAIL_THREAD_DRAG_MIME);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((x): x is string => typeof x === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 function LabelTreeNode({
   node,
   depth,
@@ -2853,7 +2966,7 @@ function LabelTreeNode({
   // Drag-and-drop sink. Called when one or more thread rows are dropped
   // onto a real (non-synthetic) label. The MIME type the dragger sets
   // is "application/x-mail-thread-ids" (JSON-encoded array of ids).
-  onDropThread?: (args: { threadIds: string[]; labelId: string; labelName: string }) => void;
+  onDropThread?: (args: { threadIds: string[]; labelId: string | null; labelName: string }) => void;
   // Per-label edit affordances. Hover the row → 3-dot button reveals
   // Rename / Add sublabel / Delete. All three skip when the row is a
   // synthetic parent (no node.id).
@@ -2865,7 +2978,8 @@ function LabelTreeNode({
   const isCollapsed = collapsed.has(node.name);
   const active = node.id !== null && selectedLabel?.id === node.id;
   const [dragOver, setDragOver] = useState(false);
-  const droppable = node.id !== null && Boolean(onDropThread);
+  const autoExpandRequestedRef = useRef(false);
+  const canHandleMailDrag = Boolean(onDropThread) && (node.id !== null || hasChildren);
 
   // Per-row menu + inline editor state. Renaming uses the full Gmail
   // path (e.g. "Active Clients/Sheehan Brothers") so the recruiter can
@@ -2878,6 +2992,10 @@ function LabelTreeNode({
   const [addOpen, setAddOpen] = useState(false);
   const [addDraft, setAddDraft] = useState("");
   const addInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (isCollapsed) autoExpandRequestedRef.current = false;
+  }, [isCollapsed]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -2902,33 +3020,29 @@ function LabelTreeNode({
     <li>
       <div
         onDragOver={(e) => {
-          if (!droppable) return;
+          if (!canHandleMailDrag || !hasMailThreadDragPayload(e.dataTransfer)) return;
           // preventDefault inside a dragover handler is what tells the
           // browser this element is a valid drop target — without it,
           // drop never fires.
           e.preventDefault();
           e.dataTransfer.dropEffect = "move";
           if (!dragOver) setDragOver(true);
+          if (hasChildren && isCollapsed && !autoExpandRequestedRef.current) {
+            autoExpandRequestedRef.current = true;
+            onToggleCollapse(node.name);
+          }
         }}
-        onDragLeave={() => {
-          if (!droppable) return;
+        onDragLeave={(e) => {
+          if (!canHandleMailDrag) return;
+          const next = e.relatedTarget;
+          if (next instanceof Node && e.currentTarget.contains(next)) return;
           setDragOver(false);
         }}
         onDrop={(e) => {
-          if (!droppable || !node.id) return;
+          if (!canHandleMailDrag) return;
           e.preventDefault();
           setDragOver(false);
-          const raw = e.dataTransfer.getData("application/x-mail-thread-ids");
-          if (!raw) return;
-          let threadIds: string[] = [];
-          try {
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) {
-              threadIds = parsed.filter((x): x is string => typeof x === "string");
-            }
-          } catch {
-            return;
-          }
+          const threadIds = parseMailThreadDragPayload(e.dataTransfer);
           if (threadIds.length === 0) return;
           onDropThread?.({
             threadIds,

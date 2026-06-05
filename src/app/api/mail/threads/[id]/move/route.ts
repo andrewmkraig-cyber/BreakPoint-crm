@@ -23,14 +23,19 @@ export async function POST(
   });
   if (!user) return NextResponse.json({ error: "Unknown user" }, { status: 401 });
 
-  const body = (await req.json().catch(() => null)) as { labelId?: string } | null;
+  const body = (await req.json().catch(() => null)) as
+    | { labelId?: string; removeLabelIds?: unknown }
+    | null;
   const labelId = body?.labelId?.trim();
   if (!labelId) {
     return NextResponse.json({ error: "labelId required" }, { status: 400 });
   }
+  const removeLabelIds = Array.isArray(body?.removeLabelIds)
+    ? body.removeLabelIds.filter((id): id is string => typeof id === "string")
+    : [];
 
   try {
-    await moveGmailThread(user.id, params.id, labelId);
+    await moveGmailThread(user.id, params.id, labelId, removeLabelIds);
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Move failed";

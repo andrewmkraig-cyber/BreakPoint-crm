@@ -1335,11 +1335,31 @@ export async function moveGmailThread(
   userId: string,
   threadId: string,
   labelId: string,
+  removeLabelIds: string[] = [],
 ): Promise<void> {
+  const removeIds = Array.from(
+    new Set(
+      removeLabelIds
+        .map((id) => id.trim())
+        .filter((id) => id && id !== labelId),
+    ),
+  );
+  if (labelId === "INBOX") {
+    await modifyGmailThreadLabels(
+      userId,
+      threadId,
+      {
+        addLabelIds: ["INBOX"],
+        ...(removeIds.length > 0 ? { removeLabelIds: removeIds } : {}),
+      },
+      "moveToInbox",
+    );
+    return;
+  }
   await modifyGmailThreadLabels(
     userId,
     threadId,
-    { addLabelIds: [labelId], removeLabelIds: ["INBOX"] },
+    { addLabelIds: [labelId], removeLabelIds: Array.from(new Set(["INBOX", ...removeIds])) },
     "move",
   );
 }
