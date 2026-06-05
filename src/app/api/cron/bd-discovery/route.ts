@@ -104,6 +104,26 @@ export async function GET(req: NextRequest) {
       { status: 200 },
     );
   }
+  // Pause All (BdOrgConfig.pauseAll, Section 4 of /settings/bd) is the
+  // recruiter's hard stop. getBDSettings already returns the full config
+  // row, so this is a free read on top of the engineActive check above.
+  // Both the scheduled cron and "Run Discovery Now" (triggerManualDiscovery
+  // GETs this same route) bail here. The `error` field gives the manual
+  // path a clean message, since it surfaces data.error on a runId-less reply.
+  if (settings.pauseAll) {
+    console.log(
+      `[bd-discovery] skipped: pauseAll enabled for org=${organizationId}`,
+    );
+    return NextResponse.json(
+      {
+        skipped: true,
+        reason: "BD paused (Pause All)",
+        error:
+          "BD is paused. Turn off Pause All in BD settings to run discovery.",
+      },
+      { status: 200 },
+    );
+  }
 
   // Manual "Run Discovery Now" overrides arrive as query params; the
   // scheduled cron passes none, so both fall back to today's behavior
