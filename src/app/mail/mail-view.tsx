@@ -163,6 +163,7 @@ export function MailView({
   // Persisted to localStorage so the recruiter's preferred collapsed
   // state survives navigation away from /mail and back.
   const [collapsedLabels, setCollapsedLabels] = useState<Set<string>>(() => new Set());
+  const autoExpandedLabelsRef = useRef<Set<string>>(new Set());
   const isFirstCollapsedLoad = useRef(true);
   useEffect(() => {
     // First commit: hydrate from localStorage and bail without writing.
@@ -284,6 +285,54 @@ export function MailView({
       if (next.has(path)) next.delete(path);
       else next.add(path);
       return next;
+    });
+  }, []);
+
+  const autoExpandCollapsedLabel = useCallback((path: string) => {
+    autoExpandedLabelsRef.current.add(path);
+    setCollapsedLabels((prev) => {
+      if (!prev.has(path)) return prev;
+      const next = new Set(prev);
+      next.delete(path);
+      return next;
+    });
+  }, []);
+
+  const collapseAutoExpandedLabels = useCallback(() => {
+    const paths = Array.from(autoExpandedLabelsRef.current);
+    if (paths.length === 0) return;
+    autoExpandedLabelsRef.current.clear();
+    setCollapsedLabels((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const path of paths) {
+        if (!next.has(path)) {
+          next.add(path);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, []);
+
+  const settleAutoExpandedLabelsForDrop = useCallback((targetPath: string | null) => {
+    const paths = Array.from(autoExpandedLabelsRef.current);
+    if (paths.length === 0) return;
+    autoExpandedLabelsRef.current.clear();
+    const unusedPaths = paths.filter(
+      (path) => !targetPath || (targetPath !== path && !targetPath.startsWith(`${path}/`)),
+    );
+    if (unusedPaths.length === 0) return;
+    setCollapsedLabels((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const path of unusedPaths) {
+        if (!next.has(path)) {
+          next.add(path);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
     });
   }, []);
 
@@ -592,6 +641,7 @@ export function MailView({
     labelName: string,
   ) {
     if (threadIds.length === 0) return;
+    settleAutoExpandedLabelsForDrop(labelName);
     const target = await ensureDropLabel(labelId, labelName);
     if (!target) return;
     if (threadIds.length === 1) {
@@ -603,6 +653,7 @@ export function MailView({
 
   function moveDroppedThreadsToInbox(threadIds: string[]) {
     if (threadIds.length === 0) return;
+    settleAutoExpandedLabelsForDrop(null);
     if (threadIds.length === 1) {
       void moveThread(threadIds[0], "INBOX", "Inbox");
     } else {
@@ -1222,6 +1273,7 @@ export function MailView({
                     depth={0}
                     collapsed={collapsedLabels}
                     onToggleCollapse={toggleCollapsed}
+                    onAutoExpand={autoExpandCollapsedLabel}
                     selectedLabel={selectedLabel}
                     onSelect={selectLabel}
                     onDropThread={({ threadIds, labelId, labelName }) => {
@@ -1484,6 +1536,7 @@ export function MailView({
                   }}
                   onArchive={() => archiveThread(t.id)}
                   onToggle={() => toggleSelectedId(t.id)}
+                  onDragDone={collapseAutoExpandedLabels}
                 />
               </li>
             ))}
@@ -1576,6 +1629,7 @@ function ThreadRow({
   onOpen,
   onArchive,
   onToggle,
+  onDragDone,
 }: {
   thread: MailListThread;
   selected: boolean;
@@ -1586,6 +1640,7 @@ function ThreadRow({
   onOpen: () => void;
   onArchive: () => void;
   onToggle: () => void;
+  onDragDone: () => void;
 }) {
   // Checkbox visibility: hidden until you hover the row, OR pinned
   // visible whenever the row is checked / any row is checked. Keeps
@@ -1629,7 +1684,10 @@ function ThreadRow({
         }, 0);
         setDragging(true);
       }}
-      onDragEnd={() => setDragging(false)}
+      onDragEnd={() => {
+        setDragging(false);
+        onDragDone();
+      }}
       className={
         // Selected row gets a soft green active background via the Court
         // brand-tint token (the same green-tint used on the unread
@@ -2950,6 +3008,7 @@ function LabelTreeNode({
   depth,
   collapsed,
   onToggleCollapse,
+  onAutoExpand,
   selectedLabel,
   onSelect,
   onDropThread,
@@ -2961,6 +3020,7 @@ function LabelTreeNode({
   depth: number;
   collapsed: Set<string>;
   onToggleCollapse: (path: string) => void;
+  onAutoExpand: (path: string) => void;
   selectedLabel: { id: string; name: string } | null;
   onSelect: (next: { id: string; name: string } | null) => void;
   // Drag-and-drop sink. Called when one or more thread rows are dropped
@@ -3029,7 +3089,7 @@ function LabelTreeNode({
           if (!dragOver) setDragOver(true);
           if (hasChildren && isCollapsed && !autoExpandRequestedRef.current) {
             autoExpandRequestedRef.current = true;
-            onToggleCollapse(node.name);
+            onAutoExpand(node.name);
           }
         }}
         onDragLeave={(e) => {
@@ -3234,6 +3294,7 @@ function LabelTreeNode({
               depth={depth + 1}
               collapsed={collapsed}
               onToggleCollapse={onToggleCollapse}
+              onAutoExpand={onAutoExpand}
               selectedLabel={selectedLabel}
               onSelect={onSelect}
               onDropThread={onDropThread}
