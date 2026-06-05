@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Pencil, Trash2, ChevronDown, X, Save, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatBdDateTime } from "@/app/bd/date-format";
+import { resolveSequenceDisplayName } from "@/lib/bd/apollo-sequences";
 import {
   createSavedSearch,
   updateSavedSearch,
@@ -31,13 +32,6 @@ export type VerticalRow = {
   savedSearches: SavedSearchRow[];
 };
 
-function emptyCriteria(sequenceDefault: string): SavedSearchCriteria {
-  return {
-    apolloSequenceId: sequenceDefault,
-    locationOverride: "",
-  };
-}
-
 function coerceCriteria(
   raw: Partial<SavedSearchCriteria>,
   sequenceDefault: string,
@@ -48,8 +42,14 @@ function coerceCriteria(
   // Old saved searches with the legacy fields (targetTitles, locations,
   // companySize, keywords, freshness) are silently dropped on load.
   const r = raw as Record<string, unknown>;
+  const storedSequence =
+    typeof r.apolloSequenceId === "string" ? r.apolloSequenceId : sequenceDefault;
   return {
-    apolloSequenceId: typeof r.apolloSequenceId === "string" ? r.apolloSequenceId : sequenceDefault,
+    // Map any stored handle (a former alias like "BD Outbound v1", the raw
+    // Apollo id, or the current name) to the sequence's current display
+    // name so renamed sequences keep showing correctly and the edit-form
+    // dropdown value matches an option. Self-heals on the next save.
+    apolloSequenceId: resolveSequenceDisplayName(storedSequence),
     locationOverride: typeof r.locationOverride === "string" ? r.locationOverride : "",
   };
 }
@@ -63,9 +63,20 @@ export function VerticalsSection({
   sequences: string[];
   globalDailyCap: number;
 }) {
-  const [openVerticalId, setOpenVerticalId] = useState<string | null>(
-    verticals[0]?.id ?? null,
+  // Each vertical owns its own open/closed state, so opening one never
+  // collapses the others. Default: only the first vertical expanded (the
+  // one whose first saved search opens to its edit form below).
+  const [openVerticalIds, setOpenVerticalIds] = useState<Set<string>>(
+    () => new Set(verticals[0] ? [verticals[0].id] : []),
   );
+  function toggleVertical(id: string) {
+    setOpenVerticalIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
   // First search in first vertical opens to its edit form by default
   // so the user immediately sees what edit/create looks like.
   const [editingSearchId, setEditingSearchId] = useState<string | "new" | null>(() => {
@@ -86,13 +97,13 @@ export function VerticalsSection({
         </div>
       ) : (
         verticals.map((v) => {
-          const isOpen = openVerticalId === v.id;
+          const isOpen = openVerticalIds.has(v.id);
           return (
             <div key={v.id} className="rounded-lg border border-court-border bg-court-surface">
               <button
                 type="button"
                 aria-expanded={isOpen}
-                onClick={() => setOpenVerticalId(isOpen ? null : v.id)}
+                onClick={() => toggleVertical(v.id)}
                 className="flex w-full items-center justify-between gap-3 rounded-t-lg px-4 py-3 text-left transition hover:bg-court-surface-subtle"
               >
                 <div className="flex items-center gap-2">
@@ -114,7 +125,7 @@ export function VerticalsSection({
                   <div className="flex flex-col gap-2">
                     {v.savedSearches.map((s) => {
                       const isEditing = editingSearchId === s.id && editingForVerticalId === v.id;
-                      const criteria = coerceCriteria(s.criteria, sequences[0] ?? "BD Outbound v1");
+                      const criteria = coerceCriteria(s.criteria, sequences[0] ?? "Tax BD Sequence");
                       return (
                         <div
                           key={s.id}
@@ -168,8 +179,8 @@ export function VerticalsSection({
                         <SavedSearchEditForm
                           mode="create"
                           initialName=""
-                          initialContactCap={80}
-                          initialCriteria={emptyCriteria(sequences[0] ?? "BD Outbound v1")}
+                          initialContactCap={NaN}
+                          initialCriteria={{ apolloSequenceId: "", locationOverride: "" }}
                           version={0}
                           verticalId={v.id}
                           sequences={sequences}
@@ -353,8 +364,18 @@ function SavedSearchEditForm({
           <select
             value={sequence}
             onChange={(e) => setSequence(e.target.value)}
+            required
             className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
           >
+            {/* Placeholder only when nothing is chosen yet (new form) — a
+                required select then blocks submit until one is picked.
+                Hidden once a real value is selected so edit rows never
+                show it. */}
+            {!sequence && (
+              <option value="" disabled>
+                Select a sequence…
+              </option>
+            )}
             {sequences.map((s) => (
               <option key={s} value={s}>
                 {s}

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Clock, ScanSearch, Send, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ApprovalQueue } from "@/components/bd/approval-queue";
+import { getDefaultApolloSequence } from "@/lib/bd/apollo-sequences";
 import type { PendingBDRun } from "./bd-run-actions";
 
 export type VerticalOption = { id: string; name: string; slug: string };
@@ -50,7 +51,9 @@ type Props = {
 };
 
 const ESTIMATED_CONTACTS_PER_COMPANY = 4;
-const SEQUENCE_NAME_PLACEHOLDER = "BD Outbound v1";
+// Pulled from the sequence registry so the BD launch chip + KPI sub-line
+// always show the real sequence name (no hardcoded label to go stale).
+const SEQUENCE_NAME_PLACEHOLDER = getDefaultApolloSequence()?.name ?? "Tax BD Sequence";
 
 export function LaunchView({
   verticals,
