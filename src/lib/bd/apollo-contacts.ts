@@ -227,8 +227,12 @@ export async function fetchApolloContacts(
       cache: "no-store",
     });
     if (!res.ok) {
+      // Print the full Apollo response body (not just the status) so a 422
+      // surfaces exactly which filter/key it rejected instead of an opaque
+      // "422 Unprocessable Entity".
+      const body = await res.text().catch(() => "");
       console.warn(
-        `[Apollo contacts] search failed for domain="${normDomain}" org=${orgId}: ${res.status} ${res.statusText}`,
+        `[Apollo contacts] search failed for domain="${normDomain}" org=${orgId}: ${res.status} ${res.statusText} ${body}`,
       );
       return [];
     }
