@@ -1,8 +1,16 @@
 # ACE_STATE.md
-Last updated: 2026-06-04 · Ace 81.0
-Current Version: Ace 81.0
-Last Shipped: 2026-06-04
+Last updated: 2026-06-05 · Ace 82.0
+Current Version: Ace 82.0
+Last Shipped: 2026-06-05
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 82.0 (2026-06-05) - Client Signals: Dismiss/sort/Reach-out composer
+
+All three items pushed to main; `npm run build` exits 0. No schema changes.
+
+- **Dismiss now removes the row** (`src/app/bd/client-signal/signal-list.tsx`, new). Dismiss is optimistic (row drops instantly, restored on write failure) and the "All" list query now excludes `DISMISSED` (`status: { not: "DISMISSED" }`), so dismissed signals never resurface on refresh - only the Dismissed tab shows them. Persistence (`markSignalDismissed`) was already correct; the bug was the list query + no local removal.
+- **Sorted newest-posted first** - `orderBy: [{ postedAt: { sort: "desc", nulls: "last" } }, { discoveredAt: "desc" }]`. "New this week" inherits the same order.
+- **Reach out opens the shared EmailComposer** pre-filled (To = first client contact email or blank; Subject "Quick question re: [title] search"; templated body). Reuses `EmailComposer` + `sendEmailAction`/`scheduleEmailAction` (same path as `EmailLink`). Sending marks the signal `ACTED`. Primary contact resolved server-side in `page.tsx` (first `Client.contacts` row with a non-empty email).
 
 ## What Shipped in Ace 81.0 (2026-06-03 to 2026-06-04) - BD Engine: tabs/Today's Batch cleanup, real TheirStack saved-search query, timeout hardening, Active Campaigns row identity. PLUS a critical external-webhook credit-drain finding.
 

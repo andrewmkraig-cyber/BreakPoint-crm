@@ -2,7 +2,20 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { TabStrip, type TabStripItem } from "@/components/ui/tab-strip";
 import { formatDaysAgo } from "../date-format";
-import { SignalRow, type SignalRowData } from "./signal-row";
+import { type SignalRowData } from "./signal-row";
+import { SignalList } from "./signal-list";
+
+// First client contact carrying a usable email. The Client Signal "Reach out"
+// composer pre-fills To with this address (and greets by first name); clients
+// with no email-bearing contact open the composer with To blank.
+function primaryContact(
+  contacts: ReadonlyArray<{ firstName: string | null; emails: string[] }> | undefined,
+): { email: string | null; firstName: string | null } {
+  const hit = (contacts ?? []).find((c) => c.emails.some((e) => e.trim().length > 0));
+  if (!hit) return { email: null, firstName: null };
+  const email = hit.emails.find((e) => e.trim().length > 0)?.trim() ?? null;
+  return { email, firstName: hit.firstName?.trim() || null };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -42,14 +55,18 @@ export default async function ClientSignalPage({
       case "dismissed":
         return { organizationId: org.id, status: "DISMISSED" as const };
       default:
-        return { organizationId: org.id };
+        // "All" is the working list: never resurface signals already
+        // dismissed. They stay reachable only under the Dismissed tab.
+        return { organizationId: org.id, status: { not: "DISMISSED" as const } };
     }
   })();
 
   const [rows, allCount, newWeekCount, actedCount, dismissedCount] = await Promise.all([
     prisma.clientSignal.findMany({
       where,
-      orderBy: { discoveredAt: "desc" },
+      // Newest posting first. postedAt is the real listing date; rows where we
+      // never captured it (null) sort last and fall back to discoveredAt.
+      orderBy: [{ postedAt: { sort: "desc", nulls: "last" } }, { discoveredAt: "desc" }],
       take: 100,
       select: {
         id: true,
@@ -61,7 +78,14 @@ export default async function ClientSignalPage({
         discoveredAt: true,
         status: true,
         source: true,
-        client: { select: { id: true, legacyRfId: true, domain: true } },
+        client: {
+          select: {
+            id: true,
+            legacyRfId: true,
+            domain: true,
+            contacts: { select: { firstName: true, emails: true } },
+          },
+        },
       },
     }),
     prisma.clientSignal.count({ where: { organizationId: org.id } }),
@@ -72,22 +96,28 @@ export default async function ClientSignalPage({
     prisma.clientSignal.count({ where: { organizationId: org.id, status: "DISMISSED" } }),
   ]);
 
-  const signals: SignalRowData[] = rows.map((s) => ({
-    id: s.id,
-    companyName: s.companyName,
-    // Key the logo on the matched client's domain (same source as the
-    // Clients page). Soft matches with no client get null -> initials chip.
-    domain: s.client?.domain ?? null,
-    matchedClientHref: clientHref(s.client),
-    jobTitle: s.jobTitle,
-    jobLocation: s.jobLocation,
-    // Real posting date when we captured it; fall back to discoveredAt for
-    // older rows where postedAt is null so the row still shows a date.
-    postedLabel: formatDaysAgo(s.postedAt ?? s.discoveredAt, nowMs),
-    jobPostingUrl: s.jobPostingUrl,
-    status: s.status,
-    source: s.source === "CLIENT_MONITOR" ? "CLIENT_MONITOR" : "BD_DISCOVERY",
-  }));
+  const signals: SignalRowData[] = rows.map((s) => {
+    const contact = primaryContact(s.client?.contacts);
+    return {
+      id: s.id,
+      companyName: s.companyName,
+      // Key the logo on the matched client's domain (same source as the
+      // Clients page). Soft matches with no client get null -> initials chip.
+      domain: s.client?.domain ?? null,
+      matchedClientHref: clientHref(s.client),
+      jobTitle: s.jobTitle,
+      jobLocation: s.jobLocation,
+      // Real posting date when we captured it; fall back to discoveredAt for
+      // older rows where postedAt is null so the row still shows a date.
+      postedLabel: formatDaysAgo(s.postedAt ?? s.discoveredAt, nowMs),
+      jobPostingUrl: s.jobPostingUrl,
+      status: s.status,
+      source: s.source === "CLIENT_MONITOR" ? "CLIENT_MONITOR" : "BD_DISCOVERY",
+      // Reach-out composer pre-fill. Null email -> composer opens with To blank.
+      contactEmail: contact.email,
+      contactFirstName: contact.firstName,
+    };
+  });
 
   const tabs: ReadonlyArray<TabStripItem<Filter>> = [
     { id: "all", label: "All", count: allCount, href: "/bd/client-signal" },
@@ -121,26 +151,7 @@ export default async function ClientSignalPage({
 
       <TabStrip<Filter> items={tabs} activeId={filter} ariaLabel="Client Signal filters" />
 
-      {signals.length === 0 ? (
-        <EmptyState />
-      ) : (
-        <div className="divide-y divide-court-border rounded-2xl border border-court-border bg-court-surface shadow-sm">
-          {signals.map((s) => (
-            <SignalRow key={s.id} {...s} />
-          ))}
-        </div>
-      )}
+      <SignalList signals={signals} />
     </section>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="rounded-2xl border border-dashed border-court-border bg-court-surface-subtle p-10 text-center">
-      <p className="text-sm font-semibold text-court-fg">No client signals yet.</p>
-      <p className="mt-1 text-sm text-court-fg-muted">
-        TheirStack flags an existing client posting publicly and it lands here.
-      </p>
-    </div>
   );
 }

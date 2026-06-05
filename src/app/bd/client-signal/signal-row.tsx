@@ -1,11 +1,13 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ExternalLink, MapPin, Clock, Mail, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { ClientLogo } from "@/components/clients/client-logo";
+import { EmailComposer, type EmailDraft } from "@/components/email-composer";
+import { sendEmailAction, scheduleEmailAction } from "@/app/email/actions";
 import { cn } from "@/lib/utils";
 import { markSignalActed, markSignalDismissed } from "./actions";
 
@@ -23,32 +25,66 @@ export type SignalRowData = {
   jobPostingUrl: string | null;
   status: "NEW" | "ACTED" | "DISMISSED";
   source: "BD_DISCOVERY" | "CLIENT_MONITOR";
+  // Primary client contact, resolved server-side. Null email opens the
+  // Reach-out composer with To blank.
+  contactEmail: string | null;
+  contactFirstName: string | null;
 };
+
+type SignalRowProps = SignalRowData & {
+  // Optimistic-list hooks supplied by SignalList. onRemove drops the row from
+  // view immediately on Dismiss; onRestore puts it back if the write fails.
+  onRemove?: (id: string) => void;
+  onRestore?: (id: string) => void;
+};
+
+// Builds the Reach-out email pre-fill from the signal's job + contact data.
+// Placeholders that have no data resolve to natural fallbacks so no raw
+// bracket text ever leaks into the draft.
+function buildReachOutDraft(props: SignalRowData): EmailDraft {
+  const firstName = props.contactFirstName?.trim() || "there";
+  const title = props.jobTitle?.trim();
+  const titlePhrase = title || "the open";
+  const location = props.jobLocation?.trim();
+  const locationPhrase = location ? ` in ${location}` : "";
+  const relevant = title ? `strong ${title}` : "strong";
+
+  const subject = title
+    ? `Quick question re: ${title} search`
+    : "Quick question re: your search";
+
+  const body = `Hi ${firstName},\n\nI noticed you have a ${titlePhrase} role posted${locationPhrase}. I work with a number of ${relevant} candidates and think I could help. Would you be open to a quick call to discuss the search?\n\nBest,\nAndrew`;
+
+  return {
+    to: props.contactEmail ? [props.contactEmail] : [],
+    cc: [],
+    bcc: [],
+    subject,
+    body,
+  };
+}
 
 // Single client-signal row. Renders inert button states while a
 // transition is in flight so a double-click can't fire two updates.
-export function SignalRow(props: SignalRowData) {
+export function SignalRow(props: SignalRowProps) {
   const router = useRouter();
   const [isPending, start] = useTransition();
+  const [composerOpen, setComposerOpen] = useState(false);
   const { id, status } = props;
 
   function onReachOut() {
-    start(async () => {
-      const r = await markSignalActed(id);
-      if (!r.ok) {
-        toast.error("Couldn't mark as reached out", { description: r.error });
-        return;
-      }
-      toast.success("Marked as reached out");
-      router.refresh();
-    });
+    setComposerOpen(true);
   }
 
   function onDismiss() {
+    // Optimistic: drop the row instantly, then persist. Restore on failure so
+    // a NEW signal isn't silently hidden until the next full reload.
+    props.onRemove?.(id);
     start(async () => {
       const r = await markSignalDismissed(id);
       if (!r.ok) {
         toast.error("Couldn't dismiss signal", { description: r.error });
+        props.onRestore?.(id);
         return;
       }
       toast.success("Signal dismissed");
@@ -60,6 +96,7 @@ export function SignalRow(props: SignalRowData) {
   const dismissed = status === "DISMISSED";
 
   return (
+    <>
     <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1.5fr)_auto] sm:items-center sm:p-5">
       <div className="flex items-center gap-3">
         <ClientLogo name={props.companyName} domain={props.domain} size={32} />
@@ -152,5 +189,59 @@ export function SignalRow(props: SignalRowData) {
         </button>
       </div>
     </div>
+
+    {composerOpen && (
+      <EmailComposer
+        title="Reach out"
+        subtitle={props.companyName}
+        initial={buildReachOutDraft(props)}
+        onClose={() => setComposerOpen(false)}
+        onSend={async (draft: EmailDraft) => {
+          const result = await sendEmailAction({
+            to: draft.to,
+            cc: draft.cc,
+            bcc: draft.bcc,
+            subject: draft.subject,
+            bodyText: draft.body,
+          });
+          if (!result.ok) {
+            throw new Error(result.error);
+          }
+          toast.success("Email sent", { description: `Sent to ${draft.to.join(", ")}.` });
+          setComposerOpen(false);
+          // Sending IS the reach-out; record it so the signal moves to "Acted on".
+          const acted = await markSignalActed(id);
+          if (!acted.ok) {
+            toast.error("Sent, but couldn't mark as reached out", { description: acted.error });
+          }
+          router.refresh();
+        }}
+        onSendLater={async (
+          draft: EmailDraft,
+          scheduledSendAtISO: string,
+          timezone: string,
+        ) => {
+          const result = await scheduleEmailAction({
+            to: draft.to,
+            cc: draft.cc,
+            bcc: draft.bcc,
+            subject: draft.subject,
+            bodyText: draft.body,
+            scheduledSendAt: scheduledSendAtISO,
+            timezone,
+          });
+          if (!result.ok) {
+            throw new Error(result.error);
+          }
+          setComposerOpen(false);
+          const acted = await markSignalActed(id);
+          if (!acted.ok) {
+            toast.error("Scheduled, but couldn't mark as reached out", { description: acted.error });
+          }
+          router.refresh();
+        }}
+      />
+    )}
+    </>
   );
 }
