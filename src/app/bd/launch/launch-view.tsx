@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ComponentType } from "react";
 import Link from "next/link";
-import { Clock, ScanSearch, Send, Settings2 } from "lucide-react";
+import { BriefcaseBusiness, Building2, Settings2, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ApprovalQueue } from "@/components/bd/approval-queue";
 import { getDefaultApolloSequence } from "@/lib/bd/apollo-sequences";
@@ -16,29 +16,12 @@ export type SavedSearchOption = {
   contactCap: number;
 };
 export type DomainPreview = { domain: string; status: string };
-export type LastRun = {
-  id: string;
-  status:
-    | "QUEUED"
-    | "RUNNING"
-    | "AWAITING_APPROVAL"
-    | "APPROVED"
-    | "ENROLLING"
-    | "COMPLETE"
-    | "FAILED"
-    | "DISMISSED";
-  createdAt: string;
-  companies: number | null;
-};
 
-// Three top-of-batch KPI tiles. discoveredToday/enrolledToday are counts
-// since ET midnight; lastRunCompletedAt is the most recent finished run
-// (ISO) and lastRunStatus is the newest run's status for the sub-line.
 export type BatchKpis = {
-  discoveredToday: number;
-  enrolledToday: number;
-  lastRunCompletedAt: string | null;
-  lastRunStatus: LastRun["status"] | null;
+  companiesIdentified: number;
+  jobsIdentified: number;
+  newClientsFromBd: number;
+  weekLabel: string;
 };
 
 type Props = {
@@ -167,26 +150,27 @@ export function LaunchView({
   // KPI tiles row seated at the top of the Today's Batch surface. Same
   // chrome as the Clubhouse tiles (rounded-2xl surface + long shadow,
   // 10px extrabold label, 26px serif value); icon-left + sub-line layout
-  // mirrors the batch mockup. Court Mode tokens only.
+  // mirrors the batch mockup. Counts bind to the current ET week and reset
+  // after Sunday 11:59 PM Eastern. Court Mode tokens only.
   const kpisNode = (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <BatchKpiTile
-        icon={ScanSearch}
-        label="Discovered Today"
-        value={kpis.discoveredToday}
-        sub={`${readyForReview} ready for review`}
+        icon={Building2}
+        label="Companies Identified"
+        value={kpis.companiesIdentified}
+        sub={`${kpis.weekLabel} · ${readyForReview} ready for review`}
       />
       <BatchKpiTile
-        icon={Send}
-        label="Enrolled"
-        value={kpis.enrolledToday}
-        sub={`${SEQUENCE_NAME_PLACEHOLDER} · Active`}
+        icon={BriefcaseBusiness}
+        label="Jobs Identified"
+        value={kpis.jobsIdentified}
+        sub="This week"
       />
       <BatchKpiTile
-        icon={Clock}
-        label="Last Run"
-        value={kpis.lastRunCompletedAt ? formatRelative(kpis.lastRunCompletedAt) : "—"}
-        sub={kpis.lastRunStatus ? formatStatus(kpis.lastRunStatus) : "No runs yet"}
+        icon={UserPlus}
+        label="New Clients from BD"
+        value={kpis.newClientsFromBd}
+        sub="Resets Sunday 11:59 PM ET"
       />
     </div>
   );
@@ -305,40 +289,6 @@ function EmptyState({ message }: { message: string }) {
       {message}
     </div>
   );
-}
-
-function formatStatus(status: LastRun["status"]): string {
-  switch (status) {
-    case "QUEUED":
-      return "Queued";
-    case "RUNNING":
-      return "Running";
-    case "AWAITING_APPROVAL":
-      return "Awaiting approval";
-    case "APPROVED":
-      return "Approved";
-    case "ENROLLING":
-      return "Enrolling";
-    case "COMPLETE":
-      return "Complete";
-    case "FAILED":
-      return "Failed";
-    case "DISMISSED":
-      return "Dismissed";
-  }
-}
-
-function formatRelative(iso: string): string {
-  const then = new Date(iso).getTime();
-  const now = Date.now();
-  const deltaSec = Math.max(0, Math.round((now - then) / 1000));
-  if (deltaSec < 60) return "just now";
-  const min = Math.round(deltaSec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.round(hr / 24);
-  return `${day}d ago`;
 }
 
 // React 18 doesn't have a one-liner "run this effect when dep changes

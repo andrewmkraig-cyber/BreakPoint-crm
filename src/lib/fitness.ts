@@ -173,6 +173,7 @@ export type FitnessSnapshot = {
     today: FitnessStepsDay;
     yesterday: FitnessStepsDay | null;
     series30: FitnessStepsDay[];
+    series365: FitnessStepsDay[];
     connected: boolean;
     lastSyncAt: string | null;
   };

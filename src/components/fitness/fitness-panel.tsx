@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Clock,
   Copy,
@@ -49,6 +50,7 @@ import {
   type FitnessRange,
   type FitnessSavedExerciseSummary,
   type FitnessSnapshot,
+  type FitnessStepsDay,
   type FitnessWorkoutDay,
 } from "@/lib/fitness";
 import {
@@ -102,6 +104,15 @@ function niceNumber(value: number | null | undefined): string {
 function shortDate(iso: string): string {
   const date = new Date(`${iso}T12:00:00`);
   return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+function longDate(iso: string): string {
+  const date = new Date(`${iso}T12:00:00`);
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
     month: "short",
     day: "numeric",
   }).format(date);
@@ -177,6 +188,50 @@ function readStoredActiveSession(): ActiveWorkoutSession | null {
 function clamp(value: number, min: number, max: number): number {
   if (max < min) return min;
   return Math.min(Math.max(value, min), max);
+}
+
+function isoToUtcDate(iso: string): Date {
+  return new Date(`${iso}T12:00:00.000Z`);
+}
+
+function shiftIsoDate(iso: string, days: number): string {
+  const date = isoToUtcDate(iso);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function clampIsoDate(iso: string, minIso: string, maxIso: string): string {
+  if (iso < minIso) return minIso;
+  if (iso > maxIso) return maxIso;
+  return iso;
+}
+
+function startOfWeekIso(iso: string): string {
+  const date = isoToUtcDate(iso);
+  return shiftIsoDate(iso, -date.getUTCDay());
+}
+
+function startOfMonthIso(iso: string): string {
+  return `${iso.slice(0, 8)}01`;
+}
+
+function startOfYearIso(iso: string): string {
+  return `${iso.slice(0, 4)}-01-01`;
+}
+
+function averageStepsBetween(
+  stepsByDate: Map<string, FitnessStepsDay>,
+  startIso: string,
+  endIso: string,
+): number {
+  if (startIso > endIso) return 0;
+  let sum = 0;
+  let count = 0;
+  for (let date = startIso; date <= endIso; date = shiftIsoDate(date, 1)) {
+    sum += stepsByDate.get(date)?.steps ?? 0;
+    count += 1;
+  }
+  return count === 0 ? 0 : Math.round(sum / count);
 }
 
 function setIsComplete(set: DraftSet): boolean {
@@ -978,6 +1033,7 @@ export function FitnessPanel() {
                 days={filteredHistory}
                 stats={historyStats}
                 stepsExpanded={stepsExpanded}
+                focusDate={date}
                 healthSetup={healthSetup}
                 healthConnecting={healthConnecting}
                 onRangeChange={setHistoryRange}
@@ -1009,6 +1065,7 @@ export function FitnessPanel() {
 function StepsHeader({
   steps,
   expanded,
+  focusDate,
   healthSetup,
   healthConnecting,
   onToggleExpanded,
@@ -1016,11 +1073,57 @@ function StepsHeader({
 }: {
   steps: FitnessSnapshot["steps"];
   expanded: boolean;
+  focusDate: string;
   healthSetup: FitnessHealthConnectionSetup | null;
   healthConnecting: boolean;
   onToggleExpanded: () => void;
   onCreateAppleHealthConnection: () => void;
 }) {
+  const series = steps.series365.length > 0 ? steps.series365 : steps.series30;
+  const minDate = series[0]?.date ?? steps.today.date;
+  const maxDate = steps.today.date;
+  const [selectedStepsDate, setSelectedStepsDate] = useState(() =>
+    clampIsoDate(focusDate, minDate, maxDate),
+  );
+  const stepsByDate = useMemo(
+    () => new Map(series.map((row) => [row.date, row])),
+    [series],
+  );
+  const selectedDate = clampIsoDate(selectedStepsDate, minDate, maxDate);
+  const selectedSteps = stepsByDate.get(selectedDate) ?? {
+    date: selectedDate,
+    steps: 0,
+    source: "apple-health-shortcut",
+  };
+  const selectedDayBefore = stepsByDate.get(shiftIsoDate(selectedDate, -1));
+  const selectedDelta =
+    selectedDayBefore == null
+      ? null
+      : selectedSteps.steps - selectedDayBefore.steps;
+  const weekAvg = averageStepsBetween(
+    stepsByDate,
+    clampIsoDate(startOfWeekIso(selectedDate), minDate, maxDate),
+    selectedDate,
+  );
+  const monthAvg = averageStepsBetween(
+    stepsByDate,
+    clampIsoDate(startOfMonthIso(selectedDate), minDate, maxDate),
+    selectedDate,
+  );
+  const yearAvg = averageStepsBetween(
+    stepsByDate,
+    clampIsoDate(startOfYearIso(selectedDate), minDate, maxDate),
+    selectedDate,
+  );
+  const bars = steps.series30;
+  const max = Math.max(1, ...bars.map((row) => row.steps));
+  const canGoBack = selectedDate > minDate;
+  const canGoForward = selectedDate < maxDate;
+
+  useEffect(() => {
+    setSelectedStepsDate(clampIsoDate(focusDate, minDate, maxDate));
+  }, [focusDate, minDate, maxDate]);
+
   if (!steps.connected) {
     return (
       <div className="space-y-3 rounded-md border border-court-border bg-court-surface-subtle p-3">
@@ -1066,16 +1169,6 @@ function StepsHeader({
     steps.yesterday == null || steps.yesterday.steps <= 0
       ? null
       : Math.round((delta! / steps.yesterday.steps) * 1000) / 10;
-  const bars = expanded ? steps.series30 : steps.series30.slice(-7);
-  const max = Math.max(1, ...bars.map((row) => row.steps));
-  const avg7 = Math.round(
-    steps.series30.slice(-7).reduce((sum, row) => sum + row.steps, 0) /
-      Math.max(1, Math.min(7, steps.series30.length)),
-  );
-  const avg30 = Math.round(
-    steps.series30.reduce((sum, row) => sum + row.steps, 0) /
-      Math.max(1, steps.series30.length),
-  );
 
   return (
     <div className="rounded-md border border-court-border bg-court-surface-subtle p-3">
@@ -1129,42 +1222,115 @@ function StepsHeader({
           <AppleHealthSetup setup={healthSetup} />
         </div>
       ) : null}
-      <button
-        type="button"
-        onClick={onToggleExpanded}
-        className="mt-3 flex h-14 w-full items-end gap-1 rounded-md border border-court-border bg-court-surface px-2 py-2"
-      >
-        {bars.map((row) => (
-          <span
-            key={row.date}
-            title={`${shortDate(row.date)} · ${row.steps.toLocaleString()}`}
-            className="flex flex-1 items-end"
-          >
-            <span
-              className="w-full rounded-t-sm bg-court-brand"
-              style={{ height: `${Math.max(10, (row.steps / max) * 100)}%` }}
-            />
-          </span>
-        ))}
-      </button>
+      <div className="mt-3 flex justify-end">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={onToggleExpanded}
+          aria-expanded={expanded}
+        >
+          History
+          <ChevronDown
+            className={cn(
+              "h-3.5 w-3.5 transition",
+              expanded ? "rotate-180" : "",
+            )}
+          />
+        </Button>
+      </div>
       {expanded ? (
-        <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-          <div className="rounded-md bg-court-surface px-2 py-1">
-            <p className="font-semibold uppercase text-court-fg-muted">7 avg</p>
-            <p className="font-bold tabular-nums text-court-fg">
-              {avg7.toLocaleString()}
-            </p>
+        <div className="mt-3 space-y-3">
+          <div className="grid grid-cols-[2rem_minmax(0,1fr)_2rem] items-center rounded-md border border-court-border bg-court-surface">
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedStepsDate((current) =>
+                  clampIsoDate(shiftIsoDate(current, -1), minDate, maxDate),
+                )
+              }
+              disabled={!canGoBack}
+              className="grid h-10 place-items-center border-r border-court-border text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Previous step day"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <div className="min-w-0 px-3 py-2 text-center">
+              <p className="truncate text-xs font-semibold text-court-fg-muted">
+                {longDate(selectedSteps.date)}
+              </p>
+              <div className="flex items-baseline justify-center gap-2">
+                <span className="text-lg font-bold tabular-nums text-court-fg">
+                  {selectedSteps.steps.toLocaleString()}
+                </span>
+                {selectedDelta != null ? (
+                  <span
+                    className={cn(
+                      "text-xs font-semibold tabular-nums",
+                      selectedDelta >= 0
+                        ? "text-court-brand-dark"
+                        : "text-court-fg-muted",
+                    )}
+                  >
+                    {selectedDelta >= 0 ? "+" : ""}
+                    {selectedDelta.toLocaleString()}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedStepsDate((current) =>
+                  clampIsoDate(shiftIsoDate(current, 1), minDate, maxDate),
+                )
+              }
+              disabled={!canGoForward}
+              className="grid h-10 place-items-center border-l border-court-border text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Next step day"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
           </div>
-          <div className="rounded-md bg-court-surface px-2 py-1">
-            <p className="font-semibold uppercase text-court-fg-muted">
-              30 avg
-            </p>
-            <p className="font-bold tabular-nums text-court-fg">
-              {avg30.toLocaleString()}
-            </p>
+          <div className="flex h-14 w-full items-end gap-1 rounded-md border border-court-border bg-court-surface px-2 py-2">
+            {bars.map((row) => (
+              <span
+                key={row.date}
+                title={`${shortDate(row.date)} · ${row.steps.toLocaleString()}`}
+                className="flex flex-1 items-end"
+              >
+                <span
+                  className={cn(
+                    "w-full rounded-t-sm",
+                    row.date === selectedDate
+                      ? "bg-court-brand-dark"
+                      : "bg-court-brand",
+                  )}
+                  style={{
+                    height: `${Math.max(10, (row.steps / max) * 100)}%`,
+                  }}
+                />
+              </span>
+            ))}
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <StepAverageCard label="Week avg" value={weekAvg} />
+            <StepAverageCard label="Month avg" value={monthAvg} />
+            <StepAverageCard label="Year avg" value={yearAvg} />
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function StepAverageCard({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md bg-court-surface px-2 py-1">
+      <p className="font-semibold uppercase text-court-fg-muted">{label}</p>
+      <p className="font-bold tabular-nums text-court-fg">
+        {value.toLocaleString()}
+      </p>
     </div>
   );
 }
@@ -1305,6 +1471,7 @@ function RecordTab(props: {
         <StepsHeader
           steps={props.snapshot.steps}
           expanded={props.stepsExpanded}
+          focusDate={props.date}
           healthSetup={props.healthSetup}
           healthConnecting={props.healthConnecting}
           onToggleExpanded={props.onToggleStepsExpanded}
@@ -2034,6 +2201,7 @@ function HistoryTab({
   days,
   stats,
   stepsExpanded,
+  focusDate,
   healthSetup,
   healthConnecting,
   onRangeChange,
@@ -2047,6 +2215,7 @@ function HistoryTab({
   days: FitnessWorkoutDay[];
   stats: ReturnType<typeof buildHistoryStats>;
   stepsExpanded: boolean;
+  focusDate: string;
   healthSetup: FitnessHealthConnectionSetup | null;
   healthConnecting: boolean;
   onRangeChange: (range: FitnessRange) => void;
@@ -2061,6 +2230,7 @@ function HistoryTab({
       <StepsHeader
         steps={snapshot.steps}
         expanded={stepsExpanded}
+        focusDate={focusDate}
         healthSetup={healthSetup}
         healthConnecting={healthConnecting}
         onToggleExpanded={onToggleStepsExpanded}

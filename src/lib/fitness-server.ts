@@ -252,8 +252,9 @@ export async function fetchStepSeries(
   today: FitnessStepsDay;
   yesterday: FitnessStepsDay | null;
   series30: FitnessStepsDay[];
+  series365: FitnessStepsDay[];
 }> {
-  const start = shiftDate(anchor, -29);
+  const start = shiftDate(anchor, -364);
   const rows = await prisma.dailySteps.findMany({
     where: {
       organizationId,
@@ -265,8 +266,8 @@ export async function fetchStepSeries(
   const byDate = new Map(rows.map((row) => [isoDateOnly(row.date), row]));
   const todayIso = isoDateOnly(anchor);
   const yesterdayIso = isoDateOnly(shiftDate(anchor, -1));
-  const series30 = Array.from({ length: 30 }, (_, index) => {
-    const date = shiftDate(anchor, index - 29);
+  const series365 = Array.from({ length: 365 }, (_, index) => {
+    const date = shiftDate(anchor, index - 364);
     const iso = isoDateOnly(date);
     const row = byDate.get(iso);
     return {
@@ -275,14 +276,16 @@ export async function fetchStepSeries(
       source: row?.source ?? APPLE_HEALTH_SOURCE,
     };
   });
+  const series30 = series365.slice(-30);
   return {
-    today: series30.find((row) => row.date === todayIso) ?? {
+    today: series365.find((row) => row.date === todayIso) ?? {
       date: todayIso,
       steps: 0,
       source: APPLE_HEALTH_SOURCE,
     },
-    yesterday: series30.find((row) => row.date === yesterdayIso) ?? null,
+    yesterday: series365.find((row) => row.date === yesterdayIso) ?? null,
     series30,
+    series365,
   };
 }
 

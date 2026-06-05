@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
-import { getEasternDayStart } from "@/lib/week";
+import { formatEasternWeekRange, getEasternWeekBounds } from "@/lib/week";
+import {
+  dedupeDiscoveredByCompany,
+  recoverCompanyName,
+} from "@/lib/bd/discovered-company";
 import { getPendingBDRuns } from "./bd-run-actions";
 import {
   LaunchView,
@@ -16,23 +20,92 @@ export const dynamic = "force-dynamic";
 // contacts/day across 5 domains rotating ~16 each.
 const DEFAULT_DAILY_CONTACT_CAP = 80;
 
+const CLIENT_SUFFIX_PATTERNS = [
+  /\s*&\s*associates\b/i,
+  /\bp\s*l\s*l\s*c\b\.?/i,
+  /\bllp\b\.?/i,
+  /\bllc\b\.?/i,
+  /\binc\b\.?/i,
+  /\bpc\b\.?/i,
+  /\bco\b\.?/i,
+];
+
+function normalizeCompanyName(name: string): string {
+  let value = name.toLowerCase().trim();
+  for (const pattern of CLIENT_SUFFIX_PATTERNS) {
+    value = value.replace(pattern, "");
+  }
+  return value.replace(/[.,]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function normalizeDomain(domain: string | null | undefined): string {
+  return (domain ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/.*$/, "");
+}
+
+function payloadJobCount(payload: unknown): number {
+  if (!Array.isArray(payload)) return 0;
+  return payload.reduce((count, item) => {
+    if (!item || typeof item !== "object") return count;
+    const companyName = recoverCompanyName(item as Record<string, unknown>);
+    return companyName ? count + 1 : count;
+  }, 0);
+}
+
+function collectCompanyKeys(
+  payloads: unknown[],
+): { names: Set<string>; domains: Set<string> } {
+  const names = new Set<string>();
+  const domains = new Set<string>();
+  for (const payload of payloads) {
+    for (const company of dedupeDiscoveredByCompany(payload)) {
+      const name = normalizeCompanyName(company.companyName);
+      const domain = normalizeDomain(company.domain);
+      if (name) names.add(name);
+      if (domain) domains.add(domain);
+    }
+  }
+  return { names, domains };
+}
+
+function matchesBdCompany(
+  client: { name: string; domain: string | null },
+  bdCompanies: { names: Set<string>; domains: Set<string> },
+): boolean {
+  const domain = normalizeDomain(client.domain);
+  if (domain && bdCompanies.domains.has(domain)) return true;
+
+  const name = normalizeCompanyName(client.name);
+  if (!name) return false;
+  for (const bdName of Array.from(bdCompanies.names)) {
+    if (name === bdName || name.includes(bdName) || bdName.includes(name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export default async function LaunchPage() {
   const org = await getCurrentOrg();
 
-  // KPI window: ET midnight today onward, so the "today" tiles flip at
-  // Eastern midnight rather than the server's UTC day.
-  const todayStart = getEasternDayStart();
+  // KPI window: current America/New_York week. This resets at the end of
+  // Sunday night (effectively Monday 00:00:00 ET), matching "Sunday
+  // 11:59 PM Eastern" from the BD dashboard brief.
+  const week = getEasternWeekBounds();
 
   const [
     verticalRows,
     savedSearchRows,
     domains,
-    lastRunRow,
     orgConfig,
     pendingRuns,
-    discoveredTodayCount,
-    enrolledTodayCount,
-    lastCompletedRun,
+    weeklyRuns,
+    bdCompanySourceRuns,
+    weeklyClients,
   ] = await Promise.all([
     prisma.vertical.findMany({
       where: { organizationId: org.id, active: true },
@@ -50,45 +123,42 @@ export default async function LaunchPage() {
       take: 5,
       select: { domain: true, status: true },
     }),
-    prisma.bDRun.findFirst({
-      where: { organizationId: org.id },
-      orderBy: { createdAt: "desc" },
-      select: { status: true },
-    }),
     // /settings/bd writes here. globalDailyCap is the fallback when
     // neither SavedSearch.contactCap nor the legacy
     // DEFAULT_DAILY_CONTACT_CAP applies.
     prisma.bdOrgConfig.findUnique({ where: { organizationId: org.id } }),
     getPendingBDRuns(),
-    // Discovered today: TheirStack-sourced runs created since ET midnight.
-    prisma.bDRun.count({
+    prisma.bDRun.findMany({
       where: {
         organizationId: org.id,
-        createdAt: { gte: todayStart },
-        discoveryProvider: { contains: "theirstack" },
+        createdAt: { gte: week.start, lt: week.end },
       },
+      select: { discoveredPayload: true },
     }),
-    // Enrolled today: runs that reached APPROVED/COMPLETE today (by
-    // approval or completion timestamp, whichever crossed today).
-    prisma.bDRun.count({
+    prisma.bDRun.findMany({
+      where: { organizationId: org.id },
+      select: { discoveredPayload: true },
+    }),
+    prisma.client.findMany({
       where: {
         organizationId: org.id,
-        status: { in: ["APPROVED", "COMPLETE"] },
         OR: [
-          { approvedAt: { gte: todayStart } },
-          { completedAt: { gte: todayStart } },
+          { createdAt: { gte: week.start, lt: week.end } },
+          { addedAt: { gte: week.start, lt: week.end } },
         ],
       },
-    }),
-    // Last run: most recent BDRun that actually finished, for the relative
-    // "Last Run" tile time.
-    prisma.bDRun.findFirst({
-      where: { organizationId: org.id, completedAt: { not: null } },
-      orderBy: { completedAt: "desc" },
-      select: { completedAt: true },
+      select: { id: true, name: true, domain: true },
     }),
   ]);
   const orgDailyCap = orgConfig?.globalDailyCap ?? DEFAULT_DAILY_CONTACT_CAP;
+  const weeklyPayloads = weeklyRuns.map((run) => run.discoveredPayload);
+  const weeklyCompanies = collectCompanyKeys(weeklyPayloads);
+  const bdCompanies = collectCompanyKeys(
+    bdCompanySourceRuns.map((run) => run.discoveredPayload),
+  );
+  const newClientsFromBd = weeklyClients.filter((client) =>
+    matchesBdCompany(client, bdCompanies),
+  ).length;
 
   const verticals: VerticalOption[] = verticalRows.map((v) => ({
     id: v.id,
@@ -104,10 +174,13 @@ export default async function LaunchPage() {
   }));
 
   const kpis: BatchKpis = {
-    discoveredToday: discoveredTodayCount,
-    enrolledToday: enrolledTodayCount,
-    lastRunCompletedAt: lastCompletedRun?.completedAt?.toISOString() ?? null,
-    lastRunStatus: lastRunRow?.status ?? null,
+    companiesIdentified: weeklyCompanies.names.size,
+    jobsIdentified: weeklyPayloads.reduce<number>(
+      (sum, payload) => sum + payloadJobCount(payload),
+      0,
+    ),
+    newClientsFromBd,
+    weekLabel: formatEasternWeekRange(week.start, week.end),
   };
 
   return (
