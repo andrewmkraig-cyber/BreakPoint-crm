@@ -88,6 +88,17 @@ export function VerticalsSection({
     return first?.savedSearches[0] ? first.id : null;
   });
   const [newVerticalOpen, setNewVerticalOpen] = useState(false);
+  // Saved searches deleted this session. Filtering on this set removes a row
+  // from view the instant its delete resolves, with no page reload — the
+  // server query won't return it on the next load anyway.
+  const [deletedSearchIds, setDeletedSearchIds] = useState<Set<string>>(() => new Set());
+  function markSearchDeleted(id: string) {
+    setDeletedSearchIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -98,6 +109,7 @@ export function VerticalsSection({
       ) : (
         verticals.map((v) => {
           const isOpen = openVerticalIds.has(v.id);
+          const visibleSearches = v.savedSearches.filter((s) => !deletedSearchIds.has(s.id));
           return (
             <div key={v.id} className="rounded-lg border border-court-border bg-court-surface">
               <button
@@ -115,15 +127,15 @@ export function VerticalsSection({
                   />
                   <span className="text-sm font-semibold text-court-fg">{v.name}</span>
                   <span className="rounded-md bg-court-surface-subtle px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted">
-                    {v.savedSearches.length} saved search{v.savedSearches.length === 1 ? "" : "es"}
+                    {visibleSearches.length} saved search{visibleSearches.length === 1 ? "" : "es"}
                   </span>
                 </div>
-                <DeleteVerticalBtn id={v.id} disabled={v.savedSearches.length > 0} />
+                <DeleteVerticalBtn id={v.id} disabled={visibleSearches.length > 0} />
               </button>
               {isOpen && (
                 <div className="border-t border-court-border px-4 py-4">
                   <div className="flex flex-col gap-2">
-                    {v.savedSearches.map((s) => {
+                    {visibleSearches.map((s) => {
                       const isEditing = editingSearchId === s.id && editingForVerticalId === v.id;
                       const criteria = coerceCriteria(s.criteria, sequences[0] ?? "Tax BD Sequence");
                       return (
@@ -143,6 +155,7 @@ export function VerticalsSection({
                               setEditingSearchId(s.id);
                             }}
                             onClose={() => setEditingSearchId(null)}
+                            onDeleted={markSearchDeleted}
                           />
                           {isEditing && (
                             <SavedSearchEditForm
@@ -229,12 +242,14 @@ function SavedSearchRowHeader({
   isEditing,
   onEdit,
   onClose,
+  onDeleted,
 }: {
   row: SavedSearchRow;
   criteria: SavedSearchCriteria;
   isEditing: boolean;
   onEdit: () => void;
   onClose: () => void;
+  onDeleted: (id: string) => void;
 }) {
   const summaryParts = [
     criteria.apolloSequenceId ? `→ ${criteria.apolloSequenceId}` : null,
@@ -272,7 +287,7 @@ function SavedSearchRowHeader({
             <Pencil className="h-3.5 w-3.5" />
           </button>
         )}
-        <DeleteSavedSearchBtn id={row.id} name={row.name} />
+        <DeleteSavedSearchBtn id={row.id} name={row.name} onDeleted={onDeleted} />
       </div>
     </div>
   );
@@ -460,30 +475,71 @@ function Field({
   );
 }
 
-function DeleteSavedSearchBtn({ id, name }: { id: string; name: string }) {
-  const router = useRouter();
+function DeleteSavedSearchBtn({
+  id,
+  name,
+  onDeleted,
+}: {
+  id: string;
+  name: string;
+  onDeleted: (id: string) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
   const [pending, startTransition] = useTransition();
-  const onClick = (e: React.MouseEvent) => {
+
+  const onConfirm = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm(`Delete saved search "${name}"? Version history will be lost.`)) return;
     startTransition(async () => {
       try {
         await deleteSavedSearch(id);
-        router.refresh();
+        // Remove from the list immediately — no router.refresh / page reload.
+        onDeleted(id);
       } catch (err) {
         alert(err instanceof Error ? err.message : "Delete failed");
+        setConfirming(false);
       }
     });
   };
+
+  if (confirming) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[11px] text-court-fg-muted">
+        <span>Delete this search?</span>
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={pending}
+          className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
+        >
+          {pending && <Loader2 className="h-3 w-3 animate-spin" />}
+          Yes
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setConfirming(false);
+          }}
+          disabled={pending}
+          className="rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[11px] font-medium text-court-fg transition hover:bg-court-surface-subtle disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </span>
+    );
+  }
+
   return (
     <button
       type="button"
-      onClick={onClick}
-      disabled={pending}
+      onClick={(e) => {
+        e.stopPropagation();
+        setConfirming(true);
+      }}
       aria-label={`Delete ${name}`}
-      className="rounded-md p-1.5 text-court-fg-muted transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300 disabled:opacity-50"
+      className="rounded-md p-1.5 text-court-fg-muted transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300"
     >
-      {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+      <Trash2 className="h-3.5 w-3.5" />
     </button>
   );
 }
@@ -560,26 +616,30 @@ function NewVerticalForm({ onClose }: { onClose: () => void }) {
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Name">
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Public Accounting"
-            required
-            className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
-          />
-        </Field>
-        <Field label="Slug" hint="URL-safe identifier; leave blank to auto-generate">
-          <input
-            type="text"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            placeholder="e.g. public-accounting"
-            className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 font-mono text-[12px] text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
-          />
-        </Field>
+      <div className="flex items-end gap-4">
+        <div className="flex-1">
+          <Field label="Name">
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Public Accounting"
+              required
+              className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+            />
+          </Field>
+        </div>
+        <div className="flex-1">
+          <Field label="Slug" hint="URL-safe identifier; leave blank to auto-generate">
+            <input
+              type="text"
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              placeholder="e.g. public-accounting"
+              className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 font-mono text-[12px] text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+            />
+          </Field>
+        </div>
       </div>
       {error && (
         <p className="text-xs text-red-600 dark:text-red-300">{error}</p>

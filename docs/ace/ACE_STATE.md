@@ -1,8 +1,16 @@
 # ACE_STATE.md
-Last updated: 2026-06-05 · Ace 82.0
-Current Version: Ace 82.0
+Last updated: 2026-06-05 · Ace 83.0
+Current Version: Ace 83.0
 Last Shipped: 2026-06-05
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 83.0 (2026-06-05) - BD Verticals: inline delete, Name/Slug row + locationOverride diagnosis
+
+All shipped items pushed to main; `npm run build` exits 0. No schema changes. File: `src/app/settings/bd/verticals-section.tsx`.
+
+- **Saved-search delete is now inline + optimistic.** The trash icon (muted at rest, red on hover, icon-only) opens an inline "Delete this search?" with small Yes/Cancel instead of a `window.confirm`. On confirm it deletes from the DB and removes the row from local state immediately via a `deletedSearchIds` set (no `router.refresh` / reload). The vertical's count badge and its "delete vertical" enable-gate both follow the visible (post-deletion) count.
+- **New Vertical form: Name + Slug on one row** - `flex items-end gap-4`, each field `flex-1`, inputs baseline-aligned. No other field in the form changed.
+- **locationOverride diagnosed as a DEAD field (left unwired, by decision).** It's saved per saved-search and shown in the row summary, but the only `discoverJobs` caller (`src/app/api/cron/bd-discovery/route.ts`) never reads saved searches - it passes hardcoded `DISCOVERY_TITLES` + `locations: []`, and `TheirStackProvider` hardcodes `job_location_or: [{ id: 6252001 }]`. Wiring was deferred: TheirStack's `job_location_or` wants a numeric geonames id (not the free-text the field holds), and the cron has no per-saved-search context to source an override from. NOTE: the field's UI hint still claims "Passed to TheirStack when set" - now known false; left as-is pending the wiring decision.
 
 ## What Shipped in Ace 82.0 (2026-06-05) - Client Signals: Dismiss/sort/Reach-out composer
 
