@@ -133,7 +133,15 @@ function companyKey(name: string, domain: string): string {
 }
 
 type ApproveResult =
-  | { success: true; runId: string; enrolled: number; capped: boolean }
+  | {
+      success: true;
+      runId: string;
+      enrolled: number;
+      capped: boolean;
+      // Companies that yielded no enrollable contact, with the reason, so
+      // the queue can report what was skipped instead of silently dropping.
+      skipped: { companyName: string; reason: string }[];
+    }
   | { success: false; error: string };
 
 export async function approveBDRun(
@@ -181,7 +189,13 @@ export async function approveBDRun(
   });
   const result = await enrollCompaniesInApollo(runId, org.id, selectedIndexes);
   revalidatePath("/bd/launch");
-  return { success: true, runId, enrolled: result.enrolled, capped: result.capped };
+  return {
+    success: true,
+    runId,
+    enrolled: result.enrolled,
+    capped: result.capped,
+    skipped: result.skipped,
+  };
 }
 
 type DismissResult =

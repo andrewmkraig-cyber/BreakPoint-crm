@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { getDefaultApolloSequence } from "@/lib/bd/apollo-sequences";
 import { dedupeDiscoveredByCompany } from "@/lib/bd/discovered-company";
-import { DEFAULT_CONTACT_TARGETING } from "@/lib/bd/apollo-contacts";
+import {
+  fetchApolloContacts,
+  apolloResolveDomainByName,
+} from "@/lib/bd/apollo-contacts";
 
 // Cap is enforced against everything enrolled today across the org's
 // BDRuns, where "today" is calendar day in America/New_York. The cron
@@ -9,55 +12,7 @@ import { DEFAULT_CONTACT_TARGETING } from "@/lib/bd/apollo-contacts";
 // we look up the live offset on each call.
 const ZONE = "America/New_York";
 
-// How many people to pull from Apollo per company before priority-ranking.
-// Larger than any per-firm cap so the stored title order actually decides
-// which contacts survive the slice rather than Apollo's return order.
-const SEARCH_PER_PAGE = 25;
-
 const APOLLO_BASE = "https://api.apollo.io";
-
-// Reads the vertical's stored primary-title priority order (the
-// drag-reordered list from Contact Targeting). Falls back to the
-// hardcoded default order when no row / empty list exists so enrollment
-// always has a deterministic priority sequence to rank by.
-async function loadPrimaryTitleOrder(
-  orgId: string,
-  verticalId: string | null,
-): Promise<string[]> {
-  const row = verticalId
-    ? await prisma.bdContactTargeting.findFirst({
-        where: { organizationId: orgId, verticalId },
-        select: { primaryTitles: true },
-      })
-    : null;
-  return row && row.primaryTitles.length > 0
-    ? row.primaryTitles
-    : DEFAULT_CONTACT_TARGETING.primaryTitles;
-}
-
-// Priority rank of a contact's title: the index of the FIRST stored
-// title it matches (case-insensitive substring, same matching the
-// approval preview uses). Unmatched titles sort last. Lower = higher
-// priority, so the per-firm slice keeps the most-wanted decision-makers.
-function titleRank(title: string, orderedTitles: string[]): number {
-  const lower = (title ?? "").toLowerCase();
-  for (let i = 0; i < orderedTitles.length; i++) {
-    if (lower.includes(orderedTitles[i].toLowerCase())) return i;
-  }
-  return Number.MAX_SAFE_INTEGER;
-}
-
-// Stable sort of Apollo people into the stored priority sequence. Ties
-// (equal rank, including all-unmatched) keep Apollo's original order.
-function orderByTitlePriority(
-  people: ApolloPerson[],
-  orderedTitles: string[],
-): ApolloPerson[] {
-  return people
-    .map((p, i) => ({ p, i, rank: titleRank(p.title ?? "", orderedTitles) }))
-    .sort((a, b) => (a.rank === b.rank ? a.i - b.i : a.rank - b.rank))
-    .map((x) => x.p);
-}
 
 function easternMidnightUtc(now: Date = new Date()): Date {
   const ymd = new Intl.DateTimeFormat("en-CA", {
@@ -92,6 +47,10 @@ type CuratedContact = {
 
 type DiscoveredItem = {
   companyName: string;
+  // Recovered company domain (provider field or rawPayload). Drives the
+  // domain + BD Settings titles people search at enroll when no curated
+  // list exists. "" when discovery never captured/resolved one.
+  domain: string;
   jobTitle: string;
   jobUrl?: string;
   // "City, State" string from the discovery provider (TheirStack/JSearch).
@@ -110,6 +69,8 @@ function extractDiscovered(payload: unknown): DiscoveredItem[] {
   // selection. Each company enrolls once, off the FIRST job (entry.primary).
   return dedupeDiscoveredByCompany(payload).map((entry) => {
     const obj = entry.primary;
+    // entry.domain is recoverDomain(obj) — the same recovery the queue uses.
+    const domain = entry.domain;
     const jobTitle = typeof obj.jobTitle === "string" ? obj.jobTitle : "";
     const rawUrl =
       typeof obj.jobUrl === "string"
@@ -139,6 +100,7 @@ function extractDiscovered(payload: unknown): DiscoveredItem[] {
     }
     return {
       companyName: entry.companyName,
+      domain,
       jobTitle,
       jobUrl: rawUrl || undefined,
       jobLocation,
@@ -165,44 +127,6 @@ type ApolloPerson = {
   title?: string;
   organization_name?: string;
 };
-
-async function apolloSearchPeople(
-  apiKey: string,
-  companyName: string,
-  titles: string[],
-): Promise<ApolloPerson[]> {
-  try {
-    const res = await fetch(`${APOLLO_BASE}/api/v1/mixed_people/search`, {
-      method: "POST",
-      // Apollo requires the API key in the X-Api-Key header; passing it in
-      // the JSON body is rejected with 422 INVALID_API_KEY_LOCATION.
-      headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
-      body: JSON.stringify({
-        q_organization_name: companyName,
-        // Stored primary-title priority order (drag-reordered in Contact
-        // Targeting). Apollo's fuzzy match returns them unranked, so the
-        // caller re-ranks by this same order before applying the cap.
-        person_titles: titles,
-        per_page: SEARCH_PER_PAGE,
-      }),
-    });
-    if (!res.ok) {
-      console.warn(
-        `[Apollo] people search failed for "${companyName}": ${res.status} ${res.statusText}`,
-      );
-      return [];
-    }
-    const data = (await res.json()) as { people?: ApolloPerson[]; contacts?: ApolloPerson[] };
-    const people = data.people ?? data.contacts ?? [];
-    return Array.isArray(people) ? people : [];
-  } catch (err) {
-    console.warn(
-      `[Apollo] people search threw for "${companyName}":`,
-      err instanceof Error ? err.message : err,
-    );
-    return [];
-  }
-}
 
 // "City, State" → "City": everything before the first comma, trimmed.
 // No comma → the whole string trimmed. The Posting Job City custom field
@@ -331,7 +255,16 @@ export async function apolloEnrollContact(
   }
 }
 
-export type EnrollResult = { enrolled: number; capped: boolean };
+// Companies that produced no enrollable contact, with the reason, so the
+// approval flow can report what was skipped instead of silently writing a
+// nameless org-only shell into the sequence.
+export type SkippedCompany = { companyName: string; reason: string };
+
+export type EnrollResult = {
+  enrolled: number;
+  capped: boolean;
+  skipped: SkippedCompany[];
+};
 
 export async function enrollCompaniesInApollo(
   runId: string,
@@ -355,13 +288,8 @@ export async function enrollCompaniesInApollo(
     },
   });
   if (!run) {
-    return { enrolled: 0, capped: false };
+    return { enrolled: 0, capped: false, skipped: [] };
   }
-
-  // Stored primary-title priority order for this run's vertical. Used to
-  // both seed the Apollo people search and rank its results so the
-  // per-firm cap keeps the highest-priority decision-makers.
-  const primaryTitleOrder = await loadPrimaryTitleOrder(orgId, run.verticalId);
 
   const allCompanies = extractDiscovered(run.discoveredPayload);
   const companies =
@@ -398,7 +326,7 @@ export async function enrollCompaniesInApollo(
     console.log(
       `[Apollo] runId=${run.id} skipped: daily cap (${dailyCap}) already reached (${enrolledToday} enrolled today)`,
     );
-    return { enrolled: 0, capped: true };
+    return { enrolled: 0, capped: true, skipped: [] };
   }
 
   const apiKey = process.env.APOLLO_API_KEY;
@@ -421,7 +349,7 @@ export async function enrollCompaniesInApollo(
       where: { id: run.id },
       data: { status: "COMPLETE", completedAt: new Date() },
     });
-    return { enrolled: 0, capped: false };
+    return { enrolled: 0, capped: false, skipped: [] };
   }
 
   // Sequence enrollment needs a sending mailbox id. Resolve once per run.
@@ -434,37 +362,68 @@ export async function enrollCompaniesInApollo(
       where: { id: run.id },
       data: { status: "COMPLETE", completedAt: new Date() },
     });
-    return { enrolled: 0, capped: false };
+    return { enrolled: 0, capped: false, skipped: [] };
   }
 
   let enrolledThisRun = 0;
+  const skipped: SkippedCompany[] = [];
 
   for (const c of companies) {
     if (remaining <= 0) break;
 
-    // Prefer the curated list Andrew approved on the queue card. Only
-    // fall back to a live Apollo people search when the run was approved
-    // before this UI shipped (no curated array on the payload entry).
-    const people: ApolloPerson[] =
-      c.curatedContacts.length > 0
-        ? // Andrew already curated and ordered these on the queue card —
-          // preserve his sequence verbatim.
-          c.curatedContacts.map((cc) => ({
-            first_name: cc.firstName || undefined,
-            last_name: cc.lastName || undefined,
-            title: cc.title || undefined,
-            organization_name: c.companyName,
-          }))
-        : // Live fallback: rank Apollo's unordered return by the stored
-          // primary-title priority so the cap keeps the most-wanted titles.
-          orderByTitlePriority(
-            await apolloSearchPeople(apiKey, c.companyName, primaryTitleOrder),
-            primaryTitleOrder,
-          );
+    // Prefer the curated list Andrew approved on the queue card. When there
+    // is none (legacy runs, or a company that surfaced no chips because its
+    // domain wasn't captured at queue load), run the SAME domain + BD
+    // Settings titles search the preview uses (fetchApolloContacts), keyed
+    // on the company's domain. Resolve a missing domain from the company
+    // name via Apollo first so domain-less firms still get real people.
+    let people: ApolloPerson[];
+    if (c.curatedContacts.length > 0) {
+      // Andrew already curated and ordered these — preserve his sequence.
+      people = c.curatedContacts.map((cc) => ({
+        first_name: cc.firstName || undefined,
+        last_name: cc.lastName || undefined,
+        title: cc.title || undefined,
+        organization_name: c.companyName,
+      }));
+    } else {
+      const domain = c.domain || (await apolloResolveDomainByName(c.companyName));
+      if (!domain) {
+        // No domain and Apollo couldn't resolve one — there is no reliable
+        // way to find this firm's decision-makers, so skip rather than
+        // writing a nameless org-only shell into the sequence.
+        const reason = "no resolvable domain";
+        skipped.push({ companyName: c.companyName, reason });
+        console.log(`[Apollo] skipped ${c.companyName}: ${reason}`);
+        continue;
+      }
+      const contacts = await fetchApolloContacts(
+        domain,
+        orgId,
+        run.verticalId ?? undefined,
+        perCompany,
+      );
+      people = contacts.map((ct) => ({
+        first_name: ct.firstName || undefined,
+        last_name: ct.lastName || undefined,
+        title: ct.title || undefined,
+        organization_name: c.companyName,
+      }));
+    }
+
     // Math.min keeps the daily-cap clamp intact: no matter how high
     // perCompany is, `remaining` (dailyCap - enrolledToday) still bounds
     // how many we enroll, so the global contact cap always holds.
     const candidates = people.slice(0, Math.min(perCompany, remaining));
+
+    if (candidates.length === 0) {
+      // People search returned nobody matching the BD Settings titles.
+      // Skip (no nameless shell) and record why so it surfaces post-run.
+      const reason = "no decision-makers matched BD Settings titles";
+      skipped.push({ companyName: c.companyName, reason });
+      console.log(`[Apollo] skipped ${c.companyName}: ${reason}`);
+      continue;
+    }
 
     // The three job-context values Apollo stores as contact custom
     // fields, keyed by their real Apollo custom field IDs. Identical for
@@ -476,42 +435,25 @@ export async function enrollCompaniesInApollo(
       "6a207f8bc3715c0010ae118e": cityOnly(c.jobLocation),
     };
 
-    if (candidates.length > 0) {
-      for (const p of candidates) {
-        if (remaining <= 0) break;
-        const ok = await apolloEnrollContact(apiKey, sequenceId, emailAccountId, {
-          first_name: p.first_name ?? undefined,
-          last_name: p.last_name ?? undefined,
-          email: p.email ?? undefined,
-          title: p.title ?? undefined,
-          organization_name: p.organization_name ?? c.companyName,
-          typed_custom_fields: typedCustomFields,
-        });
-        if (ok) {
-          enrolledThisRun += 1;
-          remaining -= 1;
-          const displayName =
-            [p.first_name, p.last_name].filter(Boolean).join(" ") ||
-            p.name ||
-            "(unnamed)";
-          console.log(
-            `[Apollo] enrolled ${displayName}: title="${p.title ?? "(none)"}" company="${c.companyName}"`,
-          );
-        }
-      }
-    } else {
-      // Apollo found no decision-makers — enroll a company-level
-      // placeholder so the run still records the BD touch. Apollo's
-      // sequence will treat the org_name + title as the address.
+    for (const p of candidates) {
+      if (remaining <= 0) break;
       const ok = await apolloEnrollContact(apiKey, sequenceId, emailAccountId, {
-        organization_name: c.companyName,
+        first_name: p.first_name ?? undefined,
+        last_name: p.last_name ?? undefined,
+        email: p.email ?? undefined,
+        title: p.title ?? undefined,
+        organization_name: p.organization_name ?? c.companyName,
         typed_custom_fields: typedCustomFields,
       });
       if (ok) {
         enrolledThisRun += 1;
         remaining -= 1;
+        const displayName =
+          [p.first_name, p.last_name].filter(Boolean).join(" ") ||
+          p.name ||
+          "(unnamed)";
         console.log(
-          `[Apollo] enrolled company-only placeholder: company="${c.companyName}" job="${c.jobTitle}"`,
+          `[Apollo] enrolled ${displayName}: title="${p.title ?? "(none)"}" company="${c.companyName}"`,
         );
       }
     }
@@ -526,7 +468,10 @@ export async function enrollCompaniesInApollo(
     },
   });
 
-  if (enrolledThisRun > 0) {
+  // Record the run outcome whenever there's anything to report — enrolled
+  // contacts and/or skipped companies (with reasons) — so the skips are
+  // queryable after the fact instead of vanishing.
+  if (enrolledThisRun > 0 || skipped.length > 0) {
     await prisma.bDActivity.create({
       data: {
         organizationId: orgId,
@@ -535,11 +480,12 @@ export async function enrollCompaniesInApollo(
         metadata: {
           contacts: enrolledThisRun,
           sequenceId,
+          skipped,
         },
       },
     });
   }
 
   const capped = remaining <= 0 && enrolledThisRun + enrolledToday >= dailyCap;
-  return { enrolled: enrolledThisRun, capped };
+  return { enrolled: enrolledThisRun, capped, skipped };
 }

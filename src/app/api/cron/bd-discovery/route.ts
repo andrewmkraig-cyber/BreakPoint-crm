@@ -4,6 +4,8 @@ import { TheirStackProvider } from "@/lib/bd/theirstack-provider";
 import { getBDSettings } from "@/lib/bd/bd-settings";
 import type { DiscoveredCompany } from "@/lib/bd/job-discovery-provider";
 import { syncClientSignals } from "@/lib/bd/client-signal-sync";
+import { recoverDomain } from "@/lib/bd/discovered-company";
+import { apolloResolveDomainByName, normalizeDomain } from "@/lib/bd/apollo-contacts";
 
 export const dynamic = "force-dynamic";
 // Safety margin only. The real fix for the 504 is the abort timeouts on the
@@ -295,16 +297,37 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Ensure every stored entry carries a usable domain so the queue-load
+    // people search (fetchApolloContacts, keyed on domain + BD Settings
+    // titles) actually runs instead of hitting the empty-domain skip. Prefer
+    // the domain the provider/rawPayload already holds (recoverDomain), and
+    // only when that's genuinely empty fall back to Apollo's name→domain
+    // resolution. Normalize so dedup keys and the Apollo filter stay clean.
+    let domainResolvedCount = 0;
+    let domainMissingCount = 0;
+    const withDomains: DiscoveredCompany[] = await Promise.all(
+      afterClientExclusion.map(async (r) => {
+        const recovered = normalizeDomain(
+          recoverDomain(r as unknown as Record<string, unknown>),
+        );
+        if (recovered) return { ...r, domain: recovered };
+        const resolved = await apolloResolveDomainByName(r.companyName);
+        if (resolved) domainResolvedCount++;
+        else domainMissingCount++;
+        return { ...r, domain: resolved };
+      }),
+    );
+
     console.log(
-      `[bd-discovery] runId=${run.id} raw=${raw.length} dedupFiltered=${dedupFilteredCount} clientExcluded=${clientExcludedCount} clientSignals=${clientSignalsWritten} final=${afterClientExclusion.length}`,
+      `[bd-discovery] runId=${run.id} raw=${raw.length} dedupFiltered=${dedupFilteredCount} clientExcluded=${clientExcludedCount} clientSignals=${clientSignalsWritten} final=${afterClientExclusion.length} domainResolvedByName=${domainResolvedCount} domainStillMissing=${domainMissingCount}`,
     );
 
     await prisma.bDRun.update({
       where: { id: run.id },
       data: {
         status: "AWAITING_APPROVAL",
-        discoveredCount: afterClientExclusion.length,
-        discoveredPayload: afterClientExclusion as unknown as object[],
+        discoveredCount: withDomains.length,
+        discoveredPayload: withDomains as unknown as object[],
         completedAt: new Date(),
       },
     });

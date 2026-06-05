@@ -15,6 +15,65 @@ import { prisma } from "@/lib/prisma";
 
 const APOLLO_BASE = "https://api.apollo.io";
 
+// Strip protocol/www/path so a stored "https://www.foo.com/careers" and a
+// bare "foo.com" both collapse to "foo.com". Apollo's organization_domains
+// filter wants the bare host; dedup keys want it too, so this is the single
+// normalizer used at discovery write time, enroll time, and people search.
+export function normalizeDomain(domain: string): string {
+  return domain
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/.*$/, "");
+}
+
+// Resolve a company's domain from its NAME via Apollo's company search.
+// Used when discovery captured a company name but no domain (TheirStack
+// returned only the bare company string), so the domain-keyed people
+// search below can still run. Best-effort: "" when APOLLO_API_KEY is unset,
+// the API rejects, or no organization matched. Key goes in the X-Api-Key
+// header (api_key in the body is rejected 422).
+export async function apolloResolveDomainByName(companyName: string): Promise<string> {
+  const apiKey = process.env.APOLLO_API_KEY;
+  if (!apiKey) return "";
+  const name = companyName.trim();
+  if (!name) return "";
+  try {
+    const res = await fetch(`${APOLLO_BASE}/api/v1/mixed_companies/search`, {
+      method: "POST",
+      headers: {
+        "X-Api-Key": apiKey,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      // q_organization_name is Apollo's fuzzy company-name match; the top
+      // organization's primary_domain (or website_url) is the company site.
+      body: JSON.stringify({ q_organization_name: name, per_page: 1 }),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      console.warn(
+        `[Apollo org] name→domain search failed for "${name}": ${res.status} ${res.statusText}`,
+      );
+      return "";
+    }
+    const data = (await res.json().catch(() => ({}))) as {
+      organizations?: Array<{ primary_domain?: string; website_url?: string }>;
+      accounts?: Array<{ primary_domain?: string; website_url?: string }>;
+    };
+    const hit = (data.organizations ?? [])[0] ?? (data.accounts ?? [])[0];
+    const raw = hit?.primary_domain || hit?.website_url || "";
+    return normalizeDomain(raw);
+  } catch (err) {
+    console.warn(
+      `[Apollo org] name→domain threw for "${name}":`,
+      err instanceof Error ? err.message : err,
+    );
+    return "";
+  }
+}
+
 // Three-tier title priority list. Apollo's person_titles uses fuzzy
 // matching so we send the literal titles below; client-side ranking
 // after the fetch decides which contacts survive the per-firm cap.
@@ -131,13 +190,19 @@ export async function fetchApolloContacts(
   domain: string,
   orgId: string,
   verticalId?: string,
+  // Optional per-firm cap override. The approval queue preview uses the
+  // BdContactTargeting maxPerFirm; the enroll path passes the discovery
+  // dialog's maxContactsPerCompany so both share this one search but honor
+  // the recruiter's per-run choice. Falls back to maxPerFirm when omitted.
+  maxContacts?: number,
 ): Promise<ApolloContact[]> {
   const apiKey = process.env.APOLLO_API_KEY;
   if (!apiKey) return [];
-  const normDomain = domain.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
+  const normDomain = normalizeDomain(domain);
   if (!normDomain) return [];
 
   const targeting = await loadTargeting(orgId, verticalId);
+  const cap = maxContacts && maxContacts > 0 ? maxContacts : targeting.maxPerFirm;
 
   try {
     const res = await fetch(`${APOLLO_BASE}/api/v1/mixed_people/search`, {
@@ -203,18 +268,18 @@ export async function fetchApolloContacts(
     const out: ApolloContact[] = [];
     if (primary.length > 0) {
       for (const c of primary) {
-        if (out.length >= targeting.maxPerFirm) break;
+        if (out.length >= cap) break;
         out.push(c);
       }
     } else {
       for (const c of smallFirm) {
-        if (out.length >= targeting.maxPerFirm) break;
+        if (out.length >= cap) break;
         out.push(c);
       }
     }
     let practiceSpecificAdded = 0;
     for (const c of practiceSpecific) {
-      if (out.length >= targeting.maxPerFirm) break;
+      if (out.length >= cap) break;
       if (practiceSpecificAdded >= MAX_PRACTICE_SPECIFIC_PER_FIRM) break;
       out.push(c);
       practiceSpecificAdded += 1;
