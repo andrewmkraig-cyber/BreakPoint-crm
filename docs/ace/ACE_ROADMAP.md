@@ -1,19 +1,22 @@
 # Ace Roadmap
-Last updated: 2026-06-05 · Ace 85.0
+Last updated: 2026-06-05 · Ace 86.0
 
 ## Active Build Sequence
 
-### NEXT SESSION - BD webhook safety + Today's Batch redesign (in this EXACT order)
-This is the priority block for the next session, queued at Ace 81.0 close. Do items 1-2 BEFORE anything else - they gate the Apollo "Tax BD Sequence" go-live (see ACE_STATE.md ▸ GO-LIVE GATE).
+### NEXT - TheirStack dynamic per-vertical discovery query
+The cron (`src/app/api/cron/bd-discovery/route.ts`) still discovers off hardcoded `DISCOVERY_TITLES` + `locations: []` and never reads the BD Settings saved searches / verticals (diagnosed Ace 83.0). Make discovery **dynamic per vertical**: the cron reads the BD Settings verticals + their saved searches to build the TheirStack query (titles, and the location override once `job_location_or` geonames-id mapping is solved). This is the priority item for the next session - it makes the Verticals/Saved Search UI actually drive discovery instead of being display-only.
 
-1. **DIAGNOSE `/api/webhooks/theirstack` (READ-ONLY, no edits, report first).** Answer: what does this endpoint do when it receives a job from TheirStack? Does it create `BDRun` rows? Create campaigns? Auto-enroll contacts to Apollo? Does the daily cron (`src/app/api/cron/bd-discovery/route.ts`) depend on this webhook/endpoint in any way, or is the cron fully self-contained? Confirm whether **AHF** and **American Express** entered via this path. Cite files + lines.
-2. **Based on that diagnosis:** confirm the cron stands alone, then provide the safe steps to **retire the webhook path**; remove AHF and American Express from Active Campaigns and from Apollo if they were enrolled; guarantee no auto-enroll can fire when Apollo is activated. (Also rotate the exposed TheirStack API key - see ACE_STATE.md ▸ CRITICAL.)
-3. **TODAY'S BATCH REDESIGN.** Read `src/components/bd/approval-queue.tsx` and `src/app/bd/launch/launch-view.tsx` IN FULL first. KPI tiles row (Discovered Today / Enrolled / Last Run), a view toggle, cleaner card grid, "Review all" action. MUST conform to Andrew's button standards (the prior mockup did NOT). Build shared chrome - do NOT pattern-match the mockup. See ACE_DESIGN.md ▸ Today's Batch target layout.
+### DONE this session (Ace 82.0-86.0) - BD webhook safety + Today's Batch redesign
+The prior priority block (queued at Ace 81.0 close) is complete. Retained here as a closed record.
+
+1. ~~**DIAGNOSE `/api/webhooks/theirstack`.**~~ DONE - diagnosed read-only; cron confirmed self-contained; AHF + American Express confirmed to have entered via the webhook path.
+2. ~~**Retire the webhook path.**~~ DONE Ace 82.0-86.0 - deleted `/api/webhooks/theirstack`; deleted the AHF Products + American Express `BDRun` rows from the DB; no external auto-enroll can fire. (TheirStack API key rotation tracked separately - see ACE_STATE.md ▸ CRITICAL.)
+3. ~~**TODAY'S BATCH REDESIGN.**~~ DONE - KPI tiles (Discovered Today / Enrolled / Last Run), Rows/Cards view toggle, "Review all" action, panel-dismiss fix for number inputs; conforms to Andrew's button standards (shared chrome).
 4. **CLEANUP:**
    - ~~Remove the `[bd-discovery][theirstack-body][diag]` log in `theirstack-provider.ts`.~~ DONE Ace 85.0.
    - ~~Delete the dead `POST /api/bd/runs` route.~~ DONE Ace 85.0 (confirmed no in-app caller).
    - ~~Delete unused `src/components/client-logo.tsx`.~~ DONE Ace 85.0 (zero imports).
-   - **STILL OPEN:** The BD Settings "pause all" toggle writes a column nothing reads (no-op) - either wire it or remove it.
+   - ~~The BD Settings "pause all" toggle writes a column nothing reads (no-op).~~ DONE Ace 82.0-86.0 - now actually gates the cron + Run Discovery Now.
 
 ### Next Up
 

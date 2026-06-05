@@ -1,8 +1,19 @@
 # ACE_STATE.md
-Last updated: 2026-06-05 · Ace 85.0
-Current Version: Ace 85.0
+Last updated: 2026-06-05 · Ace 86.0
+Current Version: Ace 86.0
 Last Shipped: 2026-06-05
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 82.0-86.0 (2026-06-05) - BD Engine hardening: webhook retirement, Today's Batch redesign, BD Settings overhaul, Client Signals + sweep
+
+Consolidated session summary across Ace 82.0 -> 86.0 (per-version detail also lives in the individual sections below). All items pushed to main; `npm run build` exits 0.
+
+- **Webhook retirement + DB cleanup.** Deleted the `/api/webhooks/theirstack` endpoint (the external auto-enroll path flagged as a credit-drain risk; cron `api/cron/bd-discovery` confirmed self-contained, so retiring the webhook is safe). Deleted the **AHF Products** and **American Express** `BDRun` rows from the DB - the two companies that entered via the webhook path. No auto-enroll can fire from an external webhook anymore.
+- **Today's Batch redesign.** KPI tiles row (Discovered Today / Enrolled / Last Run), a Rows/Cards view toggle, a "Review all" button on each run card, and a panel-dismiss fix so a drag that starts inside a number input and releases on the backdrop no longer closes the dialog (mousedown-on-backdrop, not click). Conforms to Andrew's button standards (shared chrome, not the rejected mockup).
+- **BD Settings overhaul.** Sequence labeled **"Tax BD Sequence"** everywhere with an alias resolver (replaces the "BD Outbound v1" placeholder mislabel); the New Saved Search form starts blank; vertical collapse state is independent per vertical; saved-search delete is inline-confirm + optimistic; New Vertical Name + Slug share one row; the Location override hint text is corrected (honest "not yet active" copy); per-vertical daily cap auto-distributes the remaining global budget; Primary Titles chips are drag-to-reorder and the enrollment path now sends `person_titles` in the stored priority order (re-ranks Apollo results by stored title index); mailbox health is matched by full email address (was domain-collapsed) with a red "Disabled" chip for Apollo-disabled mailboxes; and the **Pause all** toggle now actually gates both the cron and Run Discovery Now (was a no-op column nothing read).
+- **Client Signals (Ace 82.0).** Dismiss fix (dismissed rows stay gone), newest-first sort, "Reach Out" opens a pre-filled email composer and marks the signal ACTED on send.
+- **Client signal sweep.** Stable `orderBy id asc`, a rotating cursor (`lastSignalCursorId` on `BdOrgConfig`) so each run advances through the client list, limit raised 10 -> 25, and a no-domain warning log for clients the sweep can't query.
+- **Cleanup.** Removed the `[bd-discovery][theirstack-body][diag]` log; deleted the dead `POST /api/bd/runs` route (no in-app caller); deleted the unused top-level `src/components/client-logo.tsx` (zero imports; live component is `components/clients/client-logo.tsx`).
 
 ## What Shipped in Ace 85.0 (2026-06-05) - BD: drag-to-reorder Primary Titles + per-mailbox Apollo health + cleanup
 
