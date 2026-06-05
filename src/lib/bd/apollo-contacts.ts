@@ -213,7 +213,10 @@ export async function fetchApolloContacts(
         Accept: "application/json",
       },
       body: JSON.stringify({
-        organization_domains: [normDomain],
+        // Apollo People Search filters by company domain via
+        // q_organization_domains_list[]. The legacy `organization_domains`
+        // key is rejected with 422 Unprocessable Entity.
+        q_organization_domains_list: [normDomain],
         person_titles: [
           ...targeting.primaryTitles,
           ...targeting.smallFirmFallbackTitles,
