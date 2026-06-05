@@ -418,7 +418,7 @@ function SavedSearchEditForm({
         </Field>
       </div>
 
-      <Field label="Location override" hint="Optional. Passed to TheirStack when set; ignored when blank">
+      <Field label="Location override" hint="Not yet active - reserved for future per-vertical location filtering.">
         <input
           type="text"
           value={locationOverride}

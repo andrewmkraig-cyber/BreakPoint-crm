@@ -34,6 +34,16 @@ export function LimitsSection({
     });
   };
 
+  // Auto-distribute the global cap across verticals that have NOT been given a
+  // manually-set (persisted) cap. Locked verticals (dailyCap != null) consume
+  // their share first; the remainder is split evenly across the rest and shown
+  // as a muted, unconfirmed placeholder until the user accepts it. Floored at 0
+  // so the math never goes negative when locked caps exceed the global cap.
+  const lockedSum = verticals.reduce((sum, v) => sum + (v.dailyCap ?? 0), 0);
+  const unlockedCount = verticals.filter((v) => v.dailyCap == null).length;
+  const remainder = Math.max(0, config.globalDailyCap - lockedSum);
+  const autoCap = unlockedCount > 0 ? Math.floor(remainder / unlockedCount) : 0;
+
   return (
     <div className="flex flex-col gap-6">
       <PauseAllRow
@@ -60,7 +70,7 @@ export function LimitsSection({
                 id={v.id}
                 name={v.name}
                 value={v.dailyCap}
-                globalFallback={config.globalDailyCap}
+                autoCap={autoCap}
               />
             ))}
           </div>
@@ -224,17 +234,29 @@ function VerticalCapCard({
   id,
   name,
   value,
-  globalFallback,
+  autoCap,
 }: {
   id: string;
   name: string;
   value: number | null;
-  globalFallback: number;
+  // Auto-distributed share for this vertical when it has no manual cap.
+  autoCap: number;
 }) {
   const router = useRouter();
+  // A vertical is "locked" once it has a persisted (manually-set) cap. Unlocked
+  // verticals show the muted autoCap placeholder until the user confirms it.
+  const locked = value != null;
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<number>(value ?? globalFallback);
+  const [draft, setDraft] = useState<number>(value ?? autoCap);
   const [pending, startTransition] = useTransition();
+
+  const save = (next: number) => {
+    startTransition(async () => {
+      await updateVerticalDailyCap(id, Math.max(0, next));
+      router.refresh();
+      setEditing(false);
+    });
+  };
 
   return (
     <div className="rounded-lg border border-court-border bg-court-surface p-3">
@@ -248,14 +270,15 @@ function VerticalCapCard({
             onChange={(e) => setDraft(Number(e.target.value))}
             className="w-20 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
           />
+        ) : locked ? (
+          <span className="text-2xl font-semibold tabular-nums text-court-fg">{value}</span>
         ) : (
-          <span className="text-2xl font-semibold tabular-nums text-court-fg">
-            {value ?? globalFallback}
-            {value == null && (
-              <span className="ml-1 text-[10px] font-normal uppercase tracking-wide text-court-fg-dim">
-                inherits
-              </span>
-            )}
+          // Unconfirmed auto-distributed suggestion: muted until the user saves it.
+          <span className="text-2xl font-semibold tabular-nums text-court-fg-dim">
+            {autoCap}
+            <span className="ml-1 text-[10px] font-normal uppercase tracking-wide text-court-fg-dim">
+              auto
+            </span>
           </span>
         )}
         <div className="flex items-center gap-1">
@@ -264,7 +287,7 @@ function VerticalCapCard({
               <button
                 type="button"
                 onClick={() => {
-                  setDraft(value ?? globalFallback);
+                  setDraft(value ?? autoCap);
                   setEditing(false);
                 }}
                 aria-label="Cancel"
@@ -275,23 +298,18 @@ function VerticalCapCard({
               <button
                 type="button"
                 disabled={pending}
-                onClick={() => {
-                  startTransition(async () => {
-                    await updateVerticalDailyCap(id, draft);
-                    router.refresh();
-                    setEditing(false);
-                  });
-                }}
+                onClick={() => save(draft)}
+                aria-label="Save cap"
                 className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-2 py-0.5 text-xs font-semibold text-court-brand-dark transition hover:bg-court-brand/25 disabled:opacity-60"
               >
                 {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
               </button>
             </>
-          ) : (
+          ) : locked ? (
             <button
               type="button"
               onClick={() => {
-                setDraft(value ?? globalFallback);
+                setDraft(value);
                 setEditing(true);
               }}
               aria-label="Edit cap"
@@ -299,6 +317,30 @@ function VerticalCapCard({
             >
               <Pencil className="h-3.5 w-3.5" />
             </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => save(autoCap)}
+                aria-label="Accept suggested cap"
+                title="Accept suggested cap"
+                className="inline-flex items-center rounded-md border border-court-brand bg-court-brand-tint px-2 py-0.5 text-xs font-semibold text-court-brand-dark transition hover:bg-court-brand/25 disabled:opacity-60"
+              >
+                {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraft(autoCap);
+                  setEditing(true);
+                }}
+                aria-label="Override cap"
+                className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            </>
           )}
         </div>
       </div>

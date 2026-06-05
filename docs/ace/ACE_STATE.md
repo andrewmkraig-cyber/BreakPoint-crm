@@ -1,8 +1,16 @@
 # ACE_STATE.md
-Last updated: 2026-06-05 · Ace 83.0
-Current Version: Ace 83.0
+Last updated: 2026-06-05 · Ace 84.0
+Current Version: Ace 84.0
 Last Shipped: 2026-06-05
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 84.0 (2026-06-05) - BD limits: honest location-override hint + per-vertical cap auto-distribute
+
+All items pushed to main; `npm run build` exits 0. No schema changes. Files: `src/app/settings/bd/verticals-section.tsx`, `src/app/settings/bd/limits-section.tsx`.
+
+- **Plan snapshot card: KEPT (investigated, not removed).** Step 0 grep confirmed `BDRun.plan` is written with real data (`{ contactCap, domains }`) at `src/app/api/bd/runs/route.ts:72` (launch route), so the card on `bd/campaigns/[id]/page.tsx` stays. Nuance: that launch route currently has no in-app caller; cron-created runs (`api/cron/bd-discovery`) write null `plan` and render `{}` via the existing defensive default. `metrics` is never written (always null, sub-block never shows). No code change.
+- **locationOverride hint is now honest.** Changed the helper text on the Location override field from "Optional. Passed to TheirStack when set; ignored when blank" (known false, flagged in 83.0) to "Not yet active - reserved for future per-vertical location filtering." Field behavior unchanged - still saved per saved-search, still unwired. Resolves the dangling note from Ace 83.0.
+- **Per-vertical daily caps now auto-distribute.** When a vertical has no manual cap, `limits-section.tsx` computes its share = `floor(max(0, globalCap - sum(locked caps)) / unlocked count)` and shows it as a muted "auto" placeholder (NOT persisted until the user confirms with the check button, or overrides via the pencil). Setting/locking one vertical re-distributes the remaining budget across the rest. Math floored at 0 both on the remainder and on save, so caps never go negative. Example: global 80, set Accounting 50 -> Manufacturing shows auto 30.
 
 ## What Shipped in Ace 83.0 (2026-06-05) - BD Verticals: inline delete, Name/Slug row + locationOverride diagnosis
 
