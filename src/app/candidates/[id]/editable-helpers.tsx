@@ -34,6 +34,10 @@ export function LabeledField({
   disabled,
   suffix,
   currency,
+  // Frame variant for the wrapper. Defaults to the pill (INPUT_FRAME_CLASS)
+  // so existing callers (candidate / job / settings forms) are untouched;
+  // the client company form opts into the rectangular variant via this prop.
+  frameClassName = INPUT_FRAME_CLASS,
 }: {
   label: string;
   value: string;
@@ -41,6 +45,7 @@ export function LabeledField({
   type?: string;
   placeholder?: string;
   disabled?: boolean;
+  frameClassName?: string;
   // When true the inner input is the shared MaskedCurrencyInput: blank at
   // rest, a leading "$" appears as digits are typed, thousands commas
   // auto-insert, and onChange emits clean digits only. Mutually
@@ -73,7 +78,7 @@ export function LabeledField({
         >
           {label}
         </label>
-        <div className={cn(INPUT_FRAME_CLASS, "mt-1 w-full", disabled && "opacity-60")}>
+        <div className={cn(frameClassName, "mt-1 w-full", disabled && "opacity-60")}>
           <input
             id={inputId}
             type={type}
@@ -96,7 +101,7 @@ export function LabeledField({
   return (
     <label className="block text-sm">
       <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
-      <div className={cn(INPUT_FRAME_CLASS, "mt-1 w-full", disabled && "opacity-60")}>
+      <div className={cn(frameClassName, "mt-1 w-full", disabled && "opacity-60")}>
         {currency ? (
           <MaskedCurrencyInput
             value={value}

@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { formatPhone, telHref } from "@/lib/rf-payload-shapes";
 import { updateClientCompany } from "@/app/clients/[id]/actions";
 import { LabeledField } from "@/app/candidates/[id]/editable-helpers";
+import { INPUT_FRAME_RECT_CLASS } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
 export const INDUSTRY_OPTIONS = [
@@ -127,16 +128,19 @@ export function EditableCompany({
               label="Website"
               value={draft.website}
               onChange={(v) => setDraft({ ...draft, website: v })}
+              frameClassName={INPUT_FRAME_RECT_CLASS}
             />
             <LabeledField
               label="LinkedIn"
               value={draft.linkedin}
               onChange={(v) => setDraft({ ...draft, linkedin: v })}
+              frameClassName={INPUT_FRAME_RECT_CLASS}
             />
             <LabeledField
               label="Phone"
               value={draft.phone}
               onChange={(v) => setDraft({ ...draft, phone: v })}
+              frameClassName={INPUT_FRAME_RECT_CLASS}
             />
             <label className="block text-sm">
               <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
@@ -164,31 +168,37 @@ export function EditableCompany({
               label="Street"
               value={draft.street1}
               onChange={(v) => setDraft({ ...draft, street1: v })}
+              frameClassName={INPUT_FRAME_RECT_CLASS}
             />
             <LabeledField
               label="Street 2"
               value={draft.street2}
               onChange={(v) => setDraft({ ...draft, street2: v })}
+              frameClassName={INPUT_FRAME_RECT_CLASS}
             />
             <LabeledField
               label="City"
               value={draft.city}
               onChange={(v) => setDraft({ ...draft, city: v })}
+              frameClassName={INPUT_FRAME_RECT_CLASS}
             />
             <LabeledField
               label="State"
               value={draft.state}
               onChange={(v) => setDraft({ ...draft, state: v })}
+              frameClassName={INPUT_FRAME_RECT_CLASS}
             />
             <LabeledField
               label="Postal code"
               value={draft.postalCode}
               onChange={(v) => setDraft({ ...draft, postalCode: v })}
+              frameClassName={INPUT_FRAME_RECT_CLASS}
             />
             <LabeledField
               label="Country"
               value={draft.country}
               onChange={(v) => setDraft({ ...draft, country: v })}
+              frameClassName={INPUT_FRAME_RECT_CLASS}
             />
           </div>
           <div className="pt-1 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
@@ -225,11 +235,13 @@ export function EditableCompany({
               label="Fee %"
               value={draft.feePct}
               onChange={(v) => setDraft({ ...draft, feePct: v })}
+              frameClassName={INPUT_FRAME_RECT_CLASS}
             />
             <LabeledField
               label="Billing contact"
               value={draft.feeBillingContact}
               onChange={(v) => setDraft({ ...draft, feeBillingContact: v })}
+              frameClassName={INPUT_FRAME_RECT_CLASS}
             />
           </div>
           {err && (
