@@ -1386,15 +1386,18 @@ model PersonalTrainerRule {
   @@index([organizationId, createdAt])
 }
 
-// Ace Fitness: one workout session per recruiter per date. The row is
-// org-scoped for tenant cleanup and user-owned so Andrew and Austin can
-// track private sessions without commingling live workout data.
+// Ace Fitness: workout sessions are org-scoped for tenant cleanup and
+// user-owned so Andrew and Austin can track private sessions without
+// commingling live workout data.
 model WorkoutDay {
   id             String   @id @default(cuid())
   organizationId String
   userId         String
   date           DateTime @db.Date
   dayType        String
+  startedAt      DateTime?
+  endedAt        DateTime?
+  durationSeconds Int?
   notes          String?  @db.Text
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -1403,7 +1406,8 @@ model WorkoutDay {
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   workouts     Workout[]
 
-  @@unique([organizationId, userId, date])
+  @@index([organizationId, userId, date])
+  @@index([organizationId, userId, startedAt])
   @@index([organizationId, date])
   @@index([userId, date])
 }

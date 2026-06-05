@@ -16,12 +16,14 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Clock,
   Copy,
   Footprints,
   GripVertical,
   Loader2,
   Minus,
   Pencil,
+  Play,
   Plus,
   RefreshCcw,
   Save,
@@ -60,6 +62,12 @@ import { cn } from "@/lib/utils";
 type MainTab = "record" | "history";
 type DraftSet = { weight: string; reps: string; rpe: string; isPr?: boolean };
 type DraftWorkout = { sets: DraftSet[] };
+type ActiveWorkoutSession = {
+  date: string;
+  startedAt: string;
+  dayType: string | null;
+  drafts: Record<string, DraftWorkout>;
+};
 
 const MAIN_TABS = [
   { id: "record", label: "Record" },
@@ -74,6 +82,7 @@ const RANGE_TABS = [
 
 const DEFAULT_REST_MS = 120_000;
 const REST_INCREMENT_MS = 60_000;
+const ACTIVE_WORKOUT_STORAGE_KEY = "ace:fitness-active-workout";
 
 function todayIsoEt(): string {
   const fmt = new Intl.DateTimeFormat("en-CA", {
@@ -105,6 +114,64 @@ function shortDateTime(iso: string): string {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(iso));
+}
+
+function shortTime(iso: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}
+
+function formatDuration(seconds: number | null | undefined): string {
+  if (seconds == null || seconds < 0) return "--";
+  const total = Math.max(0, Math.round(seconds));
+  const hrs = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (hrs > 0) {
+    return `${hrs}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  }
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+function sessionDurationSeconds(day: FitnessWorkoutDay): number | null {
+  if (day.durationSeconds != null) return day.durationSeconds;
+  if (!day.startedAt || !day.endedAt) return null;
+  return Math.max(
+    0,
+    Math.round(
+      (new Date(day.endedAt).getTime() - new Date(day.startedAt).getTime()) /
+        1000,
+    ),
+  );
+}
+
+function readStoredActiveSession(): ActiveWorkoutSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(ACTIVE_WORKOUT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ActiveWorkoutSession>;
+    if (
+      typeof parsed.date !== "string" ||
+      typeof parsed.startedAt !== "string" ||
+      Number.isNaN(new Date(parsed.startedAt).getTime())
+    ) {
+      return null;
+    }
+    return {
+      date: parsed.date,
+      startedAt: parsed.startedAt,
+      dayType: typeof parsed.dayType === "string" ? parsed.dayType : null,
+      drafts:
+        parsed.drafts && typeof parsed.drafts === "object"
+          ? (parsed.drafts as Record<string, DraftWorkout>)
+          : {},
+    };
+  } catch {
+    return null;
+  }
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -207,6 +274,20 @@ function useRestTimer() {
   };
 }
 
+function useElapsedSeconds(startedAt: string | null): number {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!startedAt) return;
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [startedAt]);
+
+  if (!startedAt) return 0;
+  return Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
+}
+
 export function FitnessPanel() {
   const {
     open,
@@ -258,16 +339,66 @@ export function FitnessPanel() {
     useState<FitnessHealthConnectionSetup | null>(null);
   const [healthConnecting, setHealthConnecting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [activeSession, setActiveSession] =
+    useState<ActiveWorkoutSession | null>(() => readStoredActiveSession());
+  const activeSessionRef = useRef<ActiveWorkoutSession | null>(activeSession);
+  const sessionDraftKeyRef = useRef("");
   const rest = useRestTimer();
+  const activeSessionForDate =
+    activeSession?.date === date ? activeSession : null;
+  const sessionElapsedSeconds = useElapsedSeconds(
+    activeSessionForDate?.startedAt ?? null,
+  );
 
   const hydrateFromSnapshot = useCallback((next: FitnessSnapshot) => {
+    const storedSession =
+      activeSessionRef.current?.date === next.date
+        ? activeSessionRef.current
+        : null;
     const nextDayType =
-      next.selectedDay?.dayType || next.dayTypes[0] || "Workout";
+      storedSession?.dayType ||
+      next.selectedDay?.dayType ||
+      next.dayTypes[0] ||
+      "Workout";
     setDayType(nextDayType);
-    setDrafts(buildDraftsForDay(next, nextDayType));
-    setDirty(false);
+    setDrafts(
+      storedSession && Object.keys(storedSession.drafts).length > 0
+        ? storedSession.drafts
+        : buildDraftsForDay(next, nextDayType),
+    );
+    setDirty(!!storedSession);
     setSnapshot(next);
   }, []);
+
+  useEffect(() => {
+    activeSessionRef.current = activeSession;
+    if (typeof window === "undefined") return;
+    if (activeSession) {
+      window.localStorage.setItem(
+        ACTIVE_WORKOUT_STORAGE_KEY,
+        JSON.stringify(activeSession),
+      );
+    } else {
+      window.localStorage.removeItem(ACTIVE_WORKOUT_STORAGE_KEY);
+      sessionDraftKeyRef.current = "";
+    }
+  }, [activeSession]);
+
+  useEffect(() => {
+    if (!activeSessionForDate) return;
+    const key = JSON.stringify({ dayType, drafts });
+    if (sessionDraftKeyRef.current === key) return;
+    sessionDraftKeyRef.current = key;
+    setActiveSession((current) =>
+      current?.date === date
+        ? {
+            ...current,
+            dayType,
+            drafts,
+          }
+        : current,
+    );
+  }, [activeSessionForDate, date, dayType, drafts]);
 
   useEffect(() => {
     if (!open || minimized) return;
@@ -554,6 +685,34 @@ export function FitnessPanel() {
     setDirty(true);
   }
 
+  function startWorkoutSession() {
+    const startedAt = new Date().toISOString();
+    setActiveSession({
+      date,
+      startedAt,
+      dayType: null,
+      drafts: {},
+    });
+    setDrafts({});
+    setSaveSummary(null);
+    setDirty(false);
+    rest.reset();
+  }
+
+  function cancelWorkoutSession() {
+    if (hasCompleteSet) {
+      const ok = window.confirm("Discard this active workout?");
+      if (!ok) return;
+    }
+    setActiveSession(null);
+    setSaveSummary(null);
+    setDirty(false);
+    if (snapshot) {
+      setDrafts(buildDraftsForDay(snapshot, dayType));
+    }
+    rest.reset();
+  }
+
   async function onAddCustomExercise() {
     if (!snapshot) return;
     const name = customName.trim();
@@ -582,6 +741,10 @@ export function FitnessPanel() {
 
   async function onSaveWorkout() {
     if (!snapshot) return;
+    if (!activeSessionForDate) {
+      toast.error("Start a workout first");
+      return;
+    }
     const workouts = Object.entries(drafts)
       .map(([exerciseId, draft]) => ({
         exerciseId,
@@ -599,13 +762,23 @@ export function FitnessPanel() {
       return;
     }
     try {
+      const endedAt = new Date();
+      const startedAt = new Date(activeSessionForDate.startedAt);
+      const durationSeconds = Math.max(
+        0,
+        Math.round((endedAt.getTime() - startedAt.getTime()) / 1000),
+      );
       const result = await saveFitnessWorkout({
         date,
         dayType,
+        startedAt: activeSessionForDate.startedAt,
+        endedAt: endedAt.toISOString(),
+        durationSeconds,
         workouts,
       });
       setSaveSummary(result.summary.exercises);
-      toast.success("Workout saved");
+      toast.success(`Workout saved · ${formatDuration(durationSeconds)}`);
+      setActiveSession(null);
       setDirty(false);
       setRefreshKey((key) => key + 1);
     } catch (err) {
@@ -752,6 +925,8 @@ export function FitnessPanel() {
                 editingDay={editingDay}
                 drafts={drafts}
                 selectedExercises={selectedExercises}
+                activeSession={activeSessionForDate}
+                sessionElapsedSeconds={sessionElapsedSeconds}
                 customName={customName}
                 customBodyPart={customBodyPart}
                 restRemaining={rest.remaining}
@@ -783,6 +958,8 @@ export function FitnessPanel() {
                 onCustomNameChange={setCustomName}
                 onCustomBodyPartChange={setCustomBodyPart}
                 onAddCustomExercise={onAddCustomExercise}
+                onStartSession={startWorkoutSession}
+                onCancelSession={cancelWorkoutSession}
                 onSave={onSaveWorkout}
                 onDone={close}
                 onCreateAppleHealthConnection={onCreateAppleHealthConnection}
@@ -1053,6 +1230,8 @@ function RecordTab(props: {
   editingDay: string | null;
   drafts: Record<string, DraftWorkout>;
   selectedExercises: FitnessExercise[];
+  activeSession: ActiveWorkoutSession | null;
+  sessionElapsedSeconds: number;
   customName: string;
   customBodyPart: string;
   restRemaining: number;
@@ -1085,6 +1264,8 @@ function RecordTab(props: {
   onCustomNameChange: (name: string) => void;
   onCustomBodyPartChange: (bodyPart: string) => void;
   onAddCustomExercise: () => void | Promise<void>;
+  onStartSession: () => void;
+  onCancelSession: () => void;
   onSave: () => void;
   onDone: () => void;
   onCreateAppleHealthConnection: () => void;
@@ -1093,13 +1274,23 @@ function RecordTab(props: {
   onSkipRest: () => void;
   onToggleStepsExpanded: () => void;
 }) {
-  const [recordMode, setRecordMode] = useState<"days" | "workout">("days");
+  const [recordMode, setRecordMode] = useState<"start" | "days" | "workout">(
+    "start",
+  );
   const [showCustomForm, setShowCustomForm] = useState(false);
+  const activeSessionStartedAt = props.activeSession?.startedAt ?? null;
+  const activeSessionDayType = props.activeSession?.dayType ?? null;
 
   useEffect(() => {
-    setRecordMode("days");
+    setRecordMode(
+      activeSessionStartedAt
+        ? activeSessionDayType
+          ? "workout"
+          : "days"
+        : "start",
+    );
     setShowCustomForm(false);
-  }, [props.date]);
+  }, [activeSessionDayType, activeSessionStartedAt, props.date]);
 
   const dayLabel = props.dayLabels[props.dayType] ?? props.dayType;
 
@@ -1108,7 +1299,7 @@ function RecordTab(props: {
     setRecordMode("workout");
   }
 
-  if (recordMode === "days") {
+  if (recordMode === "start") {
     return (
       <div className="space-y-4">
         <StepsHeader
@@ -1120,16 +1311,55 @@ function RecordTab(props: {
           onCreateAppleHealthConnection={props.onCreateAppleHealthConnection}
         />
 
-        <div className="grid gap-3">
-          <label className="min-w-0 text-xs font-semibold text-court-fg-muted">
-            Date
-            <input
-              type="date"
-              value={props.date}
-              onChange={(e) => props.onDateChange(e.target.value)}
-              className="mt-1 h-9 w-full rounded-md border border-court-border bg-court-surface px-3 text-sm text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/30"
-            />
-          </label>
+        <label className="min-w-0 text-xs font-semibold text-court-fg-muted">
+          Date
+          <input
+            type="date"
+            value={props.date}
+            onChange={(e) => props.onDateChange(e.target.value)}
+            className="mt-1 h-9 w-full rounded-md border border-court-border bg-court-surface px-3 text-sm text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/30"
+          />
+        </label>
+
+        {props.snapshot.selectedDay ? (
+          <SavedWorkoutPreview day={props.snapshot.selectedDay} />
+        ) : null}
+
+        {props.saveSummary ? (
+          <SaveSummaryCards
+            summaries={props.saveSummary}
+            onDone={props.onDone}
+          />
+        ) : null}
+
+        <button
+          type="button"
+          onClick={props.onStartSession}
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-court-brand px-4 text-sm font-bold text-white shadow-sm transition hover:bg-court-brand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/50"
+        >
+          <Play className="h-4 w-4 fill-current" />
+          Start new workout
+        </button>
+      </div>
+    );
+  }
+
+  if (recordMode === "days") {
+    return (
+      <div className="space-y-4">
+        <WorkoutSessionBar
+          startedAt={props.activeSession?.startedAt ?? null}
+          elapsedSeconds={props.sessionElapsedSeconds}
+          onCancel={props.onCancelSession}
+        />
+
+        <div className="rounded-md border border-court-border bg-court-surface-subtle px-3 py-2">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-court-fg-muted">
+            Choose Workout
+          </p>
+          <p className="mt-1 text-sm font-semibold text-court-fg">
+            {shortDate(props.date)}
+          </p>
         </div>
 
         <DayPickerRows
@@ -1165,6 +1395,12 @@ function RecordTab(props: {
           </p>
         </div>
       </div>
+
+      <WorkoutSessionBar
+        startedAt={props.activeSession?.startedAt ?? null}
+        elapsedSeconds={props.sessionElapsedSeconds}
+        compact
+      />
 
       <div className="space-y-3">
         {props.selectedExercises.map((exercise) => (
@@ -1249,7 +1485,7 @@ function RecordTab(props: {
           className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-court-brand bg-transparent px-3 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand-tint focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/50 disabled:cursor-not-allowed disabled:opacity-45"
         >
           <Save className="h-4 w-4" />
-          Save workout
+          Save workout session
         </button>
       </div>
     </div>
@@ -1330,6 +1566,84 @@ function DayPickerRows({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function WorkoutSessionBar({
+  startedAt,
+  elapsedSeconds,
+  compact = false,
+  onCancel,
+}: {
+  startedAt: string | null;
+  elapsedSeconds: number;
+  compact?: boolean;
+  onCancel?: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-md border border-court-brand bg-court-brand-tint text-court-brand-dark",
+        compact ? "px-3 py-2" : "p-3",
+      )}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-court-surface">
+            <Clock className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em]">
+              Active Workout
+            </p>
+            <p className="text-xl font-bold tabular-nums">
+              {formatDuration(elapsedSeconds)}
+            </p>
+          </div>
+        </div>
+        {onCancel ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-court-brand/50 bg-court-surface/70 transition hover:bg-court-surface"
+            aria-label="Discard active workout"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+      </div>
+      {startedAt && !compact ? (
+        <p className="mt-2 text-xs font-medium text-court-brand-dark/80">
+          Started {shortTime(startedAt)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function SavedWorkoutPreview({ day }: { day: FitnessWorkoutDay }) {
+  const duration = sessionDurationSeconds(day);
+  return (
+    <div className="rounded-md border border-court-border bg-court-surface-subtle p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-court-fg-muted">
+            Latest Saved Workout
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-court-fg">
+            {day.dayType}
+          </p>
+        </div>
+        <span className="shrink-0 rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs font-bold tabular-nums text-court-fg">
+          {duration == null ? "--" : formatDuration(duration)}
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+        <SummaryMetric label="Sets" value={day.totalSets} />
+        <SummaryMetric label="Volume" value={niceNumber(day.totalVolume)} />
+        <SummaryMetric label="PRs" value={day.prCount} />
+      </div>
     </div>
   );
 }
@@ -1740,6 +2054,8 @@ function HistoryTab({
   onCreateAppleHealthConnection: () => void;
   onToggleStepsExpanded: () => void;
 }) {
+  const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
+
   return (
     <div className="space-y-4">
       <StepsHeader
@@ -1771,11 +2087,14 @@ function HistoryTab({
       </div>
 
       <TrendChart
-        title="Top Weight"
+        title="Lift Progression"
         series={[{ label: "Top", points: stats.topWeightTrend, tone: "brand" }]}
       />
 
       <div className="space-y-2">
+        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-court-fg-muted">
+          Lift Metrics
+        </p>
         {stats.exerciseBreakdown.length > 0 ? (
           stats.exerciseBreakdown.map((row) => (
             <div
@@ -1808,28 +2127,129 @@ function HistoryTab({
       </div>
 
       <div className="space-y-2">
-        {days.slice(0, 12).map((day) => (
-          <div
+        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-court-fg-muted">
+          Workout History
+        </p>
+        {days.slice(0, 20).map((day) => (
+          <HistoryWorkoutCard
             key={day.id}
-            className="rounded-md border border-court-border p-3"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-semibold text-court-fg">
-                  {shortDate(day.date)}
-                </p>
-                <p className="truncate text-xs text-court-fg-muted">
-                  {day.dayType}
-                </p>
-              </div>
-              <div className="text-right text-xs text-court-fg-muted">
-                <p>{day.totalSets} sets</p>
-                <p>{niceNumber(day.totalVolume)} lb</p>
-              </div>
-            </div>
-          </div>
+            day={day}
+            expanded={expandedDayId === day.id}
+            onToggle={() =>
+              setExpandedDayId((current) =>
+                current === day.id ? null : day.id,
+              )
+            }
+          />
         ))}
       </div>
+    </div>
+  );
+}
+
+function HistoryWorkoutCard({
+  day,
+  expanded,
+  onToggle,
+}: {
+  day: FitnessWorkoutDay;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const duration = sessionDurationSeconds(day);
+  return (
+    <div className="rounded-md border border-court-border bg-court-surface">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-start justify-between gap-3 px-3 py-3 text-left"
+      >
+        <div className="flex min-w-0 items-start gap-2">
+          {expanded ? (
+            <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-court-fg-muted" />
+          ) : (
+            <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-court-fg-muted" />
+          )}
+          <div className="min-w-0">
+            <p className="font-semibold text-court-fg">
+              {shortDate(day.date)} · {day.dayType}
+            </p>
+            <p className="mt-1 truncate text-xs text-court-fg-muted">
+              {day.workouts.length} lifts · {day.totalSets} sets ·{" "}
+              {niceNumber(day.totalVolume)} lb
+            </p>
+          </div>
+        </div>
+        <div className="shrink-0 text-right text-xs text-court-fg-muted">
+          <p className="font-bold tabular-nums text-court-fg">
+            {duration == null ? "--" : formatDuration(duration)}
+          </p>
+          {day.prCount > 0 ? (
+            <p className="mt-1 font-semibold text-court-brand-dark">
+              {day.prCount} PR
+            </p>
+          ) : null}
+        </div>
+      </button>
+
+      {expanded ? (
+        <div className="space-y-2 border-t border-court-border px-3 py-3">
+          {day.startedAt ? (
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <SummaryMetric label="Started" value={shortTime(day.startedAt)} />
+              <SummaryMetric
+                label="Ended"
+                value={day.endedAt ? shortTime(day.endedAt) : "--"}
+              />
+            </div>
+          ) : null}
+          {day.workouts.map((workout) => {
+            const topWeight = workout.sets.reduce<number | null>((top, set) => {
+              if (set.weightLbs == null) return top;
+              return top == null || set.weightLbs > top ? set.weightLbs : top;
+            }, null);
+            return (
+              <div
+                key={workout.id}
+                className="rounded-md border border-court-border bg-court-surface-subtle px-3 py-2"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-court-fg">
+                      {workout.exerciseName}
+                    </p>
+                    <p className="mt-1 text-xs text-court-fg-muted">
+                      {workout.sets.length} sets ·{" "}
+                      {niceNumber(workout.totalVolume)} lb volume
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-bold text-court-fg">
+                    {topWeight == null
+                      ? "No weight"
+                      : `${niceNumber(topWeight)} lb`}
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {workout.sets.map((set) => (
+                    <span
+                      key={set.id ?? set.setNumber}
+                      className={cn(
+                        "rounded-md border px-2 py-1 text-[11px] font-semibold tabular-nums",
+                        set.isPr
+                          ? "border-court-brand bg-court-brand-tint text-court-brand-dark"
+                          : "border-court-border bg-court-surface text-court-fg-muted",
+                      )}
+                    >
+                      {niceNumber(set.weightLbs)} x {niceNumber(set.reps)}
+                      {set.isPr ? " PR" : ""}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }

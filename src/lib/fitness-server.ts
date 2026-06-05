@@ -29,9 +29,7 @@ export type FitnessContext = {
   userName: string;
 };
 
-type WorkoutDayWithDetails = Awaited<
-  ReturnType<typeof fetchWorkoutDayByDate>
->;
+type WorkoutDayWithDetails = Awaited<ReturnType<typeof fetchWorkoutDayByDate>>;
 
 export const APPLE_HEALTH_SOURCE = "apple-health-shortcut";
 
@@ -92,7 +90,9 @@ export async function requireFitnessContext(): Promise<FitnessContext> {
   };
 }
 
-export async function ensureFitnessDefaults(organizationId: string): Promise<void> {
+export async function ensureFitnessDefaults(
+  organizationId: string,
+): Promise<void> {
   const rows = DEFAULT_FITNESS_DAYS.flatMap((day, dayIndex) =>
     day.exercises.map((exercise, exerciseIndex) => ({
       organizationId,
@@ -220,15 +220,14 @@ export async function fetchWorkoutDayByDate(
   userId: string,
   date: Date,
 ) {
-  return prisma.workoutDay.findUnique({
+  return prisma.workoutDay.findFirst({
     where: {
-      organizationId_userId_date: {
-        organizationId,
-        userId,
-        date,
-      },
+      organizationId,
+      userId,
+      date,
     },
     include: workoutDayInclude,
+    orderBy: [{ startedAt: "desc" }, { createdAt: "desc" }],
   });
 }
 
@@ -239,7 +238,7 @@ export async function fetchHistoryDays(
   const days = await prisma.workoutDay.findMany({
     where: { organizationId, userId },
     include: workoutDayInclude,
-    orderBy: { date: "desc" },
+    orderBy: [{ date: "desc" }, { startedAt: "desc" }, { createdAt: "desc" }],
     take: 180,
   });
   return days.map(serializeWorkoutDay);
@@ -277,12 +276,11 @@ export async function fetchStepSeries(
     };
   });
   return {
-    today:
-      series30.find((row) => row.date === todayIso) ?? {
-        date: todayIso,
-        steps: 0,
-        source: APPLE_HEALTH_SOURCE,
-      },
+    today: series30.find((row) => row.date === todayIso) ?? {
+      date: todayIso,
+      steps: 0,
+      source: APPLE_HEALTH_SOURCE,
+    },
     yesterday: series30.find((row) => row.date === yesterdayIso) ?? null,
     series30,
   };
@@ -360,8 +358,14 @@ export function serializeWorkoutDay(
     id: day.id,
     date: isoDateOnly(day.date),
     dayType: day.dayType,
+    startedAt: day.startedAt?.toISOString() ?? null,
+    endedAt: day.endedAt?.toISOString() ?? null,
+    durationSeconds: day.durationSeconds ?? null,
     totalSets: workouts.reduce((sum, workout) => sum + workout.sets.length, 0),
-    totalVolume: workouts.reduce((sum, workout) => sum + workout.totalVolume, 0),
+    totalVolume: workouts.reduce(
+      (sum, workout) => sum + workout.totalVolume,
+      0,
+    ),
     prCount: workouts.reduce(
       (sum, workout) => sum + workout.sets.filter((set) => set.isPr).length,
       0,

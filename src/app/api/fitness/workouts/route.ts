@@ -5,7 +5,6 @@ import type { FitnessSavePayload } from "@/lib/fitness";
 import {
   FitnessHttpError,
   ensureFitnessDefaults,
-  fetchWorkoutDayByDate,
   parseDateOnly,
   requireFitnessContext,
   serializeWorkoutDay,
@@ -57,7 +56,24 @@ function cleanRpe(value: unknown): number | null {
   return Math.round(n * 10) / 10;
 }
 
-function pctChange(current: number | null, previous: number | null): number | null {
+function cleanDateTime(value: unknown): Date | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function cleanDurationSeconds(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.min(86_400, Math.round(n));
+}
+
+function pctChange(
+  current: number | null,
+  previous: number | null,
+): number | null {
   if (current == null || previous == null || previous <= 0) return null;
   return Math.round(((current - previous) / previous) * 1000) / 10;
 }
@@ -73,11 +89,22 @@ function setVolume(
 function sanitizePayload(body: FitnessSavePayload): {
   date: Date;
   dayType: string;
+  startedAt: Date;
+  endedAt: Date;
+  durationSeconds: number;
   notes: string | null;
   workouts: SanitizedWorkout[];
 } {
   const date = parseDateOnly(body.date);
   const dayType = body.dayType?.trim() || "Workout";
+  const endedAt = cleanDateTime(body.endedAt) ?? new Date();
+  const startedAt = cleanDateTime(body.startedAt) ?? endedAt;
+  const derivedDurationSeconds = Math.max(
+    0,
+    Math.round((endedAt.getTime() - startedAt.getTime()) / 1000),
+  );
+  const durationSeconds =
+    cleanDurationSeconds(body.durationSeconds) ?? derivedDurationSeconds;
   const workouts = (Array.isArray(body.workouts) ? body.workouts : [])
     .map((workout) => ({
       exerciseId: String(workout.exerciseId || ""),
@@ -92,12 +119,18 @@ function sanitizePayload(body: FitnessSavePayload): {
     .filter((workout) => workout.exerciseId && workout.sets.length > 0);
 
   if (workouts.length === 0) {
-    throw new FitnessHttpError("Add at least one completed set before saving", 400);
+    throw new FitnessHttpError(
+      "Add at least one completed set before saving",
+      400,
+    );
   }
 
   return {
     date,
     dayType,
+    startedAt,
+    endedAt,
+    durationSeconds,
     notes: body.notes?.trim() || null,
     workouts,
   };
@@ -138,7 +171,16 @@ export async function POST(req: Request) {
       where: {
         organizationId: ctx.organizationId,
         userId: ctx.userId,
-        date: { lt: payload.date },
+        OR: [
+          { date: { lt: payload.date } },
+          {
+            date: payload.date,
+            OR: [
+              { startedAt: { lt: payload.startedAt } },
+              { startedAt: null, createdAt: { lt: payload.startedAt } },
+            ],
+          },
+        ],
       },
       include: {
         workouts: {
@@ -149,7 +191,7 @@ export async function POST(req: Request) {
           orderBy: { createdAt: "asc" },
         },
       },
-      orderBy: { date: "desc" },
+      orderBy: [{ date: "desc" }, { startedAt: "desc" }, { createdAt: "desc" }],
     });
     const previousVolume = previousDay
       ? serializeWorkoutDay(previousDay).totalVolume
@@ -161,7 +203,18 @@ export async function POST(req: Request) {
         userId: ctx.userId,
         workout: {
           exerciseId: { in: exerciseIds },
-          workoutDay: { date: { lt: payload.date } },
+          workoutDay: {
+            OR: [
+              { date: { lt: payload.date } },
+              {
+                date: payload.date,
+                OR: [
+                  { startedAt: { lt: payload.startedAt } },
+                  { startedAt: null, createdAt: { lt: payload.startedAt } },
+                ],
+              },
+            ],
+          },
         },
       },
       select: {
@@ -183,7 +236,18 @@ export async function POST(req: Request) {
         organizationId: ctx.organizationId,
         userId: ctx.userId,
         exerciseId: { in: exerciseIds },
-        workoutDay: { date: { lt: payload.date } },
+        workoutDay: {
+          OR: [
+            { date: { lt: payload.date } },
+            {
+              date: payload.date,
+              OR: [
+                { startedAt: { lt: payload.startedAt } },
+                { startedAt: null, createdAt: { lt: payload.startedAt } },
+              ],
+            },
+          ],
+        },
       },
       include: {
         sets: { orderBy: { setNumber: "asc" } },
@@ -211,33 +275,17 @@ export async function POST(req: Request) {
       previousByExercise.set(workout.exerciseId, { volume, topWeightLbs });
     }
 
-    await prisma.$transaction(async (tx) => {
-      const day = await tx.workoutDay.upsert({
-        where: {
-          organizationId_userId_date: {
-            organizationId: ctx.organizationId,
-            userId: ctx.userId,
-            date: payload.date,
-          },
-        },
-        update: {
-          dayType: payload.dayType,
-          notes: payload.notes,
-        },
-        create: {
+    const savedDayId = await prisma.$transaction(async (tx) => {
+      const day = await tx.workoutDay.create({
+        data: {
           organizationId: ctx.organizationId,
           userId: ctx.userId,
           date: payload.date,
           dayType: payload.dayType,
+          startedAt: payload.startedAt,
+          endedAt: payload.endedAt,
+          durationSeconds: payload.durationSeconds,
           notes: payload.notes,
-        },
-      });
-
-      await tx.workout.deleteMany({
-        where: {
-          organizationId: ctx.organizationId,
-          userId: ctx.userId,
-          workoutDayId: day.id,
         },
       });
 
@@ -248,7 +296,8 @@ export async function POST(req: Request) {
             userId: ctx.userId,
             workoutDayId: day.id,
             exerciseId: workout.exerciseId,
-            exerciseName: exerciseNameById.get(workout.exerciseId) ?? "Exercise",
+            exerciseName:
+              exerciseNameById.get(workout.exerciseId) ?? "Exercise",
             sets: {
               create: workout.sets.map((set, index) => {
                 const previousMax = maxWeightByExercise.get(workout.exerciseId);
@@ -268,14 +317,27 @@ export async function POST(req: Request) {
           },
         });
       }
+
+      return day.id;
     });
 
-    const saved = await fetchWorkoutDayByDate(
-      ctx.organizationId,
-      ctx.userId,
-      payload.date,
-    );
-    if (!saved) throw new FitnessHttpError("Workout saved but could not be reloaded", 500);
+    const saved = await prisma.workoutDay.findUnique({
+      where: { id: savedDayId },
+      include: {
+        workouts: {
+          include: {
+            exercise: true,
+            sets: { orderBy: { setNumber: "asc" } },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+    if (!saved)
+      throw new FitnessHttpError(
+        "Workout saved but could not be reloaded",
+        500,
+      );
     const day = serializeWorkoutDay(saved);
     const totalVolume = day.totalVolume;
     const exerciseSummaries = day.workouts.map((workout) => {
@@ -308,7 +370,9 @@ export async function POST(req: Request) {
         previousVolume,
         growthPct:
           previousVolume > 0
-            ? Math.round(((totalVolume - previousVolume) / previousVolume) * 1000) / 10
+            ? Math.round(
+                ((totalVolume - previousVolume) / previousVolume) * 1000,
+              ) / 10
             : null,
         prCount: day.prCount,
         exercises: exerciseSummaries,

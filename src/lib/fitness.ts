@@ -145,6 +145,9 @@ export type FitnessWorkoutDay = {
   id: string;
   date: string;
   dayType: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  durationSeconds: number | null;
   totalSets: number;
   totalVolume: number;
   prCount: number;
@@ -178,6 +181,9 @@ export type FitnessSnapshot = {
 export type FitnessSavePayload = {
   date: string;
   dayType: string;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  durationSeconds?: number | null;
   notes?: string;
   workouts: Array<{
     exerciseId: string;
@@ -253,7 +259,9 @@ async function readJson<T>(res: Response): Promise<T> {
   return body as T;
 }
 
-export async function getFitnessSnapshot(date?: string): Promise<FitnessSnapshot> {
+export async function getFitnessSnapshot(
+  date?: string,
+): Promise<FitnessSnapshot> {
   const qs = date ? `?date=${encodeURIComponent(date)}` : "";
   const res = await fetch(`/api/fitness${qs}`, { cache: "no-store" });
   return readJson<FitnessSnapshot>(res);
