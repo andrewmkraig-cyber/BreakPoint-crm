@@ -205,7 +205,7 @@ export async function fetchApolloContacts(
   const cap = maxContacts && maxContacts > 0 ? maxContacts : targeting.maxPerFirm;
 
   try {
-    const res = await fetch(`${APOLLO_BASE}/api/v1/mixed_people/search`, {
+    const res = await fetch(`${APOLLO_BASE}/api/v1/mixed_people/api_search`, {
       method: "POST",
       headers: {
         "X-Api-Key": apiKey,
