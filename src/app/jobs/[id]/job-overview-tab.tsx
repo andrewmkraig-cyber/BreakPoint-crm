@@ -315,14 +315,14 @@ export function JobOverviewTab({
                 label="Employment"
                 value={draft.employmentType}
                 onChange={(v) => setDraft({ ...draft, employmentType: v })}
-                placeholder="Full-time"
+                placeholder="Full-time" frameClassName={INPUT_FRAME_RECT_CLASS}
               />
               <LabeledField
                 label="Openings"
                 type="number"
                 value={draft.openings}
                 onChange={(v) => setDraft({ ...draft, openings: v })}
-                placeholder="1"
+                placeholder="1" frameClassName={INPUT_FRAME_RECT_CLASS}
               />
             </div>
 
@@ -391,19 +391,19 @@ export function JobOverviewTab({
                 label="Salary low"
                 currency
                 value={draft.salaryLo}
-                onChange={(v) => setDraft({ ...draft, salaryLo: v })}
+                onChange={(v) => setDraft({ ...draft, salaryLo: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
               />
               <LabeledField
                 label="Salary high"
                 currency
                 value={draft.salaryHi}
-                onChange={(v) => setDraft({ ...draft, salaryHi: v })}
+                onChange={(v) => setDraft({ ...draft, salaryHi: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
               />
               <LabeledField
                 label="Currency"
                 value={draft.salaryCcy}
                 onChange={(v) => setDraft({ ...draft, salaryCcy: v })}
-                placeholder="USD"
+                placeholder="USD" frameClassName={INPUT_FRAME_RECT_CLASS}
               />
             </div>
 

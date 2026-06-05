@@ -12,6 +12,7 @@ import {
   parseMonthYear,
   type MonthYear,
 } from "@/app/candidates/[id]/editable-helpers";
+import { INPUT_FRAME_RECT_CLASS } from "@/components/ui/input";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 
 export type ExperienceRow = {
@@ -208,29 +209,29 @@ function EntryForm({
         <LabeledField
           label="Title"
           value={draft.designation}
-          onChange={(v) => onChange({ ...draft, designation: v })}
+          onChange={(v) => onChange({ ...draft, designation: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
         />
         <LabeledField
           label="Employer"
           value={draft.organization}
-          onChange={(v) => onChange({ ...draft, organization: v })}
+          onChange={(v) => onChange({ ...draft, organization: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
         />
         <LabeledField
           label="From (MM/YYYY)"
           value={formatMonthYear(draft.from)}
-          onChange={(v) => onChange({ ...draft, from: parseMonthYear(v) })}
+          onChange={(v) => onChange({ ...draft, from: parseMonthYear(v) })} frameClassName={INPUT_FRAME_RECT_CLASS}
         />
         <LabeledField
           label="To (MM/YYYY, blank = current)"
           value={formatMonthYear(draft.to)}
-          onChange={(v) => onChange({ ...draft, to: parseMonthYear(v) })}
+          onChange={(v) => onChange({ ...draft, to: parseMonthYear(v) })} frameClassName={INPUT_FRAME_RECT_CLASS}
         />
         <div className="sm:col-span-2">
           <LabeledTextarea
             label="Description"
             value={draft.description}
             onChange={(v) => onChange({ ...draft, description: v })}
-            rows={3}
+            rows={3} frameClassName={INPUT_FRAME_RECT_CLASS}
           />
         </div>
       </div>

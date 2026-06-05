@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { LabeledField } from "@/app/candidates/[id]/editable-helpers";
+import { INPUT_FRAME_RECT_CLASS } from "@/components/ui/input";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 import { formatPhone, telHref, normalizeToE164 } from "@/lib/rf-payload-shapes";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
@@ -149,29 +150,29 @@ export function EditableIdentity({
             <LabeledField
               label="First name"
               value={draft.first_name}
-              onChange={(v) => setDraft({ ...draft, first_name: v })}
+              onChange={(v) => setDraft({ ...draft, first_name: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
             />
             <LabeledField
               label="Last name"
               value={draft.last_name}
-              onChange={(v) => setDraft({ ...draft, last_name: v })}
+              onChange={(v) => setDraft({ ...draft, last_name: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
             />
             <LabeledField
               label="Email"
               type="email"
               value={draft.email}
-              onChange={(v) => setDraft({ ...draft, email: v })}
+              onChange={(v) => setDraft({ ...draft, email: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
             />
             <LabeledField
               label="Phone"
               value={draft.phone}
-              onChange={(v) => setDraft({ ...draft, phone: v })}
+              onChange={(v) => setDraft({ ...draft, phone: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
             />
             <div className="sm:col-span-2">
               <LabeledField
                 label="Location"
                 value={draft.location}
-                onChange={(v) => setDraft({ ...draft, location: v })}
+                onChange={(v) => setDraft({ ...draft, location: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
               />
             </div>
             <div className="sm:col-span-2">
@@ -179,14 +180,14 @@ export function EditableIdentity({
                 label="LinkedIn URL"
                 type="url"
                 value={draft.linkedin_profile}
-                onChange={(v) => setDraft({ ...draft, linkedin_profile: v })}
+                onChange={(v) => setDraft({ ...draft, linkedin_profile: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
               />
             </div>
             <div className="sm:col-span-2">
               <LabeledField
                 label="Current title"
                 value={draft.current_designation}
-                onChange={(v) => setDraft({ ...draft, current_designation: v })}
+                onChange={(v) => setDraft({ ...draft, current_designation: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
               />
             </div>
             <div className="sm:col-span-2">
@@ -195,18 +196,18 @@ export function EditableIdentity({
                 value={draft.current_organization}
                 onChange={(v) =>
                   setDraft({ ...draft, current_organization: v })
-                }
+                } frameClassName={INPUT_FRAME_RECT_CLASS}
               />
             </div>
             <LabeledField
               label="Expected comp"
               value={draft.expected_salary}
-              onChange={(v) => setDraft({ ...draft, expected_salary: v })}
+              onChange={(v) => setDraft({ ...draft, expected_salary: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
             />
             <LabeledField
               label="Currency"
               value={draft.expected_currency}
-              onChange={(v) => setDraft({ ...draft, expected_currency: v })}
+              onChange={(v) => setDraft({ ...draft, expected_currency: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
             />
             {error && (
               <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800 sm:col-span-2">

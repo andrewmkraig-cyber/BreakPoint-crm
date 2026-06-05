@@ -6,7 +6,7 @@ import { Loader2, Save, Mail, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { setAutoSendCandidateConfirmation, setMyEmailSignature, setMyRecruiterPhone } from "@/app/settings/preferences-actions";
-import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
+import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { MAIL_NOTIFICATIONS_PREF_KEY } from "@/lib/mail-context";
 import {
   DEFAULT_TOAST_THEME,
@@ -216,7 +216,7 @@ export function EmailPreferencesView({
             <div className="mt-1 text-xs text-court-fg-muted">
               Populates <code className="rounded bg-court-surface-subtle px-1 py-0.5 text-[10px] text-court-fg">[Recruiter Phone]</code> in templates when you send. Signed in as {myEmail}.
             </div>
-            <div className={`${INPUT_FRAME_CLASS} mt-2 w-full`}>
+            <div className={`${INPUT_FRAME_RECT_CLASS} mt-2 w-full`}>
               <input
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
@@ -243,7 +243,7 @@ export function EmailPreferencesView({
             requests, manual emails. Don&apos;t paste a signature inside a template body or you&apos;ll duplicate.
           </div>
         </div>
-        <div className={`${INPUT_FRAME_CLASS} mt-2 w-full`}>
+        <div className={`${INPUT_FRAME_RECT_CLASS} mt-2 w-full`}>
           <textarea
             value={signature}
             onChange={(e) => setSignature(e.target.value)}

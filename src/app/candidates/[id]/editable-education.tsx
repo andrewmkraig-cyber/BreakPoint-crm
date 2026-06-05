@@ -12,6 +12,7 @@ import {
   parseMonthYear,
   type MonthYear,
 } from "@/app/candidates/[id]/editable-helpers";
+import { INPUT_FRAME_RECT_CLASS } from "@/components/ui/input";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 
 export type EducationRow = {
@@ -205,20 +206,20 @@ function EntryForm({
   return (
     <div className="rounded-lg border border-brand/30 bg-brand-tint/20 p-4">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <LabeledField label="School" value={draft.school} onChange={(v) => onChange({ ...draft, school: v })} />
-        <LabeledField label="Degree" value={draft.degree} onChange={(v) => onChange({ ...draft, degree: v })} />
+        <LabeledField label="School" value={draft.school} onChange={(v) => onChange({ ...draft, school: v })} frameClassName={INPUT_FRAME_RECT_CLASS} />
+        <LabeledField label="Degree" value={draft.degree} onChange={(v) => onChange({ ...draft, degree: v })} frameClassName={INPUT_FRAME_RECT_CLASS} />
         <LabeledField
           label="From (MM/YYYY)"
           value={formatMonthYear(draft.from)}
-          onChange={(v) => onChange({ ...draft, from: parseMonthYear(v) })}
+          onChange={(v) => onChange({ ...draft, from: parseMonthYear(v) })} frameClassName={INPUT_FRAME_RECT_CLASS}
         />
         <LabeledField
           label="To (MM/YYYY)"
           value={formatMonthYear(draft.to)}
-          onChange={(v) => onChange({ ...draft, to: parseMonthYear(v) })}
+          onChange={(v) => onChange({ ...draft, to: parseMonthYear(v) })} frameClassName={INPUT_FRAME_RECT_CLASS}
         />
         <div className="sm:col-span-2">
-          <LabeledTextarea label="Notes" value={draft.description} onChange={(v) => onChange({ ...draft, description: v })} rows={2} />
+          <LabeledTextarea label="Notes" value={draft.description} onChange={(v) => onChange({ ...draft, description: v })} rows={2} frameClassName={INPUT_FRAME_RECT_CLASS} />
         </div>
       </div>
       <div className="mt-3 flex items-center justify-end gap-2">

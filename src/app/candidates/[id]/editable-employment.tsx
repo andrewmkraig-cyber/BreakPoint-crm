@@ -8,6 +8,7 @@ import {
   SectionCard,
   LabeledField,
 } from "@/app/candidates/[id]/editable-helpers";
+import { INPUT_FRAME_RECT_CLASS } from "@/components/ui/input";
 import { EditBtn, SaveCancel } from "@/app/candidates/[id]/editable-contact";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 
@@ -81,25 +82,25 @@ export function EditableEmployment({
             <LabeledField
               label="Current title"
               value={draft.current_designation}
-              onChange={(v) => setDraft({ ...draft, current_designation: v })}
+              onChange={(v) => setDraft({ ...draft, current_designation: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
             />
           </div>
           <div className="sm:col-span-2">
             <LabeledField
               label="Current employer"
               value={draft.current_organization}
-              onChange={(v) => setDraft({ ...draft, current_organization: v })}
+              onChange={(v) => setDraft({ ...draft, current_organization: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
             />
           </div>
           <LabeledField
             label="Expected comp"
             value={draft.expectedSalary}
-            onChange={(v) => setDraft({ ...draft, expectedSalary: v })}
+            onChange={(v) => setDraft({ ...draft, expectedSalary: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
           />
           <LabeledField
             label="Currency"
             value={draft.expectedCurrency}
-            onChange={(v) => setDraft({ ...draft, expectedCurrency: v })}
+            onChange={(v) => setDraft({ ...draft, expectedCurrency: v })} frameClassName={INPUT_FRAME_RECT_CLASS}
           />
           {error && <div className="sm:col-span-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{error}</div>}
         </div>

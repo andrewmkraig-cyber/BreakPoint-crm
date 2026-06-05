@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Pencil, Save, X, Mail, Phone as PhoneIcon, MapPin, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { SectionCard, LabeledField } from "@/app/candidates/[id]/editable-helpers";
+import { INPUT_FRAME_RECT_CLASS } from "@/components/ui/input";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 import { formatPhone, telHref, normalizeToE164 } from "@/lib/rf-payload-shapes";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
@@ -119,15 +120,15 @@ export function EditableContact({ candidateId, initial }: { candidateId: number;
     >
       {editing ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <LabeledField label="First name" value={draft.first_name} onChange={(v) => setDraft({ ...draft, first_name: v })} />
-          <LabeledField label="Last name" value={draft.last_name} onChange={(v) => setDraft({ ...draft, last_name: v })} />
-          <LabeledField label="Email" type="email" value={draft.email} onChange={(v) => setDraft({ ...draft, email: v })} />
-          <LabeledField label="Phone" value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} />
+          <LabeledField label="First name" value={draft.first_name} onChange={(v) => setDraft({ ...draft, first_name: v })} frameClassName={INPUT_FRAME_RECT_CLASS} />
+          <LabeledField label="Last name" value={draft.last_name} onChange={(v) => setDraft({ ...draft, last_name: v })} frameClassName={INPUT_FRAME_RECT_CLASS} />
+          <LabeledField label="Email" type="email" value={draft.email} onChange={(v) => setDraft({ ...draft, email: v })} frameClassName={INPUT_FRAME_RECT_CLASS} />
+          <LabeledField label="Phone" value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} frameClassName={INPUT_FRAME_RECT_CLASS} />
           <div className="sm:col-span-2">
-            <LabeledField label="Location" value={draft.location} onChange={(v) => setDraft({ ...draft, location: v })} />
+            <LabeledField label="Location" value={draft.location} onChange={(v) => setDraft({ ...draft, location: v })} frameClassName={INPUT_FRAME_RECT_CLASS} />
           </div>
           <div className="sm:col-span-2">
-            <LabeledField label="LinkedIn URL" type="url" value={draft.linkedin_profile} onChange={(v) => setDraft({ ...draft, linkedin_profile: v })} />
+            <LabeledField label="LinkedIn URL" type="url" value={draft.linkedin_profile} onChange={(v) => setDraft({ ...draft, linkedin_profile: v })} frameClassName={INPUT_FRAME_RECT_CLASS} />
           </div>
           {error && <div className="sm:col-span-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{error}</div>}
         </div>
