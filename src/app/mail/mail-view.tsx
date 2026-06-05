@@ -1511,27 +1511,26 @@ function ThreadRow({
             : [t.id];
         e.dataTransfer.setData("application/x-mail-thread-ids", JSON.stringify(ids));
         e.dataTransfer.effectAllowed = "move";
-        if (ids.length > 1) {
-          // setDragImage needs a real DOM node; render an off-screen
-          // pill with the count, then schedule its removal after the
-          // browser snapshots it for the drag cursor.
-          const ghost = document.createElement("div");
-          ghost.textContent = `${ids.length} threads`;
-          ghost.style.position = "absolute";
-          ghost.style.top = "-1000px";
-          ghost.style.left = "-1000px";
-          ghost.style.padding = "6px 10px";
-          ghost.style.borderRadius = "9999px";
-          ghost.className = "bg-court-brand text-white";
-          ghost.style.fontSize = "12px";
-          ghost.style.fontWeight = "600";
-          ghost.style.boxShadow = "0 4px 12px rgba(0,0,0,0.18)";
-          document.body.appendChild(ghost);
-          e.dataTransfer.setDragImage(ghost, 20, 20);
-          setTimeout(() => {
-            document.body.removeChild(ghost);
-          }, 0);
-        }
+        const ghost = document.createElement("div");
+        const sender = document.createElement("span");
+        const subject = document.createElement("span");
+        sender.textContent = t.fromName || t.fromEmail || "(unknown sender)";
+        subject.textContent = t.subject || "(no subject)";
+        ghost.className =
+          "flex h-8 max-w-[280px] items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-3 text-xs shadow-md";
+        ghost.style.position = "absolute";
+        ghost.style.top = "-1000px";
+        ghost.style.left = "-1000px";
+        ghost.style.width = "max-content";
+        ghost.style.maxWidth = "280px";
+        sender.className = "min-w-0 max-w-[120px] truncate font-semibold text-court-fg";
+        subject.className = "min-w-0 flex-1 truncate text-court-fg-muted";
+        ghost.append(sender, subject);
+        document.body.appendChild(ghost);
+        e.dataTransfer.setDragImage(ghost, 20, 16);
+        setTimeout(() => {
+          document.body.removeChild(ghost);
+        }, 0);
         setDragging(true);
       }}
       onDragEnd={() => setDragging(false)}
@@ -2938,8 +2937,10 @@ function LabelTreeNode({
           });
         }}
         className={
-          "group/label flex min-h-9 items-center gap-0.5 rounded-lg " +
-          (dragOver ? "border border-court-accent bg-court-accent-tint" : "")
+          "group/label flex min-h-9 items-center gap-0.5 rounded-lg border transition " +
+          (dragOver
+            ? "border-court-brand bg-court-brand/10 ring-1 ring-court-brand/30"
+            : "border-transparent")
         }
         style={{ paddingLeft: `${depth * 8}px` }}
       >
