@@ -255,6 +255,72 @@ export async function apolloEnrollContact(
   }
 }
 
+// Apollo's people/match response wraps the matched record under `person`.
+// With reveal_personal_emails=true the unlocked address lands on `email`;
+// personal addresses (when present) come back in `personal_emails`.
+type ApolloMatchResponse = {
+  person?: {
+    email?: string | null;
+    personal_emails?: Array<string | null> | null;
+  };
+};
+
+// Apollo returns the literal "email_not_unlocked@domain.com" sentinel on
+// `email` when an address exists on the record but was not actually revealed
+// for this request — treat that (and anything without an @) as no email.
+function isUsableEmail(email: string | null | undefined): email is string {
+  if (!email) return false;
+  const e = email.trim().toLowerCase();
+  if (!e || !e.includes("@")) return false;
+  if (e.includes("email_not_unlocked")) return false;
+  return true;
+}
+
+// Per-contact email reveal. Calls POST /api/v1/people/match with
+// reveal_personal_emails=true and returns the revealed address, or null when
+// Apollo surfaces no usable email. The API key goes in the X-Api-Key header —
+// NEVER the body (Apollo rejects an in-body key with 422
+// INVALID_API_KEY_LOCATION, same as the contacts-create call above).
+export async function apolloRevealPersonEmail(
+  apiKey: string,
+  person: { first_name?: string; last_name?: string; organization_name?: string },
+  domain: string,
+): Promise<string | null> {
+  try {
+    const body: Record<string, unknown> = { reveal_personal_emails: true };
+    if (person.first_name) body.first_name = person.first_name;
+    if (person.last_name) body.last_name = person.last_name;
+    if (person.organization_name) body.organization_name = person.organization_name;
+    if (domain) body.domain = domain;
+
+    const res = await fetch(`${APOLLO_BASE}/api/v1/people/match`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.warn(
+        `[Apollo] people/match failed: ${res.status} ${res.statusText} ${text.slice(0, 200)}`,
+      );
+      return null;
+    }
+    const data = (await res.json()) as ApolloMatchResponse;
+    const direct = data.person?.email;
+    if (isUsableEmail(direct)) return direct.trim();
+    const personal = Array.isArray(data.person?.personal_emails)
+      ? data.person?.personal_emails?.find((e) => isUsableEmail(e))
+      : undefined;
+    return isUsableEmail(personal) ? personal.trim() : null;
+  } catch (err) {
+    console.warn(
+      `[Apollo] people/match threw:`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
 // Companies that produced no enrollable contact, with the reason, so the
 // approval flow can report what was skipped instead of silently writing a
 // nameless org-only shell into the sequence.
@@ -377,6 +443,11 @@ export async function enrollCompaniesInApollo(
     // Settings titles search the preview uses (fetchApolloContacts), keyed
     // on the company's domain. Resolve a missing domain from the company
     // name via Apollo first so domain-less firms still get real people.
+    // Best-known company domain, used both to find decision-makers and to
+    // anchor the per-contact people/match email reveal below. Starts from the
+    // discovery payload's domain and is upgraded to the Apollo-resolved one
+    // when we have to look it up by name in the else branch.
+    let companyDomain = c.domain;
     let people: ApolloPerson[];
     if (c.curatedContacts.length > 0) {
       // Andrew already curated and ordered these — preserve his sequence.
@@ -397,6 +468,7 @@ export async function enrollCompaniesInApollo(
         console.log(`[Apollo] skipped ${c.companyName}: ${reason}`);
         continue;
       }
+      companyDomain = domain;
       const contacts = await fetchApolloContacts(
         domain,
         orgId,
@@ -437,10 +509,28 @@ export async function enrollCompaniesInApollo(
 
     for (const p of candidates) {
       if (remaining <= 0) break;
+
+      // Reveal a real email before creating the contact. Apollo's people
+      // SEARCH results don't carry an unlocked email; without one the
+      // sequence has nothing to send to, so a contact with no usable revealed
+      // email is skipped (it never counts against the daily cap because
+      // `remaining` only decrements on a successful enroll below).
+      const revealedEmail = await apolloRevealPersonEmail(apiKey, p, companyDomain);
+      if (!revealedEmail) {
+        const who =
+          [p.first_name, p.last_name].filter(Boolean).join(" ") ||
+          p.name ||
+          "(unnamed)";
+        const reason = `email reveal returned no usable email for ${who}`;
+        skipped.push({ companyName: c.companyName, reason });
+        console.log(`[Apollo] skipped ${c.companyName}: ${reason}`);
+        continue;
+      }
+
       const ok = await apolloEnrollContact(apiKey, sequenceId, emailAccountId, {
         first_name: p.first_name ?? undefined,
         last_name: p.last_name ?? undefined,
-        email: p.email ?? undefined,
+        email: revealedEmail,
         title: p.title ?? undefined,
         organization_name: p.organization_name ?? c.companyName,
         typed_custom_fields: typedCustomFields,
