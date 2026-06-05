@@ -1335,7 +1335,7 @@ function RecordTab(props: {
         <button
           type="button"
           onClick={props.onStartSession}
-          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-court-brand px-4 text-sm font-bold text-white shadow-sm transition hover:bg-court-brand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/50"
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border border-court-brand bg-transparent px-4 text-sm font-bold text-court-brand-dark shadow-sm transition hover:bg-court-brand-tint focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/50"
         >
           <Play className="h-4 w-4 fill-current" />
           Start new workout
