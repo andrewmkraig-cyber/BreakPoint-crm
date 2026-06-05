@@ -157,6 +157,7 @@ async function fetchExerciseStats(
     },
     include: {
       workoutDay: { select: { date: true } },
+      exercise: { select: { bodyPart: true } },
       sets: { orderBy: { setNumber: "asc" } },
     },
     orderBy: { performedAt: "desc" },
@@ -169,7 +170,11 @@ async function fetchExerciseStats(
       best: null,
     };
     const completeSets = workout.sets
-      .filter((set) => set.weightLbs != null && set.reps != null)
+      .filter(
+        (set) =>
+          set.reps != null &&
+          (set.weightLbs != null || workout.exercise.bodyPart === "Core"),
+      )
       .map((set) => ({
         id: set.id,
         setNumber: set.setNumber,
@@ -183,25 +188,40 @@ async function fetchExerciseStats(
     if (!existing.last) {
       const bestSet = [...completeSets].sort(
         (a, b) =>
-          setVolume(b.weightLbs, b.reps) - setVolume(a.weightLbs, a.reps),
+          setVolume(b.weightLbs, b.reps, workout.exercise.bodyPart) -
+          setVolume(a.weightLbs, a.reps, workout.exercise.bodyPart),
       )[0];
       existing.last = {
         date: isoDateOnly(workout.workoutDay.date),
         weightLbs: bestSet.weightLbs,
         reps: bestSet.reps,
         rpe: bestSet.rpe ?? null,
-        volume: setVolume(bestSet.weightLbs, bestSet.reps),
+        volume: setVolume(
+          bestSet.weightLbs,
+          bestSet.reps,
+          workout.exercise.bodyPart,
+        ),
         sets: completeSets,
       };
     }
 
     for (const set of completeSets) {
-      if (set.weightLbs == null) continue;
+      const setScore = recordScore(
+        set.weightLbs,
+        set.reps,
+        workout.exercise.bodyPart,
+      );
+      const bestScore = recordScore(
+        existing.best?.weightLbs,
+        existing.best?.reps,
+        workout.exercise.bodyPart,
+      );
+      if (setScore == null) continue;
       if (
-        existing.best?.weightLbs == null ||
-        set.weightLbs > existing.best.weightLbs ||
-        (set.weightLbs === existing.best.weightLbs &&
-          (set.reps ?? 0) > (existing.best.reps ?? 0))
+        bestScore == null ||
+        setScore > bestScore ||
+        (setScore === bestScore &&
+          (set.reps ?? 0) > (existing.best?.reps ?? 0))
       ) {
         existing.best = {
           date: isoDateOnly(workout.workoutDay.date),
@@ -343,7 +363,8 @@ export function serializeWorkoutDay(
       isPr: set.isPr,
     }));
     const totalVolume = sets.reduce(
-      (sum, set) => sum + setVolume(set.weightLbs, set.reps),
+      (sum, set) =>
+        sum + setVolume(set.weightLbs, set.reps, workout.exercise.bodyPart),
       0,
     );
     return {
@@ -380,9 +401,21 @@ export function serializeWorkoutDay(
 export function setVolume(
   weightLbs: number | null | undefined,
   reps: number | null | undefined,
+  bodyPart?: string | null,
 ): number {
-  if (weightLbs == null || reps == null) return 0;
+  if (reps == null) return 0;
+  if (weightLbs == null) return bodyPart === "Core" ? Math.max(0, reps) : 0;
   return Math.max(0, weightLbs) * Math.max(0, reps);
+}
+
+function recordScore(
+  weightLbs: number | null | undefined,
+  reps: number | null | undefined,
+  bodyPart?: string | null,
+): number | null {
+  if (reps == null) return null;
+  if (bodyPart === "Core") return setVolume(weightLbs, reps, bodyPart);
+  return weightLbs == null ? null : weightLbs;
 }
 
 export function publicFitnessMetadata() {

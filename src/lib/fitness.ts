@@ -190,6 +190,7 @@ export type FitnessSavePayload = {
     exerciseId: string;
     sets: Array<{
       weightLbs: number | null;
+      weightMode?: "bodyweight" | null;
       reps: number | null;
       rpe?: number | null;
     }>;
@@ -211,6 +212,8 @@ export type FitnessSaveResponse = {
 export type FitnessSavedExerciseSummary = {
   exerciseId: string;
   exerciseName: string;
+  bodyPart: string;
+  topScore: number | null;
   topWeightLbs: number | null;
   previousTopWeightLbs: number | null;
   topWeightChangePct: number | null;

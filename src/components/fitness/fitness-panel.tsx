@@ -85,6 +85,7 @@ const RANGE_TABS = [
 const DEFAULT_REST_MS = 120_000;
 const REST_INCREMENT_MS = 60_000;
 const ACTIVE_WORKOUT_STORAGE_KEY = "ace:fitness-active-workout";
+const BODYWEIGHT_VALUE = "BW";
 
 function todayIsoEt(): string {
   const fmt = new Intl.DateTimeFormat("en-CA", {
@@ -99,6 +100,39 @@ function todayIsoEt(): string {
 function niceNumber(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "-";
   return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(1);
+}
+
+function isCoreBodyPart(bodyPart: string | null | undefined): boolean {
+  return bodyPart === "Core";
+}
+
+function isBodyweightValue(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "bw" ||
+    normalized === "bodyweight" ||
+    normalized === "body weight"
+  );
+}
+
+function setVolume(
+  weightLbs: number | null | undefined,
+  reps: number | null | undefined,
+  bodyPart?: string | null,
+): number {
+  if (reps == null) return 0;
+  if (weightLbs == null) return isCoreBodyPart(bodyPart) ? Math.max(0, reps) : 0;
+  return Math.max(0, weightLbs) * Math.max(0, reps);
+}
+
+function recordScore(
+  weightLbs: number | null | undefined,
+  reps: number | null | undefined,
+  bodyPart?: string | null,
+): number | null {
+  if (reps == null) return null;
+  if (isCoreBodyPart(bodyPart)) return setVolume(weightLbs, reps, bodyPart);
+  return weightLbs == null ? null : weightLbs;
 }
 
 function shortDate(iso: string): string {
@@ -260,7 +294,12 @@ function buildDraftsForDay(
         workout.exerciseId,
         {
           sets: workout.sets.map((set) => ({
-            weight: set.weightLbs == null ? "" : String(set.weightLbs),
+            weight:
+              set.weightLbs == null && isCoreBodyPart(workout.bodyPart)
+                ? BODYWEIGHT_VALUE
+                : set.weightLbs == null
+                  ? ""
+                  : String(set.weightLbs),
             reps: set.reps == null ? "" : String(set.reps),
             rpe: set.rpe == null ? "" : String(set.rpe),
             isPr: set.isPr,
@@ -525,8 +564,8 @@ export function FitnessPanel() {
   }, [historyBodyPart, historyRange, snapshot]);
 
   const historyStats = useMemo(
-    () => buildHistoryStats(filteredHistory),
-    [filteredHistory],
+    () => buildHistoryStats(filteredHistory, historyBodyPart),
+    [filteredHistory, historyBodyPart],
   );
 
   const startDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -628,8 +667,16 @@ export function FitnessPanel() {
     if (field !== "rpe") {
       const weight =
         field === "weight"
-          ? parseDraftNumber(value)
-          : parseDraftNumber(drafts[exercise.id]?.sets[setIndex]?.weight ?? "");
+          ? isBodyweightValue(value)
+            ? 0
+            : parseDraftNumber(value)
+          : isBodyweightValue(
+                drafts[exercise.id]?.sets[setIndex]?.weight ?? "",
+              )
+            ? 0
+            : parseDraftNumber(
+                drafts[exercise.id]?.sets[setIndex]?.weight ?? "",
+              );
       const reps =
         field === "reps"
           ? parseDraftNumber(value)
@@ -713,7 +760,12 @@ export function FitnessPanel() {
     setDrafts((prev) => {
       const currentSets = prev[exercise.id]?.sets ?? [];
       const nextSets = exercise.last?.sets.map((set) => ({
-        weight: set.weightLbs == null ? "" : String(set.weightLbs),
+        weight:
+          set.weightLbs == null && isCoreBodyPart(exercise.bodyPart)
+            ? BODYWEIGHT_VALUE
+            : set.weightLbs == null
+              ? ""
+              : String(set.weightLbs),
         reps: set.reps == null ? "" : String(set.reps),
         rpe: set.rpe == null ? "" : String(set.rpe),
       })) ?? [buildEmptySet()];
@@ -807,11 +859,20 @@ export function FitnessPanel() {
         exerciseId,
         sets: draft.sets
           .map((set) => ({
-            weightLbs: parseDraftNumber(set.weight),
+            weightLbs: isBodyweightValue(set.weight)
+              ? null
+              : parseDraftNumber(set.weight),
+            weightMode: isBodyweightValue(set.weight)
+              ? ("bodyweight" as const)
+              : null,
             reps: parseDraftNumber(set.reps),
             rpe: parseDraftNumber(set.rpe),
           }))
-          .filter((set) => set.weightLbs != null && set.reps != null),
+          .filter(
+            (set) =>
+              set.reps != null &&
+              (set.weightLbs != null || set.weightMode === "bodyweight"),
+          ),
       }))
       .filter((workout) => workout.sets.length > 0);
     if (workouts.length === 0) {
@@ -1880,7 +1941,11 @@ function SaveSummaryCards({
           <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
             <SummaryMetric
               label="Top"
-              value={`${niceNumber(summary.topWeightLbs)} lb`}
+              value={
+                isCoreBodyPart(summary.bodyPart)
+                  ? niceNumber(summary.topScore)
+                  : `${niceNumber(summary.topWeightLbs)} lb`
+              }
             />
             <SummaryMetric label="Sets" value={summary.setCount} />
             <SummaryMetric label="Volume" value={niceNumber(summary.volume)} />
@@ -1951,12 +2016,23 @@ function ExerciseCard({
   const [expanded, setExpanded] = useState(() =>
     draft.sets.some((set) => setIsComplete(set)),
   );
-  const bestLabel =
-    exercise.best?.weightLbs == null
-      ? "No best"
+  const coreExercise = isCoreBodyPart(exercise.bodyPart);
+  const bestScore = recordScore(
+    exercise.best?.weightLbs,
+    exercise.best?.reps,
+    exercise.bodyPart,
+  );
+  const bestLabel = !exercise.best
+    ? "No best"
+    : coreExercise
+      ? exercise.best.weightLbs == null
+        ? `${niceNumber(exercise.best.reps)} rep best`
+        : `${niceNumber(bestScore)} volume best`
       : `${niceNumber(exercise.best.weightLbs)} lb best`;
   const lastLabel = exercise.last
-    ? `${formatSetList(exercise.last.sets)} · ${shortDate(exercise.last.date)}`
+    ? `${formatSetList(exercise.last.sets, exercise.bodyPart)} · ${shortDate(
+        exercise.last.date,
+      )}`
     : "No previous session";
 
   return (
@@ -2010,13 +2086,17 @@ function ExerciseCard({
 
           <div className="space-y-3">
             {draft.sets.map((set, index) => {
-              const weight = parseDraftNumber(set.weight);
+              const bodyweight = isBodyweightValue(set.weight);
+              const weight = bodyweight ? null : parseDraftNumber(set.weight);
               const reps = parseDraftNumber(set.reps);
+              const draftScore = recordScore(weight, reps, exercise.bodyPart);
               const draftPr =
-                weight != null &&
-                exercise.best?.weightLbs != null &&
-                weight > exercise.best.weightLbs;
-              const volume = niceNumber((weight ?? 0) * (reps ?? 0));
+                draftScore != null &&
+                bestScore != null &&
+                draftScore > bestScore;
+              const volume = niceNumber(
+                setVolume(weight, reps, exercise.bodyPart),
+              );
               return (
                 <div
                   key={index}
@@ -2026,17 +2106,40 @@ function ExerciseCard({
                     <span className="text-center text-xs font-bold text-court-fg-muted">
                       {index + 1}
                     </span>
-                    <StepperInput
-                      label="lb"
-                      value={set.weight}
-                      step={5}
-                      onChange={(value) =>
-                        onSetChange(exercise, index, "weight", value)
-                      }
-                      onStep={(amount) =>
-                        onBump(exercise, index, "weight", amount)
-                      }
-                    />
+                    <div className="space-y-1">
+                      <StepperInput
+                        label="lb"
+                        value={set.weight}
+                        step={5}
+                        onChange={(value) =>
+                          onSetChange(exercise, index, "weight", value)
+                        }
+                        onStep={(amount) =>
+                          onBump(exercise, index, "weight", amount)
+                        }
+                      />
+                      {coreExercise ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onSetChange(
+                              exercise,
+                              index,
+                              "weight",
+                              bodyweight ? "" : BODYWEIGHT_VALUE,
+                            )
+                          }
+                          className={cn(
+                            "h-7 w-full rounded-md border text-[11px] font-bold transition",
+                            bodyweight
+                              ? "border-court-brand bg-court-brand-tint text-court-brand-dark"
+                              : "border-court-border bg-court-surface text-court-fg-muted hover:bg-court-surface-subtle",
+                          )}
+                        >
+                          BW
+                        </button>
+                      ) : null}
+                    </div>
                     <StepperInput
                       label="reps"
                       value={set.reps}
@@ -2124,10 +2227,15 @@ function ExerciseCard({
 
 function formatSetList(
   sets: Array<{ weightLbs: number | null; reps: number | null }>,
+  bodyPart?: string | null,
 ): string {
   if (sets.length === 0) return "No sets";
   return sets
-    .map((set) => `${niceNumber(set.weightLbs)} x ${niceNumber(set.reps)}`)
+    .map((set) =>
+      set.weightLbs == null && isCoreBodyPart(bodyPart)
+        ? `${BODYWEIGHT_VALUE} x ${niceNumber(set.reps)}`
+        : `${niceNumber(set.weightLbs)} x ${niceNumber(set.reps)}`,
+    )
     .join(", ");
 }
 
@@ -2203,6 +2311,10 @@ function HistoryTab({
   onToggleStepsExpanded: () => void;
 }) {
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
+  const coreView = isCoreBodyPart(bodyPart);
+  const volumeLabel = coreView
+    ? niceNumber(stats.volume)
+    : `${niceNumber(stats.volume)} lb`;
 
   return (
     <div className="space-y-4">
@@ -2231,7 +2343,7 @@ function HistoryTab({
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Kpi label="Top set" value={stats.topSetLabel} />
         <Kpi label="PRs" value={stats.pr} />
-        <Kpi label="Volume" value={`${niceNumber(stats.volume)} lb`} />
+        <Kpi label="Volume" value={volumeLabel} />
         <Kpi label="Streak" value={`${stats.streak} day`} />
       </div>
 
@@ -2255,12 +2367,15 @@ function HistoryTab({
                   {row.name}
                 </p>
                 <p className="truncate text-xs text-court-fg-muted">
-                  {row.sessions} sessions · {niceNumber(row.volume)} lb volume
+                  {row.sessions} sessions · {niceNumber(row.volume)}{" "}
+                  {coreView ? "volume" : "lb volume"}
                 </p>
               </div>
               <div className="text-right">
                 <p className="font-semibold tabular-nums text-court-fg">
-                  {niceNumber(row.topWeightLbs)} lb
+                  {coreView
+                    ? niceNumber(row.topScore)
+                    : `${niceNumber(row.topWeightLbs)} lb`}
                 </p>
                 <p className="text-xs font-medium tabular-nums text-court-fg-muted">
                   {formatPct(row.topWeightChangePct)}
@@ -2357,6 +2472,7 @@ function HistoryWorkoutCard({
               if (set.weightLbs == null) return top;
               return top == null || set.weightLbs > top ? set.weightLbs : top;
             }, null);
+            const coreWorkout = isCoreBodyPart(workout.bodyPart);
             return (
               <div
                 key={workout.id}
@@ -2369,12 +2485,15 @@ function HistoryWorkoutCard({
                     </p>
                     <p className="mt-1 text-xs text-court-fg-muted">
                       {workout.sets.length} sets ·{" "}
-                      {niceNumber(workout.totalVolume)} lb volume
+                      {niceNumber(workout.totalVolume)}{" "}
+                      {coreWorkout ? "volume" : "lb volume"}
                     </p>
                   </div>
                   <span className="shrink-0 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-bold text-court-fg">
                     {topWeight == null
-                      ? "No weight"
+                      ? coreWorkout
+                        ? "Bodyweight"
+                        : "No weight"
                       : `${niceNumber(topWeight)} lb`}
                   </span>
                 </div>
@@ -2389,7 +2508,10 @@ function HistoryWorkoutCard({
                           : "border-court-border bg-court-surface text-court-fg-muted",
                       )}
                     >
-                      {niceNumber(set.weightLbs)} x {niceNumber(set.reps)}
+                      {set.weightLbs == null && coreWorkout
+                        ? BODYWEIGHT_VALUE
+                        : niceNumber(set.weightLbs)}{" "}
+                      x {niceNumber(set.reps)}
                       {set.isPr ? " PR" : ""}
                     </span>
                   ))}
@@ -2416,7 +2538,8 @@ function Kpi({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function buildHistoryStats(days: FitnessWorkoutDay[]) {
+function buildHistoryStats(days: FitnessWorkoutDay[], bodyPart: string) {
+  const coreView = isCoreBodyPart(bodyPart);
   const exerciseMap = new Map<
     string,
     {
@@ -2424,6 +2547,7 @@ function buildHistoryStats(days: FitnessWorkoutDay[]) {
       sessions: number;
       volume: number;
       topWeightLbs: number | null;
+      topScore: number | null;
       firstTopWeightLbs: number | null;
       lastTopWeightLbs: number | null;
     }
@@ -2433,19 +2557,22 @@ function buildHistoryStats(days: FitnessWorkoutDay[]) {
   let pr = 0;
   let topSetWeight: number | null = null;
   let topSetReps: number | null = null;
+  let topSetScore: number | null = null;
   const dateSet = new Set<string>();
 
   for (const day of [...days].sort((a, b) => a.date.localeCompare(b.date))) {
     dateSet.add(day.date);
-    volume += day.totalVolume;
-    pr += day.prCount;
     let top = 0;
     for (const workout of day.workouts) {
+      if (bodyPart !== "All" && workout.bodyPart !== bodyPart) continue;
+      pr += workout.sets.filter((set) => set.isPr).length;
+      volume += workout.totalVolume;
       const row = exerciseMap.get(workout.exerciseName) ?? {
         name: workout.exerciseName,
         sessions: 0,
         volume: 0,
         topWeightLbs: null,
+        topScore: null,
         firstTopWeightLbs: null,
         lastTopWeightLbs: null,
       };
@@ -2453,18 +2580,28 @@ function buildHistoryStats(days: FitnessWorkoutDay[]) {
       row.volume += workout.totalVolume;
       let workoutTop: number | null = null;
       for (const set of workout.sets) {
-        if (set.weightLbs == null) continue;
-        top = Math.max(top, set.weightLbs);
-        workoutTop =
-          workoutTop == null || set.weightLbs > workoutTop
-            ? set.weightLbs
-            : workoutTop;
+        const score = coreView
+          ? recordScore(set.weightLbs, set.reps, workout.bodyPart)
+          : set.weightLbs == null
+            ? null
+            : set.weightLbs;
+        if (score == null) continue;
+        top = Math.max(top, score);
+        row.topScore =
+          row.topScore == null || score > row.topScore ? score : row.topScore;
+        if (set.weightLbs != null) {
+          workoutTop =
+            workoutTop == null || set.weightLbs > workoutTop
+              ? set.weightLbs
+              : workoutTop;
+        }
         if (
-          topSetWeight == null ||
-          set.weightLbs > topSetWeight ||
-          (set.weightLbs === topSetWeight &&
+          topSetScore == null ||
+          score > topSetScore ||
+          (score === topSetScore &&
             (set.reps ?? 0) > (topSetReps ?? 0))
         ) {
+          topSetScore = score;
           topSetWeight = set.weightLbs;
           topSetReps = set.reps;
         }
@@ -2484,9 +2621,13 @@ function buildHistoryStats(days: FitnessWorkoutDay[]) {
 
   return {
     topSetLabel:
-      topSetWeight == null
+      topSetScore == null
         ? "No sets"
-        : `${niceNumber(topSetWeight)} x ${niceNumber(topSetReps)}`,
+        : coreView
+          ? topSetWeight == null
+            ? `${BODYWEIGHT_VALUE} x ${niceNumber(topSetReps)}`
+            : `${niceNumber(topSetScore)} volume`
+          : `${niceNumber(topSetWeight)} x ${niceNumber(topSetReps)}`,
     volume,
     pr,
     streak: calculateStreak(dateSet),

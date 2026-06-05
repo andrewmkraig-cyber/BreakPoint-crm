@@ -16,6 +16,7 @@ type SanitizedWorkout = {
   exerciseId: string;
   sets: Array<{
     weightLbs: number | null;
+    weightMode: "bodyweight" | null;
     reps: number | null;
     rpe: number | null;
   }>;
@@ -81,9 +82,21 @@ function pctChange(
 function setVolume(
   weightLbs: number | null | undefined,
   reps: number | null | undefined,
+  bodyPart?: string | null,
 ): number {
-  if (weightLbs == null || reps == null) return 0;
+  if (reps == null) return 0;
+  if (weightLbs == null) return bodyPart === "Core" ? Math.max(0, reps) : 0;
   return Math.max(0, weightLbs) * Math.max(0, reps);
+}
+
+function recordScore(
+  weightLbs: number | null | undefined,
+  reps: number | null | undefined,
+  bodyPart?: string | null,
+): number | null {
+  if (reps == null) return null;
+  if (bodyPart === "Core") return setVolume(weightLbs, reps, bodyPart);
+  return weightLbs == null ? null : weightLbs;
 }
 
 function sanitizePayload(body: FitnessSavePayload): {
@@ -111,10 +124,18 @@ function sanitizePayload(body: FitnessSavePayload): {
       sets: (Array.isArray(workout.sets) ? workout.sets : [])
         .map((set) => ({
           weightLbs: cleanNumber(set.weightLbs),
+          weightMode:
+            set.weightMode === "bodyweight"
+              ? ("bodyweight" as const)
+              : null,
           reps: cleanReps(set.reps),
           rpe: cleanRpe(set.rpe),
         }))
-        .filter((set) => set.weightLbs != null && set.reps != null),
+        .filter(
+          (set) =>
+            set.reps != null &&
+            (set.weightLbs != null || set.weightMode === "bodyweight"),
+        ),
     }))
     .filter((workout) => workout.exerciseId && workout.sets.length > 0);
 
@@ -158,13 +179,16 @@ export async function POST(req: Request) {
         id: { in: exerciseIds },
         OR: [{ isDefault: true }, { userId: ctx.userId }],
       },
-      select: { id: true, name: true },
+      select: { id: true, name: true, bodyPart: true },
     });
     if (accessibleExercises.length !== exerciseIds.length) {
       throw new FitnessHttpError("One or more exercises are unavailable", 400);
     }
     const exerciseNameById = new Map(
       accessibleExercises.map((exercise) => [exercise.id, exercise.name]),
+    );
+    const exerciseBodyPartById = new Map(
+      accessibleExercises.map((exercise) => [exercise.id, exercise.bodyPart]),
     );
 
     const previousDay = await prisma.workoutDay.findFirst({
@@ -219,15 +243,26 @@ export async function POST(req: Request) {
       },
       select: {
         weightLbs: true,
-        workout: { select: { exerciseId: true } },
+        reps: true,
+        workout: {
+          select: {
+            exerciseId: true,
+            exercise: { select: { bodyPart: true } },
+          },
+        },
       },
     });
-    const maxWeightByExercise = new Map<string, number>();
+    const bestScoreByExercise = new Map<string, number>();
     for (const set of previousSets) {
-      if (set.weightLbs == null) continue;
-      const current = maxWeightByExercise.get(set.workout.exerciseId);
-      if (current == null || set.weightLbs > current) {
-        maxWeightByExercise.set(set.workout.exerciseId, set.weightLbs);
+      const score = recordScore(
+        set.weightLbs,
+        set.reps,
+        set.workout.exercise.bodyPart,
+      );
+      if (score == null) continue;
+      const current = bestScoreByExercise.get(set.workout.exerciseId);
+      if (current == null || score > current) {
+        bestScoreByExercise.set(set.workout.exerciseId, score);
       }
     }
 
@@ -263,8 +298,9 @@ export async function POST(req: Request) {
       if (previousByExercise.has(workout.exerciseId)) continue;
       let volume = 0;
       let topWeightLbs: number | null = null;
+      const bodyPart = exerciseBodyPartById.get(workout.exerciseId);
       for (const set of workout.sets) {
-        volume += setVolume(set.weightLbs, set.reps);
+        volume += setVolume(set.weightLbs, set.reps, bodyPart);
         if (
           set.weightLbs != null &&
           (topWeightLbs == null || set.weightLbs > topWeightLbs)
@@ -300,7 +336,11 @@ export async function POST(req: Request) {
               exerciseNameById.get(workout.exerciseId) ?? "Exercise",
             sets: {
               create: workout.sets.map((set, index) => {
-                const previousMax = maxWeightByExercise.get(workout.exerciseId);
+                const bodyPart = exerciseBodyPartById.get(workout.exerciseId);
+                const previousBest = bestScoreByExercise.get(
+                  workout.exerciseId,
+                );
+                const score = recordScore(set.weightLbs, set.reps, bodyPart);
                 return {
                   organizationId: ctx.organizationId,
                   userId: ctx.userId,
@@ -309,8 +349,8 @@ export async function POST(req: Request) {
                   reps: set.reps,
                   rpe: set.rpe,
                   isPr:
-                    set.weightLbs != null &&
-                    (previousMax == null || set.weightLbs > previousMax),
+                    score != null &&
+                    (previousBest == null || score > previousBest),
                 };
               }),
             },
@@ -345,6 +385,11 @@ export async function POST(req: Request) {
         if (set.weightLbs == null) return top;
         return top == null || set.weightLbs > top ? set.weightLbs : top;
       }, null);
+      const topScore = workout.sets.reduce<number | null>((top, set) => {
+        const score = recordScore(set.weightLbs, set.reps, workout.bodyPart);
+        if (score == null) return top;
+        return top == null || score > top ? score : top;
+      }, null);
       const previous = previousByExercise.get(workout.exerciseId) ?? {
         volume: 0,
         topWeightLbs: null,
@@ -352,6 +397,8 @@ export async function POST(req: Request) {
       return {
         exerciseId: workout.exerciseId,
         exerciseName: workout.exerciseName,
+        bodyPart: workout.bodyPart,
+        topScore,
         topWeightLbs,
         previousTopWeightLbs: previous.topWeightLbs,
         topWeightChangePct: pctChange(topWeightLbs, previous.topWeightLbs),
