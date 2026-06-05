@@ -30,14 +30,11 @@ export function TopBar() {
   const nextThemeLabel = theme === "light" ? "Dark theme" : "Light theme";
 
   // Desktop: h-20 (80px) icon row matches the sidebar header. PWA / mobile:
-  // the header wraps onto two rows. Row 1 carries the Ace brand lockup
-  // top-left and the icon cluster (toggle, FAB, chat, weather, calendar)
-  // top-right. Row 2 (the `order-last w-full` wrapper) carries the
-  // hamburger + the full-width search line. md:contents dissolves that
-  // wrapper on desktop so its children (hamburger, search) drop back into
-  // their original single-row desktop slots. Single TopBarSearch instance
-  // throughout - duplicating it would mount two debounced inputs, two
-  // dropdowns, two server actions in flight.
+  // the header wraps onto three compact rows. Row 1 carries the Ace brand
+  // lockup top-left and the weather/date cluster top-right. Row 2 carries
+  // the action icons right-aligned (hamburger, theme, +, assistant, fitness).
+  // Row 3 carries the full-width search line. md+ dissolves back into the
+  // desktop single-row topbar.
   return (
     <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 backdrop-blur-md bg-court-surface/80 border-b border-court-border/30 px-4 pb-2 pt-3 md:h-20 md:flex-nowrap md:gap-4 md:px-6 md:pb-0 md:pt-0">
       {/* PWA-only top-left brand lockup. Reuses BrandMark - the same
@@ -48,7 +45,7 @@ export function TopBar() {
       <Link
         href="/dashboard"
         aria-label="Ace dashboard"
-        className="flex h-14 shrink-0 items-center transition-opacity hover:opacity-80 md:hidden"
+        className="order-1 flex h-14 shrink-0 items-center transition-opacity hover:opacity-80 md:hidden"
       >
         <BrandMark className="ace-topbar-mark" />
       </Link>
@@ -81,17 +78,18 @@ export function TopBar() {
 
       <div className="hidden flex-1 lg:block" />
 
-      {/* Right cluster. Every element here is a fixed h-10 (40px) so the
-          tops and bottoms line up on one vertically-centered row: the
-          Light/Dark toggle, the green + FAB, the chat icon, the
-          weather chip, and the calendar chip. The profile avatar that
-          used to close out this row is gone - the sidebar/drawer
-          profile card is the single source for profile. */}
-      <div className="ml-auto flex h-14 items-center gap-2 md:ml-0 md:h-auto md:gap-3">
-        {/* Light/Dark toggle - DESKTOP ONLY (hidden below md). On the
-            mobile PWA this control moves into the hamburger drawer (below
-            Settings) so the topbar icon row stays on one line. Same h-10
-            w-10 icon-button vocabulary as the FAB + chat buttons. Shows
+      {/* Primary action cluster. Mobile right-aligns these on their own row
+          so the + / assistant / workout controls sit on the right edge. The
+          hamburger sits left of the desktop-matching theme/+ pair. Desktop
+          keeps the same single-row order it already had. */}
+      <div className="order-3 ml-auto flex h-10 w-full items-center justify-end gap-2 md:order-none md:ml-0 md:h-auto md:w-auto md:gap-3">
+        {/* Hamburger menu - PWA ONLY (hidden at md+). Sits to the left of
+            the + button in the mobile action row. */}
+        <div className="md:hidden">
+          <MobileNav />
+        </div>
+        {/* Light/Dark toggle. Same h-10 w-10 icon-button vocabulary as the
+            FAB + chat buttons. Shows
             the Moon in Light mode (click -> Dark) and the Sun in Dark mode
             (click -> Light). Flips only the Light/Dark axis on the active
             court; the surface (Hard/Clay/Grass/Night) is untouched. */}
@@ -100,7 +98,7 @@ export function TopBar() {
           onClick={toggleTheme}
           aria-label={nextThemeLabel}
           title={nextThemeLabel}
-          className="group relative hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border border-court-brand bg-court-brand-tint text-court-brand-dark shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 hover:bg-court-brand/30 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 md:inline-flex"
+          className="group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-court-brand bg-court-brand-tint text-court-brand-dark shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 hover:bg-court-brand/30 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40"
         >
           <span
             aria-hidden="true"
@@ -212,19 +210,18 @@ export function TopBar() {
             <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
           </svg>
         </button>
+      </div>
+
+      {/* Weather + date/calendar cluster. On mobile this orders onto row 1,
+          opposite the Ace mark. On desktop it stays at the far right after
+          the action icons, separated by the slim divider. */}
+      <div className="order-2 ml-auto flex h-14 items-center gap-2 md:order-none md:ml-0 md:h-auto md:gap-3">
         <span
           aria-hidden="true"
           className="mx-1 hidden h-7 w-px bg-court-border md:inline-block"
         />
         <WeatherWidget />
         <CalendarPopoverButton />
-        {/* Hamburger menu - PWA ONLY (hidden at md+). Pinned to the far
-            right end of the action cluster so it's the last (right-most)
-            control on the mobile PWA header. Desktop is unaffected since
-            this wrapper is md:hidden. */}
-        <div className="md:hidden">
-          <MobileNav />
-        </div>
       </div>
     </header>
   );

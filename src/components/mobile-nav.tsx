@@ -4,12 +4,11 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Menu, Moon, Sun, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandDisc } from "@/components/brand-mark";
 import { useMailContext } from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
-import { useCourtMode } from "@/lib/court-mode";
 import { isNavItemActive, resolveDashboardTab } from "@/components/nav-active";
 import { NAV_GROUPS, FOOTER_NAV, type NavItemData } from "@/components/nav-items";
 
@@ -20,8 +19,7 @@ import { NAV_GROUPS, FOOTER_NAV, type NavItemData } from "@/components/nav-items
 // dismisses it. NAV_GROUPS + FOOTER_NAV (including the per-item rainbow
 // iconColor) are imported from the shared @/components/nav-items source
 // so desktop + mobile stay in lockstep and the icon colors can never
-// drift. Settings is pinned at the bottom (FOOTER_NAV), above the
-// Light/Dark toggle.
+// drift. Settings is pinned at the bottom (FOOTER_NAV).
 //
 // Mail/Phone unread DO read from the shared MailContext/PhoneContext
 // (same source the desktop sidebar uses) so the installed iPhone PWA,
@@ -46,12 +44,6 @@ export function MobileNav() {
   const { unreadCount: mailUnread } = useMailContext();
   const { unreadCount: phoneUnread } = usePhoneContext();
   const totalUnread = mailUnread + phoneUnread;
-  // Light/Dark toggle - PWA only. The desktop topbar carries this control;
-  // on mobile it lives in this drawer (below Settings) so the topbar icon
-  // row stays on one line. Flips only the Light/Dark axis on the active
-  // court; the surface (Hard/Clay/Grass/Night) is untouched.
-  const { theme, toggleTheme } = useCourtMode();
-
   // One row renderer for both the workflow groups and the pinned Settings
   // (FOOTER_NAV), so the rainbow + badge + active-state logic lives in a
   // single place. Inactive rows carry the shared per-item iconColor (the
@@ -213,27 +205,10 @@ export function MobileNav() {
                 </div>
               ))}
               {/* Settings, pinned below the workflow groups (shared
-                  FOOTER_NAV), above the Light/Dark toggle. */}
+                  FOOTER_NAV). */}
               <ul className="flex flex-col gap-0.5">
                 {FOOTER_NAV.map((item) => renderNavRow(item))}
               </ul>
-              {/* Light/Dark toggle - sits below Settings. Mirrors the nav
-                  item chrome but is a button (toggles theme, no navigation).
-                  Drawer stays open so the user sees the theme flip apply. */}
-              <button
-                type="button"
-                onClick={() => toggleTheme()}
-                className="flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium text-court-sidebar-fg transition hover:bg-[var(--court-sidebar-active-bg)]/60"
-              >
-                {theme === "light" ? (
-                  <Moon className="h-4 w-4 shrink-0" />
-                ) : (
-                  <Sun className="h-4 w-4 shrink-0" />
-                )}
-                <span className="flex-1 text-left">
-                  {theme === "light" ? "Dark Mode" : "Light Mode"}
-                </span>
-              </button>
             </nav>
           </aside>
           </>,
