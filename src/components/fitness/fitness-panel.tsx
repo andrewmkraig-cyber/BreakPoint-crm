@@ -1115,8 +1115,6 @@ function StepsHeader({
     clampIsoDate(startOfYearIso(selectedDate), minDate, maxDate),
     selectedDate,
   );
-  const bars = steps.series30;
-  const max = Math.max(1, ...bars.map((row) => row.steps));
   const canGoBack = selectedDate > minDate;
   const canGoForward = selectedDate < maxDate;
 
@@ -1291,27 +1289,6 @@ function StepsHeader({
             >
               <ChevronRight className="h-4 w-4" />
             </button>
-          </div>
-          <div className="flex h-14 w-full items-end gap-1 rounded-md border border-court-border bg-court-surface px-2 py-2">
-            {bars.map((row) => (
-              <span
-                key={row.date}
-                title={`${shortDate(row.date)} · ${row.steps.toLocaleString()}`}
-                className="flex flex-1 items-end"
-              >
-                <span
-                  className={cn(
-                    "w-full rounded-t-sm",
-                    row.date === selectedDate
-                      ? "bg-court-brand-dark"
-                      : "bg-court-brand",
-                  )}
-                  style={{
-                    height: `${Math.max(10, (row.steps / max) * 100)}%`,
-                  }}
-                />
-              </span>
-            ))}
           </div>
           <div className="grid grid-cols-3 gap-2 text-xs">
             <StepAverageCard label="Week avg" value={weekAvg} />
