@@ -228,7 +228,9 @@ function averageStepsBetween(
   let sum = 0;
   let count = 0;
   for (let date = startIso; date <= endIso; date = shiftIsoDate(date, 1)) {
-    sum += stepsByDate.get(date)?.steps ?? 0;
+    const row = stepsByDate.get(date);
+    if (row == null) continue;
+    sum += row.steps;
     count += 1;
   }
   return count === 0 ? 0 : Math.round(sum / count);
