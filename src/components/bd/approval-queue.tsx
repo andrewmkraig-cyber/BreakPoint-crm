@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, type ReactNode } from "react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw, X, RotateCcw, ExternalLink, Eye, MapPin } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -19,9 +19,19 @@ import { Button } from "@/components/ui/button";
 import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { ClientLogo } from "@/components/clients/client-logo";
 import { Modal } from "@/components/placements/placement-shared";
+import { TabStrip } from "@/components/ui/tab-strip";
 
 const MAX_PREVIEW_ROWS = 5;
 const MAX_DISPLAYED_CONTACTS = 5;
+
+// Rows | Cards toggle for the discovered-company list. Persisted in
+// localStorage so the recruiter's last choice survives a reload.
+type BatchView = "rows" | "cards";
+const BATCH_VIEW_STORAGE_KEY = "bd-batch-view";
+const VIEW_TABS: ReadonlyArray<{ id: BatchView; label: string }> = [
+  { id: "rows", label: "Rows" },
+  { id: "cards", label: "Cards" },
+];
 
 // Defaults the "Run Discovery Now" popup pre-fills. Mirror today's
 // hardcoded behavior: 25 companies pulled, up to 4 contacts/company
@@ -39,6 +49,8 @@ type Props = {
   summary?: ReactNode;
   // Pill + BD Settings button seated top-right inside the card.
   cardHeaderRight?: ReactNode;
+  // KPI tiles row rendered at the very top of the batch card.
+  kpis?: ReactNode;
 };
 
 type ContactCarousel = {
@@ -109,9 +121,25 @@ export function ApprovalQueue({
   controls,
   summary,
   cardHeaderRight,
+  kpis,
 }: Props) {
   const router = useRouter();
   const [runs, setRuns] = useState<PendingBDRun[]>(initialRuns);
+  // Rows by default; hydrate the persisted choice after mount so SSR and
+  // first client render agree (avoids a hydration mismatch).
+  const [view, setView] = useState<BatchView>("rows");
+  useEffect(() => {
+    const saved = window.localStorage.getItem(BATCH_VIEW_STORAGE_KEY);
+    if (saved === "rows" || saved === "cards") setView(saved);
+  }, []);
+  function changeView(next: BatchView) {
+    setView(next);
+    try {
+      window.localStorage.setItem(BATCH_VIEW_STORAGE_KEY, next);
+    } catch {
+      // Private-mode / storage-disabled: keep the in-memory choice.
+    }
+  }
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [triggerError, setTriggerError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -248,8 +276,11 @@ export function ApprovalQueue({
           shadow). Order top-to-bottom: header-right pill/settings ->
           controls -> table -> summary -> buttons. */}
       <div className="flex flex-col gap-6 rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
-        {/* Top band: controls seated at the very top-left and the Last run
-            pill + BD Settings top-right, on the same row, so the body
+        {/* KPI tiles row seated at the very top of the batch surface. */}
+        {kpis}
+
+        {/* Top band: controls seated at the very top-left and the
+            BD Settings button top-right, on the same row, so the body
             starts at the top of the card instead of floating far down. */}
         <div className="flex flex-wrap items-start justify-between gap-4">
           {/* Vertical chip + Saved Search dropdown. */}
@@ -271,6 +302,18 @@ export function ApprovalQueue({
             <p className="text-xs text-red-600 dark:text-red-300">{actionError}</p>
           )}
 
+          {runs.length > 0 && (
+            // Rows | Cards toggle, right-aligned above the discovered list.
+            <div className="flex items-center justify-end">
+              <TabStrip<BatchView>
+                items={VIEW_TABS}
+                activeId={view}
+                onChange={changeView}
+                ariaLabel="Discovered company view"
+              />
+            </div>
+          )}
+
           {runs.length === 0 ? (
             <p className="text-xs text-court-fg-muted">
               No discovery runs awaiting approval.
@@ -281,6 +324,7 @@ export function ApprovalQueue({
                 <RunCard
                   key={run.id}
                   run={run}
+                  view={view}
                   carousels={curated[run.id] ?? {}}
                   busy={pendingIds.has(run.id)}
                   onView={() => setViewRunId(run.id)}
@@ -523,11 +567,17 @@ function DiscoveryModal({
       aria-modal="true"
       aria-labelledby="bd-discovery-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
-      onClick={onCancel}
+      // Dismiss only when the press STARTS on the backdrop itself. Using
+      // mousedown (not click) means a drag that begins inside a number
+      // input and releases outside the panel no longer closes the dialog -
+      // the mouseup-on-backdrop that a click would fire is ignored.
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
     >
       <div
         className="w-full max-w-md rounded-2xl border border-court-border bg-court-surface p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -614,6 +664,7 @@ function DiscoveryModal({
 
 function RunCard({
   run,
+  view,
   carousels,
   busy,
   onView,
@@ -622,6 +673,7 @@ function RunCard({
   onSwapContact,
 }: {
   run: PendingBDRun;
+  view: BatchView;
   carousels: Record<string, ContactCarousel>;
   busy: boolean;
   onView: () => void;
@@ -659,7 +711,7 @@ function RunCard({
         </div>
       </div>
 
-      {preview.length > 0 && (
+      {preview.length > 0 && view === "rows" && (
         <ul className="mt-4 space-y-3">
           {preview.map((c, i) => {
             const key = normalizeCompanyKey(c.companyName);
@@ -694,6 +746,53 @@ function RunCard({
         </ul>
       )}
 
+      {preview.length > 0 && view === "cards" && (
+        // Same companies, card chrome: favicon + name + role + location.
+        // Grid matches the batch mockup; opening still flows through the
+        // card-level onView (company popup) so behavior is unchanged.
+        <>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {preview.map((c, i) => {
+              const name = c.companyName?.trim() || "Unknown company";
+              return (
+                <div
+                  key={i}
+                  className="flex flex-col gap-2 rounded-xl border border-court-border bg-court-surface-subtle p-3"
+                >
+                  <div className="flex items-center gap-2">
+                    <ClientLogo domain={c.domain} name={name} size={32} />
+                    <span className="min-w-0 truncate text-sm font-semibold text-court-fg">
+                      {name}
+                    </span>
+                  </div>
+                  {c.jobTitle ? (
+                    <p className="truncate text-[12px] font-medium text-court-brand-dark">
+                      {c.jobTitle}
+                      <MoreRolesNote
+                        count={c.extraRoleCount}
+                        extraRoles={c.extraRoles}
+                        className="ml-1.5 font-normal text-court-fg-dim"
+                      />
+                    </p>
+                  ) : null}
+                  {c.jobLocation ? (
+                    <p className="flex items-center gap-1 truncate text-[11px] text-court-fg-muted">
+                      <MapPin className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{c.jobLocation}</span>
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+          {overflow > 0 && (
+            <p className="mt-3 text-[11px] font-medium uppercase tracking-[0.1em] text-court-fg-muted">
+              +{overflow} more
+            </p>
+          )}
+        </>
+      )}
+
       <div className="mt-5 flex flex-wrap gap-2">
         <button
           type="button"
@@ -705,7 +804,7 @@ function RunCard({
           className="inline-flex w-auto items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-2.5 py-1 text-[13px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Eye className="h-3.5 w-3.5" />
-          View
+          Review all
         </button>
         <button
           type="button"

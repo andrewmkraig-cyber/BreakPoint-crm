@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ComponentType } from "react";
 import Link from "next/link";
-import { Settings2 } from "lucide-react";
+import { Clock, ScanSearch, Send, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ApprovalQueue } from "@/components/bd/approval-queue";
 import type { PendingBDRun } from "./bd-run-actions";
@@ -30,13 +30,23 @@ export type LastRun = {
   companies: number | null;
 };
 
+// Three top-of-batch KPI tiles. discoveredToday/enrolledToday are counts
+// since ET midnight; lastRunCompletedAt is the most recent finished run
+// (ISO) and lastRunStatus is the newest run's status for the sub-line.
+export type BatchKpis = {
+  discoveredToday: number;
+  enrolledToday: number;
+  lastRunCompletedAt: string | null;
+  lastRunStatus: LastRun["status"] | null;
+};
+
 type Props = {
   verticals: VerticalOption[];
   savedSearches: SavedSearchOption[];
   domains: DomainPreview[];
-  lastRun: LastRun | null;
   defaultContactCap: number;
   initialRuns: PendingBDRun[];
+  kpis: BatchKpis;
 };
 
 const ESTIMATED_CONTACTS_PER_COMPANY = 4;
@@ -46,9 +56,9 @@ export function LaunchView({
   verticals,
   savedSearches,
   domains,
-  lastRun,
   defaultContactCap,
   initialRuns,
+  kpis,
 }: Props) {
   const [verticalId, setVerticalId] = useState<string | null>(verticals[0]?.id ?? null);
   const visibleSearches = useMemo(
@@ -131,20 +141,51 @@ export function LaunchView({
     </div>
   );
 
-  // Top-right of the card - Last run pill + the page-local BD Settings
-  // button. The shared top-row BD Settings is hidden on /bd/launch (see
+  // Top-right of the card - the page-local BD Settings button. The "last
+  // run" signal now lives in the Last Run KPI tile below, so the old pill
+  // is gone. The shared top-row BD Settings is hidden on /bd/launch (see
   // bd/layout.tsx) so this is the only Settings entry on this page.
   const cardHeaderRight = (
-    <>
-      <LastRunChip lastRun={lastRun} />
-      <Link
-        href="/settings/bd"
-        className="inline-flex w-auto items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-2.5 py-1 text-[13px] font-medium text-court-fg shadow-sm transition hover:bg-court-surface"
-      >
-        <Settings2 className="h-3.5 w-3.5" />
-        BD Settings
-      </Link>
-    </>
+    <Link
+      href="/settings/bd"
+      className="inline-flex w-auto items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-2.5 py-1 text-[13px] font-medium text-court-fg shadow-sm transition hover:bg-court-surface"
+    >
+      <Settings2 className="h-3.5 w-3.5" />
+      BD Settings
+    </Link>
+  );
+
+  // Companies sitting in pending runs, surfaced under the Discovered tile.
+  const readyForReview = useMemo(
+    () => initialRuns.reduce((sum, r) => sum + r.discoveredCount, 0),
+    [initialRuns],
+  );
+
+  // KPI tiles row seated at the top of the Today's Batch surface. Same
+  // chrome as the Clubhouse tiles (rounded-2xl surface + long shadow,
+  // 10px extrabold label, 26px serif value); icon-left + sub-line layout
+  // mirrors the batch mockup. Court Mode tokens only.
+  const kpisNode = (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <BatchKpiTile
+        icon={ScanSearch}
+        label="Discovered Today"
+        value={kpis.discoveredToday}
+        sub={`${readyForReview} ready for review`}
+      />
+      <BatchKpiTile
+        icon={Send}
+        label="Enrolled"
+        value={kpis.enrolledToday}
+        sub={`${SEQUENCE_NAME_PLACEHOLDER} · Active`}
+      />
+      <BatchKpiTile
+        icon={Clock}
+        label="Last Run"
+        value={kpis.lastRunCompletedAt ? formatRelative(kpis.lastRunCompletedAt) : "—"}
+        sub={kpis.lastRunStatus ? formatStatus(kpis.lastRunStatus) : "No runs yet"}
+      />
+    </div>
   );
 
   // Slot 2 - green run-summary line, below the table.
@@ -163,41 +204,51 @@ export function LaunchView({
       controls={controls}
       summary={summary}
       cardHeaderRight={cardHeaderRight}
+      kpis={kpisNode}
     />
   );
 }
 
-function LastRunChip({ lastRun }: { lastRun: LastRun | null }) {
-  if (!lastRun) {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-[11px] font-medium text-court-fg-muted">
-        <span className="h-1.5 w-1.5 rounded-full bg-court-fg-dim" aria-hidden />
-        No runs yet
-      </span>
-    );
-  }
-  const tone =
-    lastRun.status === "COMPLETE"
-      ? "border-court-brand/30 bg-court-brand-tint text-court-brand-dark"
-      : lastRun.status === "FAILED"
-        ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
-        : "border-court-border bg-court-surface-subtle text-court-fg-muted";
-  const dotColor =
-    lastRun.status === "COMPLETE"
-      ? "bg-court-brand"
-      : lastRun.status === "FAILED"
-        ? "bg-red-500"
-        : "bg-court-fg-dim";
+// One Today's Batch KPI tile: icon box on the left, label over a big
+// serif value, optional muted sub-line. Reuses the canonical KpiTile
+// chrome so it reads as a Clubhouse activity box.
+function BatchKpiTile({
+  icon: Icon,
+  label,
+  value,
+  sub,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  value: number | string;
+  sub?: string;
+}) {
+  const isZero = value === 0 || value === "0";
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium",
-        tone,
-      )}
-    >
-      <span className={cn("h-1.5 w-1.5 rounded-full", dotColor)} aria-hidden />
-      Last run · {formatStatus(lastRun.status)} · {formatRelative(lastRun.createdAt)}
-    </span>
+    <div className="flex items-center gap-3 rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
+      <div
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-court-brand-tint text-court-brand-dark"
+        aria-hidden
+      >
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0">
+        <div className="text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">
+          {label}
+        </div>
+        <div
+          className={cn(
+            "font-serif text-[26px] font-extrabold leading-none tracking-[-0.04em] tabular-nums",
+            isZero ? "text-court-fg-dim" : "text-court-fg",
+          )}
+        >
+          {value}
+        </div>
+        {sub ? (
+          <div className="mt-0.5 truncate text-[11px] text-court-fg-muted">{sub}</div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

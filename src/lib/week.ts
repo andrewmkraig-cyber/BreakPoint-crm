@@ -81,6 +81,23 @@ export function getEasternWeekBounds(now: Date = new Date()): { start: Date; end
   return { start, end };
 }
 
+// Start of "today" in America/New_York, as a UTC Date instant. Use
+// `createdAt: { gte: getEasternDayStart() }` to count rows from ET
+// midnight today onward — same offset-aware approach as the week bounds
+// so it stays correct across EST/EDT and the server's UTC clock.
+export function getEasternDayStart(now: Date = new Date()): Date {
+  const ymdFmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const [y, m, d] = ymdFmt.format(now).split("-").map(Number);
+  const placeholder = new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
+  const offset = easternOffsetMinutes(placeholder);
+  return new Date(placeholder.getTime() - offset * 60_000);
+}
+
 // Format the current ET week as a human-readable label, e.g.
 // "Week of May 4-10, 2026" within a single month, or
 // "Week of Apr 27 - May 3, 2026" when the week straddles months,
