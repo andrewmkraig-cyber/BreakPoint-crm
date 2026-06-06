@@ -6,6 +6,9 @@
 const APOLLO_BASE = "https://api.apollo.io";
 
 export type ApolloMailbox = {
+  // Apollo email_account id, needed to target/rotate this mailbox on the
+  // sequence add_contact_ids call. "" when the payload carried no id.
+  id: string;
   email: string;
   domain: string;
   status: "Connected" | "Disconnected";
@@ -18,6 +21,7 @@ export type ApolloMailbox = {
 };
 
 type ApolloEmailAccountRaw = {
+  id?: string;
   email?: string;
   active?: boolean;
   status?: string;
@@ -82,6 +86,7 @@ export async function fetchApolloMailboxes(): Promise<ApolloMailbox[] | null> {
         a.sending_enabled === false ||
         statusStr.includes("disabled");
       out.push({
+        id: typeof a.id === "string" ? a.id : "",
         email,
         domain: domainFromEmail(email),
         status: isActive ? "Connected" : "Disconnected",

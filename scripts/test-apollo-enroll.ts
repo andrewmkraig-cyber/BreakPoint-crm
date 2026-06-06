@@ -80,7 +80,7 @@ async function main() {
     JSON.stringify(payload.typed_custom_fields),
   );
 
-  const ok = await apolloEnrollContact(apiKey, sequenceId, emailAccountId, payload);
+  const ok = await apolloEnrollContact(apiKey, sequenceId, [emailAccountId], payload);
 
   console.log(`[test] apolloEnrollContact returned: ${ok}`);
   if (!ok) {

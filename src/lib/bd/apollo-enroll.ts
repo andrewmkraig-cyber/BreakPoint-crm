@@ -5,6 +5,7 @@ import {
   fetchApolloContacts,
   apolloResolveDomainByName,
 } from "@/lib/bd/apollo-contacts";
+import { fetchApolloMailboxes } from "@/lib/bd/apollo-email-accounts";
 
 // Cap is enforced against everything enrolled today across the org's
 // BDRuns, where "today" is calendar day in America/New_York. The cron
@@ -199,6 +200,34 @@ export async function apolloResolveEmailAccountId(apiKey: string): Promise<strin
   }
 }
 
+// Resolves the FULL set of sending mailbox ids to hand Apollo on the
+// add_contact_ids call. Apollo only sets mailbox rotation at the moment
+// contacts are added to a sequence, so passing every healthy mailbox here is
+// what lets it rotate sends across them instead of pinning one.
+//   - APOLLO_EMAIL_ACCOUNT_ID override (when set) always wins and pins that
+//     single mailbox — same escape hatch the single resolver honors.
+//   - Otherwise reuse the same email_accounts fetch the Sending Domains UI
+//     uses (fetchApolloMailboxes), keeping only mailboxes that are Connected,
+//     have sending enabled (not sendingDisabled), and carry a real id.
+//   - If that surfaces zero healthy mailboxes (or the list call failed), fall
+//     back to the single-mailbox resolver so enrollment still works as before.
+// Never guesses an id. Returns [] only when no mailbox can be resolved at all.
+export async function apolloResolveSendingMailboxIds(apiKey: string): Promise<string[]> {
+  const override = process.env.APOLLO_EMAIL_ACCOUNT_ID;
+  if (override) return [override];
+
+  const mailboxes = await fetchApolloMailboxes();
+  if (mailboxes && mailboxes.length > 0) {
+    const healthy = mailboxes
+      .filter((m) => m.status === "Connected" && !m.sendingDisabled && m.id)
+      .map((m) => m.id);
+    if (healthy.length > 0) return healthy;
+  }
+
+  const single = await apolloResolveEmailAccountId(apiKey);
+  return single ? [single] : [];
+}
+
 export type EnrollPayload = {
   first_name?: string;
   last_name?: string;
@@ -218,7 +247,9 @@ export type EnrollPayload = {
 export async function apolloEnrollContact(
   apiKey: string,
   sequenceId: string,
-  emailAccountId: string,
+  // One or more sending mailbox ids. A single id pins that mailbox (legacy
+  // behavior); multiple ids enable Apollo's mailbox rotation across them.
+  emailAccountIds: string[],
   payload: EnrollPayload,
 ): Promise<boolean> {
   const who = `${payload.organization_name}/${payload.first_name ?? "—"} ${payload.last_name ?? ""}`;
@@ -265,7 +296,17 @@ export async function apolloEnrollContact(
       `${APOLLO_BASE}/api/v1/emailer_campaigns/${sequenceId}/add_contact_ids`,
     );
     enrollUrl.searchParams.set("emailer_campaign_id", sequenceId);
-    enrollUrl.searchParams.set("send_email_from_email_account_id", emailAccountId);
+    // Apollo's add_contact_ids endpoint sets mailbox rotation HERE and only
+    // here. One mailbox → pin it with the scalar param (legacy behavior).
+    // Multiple → send the documented array form (send_email_from_email_account_id[])
+    // so Apollo rotates sends across every healthy mailbox we pass.
+    if (emailAccountIds.length === 1) {
+      enrollUrl.searchParams.set("send_email_from_email_account_id", emailAccountIds[0]);
+    } else {
+      for (const id of emailAccountIds) {
+        enrollUrl.searchParams.append("send_email_from_email_account_id[]", id);
+      }
+    }
     enrollUrl.searchParams.append("contact_ids[]", contactId);
     // Visibility: confirm call 2 is firing and against which contact id.
     console.log(
@@ -478,9 +519,11 @@ export async function enrollCompaniesInApollo(
     return { enrolled: 0, capped: false, skipped: [] };
   }
 
-  // Sequence enrollment needs a sending mailbox id. Resolve once per run.
-  const emailAccountId = await apolloResolveEmailAccountId(apiKey);
-  if (!emailAccountId) {
+  // Sequence enrollment needs sending mailbox id(s). Resolve once per run.
+  // All healthy connected mailboxes are handed to Apollo so it rotates sends
+  // across them; falls back to a single mailbox when only one is healthy.
+  const emailAccountIds = await apolloResolveSendingMailboxIds(apiKey);
+  if (emailAccountIds.length === 0) {
     console.warn(
       `[Apollo] runId=${run.id} cannot enroll: no sending mailbox resolved (set APOLLO_EMAIL_ACCOUNT_ID or link a mailbox in Apollo)`,
     );
@@ -490,6 +533,9 @@ export async function enrollCompaniesInApollo(
     });
     return { enrolled: 0, capped: false, skipped: [] };
   }
+  console.log(
+    `[Apollo] runId=${run.id} sending mailbox rotation: ${emailAccountIds.length} mailbox(es) [${emailAccountIds.join(", ")}]`,
+  );
 
   let enrolledThisRun = 0;
   const skipped: SkippedCompany[] = [];
@@ -616,7 +662,7 @@ export async function enrollCompaniesInApollo(
       }
       revealsSucceeded += 1;
 
-      const ok = await apolloEnrollContact(apiKey, sequenceId, emailAccountId, {
+      const ok = await apolloEnrollContact(apiKey, sequenceId, emailAccountIds, {
         first_name: p.first_name ?? undefined,
         last_name: p.last_name ?? undefined,
         email: revealedEmail,
