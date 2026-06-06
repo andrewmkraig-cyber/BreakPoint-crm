@@ -14,7 +14,9 @@
 //
 // THE FIX
 // Null out `discoveredPayload` on exactly those runs (enrolledCount = 0 AND
-// status = COMPLETE). The dedup loop does `if (!Array.isArray(payload))
+// status = COMPLETE or AWAITING_APPROVAL — an awaiting-approval run that
+// enrolled nobody is blocking re-discovery just the same). The dedup loop
+// does `if (!Array.isArray(payload))
 // continue;`, so a null payload contributes zero fingerprints — the broken
 // runs stop blocking re-discovery. The BDRow rows themselves stay intact
 // (counts, metrics, timestamps, error message); only their dedup footprint
@@ -76,7 +78,7 @@ async function main(): Promise<void> {
   const candidates = await prisma.bDRun.findMany({
     where: {
       organizationId: orgId,
-      status: "COMPLETE" as const,
+      status: { in: ["COMPLETE", "AWAITING_APPROVAL"] as const },
       enrolledCount: 0,
     },
     select: {
@@ -95,7 +97,7 @@ async function main(): Promise<void> {
 
   console.log(
     `\n${apply ? "APPLYING" : "DRY RUN"} — org ${orgId}\n` +
-      `Found ${runs.length} COMPLETE run(s) with enrolledCount=0 and a non-null payload.\n`,
+      `Found ${runs.length} COMPLETE/AWAITING_APPROVAL run(s) with enrolledCount=0 and a non-null payload.\n`,
   );
 
   let totalFingerprints = 0;

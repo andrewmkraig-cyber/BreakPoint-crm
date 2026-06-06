@@ -132,9 +132,11 @@ export class TheirStackProvider implements JobDiscoveryProvider {
     if (params.postedSince) {
       const days = Math.ceil((Date.now() - params.postedSince.getTime()) / MS_PER_DAY);
       if (Number.isFinite(days) && days >= 1) {
-        // Cap at MAX_POSTED_MAX_AGE_DAYS so a sparse-run gap can never pull
-        // very old postings into the batch.
-        postedMaxAgeDays = Math.min(days, MAX_POSTED_MAX_AGE_DAYS);
+        // Floor at 3 days so even a very recent last run still looks back far
+        // enough to catch postings near the boundary, then cap at
+        // MAX_POSTED_MAX_AGE_DAYS so a sparse-run gap can never pull very old
+        // postings into the batch.
+        postedMaxAgeDays = Math.min(Math.max(days, 3), MAX_POSTED_MAX_AGE_DAYS);
       }
     }
 
