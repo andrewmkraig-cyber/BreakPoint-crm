@@ -209,15 +209,22 @@ export async function apolloEnrollContact(
       headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
       body: JSON.stringify({ ...payload, run_dedupe: true }),
     });
+    // Visibility: log call 1's full status + raw JSON body before branching.
+    const createRawText = await createRes.text().catch(() => "");
+    console.log(
+      `[Apollo] create contact response (${who}): status=${createRes.status} ${createRes.statusText} body=${createRawText}`,
+    );
     if (!createRes.ok) {
-      const text = await createRes.text().catch(() => "");
       console.warn(
-        `[Apollo] create contact failed (${who}): ${createRes.status} ${createRes.statusText} ${text.slice(0, 200)}`,
+        `[Apollo] create contact failed (${who}): ${createRes.status} ${createRes.statusText} ${createRawText.slice(0, 200)}`,
       );
       return false;
     }
-    const created = (await createRes.json()) as ApolloContactResponse;
+    const created = JSON.parse(createRawText) as ApolloContactResponse;
     const contactId = created.contact?.id;
+    console.log(
+      `[Apollo] create contact captured contactId=${contactId ?? "(none)"} (${who})`,
+    );
     if (!contactId) {
       console.warn(`[Apollo] create contact returned no contact id (${who})`);
       return false;
@@ -234,17 +241,28 @@ export async function apolloEnrollContact(
     enrollUrl.searchParams.set("emailer_campaign_id", sequenceId);
     enrollUrl.searchParams.set("send_email_from_email_account_id", emailAccountId);
     enrollUrl.searchParams.append("contact_ids[]", contactId);
+    // Visibility: confirm call 2 is firing and against which contact id.
+    console.log(
+      `[Apollo] sequence enroll firing (${who}, contactId=${contactId}): ${enrollUrl.toString()}`,
+    );
     const enrollRes = await fetch(enrollUrl, {
       method: "POST",
       headers: { "X-Api-Key": apiKey },
     });
+    // Visibility: log call 2's full status + raw JSON body before branching.
+    const enrollRawText = await enrollRes.text().catch(() => "");
+    console.log(
+      `[Apollo] sequence enroll response (${who}, contactId=${contactId}): status=${enrollRes.status} ${enrollRes.statusText} body=${enrollRawText}`,
+    );
     if (!enrollRes.ok) {
-      const text = await enrollRes.text().catch(() => "");
       console.warn(
-        `[Apollo] sequence enroll failed (${who}, contactId=${contactId}): ${enrollRes.status} ${enrollRes.statusText} ${text.slice(0, 200)}`,
+        `[Apollo] sequence enroll failed (${who}, contactId=${contactId}): ${enrollRes.status} ${enrollRes.statusText} ${enrollRawText.slice(0, 200)}`,
       );
       return false;
     }
+    console.log(
+      `[Apollo] sequence enroll returned ok (${who}, contactId=${contactId})`,
+    );
     return true;
   } catch (err) {
     console.warn(
