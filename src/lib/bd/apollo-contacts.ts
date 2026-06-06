@@ -126,6 +126,11 @@ const MAX_PRACTICE_SPECIFIC_PER_FIRM = 1;
 
 export type ApolloContact = {
   id: string;
+  // The genuine Apollo person id, present only when the search result carried
+  // one. Distinct from `id`, which falls back to a synthetic name/title slug
+  // for keying — that slug is NOT a valid Apollo id and must never be sent to
+  // people/match. null means "no real id; match by name/domain instead".
+  apolloId: string | null;
   firstName: string;
   lastName: string;
   title: string;
@@ -257,6 +262,7 @@ export async function fetchApolloContacts(
       if (!tier) continue;
       const contact: ApolloContact = {
         id: p.id ?? `${first}-${last}-${title}`.toLowerCase().replace(/\s+/g, "-"),
+        apolloId: typeof p.id === "string" && p.id.trim() ? p.id.trim() : null,
         firstName: first,
         lastName: last,
         title,

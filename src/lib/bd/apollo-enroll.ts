@@ -120,6 +120,10 @@ function formatCuratedContacts(contacts: CuratedContact[]): string {
 }
 
 type ApolloPerson = {
+  // Genuine Apollo person id from the people-search result, when one exists.
+  // Drives the documented people/match match-by-id; absent on curated
+  // contacts (the stored payload never kept it), which fall back to name/domain.
+  id?: string;
   first_name?: string;
   last_name?: string;
   name?: string;
@@ -301,16 +305,23 @@ function isUsableEmail(email: string | null | undefined): email is string {
 // INVALID_API_KEY_LOCATION, same as the contacts-create call above).
 export async function apolloRevealPersonEmail(
   apiKey: string,
-  person: { first_name?: string; last_name?: string; organization_name?: string },
+  person: { id?: string; first_name?: string; last_name?: string; organization_name?: string },
   domain: string,
 ): Promise<string | null> {
   try {
-    // Match params (name / organization / domain) stay in the JSON body.
+    // Match params stay in the JSON body. Apollo's documented match-by-id is
+    // the most precise: when we have the person's Apollo id, send it alone —
+    // name/organization/domain only narrow an already-exact match. Name/domain
+    // are the fallback used only when no id exists (e.g. curated contacts).
     const body: Record<string, unknown> = {};
-    if (person.first_name) body.first_name = person.first_name;
-    if (person.last_name) body.last_name = person.last_name;
-    if (person.organization_name) body.organization_name = person.organization_name;
-    if (domain) body.domain = domain;
+    if (person.id) {
+      body.id = person.id;
+    } else {
+      if (person.first_name) body.first_name = person.first_name;
+      if (person.last_name) body.last_name = person.last_name;
+      if (person.organization_name) body.organization_name = person.organization_name;
+      if (domain) body.domain = domain;
+    }
 
     // Reveal flags must travel as query-string params on the people/match URL,
     // not in the JSON body — Apollo only honors them in the query string.
@@ -520,6 +531,7 @@ export async function enrollCompaniesInApollo(
         perCompany,
       );
       people = contacts.map((ct) => ({
+        id: ct.apolloId ?? undefined,
         first_name: ct.firstName || undefined,
         last_name: ct.lastName || undefined,
         title: ct.title || undefined,

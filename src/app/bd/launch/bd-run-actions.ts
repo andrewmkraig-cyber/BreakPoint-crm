@@ -335,6 +335,9 @@ function parsePersistedContacts(value: unknown): ApolloContact[] {
     if (!firstName && !lastName) continue;
     out.push({
       id: typeof obj.id === "string" ? obj.id : `${firstName}-${lastName}`.toLowerCase(),
+      // Real Apollo id only when the persisted payload kept one; legacy rows
+      // never stored it, so they stay null and fall back to name/domain match.
+      apolloId: typeof obj.apolloId === "string" && obj.apolloId.trim() ? obj.apolloId.trim() : null,
       firstName,
       lastName,
       title: typeof obj.title === "string" ? obj.title : "",
