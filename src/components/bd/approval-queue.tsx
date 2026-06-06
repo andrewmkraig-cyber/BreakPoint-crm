@@ -58,6 +58,10 @@ type Props = {
   cardHeaderRight?: ReactNode;
   // KPI tiles row rendered at the very top of the batch card.
   kpis?: ReactNode;
+  // When set, the selected vertical has no saved search, so discovery must
+  // not fire. The "Run Discovery Now" button shows this message inline
+  // instead of opening the dialog. Null/undefined = discovery allowed.
+  discoveryBlockedMessage?: ReactNode;
 };
 
 type ContactCarousel = {
@@ -129,6 +133,7 @@ export function ApprovalQueue({
   summary,
   cardHeaderRight,
   kpis,
+  discoveryBlockedMessage,
 }: Props) {
   const router = useRouter();
   const [runs, setRuns] = useState<PendingBDRun[]>(initialRuns);
@@ -151,6 +156,10 @@ export function ApprovalQueue({
   const [triggerError, setTriggerError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
+  // Shown when the user clicks "Run Discovery Now" while the selected vertical
+  // has no saved search (discoveryBlockedMessage set). Cleared implicitly: the
+  // notice only renders while discoveryBlockedMessage is also truthy.
+  const [discoveryNotice, setDiscoveryNotice] = useState(false);
   // Which run's company-selection popup is open (null = none). The popup
   // is where Approve & Enroll now lives.
   const [viewRunId, setViewRunId] = useState<string | null>(null);
@@ -429,23 +438,36 @@ export function ApprovalQueue({
         {/* Run Discovery Now is the only action in this row, left-aligned.
             Sized to match the BD Settings button (px-2.5 py-1 text-[13px],
             rounded-md, w-auto). Opens the Run discovery dialog. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setTriggerError(null);
-              setDiscoveryOpen(true);
-            }}
-            disabled={isTriggering}
-            className="inline-flex w-auto items-center gap-1.5 rounded-md border border-amber-400 bg-amber-50 px-2.5 py-1 text-[13px] font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60"
-          >
-            {isTriggering ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
-            )}
-            Run Discovery Now
-          </button>
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setTriggerError(null);
+                // No saved search for the selected vertical: don't fire
+                // discovery — surface the inline guidance instead.
+                if (discoveryBlockedMessage) {
+                  setDiscoveryNotice(true);
+                  return;
+                }
+                setDiscoveryOpen(true);
+              }}
+              disabled={isTriggering}
+              className="inline-flex w-auto items-center gap-1.5 rounded-md border border-amber-400 bg-amber-50 px-2.5 py-1 text-[13px] font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60"
+            >
+              {isTriggering ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              Run Discovery Now
+            </button>
+          </div>
+          {discoveryBlockedMessage && discoveryNotice && (
+            <p className="inline-flex w-fit max-w-full items-start rounded-md border border-court-border bg-court-surface-subtle px-3 py-1.5 text-xs text-court-fg-muted">
+              {discoveryBlockedMessage}
+            </p>
+          )}
         </div>
       </div>
 

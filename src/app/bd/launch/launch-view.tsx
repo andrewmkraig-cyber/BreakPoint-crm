@@ -64,6 +64,23 @@ export function LaunchView({
 
   const noVerticals = verticals.length === 0;
 
+  // A vertical is selected but has no saved search (e.g. Manufacturing). Block
+  // discovery for that vertical and tell the user to add a saved search first,
+  // rather than firing a search with nothing configured. Null = allowed.
+  const discoveryBlockedMessage =
+    !noVerticals && visibleSearches.length === 0 ? (
+      <>
+        No saved search for this vertical yet.{" "}
+        <Link
+          href="/settings/bd"
+          className="font-medium text-court-brand underline-offset-2 hover:text-court-brand-dark hover:underline"
+        >
+          Add one in BD Settings
+        </Link>{" "}
+        before running discovery.
+      </>
+    ) : null;
+
   // Slot 1 - Vertical chip + Saved Search dropdown, seated directly under
   // the page heading by ApprovalQueue.
   const controls = noVerticals ? (
@@ -192,6 +209,7 @@ export function LaunchView({
       summary={summary}
       cardHeaderRight={cardHeaderRight}
       kpis={kpisNode}
+      discoveryBlockedMessage={discoveryBlockedMessage}
     />
   );
 }
