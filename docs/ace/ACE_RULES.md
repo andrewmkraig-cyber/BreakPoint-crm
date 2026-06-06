@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-06-05 · Ace 87.0
+Last updated: 2026-06-06 · Ace 88.0
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -107,6 +107,10 @@ The BD Approve & Enroll path (`src/lib/bd/apollo-enroll.ts`, called from `src/ap
 - **Posting Job City is trimmed city-only** via `cityOnly()` (everything before the first comma) — TheirStack returns "City, State", Apollo stores "Chicago".
 - **Sequence + mailbox IDs:** default active mailbox `a.kraig@breakpoint-talent.com` = `69cac1772e443a000dfc7970` (overridable via `APOLLO_EMAIL_ACCOUNT_ID`); sequence fallback `6a06068f8142ee001d2b3dd2` = the real "Tax BD Sequence". The in-app "BD Outbound v1" label in `apollo-sequences.ts` is a cosmetic placeholder that does NOT match the real Apollo sequence name.
 - **The Apollo sequence "Activate" toggle stays OFF** until a real approve-and-inspect pass is done. Never run the sequence live without that gate.
+- **People search endpoint is `/api/v1/mixed_people/api_search`** (added Ace 88.0). The non-api `/api/v1/mixed_people/search` is DEPRECATED and 422s. Send `contact_email_status: ["verified"]` in the api_search body for email yield.
+- **`people/match` MUST match by the Apollo PERSON ID for a real email reveal** (added Ace 88.0). Matching by name+domain returns a hollow 200 with a null email. Thread the real person id end to end through BOTH the search path AND the approved/curated path - dropping it on the curated path was the Ace 88.0 core break.
+- **`reveal_personal_emails=true` goes in the QUERY STRING, not the body** (added Ace 88.0).
+- **Mailbox rotation is set ONLY at `add_contact_ids` time** (added Ace 88.0) via the `send_email_from_email_account_id[]` array - all healthy mailboxes (`status = Connected` + not `sendingDisabled`), single-mailbox fallback when only one is healthy. There is NO sequence-settings rotation toggle; Apollo chooses rotation on enroll.
 
 ## TheirStack Discovery Rule (added 2026-06-03 · Ace 80.0 — PERMANENT)
 - **Every TheirStack `/v1/jobs/search` request MUST carry at least one mandatory filter** (`posted_at_max_age_days` / `posted_at_gte` / `posted_at_lte` / `job_id_or` / `company_name_or` / ...) or it 422s "Missing mandatory filter". `job_title_or` + `limit` do NOT count. `TheirStackProvider` now ALWAYS sends `posted_at_max_age_days` (integer days, derived from `postedSince` when a prior run exists, else default 7) so the cron AND Run Discovery Now both pass. Do not make the date filter conditional again.

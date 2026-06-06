@@ -1,20 +1,23 @@
 # Ace Roadmap
-Last updated: 2026-06-05 · Ace 87.0
+Last updated: 2026-06-06 · Ace 88.0
 
 ## Active Build Sequence
 
-### NEXT - Finish the BD Apollo enrollment arc (Ace 87.0 -> 88.0)
-Ace 87.0 fixed the find-the-person path (single domain+BD-Settings-titles people search, no nameless shells), the Apollo People Search 422 (`q_organization_domains_list`), and reset the dedup window for zero-enrolled COMPLETE runs. Remaining sequence to take BD outbound live:
-1. **Prompt 2 - email reveal.** Per-contact `people/match` with `reveal_personal_emails=true` so each enrolled contact carries a real personal email (per-contact reveal, not bulk).
-2. **Prompt 3 - dry-run verify.** End-to-end dry run of discover -> find-person -> reveal-email; confirm real named, emailable contacts before going live.
-3. **Activate ON.** Flip the Apollo "Tax BD Sequence" (id `6a06068f8142ee001d2b3dd2`) activation ON only after Prompt 3 passes. This is the long-blocked GO-LIVE GATE.
+### GO-LIVE GATE (Monday) - BD Apollo enrollment arc is DONE
+The BD Apollo enrollment arc shipped and works end to end (Ace 88.0): find-the-person path, email reveal (match-by-person-id), and mailbox rotation are all done. A live run landed 18 real named contacts with verified emails in "Tax BD Sequence" (paused, Activate OFF). Only the go-live step remains:
+- **Monday go-live:** enroll, confirm the rotation log shows N=5 mailboxes, confirm contacts land in the sequence, then flip Apollo "Tax BD Sequence" (id `6a06068f8142ee001d2b3dd2`) Activate ON. This is the long-blocked GO-LIVE GATE.
 
-Queued bugs from Ace 87.0 (each needs its own prompt):
-- **Manufacturing-tab no-saved-search guard** - the Manufacturing vertical tab is unguarded when no saved search exists.
-- **Auto-refresh after a discovery run** - Today's Batch doesn't refresh on run completion; requires a manual reload.
+Done this arc (closed record):
+- ~~**Email reveal.**~~ DONE Ace 88.0 - per-contact `people/match` match-by-person-id with `reveal_personal_emails=true` (query string); real id threaded through search + curated paths.
+- ~~**Find-the-person path.**~~ DONE Ace 87.0-88.0 - single domain+BD-Settings-titles people search on `/mixed_people/api_search`; no nameless shells.
+- ~~**Manufacturing-tab no-saved-search guard.**~~ DONE Ace 88.0 - blocks Run Discovery with an inline message + BD Settings link.
+- ~~**Auto-refresh after a discovery run.**~~ DONE Ace 88.0 - in-flight-aware polling, refresh on awaiting-count change.
 
-### THEN - TheirStack dynamic per-vertical discovery query
-The cron (`src/app/api/cron/bd-discovery/route.ts`) still discovers off hardcoded `DISCOVERY_TITLES` + `locations: []` and never reads the BD Settings saved searches / verticals (diagnosed Ace 83.0). Make discovery **dynamic per vertical**: the cron reads the BD Settings verticals + their saved searches to build the TheirStack query (titles, and the location override once `job_location_or` geonames-id mapping is solved). It makes the Verticals/Saved Search UI actually drive discovery instead of being display-only.
+### NEXT - TheirStack dynamic per-vertical discovery query
+Make discovery dynamic per vertical instead of the hardcoded Tax list.
+- **Finding:** `triggerManualDiscovery` currently ignores the selected vertical and fires the hardcoded `DISCOVERY_TITLES` on every run; discovery does NOT read saved searches at all yet. The cron (`src/app/api/cron/bd-discovery/route.ts`) discovers off `DISCOVERY_TITLES` + `locations: []` and never reads the BD Settings verticals / saved searches (diagnosed Ace 83.0).
+- **Titles-first (ships first):** the cron reads the selected saved search -> its vertical -> the vertical's titles, and uses those as the TheirStack `job_title_or` query, making the Verticals/Saved Search UI actually drive discovery. (Note: per-vertical titles live in `BdContactTargeting.primaryTitles`, not on the saved search.)
+- **Location-driven discovery (sub-item, ships AFTER titles):** wire the per-saved-search location override into TheirStack `job_location_or`. Needs the TheirStack geonames-id mapping - the field holds free text but `job_location_or` wants a numeric geonames id - so titles-first lands before location.
 
 ### DONE this session (Ace 82.0-86.0) - BD webhook safety + Today's Batch redesign
 The prior priority block (queued at Ace 81.0 close) is complete. Retained here as a closed record.

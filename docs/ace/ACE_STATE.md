@@ -1,8 +1,22 @@
 # ACE_STATE.md
-Last updated: 2026-06-05 · Ace 87.0
-Current Version: Ace 87.0
-Last Shipped: 2026-06-05
+Last updated: 2026-06-06 · Ace 88.0
+Current Version: Ace 88.0
+Last Shipped: 2026-06-06
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 88.0 (2026-06-06) - BD Apollo enrollment arc WORKING end to end
+
+The BD outbound path now enrolls real, named, emailable contacts. A live run landed **18 real named contacts with verified emails in the "Tax BD Sequence"** - the sequence stays **PAUSED with Activate OFF** pending Monday go-live. All items pushed to main; `npm run build` exits 0. No schema changes.
+
+- **People-search endpoint migrated to `/api/v1/mixed_people/api_search`.** The deprecated `/api/v1/mixed_people/search` 422'd. Added `contact_email_status: ["verified"]` to the api_search body for email yield.
+- **Email reveal now matches by Apollo PERSON ID.** `people/match` keyed on the real Apollo person id returns a real email; matching by name+domain returned a hollow 200 with a null email. The real id is now threaded end to end through BOTH the search path and the approved/curated path - it was being dropped on the curated path, which was the core break. `reveal_personal_emails=true` is sent as a QUERY-STRING param, not in the body.
+- **Mailbox rotation at enroll.** The `add_contact_ids` call now passes ALL healthy connected mailboxes as a `send_email_from_email_account_id[]` array (rotation) instead of pinning one. The resolver filters to `status = Connected` + not `sendingDisabled`, and falls back to a single mailbox when only one is healthy. Apollo only sets rotation at add-time, which is why the sequence-settings UI has no rotation toggle - it is chosen on enroll.
+- **Today's Batch auto-refresh.** In-flight-aware polling (6s active / 20s idle) that refreshes only on an awaiting-count change and pauses on a hidden tab. New counts-only `getBDBatchSignal` query backs it.
+- **No-saved-search guard.** Any vertical with no saved search now blocks Run Discovery with a clean inline message + link to BD Settings, instead of silently firing the hardcoded Tax search.
+- **5th mailbox reconnected.** Andrew reconnected `andrew@breakpoint-talent.com`, so rotation now has 5 healthy mailboxes.
+
+### Go-live gate (Monday)
+Enroll, confirm the rotation log shows N=5 mailboxes, confirm contacts land in the sequence, then flip Apollo "Tax BD Sequence" (id `6a06068f8142ee001d2b3dd2`) Activate ON. After that, the next build is TheirStack dynamic per-vertical discovery (see ACE_ROADMAP.md ▸ NEXT).
 
 ## What Shipped in Ace 87.0 (2026-06-05) - BD Apollo enrollment: find-the-person path fix + 422 fix + dedup reset
 
@@ -13,14 +27,12 @@ BD enrollment was discovering companies but enrolling nobody (nameless org-only 
 - **Apollo 422 fixed (`b1ce721`).** The people-search call 422'd on the org-domains filter. Renamed `organization_domains` to **`q_organization_domains_list`** (the field name Apollo's People Search actually accepts).
 - **Dedup reset applied to prod (`b0432f5`).** Added `scripts/clear-bd-dedup-for-empty-runs.ts` - nulls `discoveredPayload` on `COMPLETE` runs with `enrolledCount = 0` so the 30-day dedup window (`api/cron/bd-discovery`) stops blocking those never-enrolled companies from re-discovery. Dry-run by default, `--apply` to write, org-scoped. **Ran `--apply` against prod**: cleared 1 run (`cmq10k2840001jv04ckjv9207`, discovered=1/enrolled=0), freeing 1 company/job fingerprint for the next cron run.
 
-### Queued bugs (Ace 87.0, not yet fixed)
-- **Manufacturing-tab no-saved-search guard.** The Manufacturing vertical tab needs a guard for the no-saved-search case (currently unhandled).
-- **Auto-refresh after a discovery run.** Today's Batch does not auto-refresh once a discovery run completes; the user has to manually reload to see new results.
+### Queued bugs (Ace 87.0) - BOTH FIXED in Ace 88.0
+- ~~Manufacturing-tab no-saved-search guard~~ - DONE Ace 88.0 (any vertical with no saved search blocks Run Discovery with an inline message + BD Settings link).
+- ~~Auto-refresh after a discovery run~~ - DONE Ace 88.0 (in-flight-aware polling, refreshes on awaiting-count change).
 
-### Next task (Ace 88.0 candidate) - finish the BD enrollment arc
-1. **Prompt 2 - email reveal.** Add a per-contact `people/match` call with `reveal_personal_emails=true` so enrolled contacts carry a real email (gated per-contact, not bulk).
-2. **Prompt 3 - dry-run verify.** End-to-end dry-run verification of the full discover -> find-person -> reveal-email path before going live.
-3. **Activate ON.** Flip the Apollo sequence "Tax BD Sequence" activation ON only after Prompt 3 confirms the path enrolls real, named, emailable contacts.
+### Next task - DONE / superseded
+The Ace 88.0 candidate arc (email reveal -> dry-run -> activate) is shipped end to end - see the Ace 88.0 section above. Only the Monday go-live gate remains. After go-live, the next build is TheirStack dynamic per-vertical discovery (ACE_ROADMAP.md ▸ NEXT).
 
 ## What Shipped in Ace 82.0-86.0 (2026-06-05) - BD Engine hardening: webhook retirement, Today's Batch redesign, BD Settings overhaul, Client Signals + sweep
 
