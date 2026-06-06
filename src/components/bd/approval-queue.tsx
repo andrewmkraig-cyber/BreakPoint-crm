@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw, X, RotateCcw, ExternalLink, Eye, MapPin } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -8,6 +8,7 @@ import { formatDistanceToNow } from "date-fns";
 import {
   approveBDRun,
   dismissBDRun,
+  getBDBatchSignal,
   triggerManualDiscovery,
   type ApolloContact,
   type PendingBDRun,
@@ -38,6 +39,12 @@ const VIEW_TABS: ReadonlyArray<{ id: BatchView; label: string }> = [
 // enrolled at approve time.
 const DEFAULT_COMPANIES = 25;
 const DEFAULT_CONTACTS_PER_COMPANY = 4;
+
+// Auto-refresh poll cadence for Today's Batch. Fast while a discovery run is
+// in-flight (QUEUED/RUNNING) so its completion shows within a few seconds; a
+// slow heartbeat otherwise to catch the scheduled background cron's batch.
+const ACTIVE_POLL_MS = 6000;
+const IDLE_POLL_MS = 20000;
 
 type Props = {
   initialRuns: PendingBDRun[];
@@ -153,6 +160,81 @@ export function ApprovalQueue({
     for (const r of initialRuns) seed[r.id] = initialCarouselsForRun(r);
     return seed;
   });
+
+  // Adopt fresh server data whenever a refresh (the auto-poll below, or an
+  // action handler's router.refresh) delivers a new initialRuns. Without this
+  // the mount-time useState seed would freeze the list, so newly discovered
+  // runs would never appear even after a refresh. Existing per-run contact
+  // edits are preserved; only genuinely new runs get fresh carousels.
+  useEffect(() => {
+    setRuns(initialRuns);
+    setCurated((prev) => {
+      const next: CuratedByRun = {};
+      for (const r of initialRuns) {
+        next[r.id] = prev[r.id] ?? initialCarouselsForRun(r);
+      }
+      return next;
+    });
+  }, [initialRuns]);
+
+  // Auto-refresh poll. A discovery run lands as RUNNING and flips to
+  // AWAITING_APPROVAL when it finishes (the scheduled morning cron does this
+  // in the background while this page may be open). We poll a cheap counts-only
+  // signal — fast while a run is in-flight, a slow heartbeat otherwise — and
+  // only re-pull the full list (router.refresh, which re-runs the expensive
+  // getPendingBDRuns) when the awaiting set actually changed.
+  const awaitingCountRef = useRef(0);
+  const latestAwaitingRef = useRef<string | null>(null);
+  awaitingCountRef.current = runs.length;
+  latestAwaitingRef.current = runs.reduce<string | null>(
+    (max, r) => (max === null || r.createdAt > max ? r.createdAt : max),
+    null,
+  );
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    async function tick() {
+      if (cancelled) return;
+      let delay = IDLE_POLL_MS;
+      if (document.visibilityState === "visible") {
+        try {
+          const sig = await getBDBatchSignal();
+          if (cancelled) return;
+          // A fresh batch landed if the awaiting count changed or a newer run
+          // exists than the newest we render (ISO strings compare lexically).
+          const hasNewer =
+            sig.latestAwaitingAt !== null &&
+            (latestAwaitingRef.current === null ||
+              sig.latestAwaitingAt > latestAwaitingRef.current);
+          if (sig.awaitingCount !== awaitingCountRef.current || hasNewer) {
+            router.refresh();
+          }
+          delay = sig.inFlight > 0 ? ACTIVE_POLL_MS : IDLE_POLL_MS;
+        } catch {
+          // Transient failure — keep the loop alive at the idle cadence.
+        }
+      }
+      if (!cancelled) timer = setTimeout(tick, delay);
+    }
+
+    // Returning to the tab is exactly when the user expects fresh data, so
+    // poll immediately on regaining visibility instead of waiting out the timer.
+    function onVisible() {
+      if (!cancelled && document.visibilityState === "visible") {
+        if (timer) clearTimeout(timer);
+        void tick();
+      }
+    }
+
+    timer = setTimeout(tick, ACTIVE_POLL_MS);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [router]);
 
   function markPending(runId: string, on: boolean) {
     setPendingIds((prev) => {

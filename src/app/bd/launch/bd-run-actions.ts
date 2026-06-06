@@ -132,6 +132,43 @@ function companyKey(name: string, domain: string): string {
   return `${name.trim().toLowerCase()}|${domain.trim().toLowerCase()}`;
 }
 
+// Cheap status signal for the Today's Batch auto-refresh poll. Counts only —
+// it deliberately skips the Apollo contact/history enrichment getPendingBDRuns
+// does, so the client can poll it often. The component compares this against
+// what it currently renders and only re-pulls the full list (router.refresh)
+// when the awaiting set actually changed.
+export type BDBatchSignal = {
+  // Runs still discovering (QUEUED or RUNNING). >0 means a batch is in-flight,
+  // so the client polls faster to catch its completion.
+  inFlight: number;
+  // How many runs await approval right now, and the newest one's createdAt,
+  // so the client can detect a freshly landed batch.
+  awaitingCount: number;
+  latestAwaitingAt: string | null;
+};
+
+export async function getBDBatchSignal(): Promise<BDBatchSignal> {
+  const org = await getCurrentOrg();
+  const [inFlight, awaitingCount, latest] = await Promise.all([
+    prisma.bDRun.count({
+      where: { organizationId: org.id, status: { in: ["QUEUED", "RUNNING"] } },
+    }),
+    prisma.bDRun.count({
+      where: { organizationId: org.id, status: "AWAITING_APPROVAL" },
+    }),
+    prisma.bDRun.findFirst({
+      where: { organizationId: org.id, status: "AWAITING_APPROVAL" },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
+  ]);
+  return {
+    inFlight,
+    awaitingCount,
+    latestAwaitingAt: latest?.createdAt.toISOString() ?? null,
+  };
+}
+
 type ApproveResult =
   | {
       success: true;
