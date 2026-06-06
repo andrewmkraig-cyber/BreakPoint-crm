@@ -305,13 +305,17 @@ export async function apolloRevealPersonEmail(
   domain: string,
 ): Promise<string | null> {
   try {
-    const body: Record<string, unknown> = { reveal_personal_emails: true };
+    // Match params (name / organization / domain) stay in the JSON body.
+    const body: Record<string, unknown> = {};
     if (person.first_name) body.first_name = person.first_name;
     if (person.last_name) body.last_name = person.last_name;
     if (person.organization_name) body.organization_name = person.organization_name;
     if (domain) body.domain = domain;
 
-    const res = await fetch(`${APOLLO_BASE}/api/v1/people/match`, {
+    // Reveal flags must travel as query-string params on the people/match URL,
+    // not in the JSON body — Apollo only honors them in the query string.
+    const matchUrl = `${APOLLO_BASE}/api/v1/people/match?reveal_personal_emails=true`;
+    const res = await fetch(matchUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
       body: JSON.stringify(body),
