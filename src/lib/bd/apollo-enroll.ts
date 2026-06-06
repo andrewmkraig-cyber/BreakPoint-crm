@@ -298,14 +298,19 @@ export async function apolloRevealPersonEmail(
       headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
       body: JSON.stringify(body),
     });
+    // Visibility: log the full Apollo response (status + raw JSON body) on
+    // every call so reveal behavior is debuggable end-to-end.
+    const rawText = await res.text().catch(() => "");
+    console.log(
+      `[Apollo] people/match response: status=${res.status} ${res.statusText} body=${rawText}`,
+    );
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
       console.warn(
-        `[Apollo] people/match failed: ${res.status} ${res.statusText} ${text.slice(0, 200)}`,
+        `[Apollo] people/match failed: ${res.status} ${res.statusText} ${rawText.slice(0, 200)}`,
       );
       return null;
     }
-    const data = (await res.json()) as ApolloMatchResponse;
+    const data = JSON.parse(rawText) as ApolloMatchResponse;
     const direct = data.person?.email;
     if (isUsableEmail(direct)) return direct.trim();
     const personal = Array.isArray(data.person?.personal_emails)
@@ -437,6 +442,21 @@ export async function enrollCompaniesInApollo(
   for (const c of companies) {
     if (remaining <= 0) break;
 
+    // Per-company visibility counters. peopleReturned is the people-search
+    // result count; revealsSucceeded counts usable emails revealed; the
+    // reasons array collects every skip (domain, no-matches, reveal failures)
+    // so the end-of-company summary line can explain what was dropped and why.
+    let peopleReturned = 0;
+    let revealsSucceeded = 0;
+    const companySkipReasons: string[] = [];
+    const logCompanySummary = () =>
+      console.log(
+        `[Apollo] company summary ${c.companyName}: ` +
+          `peopleReturned=${peopleReturned} revealsSucceeded=${revealsSucceeded} ` +
+          `skipped=${companySkipReasons.length}` +
+          (companySkipReasons.length ? ` (${companySkipReasons.join("; ")})` : ""),
+      );
+
     // Prefer the curated list Andrew approved on the queue card. When there
     // is none (legacy runs, or a company that surfaced no chips because its
     // domain wasn't captured at queue load), run the SAME domain + BD
@@ -466,6 +486,8 @@ export async function enrollCompaniesInApollo(
         const reason = "no resolvable domain";
         skipped.push({ companyName: c.companyName, reason });
         console.log(`[Apollo] skipped ${c.companyName}: ${reason}`);
+        companySkipReasons.push(reason);
+        logCompanySummary();
         continue;
       }
       companyDomain = domain;
@@ -483,6 +505,9 @@ export async function enrollCompaniesInApollo(
       }));
     }
 
+    // People-search result count, for the per-company summary line.
+    peopleReturned = people.length;
+
     // Math.min keeps the daily-cap clamp intact: no matter how high
     // perCompany is, `remaining` (dailyCap - enrolledToday) still bounds
     // how many we enroll, so the global contact cap always holds.
@@ -494,6 +519,8 @@ export async function enrollCompaniesInApollo(
       const reason = "no decision-makers matched BD Settings titles";
       skipped.push({ companyName: c.companyName, reason });
       console.log(`[Apollo] skipped ${c.companyName}: ${reason}`);
+      companySkipReasons.push(reason);
+      logCompanySummary();
       continue;
     }
 
@@ -524,8 +551,10 @@ export async function enrollCompaniesInApollo(
         const reason = `email reveal returned no usable email for ${who}`;
         skipped.push({ companyName: c.companyName, reason });
         console.log(`[Apollo] skipped ${c.companyName}: ${reason}`);
+        companySkipReasons.push(reason);
         continue;
       }
+      revealsSucceeded += 1;
 
       const ok = await apolloEnrollContact(apiKey, sequenceId, emailAccountId, {
         first_name: p.first_name ?? undefined,
@@ -547,6 +576,10 @@ export async function enrollCompaniesInApollo(
         );
       }
     }
+
+    // One-line per-company summary: search size, reveals that succeeded, and
+    // every skip with its reason. Visibility only — does not alter enrollment.
+    logCompanySummary();
   }
 
   await prisma.bDRun.update({
