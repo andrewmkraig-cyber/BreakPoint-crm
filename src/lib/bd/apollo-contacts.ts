@@ -227,6 +227,10 @@ export async function fetchApolloContacts(
           ...targeting.smallFirmFallbackTitles,
           ...targeting.practiceSpecificTitles,
         ],
+        // Bias the result set toward people whose email Apollo has already
+        // verified, so the downstream people/match reveal yields a usable
+        // address more often instead of locked/guessed ones.
+        contact_email_status: ["verified"],
         per_page: 25,
       }),
       cache: "no-store",

@@ -43,7 +43,22 @@ type CuratedContact = {
   firstName: string;
   lastName: string;
   title: string;
+  // Genuine Apollo person id recovered from the persisted payload, when one
+  // exists. Drives the same documented people/match match-by-id the search
+  // path uses; "" when no real id was stored (curated chips that never
+  // carried one, or legacy rows whose id field is a synthetic name slug).
+  apolloId: string;
 };
+
+// Apollo person ids are 24-char hex (Mongo ObjectId style), e.g.
+// "6a06068f8142ee001d2b3dd2". The persisted `id` field on a contact holds
+// EITHER a real Apollo id like that OR a synthetic "first-last-title" slug
+// (the apollo-contacts.ts fallback when the search result carried no id) —
+// only the former is a valid people/match id, so legacy rows are checked
+// against this before their id is reused.
+function isApolloPersonId(value: string): boolean {
+  return /^[a-f0-9]{24}$/i.test(value);
+}
 
 type DiscoveredItem = {
   companyName: string;
@@ -95,7 +110,14 @@ function extractDiscovered(payload: unknown): DiscoveredItem[] {
         const lastName = typeof r.lastName === "string" ? r.lastName : "";
         const title = typeof r.title === "string" ? r.title : "";
         if (!firstName && !lastName) continue;
-        curatedContacts.push({ firstName, lastName, title });
+        // Recover the real Apollo person id end to end. New persisted rows
+        // store it under `apolloId`; legacy rows only ever had `id`, which is
+        // usable only when it's a genuine Apollo id (not the synthetic slug).
+        const apolloIdRaw = typeof r.apolloId === "string" ? r.apolloId.trim() : "";
+        const idRaw = typeof r.id === "string" ? r.id.trim() : "";
+        const apolloId =
+          apolloIdRaw || (isApolloPersonId(idRaw) ? idRaw : "");
+        curatedContacts.push({ firstName, lastName, title, apolloId });
       }
     }
     return {
@@ -505,6 +527,10 @@ export async function enrollCompaniesInApollo(
     if (c.curatedContacts.length > 0) {
       // Andrew already curated and ordered these — preserve his sequence.
       people = c.curatedContacts.map((cc) => ({
+        // Carry the real Apollo person id when we have one so the email
+        // reveal below uses the precise match-by-id, exactly like the search
+        // path. Only contacts with no real id fall back to name/domain.
+        id: cc.apolloId || undefined,
         first_name: cc.firstName || undefined,
         last_name: cc.lastName || undefined,
         title: cc.title || undefined,
