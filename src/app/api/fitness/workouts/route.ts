@@ -100,6 +100,7 @@ function recordScore(
 }
 
 function sanitizePayload(body: FitnessSavePayload): {
+  workoutDayId: string | null;
   date: Date;
   dayType: string;
   startedAt: Date;
@@ -108,6 +109,10 @@ function sanitizePayload(body: FitnessSavePayload): {
   notes: string | null;
   workouts: SanitizedWorkout[];
 } {
+  const workoutDayId =
+    typeof body.workoutDayId === "string" && body.workoutDayId.trim()
+      ? body.workoutDayId.trim()
+      : null;
   const date = parseDateOnly(body.date);
   const dayType = body.dayType?.trim() || "Workout";
   const endedAt = cleanDateTime(body.endedAt) ?? new Date();
@@ -147,6 +152,7 @@ function sanitizePayload(body: FitnessSavePayload): {
   }
 
   return {
+    workoutDayId,
     date,
     dayType,
     startedAt,
@@ -190,9 +196,28 @@ export async function POST(req: Request) {
     const exerciseBodyPartById = new Map(
       accessibleExercises.map((exercise) => [exercise.id, exercise.bodyPart]),
     );
+    let editingDayId: string | null = null;
+    if (payload.workoutDayId) {
+      const existingDay = await prisma.workoutDay.findFirst({
+        where: {
+          id: payload.workoutDayId,
+          organizationId: ctx.organizationId,
+          userId: ctx.userId,
+        },
+        select: { id: true },
+      });
+      if (!existingDay) {
+        throw new FitnessHttpError("Workout not found", 404);
+      }
+      editingDayId = existingDay.id;
+    }
+    const excludeEditingDay = editingDayId
+      ? { id: { not: editingDayId } }
+      : {};
 
     const previousDay = await prisma.workoutDay.findFirst({
       where: {
+        ...excludeEditingDay,
         organizationId: ctx.organizationId,
         userId: ctx.userId,
         OR: [
@@ -228,6 +253,7 @@ export async function POST(req: Request) {
         workout: {
           exerciseId: { in: exerciseIds },
           workoutDay: {
+            ...excludeEditingDay,
             OR: [
               { date: { lt: payload.date } },
               {
@@ -272,6 +298,7 @@ export async function POST(req: Request) {
         userId: ctx.userId,
         exerciseId: { in: exerciseIds },
         workoutDay: {
+          ...excludeEditingDay,
           OR: [
             { date: { lt: payload.date } },
             {
@@ -312,18 +339,58 @@ export async function POST(req: Request) {
     }
 
     const savedDayId = await prisma.$transaction(async (tx) => {
-      const day = await tx.workoutDay.create({
-        data: {
-          organizationId: ctx.organizationId,
-          userId: ctx.userId,
-          date: payload.date,
-          dayType: payload.dayType,
-          startedAt: payload.startedAt,
-          endedAt: payload.endedAt,
-          durationSeconds: payload.durationSeconds,
-          notes: payload.notes,
-        },
-      });
+      const day = editingDayId
+        ? await tx.workoutDay.update({
+            where: { id: editingDayId },
+            data: {
+              date: payload.date,
+              dayType: payload.dayType,
+              startedAt: payload.startedAt,
+              endedAt: payload.endedAt,
+              durationSeconds: payload.durationSeconds,
+              notes: payload.notes,
+            },
+          })
+        : await tx.workoutDay.create({
+            data: {
+              organizationId: ctx.organizationId,
+              userId: ctx.userId,
+              date: payload.date,
+              dayType: payload.dayType,
+              startedAt: payload.startedAt,
+              endedAt: payload.endedAt,
+              durationSeconds: payload.durationSeconds,
+              notes: payload.notes,
+            },
+          });
+
+      if (editingDayId) {
+        const oldWorkouts = await tx.workout.findMany({
+          where: {
+            organizationId: ctx.organizationId,
+            userId: ctx.userId,
+            workoutDayId: editingDayId,
+          },
+          select: { id: true },
+        });
+        const oldWorkoutIds = oldWorkouts.map((workout) => workout.id);
+        if (oldWorkoutIds.length > 0) {
+          await tx.workoutSet.deleteMany({
+            where: {
+              organizationId: ctx.organizationId,
+              userId: ctx.userId,
+              workoutId: { in: oldWorkoutIds },
+            },
+          });
+          await tx.workout.deleteMany({
+            where: {
+              organizationId: ctx.organizationId,
+              userId: ctx.userId,
+              id: { in: oldWorkoutIds },
+            },
+          });
+        }
+      }
 
       for (const workout of payload.workouts) {
         await tx.workout.create({

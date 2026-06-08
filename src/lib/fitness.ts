@@ -180,6 +180,7 @@ export type FitnessSnapshot = {
 };
 
 export type FitnessSavePayload = {
+  workoutDayId?: string | null;
   date: string;
   dayType: string;
   startedAt?: string | null;

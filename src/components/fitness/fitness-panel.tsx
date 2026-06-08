@@ -67,7 +67,10 @@ type DraftWorkout = { sets: DraftSet[] };
 type ActiveWorkoutSession = {
   date: string;
   startedAt: string;
+  endedAt?: string | null;
+  durationSeconds?: number | null;
   dayType: string | null;
+  editingWorkoutDayId?: string | null;
   drafts: Record<string, DraftWorkout>;
 };
 
@@ -208,7 +211,21 @@ function readStoredActiveSession(): ActiveWorkoutSession | null {
     return {
       date: parsed.date,
       startedAt: parsed.startedAt,
+      endedAt:
+        typeof parsed.endedAt === "string" &&
+        !Number.isNaN(new Date(parsed.endedAt).getTime())
+          ? parsed.endedAt
+          : null,
+      durationSeconds:
+        typeof parsed.durationSeconds === "number" &&
+        Number.isFinite(parsed.durationSeconds)
+          ? parsed.durationSeconds
+          : null,
       dayType: typeof parsed.dayType === "string" ? parsed.dayType : null,
+      editingWorkoutDayId:
+        typeof parsed.editingWorkoutDayId === "string"
+          ? parsed.editingWorkoutDayId
+          : null,
       drafts:
         parsed.drafts && typeof parsed.drafts === "object"
           ? (parsed.drafts as Record<string, DraftWorkout>)
@@ -284,29 +301,35 @@ function buildEmptySet(): DraftSet {
   return { weight: "", reps: "", rpe: "" };
 }
 
+function buildDraftsFromWorkoutDay(
+  day: FitnessWorkoutDay,
+): Record<string, DraftWorkout> {
+  return Object.fromEntries(
+    day.workouts.map((workout) => [
+      workout.exerciseId,
+      {
+        sets: workout.sets.map((set) => ({
+          weight:
+            set.weightLbs == null && isCoreBodyPart(workout.bodyPart)
+              ? BODYWEIGHT_VALUE
+              : set.weightLbs == null
+                ? ""
+                : String(set.weightLbs),
+          reps: set.reps == null ? "" : String(set.reps),
+          rpe: set.rpe == null ? "" : String(set.rpe),
+          isPr: set.isPr,
+        })),
+      },
+    ]),
+  );
+}
+
 function buildDraftsForDay(
   snapshot: FitnessSnapshot,
   dayType: string,
 ): Record<string, DraftWorkout> {
   if (snapshot.selectedDay?.dayType === dayType) {
-    return Object.fromEntries(
-      snapshot.selectedDay.workouts.map((workout) => [
-        workout.exerciseId,
-        {
-          sets: workout.sets.map((set) => ({
-            weight:
-              set.weightLbs == null && isCoreBodyPart(workout.bodyPart)
-                ? BODYWEIGHT_VALUE
-                : set.weightLbs == null
-                  ? ""
-                  : String(set.weightLbs),
-            reps: set.reps == null ? "" : String(set.reps),
-            rpe: set.rpe == null ? "" : String(set.rpe),
-            isPr: set.isPr,
-          })),
-        },
-      ]),
-    );
+    return buildDraftsFromWorkoutDay(snapshot.selectedDay);
   }
   const defaults = snapshot.exercises.filter(
     (exercise) => exercise.defaultDay === dayType,
@@ -744,6 +767,7 @@ export function FitnessPanel() {
     });
     setSaveSummary(null);
     setDirty(true);
+    rest.start();
   }
 
   function removeSet(exercise: FitnessExercise, setIndex: number) {
@@ -813,6 +837,27 @@ export function FitnessPanel() {
     });
     setDayType("");
     setDrafts({});
+    setSaveSummary(null);
+    setDirty(false);
+    rest.reset();
+  }
+
+  function editSavedWorkout(day: FitnessWorkoutDay) {
+    const startedAt = day.startedAt ?? new Date().toISOString();
+    const durationSeconds = sessionDurationSeconds(day);
+    const nextDrafts = buildDraftsFromWorkoutDay(day);
+    setDate(day.date);
+    setDayType(day.dayType);
+    setDrafts(nextDrafts);
+    setActiveSession({
+      date: day.date,
+      startedAt,
+      endedAt: day.endedAt ?? startedAt,
+      durationSeconds,
+      dayType: day.dayType,
+      editingWorkoutDayId: day.id,
+      drafts: nextDrafts,
+    });
     setSaveSummary(null);
     setDirty(false);
     rest.reset();
@@ -889,14 +934,32 @@ export function FitnessPanel() {
       toast.error("Add at least one complete set");
       return;
     }
+    const editingWorkoutDayId = activeSessionForDate.editingWorkoutDayId ?? null;
+    const confirmed = window.confirm(
+      editingWorkoutDayId
+        ? "Save changes to this finished workout?"
+        : "Are you sure this workout is finished?",
+    );
+    if (!confirmed) return;
     try {
-      const endedAt = new Date();
+      const preserveEndedAt =
+        editingWorkoutDayId && activeSessionForDate.endedAt
+          ? new Date(activeSessionForDate.endedAt)
+          : null;
+      const endedAt =
+        preserveEndedAt && !Number.isNaN(preserveEndedAt.getTime())
+          ? preserveEndedAt
+          : new Date();
       const startedAt = new Date(activeSessionForDate.startedAt);
-      const durationSeconds = Math.max(
-        0,
-        Math.round((endedAt.getTime() - startedAt.getTime()) / 1000),
-      );
+      const durationSeconds =
+        editingWorkoutDayId && activeSessionForDate.durationSeconds != null
+          ? activeSessionForDate.durationSeconds
+          : Math.max(
+              0,
+              Math.round((endedAt.getTime() - startedAt.getTime()) / 1000),
+            );
       const result = await saveFitnessWorkout({
+        workoutDayId: editingWorkoutDayId,
         date,
         dayType,
         startedAt: activeSessionForDate.startedAt,
@@ -905,7 +968,11 @@ export function FitnessPanel() {
         workouts,
       });
       setSaveSummary(result.summary.exercises);
-      toast.success(`Workout saved · ${formatDuration(durationSeconds)}`);
+      toast.success(
+        editingWorkoutDayId
+          ? `Workout updated · ${formatDuration(durationSeconds)}`
+          : `Workout saved · ${formatDuration(durationSeconds)}`,
+      );
       setActiveSession(null);
       setDirty(false);
       setRefreshKey((key) => key + 1);
@@ -1087,6 +1154,7 @@ export function FitnessPanel() {
                 onCustomBodyPartChange={setCustomBodyPart}
                 onAddCustomExercise={onAddCustomExercise}
                 onStartSession={startWorkoutSession}
+                onEditSavedWorkout={editSavedWorkout}
                 onCancelSession={cancelWorkoutSession}
                 onSave={onSaveWorkout}
                 onDone={close}
@@ -1481,6 +1549,7 @@ function RecordTab(props: {
   onCustomBodyPartChange: (bodyPart: string) => void;
   onAddCustomExercise: () => void | Promise<void>;
   onStartSession: () => void;
+  onEditSavedWorkout: (day: FitnessWorkoutDay) => void;
   onCancelSession: () => void;
   onSave: () => void;
   onDone: () => void;
@@ -1539,7 +1608,10 @@ function RecordTab(props: {
         </label>
 
         {props.snapshot.selectedDay ? (
-          <SavedWorkoutPreview day={props.snapshot.selectedDay} />
+          <SavedWorkoutPreview
+            day={props.snapshot.selectedDay}
+            onEdit={props.onEditSavedWorkout}
+          />
         ) : null}
 
         {props.saveSummary ? (
@@ -1839,7 +1911,13 @@ function WorkoutSessionBar({
   );
 }
 
-function SavedWorkoutPreview({ day }: { day: FitnessWorkoutDay }) {
+function SavedWorkoutPreview({
+  day,
+  onEdit,
+}: {
+  day: FitnessWorkoutDay;
+  onEdit: (day: FitnessWorkoutDay) => void;
+}) {
   const duration = sessionDurationSeconds(day);
   return (
     <div className="rounded-md border border-court-border bg-court-surface-subtle p-3">
@@ -1861,6 +1939,14 @@ function SavedWorkoutPreview({ day }: { day: FitnessWorkoutDay }) {
         <SummaryMetric label="Volume" value={niceNumber(day.totalVolume)} />
         <SummaryMetric label="PRs" value={day.prCount} />
       </div>
+      <button
+        type="button"
+        onClick={() => onEdit(day)}
+        className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-sm font-semibold text-court-fg transition hover:bg-court-surface-subtle"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+        Edit workout
+      </button>
     </div>
   );
 }
