@@ -488,6 +488,7 @@ export function ApprovalQueue({
           const busy = pendingIds.has(run.id);
           return (
             <CompanySelectionModal
+              key={run.id}
               run={run}
               busy={busy}
               onClose={() => {
@@ -518,9 +519,21 @@ function CompanySelectionModal({
   onApprove: (selectedIndexes: number[]) => void;
 }) {
   const companies = run.discoveredPayload;
+  // Seed selection to ALL companies, and RE-SEED whenever the run identity or
+  // the rendered company count changes. The approval list is refreshed by
+  // background polling that can swap run.discoveredPayload (e.g. enrichment
+  // landing after the modal opened) while this modal is mounted. A one-time
+  // snapshot would freeze `selected` to a stale, narrowed set (often [0] or
+  // empty) while the checkboxes re-render underneath, and the server would then
+  // enroll only that narrowed set. Keying the effect on companies.length (not
+  // the array ref) re-seeds on real payload changes while preserving manual
+  // unchecks, which never change the count.
   const [selected, setSelected] = useState<Set<number>>(
-    () => new Set(companies.map((_, i) => i)),
+    () => new Set(Array.from({ length: companies.length }, (_, i) => i)),
   );
+  useEffect(() => {
+    setSelected(new Set(Array.from({ length: companies.length }, (_, i) => i)));
+  }, [run.id, companies.length]);
 
   const allSelected = companies.length > 0 && selected.size === companies.length;
 
