@@ -285,6 +285,11 @@ export async function triggerManualDiscovery(opts?: {
     if (opts?.maxContactsPerCompany && opts.maxContactsPerCompany > 0) {
       params.set("maxContactsPerCompany", String(Math.floor(opts.maxContactsPerCompany)));
     }
+    // Mark this as the manual "Run Discovery Now" path so the cron route runs
+    // ONLY the main job search and skips the per-client-domain client-signal
+    // sweep entirely. That sweep is reserved for the daily morning cron, which
+    // sends no params, so it still runs there.
+    params.set("manual", "1");
     const qs = params.toString();
     const url = `${proto}://${host}/api/cron/bd-discovery${qs ? `?${qs}` : ""}`;
 

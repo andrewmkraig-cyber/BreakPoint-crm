@@ -13,6 +13,21 @@ import { fetchJSearchPostingsByDomain, type JSearchPosting } from "@/lib/bd/jsea
 
 const THEIRSTACK_ENDPOINT = "https://api.theirstack.com/v1/jobs/search";
 
+// The sweep is gated to once per calendar day in this zone. The morning cron
+// is the only caller, but a duplicate cron fire must not re-spend credits.
+const SIGNAL_ZONE = "America/New_York";
+
+// "YYYY-MM-DD" for a Date in America/New_York, so two timestamps on the same ET
+// calendar day compare equal regardless of UTC offset / DST.
+function easternDayKey(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: SIGNAL_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
 // Per-client fetch abort ceiling. The monitor loops one TheirStack POST
 // (then a JSearch fallback) per client; without a per-call ceiling a
 // single slow client stalls the whole sweep. Abort each at 10s.
@@ -122,8 +137,23 @@ export async function syncClientSignals(
     where: { organizationId },
     create: { organizationId },
     update: {},
-    select: { lastSignalCursorId: true },
+    select: { lastSignalCursorId: true, lastClientMonitorAt: true },
   });
+
+  // Once-per-ET-calendar-day guard. Cron is the only caller, but a duplicate
+  // cron fire (or any re-trigger) the same day must not re-run the per-domain
+  // TheirStack searches. No-op when we already ran today.
+  const todayKey = easternDayKey(new Date());
+  if (
+    config.lastClientMonitorAt &&
+    easternDayKey(config.lastClientMonitorAt) === todayKey
+  ) {
+    console.log(
+      `[client-signal-sync] already ran today (${todayKey} ET); skipping per-domain searches`,
+    );
+    return { clientsScanned: 0, postingsUpserted: 0, skipped: 0, fallbackClients: 0 };
+  }
+
   const cursor = config.lastSignalCursorId;
   let clients = allClients;
   if (cursor && allClients.length > 0) {
@@ -307,7 +337,8 @@ export async function syncClientSignals(
   try {
     await prisma.bdOrgConfig.update({
       where: { organizationId },
-      data: { lastSignalCursorId: nextCursor },
+      // Stamp the ET-day marker so a same-day re-fire of the cron no-ops above.
+      data: { lastSignalCursorId: nextCursor, lastClientMonitorAt: now },
     });
   } catch (err) {
     console.warn(

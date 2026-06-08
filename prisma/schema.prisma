@@ -2072,6 +2072,13 @@ model BdOrgConfig {
   // covered. Reset to null when a sweep completes a full uninterrupted loop.
   lastSignalCursorId String?
 
+  // Calendar-day (America/New_York) guard for the client-signal sweep. The
+  // sweep runs once per morning cron; this records the ET day it last ran so a
+  // duplicate cron fire (or any re-trigger) the same day no-ops instead of
+  // re-spending TheirStack credits. Manual "Run Discovery Now" never runs the
+  // sweep at all. Null until the first sweep.
+  lastClientMonitorAt DateTime?
+
   blackoutWeekends   Boolean @default(false)
   blackoutHolidays   Boolean @default(false)
   blackoutBefore7am  Boolean @default(false)

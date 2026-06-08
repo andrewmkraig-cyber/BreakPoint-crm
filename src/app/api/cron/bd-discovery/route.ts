@@ -144,6 +144,10 @@ export async function GET(req: NextRequest) {
     Number.isFinite(perCompanyParam) && perCompanyParam > 0
       ? Math.min(perCompanyParam, 100)
       : null;
+  // "Run Discovery Now" sets manual=1; the scheduled cron sends no params. The
+  // per-client-domain client-signal sweep is daily-cron-only, so a manual run
+  // does the main job search and nothing else (zero client-signal calls).
+  const isManual = sp.get("manual") === "1";
 
   const lastRun = await prisma.bDRun.findFirst({
     where: {
@@ -332,24 +336,34 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    // Direct scan of existing clients runs on the same daily tick.
-    // Failures don't affect the discovery result we already wrote.
+    // Per-client-domain client-signal sweep. CRON-ONLY: the manual "Run
+    // Discovery Now" path (manual=1) never runs it, so manual discovery makes
+    // ZERO client-signal TheirStack calls. On the cron path, syncClientSignals
+    // self-throttles to once per America/New_York calendar day, so a duplicate
+    // cron fire the same day no-ops. Failures don't affect the discovery
+    // result we already wrote.
     let clientMonitor: Awaited<ReturnType<typeof syncClientSignals>> = {
       clientsScanned: 0,
       postingsUpserted: 0,
       skipped: 0,
       fallbackClients: 0,
     };
-    try {
-      clientMonitor = await syncClientSignals(organizationId);
+    if (isManual) {
       console.log(
-        `[bd-discovery] clientMonitor scanned=${clientMonitor.clientsScanned} upserted=${clientMonitor.postingsUpserted} skipped=${clientMonitor.skipped} fallback=${clientMonitor.fallbackClients}`,
+        `[bd-discovery] manual run — client-signal sweep skipped (cron-only)`,
       );
-    } catch (monitorErr) {
-      console.error(
-        `[bd-discovery] clientMonitor sync failed:`,
-        monitorErr instanceof Error ? monitorErr.message : monitorErr,
-      );
+    } else {
+      try {
+        clientMonitor = await syncClientSignals(organizationId);
+        console.log(
+          `[bd-discovery] clientMonitor scanned=${clientMonitor.clientsScanned} upserted=${clientMonitor.postingsUpserted} skipped=${clientMonitor.skipped} fallback=${clientMonitor.fallbackClients}`,
+        );
+      } catch (monitorErr) {
+        console.error(
+          `[bd-discovery] clientMonitor sync failed:`,
+          monitorErr instanceof Error ? monitorErr.message : monitorErr,
+        );
+      }
     }
 
     return NextResponse.json({
