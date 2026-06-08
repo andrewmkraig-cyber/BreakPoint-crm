@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-06-06 · Ace 88.0
+Last updated: 2026-06-08 · Ace 89.0
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -111,9 +111,11 @@ The BD Approve & Enroll path (`src/lib/bd/apollo-enroll.ts`, called from `src/ap
 - **`people/match` MUST match by the Apollo PERSON ID for a real email reveal** (added Ace 88.0). Matching by name+domain returns a hollow 200 with a null email. Thread the real person id end to end through BOTH the search path AND the approved/curated path - dropping it on the curated path was the Ace 88.0 core break.
 - **`reveal_personal_emails=true` goes in the QUERY STRING, not the body** (added Ace 88.0).
 - **Mailbox rotation is set ONLY at `add_contact_ids` time** (added Ace 88.0) via the `send_email_from_email_account_id[]` array - all healthy mailboxes (`status = Connected` + not `sendingDisabled`), single-mailbox fallback when only one is healthy. There is NO sequence-settings rotation toggle; Apollo chooses rotation on enroll.
+- **The Approve & Enroll modal MUST have `key={run.id}` AND re-sync its selection on payload change** (added Ace 89.0). `CompanySelectionModal`'s `selected` Set is derived state: without a `key` and a `useEffect` re-seeding it to all indexes on `run.id`/`companies.length` change, the Today's Batch auto-refresh poll swaps `run.discoveredPayload` behind the open modal and FREEZES selection to a stale, narrowed set (often `[0]` or empty). The server then enrolls only that set - this was the Ace 89.0 BD enroll-zero root cause. General rule: any poll that swaps a payload behind an open modal must remount or re-sync the modal's derived state.
 
 ## TheirStack Discovery Rule (added 2026-06-03 · Ace 80.0 — PERMANENT)
 - **Every TheirStack `/v1/jobs/search` request MUST carry at least one mandatory filter** (`posted_at_max_age_days` / `posted_at_gte` / `posted_at_lte` / `job_id_or` / `company_name_or` / ...) or it 422s "Missing mandatory filter". `job_title_or` + `limit` do NOT count. `TheirStackProvider` now ALWAYS sends `posted_at_max_age_days` (integer days, derived from `postedSince` when a prior run exists, else default 7) so the cron AND Run Discovery Now both pass. Do not make the date filter conditional again.
+- **The per-client-domain client-signal sweep (`syncClientSignals`) is CRON-ONLY and runs at most once per America/New_York calendar day** (added Ace 89.0). It fires one TheirStack `/v1/jobs/search` per client domain (`limit:25`, ~25 credits each), so it must NEVER run on manual "Run Discovery Now": `triggerManualDiscovery` sends `manual=1` and the route skips the sweep on that path. The once-per-ET-day guard is the `BdOrgConfig.lastClientMonitorAt` marker - gated on read, stamped on each real sweep. Running it on every manual run was burning ~1700 credits/month.
 
 ## Job + JD Rules (added 2026-05-12 · Ace 40.0)
 - **Job slug is the cuid**. `createJob` returns `slug: job.id` (the cuid). `/jobs` row navigation routes via the cuid carried on `_aceJobId` (the RFJobWithAce shim's carry-along), never `legacyRfId` and never the synthetic negative djb2 hash of the cuid. The djb2 hash exists only as a numeric stand-in inside the `RFJob.id` field for shim compatibility — it must never appear in a URL.

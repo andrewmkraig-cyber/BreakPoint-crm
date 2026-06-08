@@ -1,8 +1,23 @@
 # ACE_STATE.md
-Last updated: 2026-06-06 · Ace 88.0
-Current Version: Ace 88.0
-Last Shipped: 2026-06-06
+Last updated: 2026-06-08 · Ace 89.0
+Current Version: Ace 89.0
+Last Shipped: 2026-06-08
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 89.0 (2026-06-08) - ROOT CAUSE of BD enroll-zero found + fixed; client-signal credit throttle
+
+The BD "enrolls 0 or 1 company" bug is solved at the root. All items pushed to main; `npm run build` exits 0. One additive schema column (`BdOrgConfig.lastClientMonitorAt`, applied to prod via `db push`; `migrate diff` confirmed additive-only).
+
+- **ROOT CAUSE of BD enroll failures (FIXED).** The Approve & Enroll modal's selection `Set` was a lazy `useState` snapshot with NO `key={run.id}` and NO re-sync effect. The Today's Batch auto-refresh polling (shipped Ace 88.0, same arc) swaps the run's `discoveredPayload` mid-modal, which froze `selected` to a stale, narrowed set (often `[0]` or empty) while the rendered checkboxes updated underneath. The server then enrolled only that narrowed set, so runs enrolled 0-1 companies while the UI showed "all selected". This is why a run enrolled 19 once (before auto-refresh existed) then 0 after auto-refresh landed. Fix: `key={run.id}` on `<CompanySelectionModal>` + a `useEffect` re-seeding `selected` to all indexes on `run.id`/`companies.length` change. `toggle`/`toggleAll` unchanged; manual unchecks preserved (they never change the count).
+- **Interaction flagged.** The Ace 88.0 Today's Batch auto-refresh is what INTRODUCED the selection-freeze bug. Any future polling that swaps a payload behind an open modal MUST remount or re-sync the modal's derived state.
+- **Mailbox rotation confirmed live at N=5.** `add_contact_ids` passes all healthy mailboxes as the `send_email_from_email_account_id[]` array; resolver filters `Connected` + not `sendingDisabled`; log line reads "sending mailbox rotation: N mailbox(es)". Andrew reconnected the 5th mailbox (`andrew@breakpoint-talent.com`); confirmed N=5 live.
+- **Client-signal credit throttle (was burning ~1700 credits/month).** The per-client-domain TheirStack `/v1/jobs/search` sweep (`syncClientSignals`) ran on EVERY `GET /api/cron/bd-discovery`, which both the daily cron AND every manual "Run Discovery Now" hit (one search per client domain, `limit:25`, ~25 credits each). Now CRON-ONLY and once per America/New_York calendar day: `triggerManualDiscovery` tags the call `manual=1` and the route skips the sweep entirely on that path (ZERO client-signal calls on manual); `syncClientSignals` self-throttles via the new `BdOrgConfig.lastClientMonitorAt` ET-day marker so a duplicate cron fire the same day no-ops. Main discovery search unchanged.
+- **`maxDuration` on `/bd/launch` raised to 60s** (was Vercel default ~10-15s). NOT the enroll root cause, but a real ceiling at high volume: one Approve & Enroll can do up to ~80 contacts x (reveal + create + add_contact_ids) sequentially. Per-contact enrollment is already atomic (create + add_contact_ids fire back-to-back), so a cutoff strands at most one in-flight contact, never a batch.
+- **TEMP diag instrumentation (remove once confirmed in prod).** Added a per-company try/catch in `enrollCompaniesInApollo` that logs full message + stack, because a Prisma error in `loadTargeting` (which runs OUTSIDE `fetchApolloContacts`'s own try/catch) could silently kill a run right after the rotation log. Remove these TEMP markers after a clean end-to-end run.
+- **Prod dedup reset (re-run).** Ran `scripts/clear-bd-dedup-for-empty-runs.ts --apply` against prod: cleared 3 runs (incl. `cmq51izow`), freeing 10 company/job fingerprints for re-discovery on the next cron.
+
+### Go-live gate
+The enroll arc is now unblocked by the root-cause fix. Go-live is blocked only on TheirStack discovery credits, which renew **June 14**. Once they renew: run one real discovery + Approve & Enroll, confirm the rotation log shows N=5 and that contacts actually LAND in the sequence (not just get created), then flip Apollo "Tax BD Sequence" (id `6a06068f8142ee001d2b3dd2`) Activate ON. See ACE_ROADMAP.md ▸ NEXT.
 
 ## What Shipped in Ace 88.0 (2026-06-06) - BD Apollo enrollment arc WORKING end to end
 

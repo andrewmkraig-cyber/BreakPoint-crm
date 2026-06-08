@@ -1,19 +1,22 @@
 # Ace Roadmap
-Last updated: 2026-06-06 · Ace 88.0
+Last updated: 2026-06-08 · Ace 89.0
 
 ## Active Build Sequence
 
-### GO-LIVE GATE (Monday) - BD Apollo enrollment arc is DONE
-The BD Apollo enrollment arc shipped and works end to end (Ace 88.0): find-the-person path, email reveal (match-by-person-id), and mailbox rotation are all done. A live run landed 18 real named contacts with verified emails in "Tax BD Sequence" (paused, Activate OFF). Only the go-live step remains:
-- **Monday go-live:** enroll, confirm the rotation log shows N=5 mailboxes, confirm contacts land in the sequence, then flip Apollo "Tax BD Sequence" (id `6a06068f8142ee001d2b3dd2`) Activate ON. This is the long-blocked GO-LIVE GATE.
+### GO-LIVE GATE - BD enroll arc DONE; go-live blocked only on TheirStack credit renewal (June 14)
+The BD Apollo enrollment arc is complete and the enroll-zero ROOT CAUSE is fixed (Ace 89.0): the approval-modal selection freeze, find-the-person path, email reveal (match-by-person-id), and mailbox rotation (confirmed N=5 live) are all done. Go-live is now blocked only on TheirStack discovery credits, which renew **June 14**.
+
+- **NEXT (1) - go-live verification (after June 14):** once credits renew, run one real discovery + Approve & Enroll, confirm the rotation log shows N=5 mailboxes and that contacts actually LAND in the sequence (not just get created), then flip Apollo "Tax BD Sequence" (id `6a06068f8142ee001d2b3dd2`) Activate ON. Also remove the TEMP per-company try/catch diag in `enrollCompaniesInApollo` once a clean run is confirmed.
 
 Done this arc (closed record):
+- ~~**BD enroll-zero root cause (approval-modal selection freeze).**~~ DONE Ace 89.0 - `key={run.id}` + `useEffect` re-seed on `run.id`/`companies.length`; the Ace 88.0 auto-refresh poll was freezing the selection Set to a stale/narrowed set.
+- ~~**Mailbox rotation.**~~ DONE Ace 88.0-89.0 - `send_email_from_email_account_id[]` array at `add_contact_ids`; confirmed N=5 live.
+- ~~**Client-signal credit throttle.**~~ DONE Ace 89.0 - per-client-domain TheirStack sweep is cron-only, once per ET day (`BdOrgConfig.lastClientMonitorAt`); removed from all manual discovery.
 - ~~**Email reveal.**~~ DONE Ace 88.0 - per-contact `people/match` match-by-person-id with `reveal_personal_emails=true` (query string); real id threaded through search + curated paths.
 - ~~**Find-the-person path.**~~ DONE Ace 87.0-88.0 - single domain+BD-Settings-titles people search on `/mixed_people/api_search`; no nameless shells.
-- ~~**Manufacturing-tab no-saved-search guard.**~~ DONE Ace 88.0 - blocks Run Discovery with an inline message + BD Settings link.
-- ~~**Auto-refresh after a discovery run.**~~ DONE Ace 88.0 - in-flight-aware polling, refresh on awaiting-count change.
+- ~~**Auto-reload / no-saved-search guard.**~~ DONE Ace 88.0 - auto-refresh (in-flight-aware polling, refresh on awaiting-count change) + any vertical with no saved search blocks Run Discovery with an inline message + BD Settings link.
 
-### NEXT - TheirStack dynamic per-vertical discovery query
+### NEXT (2) - TheirStack dynamic per-vertical discovery query
 Make discovery dynamic per vertical instead of the hardcoded Tax list.
 - **Finding:** `triggerManualDiscovery` currently ignores the selected vertical and fires the hardcoded `DISCOVERY_TITLES` on every run; discovery does NOT read saved searches at all yet. The cron (`src/app/api/cron/bd-discovery/route.ts`) discovers off `DISCOVERY_TITLES` + `locations: []` and never reads the BD Settings verticals / saved searches (diagnosed Ace 83.0).
 - **Titles-first (ships first):** the cron reads the selected saved search -> its vertical -> the vertical's titles, and uses those as the TheirStack `job_title_or` query, making the Verticals/Saved Search UI actually drive discovery. (Note: per-vertical titles live in `BdContactTargeting.primaryTitles`, not on the saved search.)
