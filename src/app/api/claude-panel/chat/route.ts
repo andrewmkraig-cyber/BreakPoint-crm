@@ -2666,29 +2666,78 @@ export async function POST(req: NextRequest) {
           conversation.push({ role: "user", content: results });
         }
 
-        // Phantom-claim safety net. If the assistant TYPED a "saved that
-        // reminder" success line but no create_reminder branch actually ran
-        // this request, the streamed text is a false confirmation (the user
-        // can't tell it from the real receipt). Append an honest failure
-        // receipt — the existing amber "0 of 1 · failed" pill — so the
-        // truthful signal lands under the fabricated sentence. The system
-        // prompt forbids the claim outright; this catches the model when it
-        // ignores that. Logged so we can measure how often it skips the tool.
+        // Phantom-claim recovery. The model (claude-sonnet-4-6) sometimes
+        // TYPES a "saved that reminder" success line WITHOUT calling
+        // create_reminder, so the streamed text is a false confirmation
+        // (the recruiter can't tell it from the real receipt) and nothing
+        // saves. Rather than just warn, we RECOVER: re-run the turn ONCE
+        // with tool_choice forced to create_reminder so the model actually
+        // emits the call, then execute it and send the real receipt. The
+        // claim itself is proof the model understood this as a reminder
+        // request, so forcing the tool is safe. Only the honest failure
+        // receipt is shown if the forced retry ALSO produces nothing.
         if (!reminderHandledThisRequest && claimsReminderSaved(assistantText)) {
-          send({
-            t: "batch_receipt",
-            kind: "reminder",
-            created: 0,
-            failed: 1,
-            failures: [
-              {
-                title: "reminder",
-                reason:
-                  "not saved - the assistant did not run the save. Please send it again.",
-              },
-            ],
-          });
           log("create_reminder_phantom_claim", { textLen: assistantText.length }, 0);
+          let recovered = 0;
+          const recoverFailures: { title: string; reason: string }[] = [];
+          try {
+            const forced = await anthropic.messages.create({
+              model: CLAUDE_MODEL,
+              max_tokens: 1024,
+              tools,
+              tool_choice: { type: "tool", name: "create_reminder" },
+              system: fullSystemPrompt,
+              messages: conversation,
+            });
+            const forcedUses = forced.content.filter(
+              (b): b is Extract<typeof b, { type: "tool_use" }> =>
+                b.type === "tool_use" && b.name === "create_reminder",
+            );
+            // Honor the same runaway-paste cap as the direct path; a forced
+            // retry should never fan out beyond it.
+            const capped = forcedUses.slice(0, MAX_DIRECT_REMINDERS);
+            const forcedResults = await Promise.all(
+              capped.map((tu) => runCreateReminder(tu.input)),
+            );
+            recovered = forcedResults.filter((r) => r.ok).length;
+            for (const r of forcedResults) {
+              if (!r.ok) recoverFailures.push({ title: r.title, reason: r.reason });
+            }
+            log("create_reminder_forced_retry", { requested: capped.length }, recovered);
+          } catch (e) {
+            log(
+              "create_reminder_forced_retry",
+              { error: e instanceof Error ? e.message : "retry failed" },
+              0,
+            );
+          }
+          if (recovered > 0) {
+            // The forced retry actually saved it — show the real receipt.
+            send({
+              t: "batch_receipt",
+              kind: "reminder",
+              created: recovered,
+              failed: recoverFailures.length,
+              failures: recoverFailures,
+            });
+          } else {
+            // Recovery produced nothing — fall back to the honest failure
+            // receipt so the recruiter knows to resend, never a silent lie.
+            send({
+              t: "batch_receipt",
+              kind: "reminder",
+              created: 0,
+              failed: 1,
+              failures: [
+                {
+                  title: "reminder",
+                  reason:
+                    recoverFailures[0]?.reason ??
+                    "not saved - the assistant did not run the save. Please send it again.",
+                },
+              ],
+            });
+          }
         }
 
         send({ t: "end" });
