@@ -543,6 +543,13 @@ export async function enrollCompaniesInApollo(
   for (const c of companies) {
     if (remaining <= 0) break;
 
+    // TEMP diag (silent-crash hunt, runId cmq51izow): wrap the ENTIRE
+    // per-company body so a throw anywhere between the rotation log and the
+    // contact-create call is logged with its full stack instead of silently
+    // killing the run. The known gap is fetchApolloContacts -> loadTargeting,
+    // a Prisma query that runs OUTSIDE that helper's own try/catch. We log and
+    // continue to the next company so one bad company no longer kills the run.
+    try {
     // Per-company visibility counters. peopleReturned is the people-search
     // result count; revealsSucceeded counts usable emails revealed; the
     // reasons array collects every skip (domain, no-matches, reveal failures)
@@ -686,6 +693,22 @@ export async function enrollCompaniesInApollo(
     // One-line per-company summary: search size, reveals that succeeded, and
     // every skip with its reason. Visibility only — does not alter enrollment.
     logCompanySummary();
+    } catch (err) {
+      // TEMP diag (silent-crash hunt): make the silent post-rotation crash
+      // visible with full message + stack, then keep processing the remaining
+      // companies instead of letting the whole run die here.
+      console.error(
+        `[Apollo] company loop threw (${c.companyName}, runId=${run.id}): ` +
+          (err instanceof Error
+            ? `${err.message}\n${err.stack ?? "(no stack)"}`
+            : String(err)),
+      );
+      skipped.push({
+        companyName: c.companyName,
+        reason: `unexpected error: ${err instanceof Error ? err.message : String(err)}`,
+      });
+      continue;
+    }
   }
 
   await prisma.bDRun.update({
