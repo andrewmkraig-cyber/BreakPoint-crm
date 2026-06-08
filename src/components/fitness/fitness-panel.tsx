@@ -451,15 +451,17 @@ export function FitnessPanel() {
       activeSessionRef.current?.date === next.date
         ? activeSessionRef.current
         : null;
-    const nextDayType =
-      storedSession?.dayType ||
-      next.selectedDay?.dayType ||
-      next.dayTypes[0] ||
-      "Workout";
+    const nextDayType = storedSession
+      ? (storedSession.dayType ?? "")
+      : next.selectedDay?.dayType || next.dayTypes[0] || "Workout";
     setDayType(nextDayType);
     setDrafts(
-      storedSession && Object.keys(storedSession.drafts).length > 0
-        ? storedSession.drafts
+      storedSession
+        ? Object.keys(storedSession.drafts).length > 0
+          ? storedSession.drafts
+          : storedSession.dayType
+            ? buildDraftsForDay(next, storedSession.dayType)
+            : {}
         : buildDraftsForDay(next, nextDayType),
     );
     setDirty(!!storedSession);
@@ -482,6 +484,13 @@ export function FitnessPanel() {
 
   useEffect(() => {
     if (!activeSessionForDate) return;
+    if (
+      activeSessionForDate.dayType == null &&
+      Object.keys(activeSessionForDate.drafts).length === 0 &&
+      Object.keys(drafts).length === 0
+    ) {
+      return;
+    }
     const key = JSON.stringify({ dayType, drafts });
     if (sessionDraftKeyRef.current === key) return;
     sessionDraftKeyRef.current = key;
@@ -802,6 +811,7 @@ export function FitnessPanel() {
       dayType: null,
       drafts: {},
     });
+    setDayType("");
     setDrafts({});
     setSaveSummary(null);
     setDirty(false);
@@ -1524,7 +1534,7 @@ function RecordTab(props: {
             type="date"
             value={props.date}
             onChange={(e) => props.onDateChange(e.target.value)}
-            className="mt-1 h-9 w-full rounded-md border border-court-border bg-court-surface px-3 text-sm text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/30"
+            className="mt-1 h-9 w-full rounded-md border border-court-border bg-court-surface px-3 text-base text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/30 sm:text-sm"
           />
         </label>
 
@@ -1633,12 +1643,12 @@ function RecordTab(props: {
               value={props.customName}
               onChange={(e) => props.onCustomNameChange(e.target.value)}
               placeholder="Custom exercise"
-              className="h-9 min-w-0 rounded-md border border-court-border bg-court-surface px-3 text-sm text-court-fg placeholder:text-court-fg-muted focus:outline-none focus:ring-2 focus:ring-court-brand/30"
+              className="h-9 min-w-0 rounded-md border border-court-border bg-court-surface px-3 text-base text-court-fg placeholder:text-court-fg-muted focus:outline-none focus:ring-2 focus:ring-court-brand/30 sm:text-sm"
             />
             <select
               value={props.customBodyPart}
               onChange={(e) => props.onCustomBodyPartChange(e.target.value)}
-              className="h-9 rounded-md border border-court-border bg-court-surface px-2 text-sm text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/30"
+              className="h-9 rounded-md border border-court-border bg-court-surface px-2 text-base text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/30 sm:text-sm"
             >
               {FITNESS_BODY_PARTS.filter((part) => part !== "All").map(
                 (part) => (
@@ -1751,7 +1761,7 @@ function DayPickerRows({
                     onEditingDayChange(null);
                   }
                 }}
-                className="h-8 min-w-0 rounded-md border border-court-border bg-court-surface px-2 text-sm font-semibold text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/30"
+                className="h-8 min-w-0 rounded-md border border-court-border bg-court-surface px-2 text-base font-semibold text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/30 sm:text-sm"
               />
             ) : (
               <button
@@ -2161,7 +2171,7 @@ function ExerciseCard({
                         onSetChange(exercise, index, "rpe", e.target.value)
                       }
                       placeholder="RPE"
-                      className="h-8 min-w-0 rounded-md border border-court-border bg-court-surface px-2 text-center text-xs font-semibold tabular-nums text-court-fg placeholder:text-court-fg-muted focus:outline-none focus:ring-2 focus:ring-court-brand/30"
+                      className="h-8 min-w-0 rounded-md border border-court-border bg-court-surface px-2 text-center text-base font-semibold tabular-nums text-court-fg placeholder:text-court-fg-muted focus:outline-none focus:ring-2 focus:ring-court-brand/30 sm:text-xs"
                     />
                     <span
                       className={cn(
@@ -2267,7 +2277,7 @@ function StepperInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={label}
-        className="h-9 min-w-0 bg-transparent px-1 text-center text-sm font-semibold tabular-nums text-court-fg placeholder:text-court-fg-muted focus:outline-none"
+        className="h-9 min-w-0 bg-transparent px-1 text-center text-base font-semibold tabular-nums text-court-fg placeholder:text-court-fg-muted focus:outline-none sm:text-sm"
       />
       <button
         type="button"
