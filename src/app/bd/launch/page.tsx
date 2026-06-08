@@ -15,6 +15,17 @@ import {
 
 export const dynamic = "force-dynamic";
 
+// Approve & Enroll runs the whole enroll synchronously inside this route's
+// Server Action (approveBDRun -> enrollCompaniesInApollo). One invocation can
+// process up to globalDailyCap (~80) contacts, each doing reveal + create +
+// add_contact_ids (3 sequential Apollo round-trips) plus per-company
+// domain-resolve + people-search — potentially hundreds of sequential network
+// calls, far past Vercel's ~10-15s default. Raise to 60s (this plan's max;
+// Vercel Pro permits up to 300). Each contact is enrolled atomically (create
+// and add_contact_ids fire back-to-back in apolloEnrollContact), so even a
+// hard cutoff can strand at most one in-flight contact, never a batch.
+export const maxDuration = 60;
+
 // Default daily contact cap when neither the SavedSearch nor BdOrgConfig
 // overrides it. Mirrors the workflow note in the BD handoff: ~80
 // contacts/day across 5 domains rotating ~16 each.
