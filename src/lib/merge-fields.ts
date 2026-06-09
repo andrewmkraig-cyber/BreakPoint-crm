@@ -47,6 +47,10 @@ export const MERGE_FIELDS = [
   // Offer / Placement
   { token: "[Offer Amount]", label: "Offer Amount", group: "Offer" },
   { token: "[Start Date]", label: "Start Date", group: "Offer" },
+  // Invoice
+  { token: "[Invoice Number]", label: "Invoice Number", group: "Invoice" },
+  { token: "[Fee Amount]", label: "Fee Amount", group: "Invoice" },
+  { token: "[Invoice Due Date]", label: "Invoice Due Date", group: "Invoice" },
   // Recruiter (you)
   { token: "[Recruiter First Name]", label: "Recruiter First Name", group: "Recruiter" },
   { token: "[Recruiter Full Name]", label: "Recruiter Full Name", group: "Recruiter" },
@@ -108,6 +112,10 @@ export type MergeFieldValues = {
   // Offer / Placement
   offerAmount?: string;
   startDate?: string;
+  // Invoice
+  invoiceNumber?: string;
+  feeAmount?: string;
+  invoiceDueDate?: string;
   // Recruiter
   recruiterFirstName?: string;
   recruiterFullName?: string;
@@ -197,6 +205,10 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
     // Offer / Placement
     "[Offer Amount]": values.offerAmount ?? "",
     "[Start Date]": values.startDate ?? "",
+    // Invoice
+    "[Invoice Number]": values.invoiceNumber ?? "",
+    "[Fee Amount]": values.feeAmount ?? "",
+    "[Invoice Due Date]": values.invoiceDueDate ?? "",
     // Recruiter
     "[Recruiter First Name]": recruiterFirst,
     "[Recruiter Full Name]": recruiterFull,

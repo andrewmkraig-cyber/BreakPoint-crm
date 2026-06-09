@@ -4,6 +4,8 @@ import Link from "next/link";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getBillingSettings } from "@/lib/billing-settings";
 import { getInvoice, parseInvoiceContacts } from "@/lib/invoices";
+import { loadTriggeredTemplate } from "@/lib/templated-email";
+import { CONFIRMED_START_INVOICE_TRIGGER } from "@/app/settings/template-constants";
 
 import { InvoiceDetail } from "./invoice-detail";
 
@@ -16,11 +18,25 @@ export default async function InvoiceDetailPage({
 }) {
   const { id } = await params;
   const org = await getCurrentOrg();
-  const [invoice, billing] = await Promise.all([
+  const [invoice, billing, invoiceTpl] = await Promise.all([
     getInvoice(id, org.id),
     getBillingSettings(),
+    // Active "Invoice Email" template (Settings ▸ Templates). The same
+    // canonical loader every auto-trigger uses; EmailTemplate is a global
+    // (single-org) table so no org scope is needed here.
+    loadTriggeredTemplate(CONFIRMED_START_INVOICE_TRIGGER),
   ]);
   if (!invoice) notFound();
+
+  // Pass the RAW (unmerged) template subject + body to the client component;
+  // merge fields resolve client-side at click time so recruiter edits to the
+  // fee / dates / contacts in the editor are reflected in the drafted email.
+  // Null when the template is missing or inactive → invoice-detail falls back
+  // to its hardcoded literal so a deleted/disabled template never breaks sends.
+  const invoiceEmailTemplate =
+    invoiceTpl.kind === "ok"
+      ? { subject: invoiceTpl.template.subject, body: invoiceTpl.template.body }
+      : null;
 
   const billingContacts = parseInvoiceContacts(invoice.billingContacts);
   const hiringContacts = parseInvoiceContacts(invoice.hiringContacts);
@@ -67,6 +83,7 @@ export default async function InvoiceDetailPage({
         billingArEmail={billing.arEmail}
         billingDisplayAddress={`${billing.addressLine1} · ${billing.city}, ${billing.state} ${billing.zip}`}
         sendFromAlias={invoice.sendFromAlias ?? null}
+        invoiceEmailTemplate={invoiceEmailTemplate}
       />
     </div>
   );

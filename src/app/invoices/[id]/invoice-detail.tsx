@@ -5,7 +5,12 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { ChevronDown } from "lucide-react";
 
 import { useComposerManager } from "@/lib/composer-manager";
-import { buildSmartGreeting } from "@/lib/merge-fields";
+import {
+  applyMergeFields,
+  buildSmartGreeting,
+  templateBodyToEditorHtml,
+  type MergeFieldValues,
+} from "@/lib/merge-fields";
 import { formatInvoiceDateLabelFromIso } from "@/lib/invoice-date";
 import type { AttachmentDraft } from "@/app/mail/mail-composer";
 
@@ -92,6 +97,12 @@ export type InvoiceDetailProps = {
   // a verified alias on the Gmail account) and ultimately to the Gmail
   // primary if even that's missing.
   sendFromAlias: string | null;
+  // Active "Invoice Email" template (Settings ▸ Templates), RAW + unmerged.
+  // Drives the drafted email subject + body via the shared merge-field
+  // machinery, resolved client-side at click time (so editor edits reflect).
+  // Null when the template is missing/inactive → handleEmailDraft falls back
+  // to its hardcoded literal so a deleted template never breaks the send.
+  invoiceEmailTemplate?: { subject: string; body: string } | null;
 };
 
 export function InvoiceDetail(props: InvoiceDetailProps) {
@@ -291,23 +302,29 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
       const candidateClause = candidateFullName ? `${candidateFullName} ` : "";
       // Smart greeting from the populated recipients (billing To + hiring CC),
       // deduped by person: 1 -> "Hi Jane,", 2 -> "Hi Jane and Tom,", 3+ ->
-      // "Hi Team,". Same helper the seeded Invoice Email template's [Greeting]
-      // merge field resolves through, so the two stay in lockstep.
+      // "Hi Team,". Same helper the Invoice Email template's [Greeting] merge
+      // field resolves through, so the two stay in lockstep.
       const greeting = buildSmartGreeting([...billingContacts, ...hiringContacts]);
       // Format the date-only strings the SAME way the PDF does (Jun 1, 2026),
       // parsing Y/M/D locally so the body no longer prints the prior day from
       // a UTC reinterpretation of "2026-06-01". formatInvoiceDateLabelFromIso
-      // returns "" for empty/missing, so the || "TBD" fallback stands.
+      // returns "" for empty/missing, so the || "TBD" fallback stands. This is
+      // the ONE start-date source + formatter: both the template path ([Start
+      // Date]) and the literal fallback read it, never a separate date path.
       const startLabel = formatInvoiceDateLabelFromIso(startDate) || "TBD";
       const dueLabel = formatInvoiceDateLabelFromIso(dueDate) || "TBD";
-      const subject = `Invoice from ${props.billingCompanyName} - ${candidateClause}placement (${props.invoiceNumber})`;
       // Suppress the "of $X" clause when the fee isn't captured so we
       // don't ship a "for the placement fee of —" sentence. formatUsd
-      // returns an em dash for missing/zero amounts; the clause comes
-      // out entirely in that case.
+      // returns an em dash for missing/zero amounts; the clause (and the
+      // [Fee Amount] merge value below) comes out empty in that case.
       const feeLabel = formatUsd(feeAmount);
       const feeOfClause = feeLabel === "—" ? "" : ` of ${feeLabel}`;
-      const paragraphs = [
+
+      // Hardcoded literal fallback — used verbatim when no active "Invoice
+      // Email" template exists (missing or disabled) so a deleted template
+      // never breaks the send. Unchanged from the pre-template behavior.
+      const fallbackSubject = `Invoice from ${props.billingCompanyName} - ${candidateClause}placement (${props.invoiceNumber})`;
+      const fallbackParagraphs = [
         greeting,
         `Congratulations again on bringing ${props.candidateName || "your new hire"} onto the team${props.roleTitle ? ` as ${props.roleTitle}` : ""}.`,
         `Attached is invoice ${props.invoiceNumber} for the placement fee${feeOfClause}, with a start date of ${startLabel}. Payment is due ${dueLabel}.`,
@@ -318,7 +335,38 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
         // on the "-- " delimiter (Ace 70.0). A hardcoded "Best, {signer}" line
         // here produced a duplicate sign-off in the populated invoice email.
       ];
-      const body = paragraphs.map((p) => `<p>${p}</p>`).join("");
+      const fallbackBody = fallbackParagraphs.map((p) => `<p>${p}</p>`).join("");
+
+      // When an active "Invoice Email" template exists in Settings, IT drives
+      // the subject + body. Merge fields resolve here via the shared
+      // applyMergeFields machinery (no parallel merge system), client-side at
+      // click time so recruiter edits to the fee / dates / contacts above are
+      // reflected. NOTE on [Client Company Name]: the seeded template uses it
+      // in the "Invoice from ..." / "trusting ... with this search" sentences,
+      // which in the invoice context is the SENDER (BreakPoint's billing
+      // identity), so it maps to billingCompanyName here — matching the literal
+      // it replaces. [Start Date] reads the SAME startLabel the PDF uses.
+      let subject = fallbackSubject;
+      let body = fallbackBody;
+      if (props.invoiceEmailTemplate) {
+        const values: MergeFieldValues = {
+          greeting,
+          candidateFullName,
+          jobTitle: roleTitle,
+          clientCompanyName: props.billingCompanyName,
+          startDate: startLabel,
+          invoiceNumber: props.invoiceNumber,
+          feeAmount: feeLabel === "—" ? "" : feeLabel,
+          invoiceDueDate: dueLabel,
+        };
+        // Strip em dashes from the resolved copy (Ace no-em-dash rule), matching
+        // the fireTemplatedEmail send path. templateBodyToEditorHtml passes an
+        // already-HTML body through and wraps a legacy plain-text body.
+        subject = applyMergeFields(props.invoiceEmailTemplate.subject, values).replace(/—/g, "-");
+        body = templateBodyToEditorHtml(
+          applyMergeFields(props.invoiceEmailTemplate.body, values).replace(/—/g, "-"),
+        );
+      }
       // To = every billing contact email; CC = every hiring contact email,
       // minus any address already in To (dedupe so the same person isn't both
       // a To and a CC). Name-only contacts contribute no address and are
