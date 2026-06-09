@@ -1247,9 +1247,12 @@ function LocalPlacementDialog({
         ? String(snap.offerSalary)
         : "",
   );
-  const [currency, setCurrency] = useState(
-    snap?.acceptedCurrency ?? snap?.offerCurrency ?? "USD",
-  );
+  // USD is the only allowed currency on placement rows (Ace fix 2026-06-09).
+  // Mirrors the Offer row above: the free-text Currency field was removed but
+  // acceptedCurrency is still written to the DB on save — held as a const here
+  // so the save payload and formatMoney calls keep their "USD" arg without an
+  // unused setter.
+  const currency = "USD";
   // Same three-way seed as the OfferDialog above — snapshot first
   // (Edit Placement re-open), then the client default, then blank.
   // Matches the RF LocalPlacementDialog at placement-flows.tsx:1460.
@@ -1498,7 +1501,6 @@ function LocalPlacementDialog({
           onChange={setAcceptedSalary}
           currency
         />
-        <OfferField label="Currency" value={currency} onChange={setCurrency} />
         <OfferField label="Fee %" value={feePct} onChange={setFeePct} />
         <OfferField label="Min fee" value={minFee} onChange={setMinFee} currency />
         <OfferField

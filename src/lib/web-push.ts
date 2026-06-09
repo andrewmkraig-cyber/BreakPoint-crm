@@ -53,30 +53,6 @@ export type PushPayload = {
   forceNotify?: boolean;
 };
 
-// TEMP DIAG (keep until production push delivery is confirmed — see
-// project_web_push_temp_diag): mask any run of 5+ digits so an
-// unknown-number tag (`sms-<10 digits>`) or a number-fallback title
-// ("New text from +1...") can't leak a full phone number into logs.
-// cuid-based tags (`sms-<candidateId>`) pass through untouched.
-function redactDigits(s: string): string {
-  return s.replace(/\d{5,}/g, (m) => `***${m.slice(-2)}`);
-}
-
-// TEMP DIAG: payload shape WITHOUT body / number / token. badgeCount is
-// reported as present-or-omitted so we can prove notification delivery
-// stays independent of badge reliability (an omitted badge must NOT
-// stop the notification from sending).
-function diagPayload(payload: PushPayload) {
-  return {
-    title: redactDigits(payload.title),
-    type: payload.type ?? "notification",
-    tag: payload.tag ? redactDigits(payload.tag) : "(none)",
-    closeTags: payload.closeTags?.map(redactDigits) ?? [],
-    badgeCountPresent: typeof payload.badgeCount === "number",
-    badgeCount: typeof payload.badgeCount === "number" ? payload.badgeCount : null,
-  };
-}
-
 export type PushDispatchResult = {
   total: number;
   sent: number;
@@ -123,13 +99,6 @@ async function dispatch(
         // Purge so we don't keep hammering it on every trigger.
         if (status === 404 || status === 410) {
           result.pruned++;
-          // TEMP DIAG: log the pruned endpoint PREFIX only (never the
-          // full endpoint / token) so a silent device drop is visible.
-          console.log("[web-push][diag] pruned dead subscription", {
-            fn,
-            status,
-            endpointPrefix: sub.endpoint.slice(0, 40),
-          });
           await prisma.pushSubscription
             .delete({ where: { id: sub.id } })
             .catch(() => {});
@@ -144,9 +113,6 @@ async function dispatch(
       }
     }),
   );
-  // TEMP DIAG: per-call send outcome. `sent` is the success status the
-  // task asks for; a Quo text with the PWA closed should show sent>0.
-  console.log("[web-push][diag] dispatch result", { fn, ...result });
   return result;
 }
 
@@ -156,22 +122,10 @@ export async function sendPushToUser(
   payload: PushPayload,
 ): Promise<PushDispatchResult> {
   try {
-    const vapidOk = ensureVapid();
-    if (!vapidOk) {
-      console.log("[web-push][diag] VAPID not configured, push skipped", {
-        fn: "sendPushToUser",
-        vapidConfigured: false,
-      });
-      return EMPTY_DISPATCH_RESULT;
-    }
+    if (!ensureVapid()) return EMPTY_DISPATCH_RESULT;
     const subs = await prisma.pushSubscription.findMany({
       where: { userId, organizationId },
       select: { id: true, endpoint: true, p256dh: true, auth: true },
-    });
-    console.log("[web-push][diag] sendPushToUser", {
-      vapidConfigured: true,
-      subscriptionCount: subs.length,
-      ...diagPayload(payload),
     });
     return await dispatch(subs, payload, "sendPushToUser");
   } catch (err) {
@@ -189,22 +143,10 @@ export async function sendPushToOrg(
   payload: PushPayload,
 ): Promise<PushDispatchResult> {
   try {
-    const vapidOk = ensureVapid();
-    if (!vapidOk) {
-      console.log("[web-push][diag] VAPID not configured, push skipped", {
-        fn: "sendPushToOrg",
-        vapidConfigured: false,
-      });
-      return EMPTY_DISPATCH_RESULT;
-    }
+    if (!ensureVapid()) return EMPTY_DISPATCH_RESULT;
     const subs = await prisma.pushSubscription.findMany({
       where: { organizationId },
       select: { id: true, endpoint: true, p256dh: true, auth: true },
-    });
-    console.log("[web-push][diag] sendPushToOrg", {
-      vapidConfigured: true,
-      subscriptionCount: subs.length,
-      ...diagPayload(payload),
     });
     return await dispatch(subs, payload, "sendPushToOrg");
   } catch (err) {
@@ -228,32 +170,14 @@ export async function sendPushToUserOrOrg(
   payload: PushPayload,
 ): Promise<PushDispatchResult> {
   try {
-    const vapidOk = ensureVapid();
-    if (!vapidOk) {
-      console.log("[web-push][diag] VAPID not configured, push skipped", {
-        fn: "sendPushToUserOrOrg",
-        vapidConfigured: false,
-      });
-      return EMPTY_DISPATCH_RESULT;
-    }
+    if (!ensureVapid()) return EMPTY_DISPATCH_RESULT;
     const userSubs = await prisma.pushSubscription.findMany({
       where: { userId, organizationId },
       select: { id: true, endpoint: true, p256dh: true, auth: true },
     });
-    console.log("[web-push][diag] sendPushToUserOrOrg:user", {
-      vapidConfigured: true,
-      userId,
-      subscriptionCount: userSubs.length,
-      ...diagPayload(payload),
-    });
     if (userSubs.length > 0) {
       const result = await dispatch(userSubs, payload, "sendPushToUserOrOrg:user");
       if (result.sent > 0) return result;
-      console.log("[web-push][diag] sendPushToUserOrOrg:user-fallback", {
-        reason: "user subscriptions existed but none accepted the push",
-        userId,
-        ...result,
-      });
     }
     // Owner has no live device — fan out to the org so the push still
     // lands (in practice, Andrew's iPhone). No duplicate when the user
@@ -263,11 +187,6 @@ export async function sendPushToUserOrOrg(
     const orgSubs = await prisma.pushSubscription.findMany({
       where: { organizationId },
       select: { id: true, endpoint: true, p256dh: true, auth: true },
-    });
-    console.log("[web-push][diag] sendPushToUserOrOrg:org-fallback", {
-      reason: "user had 0 subscriptions",
-      subscriptionCount: orgSubs.length,
-      ...diagPayload(payload),
     });
     return await dispatch(orgSubs, payload, "sendPushToUserOrOrg:org-fallback");
   } catch (err) {
