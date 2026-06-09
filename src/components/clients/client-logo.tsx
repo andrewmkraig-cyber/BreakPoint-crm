@@ -31,7 +31,7 @@ export function ClientLogo({
 }) {
   const [failed, setFailed] = useState(false);
   const bg = useMemo(() => initialsBg(name), [name]);
-  const src = domain ? `/api/favicon?domain=${encodeURIComponent(domain)}` : null;
+  const src = domain ? `/api/favicon?domain=${encodeURIComponent(domain)}&v=3` : null;
 
   useEffect(() => {
     setFailed(false);

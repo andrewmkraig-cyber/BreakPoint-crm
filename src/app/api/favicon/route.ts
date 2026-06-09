@@ -37,7 +37,8 @@ async function fetchWithTimeout(url: URL, init: RequestInit = {}): Promise<Respo
 
 async function fetchHomepage(url: URL): Promise<{ html: string; pageUrl: URL } | null> {
   const res = await fetchWithTimeout(url, { headers: { Accept: "text/html,application/xhtml+xml" } });
-  if (!res.ok) return null;
+  const contentType = res.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!res.ok && !contentType.includes("text/html")) return null;
   const html = await res.text();
   return {
     html: html.slice(0, MAX_HTML_BYTES),
@@ -50,9 +51,16 @@ function attrsFor(tag: string): Record<string, string> {
   const attrRe = /([^\s=]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g;
   let match: RegExpExecArray | null;
   while ((match = attrRe.exec(tag))) {
-    attrs[match[1].toLowerCase()] = match[2] ?? match[3] ?? match[4] ?? "";
+    attrs[match[1].toLowerCase()] = decodeHtmlAttr(match[2] ?? match[3] ?? match[4] ?? "");
   }
   return attrs;
+}
+
+function decodeHtmlAttr(value: string): string {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;|&apos;/g, "'");
 }
 
 function faviconCandidates(pageUrl: URL, html: string): URL[] {
@@ -82,8 +90,64 @@ function faviconCandidates(pageUrl: URL, html: string): URL[] {
     }
   }
 
+  for (const href of logoImageCandidates(pageUrl, html)) {
+    push(href);
+  }
+  for (const href of providerIconCandidates(pageUrl)) {
+    push(href);
+  }
   push("/favicon.ico");
   return candidates;
+}
+
+function logoImageCandidates(pageUrl: URL, html: string): string[] {
+  const matches: Array<{ href: string; score: number }> = [];
+  const imgRe = /<img\b[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = imgRe.exec(html))) {
+    const attrs = attrsFor(match[0]);
+    const src = attrs.src ?? "";
+    if (!src) continue;
+    const haystack = [
+      attrs.alt,
+      attrs.title,
+      attrs.class,
+      attrs.id,
+      src,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    if (!/\b(logo|brand)\b/.test(haystack)) continue;
+    if (/\b(button|badge|icon|spinner|avatar)\b/.test(haystack)) continue;
+
+    let score = 0;
+    if (/\blogo\b/.test(haystack)) score += 10;
+    if (/\bbrand\b/.test(haystack)) score += 4;
+    if (/\b(header|nav|masthead|z-logo)\b/.test(haystack)) score += 3;
+    if (/\bfooter\b/.test(haystack)) score -= 2;
+    if (/\bwhite\b|\brev\b/.test(haystack)) score -= 1;
+    matches.push({ href: src, score });
+  }
+  return matches
+    .sort((a, b) => b.score - a.score)
+    .map((m) => {
+      try {
+        return new URL(m.href, pageUrl).href;
+      } catch {
+        return "";
+      }
+    })
+    .filter(Boolean);
+}
+
+function providerIconCandidates(pageUrl: URL): string[] {
+  const host = pageUrl.hostname.replace(/^www\./i, "");
+  if (!host) return [];
+  return [
+    `https://icons.duckduckgo.com/ip3/${host}.ico`,
+    `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`,
+  ];
 }
 
 async function readImage(url: URL): Promise<{ bytes: ArrayBuffer; contentType: string } | null> {
