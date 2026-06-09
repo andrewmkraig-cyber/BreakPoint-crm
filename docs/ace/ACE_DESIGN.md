@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-06-04 · Ace 81.0
+Last updated: 2026-06-08 · Ace 89.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -7,13 +7,14 @@ This doc is the source of truth for what Ace looks and feels like. Apply continu
 
 Design intent: Linear / Notion polish. Premium, minimal, sharp, intentional. Avoid boxy, muddy dark modes, generic SaaS look.
 
-## Ace 81.0 redesign intent - Today's Batch (2026-06-04, NOT yet built)
-Target layout for the Today's Batch surface (queued for next session, ROADMAP item 3):
-- **KPI tiles across the top:** Discovered Today, Enrolled, Last Run.
+## Today's Batch redesign (shipped Ace 82.0-86.0) - as-built
+The Today's Batch surface redesign shipped across Ace 82.0-86.0. It was the Ace 81.0 "moving things around" intent - a layout change, NOT an engine change. As built:
+- **KPI tiles row across the top:** Discovered Today, Enrolled, Last Run.
 - A **Rows / Cards view toggle**.
 - A **cleaner company grid**.
-- A **"Review all"** entry into the company popup.
-All controls MUST follow the standing button standards - token colors, standard sizing, no hardcoded hex. The prior mockup did NOT conform; build shared chrome rather than pattern-matching the mockup. The redesign is "moving things around," NOT changing the engine.
+- A **"Review all"** button on each run card, entering the company popup.
+- A **panel-dismiss fix** so a drag that starts inside a number input and releases on the backdrop no longer closes the dialog (mousedown-on-backdrop, not click).
+All controls follow the standing button standards - token colors, standard sizing, no hardcoded hex. The shipped surface is shared chrome, NOT the rejected prior mockup. (Detail: ACE_STATE.md ▸ What Shipped in Ace 82.0-86.0; ACE_ROADMAP.md ▸ DONE this session.)
 
 ## Ace 79.0 component + visual notes (2026-06-03)
 - **Masked currency input (shared).** Money fields - candidate + job comp overview, the Offer modal, and the Make Placement modal - use ONE shared masked-currency input: blank at rest, a leading `$` with thousands commas as digits are typed, no "USD" suffix, digits-only (the old `120k` shorthand no longer works, per spec), emitting a clean number on save. The comp DISPLAY carries the `$` prefix ($60,000 USD). Fee % / flat-fee-override / invoice math are unaffected. (Cosmetic follow-up: the Make Placement free-text "Currency" field is still present; the Offer modal already dropped its USD tag.)
@@ -390,7 +391,7 @@ Mirrored as a one-line pointer in ACE_RULES.md (Design Rules). Apply to every ic
 - **Neutral / nav / decorative / field-label / status-label** = `text-court-fg-muted` (or `-dim` for de-emphasis).
 - **Active nav / brand** = `text-court-brand` / the sidebar active token. The desktop sidebar's per-nav-item rainbow `iconColor` is intentional wayfinding and is being kept; as of Ace 72.0 mobile-nav consumes the SAME per-item colors from the shared `src/components/nav-items.ts` source (`NAV_GROUPS` + `FOOTER_NAV`), so desktop and mobile match and can never drift.
 
-**First fixes shipped Ace 71.0:** unified the 5-way-split delete trashcan to red-600 (mail-composer "Delete draft" went from the lone neutral `secondary` to `danger`/red); retired the lone orange Email button on the job Matches tab (bespoke `border-orange-500`/`bg-white`/`text-orange-600` -> shared `Button variant="secondary"`, which reskins across Court themes); fixed the Ace Assistant glyph dark-mode bug (`src/components/icons/in-conversation.tsx` hardcoded `#5A9642` accent + `#FAF8F3` bubble -> `rgb(var(--court-brand))` accent + `rgb(var(--court-surface))` bubble, and the ink "you" figure -> `rgb(var(--court-fg))` so it stays legible on the surface bubble in the active green-button state where `currentColor` is white). The standalone-icon token sweep across the rest of the app is queued.
+**First fixes shipped Ace 71.0:** unified the 5-way-split delete trashcan to red-600 (mail-composer "Delete draft" went from the lone neutral `secondary` to `danger`/red); retired the lone orange Email button on the job Matches tab (bespoke `border-orange-500`/`bg-white`/`text-orange-600` -> shared `Button variant="secondary"`, which reskins across Court themes); fixed the Ace Assistant glyph dark-mode bug (`src/components/icons/in-conversation.tsx` hardcoded `#5A9642` accent + `#FAF8F3` bubble -> `rgb(var(--court-brand))` accent + `rgb(var(--court-surface))` bubble, and the ink "you" figure -> `rgb(var(--court-fg))` so it stays legible on the surface bubble in the active green-button state where `currentColor` is white). The standalone-icon token sweep across the rest of the app was completed in Ace 72.0: the audit enumerated every standalone / icon-only action across candidate/job/client/placement/pipeline (86 files, 392 icon usages) and found them already compliant (icons inherit the right color from their wrapping Button; quiet row deletes already `hover:text-red-600`), so no unambiguous icon-token fixes remained. The rainbow sidebar `iconColor` was ported to mobile-nav via the shared `src/components/nav-items.ts` source the same version.
 
 ## Finances Surface (updated 2026-06-01 · Ace 74.0)
 The old combined `/finances` page (three `?tab=` tabs: Revenue & Profitability / Invoices / Expenses) was split and trimmed:

@@ -37,13 +37,12 @@ All time estimates calibrated against actual build pace: Game Plan Context Depth
 
 ## Code Prompt Rules
 - Max 3 items per prompt. No exceptions.
-- Step 0 on every prompt touching candidate/job/client/placement/pipeline: grep for relevant files and report exact counts before writing any code.
-  - **Baseline UNITS caveat (added Ace 73.0).** The CLAUDE.md Step 0 baselines (`recruiterflow ~0`, `RecruiterFlow ~18`, `RfId ~1076`) read as occurrence/line counts, but the documented grep commands use `-l | wc -l`, which returns **file counts**. Compare like-for-like: drop `-l` to count occurrences, or treat the baselines as file counts. A 73.0 audit reported file counts (`recruiterflow` 3, `RecruiterFlow` 10, `RfId` 84 files) that only looked "below baseline" because of this units mismatch — not an actual regression.
-- Browser-verify before every commit. Code must report what it saw, not just "done."
+- Step 0 on every prompt touching candidate/job/client/placement/pipeline: grep for relevant files and report exact counts before writing any code. Baseline FILE counts (the `-l | wc -l` commands count files, measured 2026-06-08 · Ace 89.0): `recruiterflow` = 3 files, `RecruiterFlow` = 10 files, `RfId` = 80 files. Compare against these file-count baselines and flag any increase.
+- Always commit and push immediately after the build succeeds (`npm run build` exits 0). Browser verification is Andrew's responsibility after deploy, not a gate before push. Never hold changes waiting for browser verification.
 - Dual-file awareness: always name BOTH files when a feature touches more than one.
 - Single terminal only. Never suggest parallel Claude Code sessions or multiple terminals.
 - Always end every prompt with: git push origin main
-- Never commit untested code.
+- The commit gate is a clean build (`npm run build` exits 0), not browser testing. Ship when the build passes; Andrew verifies in the browser after deploy.
 - After every feature ships: stop and give Andrew a plain English test plan before moving to the next prompt. No exceptions.
 - Before writing any prompt requiring specific context: ask Andrew the needed questions first.
 - /clear between every two feature ships.
@@ -203,7 +202,7 @@ Cross-chat audits must read every Ace chat in full via conversation_search befor
 ## Product Context
 - Ace is internal only. No productization.
 - Live at: https://ace.breakpointtalent.com
-- Launch target: 2026-05-15
+- Launch target: 2026-05-15 (PAST - Ace shipped and is live in production).
 - Build canvas: F0ATXA0ME9Z | BD vision: F0AUYBTPK4K | Recovery audit: F0AVDPEQQTW
 
 ## Project Brain - canonical (migrated from root CLAUDE.md, Ace 89.0)
@@ -215,7 +214,7 @@ Ace is a custom internal recruiting CRM for BreakPoint Talent (Andrew Kraig + Au
 - GitHub: github.com/andrewmkraig-cyber/BreakPoint-crm
 - Stack: Next.js, Neon (Postgres), Prisma, Vercel, Gmail API, Quo (phone/SMS)
 
-### Architecture Non-Negotiables (13 rules - enforced on every prompt)
+### Architecture Non-Negotiables (14 rules - enforced on every prompt)
 1. RecruiterFlow is removed. No new RF dependencies. Ever.
 2. Ace-native parity is mandatory. Every feature reads/writes Neon, not RF.
 3. Primary key is Neon cuid everywhere. Never use numeric IDs as primary keys.
@@ -229,6 +228,7 @@ Ace is a custom internal recruiting CRM for BreakPoint Talent (Andrew Kraig + Au
 11. Git author email must be andrew@breakpointtalent.com or andrewmkraig@gmail.com.
 12. Court Mode theme tokens only. No hardcoded hex colors anywhere in components.
 13. Pipeline stage source of truth is Neon only. placement.stage is canonical.
+14. Ace-native modal path: `local-placement-rows.tsx` is the only candidate placement modal (`placement-flows.tsx` was deleted in Ace 69.0 C2). Edit it for placement-modal work; shared placement/interview symbols live in `src/components/placements/placement-shared.tsx`.
 
 ### Step 0 Grep - Run Before Every Code Change
 ```
@@ -236,7 +236,7 @@ grep -r "recruiterflow" src/ --include="*.ts" --include="*.tsx" -l | wc -l
 grep -r "RecruiterFlow" src/ --include="*.ts" --include="*.tsx" -l | wc -l
 grep -r "RfId" src/ --include="*.ts" --include="*.tsx" -l | wc -l
 ```
-Baseline: recruiterflow ~0, RecruiterFlow ~18, RfId ~1076. Report counts before writing any code. If counts increased from baseline, flag it. (See the Baseline UNITS caveat above: the documented `-l | wc -l` returns FILE counts, while the baselines read as occurrence counts - compare like-for-like.)
+Baseline FILE counts (the `-l | wc -l` commands above count files, measured 2026-06-08 · Ace 89.0): recruiterflow = 3 files, RecruiterFlow = 10 files, RfId = 80 files. Report counts before writing any code. If counts increased from baseline, flag it.
 
 ### Code Prompt Rules
 - Max 3 items per prompt. Never queue more.
