@@ -175,19 +175,21 @@ function CallRowView({ row }: { row: CallRow }) {
   // Empty-string transcripts (out-of-order summary-first arrival) read
   // as "not yet available" until the transcript event lands.
   const [expanded, setExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
+  // Tracks which block last copied, so only that button shows the
+  // "Copied" confirmation (transcript and summary copy independently).
+  const [copied, setCopied] = useState<null | "transcript" | "summary">(null);
   const transcriptText = row.transcript?.transcript?.trim() ?? "";
   const summaryText = row.transcript?.summary?.trim() ?? "";
   const hasAnything = Boolean(transcriptText) || Boolean(summaryText);
 
-  // Copy the full transcript to the clipboard. Brief "Copied" confirmation
-  // via an icon/label swap (no toast dependency in this component).
-  async function copyTranscript() {
-    if (!transcriptText) return;
+  // Copy a block to the clipboard. Brief "Copied" confirmation via an
+  // icon/label swap (no toast dependency in this component).
+  async function copyText(text: string, which: "transcript" | "summary") {
+    if (!text) return;
     try {
-      await navigator.clipboard.writeText(transcriptText);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      await navigator.clipboard.writeText(text);
+      setCopied(which);
+      setTimeout(() => setCopied(null), 1500);
     } catch {
       // Clipboard blocked (permissions / insecure context) - silently no-op.
     }
@@ -280,14 +282,14 @@ function CallRowView({ row }: { row: CallRow }) {
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    void copyTranscript();
+                    void copyText(transcriptText, "transcript");
                   }}
                   className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted transition hover:text-brand-dark"
                   title="Copy transcript"
                   aria-label="Copy transcript"
                 >
-                  {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                  {copied ? "Copied" : "Copy"}
+                  {copied === "transcript" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  {copied === "transcript" ? "Copied" : "Copy"}
                 </button>
               )}
             </div>
@@ -303,8 +305,25 @@ function CallRowView({ row }: { row: CallRow }) {
           {/* Summary — Quo's "Powered by AI" callout, brand-tinted to
               echo the in-app Claude-output styling. */}
           <div className="rounded-lg border border-brand/20 bg-brand-tint/20 px-3 py-2 text-xs text-court-fg">
-            <div className="mb-1 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-brand-dark">
-              <Sparkles className="h-2.5 w-2.5" /> Summary
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <div className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-brand-dark">
+                <Sparkles className="h-2.5 w-2.5" /> Summary
+              </div>
+              {summaryText && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void copyText(summaryText, "summary");
+                  }}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted transition hover:text-brand-dark"
+                  title="Copy summary"
+                  aria-label="Copy summary"
+                >
+                  {copied === "summary" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  {copied === "summary" ? "Copied" : "Copy"}
+                </button>
+              )}
             </div>
             {summaryText ? (
               <div className="whitespace-pre-wrap">{summaryText}</div>
