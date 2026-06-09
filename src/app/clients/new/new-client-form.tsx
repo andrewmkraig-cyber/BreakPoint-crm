@@ -50,7 +50,7 @@ const EMPTY: FormState = {
   state: "",
   linkedin: "",
   overview: "",
-  primaryContact: { firstName: "", lastName: "", title: "", email: "", phone: "" },
+  primaryContact: { firstName: "", lastName: "", title: "", email: "", phone: "", linkedin: "" },
 };
 
 export function NewClientForm() {
@@ -413,6 +413,12 @@ export function NewClientForm() {
               label="Phone"
               value={form.primaryContact.phone}
               onChange={(v) => setForm({ ...form, primaryContact: { ...form.primaryContact, phone: v } })}
+            />
+            <Field
+              label="LinkedIn URL"
+              type="url"
+              value={form.primaryContact.linkedin}
+              onChange={(v) => setForm({ ...form, primaryContact: { ...form.primaryContact, linkedin: v } })}
             />
           </div>
 

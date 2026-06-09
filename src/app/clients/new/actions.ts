@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { CLAUDE_MODEL, getClaude } from "@/lib/claude";
 import { findClientByDomain, normalizeDomainKey } from "@/lib/clients";
 import { buildPersonalTrainerBlock } from "@/lib/personal-trainer";
+import { normalizeToE164 } from "@/lib/rf-payload-shapes";
 
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -64,6 +65,7 @@ export type CreateClientPayload = {
     title: string;
     email: string;
     phone: string;
+    linkedin: string;
   };
 };
 
@@ -103,10 +105,11 @@ export async function createClient(payload: CreateClientPayload): Promise<Create
             ...(state ? { state } : {}),
           }
         : undefined;
-    const phone = payload.phone.trim();
+    const phone = normalizeToE164(payload.phone) ?? "";
 
     const pc = payload.primaryContact;
-    const hasContact = (pc.firstName + pc.lastName + pc.email + pc.phone).trim().length > 0;
+    const hasContact = (pc.firstName + pc.lastName + pc.email + pc.phone + pc.linkedin).trim().length > 0;
+    const primaryContactPhone = normalizeToE164(pc.phone) ?? "";
 
     const client = await prisma.client.create({
       data: {
@@ -134,8 +137,9 @@ export async function createClient(payload: CreateClientPayload): Promise<Create
           lastName: last || null,
           name: [first, last].filter(Boolean).join(" "),
           emails: pc.email.trim() ? [pc.email.trim()] : [],
-          phoneNumbers: pc.phone.trim() ? [{ number: pc.phone.trim() }] : undefined,
+          phoneNumbers: primaryContactPhone ? [{ number: primaryContactPhone }] : undefined,
           currentDesignation: pc.title.trim() || null,
+          linkedinProfile: pc.linkedin.trim() || null,
           clientId: client.id,
           organizationId: org.id,
           addedAt: new Date(),
