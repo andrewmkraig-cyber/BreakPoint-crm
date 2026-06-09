@@ -450,8 +450,14 @@ model Candidate {
 
   firstName           String
   lastName            String?
+  // Primary email stays unique across candidates (dedup + Apollo/mail match
+  // key). Additional emails/phones are extra contact info only and are NOT
+  // uniqueness-checked - see updateCandidate, which splits a multi-row edit
+  // into the primary (index 0) + these alt arrays.
   email               String?  @unique
   phone               String?
+  altEmails           String[] @default([])
+  altPhones           String[] @default([])
   currentDesignation  String?
   currentOrganization String?
   location            String?

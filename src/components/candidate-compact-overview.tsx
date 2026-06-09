@@ -14,6 +14,7 @@ import {
   Mail,
   Pencil,
   Phone as PhoneIcon,
+  Plus,
   Save,
   X,
 } from "lucide-react";
@@ -39,11 +40,12 @@ export type { CandidateCompactOverviewExpectedSalary };
 // and the candidates split-view embed.
 //
 // Edit model: a single Edit button (matching the client overview card
-// style) flips all editable fields — Title, Employer, Location, Comp —
-// into edit mode at once. Save commits every field together, Cancel
-// discards. Email / Phone / LinkedIn stay read-only; they have
-// dedicated surfaces (EmailPopupLauncher, tel:, sms-composer add-number)
-// elsewhere on the profile.
+// style) flips all editable fields — Title, Employer, Location, Comp,
+// Email(s), Phone(s) — into edit mode at once. Save commits every field
+// together, Cancel discards. Email and Phone are multi-value: the first
+// row is the primary (the unique Candidate.email / Candidate.phone), and
+// any additional rows persist to Candidate.altEmails / altPhones. LinkedIn
+// stays read-only; it has a dedicated surface elsewhere on the profile.
 //
 // highlightTokens is optional. When passed, name + title + employer +
 // location wrap matching substrings in the same TOKEN_COLORS palette
@@ -61,6 +63,8 @@ export function CandidateCompactOverview({
   location,
   email,
   phone,
+  altEmails,
+  altPhones,
   linkedinProfile,
   expectedSalary,
   highlightTokens,
@@ -74,6 +78,8 @@ export function CandidateCompactOverview({
   location: string | null;
   email: string | null;
   phone: string | null;
+  altEmails?: string[];
+  altPhones?: string[];
   linkedinProfile: string | null;
   expectedSalary: CandidateCompactOverviewExpectedSalary | null;
   highlightTokens?: string[];
@@ -86,6 +92,13 @@ export function CandidateCompactOverview({
   const [compSaved, setCompSaved] = useState<CandidateCompactOverviewExpectedSalary | null>(
     expectedSalary,
   );
+  // Full ordered contact lists (index 0 is the primary, unique value).
+  const [emailsSaved, setEmailsSaved] = useState<string[]>(
+    [email ?? "", ...(altEmails ?? [])].map((e) => e.trim()).filter(Boolean),
+  );
+  const [phonesSaved, setPhonesSaved] = useState<string[]>(
+    [phone ?? "", ...(altPhones ?? [])].map((p) => p.trim()).filter(Boolean),
+  );
 
   // Edit mode flips all four fields at once. Drafts seed from the saved
   // values whenever editing flips off (matches the client overview card
@@ -95,6 +108,8 @@ export function CandidateCompactOverview({
   const [employerDraft, setEmployerDraft] = useState(employerSaved);
   const [locationDraft, setLocationDraft] = useState(locationSaved);
   const [compDraft, setCompDraft] = useState<string>(formatCompForEdit(compSaved));
+  const [emailsDraft, setEmailsDraft] = useState<string[]>(emailsSaved);
+  const [phonesDraft, setPhonesDraft] = useState<string[]>(phonesSaved);
   const [isSaving, startSave] = useTransition();
 
   useEffect(() => {
@@ -103,7 +118,9 @@ export function CandidateCompactOverview({
     setEmployerDraft(employerSaved);
     setLocationDraft(locationSaved);
     setCompDraft(formatCompForEdit(compSaved));
-  }, [editing, titleSaved, employerSaved, locationSaved, compSaved]);
+    setEmailsDraft(emailsSaved);
+    setPhonesDraft(phonesSaved);
+  }, [editing, titleSaved, employerSaved, locationSaved, compSaved, emailsSaved, phonesSaved]);
 
   const tokens = useMemo(
     () => (highlightTokens ?? []).filter((t) => t.trim().length > 0),
@@ -116,6 +133,9 @@ export function CandidateCompactOverview({
     setEmployerDraft(employerSaved);
     setLocationDraft(locationSaved);
     setCompDraft(formatCompForEdit(compSaved));
+    // Seed at least one empty row so the recruiter can type straight away.
+    setEmailsDraft(emailsSaved.length ? emailsSaved : [""]);
+    setPhonesDraft(phonesSaved.length ? phonesSaved : [""]);
     setEditing(true);
   }
 
@@ -158,6 +178,21 @@ export function CandidateCompactOverview({
       dirty = true;
     }
 
+    // Email / phone lists: trim + drop blanks. Index 0 is the primary
+    // (unique) value, the rest persist to altEmails / altPhones.
+    const nextEmails = emailsDraft.map((e) => e.trim()).filter(Boolean);
+    const nextPhones = phonesDraft.map((p) => p.trim()).filter(Boolean);
+    if (!sameList(nextEmails, emailsSaved)) {
+      patch.email = nextEmails[0] ?? "";
+      patch.alt_emails = nextEmails.slice(1);
+      dirty = true;
+    }
+    if (!sameList(nextPhones, phonesSaved)) {
+      patch.phone_number = nextPhones[0] ?? "";
+      patch.alt_phones = nextPhones.slice(1);
+      dirty = true;
+    }
+
     if (!dirty) {
       setEditing(false);
       return;
@@ -173,6 +208,8 @@ export function CandidateCompactOverview({
       if (patch.current_organization !== undefined) setEmployerSaved(nextEmployer);
       if (patch.location !== undefined) setLocationSaved(nextLocation);
       if (patch.expected_salary !== undefined) setCompSaved(nextComp);
+      if (patch.email !== undefined) setEmailsSaved(nextEmails);
+      if (patch.phone_number !== undefined) setPhonesSaved(nextPhones);
       setEditing(false);
       // updateCandidate already revalidates the candidate path; refresh
       // pulls the new RSC payload so other surfaces on the page (compact
@@ -236,20 +273,27 @@ export function CandidateCompactOverview({
               className={EDIT_INPUT_CLASS}
             />
           </EditField>
+          <EditField label="Email">
+            <StringListField
+              values={emailsDraft}
+              onChange={setEmailsDraft}
+              type="email"
+              disabled={isSaving}
+              addLabel="Add email"
+              removeLabel="Remove email"
+            />
+          </EditField>
+          <EditField label="Phone">
+            <StringListField
+              values={phonesDraft}
+              onChange={setPhonesDraft}
+              type="tel"
+              disabled={isSaving}
+              addLabel="Add phone"
+              removeLabel="Remove phone"
+            />
+          </EditField>
           <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-            <Field label="Email" wide noTruncate>
-              <ReadEmail
-                email={email}
-                candidateRef={candidateRef}
-                firstName={firstName}
-                lastName={lastName}
-                title={titleSaved}
-                employer={employerSaved}
-              />
-            </Field>
-            <Field label="Phone" wide noTruncate>
-              <ReadPhone phone={phone} />
-            </Field>
             <Field label="LinkedIn" wide>
               <ReadLinkedIn linkedinProfile={linkedinProfile} />
             </Field>
@@ -299,8 +343,8 @@ export function CandidateCompactOverview({
             />
           </Field>
           <Field label="Email" wide noTruncate>
-            <ReadEmail
-              email={email}
+            <ReadEmailList
+              emails={emailsSaved}
               candidateRef={candidateRef}
               firstName={firstName}
               lastName={lastName}
@@ -309,7 +353,7 @@ export function CandidateCompactOverview({
             />
           </Field>
           <Field label="Phone" wide noTruncate>
-            <ReadPhone phone={phone} />
+            <ReadPhoneList phones={phonesSaved} />
           </Field>
           <Field label="Location">
             <ReadText
@@ -343,6 +387,117 @@ function EditField({ label, children }: { label: string; children: ReactNode }) 
       </span>
       <div className="mt-0.5">{children}</div>
     </label>
+  );
+}
+
+// Repeatable string rows (email or phone) with a "+ Add" control. The
+// first row has no remove button and is the primary value.
+function StringListField({
+  values,
+  onChange,
+  type,
+  addLabel,
+  removeLabel,
+  disabled,
+}: {
+  values: string[];
+  onChange: (v: string[]) => void;
+  type: string;
+  addLabel: string;
+  removeLabel: string;
+  disabled?: boolean;
+}) {
+  const rows = values.length ? values : [""];
+  return (
+    <div className="space-y-1.5">
+      {rows.map((v, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <input
+            type={type}
+            value={v}
+            disabled={disabled}
+            onChange={(e) => {
+              const next = [...rows];
+              next[i] = e.target.value;
+              onChange(next);
+            }}
+            className={EDIT_INPUT_CLASS}
+          />
+          {i > 0 && (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(rows.filter((_, j) => j !== i))}
+              className="shrink-0 rounded p-1 text-court-fg-muted transition hover:text-red-600 disabled:opacity-60"
+              aria-label={removeLabel}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      ))}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onChange([...rows, ""])}
+        className="inline-flex items-center gap-1 rounded text-[11px] font-medium text-court-fg-muted transition hover:text-brand-dark disabled:opacity-60"
+      >
+        <Plus className="h-3 w-3" /> {addLabel}
+      </button>
+    </div>
+  );
+}
+
+// True when two cleaned string lists are identical in order and content.
+function sameList(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((v, i) => v === b[i]);
+}
+
+function ReadEmailList({
+  emails,
+  candidateRef,
+  firstName,
+  lastName,
+  title,
+  employer,
+}: {
+  emails: string[];
+  candidateRef: string;
+  firstName: string | null;
+  lastName: string | null;
+  title: string;
+  employer: string;
+}) {
+  if (!emails.length) return <span className="text-court-fg-muted">—</span>;
+  return (
+    <div className="space-y-0.5">
+      {emails.map((em, i) => (
+        <div key={i} className={i === 0 ? undefined : "text-xs"}>
+          <ReadEmail
+            email={em}
+            candidateRef={candidateRef}
+            firstName={firstName}
+            lastName={lastName}
+            title={title}
+            employer={employer}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReadPhoneList({ phones }: { phones: string[] }) {
+  if (!phones.length) return <span className="text-court-fg-muted">—</span>;
+  return (
+    <div className="space-y-0.5">
+      {phones.map((p, i) => (
+        <div key={i} className={i === 0 ? undefined : "text-xs"}>
+          <ReadPhone phone={p} />
+        </div>
+      ))}
+    </div>
   );
 }
 

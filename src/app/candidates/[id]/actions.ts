@@ -36,6 +36,11 @@ export type CandidatePatch = {
   last_name?: string;
   email?: string | string[];
   phone_number?: string | string[];
+  // Additional (non-primary) contact info. The primary email/phone stays on
+  // the email/phone columns above; these hold the extra rows from a
+  // multi-row identity edit. Not uniqueness-checked.
+  alt_emails?: string[];
+  alt_phones?: string[];
   current_designation?: string;
   current_organization?: string;
   linkedin_profile?: string;
@@ -117,6 +122,10 @@ export async function updateCandidate(patch: CandidatePatch): Promise<ActionResu
     if (patch.last_name !== undefined) data.lastName = patch.last_name ?? null;
     if (patch.email !== undefined) data.email = pickFirstString(patch.email);
     if (patch.phone_number !== undefined) data.phone = pickFirstString(patch.phone_number);
+    if (patch.alt_emails !== undefined)
+      data.altEmails = patch.alt_emails.map((e) => e.trim()).filter(Boolean);
+    if (patch.alt_phones !== undefined)
+      data.altPhones = patch.alt_phones.map((p) => p.trim()).filter(Boolean);
     if (patch.current_designation !== undefined)
       data.currentDesignation = patch.current_designation ?? null;
     if (patch.current_organization !== undefined)

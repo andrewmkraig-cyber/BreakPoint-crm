@@ -87,6 +87,8 @@ export async function LocalCandidateProfile({
         lastName: true,
         email: true,
         phone: true,
+        altEmails: true,
+        altPhones: true,
         currentDesignation: true,
         currentOrganization: true,
         location: true,
@@ -917,6 +919,8 @@ export async function LocalCandidateProfile({
               location={candidate.location}
               email={candidate.email}
               phone={candidate.phone}
+              altEmails={candidate.altEmails}
+              altPhones={candidate.altPhones}
               linkedinProfile={candidate.linkedinProfile}
               expectedSalary={toExpectedSalary(candidate.expectedSalary)}
               highlightTokens={highlightTokens}
@@ -1058,6 +1062,8 @@ export async function LocalCandidateProfile({
             location={candidate.location}
             email={candidate.email}
             phone={candidate.phone}
+            altEmails={candidate.altEmails}
+            altPhones={candidate.altPhones}
             linkedinProfile={candidate.linkedinProfile}
             expectedSalary={toExpectedSalary(candidate.expectedSalary)}
           />
