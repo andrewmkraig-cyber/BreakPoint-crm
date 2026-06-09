@@ -3,6 +3,7 @@ import { DEFAULT_BRAND_LOGO_BASE64, DEFAULT_BRAND_LOGO_MIME } from "@/lib/defaul
 import {
   SIGNATURE_ICON_EMAIL_BASE64,
   SIGNATURE_ICON_GLOBE_BASE64,
+  SIGNATURE_ICON_LINKEDIN_BASE64,
   SIGNATURE_ICON_MIME,
   SIGNATURE_ICON_PHONE_BASE64,
 } from "@/lib/signature-icons";
@@ -24,6 +25,12 @@ export const SIGNATURE_GREEN = "#5A9642";
 export const SIGNATURE_DARK = "#1a1a1a";
 export const SIGNATURE_DIVIDER = "#e5e7eb";
 export const MAX_LOGO_BYTES = 500 * 1024;
+
+// Company LinkedIn page, rendered as a fixed bottom row in every
+// signature (same for all BreakPoint users, so it's a constant rather
+// than a per-user profile field). The row text reads "LinkedIn"; the
+// link points here.
+export const LINKEDIN_URL = "https://www.linkedin.com/company/breakpoint-talent";
 
 export type UserProfileInput = {
   fullName: string;
@@ -127,6 +134,10 @@ function globeIcon(): string {
   return pngDataUri(SIGNATURE_ICON_GLOBE_BASE64);
 }
 
+function linkedinIcon(): string {
+  return pngDataUri(SIGNATURE_ICON_LINKEDIN_BASE64);
+}
+
 type ContactRow = {
   iconSrc: string;
   text: string;
@@ -147,6 +158,7 @@ export type SignatureAssetUrls = {
   iconEmail: string;
   iconPhone: string;
   iconGlobe: string;
+  iconLinkedin: string;
   // When provided, replaces the profile's base64-embedded logo.
   // When undefined, the rendered signature still embeds the user's
   // logo as a data: URI (preserves custom-logo support on inbox
@@ -179,6 +191,13 @@ function buildContactRows(p: UserProfileRecord, assetUrls?: SignatureAssetUrls):
       href,
     });
   }
+  // Company LinkedIn — always the bottom row (constant URL, label
+  // reads "LinkedIn" rather than the long /company/ path).
+  rows.push({
+    iconSrc: assetUrls?.iconLinkedin ?? linkedinIcon(),
+    text: "LinkedIn",
+    href: LINKEDIN_URL,
+  });
   return rows;
 }
 
@@ -295,6 +314,7 @@ export function renderSignatureInline(
   const emailCid = `${cidPrefix}-email`;
   const phoneCid = `${cidPrefix}-phone`;
   const globeCid = `${cidPrefix}-globe`;
+  const linkedinCid = `${cidPrefix}-linkedin`;
 
   const hasLogo = profile.logoDataBase64.length > 0;
   if (hasLogo) {
@@ -317,11 +337,15 @@ export function renderSignatureInline(
   if (profile.website) {
     images.push({ cid: globeCid, mimeType: SIGNATURE_ICON_MIME, base64: SIGNATURE_ICON_GLOBE_BASE64, filename: "website.png" });
   }
+  // LinkedIn row always renders (constant company link), so its inline
+  // image is always attached - keeps the cid: refs and parts 1:1.
+  images.push({ cid: linkedinCid, mimeType: SIGNATURE_ICON_MIME, base64: SIGNATURE_ICON_LINKEDIN_BASE64, filename: "linkedin.png" });
 
   const html = renderSignatureHtml(profile, {
     iconEmail: `cid:${emailCid}`,
     iconPhone: `cid:${phoneCid}`,
     iconGlobe: `cid:${globeCid}`,
+    iconLinkedin: `cid:${linkedinCid}`,
     logo: hasLogo ? `cid:${logoCid}` : undefined,
   });
   return { html, images };
@@ -334,6 +358,7 @@ export function renderSignatureText(profile: UserProfileRecord): string {
   if (profile.email) lines.push(profile.email);
   if (profile.phone) lines.push(profile.phone);
   if (profile.website) lines.push(profile.website);
+  lines.push(`LinkedIn: ${LINKEDIN_URL}`);
   return lines.join("\n");
 }
 
