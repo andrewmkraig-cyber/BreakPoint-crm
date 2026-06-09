@@ -69,9 +69,10 @@ export default async function ClientDetailPage({
   const raw = (client.raw ?? null) as RFClient | null;
   const legacyRfId = client.legacyRfId;
 
-  // Agreements / benefits are keyed by the legacy numeric id (Phase 5
-  // drop). Ace-native Clients without a legacyRfId have no agreements
-  // or benefits yet; skip the query rather than fetching with a sentinel.
+  // Agreements / benefits are keyed by the canonical cuid (client.id), so
+  // both RF-imported and Ace-native clients read the same way. (clientId
+  // is backfilled on every existing row; the legacy clientRfId is now
+  // nullable and unused on new uploads.)
   const [contacts, agreements, benefits, benefitsFiles, currentUserId, ownerUser] = await Promise.all([
     legacyRfId != null
       ? prisma.contact.findMany({
@@ -108,46 +109,40 @@ export default async function ClientDetailPage({
             addedAt: true,
           },
         }),
-    legacyRfId != null
-      ? prisma.clientAgreement.findMany({
-          where: { clientRfId: legacyRfId, uploadComplete: true },
-          orderBy: { uploadedAt: "desc" },
-          select: {
-            id: true,
-            filename: true,
-            mimeType: true,
-            size: true,
-            uploadedAt: true,
-            summary: true,
-            summaryUpdatedAt: true,
-            uploadedBy: { select: { name: true, email: true } },
-          },
-        })
-      : Promise.resolve([] as Array<never>),
-    legacyRfId != null
-      ? prisma.clientBenefits.findUnique({
-          where: { clientRfId: legacyRfId },
-          select: {
-            body: true,
-            updatedAt: true,
-            updatedBy: { select: { name: true, email: true } },
-          },
-        })
-      : Promise.resolve(null),
-    legacyRfId != null
-      ? prisma.clientBenefitsFile.findMany({
-          where: { clientRfId: legacyRfId, uploadComplete: true },
-          orderBy: { uploadedAt: "desc" },
-          select: {
-            id: true,
-            filename: true,
-            mimeType: true,
-            size: true,
-            uploadedAt: true,
-            uploadedBy: { select: { name: true, email: true } },
-          },
-        })
-      : Promise.resolve([] as Array<never>),
+    prisma.clientAgreement.findMany({
+      where: { clientId: client.id, uploadComplete: true },
+      orderBy: { uploadedAt: "desc" },
+      select: {
+        id: true,
+        filename: true,
+        mimeType: true,
+        size: true,
+        uploadedAt: true,
+        summary: true,
+        summaryUpdatedAt: true,
+        uploadedBy: { select: { name: true, email: true } },
+      },
+    }),
+    prisma.clientBenefits.findUnique({
+      where: { clientId: client.id },
+      select: {
+        body: true,
+        updatedAt: true,
+        updatedBy: { select: { name: true, email: true } },
+      },
+    }),
+    prisma.clientBenefitsFile.findMany({
+      where: { clientId: client.id, uploadComplete: true },
+      orderBy: { uploadedAt: "desc" },
+      select: {
+        id: true,
+        filename: true,
+        mimeType: true,
+        size: true,
+        uploadedAt: true,
+        uploadedBy: { select: { name: true, email: true } },
+      },
+    }),
     getCurrentUserId(),
     client.ownerId
       ? prisma.user.findUnique({ where: { id: client.ownerId }, select: { name: true } })
@@ -589,11 +584,10 @@ export default async function ClientDetailPage({
         />
       ) : tab === "agreements" ? (
         // Tab renders for every client. Upload + DB rows are still keyed
-        // by legacyRfId (clientRfId column), so an Ace-native client with
-        // no legacyRfId gets the empty-state list and the upload card is
-        // suppressed inside AgreementsTab. RF clients keep full behavior.
+        // Keyed by the canonical cuid (client.id) so every client - RF or
+        // Ace-native - can upload and see agreements.
         <AgreementsTab
-          clientId={legacyRfId}
+          clientId={client.id}
           canWrite={canWrite}
           items={agreements.map((a) => ({
             id: a.id,
@@ -607,11 +601,9 @@ export default async function ClientDetailPage({
           }))}
         />
       ) : tab === "benefits" ? (
-        // Same pattern as Agreements: tab visible for everyone; the
-        // upload + save UI inside BenefitsTab disables itself when there
-        // is no legacyRfId to key clientRfId-scoped rows against.
+        // Keyed by the canonical cuid (client.id), same as Agreements.
         <BenefitsTab
-          clientId={legacyRfId}
+          clientId={client.id}
           canWrite={canWrite}
           initial={{
             body: benefits?.body ?? "",

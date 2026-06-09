@@ -38,11 +38,10 @@ export function BenefitsTab({
   files,
   canWrite = true,
 }: {
-  // null = Ace-native client with no legacyRfId. clientBenefits +
-  // clientBenefitsFile are still keyed by clientRfId, so uploads / saves
-  // have nothing to write against; the inner component degrades to a
-  // read-only "no benefits yet" surface in that case.
-  clientId: number | null;
+  // The client's canonical cuid. Uploads / saves / summaries key on this
+  // (ClientBenefits.clientId, ClientBenefitsFile.clientId). null only as a
+  // defensive guard; every real client has a cuid.
+  clientId: string | null;
   initial: BenefitsState;
   files: BenefitsFile[];
   // When false (client you don't own) uploads, deletes, the Generate
@@ -63,7 +62,7 @@ function BenefitsTabInner({
   files,
   canWrite,
 }: {
-  clientId: number | null;
+  clientId: string | null;
   initial: BenefitsState;
   files: BenefitsFile[];
   canWrite: boolean;

@@ -225,9 +225,10 @@ export async function summarizeAgreement(agreementId: string): Promise<Summarize
   const user = await requireUserId();
   if (!user) return { ok: false, error: "Not signed in." };
 
-  const agreement = await prisma.clientAgreement.findUnique({
-    where: { id: agreementId },
-    select: { clientRfId: true, filename: true, mimeType: true, data: true },
+  const org = await getCurrentOrg();
+  const agreement = await prisma.clientAgreement.findFirst({
+    where: { id: agreementId, organizationId: org.id },
+    select: { clientId: true, filename: true, mimeType: true, data: true },
   });
   if (!agreement) return { ok: false, error: "Agreement not found." };
 
@@ -242,7 +243,7 @@ export async function summarizeAgreement(agreementId: string): Promise<Summarize
       where: { id: agreementId },
       data: { summary, summaryUpdatedAt: now },
     });
-    revalidatePath(`/clients/${agreement.clientRfId}`);
+    if (agreement.clientId) revalidatePath(`/clients/${agreement.clientId}`);
     return { ok: true, value: { summary, summaryUpdatedAt: now.toISOString() } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Claude summarization failed" };
@@ -252,10 +253,14 @@ export async function summarizeAgreement(agreementId: string): Promise<Summarize
 export async function deleteAgreement(agreementId: string): Promise<ActionResult> {
   const user = await requireUserId();
   if (!user) return { ok: false, error: "Not signed in." };
-  const existing = await prisma.clientAgreement.findUnique({ where: { id: agreementId }, select: { clientRfId: true } });
+  const org = await getCurrentOrg();
+  const existing = await prisma.clientAgreement.findFirst({
+    where: { id: agreementId, organizationId: org.id },
+    select: { clientId: true },
+  });
   if (!existing) return { ok: false, error: "Agreement not found." };
   await prisma.clientAgreement.delete({ where: { id: agreementId } });
-  revalidatePath(`/clients/${existing.clientRfId}`);
+  if (existing.clientId) revalidatePath(`/clients/${existing.clientId}`);
   return { ok: true };
 }
 
@@ -263,16 +268,24 @@ export async function deleteAgreement(agreementId: string): Promise<ActionResult
 
 export type SaveBenefitsResult = ActionResult<{ updatedAt: string }>;
 
-export async function saveBenefits(clientId: number, body: string): Promise<SaveBenefitsResult> {
+export async function saveBenefits(clientId: string, body: string): Promise<SaveBenefitsResult> {
   const user = await requireUserId();
   if (!user) return { ok: false, error: "Not signed in." };
+  if (!clientId) return { ok: false, error: "Missing client id." };
 
   const org = await getCurrentOrg();
+  // Confirm the client is in the caller's org before keying the upsert on it.
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, organizationId: org.id },
+    select: { id: true },
+  });
+  if (!client) return { ok: false, error: "Client not found." };
+
   const trimmed = body.slice(0, 64_000);
   const row = await prisma.clientBenefits.upsert({
-    where: { clientRfId: clientId },
+    where: { clientId },
     update: { body: trimmed, updatedById: user.id },
-    create: { clientRfId: clientId, body: trimmed, updatedById: user.id, organizationId: org.id },
+    create: { clientId, body: trimmed, updatedById: user.id, organizationId: org.id },
     select: { updatedAt: true },
   });
 
@@ -287,9 +300,10 @@ export async function saveBenefits(clientId: number, body: string): Promise<Save
 export async function deleteBenefitsFile(fileId: string): Promise<ActionResult> {
   const user = await requireUserId();
   if (!user) return { ok: false, error: "Not signed in." };
-  const existing = await prisma.clientBenefitsFile.findUnique({
-    where: { id: fileId },
-    select: { clientRfId: true, blobUrl: true },
+  const org = await getCurrentOrg();
+  const existing = await prisma.clientBenefitsFile.findFirst({
+    where: { id: fileId, organizationId: org.id },
+    select: { clientId: true, blobUrl: true },
   });
   if (!existing) return { ok: false, error: "File not found." };
   if (existing.blobUrl) {
@@ -301,7 +315,7 @@ export async function deleteBenefitsFile(fileId: string): Promise<ActionResult> 
     }
   }
   await prisma.clientBenefitsFile.delete({ where: { id: fileId } });
-  revalidatePath(`/clients/${existing.clientRfId}`);
+  if (existing.clientId) revalidatePath(`/clients/${existing.clientId}`);
   return { ok: true };
 }
 
@@ -310,14 +324,16 @@ export async function deleteBenefitsFile(fileId: string): Promise<ActionResult> 
 export type SummarizeBenefitsResult = ActionResult<{ summary: string }>;
 
 export async function summarizeBenefitsWithAI(
-  clientId: number,
+  clientId: string,
   pastedText: string,
 ): Promise<SummarizeBenefitsResult> {
   const user = await requireUserId();
   if (!user) return { ok: false, error: "Not signed in." };
+  if (!clientId) return { ok: false, error: "Missing client id." };
 
+  const org = await getCurrentOrg();
   const files = await prisma.clientBenefitsFile.findMany({
-    where: { clientRfId: clientId },
+    where: { clientId, organizationId: org.id },
     orderBy: { uploadedAt: "asc" },
     select: { filename: true, mimeType: true, data: true, blobUrl: true },
   });

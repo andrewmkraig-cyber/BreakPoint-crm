@@ -246,8 +246,8 @@ model ActionLog {
 // separate object-store dependency. Can swap to Vercel Blob later if volume grows.
 model ClientAgreement {
   id               String    @id @default(cuid())
-  clientRfId       Int // RecruiterFlow client/company id (Phase 5: drop)
-  clientId         String? // cuid FK to Client — backfilled in Phase 0
+  clientRfId       Int? // Legacy RecruiterFlow id; null on Ace-native uploads (cuid is canonical)
+  clientId         String? // cuid FK to Client — canonical key; backfilled in Phase 0
   filename         String
   mimeType         String
   size             Int
@@ -274,7 +274,7 @@ model ClientAgreement {
 // preserved; we can upgrade to markdown/rich text later without a schema change.
 model ClientBenefits {
   id             String   @id @default(cuid())
-  clientRfId     Int      @unique
+  clientRfId     Int?     @unique
   clientId       String?  @unique
   body           String   @db.Text
   updatedById    String
@@ -294,7 +294,7 @@ model ClientBenefits {
 // legacy rows uploaded before the Blob cutover and is not written for new rows.
 model ClientBenefitsFile {
   id             String   @id @default(cuid())
-  clientRfId     Int
+  clientRfId     Int?
   clientId       String?
   filename       String
   mimeType       String

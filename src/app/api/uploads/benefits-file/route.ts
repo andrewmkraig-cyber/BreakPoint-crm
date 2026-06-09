@@ -14,18 +14,26 @@ const ALLOWED = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
 
-export const POST = createChunkedUploadHandler<{ clientRfId: number }>({
+export const POST = createChunkedUploadHandler<{ clientId: string }>({
   allowedMime: ALLOWED,
   parseExtra: (body) => {
-    const id = Number((body as { clientId?: number | string }).clientId);
-    if (!Number.isFinite(id)) throw new Error("clientId missing or invalid");
-    return { clientRfId: id };
+    const clientId = (body as { clientId?: number | string }).clientId;
+    if (typeof clientId !== "string" || !clientId.trim()) {
+      throw new Error("clientId missing or invalid");
+    }
+    return { clientId: clientId.trim() };
   },
   createFirstRow: async ({ userId, filename, mimeType, size, firstChunk, isLast, extra }) => {
     const org = await getCurrentOrg();
+    // Scope the target client to the caller's org (Rule 8) before writing.
+    const client = await prisma.client.findFirst({
+      where: { id: extra.clientId, organizationId: org.id },
+      select: { id: true },
+    });
+    if (!client) throw new Error("Client not found");
     const row = await prisma.clientBenefitsFile.create({
       data: {
-        clientRfId: extra.clientRfId,
+        clientId: client.id,
         filename,
         mimeType,
         size,
@@ -36,13 +44,13 @@ export const POST = createChunkedUploadHandler<{ clientRfId: number }>({
       },
       select: { id: true, data: true },
     });
-    if (isLast) revalidatePath(`/clients/${extra.clientRfId}`);
+    if (isLast) revalidatePath(`/clients/${client.id}`);
     return { id: row.id, totalBytesStored: row.data?.byteLength ?? 0 };
   },
   appendChunk: async ({ userId, id, chunk, isLast }) => {
     const existing = await prisma.clientBenefitsFile.findUnique({
       where: { id },
-      select: { data: true, uploadedById: true, clientRfId: true },
+      select: { data: true, uploadedById: true, clientId: true },
     });
     if (!existing) throw new Error("Upload session not found");
     if (existing.uploadedById !== userId) throw new Error("Not your upload");
@@ -52,7 +60,7 @@ export const POST = createChunkedUploadHandler<{ clientRfId: number }>({
       where: { id },
       data: { data: new Uint8Array(combined), uploadComplete: isLast },
     });
-    if (isLast) revalidatePath(`/clients/${existing.clientRfId}`);
+    if (isLast && existing.clientId) revalidatePath(`/clients/${existing.clientId}`);
     return { totalBytesStored: combined.byteLength };
   },
 });

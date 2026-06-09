@@ -36,11 +36,10 @@ export function AgreementsTab({
   items,
   canWrite = true,
 }: {
-  // null = Ace-native client with no legacyRfId. The clientAgreement table
-  // is still keyed by clientRfId (numeric), so uploads have nothing to
-  // write to until that column is widened. Suppress the upload card in
-  // that case rather than letting it POST clientId=null to /api/uploads.
-  clientId: number | null;
+  // The client's canonical cuid. Uploads POST this to /api/uploads/agreement,
+  // which writes the ClientAgreement.clientId column. null only as a defensive
+  // guard (suppresses the upload card); every real client has a cuid.
+  clientId: string | null;
   items: AgreementRow[];
   // When false (client you don't own) the upload card plus the per-item
   // summarize and delete buttons are hidden. Files stay downloadable.
