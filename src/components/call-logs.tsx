@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Check,
   ChevronDown,
+  Copy,
   ExternalLink,
   Loader2,
   Phone,
@@ -173,9 +175,23 @@ function CallRowView({ row }: { row: CallRow }) {
   // Empty-string transcripts (out-of-order summary-first arrival) read
   // as "not yet available" until the transcript event lands.
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
   const transcriptText = row.transcript?.transcript?.trim() ?? "";
   const summaryText = row.transcript?.summary?.trim() ?? "";
   const hasAnything = Boolean(transcriptText) || Boolean(summaryText);
+
+  // Copy the full transcript to the clipboard. Brief "Copied" confirmation
+  // via an icon/label swap (no toast dependency in this component).
+  async function copyTranscript() {
+    if (!transcriptText) return;
+    try {
+      await navigator.clipboard.writeText(transcriptText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard blocked (permissions / insecure context) - silently no-op.
+    }
+  }
 
   return (
     <li className="flex flex-col py-3 text-sm">
@@ -216,7 +232,7 @@ function CallRowView({ row }: { row: CallRow }) {
                 <span className="text-xs text-court-fg-muted">· {counterpartNumber}</span>
               )}
               {hasAnything && (
-                <span className="rounded-full bg-brand-tint px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-brand-dark">
+                <span className="rounded-full bg-brand-tint px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-brand-dark dark:bg-emerald-950/40 dark:text-emerald-200">
                   Transcript
                 </span>
               )}
@@ -255,8 +271,25 @@ function CallRowView({ row }: { row: CallRow }) {
               "0:00 Speaker: text"). whitespace-pre-wrap preserves the
               line breaks Quo bakes in. */}
           <div className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-xs text-court-fg">
-            <div className="mb-1 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
-              <Phone className="h-2.5 w-2.5" /> Transcript
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <div className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                <Phone className="h-2.5 w-2.5" /> Transcript
+              </div>
+              {transcriptText && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void copyTranscript();
+                  }}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted transition hover:text-brand-dark"
+                  title="Copy transcript"
+                  aria-label="Copy transcript"
+                >
+                  {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              )}
             </div>
             {transcriptText ? (
               <div className="whitespace-pre-wrap">{transcriptText}</div>
@@ -393,11 +426,11 @@ function TranscriptModal({
 function StatusPill({ status }: { status: string }) {
   const tone =
     status === "completed"
-      ? "bg-emerald-50 text-emerald-700"
+      ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200"
       : status === "failed" || status === "missed"
-        ? "bg-red-50 text-red-700"
+        ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-200"
         : status === "initiated" || status === "in_progress"
-          ? "bg-amber-50 text-amber-700"
+          ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
           : "bg-court-surface-subtle text-court-fg-muted";
   return (
     <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider", tone)}>
