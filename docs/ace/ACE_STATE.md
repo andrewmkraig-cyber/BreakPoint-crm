@@ -189,7 +189,7 @@ A 16-item fix batch (numbered items across nine prompt batches) plus four same-s
 
 **Batch 6 - invoice email sign-off de-dupe (`eeac797`)**
 - Removed the hardcoded `Best,<br />${signer}` line from the invoice email body literal in `invoice-detail.tsx` `handleEmailDraft`, so the single branded sign-off comes from `withSignature` at true send only (the 78.0 send-time rule + 70.0 de-dupe stay intact).
-- **STILL OPEN (carried forward):** the Settings "Invoice Email" template still does NOT drive the populated body (the body is a hardcoded literal) - the Path-B template-wiring item, ACE_STATE.md:565.
+- ~~**STILL OPEN (carried forward):** the Settings "Invoice Email" template still does NOT drive the populated body~~ - RESOLVED Ace 89.0. `handleEmailDraft` now loads the active `confirmed_start_invoice` template (via `loadTriggeredTemplate` in `invoices/[id]/page.tsx`) and resolves it through the shared `applyMergeFields` machinery client-side at click time, with the hardcoded literal as fallback when no active template exists. New `[Invoice Number]` / `[Fee Amount]` / `[Invoice Due Date]` merge tokens added. Recipients + the PDF start-date formatter unchanged. See ACE_ROADMAP.md ▸ Path-B (DONE Ace 89.0).
 
 **Batch 7 - offer/placement note fanout (`6fe7313`)**
 - Added nullable indexed **`Note.sourcePlacementId`**. `recordLocalOffer` + `recordLocalPlacement` now upsert ONE shared Note keyed by (`sourcePlacementId`, `createdById`, org) attached to candidate + client + job (cuids only); blank notes skipped, failure-isolated (a note error never rolls back the deal), author-scoped like every other note.
