@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { linkedinUrlFrom, normalizeToE164 } from "@/lib/rf-payload-shapes";
+import { backfillClientGmailThreadTags } from "@/lib/gmail";
 import {
   summarizeAgreementTerms as summarizeAgreementTermsWithClaude,
   summarizeBenefits as summarizeBenefitsWithClaude,
@@ -81,6 +82,14 @@ export async function addContact(clientCuid: string, formData: FormData): Promis
         addedAt: new Date(),
       },
       select: { id: true },
+    });
+    await backfillClientGmailThreadTags({
+      userId: user.id,
+      organizationId: org.id,
+      clientId: client.id,
+      addresses: emails,
+    }).catch((err) => {
+      console.warn("[addContact] Gmail backfill failed", err);
     });
     const urlSlug = client.legacyRfId != null ? String(client.legacyRfId) : client.id;
     revalidatePath(`/clients/${urlSlug}`);
@@ -198,6 +207,16 @@ export async function updateContact(input: UpdateContactInput): Promise<UpdateCo
     const emailsOut = Array.isArray(updated.emails)
       ? updated.emails.filter((e): e is string => typeof e === "string" && e.trim().length > 0)
       : [];
+    if (existing.client) {
+      await backfillClientGmailThreadTags({
+        userId: user.id,
+        organizationId: org.id,
+        clientId: existing.client.id,
+        addresses: emailsOut,
+      }).catch((err) => {
+        console.warn("[updateContact] Gmail backfill failed", err);
+      });
+    }
 
     return {
       ok: true,
@@ -399,7 +418,7 @@ export async function updateClientCompany(input: UpdateClientInput): Promise<Act
     const org = await getCurrentOrg();
     const existing = await prisma.client.findFirst({
       where: { id: input.clientCuid, organizationId: org.id },
-      select: { id: true, legacyRfId: true },
+      select: { id: true, legacyRfId: true, contacts: { select: { emails: true } } },
     });
     if (!existing) return { ok: false, error: "Client not found." };
 
@@ -434,6 +453,15 @@ export async function updateClientCompany(input: UpdateClientInput): Promise<Act
         feePct: feePctValue != null && !Number.isNaN(feePctValue) ? feePctValue : null,
         feeBillingContact: input.feeBillingContact.trim() || null,
       },
+    });
+    await backfillClientGmailThreadTags({
+      userId: user.id,
+      organizationId: org.id,
+      clientId: existing.id,
+      addresses: existing.contacts.flatMap((c) => c.emails),
+      domains: [domain],
+    }).catch((err) => {
+      console.warn("[updateClientCompany] Gmail backfill failed", err);
     });
 
     const slug = existing.legacyRfId != null ? String(existing.legacyRfId) : existing.id;

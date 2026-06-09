@@ -7,6 +7,7 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { linkedinUrlFrom, normalizeToE164 } from "@/lib/rf-payload-shapes";
+import { backfillClientGmailThreadTags } from "@/lib/gmail";
 
 // Quick-add contact used by the Schedule Interview dialog's "+ Add new
 // contact" option. Phase 5: contacts are Neon-native now — write goes
@@ -112,6 +113,14 @@ export async function createClientContact(
           email: email || null,
           title: title,
         },
+      });
+      await backfillClientGmailThreadTags({
+        userId: user.id,
+        organizationId: org.id,
+        clientId: client.id,
+        addresses: email ? [email] : [],
+      }).catch((err) => {
+        console.warn("[createClientContact] Gmail backfill failed", err);
       });
     }
 

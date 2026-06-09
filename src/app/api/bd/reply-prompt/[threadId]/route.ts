@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { fetchApolloContacts } from "@/lib/bd/apollo-contacts";
 import { findClientByDomain } from "@/lib/clients";
+import { backfillClientGmailThreadTags } from "@/lib/gmail";
 import {
   type BdReplyPromptState,
   dismissThreadPrompt,
@@ -113,6 +114,11 @@ export async function POST(
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email },
+    select: { id: true },
+  });
+  if (!user) return NextResponse.json({ error: "Unknown user" }, { status: 401 });
   const org = await getCurrentOrg();
   const body = (await req.json().catch(() => null)) as PostBody | null;
   if (!body) return NextResponse.json({ error: "Bad request" }, { status: 400 });
@@ -230,6 +236,15 @@ export async function POST(
         organizationId: org.id,
       },
       update: {},
+    });
+    await backfillClientGmailThreadTags({
+      userId: user.id,
+      organizationId: org.id,
+      clientId: client.id,
+      addresses: contactsToCreate.flatMap((c) => c.emails),
+      domains: [normDomain ?? ""],
+    }).catch((err) => {
+      console.warn("[bd/reply-prompt] Gmail backfill failed", err);
     });
 
     await dismissThreadPrompt({

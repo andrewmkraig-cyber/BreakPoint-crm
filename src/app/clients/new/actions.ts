@@ -11,6 +11,7 @@ import { CLAUDE_MODEL, getClaude } from "@/lib/claude";
 import { findClientByDomain, normalizeDomainKey } from "@/lib/clients";
 import { buildPersonalTrainerBlock } from "@/lib/personal-trainer";
 import { normalizeToE164 } from "@/lib/rf-payload-shapes";
+import { backfillClientGmailThreadTags } from "@/lib/gmail";
 
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -147,6 +148,17 @@ export async function createClient(payload: CreateClientPayload): Promise<Create
         select: { id: true },
       });
       primaryContactId = contact.id;
+    }
+    if (ownerId) {
+      await backfillClientGmailThreadTags({
+        userId: ownerId,
+        organizationId: org.id,
+        clientId: client.id,
+        addresses: pc.email.trim() ? [pc.email.trim()] : [],
+        domains: [domain ?? ""],
+      }).catch((err) => {
+        console.warn("[createClient] Gmail backfill failed", err);
+      });
     }
 
     const slug = client.legacyRfId != null ? String(client.legacyRfId) : client.id;

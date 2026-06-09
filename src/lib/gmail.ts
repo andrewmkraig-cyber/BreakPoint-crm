@@ -1476,6 +1476,150 @@ export async function tagThreadByAddresses({
   await Promise.all(upserts);
 }
 
+function normalizeGmailBackfillDomain(raw: string | null | undefined): string | null {
+  const trimmed = (raw ?? "").trim().toLowerCase();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
+    return url.hostname.replace(/^www\./, "") || null;
+  } catch {
+    return trimmed
+      .replace(/^https?:\/\//, "")
+      .replace(/^www\./, "")
+      .replace(/\/.*$/, "")
+      .trim() || null;
+  }
+}
+
+function gmailQueryTerm(value: string): string {
+  return `"${value.replace(/["\\]/g, " ").trim()}"`;
+}
+
+function emailDomain(email: string): string | null {
+  const domain = email.split("@")[1]?.trim().toLowerCase();
+  return domain || null;
+}
+
+async function listThreadIdsForGmailQuery(
+  accessToken: string,
+  q: string,
+  maxResults: number,
+): Promise<string[]> {
+  const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+  url.searchParams.set("q", q);
+  url.searchParams.set("maxResults", String(maxResults));
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  if (!res.ok) return [];
+  const json = (await res.json()) as {
+    messages?: Array<{ id?: string; threadId?: string }>;
+  };
+  return (json.messages ?? [])
+    .map((m) => m.threadId)
+    .filter((id): id is string => Boolean(id));
+}
+
+async function threadParticipantEmails(
+  accessToken: string,
+  threadId: string,
+): Promise<string[]> {
+  const url = new URL(
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}`,
+  );
+  url.searchParams.set("format", "metadata");
+  for (const h of ["From", "To", "Cc", "Bcc"]) {
+    url.searchParams.append("metadataHeaders", h);
+  }
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  if (!res.ok) return [];
+  const json = (await res.json()) as GmailThreadResponse;
+  const emails = new Set<string>();
+  for (const message of json.messages ?? []) {
+    for (const header of message.payload?.headers ?? []) {
+      if (!["from", "to", "cc", "bcc"].includes(header.name.toLowerCase())) continue;
+      for (const email of extractEmailsFromHeader(header.value)) emails.add(email);
+    }
+  }
+  return Array.from(emails);
+}
+
+// Retroactively links older Gmail threads to a newly created/updated client.
+// Gmail search can match body text too, so every candidate thread is verified
+// against participant headers before we write a GmailThreadTag.
+export async function backfillClientGmailThreadTags({
+  userId,
+  organizationId,
+  clientId,
+  addresses,
+  domains = [],
+  maxThreads = 25,
+}: {
+  userId: string;
+  organizationId: string;
+  clientId: string;
+  addresses: string[];
+  domains?: string[];
+  maxThreads?: number;
+}): Promise<{ tagged: number; considered: number }> {
+  const emails = Array.from(
+    new Set(addresses.map((a) => a.toLowerCase().trim()).filter(Boolean)),
+  );
+  const domainSet = new Set<string>();
+  for (const email of emails) {
+    const domain = emailDomain(email);
+    if (domain) domainSet.add(domain);
+  }
+  for (const raw of domains) {
+    const domain = normalizeGmailBackfillDomain(raw);
+    if (domain) domainSet.add(domain);
+  }
+  const domainList = Array.from(domainSet);
+  if (emails.length === 0 && domainList.length === 0) {
+    return { tagged: 0, considered: 0 };
+  }
+
+  const accessToken = await getFreshAccessToken(userId);
+  const queries = [
+    ...emails.slice(0, 12).map(gmailQueryTerm),
+    ...domainList.slice(0, 4).map(gmailQueryTerm),
+  ];
+  const threadIds = new Set<string>();
+  for (const q of queries) {
+    const ids = await listThreadIdsForGmailQuery(accessToken, q, Math.min(maxThreads, 10));
+    for (const id of ids) {
+      threadIds.add(id);
+      if (threadIds.size >= maxThreads) break;
+    }
+    if (threadIds.size >= maxThreads) break;
+  }
+
+  let tagged = 0;
+  for (const threadId of Array.from(threadIds)) {
+    const participants = await threadParticipantEmails(accessToken, threadId);
+    const matches = participants.some((participant) => {
+      if (emails.includes(participant)) return true;
+      const domain = emailDomain(participant);
+      return Boolean(
+        domain &&
+          domainList.some((target) => domain === target || domain.endsWith(`.${target}`)),
+      );
+    });
+    if (!matches) continue;
+    await prisma.gmailThreadTag.upsert({
+      where: { threadId_clientId: { threadId, clientId } },
+      create: { threadId, clientId, organizationId },
+      update: {},
+    });
+    tagged += 1;
+  }
+  return { tagged, considered: threadIds.size };
+}
+
 // Game Plan Phase 3 — fetches the last message of each tagged Gmail
 // thread (up to 5) and returns a compact { subject, from, snippet }
 // summary for injection into the ai-workspace system prompt. Caller

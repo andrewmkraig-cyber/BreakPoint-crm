@@ -3,7 +3,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
-import { getFreshAccessToken, listTaggedThreadSummaries } from "@/lib/gmail";
+import {
+  backfillClientGmailThreadTags,
+  getFreshAccessToken,
+  listTaggedThreadSummaries,
+} from "@/lib/gmail";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +32,37 @@ export async function GET(
   }
   const org = await getCurrentOrg();
 
-  const tags = await prisma.gmailThreadTag.findMany({
-    where: { organizationId: org.id, clientId: params.id },
-    orderBy: { createdAt: "desc" },
-    select: { threadId: true, createdAt: true },
-  });
+  const loadTags = () =>
+    prisma.gmailThreadTag.findMany({
+      where: { organizationId: org.id, clientId: params.id },
+      orderBy: { createdAt: "desc" },
+      select: { threadId: true, createdAt: true },
+    });
+  let tags = await loadTags();
+  if (tags.length === 0) {
+    try {
+      const client = await prisma.client.findFirst({
+        where: { id: params.id, organizationId: org.id },
+        select: {
+          id: true,
+          domain: true,
+          contacts: { select: { emails: true } },
+        },
+      });
+      if (client) {
+        await backfillClientGmailThreadTags({
+          userId: user.id,
+          organizationId: org.id,
+          clientId: client.id,
+          addresses: client.contacts.flatMap((c) => c.emails),
+          domains: [client.domain ?? ""],
+        });
+        tags = await loadTags();
+      }
+    } catch (err) {
+      console.warn("[clients/email-threads] Gmail backfill failed", err);
+    }
+  }
   // Dedupe by threadId — keep the first occurrence (most recent
   // createdAt thanks to the orderBy above). A thread tagged through
   // two contacts at the same client should render once.
