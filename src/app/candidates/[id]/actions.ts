@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { Prisma } from "@prisma/client";
-import { linkedinUrlFrom } from "@/lib/rf-payload-shapes";
+import { linkedinUrlFrom, normalizeToE164 } from "@/lib/rf-payload-shapes";
 
 import { del } from "@vercel/blob";
 import { authOptions } from "@/lib/auth";
@@ -121,11 +121,13 @@ export async function updateCandidate(patch: CandidatePatch): Promise<ActionResu
     if (patch.first_name !== undefined) data.firstName = patch.first_name;
     if (patch.last_name !== undefined) data.lastName = patch.last_name ?? null;
     if (patch.email !== undefined) data.email = pickFirstString(patch.email);
-    if (patch.phone_number !== undefined) data.phone = pickFirstString(patch.phone_number);
+    if (patch.phone_number !== undefined) data.phone = normalizeToE164(pickFirstString(patch.phone_number));
     if (patch.alt_emails !== undefined)
       data.altEmails = patch.alt_emails.map((e) => e.trim()).filter(Boolean);
     if (patch.alt_phones !== undefined)
-      data.altPhones = patch.alt_phones.map((p) => p.trim()).filter(Boolean);
+      data.altPhones = patch.alt_phones
+        .map((p) => normalizeToE164(p) ?? "")
+        .filter(Boolean);
     if (patch.current_designation !== undefined)
       data.currentDesignation = patch.current_designation ?? null;
     if (patch.current_organization !== undefined)

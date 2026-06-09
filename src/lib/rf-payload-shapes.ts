@@ -555,8 +555,8 @@ export function normalizeToE164(raw: string | null | undefined): string | null {
   if (raw == null) return null;
   const trimmed = String(raw).trim();
   if (!trimmed) return null;
-  if (trimmed.startsWith("+")) return trimmed;
   const digits = trimmed.replace(/\D/g, "");
+  if (trimmed.startsWith("+")) return digits ? `+${digits}` : trimmed;
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
   return trimmed;

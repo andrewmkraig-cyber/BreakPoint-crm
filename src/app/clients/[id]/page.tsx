@@ -7,6 +7,7 @@ import { ClaimClientButton } from "@/app/clients/[id]/claim-client-button";
 import {
   canonicalStage,
   emptyJobCounts,
+  normalizeToE164,
   type JobPipelineCounts,
   type RFClient,
 } from "@/lib/rf-payload-shapes";
@@ -803,10 +804,10 @@ function JobCountPill({
 function firstPhone(raw: unknown): string {
   if (!Array.isArray(raw) || raw.length === 0) return "";
   const first = raw[0];
-  if (typeof first === "string") return first;
+  if (typeof first === "string") return normalizeToE164(first) ?? "";
   if (first && typeof first === "object" && "number" in (first as object)) {
     const n = (first as { number?: string }).number;
-    return typeof n === "string" ? n : "";
+    return typeof n === "string" ? normalizeToE164(n) ?? "" : "";
   }
   return "";
 }
@@ -829,14 +830,17 @@ function allPhones(raw: unknown): { number: string; extension: string }[] {
   const out: { number: string; extension: string }[] = [];
   for (const entry of raw) {
     if (typeof entry === "string") {
-      if (entry.trim()) out.push({ number: entry, extension: "" });
+      const number = normalizeToE164(entry);
+      if (number) out.push({ number, extension: "" });
       continue;
     }
     if (entry && typeof entry === "object" && "number" in (entry as object)) {
       const number = (entry as { number?: string }).number;
       if (typeof number === "string" && number.trim()) {
+        const normalized = normalizeToE164(number);
+        if (!normalized) continue;
         const ext = (entry as { extension?: string | null }).extension;
-        out.push({ number, extension: typeof ext === "string" ? ext : "" });
+        out.push({ number: normalized, extension: typeof ext === "string" ? ext : "" });
       }
     }
   }

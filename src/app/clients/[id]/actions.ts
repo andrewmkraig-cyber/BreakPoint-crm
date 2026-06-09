@@ -5,7 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import { linkedinUrlFrom } from "@/lib/rf-payload-shapes";
+import { linkedinUrlFrom, normalizeToE164 } from "@/lib/rf-payload-shapes";
 import {
   summarizeAgreementTerms as summarizeAgreementTermsWithClaude,
   summarizeBenefits as summarizeBenefitsWithClaude,
@@ -44,7 +44,10 @@ export async function addContact(clientCuid: string, formData: FormData): Promis
   const phoneNumbersRaw = formData.getAll("phone_number").map((v) => String(v).trim());
   const phoneExtsRaw = formData.getAll("phone_extension").map((v) => String(v).trim());
   const phones = phoneNumbersRaw
-    .map((number, i) => ({ number, extension: phoneExtsRaw[i] ?? "" }))
+    .map((number, i) => ({
+      number: normalizeToE164(number) ?? "",
+      extension: phoneExtsRaw[i] ?? "",
+    }))
     .filter((p) => p.number)
     .map((p) => (p.extension ? { number: p.number, extension: p.extension } : { number: p.number }));
   const title = String(formData.get("current_designation") ?? "").trim();
@@ -141,7 +144,10 @@ export async function updateContact(input: UpdateContactInput): Promise<UpdateCo
 
     const emails = (input.emails ?? []).map((e) => e.trim()).filter(Boolean);
     const phones = (input.phones ?? [])
-      .map((p) => ({ number: p.number.trim(), extension: p.extension.trim() }))
+      .map((p) => ({
+        number: normalizeToE164(p.number) ?? "",
+        extension: p.extension.trim(),
+      }))
       .filter((p) => p.number)
       .map((p) => (p.extension ? { number: p.number, extension: p.extension } : { number: p.number }));
     const title = input.title.trim();
@@ -406,7 +412,7 @@ export async function updateClientCompany(input: UpdateClientInput): Promise<Act
       country: input.country.trim() || null,
     };
     const phoneEntries = (input.phones ?? [])
-      .map((p) => p.trim())
+      .map((p) => normalizeToE164(p) ?? "")
       .filter(Boolean)
       .map((number) => ({ number }));
     const signedAtTrimmed = input.feeAgreementSignedAt.trim();

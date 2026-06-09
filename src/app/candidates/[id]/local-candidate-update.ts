@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { normalizeToE164 } from "@/lib/rf-payload-shapes";
 
 // Local-only candidate field updates. RF candidates have a separate path
 // in actions.ts (updateCandidate) that hits the RF API; this one writes
@@ -61,7 +62,7 @@ export async function updateLocalCandidate(patch: LocalCandidatePatch): Promise<
     data.email = patch.email?.trim() || null;
   }
   if ("phone" in patch) {
-    data.phone = patch.phone?.trim() || null;
+    data.phone = normalizeToE164(patch.phone);
   }
   if ("location" in patch) {
     data.location = patch.location?.trim() || null;

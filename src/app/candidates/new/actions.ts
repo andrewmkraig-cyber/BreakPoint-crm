@@ -9,6 +9,7 @@ import { logActivity } from "@/lib/activity";
 import { prisma } from "@/lib/prisma";
 import { fallbackParseCandidate } from "@/lib/resume-fallback";
 import { geocodePill } from "@/lib/geocode";
+import { normalizeToE164 } from "@/lib/rf-payload-shapes";
 
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -269,7 +270,7 @@ export async function createCandidate(
         firstName: first,
         lastName: input.last_name.trim() || null,
         email,
-        phone: input.phone.trim() || null,
+        phone: normalizeToE164(input.phone),
         currentDesignation: dbDesignation,
         currentOrganization: dbOrganization,
         location: input.location.trim() || null,
