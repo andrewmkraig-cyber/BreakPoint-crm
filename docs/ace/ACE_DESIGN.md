@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-06-08 · Ace 89.0
+Last updated: 2026-06-09 · Ace 90.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -17,7 +17,7 @@ The Today's Batch surface redesign shipped across Ace 82.0-86.0. It was the Ace 
 All controls follow the standing button standards - token colors, standard sizing, no hardcoded hex. The shipped surface is shared chrome, NOT the rejected prior mockup. (Detail: ACE_STATE.md ▸ What Shipped in Ace 82.0-86.0; ACE_ROADMAP.md ▸ DONE this session.)
 
 ## Ace 79.0 component + visual notes (2026-06-03)
-- **Masked currency input (shared).** Money fields - candidate + job comp overview, the Offer modal, and the Make Placement modal - use ONE shared masked-currency input: blank at rest, a leading `$` with thousands commas as digits are typed, no "USD" suffix, digits-only (the old `120k` shorthand no longer works, per spec), emitting a clean number on save. The comp DISPLAY carries the `$` prefix ($60,000 USD). Fee % / flat-fee-override / invoice math are unaffected. (Cosmetic follow-up: the Make Placement free-text "Currency" field is still present; the Offer modal already dropped its USD tag.)
+- **Masked currency input (shared).** Money fields - candidate + job comp overview, the Offer modal, and the Make Placement modal - use ONE shared masked-currency input: blank at rest, a leading `$` with thousands commas as digits are typed, no "USD" suffix, digits-only (the old `120k` shorthand no longer works, per spec), emitting a clean number on save. The comp DISPLAY carries the `$` prefix ($60,000 USD). Fee % / flat-fee-override / invoice math are unaffected. (As-built Ace 90.0: the Make Placement free-text "Currency" field was removed - `currency` is a hardcoded `"USD"` const mirroring the Offer row, still written to `Placement.acceptedCurrency` on save; the Offer modal had already dropped its USD tag.)
 - **Placement map markers are FILLED with their payment-state color.** Each dot is filled with its placement's payment-state color (from `STATUS_COLORS`) with a thin white outline for tile contrast - NOT the prior green fill with a colored ring. Cities outside the static `CITY_COORDS` table resolve through the shared `src/lib/geocode.ts` Nominatim helper (cached, the one-geocoder rule from the Distance Standards) so any placement city gets a dot; the marker popup lists client / candidate / fee / date per placement.
 
 ## Design Philosophy

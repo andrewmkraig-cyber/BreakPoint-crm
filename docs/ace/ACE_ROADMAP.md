@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-06-08 · Ace 89.0
+Last updated: 2026-06-09 · Ace 90.0
 
 ## Active Build Sequence
 
@@ -59,8 +59,7 @@ The first write capability (create reminders) shipped Ace 78.0. The rest of the 
 (The Ace 71.0 UI-consistency / bug queue is now CLOSED OUT — Matched-tab-per-job, toast-theme regression, news-tabs→TabStrip, and the placeholder sweep all shipped Ace 73.0; the mobile-nav rainbow + standalone-icon audit closed Ace 72.0; Settings Personal Info white-vs-grey was diagnosed NOT A BUG. The only survivor is the action-row button audit, promoted to Next Up #1 above. Full detail in ACE_STATE.md.)
 
 ### Push notification follow-ups (open after 70.0)
-- **Bug 2 — Enable Notifications turns itself off overnight — still UNFIXED.** The 70.0 web-push Test diagnostic (`e72ba19`) is instrumentation, not a cure. Working theory: PushSubscription expiry tied to the Ace 67.3 PWA self-heal path (iOS expires the subscription after idle/app-close; the overnight re-subscribe isn't sticking). Monitor overnight with the Test button + delivery tally, then fix from what it shows. iOS caveat: a green Test proves server dispatch, not background wake.
-- ~~**Remove temp `[web-push][diag]` logging.**~~ DONE Ace 89.0. All 10 `[web-push][diag]` console.logs stripped from `web-push.ts` plus the now-orphaned `redactDigits` / `diagPayload` helpers (the light rebase). The functional Test button + delivery tally (`PushDispatchResult`) + `forceNotify` path stay, so Bug 2 can still be monitored from Settings; only the console spam is gone. The `[web-push]` error logs were kept.
+- **Bug 2 — Enable Notifications turns itself off overnight — still UNFIXED.** The 70.0 web-push Test diagnostic (`e72ba19`) is instrumentation, not a cure. Working theory: PushSubscription expiry tied to the Ace 67.3 PWA self-heal path (iOS expires the subscription after idle/app-close; the overnight re-subscribe isn't sticking). Monitor overnight with the Test button + delivery tally, then fix from what it shows. iOS caveat: a green Test proves server dispatch, not background wake. (The temp `[web-push][diag]` logging was removed Ace 90.0 - the Test button + delivery tally remain for monitoring; see Completed - Ace 90.0.)
 
 ### Cancel Placement follow-ups (open after 67.19)
 - Reason picker: the Cancel button currently fires `cancelPlacement({ reason: 'other', detail: '' })`. The action accepts `candidate_resigned | client_terminated | failed_background_check | other`. If the cancellation reason ever needs to drive analytics or audit logs (it's already stored), promote it to a small dropdown inside the confirmation dialog.
@@ -68,10 +67,8 @@ The first write capability (create reminders) shipped Ace 78.0. The rest of the 
 
 ### Ace 79.0 open follow-ups (not done)
 - **Batch 2 SHIPPED (`87e7599`).** Calendar Event Types legend swatches corrected to match tile colors (Interview = blue, Client Call = green, Reminder = orange); resume watermark logo default position -> top-right (still draggable); jobs/[id] Delete button un-pinned, now static inline at the end of the Overview tab. No longer open. See ACE_STATE.md ▸ What Shipped in Ace 79.0 ▸ Batch 2.
-- ~~**Invoice email template-wiring (Path-B).**~~ DONE Ace 89.0. `handleEmailDraft` now resolves the active `confirmed_start_invoice` template (loaded in `invoices/[id]/page.tsx` via the canonical `loadTriggeredTemplate`, passed RAW + unmerged) through the shared `applyMergeFields` machinery at click time, falling back to the hardcoded literal when no active template exists. Recipients (To = billing, Cc = hiring, smart greeting) + the shared PDF start-date formatter are unchanged. Added `[Invoice Number]` / `[Fee Amount]` / `[Invoice Due Date]` merge tokens so the template can reference them. Verified against real invoice INV-1054.
 - **RevenueCards collection-gating + `placedAt` bucketing (known latent, item #14).** Placements RevenueCards require a SENT/PAID invoice, or bucket uninvoiced placements by `placedAt` with a `feeTotal > 0` gate - so a custom-terms (null `feeTotal`) or cross-quarter placement can be under-counted. Consciously not changed in 79.0; revisit only if that case surfaces in real data.
 - **Pipeline edit-drawer note fanout (Batch 7 deferred).** The offer/placement shared-note fanout (`Note.sourcePlacementId` upsert) fires on candidate-profile saves only; the `/pipeline` placement edit-drawer save path does not fan the note out. Wire it through the same upsert when picked up.
-- ~~**Make Placement free-text Currency field cleanup (Batch 4).**~~ DONE Ace 89.0. The free-text "Currency" field was removed from the Make Placement modal (`local-placement-rows.tsx`); `currency` is now a hardcoded `"USD"` const mirroring the Offer row, still written to `Placement.acceptedCurrency` on save. Fee %, flat-fee override, and invoice math untouched.
 
 ### Ace 80.0 open follow-ups - BD Engine (not done)
 All are known-and-deferred from the Ace 80.0 Apollo/TheirStack session. None block BD outbound, which is now working on the 4 healthy mailboxes.
@@ -114,7 +111,6 @@ Do alongside other work.
 - **Compound-unique widening** — 3 Placement compound uniques missing organizationId.
 - **MANUAL** — delete `RECRUITERFLOW_API_KEY` from `.env.local` and GitHub Actions secrets.
 - **Postgres search indexes** — already in active sequence above; listed here for completeness.
-- ~~**Remove temp `[web-push][diag]` logging**~~ — DONE Ace 89.0 (see Push notification follow-ups above for detail). Stripped from `web-push.ts` with the light rebase; functional Test button + delivery tally + `forceNotify` retained.
 - **5 uncommitted VAPID files** — local working-tree VAPID files left uncommitted; review and either commit intentionally or discard so the tree is clean.
 - **Recovered-draft "Cancel" label eyeball** — quick visual check that the recovered-draft dialog's "Cancel" button label reads correctly after the 71.0 label standardization sweep.
 - **Drop orphaned `_toast-chrome.tsx`** — orphaned by the `868c2e2` toast-theme restore (no longer imported). Confirm zero references, then delete.
@@ -154,6 +150,10 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 90.0 Cleanup follow-ups + Invoice Email template-wiring (June 9, 2026)
+
+Closeout-and-wire session, no schema changes, `npm run build` exits 0. (1) **Make Placement free-text Currency field removed** - the Make Placement modal no longer renders a free-text Currency input; `currency` is a hardcoded `"USD"` const mirroring the Offer row, still written to `Placement.acceptedCurrency` on save (fee % / flat-fee override / invoice math untouched). Closes the Ace 79.0 cosmetic follow-up. (2) **Temp `[web-push][diag]` logging removed** - all 10 `[web-push][diag]` console.logs stripped from `web-push.ts` plus the now-orphaned `redactDigits` / `diagPayload` helpers (the light rebase); the functional Test button + delivery tally (`PushDispatchResult`) + `forceNotify` path + the `[web-push]` error logs were kept, so Bug 2 can still be monitored from Settings. The `[push][badge-diag]` logs (4 files) are still live and out of scope. (3) **Invoice Email template-wiring (Path-B)** - `handleEmailDraft` (`invoices/[id]/invoice-detail.tsx`) now resolves the active `confirmed_start_invoice` template (loaded in `invoices/[id]/page.tsx` via the canonical `loadTriggeredTemplate`, passed RAW + unmerged) through the shared `applyMergeFields` machinery client-side at click time, falling back to the hardcoded literal when no active template exists so sends never break. Recipients (To = billing, Cc = hiring) + smart greeting + the shared PDF start-date formatter are unchanged. Registered `[Invoice Number]` / `[Fee Amount]` / `[Invoice Due Date]` merge tokens (additive to `merge-fields.ts`). (4) **One-time template data update** - `scripts/update-invoice-email-template.ts` (dry-run default, `--apply`, idempotent, org-traceable) enriched the seeded "Invoice Email" row in prod: subject gained `([Invoice Number])` (renders `(INV-####)`, the token already carries the `INV-` prefix), body gained `[Fee Amount]` + a "Payment is due by [Invoice Due Date]" line. Verified against real invoice INV-1054. Full detail in ACE_STATE.md ▸ What Shipped in Ace 90.0.
 
 ## Completed - Ace 79.0 16-item fix batch: cosmetics + jobs domain + masked-currency input + interview notify-modal/profile-cancel + invoice sign-off de-dupe + offer/placement note fanout + placement-map geocode/fill + cancel-placement state sync + clickable email links (June 3, 2026)
 
