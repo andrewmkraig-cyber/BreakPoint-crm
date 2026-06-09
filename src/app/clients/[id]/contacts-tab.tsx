@@ -40,6 +40,7 @@ export function ContactsTab({
   clientName,
   initialContacts,
   canWrite = true,
+  openAddForm = false,
 }: {
   clientCuid: string;
   clientName: string;
@@ -47,9 +48,10 @@ export function ContactsTab({
   // When false (client you don't own) the add form and row-click editor
   // are suppressed; contacts stay readable with their email/phone links.
   canWrite?: boolean;
+  openAddForm?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(openAddForm);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -59,6 +61,9 @@ export function ContactsTab({
   // come back from the server with its generated id.
   const [rows, setRows] = useState<ContactRow[]>(initialContacts);
   useEffect(() => setRows(initialContacts), [initialContacts]);
+  useEffect(() => {
+    if (openAddForm && canWrite) setOpen(true);
+  }, [canWrite, openAddForm]);
   const [editing, setEditing] = useState<ContactRow | null>(null);
   const [addEmails, setAddEmails] = useState<string[]>([""]);
   const [addPhones, setAddPhones] = useState<ContactPhone[]>([{ number: "", extension: "" }]);
@@ -117,7 +122,7 @@ export function ContactsTab({
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{success}</div>
       )}
 
-      {open && (
+      {canWrite && open && (
         <form onSubmit={onSubmit} className="rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
           <div className="flex items-center gap-2 border-b border-court-border pb-3 text-sm font-semibold text-court-fg">
             <UserPlus className="h-4 w-4 text-brand-dark" /> New contact

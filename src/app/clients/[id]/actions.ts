@@ -400,7 +400,6 @@ export type UpdateClientInput = {
   city: string;
   state: string;
   postalCode: string;
-  country: string;
   feeAgreementSigned: boolean;
   feeAgreementSignedAt: string;
   feePct: string;
@@ -428,7 +427,7 @@ export async function updateClientCompany(input: UpdateClientInput): Promise<Act
       city: input.city.trim() || null,
       state: input.state.trim() || null,
       postal_code: input.postalCode.trim() || null,
-      country: input.country.trim() || null,
+      country: "United States of America",
     };
     const phoneEntries = (input.phones ?? [])
       .map((p) => normalizeToE164(p) ?? "")

@@ -14,10 +14,14 @@ import {
 import { getClientByIdentifier } from "@/lib/clients";
 import { cn } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
-import { ContactsTab } from "@/app/clients/[id]/contacts-tab";
+import { ContactsTab, type ContactRow } from "@/app/clients/[id]/contacts-tab";
 import { AgreementsTab } from "@/app/clients/[id]/agreements-tab";
 import { BenefitsTab } from "@/app/clients/[id]/benefits-tab";
-import { EditableCompany, type CompanyState } from "@/app/clients/[id]/editable-company";
+import {
+  EditableCompany,
+  type BillingContactOption,
+  type CompanyState,
+} from "@/app/clients/[id]/editable-company";
 import { DeleteClientButton } from "@/app/clients/[id]/delete-client-button";
 import { AddClientNote } from "@/app/clients/[id]/add-client-note";
 import { ClientLogo } from "@/components/clients/client-logo";
@@ -49,7 +53,7 @@ export default async function ClientDetailPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { tab?: ClientTab };
+  searchParams?: { tab?: ClientTab; addContact?: string };
 }) {
   // Accept either a cuid (Ace-native, post-Phase-3 canonical) or a
   // numeric legacyRfId (back-compat with URLs that predate the cutover).
@@ -69,6 +73,7 @@ export default async function ClientDetailPage({
 
   const raw = (client.raw ?? null) as RFClient | null;
   const legacyRfId = client.legacyRfId;
+  const clientSlug = legacyRfId != null ? String(legacyRfId) : client.id;
 
   // Agreements / benefits are keyed by the canonical cuid (client.id), so
   // both RF-imported and Ace-native clients read the same way. (clientId
@@ -191,6 +196,34 @@ export default async function ClientDetailPage({
 
   const location = (client.location as LocationJson) ?? null;
   const displayName = client.name || "(unnamed)";
+  const contactRows: ContactRow[] = contacts.map((c) => ({
+    id: c.id,
+    legacyRfId: c.legacyRfId,
+    firstName: c.firstName ?? "",
+    lastName: c.lastName ?? "",
+    name:
+      [c.firstName, c.lastName].filter(Boolean).join(" ") ||
+      c.name ||
+      "(unnamed)",
+    title: c.currentDesignation ?? "",
+    email: Array.isArray(c.emails) && c.emails.length > 0 ? c.emails[0] : "",
+    emails: Array.isArray(c.emails)
+      ? c.emails.filter((e): e is string => typeof e === "string" && e.trim().length > 0)
+      : [],
+    phone: firstPhone(c.phoneNumbers),
+    extension: firstExtension(c.phoneNumbers),
+    phones: allPhones(c.phoneNumbers),
+    linkedIn: c.linkedinProfile ?? null,
+    notes: c.notes ?? "",
+    lastContactedAt:
+      (c.lastActivityAt?.toISOString() ?? c.addedAt?.toISOString()) ?? null,
+  }));
+  const billingContactOptions: BillingContactOption[] = contactRows.map((contact) => ({
+    id: contact.id,
+    label: contact.name,
+    value: contact.name,
+    detail: contact.email || contact.title || undefined,
+  }));
 
   // Custom-field scraping from raw — only meaningful for RF-imported rows.
   const customField = (match: (name: string) => boolean): unknown => {
@@ -363,16 +396,21 @@ export default async function ClientDetailPage({
     city: location?.city ?? "",
     state: location?.state ?? "",
     postalCode: location?.postal_code ?? "",
-    country: location?.country ?? "",
     feeAgreementSigned: seedSigned,
     feeAgreementSignedAt: seedSignedAtIso,
     feePct: seedFeePct,
     feeBillingContact: seedBillingContact,
   };
 
-  const agreementFileForCard = agreementFile?.link
-    ? { filename: agreementFile.filename ?? "Open PDF", link: agreementFile.link }
-    : null;
+  const latestUploadedAgreement = agreements[0] ?? null;
+  const agreementFileForCard = latestUploadedAgreement
+    ? {
+        filename: latestUploadedAgreement.filename || "Open agreement",
+        link: `/api/client-agreements/${latestUploadedAgreement.id}`,
+      }
+    : agreementFile?.link
+      ? { filename: agreementFile.filename ?? "Open PDF", link: agreementFile.link }
+      : null;
 
   return (
     <div className="space-y-6">
@@ -421,7 +459,7 @@ export default async function ClientDetailPage({
 
       <Tabs
         tab={tab}
-        slug={client.legacyRfId != null ? String(client.legacyRfId) : client.id}
+        slug={clientSlug}
         contactsCount={contacts.length}
         agreementsCount={agreements.length}
         benefitsFilesCount={benefitsFiles.length}
@@ -434,6 +472,8 @@ export default async function ClientDetailPage({
             clientCuid={client.id}
             initial={companyInitial}
             agreementFile={agreementFileForCard}
+            billingContacts={billingContactOptions}
+            createContactHref={`/clients/${clientSlug}?tab=contacts&addContact=1`}
             canWrite={canWrite}
           />
 
@@ -560,28 +600,8 @@ export default async function ClientDetailPage({
           clientCuid={client.id}
           clientName={displayName}
           canWrite={canWrite}
-          initialContacts={contacts.map((c) => ({
-            id: c.id,
-            legacyRfId: c.legacyRfId,
-            firstName: c.firstName ?? "",
-            lastName: c.lastName ?? "",
-            name:
-              [c.firstName, c.lastName].filter(Boolean).join(" ") ||
-              c.name ||
-              "(unnamed)",
-            title: c.currentDesignation ?? "",
-            email: Array.isArray(c.emails) && c.emails.length > 0 ? c.emails[0] : "",
-            emails: Array.isArray(c.emails)
-              ? c.emails.filter((e): e is string => typeof e === "string" && e.trim().length > 0)
-              : [],
-            phone: firstPhone(c.phoneNumbers),
-            extension: firstExtension(c.phoneNumbers),
-            phones: allPhones(c.phoneNumbers),
-            linkedIn: c.linkedinProfile ?? null,
-            notes: c.notes ?? "",
-            lastContactedAt:
-              (c.lastActivityAt?.toISOString() ?? c.addedAt?.toISOString()) ?? null,
-          }))}
+          initialContacts={contactRows}
+          openAddForm={searchParams?.addContact === "1"}
         />
       ) : tab === "agreements" ? (
         // Tab renders for every client. Upload + DB rows are still keyed

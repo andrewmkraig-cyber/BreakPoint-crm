@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ExternalLink,
@@ -12,6 +13,7 @@ import {
   Plus,
   Save,
   ShieldCheck,
+  UserPlus,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -44,22 +46,32 @@ export type CompanyState = {
   city: string;
   state: string;
   postalCode: string;
-  country: string;
   feeAgreementSigned: boolean;
   feeAgreementSignedAt: string;
   feePct: string;
   feeBillingContact: string;
 };
 
+export type BillingContactOption = {
+  id: string;
+  label: string;
+  value: string;
+  detail?: string;
+};
+
 export function EditableCompany({
   clientCuid,
   initial,
   agreementFile,
+  billingContacts = [],
+  createContactHref,
   canWrite = true,
 }: {
   clientCuid: string;
   initial: CompanyState;
   agreementFile?: { filename: string; link: string } | null;
+  billingContacts?: BillingContactOption[];
+  createContactHref: string;
   // When false (viewing a client you don't own) the Edit affordance is
   // hidden, so the card renders as a read-only company summary.
   canWrite?: boolean;
@@ -95,7 +107,6 @@ export function EditableCompany({
     draft.street1,
     draft.street2,
     [draft.city, draft.state, draft.postalCode].filter(Boolean).join(", "),
-    draft.country,
   ].filter(Boolean);
   const websiteHref = draft.website
     ? draft.website.startsWith("http")
@@ -105,6 +116,9 @@ export function EditableCompany({
   const signedOnDisplay = draft.feeAgreementSignedAt
     ? new Date(draft.feeAgreementSignedAt).toLocaleDateString()
     : "";
+  const hasSelectedBillingContact = billingContacts.some(
+    (contact) => contact.value === draft.feeBillingContact,
+  );
 
   return (
     <div className="rounded-xl border border-court-border/40 bg-court-surface p-4 shadow-sm lg:col-span-3">
@@ -236,12 +250,6 @@ export function EditableCompany({
               onChange={(v) => setDraft({ ...draft, postalCode: v })}
               frameClassName={INPUT_FRAME_RECT_CLASS}
             />
-            <LabeledField
-              label="Country"
-              value={draft.country}
-              onChange={(v) => setDraft({ ...draft, country: v })}
-              frameClassName={INPUT_FRAME_RECT_CLASS}
-            />
           </div>
           <div className="pt-1 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
             Fee Agreement
@@ -279,12 +287,35 @@ export function EditableCompany({
               onChange={(v) => setDraft({ ...draft, feePct: v })}
               frameClassName={INPUT_FRAME_RECT_CLASS}
             />
-            <LabeledField
-              label="Billing contact"
-              value={draft.feeBillingContact}
-              onChange={(v) => setDraft({ ...draft, feeBillingContact: v })}
-              frameClassName={INPUT_FRAME_RECT_CLASS}
-            />
+            <div className="block text-sm">
+              <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+                Billing contact
+              </span>
+              <div className="mt-1 flex flex-col gap-2 sm:flex-row">
+                <select
+                  value={draft.feeBillingContact}
+                  onChange={(e) => setDraft({ ...draft, feeBillingContact: e.target.value })}
+                  className="min-w-0 flex-1 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                >
+                  <option value="">Select contact</option>
+                  {draft.feeBillingContact && !hasSelectedBillingContact && (
+                    <option value={draft.feeBillingContact}>{draft.feeBillingContact}</option>
+                  )}
+                  {billingContacts.map((contact) => (
+                    <option key={contact.id} value={contact.value}>
+                      {contact.detail ? `${contact.label} - ${contact.detail}` : contact.label}
+                    </option>
+                  ))}
+                </select>
+                <Link
+                  href={createContactHref}
+                  className="inline-flex items-center justify-center gap-1 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  Create contact
+                </Link>
+              </div>
+            </div>
           </div>
           {err && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
