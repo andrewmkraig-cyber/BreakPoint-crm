@@ -4,6 +4,7 @@ import { extractCandidateFields } from "@/lib/candidate-fields";
 import { getRecruiterPhone } from "@/lib/preferences";
 import { formatLocation } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
+import { extractCityFromLocation, formatExpectedCompensation } from "@/lib/candidate-compensation";
 import {
   type RFJob,
   type RFClient,
@@ -77,6 +78,10 @@ export async function buildFullMergeValues(
   const jobLocation = job ? formatLocation(firstLocation(job)) : "";
   const jobDescription = job ? extractJobDescription(job) : "";
   const clientCompanyName = (client?.name ?? job?.company?.name ?? "").toString();
+  const candidateLocation = candidate ? formatLocation(candidate.location) : "";
+  const candidateCompensation = candidate
+    ? formatExpectedCompensation((candidate as { expected_salary?: unknown }).expected_salary)
+    : "";
 
   const recruiterPhone = await getRecruiterPhone(recruiterEmail);
 
@@ -85,6 +90,9 @@ export async function buildFullMergeValues(
     candidateLastName: candidateFields?.lastName ?? "",
     candidateFullName: candidateFields?.fullName ?? "",
     candidateEmail: candidateFields?.email ?? "",
+    candidateLocation,
+    candidateCity: extractCityFromLocation(candidateLocation),
+    candidateCompensation,
     clientCompanyName,
     clientContactFullName: primaryContact?.fullName ?? "",
     clientContactFirstName: primaryContact?.firstName ?? "",
@@ -210,6 +218,8 @@ export async function buildPlacementMergeValues(
         fullName: string;
         email: string;
         phone: string;
+        location: string;
+        compensation: string;
       }
     | null = null;
 
@@ -221,6 +231,8 @@ export async function buildPlacementMergeValues(
         lastName: true,
         email: true,
         phone: true,
+        location: true,
+        expectedSalary: true,
       },
     });
     if (row) {
@@ -232,6 +244,8 @@ export async function buildPlacementMergeValues(
         fullName: [first, last].filter(Boolean).join(" "),
         email: row.email ?? "",
         phone: row.phone ?? "",
+        location: row.location ?? "",
+        compensation: formatExpectedCompensation(row.expectedSalary),
       };
     }
   }
@@ -246,6 +260,8 @@ export async function buildPlacementMergeValues(
           fullName: fields.fullName ?? "",
           email: fields.email ?? "",
           phone: "",
+          location: formatLocation(c.location),
+          compensation: formatExpectedCompensation((c as { expected_salary?: unknown }).expected_salary),
         };
       }
     } catch {
@@ -358,6 +374,9 @@ export async function buildPlacementMergeValues(
     candidateFullName: candidate?.fullName ?? "",
     candidateEmail: candidate?.email ?? "",
     candidatePhone: candidate?.phone ?? "",
+    candidateLocation: candidate?.location ?? "",
+    candidateCity: extractCityFromLocation(candidate?.location ?? ""),
+    candidateCompensation: candidate?.compensation ?? "",
     clientCompanyName,
     clientContactFullName: primaryContact?.fullName ?? "",
     clientContactFirstName: primaryContact?.firstName ?? "",

@@ -7,9 +7,13 @@ import { createActionLog } from "@/lib/action-log";
 import { logActivity } from "@/lib/activity";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
-import { generateSubmittalWriteup } from "@/lib/claude";
+import {
+  generatePublicAccountingSubmittalBullets,
+  generateSubmittalWriteup,
+} from "@/lib/claude";
 import { sendGmail, type GmailAttachment } from "@/lib/gmail";
 import { getResumeBytes } from "@/lib/resume-bytes";
+import { formatExpectedCompensation } from "@/lib/candidate-compensation";
 import { fanOutPlacementNote } from "@/lib/notes/placement-fanout";
 import { prisma } from "@/lib/prisma";
 import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
@@ -58,6 +62,8 @@ async function loadLocalCandidate(id: string) {
       skills: true,
       notes: true,
       experience: true,
+      education: true,
+      expectedSalary: true,
     },
   });
 }
@@ -354,6 +360,14 @@ type ExpRow = {
   description?: string | null;
 };
 
+type EduRow = {
+  school?: string | null;
+  degree?: string | null;
+  from_year?: number | null;
+  to_year?: number | null;
+  description?: string | null;
+};
+
 export async function generateLocalSubmittal(
   input: GenerateLocalSubmittalInput,
 ): Promise<GenerateLocalSubmittalResult> {
@@ -419,7 +433,7 @@ export async function generateLocalSubmittal(
         skills: Array.isArray(c.skills) ? c.skills : [],
         experienceSummary,
         notes: c.notes ?? "",
-        expectedSalary: "",
+        expectedSalary: formatExpectedCompensation(c.expectedSalary),
         linkedin: c.linkedinProfile ?? "",
       },
       job: {
@@ -442,6 +456,118 @@ export async function generateLocalSubmittal(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to generate submittal." };
   }
+}
+
+export type GenerateLocalPublicAccountingSubmittalBulletsInput = GenerateLocalSubmittalInput;
+
+export type GenerateLocalPublicAccountingSubmittalBulletsResult =
+  | { ok: true; value: { bullets: string } }
+  | { ok: false; error: string };
+
+export async function generateLocalPublicAccountingSubmittalBullets(
+  input: GenerateLocalPublicAccountingSubmittalBulletsInput,
+): Promise<GenerateLocalPublicAccountingSubmittalBulletsResult> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  try {
+    const c = await loadLocalCandidate(input.candidateId);
+    if (!c) return { ok: false, error: "Candidate not found." };
+
+    const jobRfId = input.jobRfId ?? null;
+    const jobId = input.jobId ?? null;
+    if (jobRfId == null && !jobId) return { ok: false, error: "Missing job reference." };
+
+    const jobRow = await (jobId
+      ? prisma.job.findUnique({
+          where: { id: jobId },
+          select: { title: true, client: { select: { name: true } } },
+        })
+      : jobRfId != null
+        ? prisma.job.findFirst({
+            where: { legacyRfId: jobRfId },
+            select: { title: true, client: { select: { name: true } } },
+          })
+        : Promise.resolve(null));
+
+    let resume: { filename: string; mimeType: string; data: Buffer } | null = null;
+    try {
+      const latestResume = await prisma.candidateResume.findFirst({
+        where: { candidateId: input.candidateId, uploadComplete: true },
+        orderBy: { uploadedAt: "desc" },
+        select: { filename: true, mimeType: true, data: true, blobUrl: true },
+      });
+      if (latestResume) {
+        resume = {
+          filename: latestResume.filename,
+          mimeType: latestResume.mimeType,
+          data: await getResumeBytes({
+            blobUrl: latestResume.blobUrl,
+            data: latestResume.data,
+          }),
+        };
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[local-submittal] latest resume AI context failed:", err);
+    }
+
+    const experienceRows = (c.experience as unknown as ExpRow[] | null) ?? [];
+    const educationRows = (c.education as unknown as EduRow[] | null) ?? [];
+    const bullets = await generatePublicAccountingSubmittalBullets({
+      candidate: {
+        firstName: c.firstName,
+        lastName: c.lastName ?? "",
+        title: c.currentDesignation ?? "",
+        employer: c.currentOrganization ?? "",
+        location: c.location ?? "",
+        skills: Array.isArray(c.skills) ? c.skills : [],
+        experienceSummary: summarizeExperienceRows(experienceRows),
+        educationSummary: summarizeEducationRows(educationRows),
+        notes: c.notes ?? "",
+        expectedSalary: formatExpectedCompensation(c.expectedSalary),
+        linkedin: c.linkedinProfile ?? "",
+      },
+      job: {
+        title: jobRow?.title ?? undefined,
+        clientName: jobRow?.client?.name ?? undefined,
+      },
+      resume,
+    });
+
+    return { ok: true, value: { bullets } };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Failed to generate public accounting bullets.",
+    };
+  }
+}
+
+function summarizeExperienceRows(rows: ExpRow[]): string {
+  return rows
+    .slice(0, 8)
+    .map((r) => {
+      const role = [r.designation, r.organization].filter(Boolean).join(" at ");
+      const years = [r.from_year, r.to_year ?? "present"].filter(Boolean).join("-");
+      const line = [role, years].filter(Boolean).join(" (") + (years ? ")" : "");
+      return r.description ? `${line}: ${r.description}` : line;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function summarizeEducationRows(rows: EduRow[]): string {
+  return rows
+    .slice(0, 5)
+    .map((r) => {
+      const schoolDegree = [r.degree, r.school].filter(Boolean).join(" - ");
+      const years = [r.from_year, r.to_year].filter(Boolean).join("-");
+      const line = [schoolDegree, years].filter(Boolean).join(" (") + (years ? ")" : "");
+      return r.description ? `${line}: ${r.description}` : line;
+    })
+    .filter(Boolean)
+    .join("\n");
 }
 
 // ---- Submit: send email + create Placement ----

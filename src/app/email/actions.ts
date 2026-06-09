@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { createGmailDraft, plainToHtml, sendGmail, type SendEmailResult } from "@/lib/gmail";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { createScheduledEmail } from "@/lib/scheduled-email";
+import { ensureDefaultTemplates } from "@/app/settings/templates-actions";
 
 export type ActiveTemplateSummary = {
   id: string;
@@ -20,6 +21,7 @@ export type ActiveTemplateSummary = {
 // Pulls active email templates for populating the composer's "Use Template"
 // dropdown. No merge-field resolution here — the caller resolves after pick.
 export async function listActiveTemplates(): Promise<ActiveTemplateSummary[]> {
+  await ensureDefaultTemplates();
   const rows = await prisma.emailTemplate.findMany({
     where: { isActive: true },
     // Manual sort order set in Settings ▸ Templates wins; name is the

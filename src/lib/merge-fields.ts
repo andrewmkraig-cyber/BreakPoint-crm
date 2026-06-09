@@ -3,6 +3,7 @@
 // the editor. Resolved at send time by applyMergeFields().
 
 import { stripMarkdownToPlain } from "@/lib/markdown-to-plain";
+import { extractCityFromLocation } from "@/lib/candidate-compensation";
 
 export const MERGE_FIELDS = [
   // Candidate
@@ -12,6 +13,8 @@ export const MERGE_FIELDS = [
   { token: "[Candidate Email]", label: "Candidate Email", group: "Candidate" },
   { token: "[Candidate Phone]", label: "Candidate Phone", group: "Candidate" },
   { token: "[Candidate Location]", label: "Candidate Location", group: "Candidate" },
+  { token: "[Candidate City]", label: "Candidate City", group: "Candidate" },
+  { token: "[Candidate Compensation]", label: "Candidate Compensation", group: "Candidate" },
   { token: "[Candidate Current Title]", label: "Candidate Current Title", group: "Candidate" },
   { token: "[Candidate Current Employer]", label: "Candidate Current Employer", group: "Candidate" },
   // General
@@ -67,8 +70,11 @@ export type MergeFieldValues = {
   candidateEmail?: string;
   candidatePhone?: string;
   candidateLocation?: string;
+  candidateCity?: string;
+  candidateCompensation?: string;
   candidateCurrentTitle?: string;
   candidateCurrentEmployer?: string;
+  publicAccountingSubmittalBullets?: string;
   // Client
   clientCompanyName?: string;
   clientCompanyWebsite?: string;
@@ -136,6 +142,9 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
   const recruiterFull = nonEmpty(values.recruiterFullName, values.recruiterName);
   const recruiterFirst = nonEmpty(values.recruiterFirstName, recruiterFull.split(/\s+/)[0]);
   const meetLink = nonEmpty(values.interviewMeetLink);
+  const candidateLocation = values.candidateLocation ?? "";
+  const candidateCity = nonEmpty(values.candidateCity, extractCityFromLocation(candidateLocation));
+  const candidateCompensation = values.candidateCompensation ?? "";
   const greeting = nonEmpty(
     values.greeting,
     values.clientContactFirstName
@@ -152,7 +161,9 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
     "[Candidate Full Name]": fullName,
     "[Candidate Email]": values.candidateEmail ?? "",
     "[Candidate Phone]": values.candidatePhone ?? "",
-    "[Candidate Location]": values.candidateLocation ?? "",
+    "[Candidate Location]": candidateLocation,
+    "[Candidate City]": candidateCity,
+    "[Candidate Compensation]": candidateCompensation,
     "[Candidate Current Title]": values.candidateCurrentTitle ?? "",
     "[Candidate Current Employer]": values.candidateCurrentEmployer ?? "",
     // Client
@@ -196,6 +207,33 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
   let out = text;
   for (const field of MERGE_FIELDS) {
     out = out.replace(new RegExp(escapeForRegex(field.token), "g"), map[field.token]);
+  }
+  const aliases: Array<readonly [string, string]> = [
+    ["[Candidate Comp]", candidateCompensation],
+    ["[candidate comp]", candidateCompensation],
+    ["[Public Accounting Submittal Bullets]", values.publicAccountingSubmittalBullets ?? ""],
+    ["{{candidate_name}}", fullName],
+    ["{{candidateName}}", fullName],
+    ["{{candidate_full_name}}", fullName],
+    ["{{candidateFullName}}", fullName],
+    ["{{candidate_first_name}}", values.candidateFirstName ?? ""],
+    ["{{candidateFirstName}}", values.candidateFirstName ?? ""],
+    ["{{candidate_city}}", candidateCity],
+    ["{{candidateCity}}", candidateCity],
+    ["{{candidate_comp}}", candidateCompensation],
+    ["{{candidateComp}}", candidateCompensation],
+    ["{{candidate_compensation}}", candidateCompensation],
+    ["{{candidateCompensation}}", candidateCompensation],
+    ["{{job_title}}", values.jobTitle ?? ""],
+    ["{{jobTitle}}", values.jobTitle ?? ""],
+    ["{{client_company_name}}", values.clientCompanyName ?? ""],
+    ["{{clientCompanyName}}", values.clientCompanyName ?? ""],
+    ["{{client_contact_first_name}}", values.clientContactFirstName ?? ""],
+    ["{{clientContactFirstName}}", values.clientContactFirstName ?? ""],
+    ["{{public_accounting_submittal_bullets}}", values.publicAccountingSubmittalBullets ?? ""],
+  ];
+  for (const [alias, value] of aliases) {
+    out = out.replace(new RegExp(escapeForRegex(alias), "g"), value);
   }
   return out;
 }

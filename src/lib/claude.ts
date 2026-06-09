@@ -833,6 +833,18 @@ export type SubmittalInput = {
   clientContactFirstName?: string;
 };
 
+export type PublicAccountingSubmittalBulletsInput = {
+  candidate: SubmittalInput["candidate"] & {
+    educationSummary?: string;
+  };
+  job?: Partial<SubmittalInput["job"]>;
+  resume?: {
+    filename: string;
+    mimeType: string;
+    data: Buffer;
+  } | null;
+};
+
 // Defense against Claude occasionally ignoring the "no signature" prompt
 // instruction and tacking a closing sign-off (e.g. "Best,\nAndrew Kraig\n
 // BreakPoint Talent") onto the submittal body. That sign-off has no
@@ -851,6 +863,122 @@ const SUBMITTAL_SIGNOFF_RE =
 
 function stripTrailingSignOff(text: string): string {
   return text.replace(SUBMITTAL_SIGNOFF_RE, "").replace(/\s+$/, "");
+}
+
+function normalizeBulletOnlyOutput(text: string): string {
+  const cleaned = stripTrailingSignOff(text)
+    .replace(/\u2014/g, "-")
+    .replace(/\u2013/g, "-");
+  const rawLines = cleaned
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const bulletish = rawLines.filter((line) => /^[-*\u2022]\s+/.test(line) || /^\d+[.)]\s+/.test(line));
+  const source = bulletish.length > 0 ? bulletish : rawLines;
+  return source
+    .slice(0, 6)
+    .map((line) => {
+      const withoutMarker = line.replace(/^[-*\u2022]\s+/, "").replace(/^\d+[.)]\s+/, "").trim();
+      return withoutMarker ? `- ${withoutMarker}` : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function resumeContentForClaude(
+  resume: PublicAccountingSubmittalBulletsInput["resume"],
+): Promise<Anthropic.Messages.ContentBlockParam[]> {
+  if (!resume) return [];
+  const filename = resume.filename || "resume";
+  const mimeType = resume.mimeType || "application/octet-stream";
+  if (mimeType === "application/pdf" || filename.toLowerCase().endsWith(".pdf")) {
+    return [
+      {
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: "application/pdf",
+          data: resume.data.toString("base64"),
+        },
+        title: filename,
+      },
+    ];
+  }
+  if (looksLikeDocx(filename, mimeType)) {
+    const docText = await extractDocxText(resume.data);
+    return [{ type: "text", text: `--- Resume (${filename}) ---\n${docText.slice(0, 50_000)}` }];
+  }
+  if (mimeType === LEGACY_DOC_MIME || filename.toLowerCase().endsWith(".doc")) {
+    return [{ type: "text", text: `--- Resume (${filename}) ---\n${resume.data.toString("utf-8").slice(0, 50_000)}` }];
+  }
+  if (/^text\//i.test(mimeType) || /\.(txt|md|rtf)$/i.test(filename)) {
+    return [{ type: "text", text: `--- Resume (${filename}) ---\n${resume.data.toString("utf-8").slice(0, 50_000)}` }];
+  }
+  return [];
+}
+
+export async function generatePublicAccountingSubmittalBullets(
+  input: PublicAccountingSubmittalBulletsInput,
+): Promise<string> {
+  const anthropic = getClaude();
+  const fullName =
+    [input.candidate.firstName, input.candidate.lastName].filter(Boolean).join(" ") ||
+    "Candidate";
+  const roleLine = input.job?.title
+    ? `Target role: ${input.job.title}${input.job.clientName ? ` at ${input.job.clientName}` : ""}`
+    : "Target role: public accounting opportunity";
+  const candidateBlock =
+    `Candidate: ${fullName}\n` +
+    `Current title: ${input.candidate.title || "-"}\n` +
+    `Current employer: ${input.candidate.employer || "-"}\n` +
+    `Location: ${input.candidate.location || "-"}\n` +
+    `Expected compensation: ${input.candidate.expectedSalary || "-"}\n` +
+    `LinkedIn: ${input.candidate.linkedin || "-"}\n` +
+    `Skills: ${(input.candidate.skills || []).slice(0, 25).join(", ") || "-"}\n` +
+    `Experience summary:\n${input.candidate.experienceSummary || "-"}\n` +
+    `Education:\n${input.candidate.educationSummary || "-"}\n` +
+    `Recruiter notes:\n${input.candidate.notes || "-"}`;
+
+  const content: Anthropic.Messages.ContentBlockParam[] = [
+    {
+      type: "text",
+      text:
+        "Create the AI-generated bullet block for a client-facing public accounting candidate submittal.\n\n" +
+        "Output only 4 to 6 dash bullets. No greeting, no header, no closing, no signature, no markdown except dash bullets.\n" +
+        "Prioritize these facts when they are stated in the candidate profile or resume:\n" +
+        "- CPA license, EA license, CPA eligibility, exam progress, or other public accounting credentials.\n" +
+        "- Education.\n" +
+        "- Years of public accounting experience.\n" +
+        "- Tax return types, audit/accounting areas, industries, software, and client types they have handled.\n" +
+        "- Any other commercially useful facts a public accounting client would care about.\n\n" +
+        "Rules:\n" +
+        "- Never invent a license, degree, year count, return type, software, employer, or achievement.\n" +
+        "- If a priority fact is not stated, omit it and use another real relevant fact.\n" +
+        "- Keep each bullet one sentence and client-ready.\n" +
+        "- Use regular hyphens only. Never use em dashes.\n\n" +
+        `=== Role context ===\n${roleLine}\n\n` +
+        `=== Candidate profile ===\n${candidateBlock}`,
+    },
+    ...(await resumeContentForClaude(input.resume)),
+  ];
+
+  const response = await anthropic.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 700,
+    system:
+      "You write concise client-facing recruiting bullet points for public accounting submittals. " +
+      "Be specific, factual, and commercially useful. Never fabricate missing facts. Never use em dashes.",
+    messages: [{ role: "user", content }],
+  });
+
+  const text = response.content
+    .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+  const bullets = normalizeBulletOnlyOutput(text);
+  if (!bullets) throw new Error("Claude returned no public accounting bullets. Try again.");
+  return bullets;
 }
 
 export async function generateSubmittalWriteup(input: SubmittalInput): Promise<string> {

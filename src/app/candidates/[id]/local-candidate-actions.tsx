@@ -15,11 +15,13 @@ import { Button } from "@/components/ui/button";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import {
   applyLocalCandidateToJob,
+  generateLocalPublicAccountingSubmittalBullets,
   generateLocalSubmittal,
   sendLocalSubmittalEmail,
 } from "@/app/candidates/[id]/local-placement-actions";
 import { formatOpenJobOption } from "@/components/placements/placement-shared";
-import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
+import { extractCityFromLocation } from "@/lib/candidate-compensation";
+import { applyMergeFields as applyMergeFieldsClient, type MergeFieldValues } from "@/lib/merge-fields";
 import {
   LOCAL_PLACEMENT_APPLIED_EVENT,
   type LocalPlacementAppliedDetail,
@@ -68,6 +70,8 @@ export function LocalCandidateActions(props: {
   candidateName: string;
   candidateFirstName: string;
   candidateEmail: string | null;
+  candidateLocation?: string | null;
+  candidateCompensation?: string | null;
   openJobs: LocalOpenJob[];
   // Display name of the candidate's most recent resume version on file,
   // or null when none exists. Surfaced in the Submit composer so the
@@ -168,6 +172,8 @@ export function LocalCandidateActions(props: {
           candidateName={props.candidateName}
           candidateFirstName={props.candidateFirstName}
           candidateEmail={props.candidateEmail}
+          candidateLocation={props.candidateLocation ?? null}
+          candidateCompensation={props.candidateCompensation ?? null}
           openJobs={props.openJobs}
           latestResumeName={props.latestResumeName ?? null}
           initialJobRfId={submitInitialJobRfId}
@@ -286,6 +292,8 @@ function SubmitModal(props: {
   candidateName: string;
   candidateFirstName: string;
   candidateEmail: string | null;
+  candidateLocation?: string | null;
+  candidateCompensation?: string | null;
   openJobs: LocalOpenJob[];
   // Most recent resume version name on file (null = none). Shown in the
   // composer as the auto-attached file; the bytes are attached server-side.
@@ -335,6 +343,30 @@ function SubmitModal(props: {
     name: c.name,
     email: c.email,
   }));
+  const primaryContact = (job.clientContacts ?? []).find((c) => c.email) ?? null;
+  const primaryContactFirst = primaryContact?.name?.trim().split(/\s+/)[0] ?? "";
+  const baseMergeValues: MergeFieldValues = {
+    candidateFirstName: props.candidateFirstName,
+    candidateLastName,
+    candidateFullName: props.candidateName,
+    candidateEmail: props.candidateEmail ?? "",
+    candidateLocation: props.candidateLocation ?? "",
+    candidateCity: extractCityFromLocation(props.candidateLocation ?? ""),
+    candidateCompensation: props.candidateCompensation || "open / to be discussed",
+    clientCompanyName: job.clientName,
+    clientContactFullName: primaryContact?.name ?? "",
+    clientContactFirstName: primaryContactFirst,
+    jobTitle: job.jobTitle,
+    jobLocation: job.jobLocation ?? "",
+    jobSalaryRange: job.jobCompensation ?? "",
+  };
+  const templateTextIncludesPublicAccountingBullets = (t: { subject: string; body: string }) => {
+    const text = `${t.subject}\n${t.body}`;
+    return (
+      text.includes("[Public Accounting Submittal Bullets]") ||
+      text.includes("{{public_accounting_submittal_bullets}}")
+    );
+  };
 
   return (
     <EmailComposer
@@ -357,6 +389,7 @@ function SubmitModal(props: {
       helperText="Pick a client contact, then Generate with Claude or write the submittal yourself."
       showTemplatePicker
       templateFilter={(t) => t.audience !== "candidate"}
+      mergeValues={baseMergeValues}
       showCandidateConfirmationToggle
       // Always show what's being attached. The latest resume version on
       // file is auto-attached server-side on send (sendLocalSubmittalEmail);
@@ -380,23 +413,24 @@ function SubmitModal(props: {
           </div>
         )
       }
-      resolveTemplate={(t) => {
+      resolveTemplate={async (t) => {
         // Mirror of the RF submittal composer's resolver — runs merge-field
         // interpolation against the candidate + job + primary client
         // contact so picked templates land with real values instead of
         // raw {{candidateFullName}} / {{clientCompanyName}} tokens.
-        const primaryContact = (job.clientContacts ?? []).find((c) => c.email) ?? null;
-        const primaryContactFirst = primaryContact?.name?.trim().split(/\s+/)[0] ?? "";
-        const values = {
-          candidateFirstName: props.candidateFirstName,
-          candidateLastName,
-          candidateFullName: props.candidateName,
-          candidateEmail: props.candidateEmail ?? "",
-          clientCompanyName: job.clientName,
-          clientContactFullName: primaryContact?.name ?? "",
-          clientContactFirstName: primaryContactFirst,
-          jobTitle: job.jobTitle,
-        };
+        let values = baseMergeValues;
+        if (templateTextIncludesPublicAccountingBullets(t)) {
+          const res = await generateLocalPublicAccountingSubmittalBullets({
+            candidateId: props.candidateId,
+            jobRfId: job.jobCuid ? null : job.jobRfId,
+            jobId: job.jobCuid ?? null,
+          });
+          if (!res.ok) throw new Error(res.error);
+          values = {
+            ...baseMergeValues,
+            publicAccountingSubmittalBullets: res.value.bullets,
+          };
+        }
         return {
           subject: applyMergeFieldsClient(t.subject, values),
           body: applyMergeFieldsClient(t.body, values),
@@ -510,4 +544,3 @@ function JobPicker({
     </label>
   );
 }
-

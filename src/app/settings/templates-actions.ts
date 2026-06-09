@@ -188,6 +188,20 @@ const CLIENT_SUBMITTAL_DEFAULT = {
     "Let me know if you'd like to set up an interview with them.",
 } as const;
 
+const PUBLIC_ACCOUNTING_SUBMITTAL_DEFAULT = {
+  name: "Public Accounting Submittal",
+  subject: "[Candidate Full Name] - [Job Title] for [Client Company Name]",
+  trigger: null as string | null,
+  audience: "client",
+  category: "submittal",
+  body:
+    "Hi [Client Contact First Name],\n\n" +
+    "So here is a candidate I wanted to show you...\n\n" +
+    "[Candidate First Name] lives in [Candidate City] and is targeting [Candidate Compensation].\n\n" +
+    "[Public Accounting Submittal Bullets]\n\n" +
+    "Let me know if you'd like to set up a conversation with [Candidate First Name] this week.",
+} as const;
+
 // NOTE: Templates are seeded WITHOUT signatures. Signature is appended at
 // send time from the user's Preferences so it can't duplicate.
 
@@ -393,6 +407,7 @@ export async function ensureDefaultTemplates(): Promise<void> {
     CANDIDATE_RECRUIT_DEFAULT,
     CANDIDATE_APPLIED_CONFIRMATION_DEFAULT,
     CLIENT_SUBMITTAL_DEFAULT,
+    PUBLIC_ACCOUNTING_SUBMITTAL_DEFAULT,
     CANDIDATE_CONFIRMATION_DEFAULT,
     CLIENT_INTERVIEW_SCHEDULED_DEFAULT,
     CANDIDATE_INTERVIEW_PREP_DEFAULT,

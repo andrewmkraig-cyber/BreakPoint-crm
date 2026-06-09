@@ -16,6 +16,7 @@ import { CandidateCompactOverview } from "@/components/candidate-compact-overvie
 import { CandidateNotesPanel } from "@/components/notes/candidate-notes-panel";
 import { getNotesForEntity } from "@/lib/notes/queries";
 import { toExpectedSalary } from "@/components/candidate-overview-helpers";
+import { formatExpectedCompensation } from "@/lib/candidate-compensation";
 import { cn } from "@/lib/utils";
 import { TextHighlighter } from "@/components/text-highlighter";
 import {
@@ -337,6 +338,7 @@ export async function LocalCandidateProfile({
     : null;
 
   const fullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ") || "(unnamed)";
+  const candidateCompensation = formatExpectedCompensation(candidate.expectedSalary);
 
   // Two identity keys — RF-imported placements hash by jobRfId (numeric),
   // Ace-native placements hash by jobId (cuid string). The LocalOpenJob
@@ -800,6 +802,8 @@ export async function LocalCandidateProfile({
           candidateName={fullName}
           candidateFirstName={candidate.firstName}
           candidateEmail={candidate.email}
+          candidateLocation={candidate.location}
+          candidateCompensation={candidateCompensation}
           openJobs={openJobs}
           latestResumeName={latestResumeName}
           hideButtons
@@ -959,6 +963,8 @@ export async function LocalCandidateProfile({
         candidateName={fullName}
         candidateFirstName={candidate.firstName}
         candidateEmail={candidate.email}
+        candidateLocation={candidate.location}
+        candidateCompensation={candidateCompensation}
         openJobs={openJobs}
         latestResumeName={latestResumeName}
         hideButtons
