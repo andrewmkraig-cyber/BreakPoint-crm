@@ -1,6 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { normalizeToE164 } from "@/lib/rf-payload-shapes";
-import { stripMarkdownToPlain as stripMarkdownToPlainImpl } from "@/lib/markdown-to-plain";
+import {
+  stripMarkdownToPlain as stripMarkdownToPlainImpl,
+  stripBannedDashes,
+} from "@/lib/markdown-to-plain";
 
 // DOCX mime types and filename suffixes we can extract text from via mammoth.
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -482,19 +485,19 @@ export async function summarizeAgreementTerms(params: {
             type: "text",
             text:
               "Extract the key commercial terms from this placement / recruiting fee agreement. " +
-              "Output ONLY a bulleted list - no intro, no summary paragraph, no trailing commentary, no markdown, no code fences. " +
-              "Each line is plain text in the form: `- Label: value`. No asterisks, no bold syntax. " +
+              "Output ONLY a GitHub-flavored markdown bulleted list - no intro, no summary paragraph, no trailing commentary, no code fences. " +
+              "Each line is a markdown list item in the form `- **Label:** value` - a hyphen + space bullet, the label bolded with double asterisks, then the value in plain text. One term per line. " +
               "Keep values short and factual (numbers, percentages, day counts, state names). " +
               "If a term isn't stated in the document, write the value as 'Not specified.' - never guess.\n\n" +
               "Produce these bullets, in this order (skip any that aren't in the doc except the six core ones which always appear):\n" +
-              "- Fee Percentage: (percentage + base - e.g. '25% of first-year base salary')\n" +
-              "- Payment Terms: (e.g. 'Net 15 from start date')\n" +
-              "- Guarantee Period: (e.g. '90 days, prorated replacement')\n" +
-              "- Minimum Fee: (dollar amount, or 'None')\n" +
-              "- Candidate Ownership Period: (e.g. '12 months from introduction')\n" +
-              "- Governing Law: (state/jurisdiction)\n" +
-              "- {Other term label}: (add a bullet for any other notable/custom term - indemnification cap, arbitration, non-solicit scope, background-check responsibility, etc. One bullet per term. Omit if nothing else is notable.)\n\n" +
-              "No other content. Just the bullets.",
+              "- **Fee Percentage:** (percentage + base - e.g. '25% of first-year base salary')\n" +
+              "- **Payment Terms:** (e.g. 'Net 15 from start date')\n" +
+              "- **Guarantee Period:** (e.g. '90 days, prorated replacement')\n" +
+              "- **Minimum Fee:** (dollar amount, or 'None')\n" +
+              "- **Candidate Ownership Period:** (e.g. '12 months from introduction')\n" +
+              "- **Governing Law:** (state/jurisdiction)\n" +
+              "- **{Other term label}:** (add a bullet for any other notable/custom term - indemnification cap, arbitration, non-solicit scope, background-check responsibility, etc. One bullet per term. Omit if nothing else is notable.)\n\n" +
+              "No other content. Just the markdown bullets, one per line.",
           },
         ],
       },
@@ -508,7 +511,12 @@ export async function summarizeAgreementTerms(params: {
     .trim();
 
   if (!text) throw new Error("Claude returned no summary. Try again or check the PDF is readable.");
-  return stripMarkdownToPlain(text);
+  // Keep the markdown bullets intact (MarkdownProse renders `- **Label:** value`
+  // as a clean bold-labeled bullet list); only strip the banned em/en dashes.
+  // Running stripMarkdownToPlain here was the regression - it flattened the
+  // bullets to "•" lines joined by single newlines, which the markdown renderer
+  // then collapsed into one run-together paragraph.
+  return stripBannedDashes(text);
 }
 
 // Takes an uploaded job description (PDF / DOCX / pasted text) and produces
@@ -1135,26 +1143,26 @@ export async function summarizeBenefits(params: {
     type: "text",
     text:
       "Extract the key benefits facts for a candidate. " +
-      "Output ONLY a bulleted list - no intro, no summary paragraph, no trailing commentary, no markdown, no code fences. " +
-      "Each line is plain text in the form: `- Label: value`. No asterisks, no bold syntax. " +
+      "Output ONLY a GitHub-flavored markdown bulleted list - no intro, no summary paragraph, no trailing commentary, no code fences. " +
+      "Each line is a markdown list item in the form `- **Label:** value` - a hyphen + space bullet, the label bolded with double asterisks, then the value in plain text. One category per line. " +
       "Keep values short and factual - numbers, carriers, waiting-period days, match percentages. " +
       "Do not invent details. If a category isn't in the source, skip the bullet.\n\n" +
       "Produce bullets for whichever of these are present:\n" +
-      "- Medical: (carrier, employee cost, plan tiers)\n" +
-      "- Dental: (carrier, employee cost)\n" +
-      "- Vision: (carrier, employee cost)\n" +
-      "- HSA/FSA: (employer contribution, if any)\n" +
-      "- 401(k): (match %, vesting, eligibility)\n" +
-      "- PTO: (days/year, accrual rate)\n" +
-      "- Holidays: (number/year)\n" +
-      "- Parental Leave: (weeks paid)\n" +
-      "- Bonus / Commission / Equity: (structure)\n" +
-      "- Remote / Hybrid: (policy)\n" +
-      "- Stipends / Perks: (commuter, home office, wellness, etc.)\n" +
-      "- Eligibility / Waiting Period: (days to enroll)\n" +
-      "- {Other}: add a bullet per notable item not covered above. Omit if nothing else is notable.\n\n" +
-      "No other content. Just the bullets. If the source is empty or unreadable, output exactly one line: " +
-      "'- Source: No readable benefits info.'",
+      "- **Medical:** (carrier, employee cost, plan tiers)\n" +
+      "- **Dental:** (carrier, employee cost)\n" +
+      "- **Vision:** (carrier, employee cost)\n" +
+      "- **HSA/FSA:** (employer contribution, if any)\n" +
+      "- **401(k):** (match %, vesting, eligibility)\n" +
+      "- **PTO:** (days/year, accrual rate)\n" +
+      "- **Holidays:** (number/year)\n" +
+      "- **Parental Leave:** (weeks paid)\n" +
+      "- **Bonus / Commission / Equity:** (structure)\n" +
+      "- **Remote / Hybrid:** (policy)\n" +
+      "- **Stipends / Perks:** (commuter, home office, wellness, etc.)\n" +
+      "- **Eligibility / Waiting Period:** (days to enroll)\n" +
+      "- **{Other}:** add a bullet per notable item not covered above. Omit if nothing else is notable.\n\n" +
+      "No other content. Just the markdown bullets, one per line. If the source is empty or unreadable, output exactly one line: " +
+      "'- **Source:** No readable benefits info.'",
   });
 
   const response = await anthropic.messages.create({
@@ -1175,5 +1183,8 @@ export async function summarizeBenefits(params: {
     .trim();
 
   if (!text) throw new Error("Claude returned no summary text. Try again or adjust the inputs.");
-  return stripMarkdownToPlain(text);
+  // Keep the markdown bullets intact (MarkdownProse renders `- **Label:** value`
+  // as a clean bold-labeled bullet list); only strip the banned em/en dashes.
+  // stripMarkdownToPlain here was the regression that flattened the bullets.
+  return stripBannedDashes(text);
 }

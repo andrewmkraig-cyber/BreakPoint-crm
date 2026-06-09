@@ -31,3 +31,11 @@ export function stripMarkdownToPlain(text: string): string {
   // Collapse 3+ blank lines into 2 blanks.
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
+
+// Strip ONLY the banned em/en dashes (Andrew reads them as AI-flavored) while
+// LEAVING markdown syntax intact - for summaries that stay markdown and render
+// through MarkdownProse as a real bullet list. The ASCII hyphen-minus used by
+// `- ` bullets is U+002D and is not matched here, so list markers survive.
+export function stripBannedDashes(text: string): string {
+  return text.replace(/\s*[–—]\s*/g, ", ").trim();
+}
