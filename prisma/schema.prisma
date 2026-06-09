@@ -793,11 +793,9 @@ model Client {
   legacyRfId     Int?      @unique // Phase 5: drop
   name           String
   domain         String?
-  // Brand mark for the client surface (40px header avatar on the
-  // client profile, 32px row avatar on BD Client Signal cards).
-  // Derived from `domain` at create time via Clearbit's free logo
-  // CDN (https://logo.clearbit.com/{domain}); UI falls back to an
-  // initials chip when this is null or the image 404s.
+  // Legacy brand mark slot. Current UI resolves favicons from `domain`
+  // at render time and falls back to initials when the site publishes no
+  // favicon.
   logoUrl        String?
   industry       String?
   linkedinPage   String?

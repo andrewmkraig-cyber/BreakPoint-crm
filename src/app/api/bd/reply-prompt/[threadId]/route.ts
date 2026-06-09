@@ -151,8 +151,6 @@ export async function POST(
       }
     }
 
-    const logoUrl = normDomain ? `https://logo.clearbit.com/${normDomain}` : null;
-
     const senderFirst = body.senderName.split(/\s+/)[0]?.trim() || "Contact";
     const senderLast = body.senderName.split(/\s+/).slice(1).join(" ").trim();
 
@@ -160,7 +158,6 @@ export async function POST(
       data: {
         name,
         domain: normDomain,
-        logoUrl,
         organizationId: org.id,
         leadSource: "Apollo BD",
         addedAt: new Date(),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 function initials(name: string) {
   const parts = name.split(/[\s.,]+/).filter(Boolean);
@@ -31,8 +31,13 @@ export function ClientLogo({
 }) {
   const [failed, setFailed] = useState(false);
   const bg = useMemo(() => initialsBg(name), [name]);
+  const src = domain ? `/api/favicon?domain=${encodeURIComponent(domain)}` : null;
 
-  if (!domain || failed) {
+  useEffect(() => {
+    setFailed(false);
+  }, [domain]);
+
+  if (!src || failed) {
     return (
       <div
         className="flex shrink-0 items-center justify-center rounded-lg font-semibold text-white"
@@ -44,14 +49,10 @@ export function ClientLogo({
     );
   }
 
-  // Plain <img>, not next/image — Google's favicon endpoint doesn't fit
-  // Next's image-optimization model (size param controls output) and
-  // adding it to the next.config images allow-list isn't worth it for
-  // a 32-128px favicon.
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`}
+      src={src}
       alt={`${name} logo`}
       width={size}
       height={size}

@@ -108,19 +108,10 @@ export async function createClient(payload: CreateClientPayload): Promise<Create
     const pc = payload.primaryContact;
     const hasContact = (pc.firstName + pc.lastName + pc.email + pc.phone).trim().length > 0;
 
-    // Brand mark via Clearbit's free logo CDN. The URL is constructed
-    // from the bare domain — Clearbit returns a 404 PNG when there's
-    // no logo on file, which the client-side <ClientLogo> component
-    // catches and replaces with an initials chip. No HEAD probe here:
-    // a broken-image fallback is cheaper than a synchronous round-trip
-    // on the create path.
-    const logoUrl = domain ? `https://logo.clearbit.com/${domain}` : null;
-
     const client = await prisma.client.create({
       data: {
         name,
         domain,
-        logoUrl,
         industry: payload.industry.trim() || null,
         linkedinPage: payload.linkedin.trim() || null,
         overview: payload.overview.trim() || null,
