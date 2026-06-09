@@ -9,6 +9,7 @@ import {
   Loader2,
   Pencil,
   Phone,
+  Plus,
   Save,
   ShieldCheck,
   X,
@@ -17,7 +18,8 @@ import { toast } from "sonner";
 import { formatPhone, telHref } from "@/lib/rf-payload-shapes";
 import { updateClientCompany } from "@/app/clients/[id]/actions";
 import { LabeledField } from "@/app/candidates/[id]/editable-helpers";
-import { INPUT_FRAME_RECT_CLASS } from "@/components/ui/input";
+import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 export const INDUSTRY_OPTIONS = [
@@ -35,7 +37,7 @@ export const INDUSTRY_OPTIONS = [
 export type CompanyState = {
   website: string;
   linkedin: string;
-  phone: string;
+  phones: string[];
   industry: string;
   street1: string;
   street2: string;
@@ -136,12 +138,52 @@ export function EditableCompany({
               onChange={(v) => setDraft({ ...draft, linkedin: v })}
               frameClassName={INPUT_FRAME_RECT_CLASS}
             />
-            <LabeledField
-              label="Phone"
-              value={draft.phone}
-              onChange={(v) => setDraft({ ...draft, phone: v })}
-              frameClassName={INPUT_FRAME_RECT_CLASS}
-            />
+            <div className="block text-sm">
+              <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+                Phone
+              </span>
+              <div className="mt-1 space-y-2">
+                {(draft.phones.length ? draft.phones : [""]).map((p, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <div className={cn(INPUT_FRAME_RECT_CLASS, "w-full")}>
+                      <input
+                        value={p}
+                        onChange={(e) => {
+                          const next = draft.phones.length ? [...draft.phones] : [""];
+                          next[i] = e.target.value;
+                          setDraft({ ...draft, phones: next });
+                        }}
+                        className={`${INPUT_CONTROL_CLASS} text-sm`}
+                      />
+                    </div>
+                    {i > 0 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDraft({ ...draft, phones: draft.phones.filter((_, j) => j !== i) })
+                        }
+                        className="rounded-md p-1 text-court-fg-muted transition hover:text-red-600"
+                        aria-label="Remove phone"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      phones: [...(draft.phones.length ? draft.phones : [""]), ""],
+                    })
+                  }
+                  className="inline-flex items-center gap-1 rounded-md text-xs font-medium text-court-fg-muted transition hover:text-brand-dark"
+                >
+                  <Plus className="h-3 w-3" /> Add phone
+                </button>
+              </div>
+            </div>
             <label className="block text-sm">
               <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
                 Industry
@@ -355,10 +397,22 @@ export function EditableCompany({
           </dl>
           <dl className="space-y-2.5">
             <Detail label="Phone" icon={<Phone className="h-3 w-3" />}>
-              {draft.phone ? (
-                <a href={telHref(draft.phone)} className="text-court-fg hover:text-brand-dark">
-                  {formatPhone(draft.phone)}
-                </a>
+              {draft.phones.filter(Boolean).length ? (
+                <div className="space-y-0.5">
+                  {draft.phones.filter(Boolean).map((p, i) => (
+                    <div key={i}>
+                      <a
+                        href={telHref(p)}
+                        className={cn(
+                          "hover:text-brand-dark",
+                          i === 0 ? "text-court-fg" : "text-xs text-court-fg-muted",
+                        )}
+                      >
+                        {formatPhone(p)}
+                      </a>
+                    </div>
+                  ))}
+                </div>
               ) : (
                 <span>—</span>
               )}

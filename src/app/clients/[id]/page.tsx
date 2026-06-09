@@ -360,7 +360,7 @@ export default async function ClientDetailPage({
   const companyInitial: CompanyState = {
     website: client.domain ?? "",
     linkedin: client.linkedinPage ?? "",
-    phone: firstPhone(client.phoneNumbers),
+    phones: allPhones(client.phoneNumbers).map((p) => p.number),
     industry: client.industry ?? "",
     street1: location?.street_address_1 ?? "",
     street2: location?.street_address_2 ?? "",
@@ -575,8 +575,12 @@ export default async function ClientDetailPage({
               "(unnamed)",
             title: c.currentDesignation ?? "",
             email: Array.isArray(c.emails) && c.emails.length > 0 ? c.emails[0] : "",
+            emails: Array.isArray(c.emails)
+              ? c.emails.filter((e): e is string => typeof e === "string" && e.trim().length > 0)
+              : [],
             phone: firstPhone(c.phoneNumbers),
             extension: firstExtension(c.phoneNumbers),
+            phones: allPhones(c.phoneNumbers),
             linkedIn: c.linkedinProfile ?? null,
             notes: c.notes ?? "",
             lastContactedAt:
@@ -823,4 +827,26 @@ function firstExtension(raw: unknown): string {
     return typeof ext === "string" ? ext : "";
   }
   return "";
+}
+
+// Maps the phoneNumbers JSON column to the full {number, extension} list,
+// preserving order (index 0 is primary). Tolerates the legacy string entry
+// shape that firstPhone also handles.
+function allPhones(raw: unknown): { number: string; extension: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { number: string; extension: string }[] = [];
+  for (const entry of raw) {
+    if (typeof entry === "string") {
+      if (entry.trim()) out.push({ number: entry, extension: "" });
+      continue;
+    }
+    if (entry && typeof entry === "object" && "number" in (entry as object)) {
+      const number = (entry as { number?: string }).number;
+      if (typeof number === "string" && number.trim()) {
+        const ext = (entry as { extension?: string | null }).extension;
+        out.push({ number, extension: typeof ext === "string" ? ext : "" });
+      }
+    }
+  }
+  return out;
 }

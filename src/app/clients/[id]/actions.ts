@@ -34,9 +34,19 @@ export async function addContact(clientCuid: string, formData: FormData): Promis
 
   const first = String(formData.get("first_name") ?? "").trim();
   const last = String(formData.get("last_name") ?? "").trim();
-  const email = String(formData.get("email") ?? "").trim();
-  const phone = String(formData.get("phone_number") ?? "").trim();
-  const extension = String(formData.get("phone_extension") ?? "").trim();
+  // Multiple email + phone rows arrive as repeated form fields (index 0 is
+  // primary). Trim, drop blanks, and zip phone numbers to their extensions
+  // by row index.
+  const emails = formData
+    .getAll("email")
+    .map((v) => String(v).trim())
+    .filter(Boolean);
+  const phoneNumbersRaw = formData.getAll("phone_number").map((v) => String(v).trim());
+  const phoneExtsRaw = formData.getAll("phone_extension").map((v) => String(v).trim());
+  const phones = phoneNumbersRaw
+    .map((number, i) => ({ number, extension: phoneExtsRaw[i] ?? "" }))
+    .filter((p) => p.number)
+    .map((p) => (p.extension ? { number: p.number, extension: p.extension } : { number: p.number }));
   const title = String(formData.get("current_designation") ?? "").trim();
   const linkedinRaw = String(formData.get("linkedin_profile") ?? "").trim();
   // Persist a fully-qualified LinkedIn URL so the rendered <a href>
@@ -54,19 +64,13 @@ export async function addContact(clientCuid: string, formData: FormData): Promis
     });
     if (!client) return { ok: false, error: "Client not found." };
 
-    const phoneEntry = phone
-      ? extension
-        ? { number: phone, extension }
-        : { number: phone }
-      : null;
-
     const created = await prisma.contact.create({
       data: {
         firstName: first,
         lastName: last || null,
         name: [first, last].filter(Boolean).join(" "),
-        emails: email ? [email] : [],
-        phoneNumbers: phoneEntry ? [phoneEntry] : undefined,
+        emails,
+        phoneNumbers: phones.length ? phones : undefined,
         currentDesignation: title || null,
         linkedinProfile: linkedin || null,
         clientId: client.id,
@@ -83,14 +87,15 @@ export async function addContact(clientCuid: string, formData: FormData): Promis
   }
 }
 
+export type ContactPhone = { number: string; extension: string };
+
 export type UpdateContactInput = {
   contactId: string;
   firstName: string;
   lastName: string;
   title: string;
-  email: string;
-  phone: string;
-  extension: string;
+  emails: string[];
+  phones: ContactPhone[];
   linkedin: string;
   notes: string;
 };
@@ -101,9 +106,13 @@ export type UpdateContactResult = ActionResult<{
   lastName: string;
   name: string;
   title: string;
+  // Primary (index 0) values for back-compat with single-value readers.
   email: string;
   phone: string;
   extension: string;
+  // Full ordered lists for the multi-value UI.
+  emails: string[];
+  phones: ContactPhone[];
   linkedin: string;
   notes: string;
 }>;
@@ -130,19 +139,15 @@ export async function updateContact(input: UpdateContactInput): Promise<UpdateCo
     });
     if (!existing) return { ok: false, error: "Contact not found." };
 
-    const email = input.email.trim();
-    const phone = input.phone.trim();
-    const extension = input.extension.trim();
+    const emails = (input.emails ?? []).map((e) => e.trim()).filter(Boolean);
+    const phones = (input.phones ?? [])
+      .map((p) => ({ number: p.number.trim(), extension: p.extension.trim() }))
+      .filter((p) => p.number)
+      .map((p) => (p.extension ? { number: p.number, extension: p.extension } : { number: p.number }));
     const title = input.title.trim();
     const linkedin = linkedinUrlFrom(input.linkedin);
     const notes = input.notes.trim();
     const combined = [first, last].filter(Boolean).join(" ");
-
-    const phoneEntry = phone
-      ? extension
-        ? { number: phone, extension }
-        : { number: phone }
-      : null;
 
     const updated = await prisma.contact.update({
       where: { id: existing.id },
@@ -150,8 +155,8 @@ export async function updateContact(input: UpdateContactInput): Promise<UpdateCo
         firstName: first,
         lastName: last || null,
         name: combined,
-        emails: email ? [email] : [],
-        phoneNumbers: phoneEntry ? [phoneEntry] : undefined,
+        emails,
+        phoneNumbers: phones.length ? phones : undefined,
         currentDesignation: title || null,
         linkedinProfile: linkedin || null,
         notes: notes || null,
@@ -177,14 +182,16 @@ export async function updateContact(input: UpdateContactInput): Promise<UpdateCo
       revalidatePath(`/clients/${slug}`);
     }
 
-    const { phoneOut, extensionOut } = (() => {
+    const phonesOut: ContactPhone[] = (() => {
       const pn = updated.phoneNumbers as Array<{ number?: string | null; extension?: string | null }> | null;
-      const first = pn?.[0];
-      return {
-        phoneOut: first?.number ?? "",
-        extensionOut: first?.extension ?? "",
-      };
+      if (!Array.isArray(pn)) return [];
+      return pn
+        .map((p) => ({ number: (p?.number ?? "").trim(), extension: (p?.extension ?? "").trim() }))
+        .filter((p) => p.number);
     })();
+    const emailsOut = Array.isArray(updated.emails)
+      ? updated.emails.filter((e): e is string => typeof e === "string" && e.trim().length > 0)
+      : [];
 
     return {
       ok: true,
@@ -194,9 +201,11 @@ export async function updateContact(input: UpdateContactInput): Promise<UpdateCo
         lastName: updated.lastName ?? "",
         name: updated.name ?? combined,
         title: updated.currentDesignation ?? "",
-        email: Array.isArray(updated.emails) && updated.emails.length > 0 ? updated.emails[0] : "",
-        phone: phoneOut,
-        extension: extensionOut,
+        email: emailsOut[0] ?? "",
+        phone: phonesOut[0]?.number ?? "",
+        extension: phonesOut[0]?.extension ?? "",
+        emails: emailsOut,
+        phones: phonesOut,
         linkedin: updated.linkedinProfile ?? "",
         notes: updated.notes ?? "",
       },
@@ -343,7 +352,7 @@ export type UpdateClientInput = {
   clientCuid: string;
   website: string;
   linkedin: string;
-  phone: string;
+  phones: string[];
   industry: string;
   street1: string;
   street2: string;
@@ -380,7 +389,10 @@ export async function updateClientCompany(input: UpdateClientInput): Promise<Act
       postal_code: input.postalCode.trim() || null,
       country: input.country.trim() || null,
     };
-    const phoneTrimmed = input.phone.trim();
+    const phoneEntries = (input.phones ?? [])
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((number) => ({ number }));
     const signedAtTrimmed = input.feeAgreementSignedAt.trim();
     const signedAtDate = signedAtTrimmed ? new Date(signedAtTrimmed) : null;
     const feePctTrimmed = input.feePct.trim();
@@ -392,7 +404,7 @@ export async function updateClientCompany(input: UpdateClientInput): Promise<Act
         domain: domain || null,
         industry: input.industry.trim() || null,
         linkedinPage: linkedinUrlFrom(input.linkedin) || null,
-        phoneNumbers: phoneTrimmed ? [{ number: phoneTrimmed }] : [],
+        phoneNumbers: phoneEntries,
         location,
         feeAgreementSigned: input.feeAgreementSigned,
         feeAgreementSignedAt:

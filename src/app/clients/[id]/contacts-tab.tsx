@@ -9,6 +9,8 @@ import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
+export type ContactPhone = { number: string; extension: string };
+
 export type ContactRow = {
   id: string;
   legacyRfId: number | null;
@@ -16,13 +18,22 @@ export type ContactRow = {
   lastName: string;
   name: string;
   title: string;
+  // Primary (index 0) single values, kept for back-compat with callers that
+  // only read one email/phone.
   email: string;
   phone: string;
   extension: string;
+  // Full ordered lists (index 0 is primary).
+  emails: string[];
+  phones: ContactPhone[];
   linkedIn: string | null;
   notes: string;
   lastContactedAt: string | null;
 };
+
+// Shared input styling, matching the Field / EditorField inputs in this file.
+const FIELD_INPUT_CLASS =
+  "w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20";
 
 export function ContactsTab({
   clientCuid,
@@ -49,6 +60,13 @@ export function ContactsTab({
   const [rows, setRows] = useState<ContactRow[]>(initialContacts);
   useEffect(() => setRows(initialContacts), [initialContacts]);
   const [editing, setEditing] = useState<ContactRow | null>(null);
+  const [addEmails, setAddEmails] = useState<string[]>([""]);
+  const [addPhones, setAddPhones] = useState<ContactPhone[]>([{ number: "", extension: "" }]);
+
+  function resetAddLists() {
+    setAddEmails([""]);
+    setAddPhones([{ number: "", extension: "" }]);
+  }
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -65,6 +83,7 @@ export function ContactsTab({
       }
       setSuccess("Contact added.");
       form.reset();
+      resetAddLists();
       setOpen(false);
       router.refresh();
     });
@@ -107,11 +126,13 @@ export function ContactsTab({
             <Field label="First name" name="first_name" required autoFocus />
             <Field label="Last name" name="last_name" />
             <Field label="Title" name="current_designation" />
-            <Field label="Email" name="email" type="email" />
-            <div className="grid grid-cols-[1fr_auto] gap-2">
-              <Field label="Phone" name="phone_number" />
-              <Field label="Ext." name="phone_extension" className="w-20" />
-            </div>
+            <EmailListField values={addEmails} onChange={setAddEmails} name="email" />
+            <PhoneListField
+              values={addPhones}
+              onChange={setAddPhones}
+              numberName="phone_number"
+              extName="phone_extension"
+            />
             <Field label="LinkedIn URL" name="linkedin_profile" />
           </div>
           {error && (
@@ -120,7 +141,10 @@ export function ContactsTab({
           <div className="mt-4 flex items-center justify-end gap-2">
             <button
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                setOpen(false);
+                resetAddLists();
+              }}
               className="rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
             >
               Cancel
@@ -156,7 +180,14 @@ export function ContactsTab({
                 </td>
               </tr>
             ) : (
-              rows.map((c) => (
+              rows.map((c) => {
+                const emailList = c.emails.length ? c.emails : c.email ? [c.email] : [];
+                const phoneList = c.phones.length
+                  ? c.phones
+                  : c.phone
+                    ? [{ number: c.phone, extension: c.extension }]
+                    : [];
+                return (
                 <tr
                   key={c.id}
                   onClick={canWrite ? () => setEditing(c) : undefined}
@@ -195,19 +226,28 @@ export function ContactsTab({
                       if ((e.target as HTMLElement).closest("a")) e.stopPropagation();
                     }}
                   >
-                    {c.email ? (
-                      <EmailPopupLauncher
-                        email={c.email}
-                        className="inline-flex items-center gap-1 text-court-fg hover:text-brand-dark"
-                        context={{
-                          client: {
-                            name: clientName,
-                            primaryContactFirstName: c.firstName || c.name.trim().split(/\s+/)[0] || "",
-                          },
-                        }}
-                      >
-                        <Mail className="h-3 w-3 text-court-fg-muted" /> {c.email}
-                      </EmailPopupLauncher>
+                    {emailList.length ? (
+                      <div className="space-y-1">
+                        {emailList.map((em, i) => (
+                          <EmailPopupLauncher
+                            key={i}
+                            email={em}
+                            className={cn(
+                              "flex items-center gap-1 hover:text-brand-dark",
+                              i === 0 ? "text-court-fg" : "text-xs text-court-fg-muted",
+                            )}
+                            context={{
+                              client: {
+                                name: clientName,
+                                primaryContactFirstName:
+                                  c.firstName || c.name.trim().split(/\s+/)[0] || "",
+                              },
+                            }}
+                          >
+                            <Mail className="h-3 w-3 text-court-fg-muted" /> {em}
+                          </EmailPopupLauncher>
+                        ))}
+                      </div>
                     ) : (
                       <span className="text-court-fg-muted">—</span>
                     )}
@@ -218,17 +258,25 @@ export function ContactsTab({
                       if ((e.target as HTMLElement).closest("a")) e.stopPropagation();
                     }}
                   >
-                    {c.phone ? (
-                      <a
-                        href={telHref(c.phone, c.extension)}
-                        className="inline-flex items-center gap-1 text-court-fg hover:text-brand-dark"
-                      >
-                        <PhoneIcon className="h-3 w-3 text-court-fg-muted" />
-                        {formatPhone(c.phone)}
-                        {c.extension && (
-                          <span className="text-court-fg-muted">ext. {c.extension}</span>
-                        )}
-                      </a>
+                    {phoneList.length ? (
+                      <div className="space-y-1">
+                        {phoneList.map((p, i) => (
+                          <a
+                            key={i}
+                            href={telHref(p.number, p.extension)}
+                            className={cn(
+                              "flex items-center gap-1 hover:text-brand-dark",
+                              i === 0 ? "text-court-fg" : "text-xs text-court-fg-muted",
+                            )}
+                          >
+                            <PhoneIcon className="h-3 w-3 text-court-fg-muted" />
+                            {formatPhone(p.number)}
+                            {p.extension && (
+                              <span className="text-court-fg-muted">ext. {p.extension}</span>
+                            )}
+                          </a>
+                        ))}
+                      </div>
                     ) : (
                       <span className="text-court-fg-muted">—</span>
                     )}
@@ -237,7 +285,8 @@ export function ContactsTab({
                     {c.lastContactedAt ? new Date(c.lastContactedAt).toLocaleDateString() : "—"}
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
@@ -269,9 +318,16 @@ function ContactEditor({
   const [firstName, setFirstName] = useState(contact.firstName);
   const [lastName, setLastName] = useState(contact.lastName);
   const [title, setTitle] = useState(contact.title);
-  const [email, setEmail] = useState(contact.email);
-  const [phone, setPhone] = useState(contact.phone);
-  const [extension, setExtension] = useState(contact.extension);
+  const [emails, setEmails] = useState<string[]>(
+    contact.emails.length ? contact.emails : contact.email ? [contact.email] : [""],
+  );
+  const [phones, setPhones] = useState<ContactPhone[]>(
+    contact.phones.length
+      ? contact.phones
+      : contact.phone
+        ? [{ number: contact.phone, extension: contact.extension }]
+        : [{ number: "", extension: "" }],
+  );
   const [linkedin, setLinkedin] = useState(contact.linkedIn ?? "");
   const [notes, setNotes] = useState(contact.notes);
   const [error, setError] = useState<string | null>(null);
@@ -294,9 +350,8 @@ function ContactEditor({
         firstName,
         lastName,
         title,
-        email,
-        phone,
-        extension,
+        emails,
+        phones,
         linkedin,
         notes,
       });
@@ -313,6 +368,8 @@ function ContactEditor({
         email: res.value.email,
         phone: res.value.phone,
         extension: res.value.extension,
+        emails: res.value.emails,
+        phones: res.value.phones,
         linkedIn: res.value.linkedin || null,
         notes: res.value.notes,
       });
@@ -344,11 +401,8 @@ function ContactEditor({
             <EditorField label="Last name" value={lastName} onChange={setLastName} />
           </div>
           <EditorField label="Title" value={title} onChange={setTitle} />
-          <EditorField label="Email" type="email" value={email} onChange={setEmail} />
-          <div className="grid grid-cols-[1fr_auto] gap-2">
-            <EditorField label="Phone" value={phone} onChange={setPhone} />
-            <EditorField label="Ext." value={extension} onChange={setExtension} className="w-24" />
-          </div>
+          <EmailListField values={emails} onChange={setEmails} />
+          <PhoneListField values={phones} onChange={setPhones} />
           <EditorField label="LinkedIn URL" value={linkedin} onChange={setLinkedin} />
           <label className="block text-sm">
             <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Notes</span>
@@ -465,6 +519,128 @@ function Field({
         )}
       />
     </label>
+  );
+}
+
+// Repeatable email rows with a "+ Add email" control. When `name` is set the
+// inputs participate in a FormData submit (the add form reads getAll(name));
+// the inline editor uses it controlled-only (no name). The first row has no
+// remove control and is the primary email.
+function EmailListField({
+  values,
+  onChange,
+  name,
+}: {
+  values: string[];
+  onChange: (v: string[]) => void;
+  name?: string;
+}) {
+  const rows = values.length ? values : [""];
+  return (
+    <div className="block text-sm">
+      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Email</span>
+      <div className="mt-1 space-y-2">
+        {rows.map((v, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <input
+              type="email"
+              name={name}
+              value={v}
+              onChange={(e) => {
+                const next = [...rows];
+                next[i] = e.target.value;
+                onChange(next);
+              }}
+              className={FIELD_INPUT_CLASS}
+            />
+            {i > 0 && (
+              <button
+                type="button"
+                onClick={() => onChange(rows.filter((_, j) => j !== i))}
+                className="rounded-md p-1 text-court-fg-muted transition hover:text-red-600"
+                aria-label="Remove email"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => onChange([...rows, ""])}
+          className="inline-flex items-center gap-1 rounded-md text-xs font-medium text-court-fg-muted transition hover:text-brand-dark"
+        >
+          <Plus className="h-3 w-3" /> Add email
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Repeatable phone + extension rows with a "+ Add phone" control. Same
+// FormData-vs-controlled behavior as EmailListField (numberName / extName).
+function PhoneListField({
+  values,
+  onChange,
+  numberName,
+  extName,
+}: {
+  values: ContactPhone[];
+  onChange: (v: ContactPhone[]) => void;
+  numberName?: string;
+  extName?: string;
+}) {
+  const rows = values.length ? values : [{ number: "", extension: "" }];
+  return (
+    <div className="block text-sm">
+      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Phone</span>
+      <div className="mt-1 space-y-2">
+        {rows.map((p, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <div className="grid flex-1 grid-cols-[1fr_auto] gap-2">
+              <input
+                name={numberName}
+                value={p.number}
+                onChange={(e) => {
+                  const next = rows.map((r) => ({ ...r }));
+                  next[i].number = e.target.value;
+                  onChange(next);
+                }}
+                className={FIELD_INPUT_CLASS}
+              />
+              <input
+                name={extName}
+                value={p.extension}
+                onChange={(e) => {
+                  const next = rows.map((r) => ({ ...r }));
+                  next[i].extension = e.target.value;
+                  onChange(next);
+                }}
+                placeholder="Ext."
+                className={cn(FIELD_INPUT_CLASS, "w-20")}
+              />
+            </div>
+            {i > 0 && (
+              <button
+                type="button"
+                onClick={() => onChange(rows.filter((_, j) => j !== i))}
+                className="rounded-md p-1 text-court-fg-muted transition hover:text-red-600"
+                aria-label="Remove phone"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => onChange([...rows, { number: "", extension: "" }])}
+          className="inline-flex items-center gap-1 rounded-md text-xs font-medium text-court-fg-muted transition hover:text-brand-dark"
+        >
+          <Plus className="h-3 w-3" /> Add phone
+        </button>
+      </div>
+    </div>
   );
 }
 
