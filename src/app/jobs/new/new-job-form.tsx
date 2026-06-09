@@ -93,6 +93,15 @@ export function NewJobForm({
   const [salaryFrequency, setSalaryFrequency] = useState<SalaryFrequency>("yearly");
   const [salaryLow, setSalaryLow] = useState("");
   const [salaryHigh, setSalaryHigh] = useState("");
+  // True while either salary field has focus. Used to suppress the amber
+  // "invalid range" tint WHILE the recruiter is typing: a multi-digit salary
+  // is entered one digit at a time, so the in-progress second number is
+  // transiently smaller than the other field (e.g. typing "1" then "100000"
+  // against an existing "80000"), which briefly trips loNum > hiNum and
+  // flashed both boxes pale yellow. The blur handlers auto-swap a reversed
+  // range, so the range is only ever "invalid" mid-keystroke - never worth
+  // showing then.
+  const [salaryFocused, setSalaryFocused] = useState(false);
   const [currency, setCurrency] = useState("USD");
   const [openings, setOpenings] = useState("1");
   const [description, setDescription] = useState("");
@@ -328,6 +337,11 @@ export function NewJobForm({
   const loNum = salaryLow === "" ? null : Number(salaryLow);
   const hiNum = salaryHigh === "" ? null : Number(salaryHigh);
   const rangeInvalid = loNum != null && hiNum != null && loNum > hiNum;
+  // Only surface the invalid-range styling/message when the recruiter is NOT
+  // actively typing in the salary fields. This keeps a genuinely reversed
+  // range visible (e.g. a bad AI auto-fill, which the user can then correct)
+  // while killing the mid-keystroke pale-yellow flash described above.
+  const showRangeInvalid = rangeInvalid && !salaryFocused;
 
   function onSalaryLowBlur() {
     // Auto-swap for convenience when both values are present and reversed.
@@ -740,8 +754,12 @@ export function NewJobForm({
               label={salaryFrequency === "hourly" ? "Hourly low" : "Salary low"}
               value={salaryLow}
               onChange={setSalaryLow}
-              onBlur={onSalaryLowBlur}
-              invalid={rangeInvalid}
+              onFocus={() => setSalaryFocused(true)}
+              onBlur={() => {
+                setSalaryFocused(false);
+                onSalaryLowBlur();
+              }}
+              invalid={showRangeInvalid}
               step={salaryFrequency === "hourly" ? "0.01" : "1"}
               className="flex-1"
             />
@@ -749,8 +767,12 @@ export function NewJobForm({
               label={salaryFrequency === "hourly" ? "Hourly high" : "Salary high"}
               value={salaryHigh}
               onChange={setSalaryHigh}
-              onBlur={onSalaryHighBlur}
-              invalid={rangeInvalid}
+              onFocus={() => setSalaryFocused(true)}
+              onBlur={() => {
+                setSalaryFocused(false);
+                onSalaryHighBlur();
+              }}
+              invalid={showRangeInvalid}
               step={salaryFrequency === "hourly" ? "0.01" : "1"}
               className="flex-1"
             />
@@ -812,7 +834,7 @@ export function NewJobForm({
             )}
           </div>
 
-          {rangeInvalid && (
+          {showRangeInvalid && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
               Salary low is greater than salary high. We&apos;ll swap them automatically when you tab out.
             </div>
@@ -954,6 +976,7 @@ function SalaryField({
   label,
   value,
   onChange,
+  onFocus,
   onBlur,
   invalid,
   placeholder,
@@ -963,6 +986,7 @@ function SalaryField({
   label: string;
   value: string;
   onChange: (v: string) => void;
+  onFocus?: () => void;
   onBlur: () => void;
   invalid: boolean;
   placeholder?: string;
@@ -983,6 +1007,7 @@ function SalaryField({
             const n = e.target.value;
             if (n === "" || Number(n) >= 0) onChange(n);
           }}
+          onFocus={onFocus}
           onBlur={onBlur}
           className={`${INPUT_CONTROL_CLASS} text-sm`}
         />
