@@ -30,7 +30,7 @@ export function SignalList({ signals }: { signals: SignalRowData[] }) {
 
   if (visible.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-court-border bg-court-surface-subtle p-10 text-center">
+      <div className="rounded-xl border border-dashed border-court-border bg-court-surface-subtle p-10 text-center">
         <p className="text-sm font-semibold text-court-fg">No client signals yet.</p>
         <p className="mt-1 text-sm text-court-fg-muted">
           TheirStack flags an existing client posting publicly and it lands here.
@@ -40,7 +40,7 @@ export function SignalList({ signals }: { signals: SignalRowData[] }) {
   }
 
   return (
-    <div className="divide-y divide-court-border rounded-2xl border border-court-border bg-court-surface shadow-sm">
+    <div className="divide-y divide-court-border rounded-xl border border-court-border bg-court-surface shadow-sm">
       {visible.map((s) => (
         <SignalRow key={s.id} {...s} onRemove={remove} onRestore={restore} />
       ))}

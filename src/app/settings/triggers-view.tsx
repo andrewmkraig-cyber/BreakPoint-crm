@@ -233,7 +233,7 @@ function TriggerCard({
     <div
       data-trigger-row-key={rule.triggerKey}
       className={cn(
-        "rounded-lg border border-court-border bg-court-surface p-4 transition-shadow",
+        "rounded-xl border border-court-border bg-court-surface p-4 transition-shadow",
         highlighted && "shadow-[inset_0_0_0_2px_var(--court-brand)]",
       )}
     >

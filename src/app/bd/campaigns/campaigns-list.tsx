@@ -46,7 +46,7 @@ export function CampaignsList({ rows }: { rows: ReadonlyArray<CampaignRowProps> 
 
   if (items.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-court-border bg-court-surface-subtle p-10 text-center">
+      <div className="rounded-xl border border-dashed border-court-border bg-court-surface-subtle p-10 text-center">
         <p className="text-sm font-semibold text-court-fg">No active campaigns.</p>
         <p className="mt-1 text-sm text-court-fg-muted">Launch one from Today&apos;s Launch.</p>
       </div>
@@ -54,7 +54,7 @@ export function CampaignsList({ rows }: { rows: ReadonlyArray<CampaignRowProps> 
   }
 
   return (
-    <div className="divide-y divide-court-border rounded-2xl border border-court-border bg-court-surface shadow-sm">
+    <div className="divide-y divide-court-border rounded-xl border border-court-border bg-court-surface shadow-sm">
       {items.map((row) => (
         <CampaignRow key={row.runId} {...row} onDismissed={handleDismissed} />
       ))}

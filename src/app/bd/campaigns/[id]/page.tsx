@@ -71,7 +71,7 @@ export default async function CampaignDetailPage({
         </p>
       </header>
 
-      <div className="rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm">
+      <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
         <h2 className="text-sm font-semibold text-court-fg">Plan snapshot</h2>
         <pre className="mt-3 overflow-x-auto rounded-md border border-court-border bg-court-surface-subtle p-3 text-xs leading-relaxed text-court-fg">
 {JSON.stringify(run.plan ?? {}, null, 2)}
@@ -86,7 +86,7 @@ export default async function CampaignDetailPage({
         ) : null}
       </div>
 
-      <div className="rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm">
+      <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-sm font-semibold text-court-fg">Discovered companies</h2>
           <span className="text-xs font-medium text-court-fg-muted">

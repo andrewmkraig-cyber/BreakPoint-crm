@@ -815,7 +815,7 @@ function RunCard({
           onView();
         }
       }}
-      className="cursor-pointer rounded-2xl border border-court-border bg-court-surface p-6 shadow-sm transition-colors hover:border-court-brand/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/50"
+      className="cursor-pointer rounded-xl border border-court-border bg-court-surface p-6 shadow-sm transition-colors hover:border-court-brand/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/50"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>

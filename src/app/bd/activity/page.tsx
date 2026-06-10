@@ -128,7 +128,7 @@ export default async function ActivityPage({
               <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-court-fg-dim">
                 {bucket.label}
               </p>
-              <ul className="divide-y divide-court-border rounded-2xl border border-court-border bg-court-surface shadow-sm">
+              <ul className="divide-y divide-court-border rounded-xl border border-court-border bg-court-surface shadow-sm">
                 {bucket.entries.map((row) => (
                   <ActivityRow key={row.id} {...row} />
                 ))}
@@ -156,7 +156,7 @@ export default async function ActivityPage({
 
 function EmptyState() {
   return (
-    <div className="rounded-2xl border border-dashed border-court-border bg-court-surface-subtle p-10 text-center">
+    <div className="rounded-xl border border-dashed border-court-border bg-court-surface-subtle p-10 text-center">
       <p className="text-sm font-semibold text-court-fg">No activity yet</p>
       <p className="mt-1 text-sm text-court-fg-muted">
         Will populate once contacts are enrolled and emails start sending.
