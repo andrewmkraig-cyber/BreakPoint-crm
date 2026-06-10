@@ -216,7 +216,7 @@ export function JobsView(props: JobsViewProps) {
                   className="group cursor-pointer"
                   onClick={() => router.push(`/jobs/${r.slug}`)}
                 >
-                  <td className="px-4 py-3 align-top font-medium text-court-fg">
+                  <td className="px-3 py-2 align-top font-medium text-court-fg">
                     {/* Whole row navigates to the job — the client name
                         cell intentionally has no separate <Link>, so a
                         click anywhere in the row (including this cell)
@@ -234,10 +234,10 @@ export function JobsView(props: JobsViewProps) {
                       )}
                     </span>
                   </td>
-                  <td className="px-4 py-3 align-top text-court-fg">
+                  <td className="px-3 py-2 align-top text-court-fg">
                     <div className="font-medium">{r.title}</div>
                   </td>
-                  <td className="px-4 py-3 align-top text-court-fg-muted">
+                  <td className="px-3 py-2 align-top text-court-fg-muted">
                     {r.location ? (
                       <span className="inline-flex items-center gap-1">
                         <MapPin className="h-3 w-3 text-court-fg-muted" />
@@ -247,17 +247,17 @@ export function JobsView(props: JobsViewProps) {
                       "—"
                     )}
                   </td>
-                  <td className="px-4 py-3 align-top text-court-fg-muted">{r.compensation || "—"}</td>
-                  <td className="px-4 py-3 align-top text-court-fg-muted">
+                  <td className="px-3 py-2 align-top text-court-fg-muted">{r.compensation || "—"}</td>
+                  <td className="px-3 py-2 align-top text-court-fg-muted">
                     {r.lastEditedAt ? new Date(r.lastEditedAt).toLocaleDateString() : "—"}
                   </td>
-                  <td className="px-4 py-3 align-top text-right">
+                  <td className="px-3 py-2 align-top text-right">
                     <CountPill value={r.submittedCount} />
                   </td>
-                  <td className="px-4 py-3 align-top text-right">
+                  <td className="px-3 py-2 align-top text-right">
                     <CountPill value={r.interviewingCount} />
                   </td>
-                  <td className="px-4 py-3 align-top text-right">
+                  <td className="px-3 py-2 align-top text-right">
                     <CountPill value={r.hiredCount} />
                   </td>
                 </DataTableRow>

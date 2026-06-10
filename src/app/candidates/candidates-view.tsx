@@ -350,7 +350,7 @@ export function CandidatesView({
                   onClick={() => router.push(`/candidates/${c.id}`)}
                 >
                   <td
-                    className="w-10 px-3 py-3"
+                    className="w-10 px-3 py-2"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <input
@@ -361,7 +361,7 @@ export function CandidatesView({
                       className="h-4 w-4 cursor-pointer accent-brand"
                     />
                   </td>
-                  <td className="px-5 py-3 font-medium text-court-fg">
+                  <td className="px-3 py-2 font-medium text-court-fg">
                     <Link
                       href={`/candidates/${c.id}`}
                       className="hover:text-court-accent-dark"
@@ -370,10 +370,10 @@ export function CandidatesView({
                       {c.name}
                     </Link>
                   </td>
-                  <td className="px-5 py-3 text-court-fg-muted">{c.title || "—"}</td>
-                  <td className="px-5 py-3 text-court-fg-muted">{c.employer || "—"}</td>
-                  <td className="px-5 py-3 text-xs text-court-fg-muted/70">{c.location || "—"}</td>
-                  <td className="px-5 py-3 text-center text-xs text-court-fg-muted/70">
+                  <td className="px-3 py-2 text-court-fg-muted">{c.title || "—"}</td>
+                  <td className="px-3 py-2 text-court-fg-muted">{c.employer || "—"}</td>
+                  <td className="px-3 py-2 text-xs text-court-fg-muted/70">{c.location || "—"}</td>
+                  <td className="px-3 py-2 text-center text-xs text-court-fg-muted/70">
                     {c.updatedAt ? new Date(c.updatedAt).toLocaleDateString() : "—"}
                   </td>
                 </tr>

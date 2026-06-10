@@ -236,7 +236,7 @@ function ClientListRowView({ card, quietTier }: { card: ClientCard; quietTier?: 
       className="cursor-pointer transition hover:bg-court-surface-subtle/60"
       onClick={() => router.push(`/clients/${card.slug}`)}
     >
-      <td className="px-5 py-3 align-middle">
+      <td className="px-3 py-2 align-middle">
         <div className="flex items-center gap-3">
           <ClientLogo domain={card.domain} name={card.name || "(unnamed)"} size={32} />
           <div className="flex flex-col gap-0.5">
@@ -256,13 +256,13 @@ function ClientListRowView({ card, quietTier }: { card: ClientCard; quietTier?: 
           </div>
         </div>
       </td>
-      <td className="px-5 py-3 align-middle text-sm text-court-fg-muted">{card.industry || ""}</td>
-      <td className="px-5 py-3 align-middle text-sm text-court-fg-muted">{card.location || ""}</td>
-      <td className="px-5 py-3 align-middle text-center text-sm">
+      <td className="px-3 py-2 align-middle text-sm text-court-fg-muted">{card.industry || ""}</td>
+      <td className="px-3 py-2 align-middle text-sm text-court-fg-muted">{card.location || ""}</td>
+      <td className="px-3 py-2 align-middle text-center text-sm">
         <span className="font-semibold text-court-fg">{card.openJobsCount}</span>
         <span className="text-court-fg-muted"> / {card.openJobsCount + card.closedJobsCount}</span>
       </td>
-      <td className="px-5 py-3 align-middle text-center">
+      <td className="px-3 py-2 align-middle text-center">
         <div className="flex flex-wrap justify-center gap-1">
           {activeStages.length > 0 ? (
             activeStages.map((s) => (
@@ -278,14 +278,14 @@ function ClientListRowView({ card, quietTier }: { card: ClientCard; quietTier?: 
           )}
         </div>
       </td>
-      <td className="px-5 py-3 align-middle text-center text-sm">
+      <td className="px-3 py-2 align-middle text-center text-sm">
         {card.feePct != null ? (
           <span className="font-semibold text-court-fg">{card.feePct}%</span>
         ) : (
           <span className="text-court-fg-muted">—</span>
         )}
       </td>
-      <td className="px-5 py-3 align-middle text-right">
+      <td className="px-3 py-2 align-middle text-right">
         {card.website && (
           <button
             type="button"
