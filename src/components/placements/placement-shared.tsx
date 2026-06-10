@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { TEAM_BCC_OPTIONS } from "@/lib/team-contacts";
 import { Button } from "@/components/ui/button";
+import { Input, Select } from "@/components/ui/input";
 import {
   useDraggableResizable,
   MODAL_MIN_W,
@@ -500,17 +501,17 @@ export function DurationSelect({
   return (
     <label className={compact ? "block w-28 text-sm" : "block text-sm"}>
       <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
-      <select
+      <Select
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        frameClassName="mt-1"
       >
         {DURATION_OPTIONS.map((n) => (
           <option key={n} value={n}>
             {n} min
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 }
@@ -888,10 +889,10 @@ export function InterviewerPicker({
         <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
           Interviewer (client contact)
         </span>
-        <select
+        <Select
           value={mode}
           onChange={(e) => setSelection(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          frameClassName="mt-1"
         >
           <option value="">
             {contacts.length === 0 ? "No contacts on file. Pick an option…" : "Select an interviewer…"}
@@ -904,7 +905,7 @@ export function InterviewerPicker({
             </option>
           ))}
           <option value="custom">Other (enter manually)</option>
-        </select>
+        </Select>
       </label>
 
       {showManualFields && (
@@ -945,7 +946,7 @@ function BareInput({
   name: string;
 }) {
   return (
-    <input
+    <Input
       type={type}
       value={value}
       name={name}
@@ -954,7 +955,6 @@ function BareInput({
       data-lpignore="true"
       data-form-type="other"
       onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
     />
   );
 }
