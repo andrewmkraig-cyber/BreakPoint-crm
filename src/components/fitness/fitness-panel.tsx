@@ -331,11 +331,18 @@ function buildDraftsForDay(
   if (snapshot.selectedDay?.dayType === dayType) {
     return buildDraftsFromWorkoutDay(snapshot.selectedDay);
   }
-  const defaults = snapshot.exercises.filter(
-    (exercise) => exercise.defaultDay === dayType,
-  );
-  return Object.fromEntries(
-    defaults.map((exercise) => [exercise.id, { sets: [buildEmptySet()] }]),
+  return {};
+}
+
+function defaultBodyPartForDay(
+  snapshot: FitnessSnapshot,
+  dayType: string,
+): string {
+  return (
+    snapshot.exercises.find((exercise) => exercise.defaultDay === dayType)
+      ?.bodyPart ??
+    FITNESS_BODY_PARTS.find((part) => part !== "All") ??
+    "Shoulders"
   );
 }
 
@@ -480,11 +487,7 @@ export function FitnessPanel() {
     setDayType(nextDayType);
     setDrafts(
       storedSession
-        ? Object.keys(storedSession.drafts).length > 0
-          ? storedSession.drafts
-          : storedSession.dayType
-            ? buildDraftsForDay(next, storedSession.dayType)
-            : {}
+        ? storedSession.drafts
         : buildDraftsForDay(next, nextDayType),
     );
     setDirty(!!storedSession);
@@ -509,6 +512,7 @@ export function FitnessPanel() {
     if (!activeSessionForDate) return;
     if (
       activeSessionForDate.dayType == null &&
+      !dayType &&
       Object.keys(activeSessionForDate.drafts).length === 0 &&
       Object.keys(drafts).length === 0
     ) {
@@ -571,19 +575,22 @@ export function FitnessPanel() {
     const byId = new Map(
       snapshot.exercises.map((exercise) => [exercise.id, exercise]),
     );
-    const dayDefaults = snapshot.exercises.filter(
-      (exercise) => exercise.defaultDay === dayType,
-    );
-    const drafted = Object.keys(drafts)
+    return Object.keys(drafts)
       .map((id) => byId.get(id))
       .filter((exercise): exercise is FitnessExercise => Boolean(exercise));
-    const merged = new Map<string, FitnessExercise>();
-    [...dayDefaults, ...drafted].forEach((exercise) =>
-      merged.set(exercise.id, exercise),
-    );
-    return Array.from(merged.values()).sort(
-      (a, b) => a.sortOrder - b.sortOrder,
-    );
+  }, [drafts, snapshot]);
+
+  const availableExercises = useMemo(() => {
+    if (!snapshot || !dayType) return [];
+    const draftedIds = new Set(Object.keys(drafts));
+    return snapshot.exercises
+      .filter(
+        (exercise) =>
+          exercise.defaultDay === dayType && !draftedIds.has(exercise.id),
+      )
+      .sort(
+        (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+      );
   }, [dayType, drafts, snapshot]);
 
   const filteredHistory = useMemo(() => {
@@ -827,6 +834,25 @@ export function FitnessPanel() {
     setDirty(true);
   }
 
+  function addExerciseToDraft(exerciseId: string) {
+    if (
+      !snapshot ||
+      !snapshot.exercises.some((exercise) => exercise.id === exerciseId)
+    ) {
+      return;
+    }
+    setDrafts((prev) =>
+      prev[exerciseId]
+        ? prev
+        : {
+            ...prev,
+            [exerciseId]: { sets: [buildEmptySet()] },
+          },
+    );
+    setSaveSummary(null);
+    setDirty(true);
+  }
+
   function startWorkoutSession() {
     const startedAt = new Date().toISOString();
     setActiveSession({
@@ -896,6 +922,7 @@ export function FitnessPanel() {
         [exercise.id]: { sets: [buildEmptySet()] },
       }));
       setCustomName("");
+      setCustomBodyPart(defaultBodyPartForDay(snapshot, dayType));
       setDirty(true);
       toast.success("Exercise added");
     } catch (err) {
@@ -1120,6 +1147,7 @@ export function FitnessPanel() {
                 editingDay={editingDay}
                 drafts={drafts}
                 selectedExercises={selectedExercises}
+                availableExercises={availableExercises}
                 activeSession={activeSessionForDate}
                 sessionElapsedSeconds={sessionElapsedSeconds}
                 customName={customName}
@@ -1134,8 +1162,19 @@ export function FitnessPanel() {
                   setSaveSummary(null);
                 }}
                 onDayTypeChange={(next) => {
+                  if (next === dayType && activeSessionForDate?.dayType === next) {
+                    setSaveSummary(null);
+                    return;
+                  }
+                  if (hasCompleteSet) {
+                    const ok = window.confirm(
+                      "Switch workout day and clear this session?",
+                    );
+                    if (!ok) return;
+                  }
                   setDayType(next);
-                  setDrafts(buildDraftsForDay(snapshot, next));
+                  setDrafts({});
+                  setCustomBodyPart(defaultBodyPartForDay(snapshot, next));
                   setDirty(false);
                   setSaveSummary(null);
                 }}
@@ -1150,6 +1189,7 @@ export function FitnessPanel() {
                 onRemoveSet={removeSet}
                 onRepeat={repeatLast}
                 onRemoveExercise={removeExercise}
+                onAddExercise={addExerciseToDraft}
                 onCustomNameChange={setCustomName}
                 onCustomBodyPartChange={setCustomBodyPart}
                 onAddCustomExercise={onAddCustomExercise}
@@ -1514,6 +1554,7 @@ function RecordTab(props: {
   editingDay: string | null;
   drafts: Record<string, DraftWorkout>;
   selectedExercises: FitnessExercise[];
+  availableExercises: FitnessExercise[];
   activeSession: ActiveWorkoutSession | null;
   sessionElapsedSeconds: number;
   customName: string;
@@ -1545,6 +1586,7 @@ function RecordTab(props: {
   onRemoveSet: (exercise: FitnessExercise, setIndex: number) => void;
   onRepeat: (exercise: FitnessExercise) => void;
   onRemoveExercise: (exerciseId: string) => void;
+  onAddExercise: (exerciseId: string) => void;
   onCustomNameChange: (name: string) => void;
   onCustomBodyPartChange: (bodyPart: string) => void;
   onAddCustomExercise: () => void | Promise<void>;
@@ -1563,6 +1605,7 @@ function RecordTab(props: {
     "start",
   );
   const [showCustomForm, setShowCustomForm] = useState(false);
+  const [exerciseToAdd, setExerciseToAdd] = useState("");
   const activeSessionStartedAt = props.activeSession?.startedAt ?? null;
   const activeSessionDayType = props.activeSession?.dayType ?? null;
 
@@ -1575,13 +1618,29 @@ function RecordTab(props: {
         : "start",
     );
     setShowCustomForm(false);
+    setExerciseToAdd("");
   }, [activeSessionDayType, activeSessionStartedAt, props.date]);
 
   const dayLabel = props.dayLabels[props.dayType] ?? props.dayType;
 
+  useEffect(() => {
+    if (
+      exerciseToAdd &&
+      !props.availableExercises.some((exercise) => exercise.id === exerciseToAdd)
+    ) {
+      setExerciseToAdd("");
+    }
+  }, [exerciseToAdd, props.availableExercises]);
+
   function handleDaySelect(next: string) {
     props.onDayTypeChange(next);
     setRecordMode("workout");
+  }
+
+  function handleAddExercise() {
+    if (!exerciseToAdd) return;
+    props.onAddExercise(exerciseToAdd);
+    setExerciseToAdd("");
   }
 
   if (recordMode === "start") {
@@ -1691,22 +1750,15 @@ function RecordTab(props: {
         compact
       />
 
-      <div className="space-y-3">
-        {props.selectedExercises.map((exercise) => (
-          <ExerciseCard
-            key={exercise.id}
-            exercise={exercise}
-            draft={props.drafts[exercise.id] ?? { sets: [buildEmptySet()] }}
-            onSetChange={props.onSetChange}
-            onBump={props.onBump}
-            onAddSet={props.onAddSet}
-            onDuplicateLastSet={props.onDuplicateLastSet}
-            onRemoveSet={props.onRemoveSet}
-            onRepeat={props.onRepeat}
-            onRemove={props.onRemoveExercise}
-          />
-        ))}
-      </div>
+      <ExercisePicker
+        dayLabel={dayLabel}
+        exercises={props.availableExercises}
+        value={exerciseToAdd}
+        customOpen={showCustomForm}
+        onChange={setExerciseToAdd}
+        onAdd={handleAddExercise}
+        onToggleCustom={() => setShowCustomForm((current) => !current)}
+      />
 
       {showCustomForm ? (
         <div className="rounded-md border border-court-border p-3">
@@ -1743,16 +1795,30 @@ function RecordTab(props: {
             </Button>
           </div>
         </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setShowCustomForm(true)}
-          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-sm font-semibold text-court-fg transition hover:bg-court-surface-subtle"
-        >
-          <Plus className="h-4 w-4" />
-          Add custom exercise
-        </button>
-      )}
+      ) : null}
+
+      <div className="space-y-3">
+        {props.selectedExercises.length > 0 ? (
+          props.selectedExercises.map((exercise) => (
+            <ExerciseCard
+              key={exercise.id}
+              exercise={exercise}
+              draft={props.drafts[exercise.id] ?? { sets: [buildEmptySet()] }}
+              onSetChange={props.onSetChange}
+              onBump={props.onBump}
+              onAddSet={props.onAddSet}
+              onDuplicateLastSet={props.onDuplicateLastSet}
+              onRemoveSet={props.onRemoveSet}
+              onRepeat={props.onRepeat}
+              onRemove={props.onRemoveExercise}
+            />
+          ))
+        ) : (
+          <div className="rounded-md border border-dashed border-court-border bg-court-surface-subtle px-3 py-4 text-center text-sm font-semibold text-court-fg-muted">
+            No lifts added
+          </div>
+        )}
+      </div>
 
       {props.saveSummary ? (
         <SaveSummaryCards summaries={props.saveSummary} onDone={props.onDone} />
@@ -1776,6 +1842,80 @@ function RecordTab(props: {
           <Save className="h-4 w-4" />
           Save workout session
         </button>
+      </div>
+    </div>
+  );
+}
+
+function ExercisePicker({
+  dayLabel,
+  exercises,
+  value,
+  customOpen,
+  onChange,
+  onAdd,
+  onToggleCustom,
+}: {
+  dayLabel: string;
+  exercises: FitnessExercise[];
+  value: string;
+  customOpen: boolean;
+  onChange: (exerciseId: string) => void;
+  onAdd: () => void;
+  onToggleCustom: () => void;
+}) {
+  const hasExercises = exercises.length > 0;
+  return (
+    <div className="rounded-md border border-court-border bg-court-surface-subtle p-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-court-fg-muted">
+            Add Lift
+          </p>
+          <p className="truncate text-sm font-semibold text-court-fg">
+            {dayLabel}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onToggleCustom}
+          className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-sm font-semibold text-court-fg transition hover:bg-court-surface-subtle"
+          aria-label={customOpen ? "Close custom exercise" : "Add custom exercise"}
+        >
+          {customOpen ? (
+            <X className="h-3.5 w-3.5" />
+          ) : (
+            <Plus className="h-3.5 w-3.5" />
+          )}
+          New
+        </button>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={!hasExercises}
+          className="h-10 min-w-0 rounded-md border border-court-border bg-court-surface px-3 text-base text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/30 disabled:opacity-60 sm:text-sm"
+        >
+          <option value="">
+            {hasExercises ? "Choose lift" : "All lifts added"}
+          </option>
+          {exercises.map((exercise) => (
+            <option key={exercise.id} value={exercise.id}>
+              {exercise.name}
+            </option>
+          ))}
+        </select>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={onAdd}
+          disabled={!value}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add
+        </Button>
       </div>
     </div>
   );
@@ -2109,9 +2249,7 @@ function ExerciseCard({
   onRepeat: (exercise: FitnessExercise) => void;
   onRemove: (exerciseId: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(() =>
-    draft.sets.some((set) => setIsComplete(set)),
-  );
+  const [expanded, setExpanded] = useState(true);
   const coreExercise = isCoreBodyPart(exercise.bodyPart);
   const bestScore = recordScore(
     exercise.best?.weightLbs,
@@ -2304,16 +2442,14 @@ function ExerciseCard({
               <Copy className="h-3.5 w-3.5" />
               Duplicate
             </Button>
-            {exercise.isCustom ? (
-              <button
-                type="button"
-                onClick={() => onRemove(exercise.id)}
-                className="grid h-9 w-9 place-items-center rounded-md border border-court-border text-court-fg-muted transition hover:bg-court-surface-subtle"
-                aria-label={`Remove ${exercise.name}`}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => onRemove(exercise.id)}
+              className="grid h-9 w-9 place-items-center rounded-md border border-court-border text-court-fg-muted transition hover:bg-court-surface-subtle"
+              aria-label={`Remove ${exercise.name}`}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
       ) : null}
