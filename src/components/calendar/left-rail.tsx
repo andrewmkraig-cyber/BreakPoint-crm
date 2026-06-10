@@ -65,8 +65,9 @@ type Props = {
 // team checkboxes, upcoming reminders, and a small Google sync footer.
 // Width is 280px to house the reminders panel comfortably — same width
 // the panel used when it lived on the right side of the calendar.
-// The aside scrolls internally when the stack of cards is taller than
-// the viewport so the page itself stays at a fixed viewport height.
+// The rail matches the main calendar viewport height. Fixed-height cards sit
+// above the reminders panel, and the reminders panel flexes to the bottom so
+// its rounded lower corners line up with the calendar surface.
 
 export function CalendarLeftRail({
   teamMembers,
@@ -87,14 +88,8 @@ export function CalendarLeftRail({
 }: Props) {
   return (
     <aside
-      // The rail is the SINGLE scroll container: every card keeps its
-      // natural height (all shrink-0) and the rail scrolls as one when the
-      // stack is taller than the viewport. One scroll region means the
-      // bottom-most reminder + the Google footer are always reachable -
-      // no nested panel scroll that could run past the rail's clip edge
-      // (the earlier max-h-[42vh] inner scroll clipped the last reminder).
-      className="hidden w-[280px] shrink-0 flex-col gap-4 overflow-y-auto pb-4 pr-1 lg:flex"
-      style={{ maxHeight: "calc(100vh - 13rem)" }}
+      className="hidden min-h-0 w-[280px] shrink-0 flex-col gap-4 overflow-hidden pr-1 lg:flex"
+      style={{ height: "calc(100vh - 13rem)" }}
     >
       <div className="shrink-0">
         <MiniMonth
@@ -123,6 +118,7 @@ export function CalendarLeftRail({
           </div>
         </div>
       </div>
+      <GoogleSyncFooter />
       <CalendarRemindersPanel
         reminders={reminders}
         editingId={editingReminderId}
@@ -131,7 +127,6 @@ export function CalendarLeftRail({
         onUpdate={onUpdateReminder}
         onDelete={onDeleteReminder}
       />
-      <GoogleSyncFooter />
     </aside>
   );
 }

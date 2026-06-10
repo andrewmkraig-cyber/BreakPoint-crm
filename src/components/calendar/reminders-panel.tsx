@@ -36,7 +36,7 @@ export function CalendarRemindersPanel({
   const [creating, setCreating] = useState(false);
 
   return (
-    <div className="flex max-h-[440px] min-h-[220px] shrink-0 flex-col overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">
       <div className="flex shrink-0 items-center justify-between border-b border-court-border px-5 py-4">
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
