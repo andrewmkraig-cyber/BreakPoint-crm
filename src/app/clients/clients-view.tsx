@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronDown, LayoutGrid, List, Search } from "lucide-react";
+import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { ClientLogo } from "@/components/clients/client-logo";
 import { PipelinePill } from "@/components/clients/pipeline-pill";
 import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
@@ -378,14 +379,16 @@ export function ClientsView({
         />
 
         <div className="relative min-w-[280px] flex-1">
-          <Search size={14} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-court-fg-muted" />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by client name, industry, or location..."
-            className="w-full rounded-full border border-court-border bg-court-surface py-1.5 pl-10 pr-4 text-sm placeholder:text-court-fg-muted focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-          />
+          <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
+          <div className={INPUT_FRAME_CLASS}>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by client name, industry, or location..."
+              className={`${INPUT_CONTROL_CLASS} pl-10 pr-10 text-sm`}
+            />
+          </div>
         </div>
 
         <OwnerScopeSelect scope={ownerScope} onChange={setOwnerScope} otherName={otherUserName} />

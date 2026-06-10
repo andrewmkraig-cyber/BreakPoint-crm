@@ -12,6 +12,7 @@ import {
   type DragEvent,
 } from "react";
 import { Search, Loader2, Settings, X, ListPlus, Send, Upload, Trash2 } from "lucide-react";
+import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { toast } from "sonner";
@@ -202,16 +203,18 @@ export function CandidatesView({
     <div className="space-y-4">
       <div className="flex flex-col gap-2 rounded-xl border border-court-border/40 bg-court-surface p-3 shadow-sm md:flex-row md:items-center">
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search by name, email, employer, or title"
-            aria-label="Search candidates"
-            className="w-full rounded-lg border border-transparent bg-court-surface-subtle py-2 pl-10 pr-10 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:bg-court-surface focus:outline-none"
-          />
+          <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
+          <div className={INPUT_FRAME_CLASS}>
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search by name, email, employer, or title"
+              aria-label="Search candidates"
+              className={`${INPUT_CONTROL_CLASS} pl-10 pr-10 text-sm`}
+            />
+          </div>
           {isPending && (
-            <Loader2 className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-court-fg-muted" />
+            <Loader2 className="pointer-events-none absolute right-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 animate-spin text-court-fg-muted" />
           )}
         </div>
         <div className="flex items-center gap-2">

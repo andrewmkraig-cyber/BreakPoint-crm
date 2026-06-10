@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition, type FormEvent } from "react";
 import { Search, MapPin, ChevronDown } from "lucide-react";
+import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { Pagination } from "@/components/pagination";
 import { SortableHeader, type SortDirection } from "@/components/sortable-header";
 import { cn } from "@/lib/utils";
@@ -162,14 +163,16 @@ export function JobsView(props: JobsViewProps) {
           fill or submit button. Enter submits the form, which runs the
           existing server-side `?q=` search. */}
       <form onSubmit={onSubmitSearch} className="relative">
-        <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-court-fg-muted" />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by job title, client, or location…"
-          className="w-full rounded-full border border-court-border bg-court-surface py-1.5 pl-10 pr-4 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-        />
+        <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
+        <div className={INPUT_FRAME_CLASS}>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by job title, client, or location…"
+            className={`${INPUT_CONTROL_CLASS} pl-10 pr-10 text-sm`}
+          />
+        </div>
       </form>
 
       {error && (

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
 import { Bookmark, CalendarClock, CheckCircle2, ChevronDown, ChevronUp, DollarSign, Edit3, Handshake, Loader2, Search, Send, UserX, X } from "lucide-react";
+import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { toast } from "sonner";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
 import { StageAgePill } from "@/components/ui/stage-age-pill";
@@ -810,14 +811,16 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
           fill or submit button. Enter submits the form, which runs the
           existing server-side `?q=` search. */}
       <form onSubmit={onSubmitSearch} className="relative">
-        <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-court-fg-muted" />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by candidate, job, or client…"
-          className="w-full rounded-full border border-court-border bg-court-surface py-1.5 pl-10 pr-4 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-        />
+        <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
+        <div className={INPUT_FRAME_CLASS}>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by candidate, job, or client…"
+            className={`${INPUT_CONTROL_CLASS} pl-10 pr-10 text-sm`}
+          />
+        </div>
       </form>
 
       {/* Error panel keeps red semantics in every mode. */}
