@@ -325,7 +325,7 @@ export function JobPipelineSummary({
             </thead>
             <tbody className="divide-y divide-court-border">
               {activeItem.rows.map((r) => (
-                <tr key={r.candidateId} className="transition hover:bg-brand-tint/40">
+                <tr key={r.candidateId} className="transition hover:bg-court-surface-subtle/60">
                   <td className="px-4 py-2">
                     <Link href={`/candidates/${r.candidateId}`} className="font-medium text-court-fg hover:text-brand-dark">
                       {r.candidateName}

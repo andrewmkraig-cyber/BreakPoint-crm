@@ -232,7 +232,7 @@ function ClientListRowView({ card, quietTier }: { card: ClientCard; quietTier?: 
   const activeStages = PIPELINE_STAGES.filter((s: StageEntry) => (card[s.countField] ?? 0) > 0);
   return (
     <tr
-      className="cursor-pointer transition hover:bg-brand/5"
+      className="cursor-pointer transition hover:bg-court-surface-subtle/60"
       onClick={() => router.push(`/clients/${card.slug}`)}
     >
       <td className="px-5 py-3 align-middle">

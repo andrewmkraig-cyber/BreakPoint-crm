@@ -198,7 +198,7 @@ export function ContactsTab({
                   onClick={canWrite ? () => setEditing(c) : undefined}
                   className={cn(
                     "transition",
-                    canWrite ? "cursor-pointer hover:bg-brand-tint/40" : "",
+                    canWrite ? "cursor-pointer hover:bg-court-surface-subtle/60" : "",
                   )}
                 >
                   <td className="px-5 py-3 align-top">

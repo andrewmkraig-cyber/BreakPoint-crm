@@ -300,7 +300,7 @@ function LedgerTableRow({
       tabIndex={0}
       role="button"
       aria-label={`Edit placement for ${candidateLabel}`}
-      className="cursor-pointer border-b border-court-border-soft transition last:border-b-0 hover:bg-court-brand-tint/40 focus:bg-court-brand-tint/40 focus:outline-none"
+      className="cursor-pointer border-b border-court-border-soft transition last:border-b-0 hover:bg-court-surface-subtle/60 focus:bg-court-surface-subtle/60 focus:outline-none"
     >
       <td className="py-1.5 pr-3 align-middle font-medium text-court-fg">
         {candidateLabel}
