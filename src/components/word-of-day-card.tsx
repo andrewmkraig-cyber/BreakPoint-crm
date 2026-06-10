@@ -109,12 +109,12 @@ export function WordOfDayCard() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        // Standard neutral outlined button: rounded-md, single muted
-        // border + muted text, transparent fill. Keeps the full-width
-        // half-column footprint; height slimmed to the standard button
-        // line. Court-border / court-fg tokens stay theme-aware across
-        // light + dark Court modes.
-        className="flex w-full items-center justify-center gap-2 rounded-md border border-court-border bg-transparent px-3 py-1.5 text-sm font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+        // Outlined button with the light brand-green border the other
+        // dashboard boxes use (matches the KpiTile live `border-court-brand/35`),
+        // muted text, transparent fill. Keeps the full-width half-column
+        // footprint; height slimmed to the standard button line. Tokens stay
+        // theme-aware across light + dark Court modes.
+        className="flex w-full items-center justify-center gap-2 rounded-md border border-court-brand/35 bg-transparent px-3 py-1.5 text-sm font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
       >
         <span aria-hidden="true" className="text-[15px] leading-none">📖</span>
         <span className="truncate">Word of the Day</span>
