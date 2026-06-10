@@ -5,6 +5,7 @@ import {
   APPLE_HEALTH_SOURCE,
   FitnessHttpError,
   hashFitnessHealthToken,
+  isoDateOnly,
   parseDateOnly,
   todayInEastern,
 } from "@/lib/fitness-server";
@@ -89,8 +90,22 @@ export async function POST(req: Request) {
     const entries = normalizeEntries(body ?? {});
     const now = new Date();
 
+    const manualRows = await prisma.dailySteps.findMany({
+      where: {
+        organizationId: connection.organizationId,
+        userId: connection.userId,
+        source: "manual",
+        date: { in: entries.map((entry) => entry.date) },
+      },
+      select: { date: true },
+    });
+    const manualDates = new Set(manualRows.map((row) => isoDateOnly(row.date)));
+    const syncEntries = entries.filter(
+      (entry) => !manualDates.has(isoDateOnly(entry.date)),
+    );
+
     await prisma.$transaction([
-      ...entries.map((entry) =>
+      ...syncEntries.map((entry) =>
         prisma.dailySteps.upsert({
           where: {
             organizationId_userId_date: {
@@ -120,7 +135,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      synced: entries.length,
+      synced: syncEntries.length,
+      skippedManual: entries.length - syncEntries.length,
       lastSyncAt: now.toISOString(),
     });
   } catch (error) {

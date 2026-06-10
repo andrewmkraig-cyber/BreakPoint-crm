@@ -245,6 +245,16 @@ export type FitnessHealthConnectionResponse = {
   setup?: FitnessHealthConnectionSetup;
 };
 
+export type FitnessStepsSavePayload = {
+  date: string;
+  steps: number;
+};
+
+export type FitnessStepsSaveResponse = {
+  ok: true;
+  day: FitnessStepsDay;
+};
+
 export function slugifyFitnessName(name: string): string {
   return name
     .trim()
@@ -300,4 +310,15 @@ export async function createAppleHealthConnection(): Promise<FitnessHealthConnec
     headers: { "Content-Type": "application/json" },
   });
   return readJson<FitnessHealthConnectionResponse>(res);
+}
+
+export async function saveFitnessStepsDay(
+  payload: FitnessStepsSavePayload,
+): Promise<FitnessStepsSaveResponse> {
+  const res = await fetch("/api/fitness/steps", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return readJson<FitnessStepsSaveResponse>(res);
 }

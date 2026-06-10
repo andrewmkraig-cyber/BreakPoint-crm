@@ -44,6 +44,7 @@ import {
   createAppleHealthConnection,
   createFitnessExercise,
   getFitnessSnapshot,
+  saveFitnessStepsDay,
   saveFitnessWorkout,
   type FitnessExercise,
   type FitnessHealthConnectionSetup,
@@ -285,6 +286,34 @@ function averageStepsBetween(
     count += 1;
   }
   return count === 0 ? 0 : Math.round(sum / count);
+}
+
+function upsertStepDay(
+  series: FitnessStepsDay[],
+  day: FitnessStepsDay,
+): FitnessStepsDay[] {
+  if (series.some((row) => row.date === day.date)) {
+    return series.map((row) => (row.date === day.date ? day : row));
+  }
+  if (series.length === 0) return [day];
+  if (day.date < series[0].date || day.date > series[series.length - 1].date) {
+    return series;
+  }
+  return [...series, day].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function applyStepsDay(
+  steps: FitnessSnapshot["steps"],
+  day: FitnessStepsDay,
+): FitnessSnapshot["steps"] {
+  return {
+    ...steps,
+    today: steps.today.date === day.date ? day : steps.today,
+    yesterday:
+      steps.yesterday?.date === day.date ? day : (steps.yesterday ?? null),
+    series30: upsertStepDay(steps.series30, day),
+    series365: upsertStepDay(steps.series365, day),
+  };
 }
 
 function setIsComplete(set: DraftSet): boolean {
@@ -1035,6 +1064,18 @@ export function FitnessPanel() {
     }
   }
 
+  async function onSaveStepsDay(date: string, customSteps: number) {
+    const result = await saveFitnessStepsDay({ date, steps: customSteps });
+    setSnapshot((current) =>
+      current
+        ? {
+            ...current,
+            steps: applyStepsDay(current.steps, result.day),
+          }
+        : current,
+    );
+  }
+
   if (!open || typeof document === "undefined") return null;
 
   if (minimized) {
@@ -1199,6 +1240,7 @@ export function FitnessPanel() {
                 onSave={onSaveWorkout}
                 onDone={close}
                 onCreateAppleHealthConnection={onCreateAppleHealthConnection}
+                onSaveStepsDay={onSaveStepsDay}
                 onRestartRest={rest.start}
                 onAddRestMinute={rest.addMinute}
                 onSkipRest={rest.reset}
@@ -1220,6 +1262,7 @@ export function FitnessPanel() {
                 onRangeChange={setHistoryRange}
                 onBodyPartChange={setHistoryBodyPart}
                 onCreateAppleHealthConnection={onCreateAppleHealthConnection}
+                onSaveStepsDay={onSaveStepsDay}
                 onToggleStepsExpanded={() => setStepsExpanded((v) => !v)}
               />
             ) : null}
@@ -1251,6 +1294,7 @@ function StepsHeader({
   healthConnecting,
   onToggleExpanded,
   onCreateAppleHealthConnection,
+  onSaveStepsDay,
 }: {
   steps: FitnessSnapshot["steps"];
   expanded: boolean;
@@ -1259,6 +1303,7 @@ function StepsHeader({
   healthConnecting: boolean;
   onToggleExpanded: () => void;
   onCreateAppleHealthConnection: () => void;
+  onSaveStepsDay: (date: string, steps: number) => Promise<void>;
 }) {
   const series = steps.series365.length > 0 ? steps.series365 : steps.series30;
   const minDate = series[0]?.date ?? steps.today.date;
@@ -1298,10 +1343,126 @@ function StepsHeader({
   );
   const canGoBack = selectedDate > minDate;
   const canGoForward = selectedDate < maxDate;
+  const selectedStepsAreManual = selectedSteps.source === "manual";
+  const [editingStepsDate, setEditingStepsDate] = useState<string | null>(null);
+  const [stepsDraft, setStepsDraft] = useState("");
+  const [stepsSaving, setStepsSaving] = useState(false);
+  const isEditingSteps = editingStepsDate === selectedDate;
 
   useEffect(() => {
     setSelectedStepsDate(clampIsoDate(focusDate, minDate, maxDate));
   }, [focusDate, minDate, maxDate]);
+
+  useEffect(() => {
+    if (!editingStepsDate || editingStepsDate === selectedDate) return;
+    setEditingStepsDate(null);
+    setStepsDraft("");
+  }, [editingStepsDate, selectedDate]);
+
+  function startStepsEdit() {
+    setEditingStepsDate(selectedDate);
+    setStepsDraft(String(selectedSteps.steps));
+  }
+
+  function cancelStepsEdit() {
+    setEditingStepsDate(null);
+    setStepsDraft("");
+  }
+
+  async function saveStepsEdit() {
+    if (!stepsDraft.trim()) {
+      toast.error("Enter a valid step count");
+      return;
+    }
+    const nextSteps = Number(stepsDraft);
+    if (!Number.isFinite(nextSteps) || nextSteps < 0 || nextSteps > 200_000) {
+      toast.error("Enter a valid step count");
+      return;
+    }
+    setStepsSaving(true);
+    try {
+      await onSaveStepsDay(selectedDate, Math.round(nextSteps));
+      setEditingStepsDate(null);
+      setStepsDraft("");
+      toast.success("Steps updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Steps failed to save");
+    } finally {
+      setStepsSaving(false);
+    }
+  }
+
+  const selectedStepsValue = isEditingSteps ? (
+    <>
+      <input
+        type="number"
+        inputMode="numeric"
+        min={0}
+        max={200000}
+        value={stepsDraft}
+        onChange={(e) => setStepsDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") void saveStepsEdit();
+          if (e.key === "Escape") cancelStepsEdit();
+        }}
+        className="h-8 w-28 rounded-md border border-court-border bg-court-surface-subtle px-2 text-center text-sm font-bold tabular-nums text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/30"
+        aria-label={`Steps for ${longDate(selectedSteps.date)}`}
+        disabled={stepsSaving}
+      />
+      <button
+        type="button"
+        onClick={() => void saveStepsEdit()}
+        disabled={stepsSaving}
+        className="grid h-8 w-8 place-items-center rounded-md border border-court-border text-court-brand-dark transition hover:bg-court-brand-tint disabled:cursor-wait disabled:opacity-60"
+        aria-label="Save custom steps"
+      >
+        {stepsSaving ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Check className="h-3.5 w-3.5" />
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={cancelStepsEdit}
+        disabled={stepsSaving}
+        className="grid h-8 w-8 place-items-center rounded-md border border-court-border text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-60"
+        aria-label="Cancel custom steps edit"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </>
+  ) : (
+    <>
+      <span className="text-lg font-bold tabular-nums text-court-fg">
+        {selectedSteps.steps.toLocaleString()}
+      </span>
+      {selectedStepsAreManual ? (
+        <span className="rounded-full border border-court-brand/40 px-1.5 py-0.5 text-[10px] font-bold uppercase text-court-brand-dark">
+          Custom
+        </span>
+      ) : null}
+      {selectedDelta != null ? (
+        <span
+          className={cn(
+            "text-xs font-semibold tabular-nums",
+            selectedDelta >= 0 ? "text-court-brand-dark" : "text-court-fg-muted",
+          )}
+        >
+          {selectedDelta >= 0 ? "+" : ""}
+          {selectedDelta.toLocaleString()}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        onClick={startStepsEdit}
+        className="grid h-7 w-7 place-items-center rounded-md border border-transparent text-court-fg-muted transition hover:border-court-border hover:bg-court-surface-subtle hover:text-court-fg"
+        aria-label="Edit steps for selected day"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
+    </>
+  );
 
   if (!steps.connected) {
     return (
@@ -1336,6 +1497,14 @@ function StepsHeader({
             )}
             Setup
           </Button>
+        </div>
+        <div className="rounded-md bg-court-surface px-3 py-2 text-center">
+          <p className="truncate text-xs font-semibold text-court-fg-muted">
+            {longDate(selectedSteps.date)}
+          </p>
+          <div className="mt-1 flex min-w-0 items-center justify-center gap-1.5">
+            {selectedStepsValue}
+          </div>
         </div>
         {healthSetup ? <AppleHealthSetup setup={healthSetup} /> : null}
       </div>
@@ -1438,23 +1607,8 @@ function StepsHeader({
               <p className="truncate text-xs font-semibold text-court-fg-muted">
                 {longDate(selectedSteps.date)}
               </p>
-              <div className="flex items-baseline justify-center gap-2">
-                <span className="text-lg font-bold tabular-nums text-court-fg">
-                  {selectedSteps.steps.toLocaleString()}
-                </span>
-                {selectedDelta != null ? (
-                  <span
-                    className={cn(
-                      "text-xs font-semibold tabular-nums",
-                      selectedDelta >= 0
-                        ? "text-court-brand-dark"
-                        : "text-court-fg-muted",
-                    )}
-                  >
-                    {selectedDelta >= 0 ? "+" : ""}
-                    {selectedDelta.toLocaleString()}
-                  </span>
-                ) : null}
+              <div className="mt-1 flex min-w-0 items-center justify-center gap-1.5">
+                {selectedStepsValue}
               </div>
             </div>
             <button
@@ -1596,6 +1750,7 @@ function RecordTab(props: {
   onSave: () => void;
   onDone: () => void;
   onCreateAppleHealthConnection: () => void;
+  onSaveStepsDay: (date: string, steps: number) => Promise<void>;
   onRestartRest: () => void;
   onAddRestMinute: () => void;
   onSkipRest: () => void;
@@ -1654,6 +1809,7 @@ function RecordTab(props: {
           healthConnecting={props.healthConnecting}
           onToggleExpanded={props.onToggleStepsExpanded}
           onCreateAppleHealthConnection={props.onCreateAppleHealthConnection}
+          onSaveStepsDay={props.onSaveStepsDay}
         />
 
         <label className="min-w-0 text-xs font-semibold text-court-fg-muted">
@@ -2526,6 +2682,7 @@ function HistoryTab({
   onRangeChange,
   onBodyPartChange,
   onCreateAppleHealthConnection,
+  onSaveStepsDay,
   onToggleStepsExpanded,
 }: {
   snapshot: FitnessSnapshot;
@@ -2540,6 +2697,7 @@ function HistoryTab({
   onRangeChange: (range: FitnessRange) => void;
   onBodyPartChange: (bodyPart: string) => void;
   onCreateAppleHealthConnection: () => void;
+  onSaveStepsDay: (date: string, steps: number) => Promise<void>;
   onToggleStepsExpanded: () => void;
 }) {
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
@@ -2558,6 +2716,7 @@ function HistoryTab({
         healthConnecting={healthConnecting}
         onToggleExpanded={onToggleStepsExpanded}
         onCreateAppleHealthConnection={onCreateAppleHealthConnection}
+        onSaveStepsDay={onSaveStepsDay}
       />
       <TabStrip
         items={RANGE_TABS}
