@@ -12,6 +12,7 @@ import {
   type CandidateListSummary,
 } from "@/app/candidates/lists-actions";
 import { ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { TabStrip, type TabStripItem } from "@/components/ui/tab-strip";
 import { cn } from "@/lib/utils";
 
@@ -257,12 +258,12 @@ function AddToListModal({
                   <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
                     List name
                   </span>
-                  <input
+                  <Input
                     autoFocus
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     maxLength={80}
-                    className="mt-1 w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    frameClassName="mt-1"
                   />
                 </label>
                 <p className="text-[11px] text-court-fg-muted">

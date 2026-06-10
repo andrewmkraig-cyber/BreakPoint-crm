@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { X } from "lucide-react";
 
 import { createToolExpense } from "@/app/dashboard/expense-actions";
+import { Input, Select } from "@/components/ui/input";
 
 const FREQUENCY_OPTIONS = [
   "Monthly",
@@ -74,39 +75,42 @@ export function ExpenseAddForm() {
       className="flex flex-col gap-2 rounded-xl border border-court-border bg-court-surface-subtle/60 p-3"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <input
+        <Input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="min-w-[140px] flex-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg placeholder:text-court-fg-dim focus:border-court-brand focus:outline-none"
+          containerClassName="min-w-[140px] flex-1"
+          className="px-2 py-1"
           autoFocus
         />
-        <input
+        <Input
           type="number"
           step="0.01"
           min="0"
           value={cost}
           onChange={(e) => setCost(e.target.value)}
-          className="w-24 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm tabular-nums text-court-fg placeholder:text-court-fg-dim focus:border-court-brand focus:outline-none"
+          containerClassName="w-24"
+          className="px-2 py-1 tabular-nums"
         />
-        <select
+        <Select
           value={frequency}
           onChange={(e) => setFrequency(e.target.value)}
-          className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg focus:border-court-brand focus:outline-none"
+          className="px-2 py-1"
         >
           {FREQUENCY_OPTIONS.map((f) => (
             <option key={f} value={f}>
               {f}
             </option>
           ))}
-        </select>
-        <input
+        </Select>
+        <Input
           type="number"
           min="1"
           step="1"
           value={paidCount}
           onChange={(e) => setPaidCount(e.target.value)}
-          className="w-16 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm tabular-nums text-court-fg placeholder:text-court-fg-dim focus:border-court-brand focus:outline-none"
+          containerClassName="w-16"
+          className="px-2 py-1 tabular-nums"
         />
         <button
           type="submit"

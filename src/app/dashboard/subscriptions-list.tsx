@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Pencil, Trash2, X, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ExpenseMerchantLogo } from "@/components/expense-merchant-logo";
 import {
   updateToolExpense,
@@ -733,11 +734,12 @@ function FieldText({
       <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-court-fg-muted">
         {label}
       </span>
-      <input
+      <Input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-0.5 w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg focus:border-court-brand focus:outline-none"
+        frameClassName="mt-0.5"
+        className="px-2 py-1"
       />
     </label>
   );
@@ -757,13 +759,14 @@ function FieldNumber({
       <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-court-fg-muted">
         {label}
       </span>
-      <input
+      <Input
         type="number"
         inputMode="decimal"
         step="0.01"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-0.5 w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm tabular-nums text-court-fg focus:border-court-brand focus:outline-none"
+        frameClassName="mt-0.5"
+        className="px-2 py-1 tabular-nums"
       />
     </label>
   );
@@ -783,11 +786,12 @@ function FieldDate({
       <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-court-fg-muted">
         {label}
       </span>
-      <input
+      <Input
         type="date"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-0.5 w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg focus:border-court-brand focus:outline-none"
+        frameClassName="mt-0.5"
+        className="px-2 py-1"
       />
     </label>
   );
