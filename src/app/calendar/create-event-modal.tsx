@@ -5,6 +5,7 @@ import { Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Input, Textarea, Select } from "@/components/ui/input";
 
 import {
   createCalendarEventAction,
@@ -213,24 +214,22 @@ export function CreateEventModal({
 
         <div className="flex-1 space-y-2 overflow-y-auto px-5 py-3 text-sm">
           <Field label="Title" required>
-            <input
+            <Input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               disabled={submitting}
               autoFocus
-              className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
             />
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Date">
-              <input
+              <Input
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 disabled={submitting}
-                className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
               />
             </Field>
             <Field label="All day">
@@ -250,58 +249,53 @@ export function CreateEventModal({
           {!allDay && (
             <div className="grid grid-cols-2 gap-3">
               <Field label="Start">
-                <input
+                <Input
                   type="time"
                   value={startTime}
                   onChange={(e) => setStartTime(e.target.value)}
                   disabled={submitting}
-                  className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
                 />
               </Field>
               <Field label="End">
-                <input
+                <Input
                   type="time"
                   value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
                   disabled={submitting}
-                  className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
                 />
               </Field>
             </div>
           )}
 
           <Field label="Meeting type">
-            <select
+            <Select
               value={meetingType}
               onChange={(e) => setMeetingType(e.target.value as CreateMeetingType)}
               disabled={submitting}
-              className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
             >
               {MEETING_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
-            </select>
+            </Select>
           </Field>
 
           {meetingType === "in_person" && (
             <Field label="Location">
-              <input
+              <Input
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 disabled={submitting}
-                className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
               />
             </Field>
           )}
 
           <Field label="Notes">
-            <textarea
+            <Textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
               disabled={submitting}
-              className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
             />
           </Field>
 
