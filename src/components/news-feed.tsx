@@ -8,16 +8,11 @@ import { ChessPuzzle } from "@/components/chess-puzzle";
 import { TabStrip } from "@/components/ui/tab-strip";
 
 // Editorial briefing layout: header, three tabs, lead story + list,
-// then a quiet 2x2 mini-grid of the daily companion items (Chess,
-// Word, Fun Fact, Horoscope) at the bottom of the same card. Per-tab
+// then a quiet mini-grid of the daily companion items (Chess and Word)
+// directly under the briefing. Per-tab
 // fetch wiring is unchanged — /api/news-feed?tab=... backs all three
 // tabs. Collapse persists in localStorage so the recruiter's choice
 // survives reload.
-//
-// The card uses flex-col h-full so the dashboard grid row that pairs
-// it with ThisWeekWidget renders both with aligned bottom edges; the
-// article list is the only flex-1 region, so a long briefing scrolls
-// inside the card rather than pushing the card taller than its sibling.
 
 const COLLAPSE_KEY = "ace.dashboard.news-feed.collapsed";
 
@@ -201,7 +196,7 @@ export function NewsFeed() {
   return (
     <section
       id="todays-briefing"
-      className="flex h-full scroll-mt-24 flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]"
+      className="flex scroll-mt-24 flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]"
     >
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -236,7 +231,7 @@ export function NewsFeed() {
       </div>
 
       {collapsed ? null : (
-        <div id="today-briefing-body" className="flex min-h-0 flex-1 flex-col">
+        <div id="today-briefing-body" className="flex flex-col">
           {/* Shared TabStrip (controlled mode), so the briefing topics
               read as the same control language as /clients, /jobs, and
               /pipeline and inherit the proximity-hover effect for free.
@@ -267,11 +262,7 @@ export function NewsFeed() {
             </button>
           </div>
 
-          {/* Article list owns the only flex-1 region in the card, so
-              when the dashboard's items-stretch row pins the briefing
-              to its taller sibling, the overflow lands here and the
-              list scrolls inside rather than pushing the card taller. */}
-          <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <div role="tabpanel" className="pr-1">
             {current.status === "loading" || current.status === "idle" ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-5 w-5 animate-spin text-court-fg-muted" />
