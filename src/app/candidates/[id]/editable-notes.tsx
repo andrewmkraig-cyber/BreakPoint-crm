@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { SectionCard } from "@/app/candidates/[id]/editable-helpers";
+import { Textarea } from "@/components/ui/input";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 
 export type NoteRow = {
@@ -112,11 +113,11 @@ export function EditableNotes({
     >
       <div className="space-y-3">
         <div className="rounded-lg border border-dashed border-court-border bg-court-surface-subtle/40 p-3">
-          <textarea
+          <Textarea
             value={newNote}
             onChange={(e) => setNewNote(e.target.value)}
             rows={3}
-            className="w-full resize-vertical rounded-md border border-transparent bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="resize-vertical"
           />
           <div className="mt-2 flex items-center justify-end">
             <button
@@ -138,11 +139,11 @@ export function EditableNotes({
                 <li key={n.id ?? `new-${i}`} className="rounded-lg border border-court-border/40 bg-court-surface p-3 text-sm shadow-sm">
                   {isEditing ? (
                     <div className="space-y-2">
-                      <textarea
+                      <Textarea
                         value={editDraft}
                         onChange={(e) => setEditDraft(e.target.value)}
                         rows={4}
-                        className="w-full resize-vertical rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                        className="resize-vertical"
                         autoFocus
                       />
                       <div className="flex items-center justify-end gap-2">

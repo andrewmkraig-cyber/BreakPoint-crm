@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Briefcase, Building2, Loader2, Pencil, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { updateLocalCandidate } from "@/app/candidates/[id]/local-candidate-update";
+import { Input } from "@/components/ui/input";
 
 // Mirror of the RF profile's EditableEmployment but writes to local
 // Postgres instead of RF. Lets the recruiter override what the resume
@@ -94,20 +95,20 @@ export function LocalEmployment({
         <div className="mt-3 space-y-3">
           <label className="block text-sm">
             <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Current title</span>
-            <input
+            <Input
               type="text"
               value={draftDesignation}
               onChange={(e) => setDraftDesignation(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              frameClassName="mt-1"
             />
           </label>
           <label className="block text-sm">
             <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Current employer</span>
-            <input
+            <Input
               type="text"
               value={draftOrganization}
               onChange={(e) => setDraftOrganization(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              frameClassName="mt-1"
             />
           </label>
           {err && (

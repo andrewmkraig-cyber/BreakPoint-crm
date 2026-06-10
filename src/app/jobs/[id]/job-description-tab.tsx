@@ -9,6 +9,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/input";
 import {
   saveJobGeneratedDescription,
   saveJobSearchKeywords,
@@ -412,14 +413,12 @@ function GeneratedJdCard({
       </div>
 
       {editing ? (
-        <textarea
+        <Textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={20}
-          className={cn(
-            "mt-3 w-full resize-y rounded-md border border-court-border bg-court-bg px-3 py-2 font-mono text-xs leading-relaxed text-court-fg shadow-sm",
-            "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-          )}
+          frameClassName="mt-3"
+          className="resize-y font-mono text-xs leading-relaxed"
         />
       ) : hasDescription ? (
         <div
