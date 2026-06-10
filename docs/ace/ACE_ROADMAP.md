@@ -3,6 +3,14 @@ Last updated: 2026-06-10 · Ace 90.0
 
 ## Active Build Sequence
 
+### Shared input component migration - WAVE 1 DONE (2026-06-10)
+Consolidating the ~40 hand-rolled form inputs across the app onto one shared set of components that wrap the existing Ace 66.0 court-input-rect standard (rect frame, focus-within glow, 1px lift). No new styling - the components render exactly what `court-input-rect` already renders. The pill variant (search bar / SMS composer / Ace Assistant) stays out of scope and keeps `court-input-frame`.
+- **Shared components shipped (`src/components/ui/input.tsx`).** `Input`, `Textarea`, `Select` - drop-in replacements that pass every native prop through and add an optional `label` + inline `error`. They wrap `INPUT_FRAME_RECT_CLASS` + `INPUT_CONTROL_CLASS`. The wrapper is a `<div>` (never a `<label>`) so they compose inside callers that already supply their own Field/Row/label chrome without nested-label markup. `Select` renders a built-in `ChevronDown` because the control CSS sets `appearance:none` (which strips the native arrow); the chevron is guarded off for multi-row list boxes (`size>1` / `multiple`).
+- **Wave 1 migrated (the audit's F3 group - highest visibility):** `calendar/create-event-modal.tsx`, `mail/mail-composer.tsx`, `email-composer.tsx`, `candidates/bulk-dialogs.tsx`, `placements/placement-shared.tsx`, `pipeline/placement-edit-drawer.tsx`. Behavior is identical (same handlers, values, validation); the only change is that these fields gained the standard rect frame, glow, and lift. Both-mode token compliance holds (the components emit only Court Mode tokens via the shared CSS).
+- **Intentionally skipped + flagged (custom behavior that does not fit the shared component):** the `bulk-dialogs.tsx` job-picker `<select size=...>` is a multi-row **list box**, not a single-line dropdown, so the rect frame + chevron do not fit it - left bespoke with a code comment. Out of scope by definition (not court-input-rect fields): checkboxes, the hidden file picker, and the chip-widget internal inputs (`AddressRow`, `ContactComboMulti`, `InlineContactMultiInput`), which keep their own frames per the Composer Recipient Standard.
+- **WAVE 2 (NEXT, not started):** migrate the remaining ~33 bespoke-input files onto the shared components.
+- **F2 inline editable fields (LATER):** not touched in wave 1; a separate pass.
+
 ### GO-LIVE GATE - BD enroll arc DONE; go-live blocked only on TheirStack credit renewal (June 14)
 The BD Apollo enrollment arc is complete and the enroll-zero ROOT CAUSE is fixed (Ace 89.0): the approval-modal selection freeze, find-the-person path, email reveal (match-by-person-id), and mailbox rotation (confirmed N=5 live) are all done. Go-live is now blocked only on TheirStack discovery credits, which renew **June 14**.
 
