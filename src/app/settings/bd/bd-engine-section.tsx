@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Power, Save } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 import { Toggle } from "./limits-section";
 import { updateBDSettings } from "./actions";
 
@@ -128,7 +129,7 @@ export function BdEngineSection({ config }: { config: BdEngineConfig }) {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <input
+            <Input
               type="number"
               min={1}
               max={200}
@@ -136,7 +137,8 @@ export function BdEngineSection({ config }: { config: BdEngineConfig }) {
               onChange={(e) =>
                 setDailyCap(e.target.value === "" ? NaN : Number(e.target.value))
               }
-              className="w-24 rounded-md border border-court-border bg-court-surface px-2 py-1 text-right text-sm tabular-nums text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+              containerClassName="w-24"
+              className="px-2 py-1 text-right tabular-nums"
             />
           </div>
         </div>

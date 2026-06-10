@@ -9,6 +9,7 @@ import {
   uploadBrandingLogo,
 } from "@/app/settings/branding-actions";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 
 // Max matches MAX_LOGO_BYTES server-side — double-enforced so a user
 // gets feedback before a 500KB+ file leaves the browser.
@@ -271,16 +272,13 @@ function Field({
   return (
     <label className="block text-sm">
       <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
-      <input
+      <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         readOnly={readOnly}
         placeholder={placeholder}
-        className={cn(
-          "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
-          "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-          readOnly && "cursor-not-allowed opacity-70",
-        )}
+        frameClassName="mt-1"
+        className={cn(readOnly && "cursor-not-allowed opacity-70")}
       />
     </label>
   );

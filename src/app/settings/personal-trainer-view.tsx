@@ -8,6 +8,7 @@ import {
   updateRule,
   type PersonalTrainerRuleRow,
 } from "@/app/settings/personal-trainer-actions";
+import { Textarea } from "@/components/ui/input";
 
 type SubTab = "trainer" | "rules";
 
@@ -117,11 +118,11 @@ function TrainerTab({
 
   return (
     <div className="space-y-3">
-      <textarea
+      <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={3}
-        className="block w-full resize-y rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
+        className="resize-y"
       />
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div>
@@ -227,11 +228,11 @@ function RuleRow({
   if (editing) {
     return (
       <li className="py-3">
-        <textarea
+        <Textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={3}
-          className="block w-full resize-y rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
+          className="resize-y"
         />
         {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
         <div className="mt-2 flex items-center gap-2">

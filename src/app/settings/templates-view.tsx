@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp, Loader2, Pencil, Plus, Save, Trash2, X } from "
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input, Select } from "@/components/ui/input";
 import {
   MERGE_FIELDS,
   templateBodyToEditorHtml,
@@ -48,12 +49,10 @@ type TabId = "active" | "inactive";
 const AUDIENCE_OPTIONS = ["client", "candidate", "internal"] as const;
 const CATEGORY_OPTIONS = ["outreach", "interview", "submittal", "offer", "rejection", "reference"] as const;
 
-// Shared input/select/textarea class so every form field in the template
-// editor tracks the active court mode. Keeping this in one place makes it
-// easy to audit and to extend later (e.g. when a fifth surface wants the
-// same treatment).
-const FIELD_CLASS =
-  "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
+// Template editor form fields use the shared <Input>/<Select> components
+// (the court-input-rect standard); `mt-1` is passed per field as frameClassName
+// to keep the spacing under each field label.
+const FIELD_FRAME_MT = "mt-1";
 
 export function TemplatesView({
   initial,
@@ -448,21 +447,21 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
               is used site-wide — theming it would balloon this slice. */}
           <label className="block text-sm">
             <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Name</span>
-            <input
+            <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className={FIELD_CLASS}
+              frameClassName={FIELD_FRAME_MT}
             />
           </label>
 
           <label className="block text-sm">
             <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Subject</span>
-            <input
+            <Input
               ref={subjectRef}
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               onFocus={() => setLastFocus("subject")}
-              className={FIELD_CLASS}
+              frameClassName={FIELD_FRAME_MT}
             />
           </label>
 
@@ -493,27 +492,27 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="block text-sm">
               <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Trigger</span>
-              <select
+              <Select
                 value={trigger}
                 onChange={(e) => setTrigger(e.target.value)}
-                className={FIELD_CLASS}
+                frameClassName={FIELD_FRAME_MT}
               >
                 {TRIGGER_OPTIONS.map((t) => (
                   <option key={t.value} value={t.value}>
                     {t.label}
                   </option>
                 ))}
-              </select>
+              </Select>
               <span className="mt-1 block text-[11px] text-court-fg-muted">
                 {TRIGGER_OPTIONS.find((t) => t.value === trigger)?.description ?? ""}
               </span>
             </label>
             <label className="block text-sm">
               <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Audience</span>
-              <select
+              <Select
                 value={audience}
                 onChange={(e) => setAudience(e.target.value)}
-                className={FIELD_CLASS}
+                frameClassName={FIELD_FRAME_MT}
               >
                 <option value="">—</option>
                 {AUDIENCE_OPTIONS.map((a) => (
@@ -521,14 +520,14 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
                     {a}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="block text-sm">
               <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Category</span>
-              <select
+              <Select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className={FIELD_CLASS}
+                frameClassName={FIELD_FRAME_MT}
               >
                 <option value="">—</option>
                 {CATEGORY_OPTIONS.map((c) => (
@@ -536,7 +535,7 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
                     {c}
                   </option>
                 ))}
-              </select>
+              </Select>
               <span className="mt-1 block text-[11px] text-court-fg-muted">
                 Groups templates in scoped dropdowns. E.g. the interview invite composers pull every template tagged &quot;interview&quot;.
               </span>

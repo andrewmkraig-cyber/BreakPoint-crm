@@ -15,14 +15,7 @@ import {
   type AddressFields,
   type PersonalInfoRow,
 } from "@/app/settings/personal-info-constants";
-
-// Address inputs deliberately match BrandingView's <Field>: rounded-lg
-// outlined rectangle, subtle court-surface fill, brand focus ring.
-// The earlier pattern (INPUT_FRAME_CLASS pill + grey fill) made the
-// Address row look like a different control family from the Branding
-// row directly below it. One settings page, one input style.
-const ADDRESS_INPUT_CLASS =
-  "block rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20";
+import { Input, Select } from "@/components/ui/input";
 
 // File picker is fed by a hidden <input type="file">. We read the file
 // via FileReader as a base64 data URL on the client, strip the prefix,
@@ -253,7 +246,7 @@ export function PersonalInfoView({
       </fieldset>
 
       <Field label="Birthday">
-        <input
+        <Input
           type="date"
           value={birthday}
           onChange={(e) => setBirthday(e.target.value)}
@@ -262,7 +255,7 @@ export function PersonalInfoView({
           // form width. Cap at ~180px so the field reads as a
           // compact picker, matching how every other date picker in
           // Ace is sized (event drawer, reminder form, etc.).
-          className="block w-[180px] rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
+          containerClassName="w-[180px]"
         />
       </Field>
 
@@ -270,11 +263,11 @@ export function PersonalInfoView({
         label="Start date"
         hint="When you joined BreakPoint. Drives future anniversary pills."
       >
-        <input
+        <Input
           type="date"
           value={workAnniversary}
           onChange={(e) => setWorkAnniversary(e.target.value)}
-          className="block w-[180px] rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
+          containerClassName="w-[180px]"
         />
       </Field>
 
@@ -285,55 +278,56 @@ export function PersonalInfoView({
         <SubField label="Street">
           {/* Street/city kept at w-80 / w-56 from the prior pass so
               short values like "123 Main St" / "Solon" don't sit next
-              to a giant empty bar. Styling now mirrors BrandingView
-              (rounded-lg + outlined, not pill + grey-filled). */}
-          <input
+              to a giant empty bar. */}
+          <Input
             type="text"
             value={address.street}
             onChange={(e) => setAddressField("street", e.target.value)}
-            className={`${ADDRESS_INPUT_CLASS} w-80 max-w-full`}
+            containerClassName="w-80 max-w-full"
           />
         </SubField>
         <div className="flex flex-wrap items-end gap-3">
           <SubField label="City">
-            <input
+            <Input
               type="text"
               value={address.city}
               onChange={(e) => setAddressField("city", e.target.value)}
-              className={`${ADDRESS_INPUT_CLASS} w-56 max-w-full`}
+              containerClassName="w-56 max-w-full"
             />
           </SubField>
           <SubField label="State">
-            <input
+            <Input
               type="text"
               value={address.state}
               onChange={(e) => setAddressField("state", e.target.value)}
               maxLength={32}
-              className={`${ADDRESS_INPUT_CLASS} w-20 uppercase`}
+              containerClassName="w-20"
+              className="uppercase"
             />
           </SubField>
           <SubField label="ZIP">
-            <input
+            <Input
               type="text"
               value={address.zip}
               onChange={(e) => setAddressField("zip", e.target.value)}
               inputMode="numeric"
               maxLength={10}
-              className={`${ADDRESS_INPUT_CLASS} w-28 tabular-nums`}
+              containerClassName="w-28"
+              className="tabular-nums"
             />
           </SubField>
         </div>
       </fieldset>
 
       <Field label="T-Shirt Size">
-        <select
+        <Select
           value={tshirtSize}
           onChange={(e) => setTshirtSize(e.target.value)}
           // Sizes are at most "3XL" — three characters wide. A
           // full-row select looked like a misuse of the form so it
           // shrinks to a compact ~90px control that fits the value
           // plus the disclosure arrow without empty space.
-          className="block w-[90px] rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
+          containerClassName="w-[90px]"
         >
           <option value="">—</option>
           {TSHIRT_SIZES.map((size) => (
@@ -341,7 +335,7 @@ export function PersonalInfoView({
               {size}
             </option>
           ))}
-        </select>
+        </Select>
       </Field>
 
       {error && <p className="text-xs text-red-600">{error}</p>}

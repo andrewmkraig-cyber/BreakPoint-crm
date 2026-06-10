@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Check, X, Loader2, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 import { updateBdOrgConfig, updateVerticalDailyCap } from "./actions";
 
 export type LimitsConfig = {
@@ -181,12 +182,13 @@ function GlobalCapRow({ value }: { value: number }) {
       <div className="flex items-center gap-2">
         {editing ? (
           <>
-            <input
+            <Input
               type="number"
               min={0}
               value={draft}
               onChange={(e) => setDraft(Number(e.target.value))}
-              className="w-20 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+              containerClassName="w-20"
+              className="px-2 py-1"
             />
             <button
               type="button"
@@ -263,12 +265,13 @@ function VerticalCapCard({
       <p className="truncate text-xs font-semibold uppercase tracking-wide text-court-fg-muted">{name}</p>
       <div className="mt-1 flex items-center justify-between gap-2">
         {editing ? (
-          <input
+          <Input
             type="number"
             min={0}
             value={draft}
             onChange={(e) => setDraft(Number(e.target.value))}
-            className="w-20 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+            containerClassName="w-20"
+            className="px-2 py-1"
           />
         ) : locked ? (
           <span className="text-2xl font-semibold tabular-nums text-court-fg">{value}</span>

@@ -19,6 +19,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 import { saveContactTargeting } from "./actions";
 
 export type ContactTargetingRow = {
@@ -119,7 +120,7 @@ function VerticalTargetingCard({ row }: { row: ContactTargetingRow }) {
           <span className="block text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
             Max contacts per firm
           </span>
-          <input
+          <Input
             type="number"
             min={1}
             max={20}
@@ -127,7 +128,7 @@ function VerticalTargetingCard({ row }: { row: ContactTargetingRow }) {
             onChange={(e) =>
               setMaxPerFirm(e.target.value === "" ? NaN : Number(e.target.value))
             }
-            className="mt-1 block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+            frameClassName="mt-1"
           />
         </label>
 

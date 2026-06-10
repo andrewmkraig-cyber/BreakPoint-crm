@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Pencil, Trash2, X, Save, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Input, Select } from "@/components/ui/input";
 import { formatBdDate } from "@/app/bd/date-format";
 import {
   createSendingDomain,
@@ -118,41 +119,41 @@ function DomainRowView({
       <tr className="bg-court-surface-subtle/40">
         <Td className="font-mono tabular-nums text-court-fg-dim">{row.priority}</Td>
         <Td>
-          <input
+          <Input
             type="text"
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
-            className="block w-full rounded-md border border-court-border bg-court-surface px-2 py-1 font-mono text-[12px] text-court-fg"
+            className="px-2 py-1 font-mono text-[12px]"
           />
         </Td>
         <Td>
-          <select
+          <Select
             value={status}
             onChange={(e) => setStatus(e.target.value as SendingDomainStatus)}
-            className="block w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg"
+            className="px-2 py-1 text-xs"
           >
             {STATUSES.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
             ))}
-          </select>
+          </Select>
         </Td>
         <Td>
           <ApolloMailboxCell apollo={row.apollo} />
         </Td>
         <Td>
-          <select
+          <Select
             value={owner}
             onChange={(e) => setOwner(e.target.value)}
-            className="block w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg"
+            className="px-2 py-1 text-xs"
           >
             {OWNERS.map((o) => (
               <option key={o} value={o}>
                 {o}
               </option>
             ))}
-          </select>
+          </Select>
         </Td>
         <Td>{row.lastCooldownIso ? formatBdDate(new Date(row.lastCooldownIso)) : "—"}</Td>
         <Td className="text-right">
@@ -263,29 +264,30 @@ function AddDomainForm({ onClose }: { onClose: () => void }) {
           <span className="block text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
             Domain
           </span>
-          <input
+          <Input
             type="text"
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
             required
-            className="mt-1 block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 font-mono text-[12px] text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+            frameClassName="mt-1"
+            className="font-mono text-[12px]"
           />
         </label>
         <label className="block">
           <span className="block text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
             Inbox owner
           </span>
-          <select
+          <Select
             value={owner}
             onChange={(e) => setOwner(e.target.value)}
-            className="mt-1 block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+            frameClassName="mt-1"
           >
             {OWNERS.map((o) => (
               <option key={o} value={o}>
                 {o}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       </div>
 

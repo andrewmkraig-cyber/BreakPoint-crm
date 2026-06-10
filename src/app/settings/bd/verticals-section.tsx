@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Pencil, Trash2, ChevronDown, X, Save, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Input, Select } from "@/components/ui/input";
 import { formatBdDateTime } from "@/app/bd/date-format";
 import { resolveSequenceDisplayName } from "@/lib/bd/apollo-sequences";
 import {
@@ -365,22 +366,20 @@ function SavedSearchEditForm({
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4 px-4 py-4">
       <Field label="Name">
-        <input
+        <Input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
-          className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
         />
       </Field>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Mapped Apollo sequence">
-          <select
+          <Select
             value={sequence}
             onChange={(e) => setSequence(e.target.value)}
             required
-            className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
           >
             {/* Placeholder only when nothing is chosen yet (new form) — a
                 required select then blocks submit until one is picked.
@@ -396,11 +395,11 @@ function SavedSearchEditForm({
                 {s}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
 
         <Field label="Daily contact cap">
-          <input
+          <Input
             type="number"
             min={0}
             value={Number.isNaN(contactCap) ? "" : contactCap}
@@ -408,7 +407,6 @@ function SavedSearchEditForm({
               setContactCap(e.target.value === "" ? NaN : Number(e.target.value))
             }
             aria-invalid={exceedsGlobal}
-            className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
           />
           {exceedsGlobal && (
             <span className="mt-1 block text-[11px] text-red-600 dark:text-red-300">
@@ -419,11 +417,10 @@ function SavedSearchEditForm({
       </div>
 
       <Field label="Location override" hint="Not yet active - reserved for future per-vertical location filtering.">
-        <input
+        <Input
           type="text"
           value={locationOverride}
           onChange={(e) => setLocationOverride(e.target.value)}
-          className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
         />
       </Field>
 
@@ -619,24 +616,23 @@ function NewVerticalForm({ onClose }: { onClose: () => void }) {
       <div className="flex items-end gap-4">
         <div className="flex-1">
           <Field label="Name">
-            <input
+            <Input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Public Accounting"
               required
-              className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
             />
           </Field>
         </div>
         <div className="flex-1">
           <Field label="Slug" hint="URL-safe identifier; leave blank to auto-generate">
-            <input
+            <Input
               type="text"
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
               placeholder="e.g. public-accounting"
-              className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 font-mono text-[12px] text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+              className="font-mono text-[12px]"
             />
           </Field>
         </div>

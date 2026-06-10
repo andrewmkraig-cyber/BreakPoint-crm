@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Loader2, Save } from "lucide-react";
 
 import type { BillingSettings } from "@/lib/billing-settings";
+import { Input, Textarea } from "@/components/ui/input";
 
 import { saveBillingSettingsAction } from "./actions";
 
@@ -119,20 +120,18 @@ function FieldGroup({
               {f.label}
             </span>
             {f.type === "textarea" ? (
-              <textarea
+              <Textarea
                 rows={3}
                 value={values[f.key] as string}
                 onChange={(e) => update(f.key, e.target.value as BillingSettings[typeof f.key])}
                 placeholder={f.placeholder}
-                className="rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg shadow-sm focus:border-court-accent focus:outline-none"
               />
             ) : (
-              <input
+              <Input
                 type="text"
                 value={values[f.key] as string}
                 onChange={(e) => update(f.key, e.target.value as BillingSettings[typeof f.key])}
                 placeholder={f.placeholder}
-                className="rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg shadow-sm focus:border-court-accent focus:outline-none"
               />
             )}
             {f.hint ? <span className="text-[11px] text-court-fg-muted">{f.hint}</span> : null}
