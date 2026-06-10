@@ -21,6 +21,11 @@
      design mocks; flipping to grayscale antialiasing matches the
      "crisper" weight the design surfaces use. Applied at the body
      level so every page picks it up. */
+  html,
+  body {
+    background: rgb(var(--court-bg));
+  }
+
   body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -557,31 +562,42 @@ html[data-theme='light'] .ace-topbar-mark .ace-brand-disc {
     display: none;
   }
 
-  /* Discrete themed scrollbar. The default browser scrollbar rendered as a
-     glaring bright-white bar on the dark Court Modes (most visible on the
-     Mail labels column once the label list is expanded enough to scroll).
-     This swaps it for a thin, token-tinted thumb over a transparent track,
-     so it reads as a quiet dark sliver on dark themes and a soft grey one on
-     light themes. Scoped to .court-scroll so only opted-in scroll surfaces
-     change; everything else keeps its native scrollbar. */
-  .court-scroll {
+  /* Discrete themed scrollbars. The browser default can render as a bright
+     white strip on dark Court Modes, especially on the page, sidebar, and
+     Mail columns. Apply the quiet token-tinted treatment globally so new
+     scroll surfaces inherit it automatically; the weather strip above keeps
+     its explicit hidden scrollbar override. */
+  * {
     scrollbar-width: thin;
     scrollbar-color: rgb(var(--court-border)) transparent;
   }
-  .court-scroll::-webkit-scrollbar {
+  *::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
-  .court-scroll::-webkit-scrollbar-track {
+  *::-webkit-scrollbar-track {
     background: transparent;
   }
-  .court-scroll::-webkit-scrollbar-thumb {
+  *::-webkit-scrollbar-thumb {
     background-color: rgb(var(--court-border));
     border-radius: 9999px;
     border: 2px solid transparent;
     background-clip: padding-box;
   }
-  .court-scroll::-webkit-scrollbar-thumb:hover {
+  *::-webkit-scrollbar-thumb:hover {
     background-color: rgb(var(--court-fg-muted));
+  }
+
+  [data-in-sidebar],
+  [data-in-sidebar] * {
+    scrollbar-color: rgb(var(--court-sidebar-border)) transparent;
+  }
+  [data-in-sidebar]::-webkit-scrollbar-thumb,
+  [data-in-sidebar] *::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--court-sidebar-border));
+  }
+  [data-in-sidebar]::-webkit-scrollbar-thumb:hover,
+  [data-in-sidebar] *::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(var(--court-sidebar-fg-dim));
   }
 }
