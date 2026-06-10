@@ -74,6 +74,7 @@ export type JobOverviewSnapshot = {
 // salary fields stay strings while editing so partial input ("12", "")
 // doesn't fight the number parse until Save.
 type Draft = {
+  title: string;
   employmentType: string;
   locationCity: string;
   locationState: string;
@@ -87,6 +88,7 @@ type Draft = {
 
 function buildDraft(s: JobOverviewSnapshot): Draft {
   return {
+    title: s.title,
     employmentType: s.employmentType ?? "",
     locationCity: s.locationCity ?? "",
     locationState: s.locationState ?? "",
@@ -114,7 +116,8 @@ export function JobOverviewTab({
   const [draft, setDraft] = useState<Draft>(() => buildDraft(snapshot));
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  // Per-field inline errors for the required City / State / Zip trio.
+  // Per-field inline errors for the required Job title + City / State / Zip.
+  const [titleErr, setTitleErr] = useState<string | null>(null);
   const [cityErr, setCityErr] = useState<string | null>(null);
   const [stateErr, setStateErr] = useState<string | null>(null);
   const [zipErr, setZipErr] = useState<string | null>(null);
@@ -127,7 +130,9 @@ export function JobOverviewTab({
     if (!editing) setDraft(buildDraft(snapshot));
   }, [snapshot, editing]);
 
+  // Clears the inline field errors (title + the City / State / Zip trio).
   function clearLocationErrs() {
+    setTitleErr(null);
     setCityErr(null);
     setStateErr(null);
     setZipErr(null);
@@ -155,6 +160,16 @@ export function JobOverviewTab({
     // City / State / Zip are REQUIRED on every edit-save (enforce-on-
     // edit). State must be a 2-letter abbreviation, Zip 5 digits. Same
     // rule the New Job create path enforces; the server re-checks too.
+    // Job title is required — it's the job's identity (page header,
+    // /jobs list, /pipeline all read it). Validate alongside location so
+    // every missing-field error surfaces in one pass.
+    const title = draft.title.trim();
+    let titleInvalid = false;
+    if (!title) {
+      setTitleErr("Job title is required.");
+      titleInvalid = true;
+    }
+
     const city = draft.locationCity.trim();
     const stateAbbr = draft.locationState.trim();
     const zip = draft.locationZip.trim();
@@ -177,7 +192,7 @@ export function JobOverviewTab({
       setZipErr("Enter a 5-digit US zip code.");
       locationInvalid = true;
     }
-    if (locationInvalid) return;
+    if (titleInvalid || locationInvalid) return;
 
     const lo = parseMoney(draft.salaryLo);
     const hi = parseMoney(draft.salaryHi);
@@ -237,6 +252,7 @@ export function JobOverviewTab({
     }
 
     const patch: JobOverviewPatch = {
+      title,
       employmentType,
       locationCity: city,
       locationState: stateUpper,
@@ -271,6 +287,7 @@ export function JobOverviewTab({
       .trim();
     setState((s) => ({
       ...s,
+      title,
       employmentType,
       locationCity: city,
       locationState: stateUpper,
@@ -310,6 +327,15 @@ export function JobOverviewTab({
 
         {editing ? (
           <div className="mt-3 space-y-3 text-sm">
+            <RectField
+              label="Job title"
+              value={draft.title}
+              onChange={(v) => {
+                setDraft({ ...draft, title: v });
+                if (titleErr) setTitleErr(null);
+              }}
+              error={titleErr}
+            />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <LabeledField
                 label="Employment"

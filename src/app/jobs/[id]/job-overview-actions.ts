@@ -33,6 +33,10 @@ async function requireUserId(): Promise<string | null> {
 type Result = { ok: true } | { ok: false; error: string };
 
 export type JobOverviewPatch = {
+  // Job title. Required (non-empty) when present; trimmed + length-capped.
+  // The Overview edit form always sends the current title so a save can
+  // rename the job.
+  title?: string | null;
   // Compensation. Pass numbers (or null to clear). Currency is a 3-letter
   // ISO code; the form normalizes blank to USD. salaryFrequency is
   // "yearly" or "hourly" — drives the comp display ("$80k–$120k / yr"
@@ -97,11 +101,22 @@ export async function updateJobOverview(args: {
         ...(jobCuid ? { id: jobCuid } : { legacyRfId: jobRfId! }),
         organizationId: org.id,
       },
-      select: { id: true, legacyRfId: true, lifecycle: true, isOpen: true },
+      select: { id: true, legacyRfId: true, lifecycle: true, isOpen: true, clientId: true },
     });
     if (!job) return { ok: false, error: "Job not found." };
 
     const data: Prisma.JobUpdateInput = {};
+
+    // Job title. The edit form always sends the current title, so a save
+    // can rename the job. Required + trimmed + capped; Job.title is read
+    // by the page header, the /jobs list, /pipeline, and the client jobs
+    // table, all revalidated below when the title is part of the patch.
+    if (patch.title !== undefined) {
+      const t = (patch.title ?? "").trim();
+      if (!t) return { ok: false, error: "Job title is required." };
+      if (t.length > 300) return { ok: false, error: "Job title is too long." };
+      data.title = t;
+    }
 
     // Structured location. The Overview edit form sends City / State /
     // Zip and they are REQUIRED on every save (enforce-on-edit). Same
@@ -212,6 +227,13 @@ export async function updateJobOverview(args: {
 
     if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
     revalidatePath(`/jobs/${job.id}`);
+    // A renamed title also shows on the /jobs list, /pipeline, and the
+    // client's jobs table — refresh those when the title was edited.
+    if (patch.title !== undefined) {
+      revalidatePath(`/jobs`);
+      revalidatePath(`/pipeline`);
+      if (job.clientId) revalidatePath(`/clients/${job.clientId}`);
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Save failed." };
