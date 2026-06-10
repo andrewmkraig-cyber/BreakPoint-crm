@@ -52,7 +52,25 @@ assert(
   "top-level from fallback resolves",
 );
 
-// 5. Missing / empty values resolve to undefined so the route logs the
+// 5. Quo's delivered-message payloads expose recipients as arrays. Pick the
+// first usable phone so outbound webhook imports can persist a one-to-one SMS
+// row in Ace.
+assert(
+  pickPhone(
+    { data: { context: { recipientIdentifiers: ["+15557654321"] } } },
+    ["data.context.recipientIdentifiers"],
+  ) === "+15557654321",
+  "recipientIdentifiers array resolves",
+);
+assert(
+  pickPhone(
+    { data: { object: { to: [{ number: "+15557654321" }] } } },
+    ["data.object.to"],
+  ) === "+15557654321",
+  "object array recipient resolves",
+);
+
+// 6. Missing / empty values resolve to undefined so the route logs the
 // "fromNumber missing, push skipped" reason instead of silently passing.
 assert(
   pickPhone({ data: { object: {} } }, FROM_PATHS) === undefined,
@@ -67,7 +85,7 @@ assert(
   "empty-object from is undefined",
 );
 
-// 6. redactPhone never emits the full number.
+// 7. redactPhone never emits the full number.
 const full = "+15551234567";
 const red = redactPhone(full);
 assert(!red.includes(full), "redactPhone does not contain the full number");

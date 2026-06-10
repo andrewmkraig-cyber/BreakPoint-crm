@@ -53,9 +53,9 @@ export async function POST(req: NextRequest) {
     // pickPhone (not pickStr) for from/to so an object-shaped value
     // (e.g. data.object.from: { number: "+1..." }) gets unwrapped rather
     // than silently failing the typeof-string check and dropping the push.
-    const fromNumber = pickPhone(body, ['data.object.from', 'from_number', 'from'])
-    const toNumber = pickPhone(body, ['data.object.to', 'to_number', 'to'])
-    const content = pickStr(body, ['data.object.body', 'content', 'message'])
+    const fromNumber = pickInboundMessageFrom(body)
+    const toNumber = pickInboundMessageTo(body)
+    const content = pickMessageText(body)
     // MMS images. OpenPhone delivers attachments as either
     // `data.object.media: [{ url, type }, ...]` or a top-level
     // `data.object.mediaUrl` (varies across event versions). We grab
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
             fromNumber,
             toNumber: toNumber ?? '',
             status: 'received',
-            krispcallId: pickStr(body, ['data.object.id', 'id']),
+            krispcallId: pickMessageId(body),
             mediaUrl,
           },
         })
@@ -185,6 +185,48 @@ export async function POST(req: NextRequest) {
       console.error('[quo/webhook] inbound message: fromNumber missing, push skipped', {
         rawFromType: Array.isArray(rawFrom) ? 'array' : typeof rawFrom,
         dataObjectKeys: dataObj ? Object.keys(dataObj) : null,
+      })
+    }
+  }
+
+  if (eventType === 'message.delivered' || eventType === 'message.sent') {
+    const direction = pickStr(body, ['data.resource.direction', 'data.object.direction', 'direction'])
+    if (direction && direction !== 'outgoing' && direction !== 'outbound') {
+      console.warn('[quo/webhook] outbound message event carried non-outgoing direction', {
+        eventType,
+        direction,
+      })
+      return NextResponse.json({ ok: true })
+    }
+
+    const fromNumber = pickOutboundMessageFrom(body)
+    const toNumber = pickOutboundMessageTo(body)
+    const content = pickMessageText(body)
+    const quoId = pickMessageId(body)
+    const status = pickMessageStatus(body) ?? 'delivered'
+    const mediaUrl = pickMediaUrl(body)
+    const createdAt = pickDate(body, [
+      'data.resource.createdAt',
+      'data.object.createdAt',
+      'createdAt',
+    ])
+
+    if (!toNumber) {
+      console.error('[quo/webhook] outbound message: toNumber missing, persistence skipped', {
+        eventType,
+        quoId: quoId ?? null,
+        fromSuffix: redactPhone(fromNumber),
+        dataObjectKeys: dataObj ? Object.keys(dataObj) : null,
+      })
+    } else {
+      await persistOutboundSmsMessage({
+        quoId,
+        fromNumber,
+        toNumber,
+        content: content ?? '',
+        status,
+        mediaUrl,
+        createdAt,
       })
     }
   }
@@ -471,6 +513,87 @@ async function defaultOrgId(): Promise<string | null> {
   return cachedDefaultOrgId
 }
 
+type OutboundSmsWebhookInput = {
+  quoId: string | undefined
+  fromNumber: string | undefined
+  toNumber: string
+  content: string
+  status: string
+  mediaUrl: string | null
+  createdAt: Date | null
+}
+
+async function persistOutboundSmsMessage(input: OutboundSmsWebhookInput) {
+  const phoneToMatch = input.toNumber.replace(/\D/g, '').slice(-10)
+  const candidate = phoneToMatch
+    ? await prisma.candidate.findFirst({
+        where: { phone: { contains: phoneToMatch } },
+      })
+    : null
+  const clientMatch = candidate ? null : await matchClientByPhone(input.toNumber)
+  const orgId = candidate?.organizationId ?? clientMatch?.organizationId ?? (await defaultOrgId())
+  const existing = input.quoId
+    ? await prisma.smsMessage.findFirst({ where: { krispcallId: input.quoId } })
+    : null
+
+  try {
+    if (existing) {
+      const row = await prisma.smsMessage.update({
+        where: { id: existing.id },
+        data: {
+          candidateId: existing.candidateId ?? candidate?.id ?? null,
+          clientId: existing.clientId ?? clientMatch?.clientId ?? null,
+          organizationId: existing.organizationId ?? orgId,
+          direction: 'outbound',
+          body: input.content || existing.body,
+          fromNumber: input.fromNumber ?? existing.fromNumber,
+          toNumber: input.toNumber,
+          status: input.status,
+          isRead: true,
+          krispcallId: existing.krispcallId ?? input.quoId ?? null,
+          mediaUrl: input.mediaUrl ?? existing.mediaUrl,
+        },
+      })
+      console.log('[quo/webhook] outbound message updated', {
+        id: row.id,
+        quoId: input.quoId ?? null,
+        toSuffix: redactPhone(input.toNumber),
+        organizationId: row.organizationId ?? null,
+      })
+      return
+    }
+
+    const row = await prisma.smsMessage.create({
+      data: {
+        candidateId: candidate?.id ?? null,
+        clientId: clientMatch?.clientId ?? null,
+        organizationId: orgId,
+        direction: 'outbound',
+        body: input.content,
+        fromNumber: input.fromNumber ?? '',
+        toNumber: input.toNumber,
+        status: input.status,
+        isRead: true,
+        krispcallId: input.quoId ?? null,
+        mediaUrl: input.mediaUrl,
+        ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+      },
+    })
+    console.log('[quo/webhook] outbound message created', {
+      id: row.id,
+      quoId: input.quoId ?? null,
+      toSuffix: redactPhone(input.toNumber),
+      organizationId: row.organizationId ?? null,
+    })
+  } catch (err) {
+    console.error('[quo/webhook] outbound smsMessage upsert failed', {
+      quoId: input.quoId ?? null,
+      toSuffix: redactPhone(input.toNumber),
+      err,
+    })
+  }
+}
+
 function verifySignature(header: string | null, rawBody: string): boolean {
   const secret = process.env.QUO_SIGNING_SECRET
   // Off-by-default — when no secret is configured we treat the
@@ -499,11 +622,74 @@ function verifySignature(header: string | null, rawBody: string): boolean {
   return crypto.timingSafeEqual(a, b)
 }
 
+function pickInboundMessageFrom(body: unknown): string | undefined {
+  return pickPhone(body, [
+    'data.context.senderIdentifier',
+    'data.object.from',
+    'from_number',
+    'from',
+  ])
+}
+
+function pickInboundMessageTo(body: unknown): string | undefined {
+  return pickPhone(body, [
+    'data.context.recipientIdentifiers',
+    'data.object.to',
+    'to_number',
+    'to',
+  ])
+}
+
+function pickOutboundMessageFrom(body: unknown): string | undefined {
+  return pickPhone(body, [
+    'data.context.senderIdentifier',
+    'data.object.from',
+    'from_number',
+    'from',
+  ])
+}
+
+function pickOutboundMessageTo(body: unknown): string | undefined {
+  return pickPhone(body, [
+    'data.context.recipientIdentifiers',
+    'data.object.to',
+    'to_number',
+    'to',
+  ])
+}
+
+function pickMessageText(body: unknown): string | undefined {
+  return pickStr(body, [
+    'data.resource.text',
+    'data.object.text',
+    'data.object.body',
+    'content',
+    'message',
+    'text',
+  ])
+}
+
+function pickMessageId(body: unknown): string | undefined {
+  return pickStr(body, ['data.resource.id', 'data.object.id', 'id', 'message_id'])
+}
+
+function pickMessageStatus(body: unknown): string | undefined {
+  return pickStr(body, ['data.resource.status', 'data.object.status', 'status'])
+}
+
+function pickDate(body: unknown, paths: string[]): Date | null {
+  const raw = pickStr(body, paths)
+  if (!raw) return null
+  const date = new Date(raw)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
 function pickMediaUrl(body: unknown): string | null {
   // First, scan a `media` array under data.object.media or top-level media
   // (Quo sends one or the other depending on the event version). Each
   // entry is typically `{ url, type }`; treat bare strings as URLs too.
   const arr =
+    (getPath(body, 'data.resource.media') as unknown) ??
     (getPath(body, 'data.object.media') as unknown) ??
     (getPath(body, 'media') as unknown)
   if (Array.isArray(arr)) {
@@ -518,6 +704,8 @@ function pickMediaUrl(body: unknown): string | null {
   // Fallback: flat string fields some webhook variants set instead of
   // a media array.
   const flat = pickStr(body, [
+    'data.resource.mediaUrl',
+    'data.resource.media_url',
     'data.object.mediaUrl',
     'data.object.media_url',
     'mediaUrl',

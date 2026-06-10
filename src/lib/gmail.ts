@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { expandGmailThreadSearchQueries } from "@/lib/gmail-search-query";
 import { getEmailSignature } from "@/lib/preferences";
 import {
   ACE_SIGNATURE_MARKER,
@@ -521,26 +522,44 @@ export async function listGmailThreads(
   opts: { maxResults?: number; labelIds?: string[]; q?: string } = {},
 ): Promise<MailListThread[]> {
   const accessToken = await getFreshAccessToken(userId);
-  const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/threads");
-  url.searchParams.set("maxResults", String(opts.maxResults ?? 50));
-  for (const id of opts.labelIds ?? ["INBOX"]) {
-    url.searchParams.append("labelIds", id);
+  const maxResults = opts.maxResults ?? 50;
+  const labelIds = opts.labelIds ?? ["INBOX"];
+  const searchQueries = expandGmailThreadSearchQueries(opts.q);
+  const listQueries: Array<string | null> = searchQueries.length > 0 ? searchQueries : [null];
+
+  const listJsons = await Promise.all(
+    listQueries.map(async (query) => {
+      const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/threads");
+      url.searchParams.set("maxResults", String(maxResults));
+      for (const id of labelIds) {
+        url.searchParams.append("labelIds", id);
+      }
+      // Gmail's full search syntax - from:/to:/subject:/has:attachment/etc.
+      // Also try a compact plain phrase so "zoom info" can match "ZoomInfo".
+      if (query) {
+        url.searchParams.set("q", query);
+      }
+      const listRes = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
+      if (!listRes.ok) {
+        const text = await listRes.text().catch(() => "");
+        throw new Error(`Gmail threads.list failed (${listRes.status}): ${text || "no body"}`);
+      }
+      return (await listRes.json()) as GmailListThreadsResponse;
+    }),
+  );
+
+  const seenIds = new Set<string>();
+  const ids: string[] = [];
+  for (const listJson of listJsons) {
+    for (const thread of listJson.threads ?? []) {
+      if (seenIds.has(thread.id)) continue;
+      seenIds.add(thread.id);
+      ids.push(thread.id);
+    }
   }
-  // Gmail's full search syntax — from:/to:/subject:/has:attachment/etc.
-  // Pass through whatever the user typed; the API handles parsing.
-  if (opts.q && opts.q.trim()) {
-    url.searchParams.set("q", opts.q.trim());
-  }
-  const listRes = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    cache: "no-store",
-  });
-  if (!listRes.ok) {
-    const text = await listRes.text().catch(() => "");
-    throw new Error(`Gmail threads.list failed (${listRes.status}): ${text || "no body"}`);
-  }
-  const listJson = (await listRes.json()) as GmailListThreadsResponse;
-  const ids = (listJson.threads ?? []).map((t) => t.id);
   if (ids.length === 0) return [];
 
   // Hydrate each thread's most-recent-message summary via metadata format
@@ -585,7 +604,8 @@ export async function listGmailThreads(
   // if Gmail returned them in a different order.
   return enriched
     .filter((x): x is MailListThread => x !== null)
-    .sort((a, b) => (b.timestampIso ?? "").localeCompare(a.timestampIso ?? ""));
+    .sort((a, b) => (b.timestampIso ?? "").localeCompare(a.timestampIso ?? ""))
+    .slice(0, maxResults);
 }
 
 export type MailAttachmentRef = {

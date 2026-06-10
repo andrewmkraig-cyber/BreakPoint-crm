@@ -1,5 +1,5 @@
-// Pure helpers for normalizing Quo (OpenPhone) inbound webhook phone
-// fields. Extracted from the webhook route so they can be unit-tested
+// Pure helpers for normalizing Quo (OpenPhone) webhook phone fields.
+// Extracted from the webhook route so they can be unit-tested
 // without importing the route module (which pulls in Prisma, web-push,
 // and next/server). No side-effect imports here on purpose.
 
@@ -39,6 +39,20 @@ export function pickPhone(obj: unknown, paths: string[]): string | undefined {
     const v = resolvePath(obj, p);
     if (typeof v === "string" && v.length > 0) return v;
     if (typeof v === "number") return String(v);
+    if (Array.isArray(v)) {
+      for (const item of v) {
+        if (typeof item === "string" && item.length > 0) return item;
+        if (typeof item === "number") return String(item);
+        if (item && typeof item === "object") {
+          const o = item as Record<string, unknown>;
+          for (const k of PHONE_OBJECT_KEYS) {
+            const nested = o[k];
+            if (typeof nested === "string" && nested.length > 0) return nested;
+            if (typeof nested === "number") return String(nested);
+          }
+        }
+      }
+    }
     if (v && typeof v === "object") {
       const o = v as Record<string, unknown>;
       for (const k of PHONE_OBJECT_KEYS) {

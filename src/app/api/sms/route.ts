@@ -98,20 +98,36 @@ export async function POST(req: NextRequest) {
     providerError = e instanceof Error ? e.message : 'send threw'
   }
 
-  const msg = await prisma.smsMessage.create({
-    data: {
-      candidateId: resolvedCandidateId,
-      organizationId,
-      direction: 'outbound',
-      body,
-      fromNumber: FROM,
-      toNumber: normalizedTo,
-      status,
-      krispcallId,
-    },
-  })
+  const existing = krispcallId
+    ? await prisma.smsMessage.findFirst({ where: { krispcallId } })
+    : null
+  const msgData = {
+    candidateId: resolvedCandidateId,
+    organizationId,
+    direction: 'outbound',
+    body,
+    fromNumber: FROM,
+    toNumber: normalizedTo,
+    status,
+    isRead: true,
+    krispcallId: krispcallId ?? null,
+  }
+  const msg = existing
+    ? await prisma.smsMessage.update({
+        where: { id: existing.id },
+        data: {
+          ...msgData,
+          candidateId: existing.candidateId ?? resolvedCandidateId,
+          clientId: existing.clientId,
+          organizationId: existing.organizationId ?? organizationId,
+          fromNumber: FROM || existing.fromNumber,
+        },
+      })
+    : await prisma.smsMessage.create({
+        data: msgData,
+      })
   console.log(
-    `[api/sms POST] persisted id=${msg.id} candidateId=${resolvedCandidateId ?? '(null)'} organizationId=${organizationId ?? '(null)'} status=${status}`,
+    `[api/sms POST] ${existing ? 'updated existing' : 'persisted'} id=${msg.id} candidateId=${resolvedCandidateId ?? '(null)'} organizationId=${organizationId ?? '(null)'} status=${status}`,
   )
   return NextResponse.json({
     ...msg,
