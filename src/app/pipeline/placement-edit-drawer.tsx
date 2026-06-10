@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Input, Textarea, Select } from "@/components/ui/input";
 import { StageBadge } from "@/components/stage-badge";
 import { TabStrip } from "@/components/ui/tab-strip";
 import { cn } from "@/lib/utils";
@@ -58,8 +59,11 @@ type Props = {
   onClose: () => void;
 };
 
-const INPUT_CLS =
-  "h-[38px] w-full rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg outline-none placeholder:text-court-fg-dim focus:border-court-brand focus:ring-2 focus:ring-court-brand/20";
+// Compact sizing for the drawer's shared rect-framed fields: the bespoke
+// INPUT_CLS rendered a 38px-tall row at 13.5px text, so the migrated <Input>/
+// <Select> keep that height (frame) + font (control) for an identical density.
+const FIELD_FRAME_CLS = "h-[38px]";
+const FIELD_TEXT_CLS = "text-[13.5px]";
 
 function isoToDateInput(iso: string | null): string {
   if (!iso) return "";
@@ -265,65 +269,71 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <FieldLabel>Start date</FieldLabel>
-              <input
+              <Input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className={INPUT_CLS}
+                frameClassName={FIELD_FRAME_CLS}
+                className={FIELD_TEXT_CLS}
               />
             </div>
             <div>
               <FieldLabel>Base salary (USD)</FieldLabel>
-              <input
+              <Input
                 type="number"
                 inputMode="numeric"
                 min={0}
                 value={salary}
                 onChange={(e) => setSalary(e.target.value)}
-                className={INPUT_CLS}
+                frameClassName={FIELD_FRAME_CLS}
+                className={FIELD_TEXT_CLS}
               />
             </div>
             <div>
               <FieldLabel>Fee amount (USD)</FieldLabel>
-              <input
+              <Input
                 type="number"
                 inputMode="numeric"
                 min={0}
                 value={feeTotal}
                 onChange={(e) => setFeeTotal(e.target.value)}
-                className={INPUT_CLS}
+                frameClassName={FIELD_FRAME_CLS}
+                className={FIELD_TEXT_CLS}
               />
             </div>
             <div>
               <FieldLabel>Fee percentage (%)</FieldLabel>
-              <input
+              <Input
                 type="number"
                 step="0.01"
                 inputMode="decimal"
                 min={0}
                 value={feePct}
                 onChange={(e) => setFeePct(e.target.value)}
-                className={INPUT_CLS}
+                frameClassName={FIELD_FRAME_CLS}
+                className={FIELD_TEXT_CLS}
               />
             </div>
           </div>
 
           <div>
             <FieldLabel>City</FieldLabel>
-            <input
+            <Input
               type="text"
               value={city}
               onChange={(e) => setCity(e.target.value)}
-              className={INPUT_CLS}
+              frameClassName={FIELD_FRAME_CLS}
+              className={FIELD_TEXT_CLS}
             />
           </div>
 
           <div>
             <FieldLabel>Lead Source</FieldLabel>
-            <select
+            <Select
               value={source}
               onChange={(e) => setSource(e.target.value)}
-              className={INPUT_CLS}
+              frameClassName={FIELD_FRAME_CLS}
+              className={FIELD_TEXT_CLS}
             >
               <option value="">—</option>
               {SOURCE_OPTIONS.map((opt) => (
@@ -340,16 +350,16 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
                 ) && (
                   <option value={source}>{source}</option>
                 )}
-            </select>
+            </Select>
           </div>
 
           <div>
             <FieldLabel>Notes</FieldLabel>
-            <textarea
+            <Textarea
               rows={4}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full resize-y rounded-md border border-court-border bg-court-surface px-3 py-2.5 text-[13.5px] leading-relaxed text-court-fg outline-none placeholder:text-court-fg-dim focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
+              className="resize-y text-[13.5px] leading-relaxed"
             />
           </div>
 
@@ -428,19 +438,20 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <FieldLabel>Amount ($)</FieldLabel>
-                          <input
+                          <Input
                             type="number"
                             inputMode="numeric"
                             min={0}
                             value={f.amount}
                             onChange={(e) => f.setAmount(e.target.value)}
                             placeholder="0"
-                            className={INPUT_CLS}
+                            frameClassName={FIELD_FRAME_CLS}
+                            className={FIELD_TEXT_CLS}
                           />
                         </div>
                         <div>
                           <FieldLabel>Days after start</FieldLabel>
-                          <input
+                          <Input
                             type="number"
                             inputMode="numeric"
                             min={0}
@@ -448,7 +459,8 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
                             value={f.days}
                             onChange={(e) => f.setDays(e.target.value)}
                             placeholder="0"
-                            className={INPUT_CLS}
+                            frameClassName={FIELD_FRAME_CLS}
+                            className={FIELD_TEXT_CLS}
                           />
                         </div>
                       </div>
@@ -457,11 +469,12 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
 
                   <div>
                     <FieldLabel>Guarantee end date (custom)</FieldLabel>
-                    <input
+                    <Input
                       type="date"
                       value={guaranteeDate}
                       onChange={(e) => setGuaranteeDate(e.target.value)}
-                      className={INPUT_CLS}
+                      frameClassName={FIELD_FRAME_CLS}
+                      className={FIELD_TEXT_CLS}
                     />
                     <div className="mt-1 text-[11px] text-court-fg-muted">
                       Overrides the guarantee days field above when set.
