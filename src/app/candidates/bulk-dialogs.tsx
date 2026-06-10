@@ -30,6 +30,7 @@ import type { CandidateListSummary } from "@/app/candidates/lists-actions";
 import type { EmailDraft } from "@/components/email-composer";
 import { EditWithClaudeMenu, EditWithClaudeCustomPanel, type EditType } from "@/components/edit-with-claude-menu";
 import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
+import { Input, Textarea, Select } from "@/components/ui/input";
 import { useSendLater } from "@/components/mail/send-later-popover";
 import { formatScheduledTime } from "@/lib/timezone";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
@@ -98,14 +99,18 @@ export function BulkApplyDialog({
       <p className="mb-2 text-xs text-court-fg-muted">
         Already-linked candidates are skipped automatically.
       </p>
-      <input
+      <Input
         type="text"
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
         placeholder="Filter jobs…"
         disabled={busy}
-        className="mb-2 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+        containerClassName="mb-2"
       />
+      {/* Intentionally NOT migrated to the shared <Select>: this is a
+          multi-row list box (size 3-8 visible rows), not a single-line
+          dropdown. The court-input-rect frame + chevron are built for
+          single-line controls, so the bespoke list box stays as-is. */}
       <select
         value={pickKey}
         onChange={(e) => setPickKey(e.target.value)}
@@ -226,11 +231,10 @@ export function BulkAddToListDialog({
         </button>
       </div>
       {mode === "existing" ? (
-        <select
+        <Select
           value={listId}
           onChange={(e) => setListId(e.target.value)}
           disabled={busy}
-          className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
         >
           <option value="">Pick a list…</option>
           {lists.map((l) => (
@@ -238,15 +242,14 @@ export function BulkAddToListDialog({
               {l.name} ({l.memberCount})
             </option>
           ))}
-        </select>
+        </Select>
       ) : (
-        <input
+        <Input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           maxLength={80}
           disabled={busy}
-          className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
         />
       )}
       <div className="mt-4 flex items-center justify-end gap-2">
@@ -836,7 +839,7 @@ export function BulkEmailDialog({
             <span className="w-16 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
               SUBJECT
             </span>
-            <input
+            <Input
               ref={subjectRef}
               type="text"
               value={subject}
@@ -848,7 +851,7 @@ export function BulkEmailDialog({
               onSelect={(e) => rememberCaret(e.currentTarget)}
               onKeyUp={(e) => rememberCaret(e.currentTarget)}
               onClick={(e) => rememberCaret(e.currentTarget)}
-              className="min-w-0 flex-1 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              containerClassName="min-w-0 flex-1"
             />
           </div>
         </div>
@@ -876,11 +879,10 @@ export function BulkEmailDialog({
           </button>
           {aiPanelOpen && (
             <div className="px-5 pb-3">
-              <textarea
+              <Textarea
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
                 rows={2}
-                className="w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
               />
             </div>
           )}
@@ -923,7 +925,7 @@ export function BulkEmailDialog({
 
         {/* Body fills available space */}
         <div className="flex min-h-0 flex-1 px-5 py-3">
-          <textarea
+          <Textarea
             ref={bodyRef}
             value={body}
             onChange={(e) => setBody(e.target.value)}
@@ -935,7 +937,9 @@ export function BulkEmailDialog({
             onKeyUp={(e) => rememberCaret(e.currentTarget)}
             onClick={(e) => rememberCaret(e.currentTarget)}
             placeholder="Write your message, or click Generate with Claude above."
-            className="h-full min-h-[200px] w-full resize-none whitespace-pre-wrap rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm leading-relaxed text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            containerClassName="flex min-h-0 w-full flex-1 flex-col"
+            frameClassName="h-full min-h-[200px]"
+            className="h-full resize-none whitespace-pre-wrap leading-relaxed"
           />
         </div>
 
