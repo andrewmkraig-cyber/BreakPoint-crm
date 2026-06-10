@@ -1153,7 +1153,7 @@ export function MailView({
             <X className="h-5 w-5" />
           </button>
         </div>
-        <nav className="flex-1 overflow-y-auto p-2 text-sm">
+        <nav className="court-scroll flex-1 overflow-y-auto p-2 text-sm">
           {/* Inbox entry - the default destination (selectedLabel
               null). Uses the canonical TabStrip active style
               (rounded-md, court-brand border + text, transparent bg)
@@ -1516,7 +1516,7 @@ export function MailView({
             </p>
           </div>
         ) : (
-          <ul className="flex-1 divide-y divide-court-border overflow-y-auto">
+          <ul className="court-scroll flex-1 divide-y divide-court-border overflow-y-auto">
             {threads.map((t) => (
               <li key={t.id}>
                 <ThreadRow
