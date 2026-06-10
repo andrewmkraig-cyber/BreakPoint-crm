@@ -12,6 +12,7 @@ import {
   type CandidateListSummary,
 } from "@/app/candidates/lists-actions";
 import { ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
+import { TabStrip, type TabStripItem } from "@/components/ui/tab-strip";
 import { cn } from "@/lib/utils";
 
 // Phase 5A.4.b: candidate-profile button + modal that lets the user
@@ -59,6 +60,11 @@ export function AddToListButton({
 }
 
 type Mode = "existing" | "new";
+
+const MODE_TABS: ReadonlyArray<TabStripItem<Mode>> = [
+  { id: "existing", label: "Existing lists" },
+  { id: "new", label: "New list" },
+];
 
 function AddToListModal({
   candidateId,
@@ -183,13 +189,13 @@ function AddToListModal({
             </button>
           </div>
 
-          <div className="flex border-b border-court-border bg-court-surface-subtle/40 px-5 text-xs">
-            <TabButton active={mode === "existing"} onClick={() => setMode("existing")}>
-              Existing lists
-            </TabButton>
-            <TabButton active={mode === "new"} onClick={() => setMode("new")}>
-              New list
-            </TabButton>
+          <div className="border-b border-court-border bg-court-surface-subtle/40 px-5 py-2">
+            <TabStrip<Mode>
+              items={MODE_TABS}
+              activeId={mode}
+              onChange={setMode}
+              ariaLabel="Add to list mode"
+            />
           </div>
 
           <div className="flex-1 overflow-y-auto px-5 py-4">
@@ -310,27 +316,3 @@ function AddToListModal({
   );
 }
 
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "border-b-2 px-3 py-2 transition",
-        active
-          ? "border-brand text-court-fg"
-          : "border-transparent text-court-fg-muted hover:text-court-fg",
-      )}
-    >
-      {children}
-    </button>
-  );
-}

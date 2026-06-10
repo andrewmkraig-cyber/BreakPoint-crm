@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Mail, MessageSquare, Phone } from "lucide-react";
 import { SmsComposer } from "@/components/sms-composer";
 import { TextingExchanges } from "@/components/texting-exchanges";
 import { CallLogs } from "@/components/call-logs";
 import { TaggedThreadList } from "@/components/mail/tagged-thread-list";
-import { cn } from "@/lib/utils";
+import { TabStrip, type TabStripItem } from "@/components/ui/tab-strip";
 
 type SubTab = "email" | "call" | "text";
+
+const ACTIVITY_TABS: ReadonlyArray<TabStripItem<SubTab>> = [
+  { id: "email", label: "Email" },
+  { id: "call", label: "Call" },
+  { id: "text", label: "Text" },
+];
 
 type ActivityRow = {
   id: string;
@@ -55,10 +60,13 @@ export function CandidateActivityCard({
     <section className="rounded-2xl border border-court-border bg-court-surface shadow-sm">
       <div className="px-4 pt-4">
         <h3 className="font-serif text-base font-semibold text-court-fg">Activity</h3>
-        <div className="mt-2 flex gap-4 border-b border-court-border">
-          <SubTabButton icon={<Mail className="h-3.5 w-3.5" />} label="Email" active={tab === "email"} onClick={() => setTab("email")} />
-          <SubTabButton icon={<Phone className="h-3.5 w-3.5" />} label="Call" active={tab === "call"} onClick={() => setTab("call")} />
-          <SubTabButton icon={<MessageSquare className="h-3.5 w-3.5" />} label="Text" active={tab === "text"} onClick={() => setTab("text")} />
+        <div className="mt-2">
+          <TabStrip<SubTab>
+            items={ACTIVITY_TABS}
+            activeId={tab}
+            onChange={setTab}
+            ariaLabel="Activity channel"
+          />
         </div>
       </div>
 
@@ -93,35 +101,6 @@ export function CandidateActivityCard({
         </div>
       )}
     </section>
-  );
-}
-
-function SubTabButton({
-  icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "-mb-px inline-flex items-center gap-1.5 border-b-2 pb-2 text-xs font-medium transition-colors",
-        active
-          ? "border-court-accent text-court-accent-dark"
-          : "border-transparent text-court-fg-muted hover:text-court-fg",
-      )}
-      aria-pressed={active}
-    >
-      {icon}
-      {label}
-    </button>
   );
 }
 
