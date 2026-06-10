@@ -934,7 +934,7 @@ function DialPad({
           variant="primary"
           onClick={() => dispatch("call")}
           disabled={!number.trim()}
-          className="h-10 flex-1 rounded-md bg-court-brand text-white hover:bg-court-brand-dark"
+          className="h-10 flex-1"
         >
           <PhoneCall className="h-4 w-4" />
           Call
@@ -2029,7 +2029,7 @@ export function CallPanel({
           variant="primary"
           onClick={placeCall}
           disabled={!contact}
-          className="h-10 w-auto rounded-md bg-court-brand text-white hover:bg-court-brand-dark"
+          className="h-10 w-auto"
         >
           <PhoneCall className="h-4 w-4" />
           Call in Quo
