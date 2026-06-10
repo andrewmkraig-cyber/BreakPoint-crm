@@ -6,6 +6,9 @@ import { createPortal } from "react-dom";
 import { ChevronDown, Clock, Loader2, Send, Sparkles, Variable, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+// Aliased: this file already has a local borderless `Input` (the chip-combo
+// typeahead field). RectInput is the shared rect-frame form input.
+import { Input as RectInput, Textarea } from "@/components/ui/input";
 import { useSendLater } from "@/components/mail/send-later-popover";
 import { formatScheduledTime } from "@/lib/timezone";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
@@ -972,7 +975,7 @@ export function EmailComposer({
             </>
           )}
           <Row label="Subject">
-            <input
+            <RectInput
               ref={subjectRef}
               type="text"
               value={subject}
@@ -984,10 +987,6 @@ export function EmailComposer({
               onSelect={(e) => rememberCaret(e.currentTarget)}
               onKeyUp={(e) => rememberCaret(e.currentTarget)}
               onClick={(e) => rememberCaret(e.currentTarget)}
-              className={cn(
-                "w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
-                "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-              )}
             />
           </Row>
         </div>
@@ -1007,7 +1006,7 @@ export function EmailComposer({
               />
             </div>
           ) : (
-            <textarea
+            <Textarea
               ref={bodyRef}
               value={body}
               onChange={(e) => setBody(e.target.value)}
@@ -1021,10 +1020,7 @@ export function EmailComposer({
               onClick={(e) => rememberCaret(e.currentTarget)}
               rows={16}
               placeholder="Write your message, or click Generate with Claude below."
-              className={cn(
-                "w-full resize-vertical whitespace-pre-wrap rounded-lg border border-court-border bg-court-surface px-3 py-2 font-sans text-sm leading-relaxed text-court-fg",
-                "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-              )}
+              className="resize-vertical whitespace-pre-wrap font-sans leading-relaxed"
             />
           )}
         </div>
