@@ -57,6 +57,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
+import { Input, Select } from "@/components/ui/input";
 import { useSendLater } from "@/components/mail/send-later-popover";
 import { formatScheduledTime } from "@/lib/timezone";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
@@ -1532,25 +1533,20 @@ export function MailComposer({
             <span className="w-14 shrink-0 text-[10px] uppercase tracking-wider text-court-fg-muted">
               From
             </span>
-            <div className="relative min-w-0 flex-1">
-              <select
-                value={selectedFromEmail ?? ""}
-                onChange={(e) => setSelectedFromEmail(e.target.value || null)}
-                className="h-7 w-full appearance-none truncate rounded-md border border-court-border bg-court-surface py-1 pl-2 pr-8 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-              >
-                {sendAsAliases.map((a) => (
-                  <option key={a.sendAsEmail} value={a.sendAsEmail}>
-                    {a.displayName
-                      ? `${a.displayName} <${a.sendAsEmail}>`
-                      : a.sendAsEmail}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                aria-hidden="true"
-                className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted"
-              />
-            </div>
+            <Select
+              value={selectedFromEmail ?? ""}
+              onChange={(e) => setSelectedFromEmail(e.target.value || null)}
+              containerClassName="min-w-0 flex-1"
+              className="truncate"
+            >
+              {sendAsAliases.map((a) => (
+                <option key={a.sendAsEmail} value={a.sendAsEmail}>
+                  {a.displayName
+                    ? `${a.displayName} <${a.sendAsEmail}>`
+                    : a.sendAsEmail}
+                </option>
+              ))}
+            </Select>
           </label>
         )}
         <AddressRow
@@ -1613,12 +1609,12 @@ export function MailComposer({
           <span className="w-14 shrink-0 text-[10px] uppercase tracking-wider text-court-fg-muted">
             Subject
           </span>
-          <input
+          <Input
             ref={subjectRef}
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             onFocus={() => (lastFocused.current = "subject")}
-            className="h-7 w-full rounded-md border border-court-border bg-court-surface px-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            containerClassName="min-w-0 flex-1"
           />
         </label>
       </div>
@@ -1642,30 +1638,25 @@ export function MailComposer({
                 our own chevron (appearance-none + absolute icon +
                 pr-8) so the long truncated option text can never
                 overlap the arrow at narrow widths. */}
-            <div className="relative min-w-0 flex-1">
-              <select
-                value={selectedJobId ?? ""}
-                onChange={(e) => setSelectedJobId(e.target.value || null)}
-                className="w-full appearance-none truncate rounded-md border border-court-border bg-court-surface py-1 pl-2 pr-8 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-              >
-                <option value="">Pick a job...</option>
-                {activeJobs.map((j) => {
-                  const loc = [j.jobCity, j.jobState].filter(Boolean).join(", ");
-                  const label = loc
-                    ? `${j.jobTitle} - ${loc} at ${j.clientName}`
-                    : `${j.jobTitle} at ${j.clientName}`;
-                  return (
-                    <option key={j.jobId} value={j.jobId}>
-                      {label}
-                    </option>
-                  );
-                })}
-              </select>
-              <ChevronDown
-                aria-hidden="true"
-                className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted"
-              />
-            </div>
+            <Select
+              value={selectedJobId ?? ""}
+              onChange={(e) => setSelectedJobId(e.target.value || null)}
+              containerClassName="min-w-0 flex-1"
+              className="truncate"
+            >
+              <option value="">Pick a job...</option>
+              {activeJobs.map((j) => {
+                const loc = [j.jobCity, j.jobState].filter(Boolean).join(", ");
+                const label = loc
+                  ? `${j.jobTitle} - ${loc} at ${j.clientName}`
+                  : `${j.jobTitle} at ${j.clientName}`;
+                return (
+                  <option key={j.jobId} value={j.jobId}>
+                    {label}
+                  </option>
+                );
+              })}
+            </Select>
           </label>
         </div>
       )}
