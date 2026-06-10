@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-06-09 · Ace 90.0
+Last updated: 2026-06-10 · Ace 90.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -109,8 +109,8 @@ Reduce borders by ~40%. Use spacing and hierarchy instead of boxes.
 
 ### Radius + elevation
 
-- Cards: rounded-2xl
-- Inputs/buttons: rounded-lg or xl
+- Cards: rounded-xl (ratified Ace 90.0 - this is the dominant pattern and is now the standard, superseding the original rounded-2xl spec). Buttons stay rounded-md (Button Standard) and inputs follow the Input Field Treatment - card radius does not apply to them.
+  - **Exception - the Clubhouse two-tier card system.** The dashboard / placements / invoices surfaces keep their KPI tiles at rounded-2xl and their big panels at rounded-3xl per the Clubhouse card-sizing reference (ACE_RULES.md ▸ UI Consistency Rules). BD KPI tiles / big panels built to that same Clubhouse chrome (e.g. `bd/launch/launch-view.tsx`, the `approval-queue` big panel) keep rounded-2xl / rounded-3xl too. Modal / dialog panels (`max-w-* ... shadow-xl`) are not cards and are out of scope.
 - Light mode shadows: subtle
 - Dark mode shadows: minimal or none
 
@@ -313,7 +313,7 @@ Full token coverage on every page — no holdouts. Token names follow the same `
 - One-off tab strips are not allowed. Any new tab strip uses TabStrip or extends TabStrip — never a hand-rolled flex row of buttons.
 
 ## Page Header Sizing (added Ace 40.0)
-- Page titles: 30px. Stops the previous slow drift where every page had its own title size.
+- Page titles: 22px (corrected Ace 90.0). The shared title chrome renders at 22px serif extrabold (`TopBarPageTitle`) / 20px (`PageHeader`); code is canonical and the earlier "30px" spec was stale. Stops the previous slow drift where every page had its own title size.
 - New-item buttons (New Candidate / New Job / New Client) shrunk to a smaller height so they don't visually compete with the page title.
 
 ## Color Discipline (added Ace 40.0)
