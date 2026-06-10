@@ -692,7 +692,7 @@ export default async function ClientDetailPage({
               tagging. CallLogs handles transcripts + AI summaries
               inline; TextingExchanges renders the inbound/outbound
               chat bubbles. */}
-          <section className="space-y-3 rounded-2xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
+          <section className="space-y-3 rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
             <h2 className="font-serif text-lg font-semibold text-court-fg">Calls &amp; SMS</h2>
             <CallLogs clientId={client.id} defaultOpen />
             <TextingExchanges clientId={client.id} defaultOpen />
@@ -701,7 +701,7 @@ export default async function ClientDetailPage({
           <ActivityFeed entityType="client" entityId={client.id} />
         </div>
       ) : tab === "email" ? (
-        <section className="rounded-2xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
+        <section className="rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
           <h2 className="mb-3 font-serif text-lg font-semibold text-court-fg">Email</h2>
           <TaggedThreadList url={`/api/clients/${encodeURIComponent(client.id)}/email-threads`} pageSize={10} />
         </section>
