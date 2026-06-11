@@ -153,6 +153,12 @@ Mirrored in ACE_DESIGN.md. Permanent, apply to every surface.
 - **Both-modes verification gates every button task.** Every button and interactive element must be visually verified in BOTH light and dark mode across the Court themes before a button task is considered done. Token compliance alone is NOT sufficient - look at it in both modes.
 - **Input Field Treatment is source of truth for input shape.** Forms use the rectangular `court-input-rect` frame; the search bar, SMS composer, and Ace Assistant keep the pill `court-input-frame`. Buttons stay `rounded-md` (Button Standard); inputs do not follow the button shape rule.
 
+## Raw-button baseline ratchet (added 2026-06-11 · PERMANENT)
+The build gate `scripts/check-raw-buttons.mjs` (wired into `npm run build`) blocks NEW raw `<button>` JSX outside `src/components/ui/`, but grandfathers existing ones via per-file counts in `scripts/raw-button-baseline.json`. The gate only fails when a file EXCEEDS its baseline, so old raw buttons keep shipping in grandfathered files even while you are actively editing them. That is the gap: a passing build is not a clean file.
+- **Leave every grandfathered file cleaner than you found it.** Any session that touches a file with a baseline entry MUST convert the raw `<button>`s in the code it touches to the shared `<Button>` (`src/components/ui/button.tsx`), then lower that file's baseline number to the new actual count.
+- **Never raise a baseline** to admit a new raw button. Convert it instead, or (only if genuinely unavoidable) move it into `src/components/ui/`. `node scripts/check-raw-buttons.mjs --update` is for retiring violations downward, never for re-grandfathering upward.
+- Icon-only buttons (inline remove "X", modal close "X") may stay raw for now, but still count them in the baseline so the number can only ratchet down.
+
 ## Composer Recipient Standard (added 2026-06-01 · Ace 75.0 - PERMANENT)
 Mirrored in ACE_DESIGN.md. Apply to every email/invite composer.
 - **Every composer's To accepts multiple recipients as pick-or-type chips.** Reuse the existing chip widgets - `ContactComboMulti` in `EmailComposer`, the chip-rendering `AddressRow` in `MailComposer` (which keeps its live Gmail/contact server-search typeahead). Never reintroduce a single-select To. Send paths already take `to: string[]`; the field value stays a comma-string for `parseList` / `splitAddresses`.
