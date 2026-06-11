@@ -7,7 +7,7 @@ import { ChevronDown, LayoutGrid, List, Search } from "lucide-react";
 import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { ClientLogo } from "@/components/clients/client-logo";
 import { PipelinePill } from "@/components/clients/pipeline-pill";
-import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
+import { DataTableHead, DataTableHeaderCell, DataTableBody, DataTableRow } from "@/components/ui/data-table";
 import { TabStrip } from "@/components/ui/tab-strip";
 
 // Existing data shape — unchanged. Owned by the server side; the
@@ -232,8 +232,8 @@ function ClientListRowView({ card, quietTier }: { card: ClientCard; quietTier?: 
   const router = useRouter();
   const activeStages = PIPELINE_STAGES.filter((s: StageEntry) => (card[s.countField] ?? 0) > 0);
   return (
-    <tr
-      className="cursor-pointer transition hover:bg-court-surface-subtle/60"
+    <DataTableRow
+      className="cursor-pointer"
       onClick={() => router.push(`/clients/${card.slug}`)}
     >
       <td className="px-3 py-2 align-middle">
@@ -241,7 +241,7 @@ function ClientListRowView({ card, quietTier }: { card: ClientCard; quietTier?: 
           <ClientLogo domain={card.domain} name={card.name || "(unnamed)"} size={32} />
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-1.5">
-              <span className="font-semibold text-court-fg">{card.name || "(unnamed)"}</span>
+              <span className="font-medium text-court-fg">{card.name || "(unnamed)"}</span>
               {card.isVerified && (
                 <span className="text-brand" title="Signed fee agreement on file">
                   <ShieldCheck />
@@ -259,7 +259,7 @@ function ClientListRowView({ card, quietTier }: { card: ClientCard; quietTier?: 
       <td className="px-3 py-2 align-middle text-sm text-court-fg-muted">{card.industry || ""}</td>
       <td className="px-3 py-2 align-middle text-sm text-court-fg-muted">{card.location || ""}</td>
       <td className="px-3 py-2 align-middle text-center text-sm">
-        <span className="font-semibold text-court-fg">{card.openJobsCount}</span>
+        <span className="text-court-fg">{card.openJobsCount}</span>
         <span className="text-court-fg-muted"> / {card.openJobsCount + card.closedJobsCount}</span>
       </td>
       <td className="px-3 py-2 align-middle text-center">
@@ -280,7 +280,7 @@ function ClientListRowView({ card, quietTier }: { card: ClientCard; quietTier?: 
       </td>
       <td className="px-3 py-2 align-middle text-center text-sm">
         {card.feePct != null ? (
-          <span className="font-semibold text-court-fg">{card.feePct}%</span>
+          <span className="text-court-fg">{card.feePct}%</span>
         ) : (
           <span className="text-court-fg-muted">—</span>
         )}
@@ -299,7 +299,7 @@ function ClientListRowView({ card, quietTier }: { card: ClientCard; quietTier?: 
           </button>
         )}
       </td>
-    </tr>
+    </DataTableRow>
   );
 }
 
@@ -427,11 +427,11 @@ export function ClientsView({
                   <DataTableHeaderCell align="right" />
                 </tr>
               </DataTableHead>
-              <tbody className="divide-y divide-court-border-soft">
+              <DataTableBody>
                 {filtered.map((c) => (
                   <ClientListRowView key={c.id} card={c} quietTier={quietTierById.get(c.id)} />
                 ))}
-              </tbody>
+              </DataTableBody>
             </table>
           </div>
         </div>
