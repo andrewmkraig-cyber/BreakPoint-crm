@@ -931,10 +931,9 @@ export function BulkEmailDialog({
         role="dialog"
         aria-label="Bulk email queued"
         className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 p-4"
-        onClick={onDone}
       >
+        {/* No backdrop-dismiss here either — closes only via Done / Cancel. */}
         <div
-          onClick={(e) => e.stopPropagation()}
           className="relative flex w-full max-w-md flex-col gap-4 rounded-xl border border-court-border bg-court-surface p-6 shadow-2xl"
         >
           <div className="flex items-start gap-3">
@@ -1015,10 +1014,12 @@ export function BulkEmailDialog({
       role="dialog"
       aria-label={`Email ${n} candidates`}
       className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
     >
+      {/* Intentionally NO backdrop onClick-to-close: a recruiter mid-draft can
+          highlight text and drag the cursor onto the backdrop, or click/scroll
+          outside the editor, without the in-progress email vanishing. The
+          email only closes via the X, Cancel, or a successful send. */}
       <div
-        onClick={(e) => e.stopPropagation()}
         className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
       >
         {/* Header */}
