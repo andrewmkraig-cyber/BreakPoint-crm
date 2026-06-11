@@ -159,6 +159,15 @@ The build gate `scripts/check-raw-buttons.mjs` (wired into `npm run build`) bloc
 - **Never raise a baseline** to admit a new raw button. Convert it instead, or (only if genuinely unavoidable) move it into `src/components/ui/`. `node scripts/check-raw-buttons.mjs --update` is for retiring violations downward, never for re-grandfathering upward.
 - Icon-only buttons (inline remove "X", modal close "X") may stay raw for now, but still count them in the baseline so the number can only ratchet down.
 
+## Build-time structural gates (added 2026-06-11 · PERMANENT)
+`npm run build` runs `npm run check:ui` before `next build`, so Vercel and local builds both enforce the structural gates. Never delete a gate or weaken it to make a build pass - fix the code.
+- **Raw `<button>` gate** - `scripts/check-raw-buttons.mjs` + `scripts/raw-button-baseline.json`. See "Raw-button baseline ratchet" above for the convert-and-shrink rule.
+- **Candidates topbar smoke test** - `tests/unit/candidates-topbar-actions.test.mjs`. The build FAILS if the topbar spec (`src/components/top-bar-page-title.tsx`) ever stops emitting both **New Candidate** and **Add Multiple** for `/candidates`. This is a regression guard so the bulk-import entry point can't silently vanish again (it did once - see the redesign lesson below).
+
+## Redesign + audit lessons (added 2026-06-11 · PERMANENT)
+- **A grep hit is NOT proof a feature is live.** Orphaned code still type-checks and still matches grep. Before reporting a UI element as present, trace the actual rendered route's imports (does the page file import the component?) and check git history for a redesign that swapped the page out. The "Add Multiple" button matched grep inside `candidates-view.tsx` for weeks after that file had stopped being the rendered Candidates page, which produced a false "feature is live" audit.
+- **A page redesign MUST inventory the toolbar/actions of the page it replaces.** When rebuilding a page, list every button/action on the old page and confirm each is carried over or deliberately dropped. The 2026-05-10 candidates search-rail rebuild (`6615930`) silently lost the bulk-import entry point because the new page was built fresh without auditing the old toolbar. The candidates topbar smoke test now enforces this for that surface.
+
 ## Composer Recipient Standard (added 2026-06-01 · Ace 75.0 - PERMANENT)
 Mirrored in ACE_DESIGN.md. Apply to every email/invite composer.
 - **Every composer's To accepts multiple recipients as pick-or-type chips.** Reuse the existing chip widgets - `ContactComboMulti` in `EmailComposer`, the chip-rendering `AddressRow` in `MailComposer` (which keeps its live Gmail/contact server-search typeahead). Never reintroduce a single-select To. Send paths already take `to: string[]`; the field value stays a comma-string for `parseList` / `splitAddresses`.
