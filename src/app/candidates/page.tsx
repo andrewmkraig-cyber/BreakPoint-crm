@@ -1759,15 +1759,17 @@ export default function CandidatesPage() {
                       <ListPlus className="h-3.5 w-3.5" />
                       Add to List
                     </button>
-                    <button
+                    <Button
                       type="button"
+                      size="sm"
+                      variant="secondary"
                       onClick={openBulkEmail}
                       disabled={bulkLoading}
-                      className="flex items-center gap-1.5 rounded-md border border-orange-500 bg-white px-3 py-1.5 text-sm font-medium text-orange-600 hover:bg-orange-50 transition-colors"
+                      className="px-2.5 py-1 text-sm"
                     >
                       <Mail className="h-3.5 w-3.5" />
                       Email
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )}

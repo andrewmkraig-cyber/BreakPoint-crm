@@ -27,7 +27,7 @@
   "src/app/candidates/lists/[id]/list-detail-view.tsx": 3,
   "src/app/candidates/lists/lists-management-view.tsx": 5,
   "src/app/candidates/new/new-candidate-form.tsx": 3,
-  "src/app/candidates/page.tsx": 16,
+  "src/app/candidates/page.tsx": 15,
   "src/app/clients/[id]/add-client-note.tsx": 1,
   "src/app/clients/[id]/agreements-tab.tsx": 3,
   "src/app/clients/[id]/benefits-tab.tsx": 4,
