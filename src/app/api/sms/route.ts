@@ -6,6 +6,7 @@ import { getCurrentOrg } from '@/lib/auth/getCurrentOrg'
 import { authOptions } from '@/lib/auth'
 import { normalizeToE164 } from '@/lib/rf-payload-shapes'
 import { getQuoLineDigitsForUserEmail, phoneTail, smsLineWhere } from '@/lib/quo-line-owner'
+import { resolveThreadParticipant, syncQuoThread } from '@/lib/quo-sync'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -182,6 +183,24 @@ export async function GET(req: NextRequest) {
   const org = await getCurrentOrg()
   const lineDigits = await getQuoLineDigitsForUserEmail(org.id, session.user.email)
   if (lineDigits.length === 0) return NextResponse.json([])
+  // Safety-net backfill: reconcile this thread against Quo's API before
+  // reading, so texts sent from the Quo app (which fire no webhook) and
+  // any webhook misses fill in the moment the thread is opened. Throttled
+  // per participant inside syncQuoThread; fully best-effort - a failure
+  // here never blocks the read below.
+  try {
+    const participant = await resolveThreadParticipant({ candidateId, clientId })
+    if (participant) {
+      await syncQuoThread({
+        participant,
+        candidateId: candidateId ?? null,
+        clientId: clientId ?? null,
+        organizationId: org.id,
+      })
+    }
+  } catch (e) {
+    console.error('[api/sms GET] quo backfill failed, returning stored rows', e)
+  }
   const messages = await prisma.smsMessage.findMany({
     where: candidateId
       ? { candidateId, organizationId: org.id, AND: [smsLineWhere(lineDigits)] }
