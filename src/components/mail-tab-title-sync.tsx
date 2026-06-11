@@ -2,7 +2,11 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
-import { useMailContext } from "@/lib/mail-context";
+import {
+  useMailContext,
+  useNotifChannelEnabled,
+  PHONE_NOTIFICATIONS_PREF_KEY,
+} from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
 
 // Tab-title + PWA app-icon badge sync. Combines mail unread + phone
@@ -31,6 +35,10 @@ const BADGE_REGISTERED_KEY = "ace_badge_registered_v1";
 export function MailTabTitleSync() {
   const { unreadCount: mailUnread } = useMailContext();
   const { unreadCount: phoneUnread } = usePhoneContext();
+  // Phone notifications off => phone unread is excluded from the tab
+  // title and the PWA app-icon badge, matching the sidebar/mobile badge.
+  const phoneNotifsEnabled = useNotifChannelEnabled(PHONE_NOTIFICATIONS_PREF_KEY);
+  const phoneBadge = phoneNotifsEnabled ? phoneUnread : 0;
   // Route changes restamp document.title from the new page's Next
   // metadata, wiping the count we set here. Tracking pathname as a dep
   // re-applies the title after every navigation so "(5)" survives a tab
@@ -85,16 +93,19 @@ export function MailTabTitleSync() {
       navigator.serviceWorker.removeEventListener("message", handler);
   }, []);
   useEffect(() => {
-    const total = (mailUnread ?? 0) + (phoneUnread ?? 0);
+    const total = (mailUnread ?? 0) + (phoneBadge ?? 0);
     // Diagnostic log so the next time the badge looks wrong we can
     // see in DevTools which source is drifting (mail thread count vs
     // phone thread count) without instrumenting upstream contexts.
-    // Cheap — fires only when either count changes.
+    // Cheap — fires only when either count changes. phoneBadge is the
+    // notification-gated value (0 when Phone notifications are off).
     console.log(
       "[badge] mail unread:",
       mailUnread,
       "phone unread:",
       phoneUnread,
+      "phone badge (gated):",
+      phoneBadge,
       "total:",
       total,
     );
@@ -109,6 +120,6 @@ export function MailTabTitleSync() {
     } else if (total === 0 && typeof nav.clearAppBadge === "function") {
       void nav.clearAppBadge().catch(() => {});
     }
-  }, [mailUnread, phoneUnread, pathname]);
+  }, [mailUnread, phoneUnread, phoneBadge, pathname]);
   return null;
 }

@@ -203,3 +203,37 @@ export const MAIL_NOTIFICATIONS_PREF_KEY = MAIL_NOTIFICATIONS_KEY;
 // so Settings can silence phone popups without touching email. The Quo
 // webhook gates the matching OS push server-side via notifPrefs.
 export const PHONE_NOTIFICATIONS_PREF_KEY = "ace_phone_notifications";
+
+// Fired on the window whenever a notification-channel toggle changes in
+// THIS tab. The native `storage` event only reaches other tabs, so the
+// Settings switch dispatches this too and same-tab badge/title surfaces
+// update live without a refresh.
+export const NOTIF_PREFS_CHANGED_EVENT = "ace:notif-prefs-changed";
+
+// Reactive read of an in-app notification channel toggle (mail/phone).
+// Mirrors how texting-context gates toasts: the channel is ON unless its
+// localStorage flag is explicitly "false" (absent => default ON, matching
+// the server notifPrefs default). Badge + tab-title surfaces gate their
+// unread count through this, so turning a channel off clears its badge
+// too, not just its popups. Stays true on the server / first paint (the
+// unread counts start at 0 there anyway), then reconciles post-mount and
+// on every same-tab (NOTIF_PREFS_CHANGED_EVENT) or cross-tab (storage)
+// change.
+export function useNotifChannelEnabled(key: string): boolean {
+  const [enabled, setEnabled] = useState(true);
+  useEffect(() => {
+    const read = () =>
+      setEnabled(window.localStorage.getItem(key) !== "false");
+    read();
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key || e.key === key) read();
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(NOTIF_PREFS_CHANGED_EVENT, read);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(NOTIF_PREFS_CHANGED_EVENT, read);
+    };
+  }, [key]);
+  return enabled;
+}

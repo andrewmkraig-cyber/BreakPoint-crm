@@ -7,7 +7,11 @@ import { createPortal } from "react-dom";
 import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandDisc } from "@/components/brand-mark";
-import { useMailContext } from "@/lib/mail-context";
+import {
+  useMailContext,
+  useNotifChannelEnabled,
+  PHONE_NOTIFICATIONS_PREF_KEY,
+} from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
 import { isNavItemActive, resolveDashboardTab } from "@/components/nav-active";
 import { NAV_GROUPS, FOOTER_NAV, type NavItemData } from "@/components/nav-items";
@@ -43,7 +47,10 @@ export function MobileNav() {
   // opening the drawer.
   const { unreadCount: mailUnread } = useMailContext();
   const { unreadCount: phoneUnread } = usePhoneContext();
-  const totalUnread = mailUnread + phoneUnread;
+  // Phone badge follows the Phone-notifications toggle: off => no badge.
+  const phoneNotifsEnabled = useNotifChannelEnabled(PHONE_NOTIFICATIONS_PREF_KEY);
+  const phoneBadge = phoneNotifsEnabled ? phoneUnread : 0;
+  const totalUnread = mailUnread + phoneBadge;
   // One row renderer for both the workflow groups and the pinned Settings
   // (FOOTER_NAV), so the rainbow + badge + active-state logic lives in a
   // single place. Inactive rows carry the shared per-item iconColor (the
@@ -62,7 +69,7 @@ export function MobileNav() {
       item.href === "/mail"
         ? mailUnread
         : item.href === "/phone"
-          ? phoneUnread
+          ? phoneBadge
           : 0;
     return (
       <li key={item.href}>

@@ -13,7 +13,11 @@ import {
   setPhoneNotificationsEnabled,
 } from "@/app/settings/preferences-actions";
 import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
-import { MAIL_NOTIFICATIONS_PREF_KEY, PHONE_NOTIFICATIONS_PREF_KEY } from "@/lib/mail-context";
+import {
+  MAIL_NOTIFICATIONS_PREF_KEY,
+  PHONE_NOTIFICATIONS_PREF_KEY,
+  NOTIF_PREFS_CHANGED_EVENT,
+} from "@/lib/mail-context";
 import {
   DEFAULT_TOAST_THEME,
   MAIL_TOAST_THEME_KEY,
@@ -88,6 +92,10 @@ export function NotificationPreferencesView({
   function writeLocal(key: string, next: boolean) {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(key, next ? "true" : "false");
+      // Same-tab badge/title surfaces (sidebar, mobile nav, tab title)
+      // gate on these keys but never see the native `storage` event, so
+      // nudge them to re-read immediately.
+      window.dispatchEvent(new Event(NOTIF_PREFS_CHANGED_EVENT));
     }
   }
 

@@ -6,7 +6,11 @@ import { cn } from "@/lib/utils";
 import { NAV_GROUPS, FOOTER_NAV, type NavItemData } from "@/components/nav-items";
 import { BrandMark } from "@/components/brand-mark";
 import { SidebarProfileCard } from "@/components/sidebar-profile-card";
-import { useMailContext } from "@/lib/mail-context";
+import {
+  useMailContext,
+  useNotifChannelEnabled,
+  PHONE_NOTIFICATIONS_PREF_KEY,
+} from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
 import {
   isNavItemActive,
@@ -29,6 +33,11 @@ export function Sidebar({ width }: { width?: number } = {}) {
   const resolvedDashboardTab = resolveDashboardTab(searchParams?.get("tab"));
   const { unreadCount } = useMailContext();
   const { unreadCount: phoneUnreadCount } = usePhoneContext();
+  // Turning off Phone notifications in Settings also clears the phone
+  // badge, not just the popups. Gated on the same key the texting toasts
+  // use; reconciles live via NOTIF_PREFS_CHANGED_EVENT.
+  const phoneNotifsEnabled = useNotifChannelEnabled(PHONE_NOTIFICATIONS_PREF_KEY);
+  const phoneBadgeCount = phoneNotifsEnabled ? phoneUnreadCount : 0;
 
   return (
     // Sidebar reads from the dedicated --court-sidebar-* token family
@@ -95,7 +104,7 @@ export function Sidebar({ width }: { width?: number } = {}) {
                     item.href === "/mail"
                       ? unreadCount
                       : item.href === "/phone"
-                        ? phoneUnreadCount
+                        ? phoneBadgeCount
                         : 0
                   }
                 />
