@@ -4,7 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && npm run check:ui && next build",
+    "check:ui": "node scripts/check-raw-buttons.mjs && node tests/unit/candidates-topbar-actions.test.mjs",
+    "check:buttons": "node scripts/check-raw-buttons.mjs",
+    "test:smoke": "node tests/unit/candidates-topbar-actions.test.mjs",
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate",
