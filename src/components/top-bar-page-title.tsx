@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, Plus, Upload } from "lucide-react";
 import { useComposerManager } from "@/lib/composer-manager";
 import { usePhonePanels } from "@/lib/phone-panels-context";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
@@ -31,9 +31,18 @@ type ActionSpec =
   | { kind: "phone-dial"; label: string }
   | { kind: "new-invoice"; label: string }
   | { kind: "new-expense"; label: string }
-  | { kind: "calendar-new-event"; label: string };
+  | { kind: "calendar-new-event"; label: string }
+  | { kind: "candidate-add-multiple"; label: string };
 
-type Spec = { group?: string; title: TitleSpec; action?: ActionSpec };
+// `extraAction` renders a second chip to the left of the primary action,
+// for surfaces that need two topbar affordances (Candidates: bulk CSV/PDF
+// import sits next to New Candidate). Most pages leave it unset.
+type Spec = {
+  group?: string;
+  title: TitleSpec;
+  action?: ActionSpec;
+  extraAction?: ActionSpec;
+};
 
 // Sidebar-group label rendered as a muted breadcrumb prefix before the
 // page title ("Ops > Calendar"). Mirrors NAV_GROUPS in
@@ -113,6 +122,7 @@ function resolveBaseSpec(
     return {
       title: { label: "Candidates" },
       action: { kind: "link", label: "New Candidate", href: "/candidates/new" },
+      extraAction: { kind: "candidate-add-multiple", label: "Add Multiple" },
     };
   }
   if (pathname === "/candidates/new") {
@@ -279,8 +289,16 @@ function TopBarPageActionInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const spec = resolveSpec(pathname, searchParams);
-  if (!spec.action) return null;
-  return <ActionButton action={spec.action} />;
+  if (!spec.action && !spec.extraAction) return null;
+  // extraAction (e.g. "Add Multiple") renders first so it sits to the
+  // left of the primary action ("New Candidate"). Both are independent
+  // of any page filter state — the topbar never sees the page's filters.
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      {spec.extraAction && <ActionButton action={spec.extraAction} />}
+      {spec.action && <ActionButton action={spec.action} />}
+    </div>
+  );
 }
 
 function ActionButton({ action }: { action: ActionSpec }) {
@@ -307,7 +325,30 @@ function ActionButton({ action }: { action: ActionSpec }) {
   if (action.kind === "calendar-new-event") {
     return <CalendarNewEventButton label={action.label} />;
   }
+  if (action.kind === "candidate-add-multiple") {
+    return <CandidateAddMultipleButton label={action.label} />;
+  }
   return null;
+}
+
+// Bulk CSV/PDF import trigger. The AddMultipleDialog lives inside the
+// Candidates page (far below the TopBar in AppShell), so we bridge with
+// a window event the page subscribes to on mount — same pattern as
+// CalendarNewEventButton / NewExpenseTopBarButton. Uses the Upload icon
+// (not Plus) to read as a distinct affordance from "+ New Candidate".
+function CandidateAddMultipleButton({ label }: { label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        window.dispatchEvent(new CustomEvent("ace:candidates:add-multiple"))
+      }
+      className={ACTION_BUTTON_CLASS}
+    >
+      <Upload className="h-3 w-3" />
+      {label}
+    </button>
+  );
 }
 
 // The expense form lives inside the Expenses tab (ExpensesSection) and

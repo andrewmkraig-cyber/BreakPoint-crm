@@ -774,7 +774,7 @@ function isPdfFile(f: File): boolean {
 // PDFs run through the existing match-by-name → resume-upload pipeline
 // (single match call + N=5 worker pool). Both paths fire concurrently
 // from a single Import click and produce one combined toast.
-function AddMultipleDialog({
+export function AddMultipleDialog({
   onClose,
   onDone,
 }: {

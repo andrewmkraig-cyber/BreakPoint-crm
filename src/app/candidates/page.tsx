@@ -25,6 +25,7 @@ import {
   BulkAddToListDialog,
   BulkEmailDialog,
 } from "@/app/candidates/bulk-dialogs";
+import { AddMultipleDialog } from "@/app/candidates/candidates-view";
 import {
   getOpenJobsForBulkPicker,
   type BulkPickerJob,
@@ -687,6 +688,15 @@ export default function CandidatesPage() {
     setSavedSearches(loadSavedSearches());
   }, []);
 
+  // Subscribe to the TopBar "Add Multiple" chip. The chip dispatches a
+  // window event because it renders far above this page in AppShell.
+  useEffect(() => {
+    const open = () => setAddMultipleOpen(true);
+    window.addEventListener("ace:candidates:add-multiple", open);
+    return () =>
+      window.removeEventListener("ace:candidates:add-multiple", open);
+  }, []);
+
   // Bulk multi-select for the results table. Independent of selectedId
   // (single-row split view) so the recruiter can build a selection set
   // without entering the split view. Sticky bulk bar shows when at
@@ -695,6 +705,10 @@ export default function CandidatesPage() {
     () => new Set(),
   );
   const [bulkDialog, setBulkDialog] = useState<null | "apply" | "list" | "email">(null);
+  // Bulk CSV/PDF import modal. Opened from the TopBar "Add Multiple"
+  // chip via a window event (the TopBar lives above this page in
+  // AppShell and can't reach this state directly).
+  const [addMultipleOpen, setAddMultipleOpen] = useState(false);
   // Lazy-fetched bulk picker payloads. null = not fetched yet; [] =
   // fetched (possibly empty). Fetched on first open of the relevant
   // dialog so /candidates doesn't pay the round-trip on every mount.
@@ -1950,6 +1964,19 @@ export default function CandidatesPage() {
             // created) shows up; existing-list adds don't change the
             // list shape, but it's cheap to invalidate.
             setBulkLists(null);
+          }}
+        />
+      )}
+
+      {addMultipleOpen && (
+        <AddMultipleDialog
+          onClose={() => setAddMultipleOpen(false)}
+          onDone={() => {
+            setAddMultipleOpen(false);
+            // Re-run the current search so freshly imported candidates
+            // appear in the results without a manual re-query. No-op when
+            // no filter is active (empty start state).
+            if (hasFilters) void runFetch(filters);
           }}
         />
       )}
