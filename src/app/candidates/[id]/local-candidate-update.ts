@@ -26,6 +26,7 @@ export type LocalCandidatePatch = {
   phone?: string | null;
   location?: string | null;
   linkedinProfile?: string | null;
+  source?: string | null;
   // Skills - dedupe + trim is the caller's job; we just write the array.
   skills?: string[];
 };
@@ -69,6 +70,9 @@ export async function updateLocalCandidate(patch: LocalCandidatePatch): Promise<
   }
   if ("linkedinProfile" in patch) {
     data.linkedinProfile = patch.linkedinProfile?.trim() || null;
+  }
+  if ("source" in patch) {
+    data.source = patch.source?.trim() || null;
   }
   if ("skills" in patch && Array.isArray(patch.skills)) {
     data.skills = patch.skills;

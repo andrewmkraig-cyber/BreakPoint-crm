@@ -158,6 +158,7 @@ export type CreateCandidatePayload = {
   current_organization: string;
   location: string;
   linkedin_profile: string;
+  source: string;
   skills: string[];
   notes: string;
   experience?: ParsedExperienceRow[];
@@ -275,6 +276,7 @@ export async function createCandidate(
         currentOrganization: dbOrganization,
         location: input.location.trim() || null,
         linkedinProfile: input.linkedin_profile.trim() || null,
+        source: input.source.trim() || null,
         skills: input.skills.filter(Boolean),
         notes: input.notes.trim() || null,
         experience: expRows.length ? expRows : undefined,

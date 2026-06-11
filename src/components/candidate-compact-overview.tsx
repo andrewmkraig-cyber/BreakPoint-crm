@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { Button } from "@/components/ui/button";
 import { MaskedCurrencyInput } from "@/components/ui/masked-currency-input";
+import { LEAD_SOURCES } from "@/lib/lead-sources";
 import { cn, formatLocation } from "@/lib/utils";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 import { buildTokenColorMap } from "@/app/candidates/[id]/resume-matches-rail";
@@ -40,7 +41,7 @@ export type { CandidateCompactOverviewExpectedSalary };
 // and the candidates split-view embed.
 //
 // Edit model: a single Edit button (matching the client overview card
-// style) flips all editable fields — Title, Employer, Location, Comp,
+// style) flips all editable fields — Title, Employer, Location, Source, Comp,
 // Email(s), Phone(s) — into edit mode at once. Save commits every field
 // together, Cancel discards. Email and Phone are multi-value: the first
 // row is the primary (the unique Candidate.email / Candidate.phone), and
@@ -66,6 +67,7 @@ export function CandidateCompactOverview({
   altEmails,
   altPhones,
   linkedinProfile,
+  source,
   expectedSalary,
   highlightTokens,
 }: {
@@ -81,6 +83,7 @@ export function CandidateCompactOverview({
   altEmails?: string[];
   altPhones?: string[];
   linkedinProfile: string | null;
+  source: string | null;
   expectedSalary: CandidateCompactOverviewExpectedSalary | null;
   highlightTokens?: string[];
 }) {
@@ -89,6 +92,7 @@ export function CandidateCompactOverview({
   const [titleSaved, setTitleSaved] = useState(currentDesignation ?? "");
   const [employerSaved, setEmployerSaved] = useState(currentOrganization ?? "");
   const [locationSaved, setLocationSaved] = useState(location ?? "");
+  const [sourceSaved, setSourceSaved] = useState(source ?? "");
   const [compSaved, setCompSaved] = useState<CandidateCompactOverviewExpectedSalary | null>(
     expectedSalary,
   );
@@ -107,6 +111,7 @@ export function CandidateCompactOverview({
   const [titleDraft, setTitleDraft] = useState(titleSaved);
   const [employerDraft, setEmployerDraft] = useState(employerSaved);
   const [locationDraft, setLocationDraft] = useState(locationSaved);
+  const [sourceDraft, setSourceDraft] = useState(sourceSaved);
   const [compDraft, setCompDraft] = useState<string>(formatCompForEdit(compSaved));
   const [emailsDraft, setEmailsDraft] = useState<string[]>(emailsSaved);
   const [phonesDraft, setPhonesDraft] = useState<string[]>(phonesSaved);
@@ -117,10 +122,11 @@ export function CandidateCompactOverview({
     setTitleDraft(titleSaved);
     setEmployerDraft(employerSaved);
     setLocationDraft(locationSaved);
+    setSourceDraft(sourceSaved);
     setCompDraft(formatCompForEdit(compSaved));
     setEmailsDraft(emailsSaved);
     setPhonesDraft(phonesSaved);
-  }, [editing, titleSaved, employerSaved, locationSaved, compSaved, emailsSaved, phonesSaved]);
+  }, [editing, titleSaved, employerSaved, locationSaved, sourceSaved, compSaved, emailsSaved, phonesSaved]);
 
   const tokens = useMemo(
     () => (highlightTokens ?? []).filter((t) => t.trim().length > 0),
@@ -132,6 +138,7 @@ export function CandidateCompactOverview({
     setTitleDraft(titleSaved);
     setEmployerDraft(employerSaved);
     setLocationDraft(locationSaved);
+    setSourceDraft(sourceSaved);
     setCompDraft(formatCompForEdit(compSaved));
     // Seed at least one empty row so the recruiter can type straight away.
     setEmailsDraft(emailsSaved.length ? emailsSaved : [""]);
@@ -148,6 +155,7 @@ export function CandidateCompactOverview({
     const nextTitle = titleDraft.trim();
     const nextEmployer = employerDraft.trim();
     const nextLocation = locationDraft.trim();
+    const nextSource = sourceDraft.trim();
     const nextCompNumber = parseCompensation(compDraft.trim());
     const currency = (compSaved?.currency ?? "USD").toUpperCase().slice(0, 3) || "USD";
     const nextComp: CandidateCompactOverviewExpectedSalary | null =
@@ -165,6 +173,10 @@ export function CandidateCompactOverview({
     }
     if (nextLocation !== locationSaved.trim()) {
       patch.location = { location: nextLocation };
+      dirty = true;
+    }
+    if (nextSource !== sourceSaved.trim()) {
+      patch.source = nextSource || null;
       dirty = true;
     }
     const compSavedNumber = compSaved?.number ?? null;
@@ -207,6 +219,7 @@ export function CandidateCompactOverview({
       if (patch.current_designation !== undefined) setTitleSaved(nextTitle);
       if (patch.current_organization !== undefined) setEmployerSaved(nextEmployer);
       if (patch.location !== undefined) setLocationSaved(nextLocation);
+      if (patch.source !== undefined) setSourceSaved(nextSource);
       if (patch.expected_salary !== undefined) setCompSaved(nextComp);
       if (patch.email !== undefined) setEmailsSaved(nextEmails);
       if (patch.phone_number !== undefined) setPhonesSaved(nextPhones);
@@ -265,6 +278,25 @@ export function CandidateCompactOverview({
               className={EDIT_INPUT_CLASS}
             />
           </EditField>
+          <EditField label="Source">
+            <select
+              value={sourceDraft}
+              disabled={isSaving}
+              onChange={(e) => setSourceDraft(e.target.value)}
+              className={EDIT_INPUT_CLASS}
+            >
+              <option value="">Select source...</option>
+              {LEAD_SOURCES.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+              {sourceDraft &&
+                !LEAD_SOURCES.some(
+                  (option) => option.toLowerCase() === sourceDraft.toLowerCase(),
+                ) && <option value={sourceDraft}>{sourceDraft}</option>}
+            </select>
+          </EditField>
           <EditField label="Comp">
             <MaskedCurrencyInput
               value={compDraft}
@@ -294,8 +326,11 @@ export function CandidateCompactOverview({
             />
           </EditField>
           <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-            <Field label="LinkedIn" wide>
+            <Field label="LinkedIn">
               <ReadLinkedIn linkedinProfile={linkedinProfile} />
+            </Field>
+            <Field label="Source">
+              <ReadCandidateSource source={sourceSaved} />
             </Field>
           </dl>
           <div className="flex items-center justify-end gap-2 border-t border-court-border pt-2">
@@ -367,8 +402,11 @@ export function CandidateCompactOverview({
           <Field label="Comp">
             <ReadComp value={compSaved} />
           </Field>
-          <Field label="LinkedIn" wide>
+          <Field label="LinkedIn">
             <ReadLinkedIn linkedinProfile={linkedinProfile} />
+          </Field>
+          <Field label="Source">
+            <ReadCandidateSource source={sourceSaved} />
           </Field>
         </dl>
       )}
@@ -618,6 +656,11 @@ function ReadLinkedIn({ linkedinProfile }: { linkedinProfile: string | null }) {
       Profile <ExternalLink className="h-3 w-3" />
     </a>
   );
+}
+
+function ReadCandidateSource({ source }: { source: string }) {
+  if (!source.trim()) return <span className="text-court-fg-muted">—</span>;
+  return <>{source}</>;
 }
 
 // Renders `text` with case-insensitive matches of any `tokens` wrapped

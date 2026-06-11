@@ -44,6 +44,7 @@ export type CandidatePatch = {
   current_designation?: string;
   current_organization?: string;
   linkedin_profile?: string;
+  source?: string | null;
   candidate_summary?: string;
   location?: { location?: string; city?: string; state?: string; country?: string } | string;
   expected_salary?: { number?: number | null; currency?: string | null } | null;
@@ -134,6 +135,7 @@ export async function updateCandidate(patch: CandidatePatch): Promise<ActionResu
       data.currentOrganization = patch.current_organization ?? null;
     if (patch.linkedin_profile !== undefined)
       data.linkedinProfile = linkedinUrlFrom(patch.linkedin_profile) || null;
+    if (patch.source !== undefined) data.source = patch.source?.trim() || null;
     if (patch.location !== undefined) data.location = locationToString(patch.location);
     if (patch.skills !== undefined) data.skills = patch.skills ?? [];
     if (patch.tags !== undefined) data.tags = patch.tags ?? [];

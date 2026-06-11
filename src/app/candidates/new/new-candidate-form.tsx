@@ -10,6 +10,7 @@ import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { cn } from "@/lib/utils";
 import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
+import { LEAD_SOURCES } from "@/lib/lead-sources";
 import {
   checkCandidateEmail,
   createCandidate,
@@ -36,6 +37,7 @@ const EMPTY: FormState = {
   current_organization: "",
   location: "",
   linkedin_profile: "",
+  source: "",
   skills: [],
   skillsText: "",
   notes: "",
@@ -586,6 +588,13 @@ export function NewCandidateForm({
             <Field label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
             <Field label="Location" value={form.location} onChange={(v) => setForm({ ...form, location: v })} />
             <Field label="LinkedIn" type="url" value={form.linkedin_profile} onChange={(v) => setForm({ ...form, linkedin_profile: v })} />
+            <SelectField
+              label="Source"
+              value={form.source}
+              onChange={(v) => setForm({ ...form, source: v })}
+              options={LEAD_SOURCES}
+              placeholder="Select source..."
+            />
             <div className="sm:col-span-2">
               <Field
                 label="Skills"
@@ -703,6 +712,46 @@ function Field({
           onBlur={onBlur}
           className={`${INPUT_CONTROL_CLASS} text-sm`}
         />
+      </div>
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: readonly string[];
+  placeholder: string;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+        {label}
+      </span>
+      <div className={`${INPUT_FRAME_RECT_CLASS} mt-1 w-full`}>
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={`${INPUT_CONTROL_CLASS} text-sm`}
+        >
+          <option value="">{placeholder}</option>
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+          {value &&
+            !options.some((option) => option.toLowerCase() === value.toLowerCase()) && (
+              <option value={value}>{value}</option>
+            )}
+        </select>
       </div>
     </label>
   );

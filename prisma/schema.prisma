@@ -469,6 +469,10 @@ model Candidate {
   lat                 Float?
   lng                 Float?
   linkedinProfile     String?
+  // Recruiter-entered candidate acquisition source. Uses the same
+  // display strings as placement lead source options, but is stored
+  // on the candidate so it survives before any placement exists.
+  source              String?
   skills              String[] @default([])
   // Free-form tags + RF attributes normalized to strings (e.g. "kept",
   // "keep"). Used by the profile chips and the keep filter.

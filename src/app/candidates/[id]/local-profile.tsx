@@ -99,6 +99,7 @@ export async function LocalCandidateProfile({
         lat: true,
         lng: true,
         linkedinProfile: true,
+        source: true,
         skills: true,
         tags: true,
         notes: true,
@@ -926,6 +927,7 @@ export async function LocalCandidateProfile({
               altEmails={candidate.altEmails}
               altPhones={candidate.altPhones}
               linkedinProfile={candidate.linkedinProfile}
+              source={candidate.source}
               expectedSalary={toExpectedSalary(candidate.expectedSalary)}
               highlightTokens={highlightTokens}
             />
@@ -1071,6 +1073,7 @@ export async function LocalCandidateProfile({
             altEmails={candidate.altEmails}
             altPhones={candidate.altPhones}
             linkedinProfile={candidate.linkedinProfile}
+            source={candidate.source}
             expectedSalary={toExpectedSalary(candidate.expectedSalary)}
           />
           <LocalEditableSkills
