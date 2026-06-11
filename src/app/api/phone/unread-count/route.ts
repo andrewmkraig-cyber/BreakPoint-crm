@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { phoneUnreadMessageCount } from "@/lib/badge-math";
+import { getQuoLineDigitsForUserEmail, smsLineWhere } from "@/lib/quo-line-owner";
 
 export const dynamic = "force-dynamic";
 
@@ -30,11 +31,16 @@ export async function GET() {
     return NextResponse.json({ count: null });
   }
   const org = await getCurrentOrg();
+  const lineDigits = await getQuoLineDigitsForUserEmail(org.id, session.user.email);
+  if (lineDigits.length === 0) {
+    return NextResponse.json({ count: 0 });
+  }
   const rows = await prisma.smsMessage.findMany({
     where: {
       organizationId: org.id,
       direction: "inbound",
       isRead: false,
+      AND: [smsLineWhere(lineDigits, "inbound")],
     },
     select: { direction: true, isRead: true },
   });

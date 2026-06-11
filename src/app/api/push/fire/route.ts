@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { sendPushToUser, type PushPayload } from "@/lib/web-push";
-import { getUnreadCountsForOrg } from "@/lib/unread-counts";
+import { getUnreadCountsForUser } from "@/lib/unread-counts";
 import { badgePayloadFields } from "@/lib/badge-math";
 
 export const dynamic = "force-dynamic";
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "user not found" }, { status: 401 });
   }
   const org = await getCurrentOrg();
-  const counts = await getUnreadCountsForOrg(org.id);
+  const counts = await getUnreadCountsForUser(org.id, user.id);
 
   // TEMP DIAG (keep until badge reliability confirmed in prod).
   console.log("[push][badge-diag]", {

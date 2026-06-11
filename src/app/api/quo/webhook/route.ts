@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'node:crypto'
 import { prisma } from '@/lib/prisma'
 import { matchClientByPhone } from '@/lib/quo-contact-match'
-import { sendPushToOrg, sendPushToUserOrOrg, type PushPayload } from '@/lib/web-push'
-import { getUnreadCountsForOrg } from '@/lib/unread-counts'
+import { sendPushToUser, type PushPayload } from '@/lib/web-push'
+import { getUnreadCountsForUser } from '@/lib/unread-counts'
 import { badgePayloadFields } from '@/lib/badge-math'
 import { pickPhone, redactPhone } from '@/lib/quo-phone'
+import { resolveQuoLineOwnerUserId } from '@/lib/quo-line-owner'
 
 // Quo (formerly KrispCall / OpenPhone) inbound webhook.
 //
@@ -114,11 +115,12 @@ export async function POST(req: NextRequest) {
       // linked to a Candidate yet. Body trimmed to 100 chars to stay
       // inside the platform-default notification body cap.
       //
-      // Per-user routing: there's no Quo Inbox model in Ace, so the
-      // closest "ownership" signal is Candidate.createdById — the
-      // recruiter who first added that candidate. When we have it we
-      // push only to that user's devices. When no candidate matches
-      // (unknown number) we fall back to fanning out across the org.
+      // Per-user routing: Quo is a personal recruiter line, not a shared
+      // org inbox. Send only to the Ace user whose saved recruiter phone
+      // matches the Quo recipient line (`toNumber`, or QUO_FROM_NUMBER as
+      // a last-resort configured line).
+      // Never fan out to the whole org, because Andrew's line should not
+      // show notifications in Austin's Ace.
       if (orgId) {
         const senderName =
           (candidate
@@ -133,12 +135,23 @@ export async function POST(req: NextRequest) {
         const dest = candidate
           ? `/phone?candidateId=${candidate.id}`
           : `/phone?from=${encodeURIComponent(fromNumber)}`
-        // getUnreadCountsForOrg degrades any unprovable count to null
+        const pushUserId = await resolveQuoPushUserId({
+          organizationId: orgId,
+          lineNumber: toNumber,
+          candidateOwnerId: candidate?.createdById ?? null,
+          clientOwnerId: clientMatch?.ownerId ?? null,
+          source: 'quo-sms',
+          fromNumber,
+        })
+        if (!pushUserId) {
+          return NextResponse.json({ ok: true })
+        }
+        // getUnreadCountsForUser degrades any unprovable count to null
         // internally (never throws). badgePayloadFields then omits the
         // badge fields whenever badgeCount is null, so a transient Gmail
         // or DB hiccup leaves the existing app badge alone instead of
         // clobbering it - this is what stops a new text knocking it to 1.
-        const counts = await getUnreadCountsForOrg(orgId)
+        const counts = await getUnreadCountsForUser(orgId, pushUserId)
         // TEMP DIAG (keep until badge reliability confirmed in prod): no
         // body / full number / token logged.
         console.log('[push][badge-diag]', {
@@ -158,17 +171,7 @@ export async function POST(req: NextRequest) {
           tag: `sms-${tagKey}`,
           ...badgePayloadFields(counts),
         }
-        if (candidate?.createdById) {
-          // Route to the owning recruiter first; if that user has zero
-          // live devices, fall back to the org so a known-candidate push
-          // never silently drops (the regression this chases). Org
-          // fallback only fires when the owner has no subscriptions, so
-          // no device is double-pushed.
-          await sendPushToUserOrOrg(candidate.createdById, orgId, payload)
-        } else {
-          // Shared line: no owner to route to, fan out across the org.
-          await sendPushToOrg(orgId, payload)
-        }
+        await sendPushToUser(pushUserId, orgId, payload)
       } else {
         // Exit F diagnostic. If this fires, the inbound row resolved no org
         // (no candidate match, no client match, and defaultOrgId() returned
@@ -446,9 +449,8 @@ export async function POST(req: NextRequest) {
       // Duration ≤ 3s (or missing) is treated as a missed call —
       // typical voicemail / no-answer cutoffs land well above that.
       //
-      // Per-user routing: same logic as the SMS branch — push to the
-      // owning recruiter (Candidate.createdById) when the caller is a
-      // known candidate, fan out across the org otherwise.
+      // Per-user routing: same line-owner rule as SMS. Calls on Andrew's
+      // Quo line should not pop in a teammate's Ace account.
       if (orgId && direction === 'inbound' && callLogRow?.id) {
         const callerName =
           (candidate
@@ -458,8 +460,19 @@ export async function POST(req: NextRequest) {
                 .trim()
             : '') || fromNumber || 'Unknown'
         const isMissed = !duration || duration <= 3
+        const pushUserId = await resolveQuoPushUserId({
+          organizationId: orgId,
+          lineNumber: toNumber,
+          candidateOwnerId: candidate?.createdById ?? null,
+          clientOwnerId: clientMatch?.ownerId ?? null,
+          source: 'quo-call',
+          fromNumber,
+        })
+        if (!pushUserId) {
+          return NextResponse.json({ ok: true })
+        }
         // Same reliable-or-omit contract as the SMS branch.
-        const counts = await getUnreadCountsForOrg(orgId)
+        const counts = await getUnreadCountsForUser(orgId, pushUserId)
         // TEMP DIAG (keep until badge reliability confirmed in prod).
         console.log('[push][badge-diag]', {
           source: 'quo-call',
@@ -480,15 +493,7 @@ export async function POST(req: NextRequest) {
           tag: `call-${callLogRow.id}`,
           ...badgePayloadFields(counts),
         }
-        if (candidate?.createdById) {
-          // Same owner-first, org-fallback routing as the SMS branch so a
-          // known-candidate inbound call push doesn't vanish when the
-          // owner has no live device.
-          await sendPushToUserOrOrg(candidate.createdById, orgId, payload)
-        } else {
-          // Shared line: no owner to route to, fan out across the org.
-          await sendPushToOrg(orgId, payload)
-        }
+        await sendPushToUser(pushUserId, orgId, payload)
       }
     }
   }
@@ -511,6 +516,27 @@ async function defaultOrgId(): Promise<string | null> {
   })
   cachedDefaultOrgId = org?.id ?? null
   return cachedDefaultOrgId
+}
+
+async function resolveQuoPushUserId(input: {
+  organizationId: string
+  lineNumber: string | undefined
+  candidateOwnerId: string | null
+  clientOwnerId: string | null
+  source: 'quo-sms' | 'quo-call'
+  fromNumber: string | undefined
+}): Promise<string | null> {
+  const lineOwnerId = await resolveQuoLineOwnerUserId(input.organizationId, input.lineNumber)
+  if (!lineOwnerId) {
+    console.warn('[quo/webhook] push skipped: no user owner for Quo line', {
+      source: input.source,
+      lineSuffix: redactPhone(input.lineNumber),
+      fromSuffix: redactPhone(input.fromNumber),
+      hasCandidateOwner: !!input.candidateOwnerId,
+      hasClientOwner: !!input.clientOwnerId,
+    })
+  }
+  return lineOwnerId
 }
 
 type OutboundSmsWebhookInput = {

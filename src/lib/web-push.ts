@@ -134,10 +134,9 @@ export async function sendPushToUser(
   }
 }
 
-// Webhook callers (no session) don't know which user to ping —
-// resolve by orgId and fan out to every subscribed device in the org.
-// Ace is single-tenant per the comment in defaultOrgId, so in practice
-// this targets Andrew's devices.
+// Org-wide broadcasts are only for genuinely shared events. Personal
+// surfaces like Gmail or Quo should use sendPushToUser so one recruiter's
+// account never becomes another recruiter's fallback device.
 export async function sendPushToOrg(
   organizationId: string,
   payload: PushPayload,
@@ -151,46 +150,6 @@ export async function sendPushToOrg(
     return await dispatch(subs, payload, "sendPushToOrg");
   } catch (err) {
     console.error("[web-push] sendPushToOrg swallowed error", err);
-    return EMPTY_DISPATCH_RESULT;
-  }
-}
-
-// Route to a known owner FIRST, fall back to the org SECOND — without
-// duplicate sends. Quo's per-user routing pins a known-candidate push
-// to Candidate.createdById; when that owner has zero live devices (an
-// imported/migrated candidate owned by another user, a recruiter who
-// never enabled push on this phone), sendPushToUser dispatched to an
-// empty list and the notification silently vanished even though the
-// SMS/call row persisted fine. The org fallback ensures a push that
-// has somewhere to land never disappears. Fallback fires ONLY when the
-// owner has no subscriptions, so org devices are never double-pushed.
-export async function sendPushToUserOrOrg(
-  userId: string,
-  organizationId: string,
-  payload: PushPayload,
-): Promise<PushDispatchResult> {
-  try {
-    if (!ensureVapid()) return EMPTY_DISPATCH_RESULT;
-    const userSubs = await prisma.pushSubscription.findMany({
-      where: { userId, organizationId },
-      select: { id: true, endpoint: true, p256dh: true, auth: true },
-    });
-    if (userSubs.length > 0) {
-      const result = await dispatch(userSubs, payload, "sendPushToUserOrOrg:user");
-      if (result.sent > 0) return result;
-    }
-    // Owner has no live device — fan out to the org so the push still
-    // lands (in practice, Andrew's iPhone). No duplicate when the user
-    // path succeeded; if the user path had only stale endpoints, dispatch
-    // pruned them first and this retry gives any remaining org device a
-    // chance to carry the notification.
-    const orgSubs = await prisma.pushSubscription.findMany({
-      where: { organizationId },
-      select: { id: true, endpoint: true, p256dh: true, auth: true },
-    });
-    return await dispatch(orgSubs, payload, "sendPushToUserOrOrg:org-fallback");
-  } catch (err) {
-    console.error("[web-push] sendPushToUserOrOrg swallowed error", err);
     return EMPTY_DISPATCH_RESULT;
   }
 }

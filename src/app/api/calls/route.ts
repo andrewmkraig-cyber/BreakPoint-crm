@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { getCurrentOrg } from '@/lib/auth/getCurrentOrg'
+import { authOptions } from '@/lib/auth'
+import { callLineWhere, getQuoLineDigitsForUserEmail } from '@/lib/quo-line-owner'
 
 export async function POST(req: NextRequest) {
   const { candidateId, direction, fromNumber, toNumber, status, duration, recordingUrl, krispcallId } = await req.json()
@@ -30,6 +33,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+  }
   // Accept either candidateId or clientId. Candidate scoping is the
   // primary use case; clientId scoping powers the call log on the
   // client profile activity tab. If both arrive somehow, candidateId
@@ -40,10 +47,12 @@ export async function GET(req: NextRequest) {
   // Tenant scope (NN #8): never return rows from another org even if a
   // caller passes a candidate/client id that isn't theirs.
   const org = await getCurrentOrg()
+  const lineDigits = await getQuoLineDigitsForUserEmail(org.id, session.user.email)
+  if (lineDigits.length === 0) return NextResponse.json([])
   const logs = await prisma.callLog.findMany({
     where: candidateId
-      ? { candidateId, organizationId: org.id }
-      : { clientId: clientId!, organizationId: org.id },
+      ? { candidateId, organizationId: org.id, AND: [callLineWhere(lineDigits)] }
+      : { clientId: clientId!, organizationId: org.id, AND: [callLineWhere(lineDigits)] },
     include: { transcript: true },
     orderBy: { createdAt: 'desc' },
   })

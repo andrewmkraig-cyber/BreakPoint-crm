@@ -7,7 +7,7 @@ import {
 } from "@/lib/gmail";
 import { badgePayloadFields } from "@/lib/badge-math";
 import { checkGmailWebhookSecret } from "@/lib/gmail-webhook-auth";
-import { getUnreadCountsForOrg } from "@/lib/unread-counts";
+import { getUnreadCountsForUser } from "@/lib/unread-counts";
 import { sendPushToUser, type PushPayload } from "@/lib/web-push";
 
 export const dynamic = "force-dynamic";
@@ -162,7 +162,7 @@ async function sendNewMailPushes({
 }) {
   if (threads.length === 0) return;
 
-  const counts = await getUnreadCountsForOrg(organizationId, {
+  const counts = await getUnreadCountsForUser(organizationId, userId, {
     extraUnreadMailThreadIds: threads.map((t) => t.threadId),
   });
 

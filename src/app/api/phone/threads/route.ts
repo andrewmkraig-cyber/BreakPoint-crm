@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
+import { callLineWhere, getQuoLineDigitsForUserEmail, smsLineWhere } from "@/lib/quo-line-owner";
 
 export const dynamic = "force-dynamic";
 
@@ -70,10 +71,25 @@ export async function GET(req: NextRequest) {
   // entire org's history.
   const limitParam = req.nextUrl.searchParams.get("limit");
   const limit = limitParam ? Math.max(1, Math.min(100, parseInt(limitParam, 10) || 0)) : null;
+  const lineDigits = await getQuoLineDigitsForUserEmail(org.id, session.user.email);
+  if (lineDigits.length === 0) {
+    const emptyBuckets: BucketCounts = {
+      all: 0,
+      texts: 0,
+      calls: 0,
+      missed: 0,
+      voicemails: 0,
+      candidates: 0,
+      clients: 0,
+      unknown: 0,
+      needsReply: 0,
+    };
+    return NextResponse.json({ threads: [], bucketCounts: emptyBuckets, unreadCount: 0 });
+  }
 
   const [smsRows, callRows] = await Promise.all([
     prisma.smsMessage.findMany({
-      where: { organizationId: org.id },
+      where: { organizationId: org.id, AND: [smsLineWhere(lineDigits)] },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -88,7 +104,7 @@ export async function GET(req: NextRequest) {
       },
     }),
     prisma.callLog.findMany({
-      where: { organizationId: org.id },
+      where: { organizationId: org.id, AND: [callLineWhere(lineDigits)] },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,

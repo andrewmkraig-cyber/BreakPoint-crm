@@ -1,8 +1,11 @@
 import { Prisma } from "@prisma/client";
+import { getServerSession } from "next-auth";
 
+import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getNotesForEntity } from "@/lib/notes/queries";
 import { prisma } from "@/lib/prisma";
+import { callLineWhere, getQuoLineDigitsForUserEmail, smsLineWhere } from "@/lib/quo-line-owner";
 import { canonicalStage } from "@/lib/rf-payload-shapes";
 import { getResumeBytes } from "@/lib/resume-bytes";
 
@@ -348,6 +351,8 @@ export async function buildCandidateContext(
   candidateId: string,
 ): Promise<string> {
   const org = await getCurrentOrg();
+  const session = await getServerSession(authOptions);
+  const lineDigits = await getQuoLineDigitsForUserEmail(org.id, session?.user?.email);
 
   const candidate = await prisma.candidate.findFirst({
     where: { id: candidateId, organizationId: org.id },
@@ -360,18 +365,18 @@ export async function buildCandidateContext(
   const [smsMessages, callLogs, transcripts, placements, interviews, recruiterNotes] =
     await Promise.all([
       prisma.smsMessage.findMany({
-        where: { candidateId: candidate.id, organizationId: org.id },
+        where: { candidateId: candidate.id, organizationId: org.id, AND: [smsLineWhere(lineDigits)] },
         orderBy: { createdAt: "desc" },
         take: 10,
       }),
       prisma.callLog.findMany({
-        where: { candidateId: candidate.id, organizationId: org.id },
+        where: { candidateId: candidate.id, organizationId: org.id, AND: [callLineWhere(lineDigits)] },
         orderBy: { createdAt: "desc" },
         take: 5,
         include: { transcript: true },
       }),
       prisma.callTranscript.findMany({
-        where: { callLog: { candidateId: candidate.id } },
+        where: { callLog: { candidateId: candidate.id, organizationId: org.id, AND: [callLineWhere(lineDigits)] } },
         orderBy: { createdAt: "desc" },
         take: 3,
       }),

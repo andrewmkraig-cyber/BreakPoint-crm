@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getUnreadInboxThreadIdsStrict } from "@/lib/gmail";
 import { computeBadgeCount, phoneUnreadMessageCount } from "@/lib/badge-math";
+import { getQuoLineDigitsForUserId, smsLineWhere } from "@/lib/quo-line-owner";
 
 // Shared snapshot of "what should the PWA app-icon badge read right now"
 // for a given org. Three callers stuff this into the push payload so
@@ -101,9 +102,18 @@ async function saveLastKnownMail(
 // badge always agree. Five texts from one number count as 5. (Mail stays
 // thread-granular, by design - the combined badge is mail threads + phone
 // messages.)
-async function getPhoneUnreadForOrg(organizationId: string): Promise<number> {
+async function getPhoneUnreadForOrg(
+  organizationId: string,
+  phoneLineDigits?: string[],
+): Promise<number> {
+  if (phoneLineDigits && phoneLineDigits.length === 0) return 0;
   const rows = await prisma.smsMessage.findMany({
-    where: { organizationId, direction: "inbound", isRead: false },
+    where: {
+      organizationId,
+      direction: "inbound",
+      isRead: false,
+      ...(phoneLineDigits ? { AND: [smsLineWhere(phoneLineDigits, "inbound")] } : {}),
+    },
     select: { direction: true, isRead: true },
   });
   return phoneUnreadMessageCount(rows);
@@ -152,12 +162,12 @@ async function getMailUnreadForOrg(
 
 export async function getUnreadCountsForOrg(
   organizationId: string,
-  opts: { extraUnreadMailThreadIds?: string[] } = {},
+  opts: { extraUnreadMailThreadIds?: string[]; phoneLineDigits?: string[] } = {},
 ): Promise<UnreadCounts> {
   const [phoneUnread, mail] = await Promise.all([
     // A thrown local query degrades to null (unprovable), NOT 0, so a DB
     // hiccup can't silently drop the phone portion of the badge.
-    getPhoneUnreadForOrg(organizationId).catch(() => null),
+    getPhoneUnreadForOrg(organizationId, opts.phoneLineDigits).catch(() => null),
     // A thrown mail lookup is treated as a failed lookup (count null).
     getMailUnreadForOrg(
       organizationId,
@@ -195,4 +205,16 @@ export async function getUnreadCountsForOrg(
     mailReason: mail.reason,
     mailSource,
   };
+}
+
+export async function getUnreadCountsForUser(
+  organizationId: string,
+  userId: string,
+  opts: { extraUnreadMailThreadIds?: string[] } = {},
+): Promise<UnreadCounts> {
+  const phoneLineDigits = await getQuoLineDigitsForUserId(organizationId, userId);
+  return getUnreadCountsForOrg(organizationId, {
+    ...opts,
+    phoneLineDigits,
+  });
 }

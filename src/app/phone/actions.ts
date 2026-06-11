@@ -1,8 +1,11 @@
 "use server";
 
 import { Prisma } from "@prisma/client";
+import { getServerSession } from "next-auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getQuoLineDigitsForUserEmail, smsLineWhere } from "@/lib/quo-line-owner";
 
 // Normalize a phone number to its 10-digit form. Strips all non-digits,
 // then drops a leading "1" if the result is 11 digits long. Returns ""
@@ -94,6 +97,9 @@ export async function matchContactByPhone(phoneNumber: string): Promise<PhoneMat
 // error.
 export async function markThreadRead(threadId: string): Promise<{ updated: number }> {
   const org = await getCurrentOrg();
+  const session = await getServerSession(authOptions);
+  const lineDigits = await getQuoLineDigitsForUserEmail(org.id, session?.user?.email);
+  if (lineDigits.length === 0) return { updated: 0 };
 
   if (threadId.startsWith("cand:")) {
     const candidateId = threadId.slice("cand:".length);
@@ -104,6 +110,7 @@ export async function markThreadRead(threadId: string): Promise<{ updated: numbe
         organizationId: org.id,
         direction: "inbound",
         isRead: false,
+        AND: [smsLineWhere(lineDigits, "inbound")],
       },
       data: { isRead: true },
     });
@@ -135,6 +142,7 @@ export async function markThreadRead(threadId: string): Promise<{ updated: numbe
           AND "isRead" = false
           AND "candidateId" IS NULL
           AND right(regexp_replace(COALESCE("fromNumber", ''), '\D', '', 'g'), 10) = ${digits}
+          AND right(regexp_replace(COALESCE("toNumber", ''), '\D', '', 'g'), 10) IN (${Prisma.join(lineDigits)})
       `,
     );
     return { updated };
@@ -147,6 +155,7 @@ export async function markThreadRead(threadId: string): Promise<{ updated: numbe
       organizationId: org.id,
       direction: "inbound",
       isRead: false,
+      AND: [smsLineWhere(lineDigits, "inbound")],
     },
     data: { isRead: true },
   });

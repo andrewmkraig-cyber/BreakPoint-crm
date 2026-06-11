@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
+import { callLineWhere, getQuoLineDigitsForUserEmail, smsLineWhere } from "@/lib/quo-line-owner";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,10 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const org = await getCurrentOrg();
+  const lineDigits = await getQuoLineDigitsForUserEmail(org.id, session.user.email);
+  if (lineDigits.length === 0) {
+    return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+  }
   // Thread id encoding mirrors the threads list endpoint:
   //   "cand:<cuid>"  → matched Candidate thread
   //   "unk:<digits>" → unknown-number thread, keyed by last-10 digits
@@ -68,9 +73,14 @@ export async function GET(
         where: {
           organizationId: org.id,
           candidateId: null,
-          OR: [
-            { fromNumber: { contains: digits } },
-            { toNumber: { contains: digits } },
+          AND: [
+            {
+              OR: [
+                { fromNumber: { contains: digits } },
+                { toNumber: { contains: digits } },
+              ],
+            },
+            smsLineWhere(lineDigits),
           ],
         },
         orderBy: { createdAt: "asc" },
@@ -89,9 +99,14 @@ export async function GET(
         where: {
           organizationId: org.id,
           candidateId: null,
-          OR: [
-            { fromNumber: { contains: digits } },
-            { toNumber: { contains: digits } },
+          AND: [
+            {
+              OR: [
+                { fromNumber: { contains: digits } },
+                { toNumber: { contains: digits } },
+              ],
+            },
+            callLineWhere(lineDigits),
           ],
         },
         orderBy: { createdAt: "asc" },
@@ -166,7 +181,7 @@ export async function GET(
 
   const [smsRows, callRows] = await Promise.all([
     prisma.smsMessage.findMany({
-      where: { candidateId, organizationId: org.id },
+      where: { candidateId, organizationId: org.id, AND: [smsLineWhere(lineDigits)] },
       orderBy: { createdAt: "asc" },
       select: {
         id: true,
@@ -180,7 +195,7 @@ export async function GET(
       },
     }),
     prisma.callLog.findMany({
-      where: { candidateId, organizationId: org.id },
+      where: { candidateId, organizationId: org.id, AND: [callLineWhere(lineDigits)] },
       orderBy: { createdAt: "asc" },
       select: {
         id: true,

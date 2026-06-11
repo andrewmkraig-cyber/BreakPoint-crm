@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { sendSms, FROM } from '@/lib/quo'
 import { getCurrentOrg } from '@/lib/auth/getCurrentOrg'
+import { authOptions } from '@/lib/auth'
 import { normalizeToE164 } from '@/lib/rf-payload-shapes'
+import { getQuoLineDigitsForUserEmail, phoneTail, smsLineWhere } from '@/lib/quo-line-owner'
 
 export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  const email = session?.user?.email
+  if (!email) {
+    return NextResponse.json({ ok: false, error: 'unauthenticated' }, { status: 401 })
+  }
+
   const { candidateId, toNumber, body } = await req.json()
   console.log(
     `[api/sms POST] entry candidateIdRaw=${typeof candidateId === 'string' ? candidateId : '(none)'} toNumberRaw=${typeof toNumber === 'string' ? toNumber : '(none)'} bodyLen=${typeof body === 'string' ? body.length : 0}`,
@@ -71,6 +80,23 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       console.error('[api/sms POST] getCurrentOrg failed', e)
     }
+  }
+  if (!organizationId) {
+    return NextResponse.json(
+      { ok: false, error: 'organization unavailable' },
+      { status: 500 },
+    )
+  }
+  const lineDigits = await getQuoLineDigitsForUserEmail(organizationId, email)
+  const configuredFromDigits = phoneTail(FROM)
+  if (
+    lineDigits.length === 0 ||
+    (configuredFromDigits && !lineDigits.includes(configuredFromDigits))
+  ) {
+    return NextResponse.json(
+      { ok: false, error: 'No Quo phone line is configured for this Ace account.' },
+      { status: 403 },
+    )
   }
 
   let krispcallId: string | undefined
@@ -140,6 +166,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+  }
   // Accept either candidateId or clientId. Mirrors /api/calls — the
   // client profile's <TextingExchanges clientId={...}/> reads through
   // here; candidateId remains the primary scope for the candidate
@@ -150,10 +180,12 @@ export async function GET(req: NextRequest) {
   // Tenant scope (NN #8): never return rows from another org even if a
   // caller passes a candidate/client id that isn't theirs.
   const org = await getCurrentOrg()
+  const lineDigits = await getQuoLineDigitsForUserEmail(org.id, session.user.email)
+  if (lineDigits.length === 0) return NextResponse.json([])
   const messages = await prisma.smsMessage.findMany({
     where: candidateId
-      ? { candidateId, organizationId: org.id }
-      : { clientId: clientId!, organizationId: org.id },
+      ? { candidateId, organizationId: org.id, AND: [smsLineWhere(lineDigits)] }
+      : { clientId: clientId!, organizationId: org.id, AND: [smsLineWhere(lineDigits)] },
     orderBy: { createdAt: 'asc' },
   })
   return NextResponse.json(messages)
@@ -165,6 +197,10 @@ export async function GET(req: NextRequest) {
 // to scrub typos, accidental sends, or test traffic out of a
 // candidate's activity log without touching the rest of the thread.
 export async function DELETE(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.email) {
+    return NextResponse.json({ ok: false, error: 'unauthenticated' }, { status: 401 })
+  }
   const id = req.nextUrl.searchParams.get('id')
   if (!id) {
     return NextResponse.json({ ok: false, error: 'missing id' }, { status: 400 })
@@ -174,8 +210,12 @@ export async function DELETE(req: NextRequest) {
     // org filter. A forged id from another tenant matches zero rows and
     // returns 404 instead of deleting a cross-tenant message.
     const org = await getCurrentOrg()
+    const lineDigits = await getQuoLineDigitsForUserEmail(org.id, session.user.email)
+    if (lineDigits.length === 0) {
+      return NextResponse.json({ ok: false, error: 'not found' }, { status: 404 })
+    }
     const res = await prisma.smsMessage.deleteMany({
-      where: { id, organizationId: org.id },
+      where: { id, organizationId: org.id, AND: [smsLineWhere(lineDigits)] },
     })
     if (res.count === 0) {
       return NextResponse.json({ ok: false, error: 'not found' }, { status: 404 })

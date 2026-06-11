@@ -18,7 +18,7 @@ import { prisma } from "@/lib/prisma";
 // to fetch + filter in-memory; if traffic grows we can move the
 // matcher to a `$queryRaw` with `jsonb_array_elements`.
 
-export type ClientMatch = { clientId: string; organizationId: string };
+export type ClientMatch = { clientId: string; organizationId: string; ownerId: string | null };
 
 export async function matchClientByPhone(raw: string): Promise<ClientMatch | null> {
   const lastTen = raw.replace(/\D/g, "").slice(-10);
@@ -31,7 +31,7 @@ export async function matchClientByPhone(raw: string): Promise<ClientMatch | nul
       // an `equals: null` here would mistakenly match db-nulls only. We
       // skip the column filter and short-circuit in-loop instead.
     },
-    select: { clientId: true, organizationId: true, phoneNumbers: true },
+    select: { clientId: true, organizationId: true, phoneNumbers: true, client: { select: { ownerId: true } } },
   });
 
   for (const c of contacts) {
@@ -48,7 +48,7 @@ export async function matchClientByPhone(raw: string): Promise<ClientMatch | nul
       if (!rawNum) continue;
       const digits = rawNum.replace(/\D/g, "").slice(-10);
       if (digits.length === 10 && digits === lastTen) {
-        return { clientId: c.clientId, organizationId: c.organizationId };
+        return { clientId: c.clientId, organizationId: c.organizationId, ownerId: c.client?.ownerId ?? null };
       }
     }
   }
