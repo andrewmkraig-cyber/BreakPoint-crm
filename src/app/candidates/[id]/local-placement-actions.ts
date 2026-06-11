@@ -17,7 +17,12 @@ import { formatExpectedCompensation } from "@/lib/candidate-compensation";
 import { fanOutPlacementNote } from "@/lib/notes/placement-fanout";
 import { prisma } from "@/lib/prisma";
 import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
-import { submittalToHtml, submittalToPlainText } from "@/lib/submittal-format";
+import {
+  submittalEditorHtmlToPlainText,
+  submittalToHtml,
+  submittalToPlainText,
+  wrapEditorHtmlForGmail,
+} from "@/lib/submittal-format";
 import { fireTriggerAndLog } from "@/lib/trigger-fire";
 import {
   CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
@@ -583,6 +588,7 @@ export type SendLocalSubmittalInput = {
   bcc?: string[];
   subject: string;
   bodyText: string;
+  bodyHtml?: string;
   // When false, suppress the post-submittal candidate confirmation
   // trigger for this one send. Defaults to firing (undefined / true) so
   // existing callers keep the auto-confirmation behavior.
@@ -600,7 +606,11 @@ export async function sendLocalSubmittalEmail(
   if (!user) return { ok: false, error: "Not signed in." };
   if (!input.to.length) return { ok: false, error: "At least one recipient is required." };
   if (!input.subject.trim()) return { ok: false, error: "Subject is required." };
-  if (!input.bodyText.trim()) return { ok: false, error: "Body is required." };
+  const useRichHtml = typeof input.bodyHtml === "string" && input.bodyHtml.trim().length > 0;
+  const resolvedBodyText = useRichHtml
+    ? submittalEditorHtmlToPlainText(input.bodyHtml!)
+    : submittalToPlainText(input.bodyText);
+  if (!resolvedBodyText.trim()) return { ok: false, error: "Body is required." };
 
   try {
     // Always attach the candidate's most recent resume version on file.
@@ -645,8 +655,8 @@ export async function sendLocalSubmittalEmail(
       cc: input.cc,
       bcc: input.bcc,
       subject: input.subject,
-      bodyText: submittalToPlainText(input.bodyText),
-      bodyHtml: submittalToHtml(input.bodyText),
+      bodyText: resolvedBodyText,
+      bodyHtml: useRichHtml ? wrapEditorHtmlForGmail(input.bodyHtml!) : submittalToHtml(input.bodyText),
       attachments: submittalAttachments.length ? submittalAttachments : undefined,
     });
 

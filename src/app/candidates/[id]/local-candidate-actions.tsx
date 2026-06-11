@@ -22,6 +22,7 @@ import {
 import { formatOpenJobOption } from "@/components/placements/placement-shared";
 import { extractCityFromLocation } from "@/lib/candidate-compensation";
 import { applyMergeFields as applyMergeFieldsClient, type MergeFieldValues } from "@/lib/merge-fields";
+import { submittalMarkdownToEditorHtml } from "@/lib/submittal-format";
 import {
   LOCAL_PLACEMENT_APPLIED_EVENT,
   type LocalPlacementAppliedDetail,
@@ -390,6 +391,8 @@ function SubmitModal(props: {
       showTemplatePicker
       templateFilter={(t) => t.audience !== "candidate"}
       mergeValues={baseMergeValues}
+      richTextBody
+      toEditorHtml={submittalMarkdownToEditorHtml}
       showCandidateConfirmationToggle
       // Always show what's being attached. The latest resume version on
       // file is auto-attached server-side on send (sendLocalSubmittalEmail);
@@ -465,6 +468,7 @@ function SubmitModal(props: {
           // we never ship an empty-subject email.
           subject: draft.subject.trim() || fallbackSubject,
           bodyText: draft.body,
+          bodyHtml: draft.bodyHtml,
           sendCandidateConfirmation: draft.sendCandidateConfirmation ?? true,
         });
         if (!res.ok) throw new Error(res.error);

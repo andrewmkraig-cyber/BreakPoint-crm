@@ -1,9 +1,19 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
+import type { Editor } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
+import LinkExtension from "@tiptap/extension-link";
+import {
+  Bold,
+  Italic,
+  Link as LinkIcon,
+  List,
+  ListOrdered,
+  Underline as UnderlineIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Tiptap-backed body editor used by the submittal composer (and any other
@@ -42,6 +52,7 @@ type Props = {
   onChange: (html: string) => void;
   placeholder?: string;
   className?: string;
+  showToolbar?: boolean;
   // Autosaved subject+body state outside the editor may restore a value that's
   // different from `initialHtml`. When `value` changes externally (e.g. after
   // a template pick or Claude generation rewrote state), the editor content is
@@ -51,7 +62,13 @@ type Props = {
 };
 
 export const RichTextBodyEditor = forwardRef<RichTextBodyEditorHandle, Props>(
-  function RichTextBodyEditor({ initialHtml, onChange, placeholder, className, value }, ref) {
+  function RichTextBodyEditor(
+    { initialHtml, onChange, placeholder, className, showToolbar = false, value },
+    ref,
+  ) {
+    const [, setToolbarTick] = useState(0);
+    const refreshToolbar = () => setToolbarTick((tick) => tick + 1);
+
     const editor = useEditor({
       extensions: [
         // history, bold, italic, strike, paragraph, bulletList, etc. all come from StarterKit
@@ -66,17 +83,23 @@ export const RichTextBodyEditor = forwardRef<RichTextBodyEditorHandle, Props>(
           horizontalRule: false,
         }),
         Underline,
+        LinkExtension.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
       ],
       content: initialHtml,
       onUpdate: ({ editor }) => {
         onChange(editor.getHTML());
+        refreshToolbar();
       },
+      onSelectionUpdate: refreshToolbar,
       editorProps: {
         attributes: {
           class: cn(
-            "min-h-[280px] w-full resize-vertical whitespace-pre-wrap rounded-lg border border-court-border bg-court-surface px-3 py-2 font-sans text-sm leading-relaxed text-court-fg outline-none",
-            "focus:border-brand focus:ring-2 focus:ring-brand/20",
+            "min-h-[280px] w-full resize-vertical whitespace-pre-wrap px-3 py-2 font-sans text-sm leading-relaxed text-court-fg outline-none",
             "prose prose-sm max-w-none prose-p:my-2 prose-strong:font-semibold",
+            "[&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5",
+            showToolbar
+              ? "border-0 bg-transparent"
+              : "rounded-lg border border-court-border bg-court-surface focus:border-brand focus:ring-2 focus:ring-brand/20",
             className,
           ),
           ...(placeholder ? { "data-placeholder": placeholder } : {}),
@@ -121,6 +144,86 @@ export const RichTextBodyEditor = forwardRef<RichTextBodyEditorHandle, Props>(
       [editor],
     );
 
+    if (showToolbar) {
+      return (
+        <div className="overflow-hidden rounded-lg border border-court-border bg-court-surface focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20">
+          <RichTextToolbar editor={editor} />
+          <EditorContent editor={editor} />
+        </div>
+      );
+    }
+
     return <EditorContent editor={editor} />;
   },
 );
+
+function RichTextToolbar({ editor }: { editor: Editor | null }) {
+  if (!editor) {
+    return <div className="h-9 border-b border-court-border/50 bg-court-surface-subtle/40" />;
+  }
+
+  const btn = (active: boolean, onClick: () => void, icon: JSX.Element, label: string) => (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className={cn(
+        "rounded-md px-2 py-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg",
+        active && "bg-court-accent-tint/60 text-court-accent-dark",
+      )}
+    >
+      {icon}
+    </button>
+  );
+
+  return (
+    <div className="flex shrink-0 items-center gap-1 border-b border-court-border/50 bg-court-surface-subtle/40 px-3 py-1">
+      {btn(
+        editor.isActive("bold"),
+        () => editor.chain().focus().toggleBold().run(),
+        <Bold className="h-3.5 w-3.5" />,
+        "Bold",
+      )}
+      {btn(
+        editor.isActive("italic"),
+        () => editor.chain().focus().toggleItalic().run(),
+        <Italic className="h-3.5 w-3.5" />,
+        "Italic",
+      )}
+      {btn(
+        editor.isActive("underline"),
+        () => editor.chain().focus().toggleUnderline().run(),
+        <UnderlineIcon className="h-3.5 w-3.5" />,
+        "Underline",
+      )}
+      <div className="mx-1 h-4 w-px bg-court-border" />
+      {btn(
+        editor.isActive("bulletList"),
+        () => editor.chain().focus().toggleBulletList().run(),
+        <List className="h-3.5 w-3.5" />,
+        "Bulleted list",
+      )}
+      {btn(
+        editor.isActive("orderedList"),
+        () => editor.chain().focus().toggleOrderedList().run(),
+        <ListOrdered className="h-3.5 w-3.5" />,
+        "Numbered list",
+      )}
+      <div className="mx-1 h-4 w-px bg-court-border" />
+      {btn(
+        editor.isActive("link"),
+        () => {
+          if (editor.isActive("link")) {
+            editor.chain().focus().unsetLink().run();
+            return;
+          }
+          const url = window.prompt("Link URL");
+          if (!url) return;
+          editor.chain().focus().setLink({ href: url }).run();
+        },
+        <LinkIcon className="h-3.5 w-3.5" />,
+        "Link",
+      )}
+    </div>
+  );
+}

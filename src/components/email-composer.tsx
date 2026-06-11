@@ -745,6 +745,10 @@ export function EmailComposer({
           ...draft,
           subject: applyMergeFields(draft.subject, mergeValues),
           body: applyMergeFields(draft.body, mergeValues),
+          bodyHtml:
+            draft.bodyHtml === undefined
+              ? undefined
+              : applyMergeFields(draft.bodyHtml, mergeValues),
         }
       : draft;
     if (mergeValues) {
@@ -1003,6 +1007,7 @@ export function EmailComposer({
                 value={body}
                 onChange={(html) => setBody(html)}
                 placeholder="Write your message, or click Generate with Claude below."
+                showToolbar
               />
             </div>
           ) : (
