@@ -241,6 +241,13 @@ type LocalInviteFlow = {
   clientTemplate: { subject: string; body: string } | null;
 };
 
+type CelebrationOrigin = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
 export function LocalPlacementRows({
   candidateId,
   candidateName,
@@ -1348,8 +1355,9 @@ function LocalPlacementDialog({
   const guaranteeDaysNum = parseAmount(guaranteeDays);
   const usedMinFee = overrideNum == null && minFeeNum != null && rawFee < minFeeNum;
   const usedOverride = overrideNum != null;
+  const editing = job.stage === "pending_start" || job.stage === "hired";
 
-  function onSave() {
+  function onSave(origin?: CelebrationOrigin) {
     setErr(null);
     if (salaryNum == null || salaryNum <= 0) {
       return setErr("Accepted salary is required.");
@@ -1420,12 +1428,14 @@ function LocalPlacementDialog({
       toast.success("Placement recorded", {
         description: "Candidate moved to Pending Start. Confirm Start when they begin.",
       });
+      if (!editing) {
+        launchPlacementConfetti(origin);
+      }
       onSaved();
       router.refresh();
     });
   }
 
-  const editing = job.stage === "pending_start" || job.stage === "hired";
   // The Cancel button is only meaningful once the placement exists in the
   // DB. Fresh "Make Placement" opens carry job.placementId starting with
   // "local-applied-" (a synthetic id used before the row is saved); we
@@ -2225,7 +2235,7 @@ function Footer({
   label,
 }: {
   onCancel: () => void;
-  onSave: () => void;
+  onSave: (origin?: CelebrationOrigin) => void;
   saving: boolean;
   label: string;
 }) {
@@ -2246,7 +2256,15 @@ function Footer({
       </button>
       <button
         type="button"
-        onClick={onSave}
+        onClick={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          onSave({
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+          });
+        }}
         disabled={saving}
         className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
       >
@@ -2258,6 +2276,73 @@ function Footer({
 }
 
 // ---- small helpers ----
+
+function launchPlacementConfetti(origin?: CelebrationOrigin) {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  const overlay = document.createElement("div");
+  overlay.setAttribute("aria-hidden", "true");
+  overlay.style.position = "fixed";
+  overlay.style.inset = "0";
+  overlay.style.pointerEvents = "none";
+  overlay.style.overflow = "hidden";
+  overlay.style.zIndex = "9999";
+  document.body.appendChild(overlay);
+
+  const colors = ["#16a34a", "#22c55e", "#f59e0b", "#facc15", "#38bdf8", "#f43f5e", "#ffffff"];
+  const startX = origin ? origin.left + origin.width / 2 : window.innerWidth / 2;
+  const startY = origin ? origin.top + origin.height / 2 : window.innerHeight - 96;
+  const count = 92;
+
+  for (let i = 0; i < count; i += 1) {
+    const piece = document.createElement("span");
+    const size = 5 + Math.random() * 7;
+    const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.9;
+    const velocity = 220 + Math.random() * 430;
+    const drift = (Math.random() - 0.5) * 120;
+    const x = Math.cos(angle) * velocity + drift;
+    const y = Math.sin(angle) * velocity - Math.random() * 80;
+    const fall = 300 + Math.random() * 220;
+    const rotate = (Math.random() > 0.5 ? 1 : -1) * (420 + Math.random() * 720);
+    const duration = 1400 + Math.random() * 1100;
+    const delay = Math.random() * 120;
+
+    piece.style.position = "absolute";
+    piece.style.left = `${startX}px`;
+    piece.style.top = `${startY}px`;
+    piece.style.width = `${size}px`;
+    piece.style.height = `${size * (0.45 + Math.random() * 0.8)}px`;
+    piece.style.borderRadius = Math.random() > 0.55 ? "999px" : "2px";
+    piece.style.background = colors[i % colors.length];
+    piece.style.boxShadow = "0 0 0 1px rgba(255,255,255,0.2)";
+    piece.style.transform = "translate(-50%, -50%)";
+    overlay.appendChild(piece);
+
+    piece.animate(
+      [
+        { opacity: 1, transform: "translate(-50%, -50%) scale(1) rotate(0deg)" },
+        {
+          opacity: 1,
+          offset: 0.55,
+          transform: `translate(calc(-50% + ${x * 0.65}px), calc(-50% + ${y}px)) scale(1) rotate(${rotate * 0.45}deg)`,
+        },
+        {
+          opacity: 0,
+          transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y + fall}px)) scale(0.9) rotate(${rotate}deg)`,
+        },
+      ],
+      {
+        delay,
+        duration,
+        easing: "cubic-bezier(.16,.8,.34,1)",
+        fill: "forwards",
+      },
+    );
+  }
+
+  window.setTimeout(() => overlay.remove(), 2700);
+}
 
 function formatType(t: InterviewType): string {
   if (t === "phone_screen") return "Phone Screen";
