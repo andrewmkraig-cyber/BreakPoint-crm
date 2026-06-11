@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { ChevronDown } from "lucide-react";
+import { Input, Textarea, Select } from "@/components/ui/input";
 
 import { useComposerManager } from "@/lib/composer-manager";
 import {
@@ -526,70 +526,65 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
 
         <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2">
           <Field label="Role title">
-            <input
+            <Input
               type="text"
               disabled={!isDraft}
               value={roleTitle}
               onChange={(e) => setRoleTitle(e.target.value)}
-              className={inputCls}
             />
           </Field>
           <Field label="Fee amount (USD)">
-            <input
+            <Input
               type="text"
               inputMode="decimal"
               disabled={!isDraft}
               value={feeAmount}
               onChange={(e) => setFeeAmount(e.target.value)}
               placeholder="0.00"
-              className={inputCls + " tabular-nums"}
+              className="tabular-nums"
             />
           </Field>
           <Field label="Start date / issue date">
-            <input
+            <Input
               type="date"
               disabled={!isDraft}
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className={inputCls}
             />
           </Field>
           <Field label="Due date">
-            <input
+            <Input
               type="date"
               disabled={!isDraft}
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className={inputCls}
             />
           </Field>
           <Field label="Payment terms">
-            <input
+            <Input
               type="text"
               disabled={!isDraft}
               value={paymentTerms}
               onChange={(e) => setPaymentTerms(e.target.value)}
-              className={inputCls}
             />
           </Field>
           <Field label="Internal notes (not on invoice)">
-            <input
+            <Input
               type="text"
               disabled={!isDraft}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className={inputCls}
             />
           </Field>
           <div className="sm:col-span-2">
             <Field label="Client note (prints on invoice)">
-              <textarea
+              <Textarea
                 rows={3}
                 disabled={!isDraft}
                 value={clientNote}
                 onChange={(e) => setClientNote(e.target.value)}
                 placeholder="Optional. Appears in the Note section of the invoice PDF the client receives."
-                className={inputCls + " resize-y leading-relaxed"}
+                className="resize-y leading-relaxed"
               />
             </Field>
           </div>
@@ -681,19 +676,19 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               <>
                 <label className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
                   Payment method
-                  <select
+                  <Select
                     value={paymentMethod}
                     onChange={(e) =>
                       setPaymentMethod(e.target.value as InvoicePaymentMethod | "")
                     }
                     disabled={isPending}
-                    className="rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium normal-case tracking-normal text-court-fg shadow-sm focus:border-court-accent focus:outline-none"
+                    className="px-2 py-1 text-[11px] font-medium normal-case tracking-normal"
                   >
                     <option value="">Select…</option>
                     <option value="CHECK">Check</option>
                     <option value="ACH">ACH</option>
                     <option value="CREDIT">Credit</option>
-                  </select>
+                  </Select>
                 </label>
                 <button
                   type="button"
@@ -805,26 +800,22 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
             Sent from
           </p>
           {sendAsAliases.length > 1 ? (
-            <div className="relative mt-2">
-              <select
-                value={selectedFromAlias ?? ""}
-                onChange={(e) => onPickAlias(e.target.value)}
-                disabled={aliasSaving}
-                className="h-8 w-full appearance-none truncate rounded-md border border-court-border bg-court-surface py-1 pl-2 pr-8 text-sm font-semibold text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
-              >
-                {sendAsAliases.map((a) => (
-                  <option key={a.sendAsEmail} value={a.sendAsEmail}>
-                    {a.displayName
-                      ? `${a.displayName} <${a.sendAsEmail}>`
-                      : a.sendAsEmail}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                aria-hidden="true"
-                className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted"
-              />
-            </div>
+            <Select
+              value={selectedFromAlias ?? ""}
+              onChange={(e) => onPickAlias(e.target.value)}
+              disabled={aliasSaving}
+              containerClassName="mt-2"
+              frameClassName="h-8"
+              className="truncate font-semibold"
+            >
+              {sendAsAliases.map((a) => (
+                <option key={a.sendAsEmail} value={a.sendAsEmail}>
+                  {a.displayName
+                    ? `${a.displayName} <${a.sendAsEmail}>`
+                    : a.sendAsEmail}
+                </option>
+              ))}
+            </Select>
           ) : (
             <>
               <p className="mt-1 text-sm font-semibold text-court-fg">Accounts Receivable</p>
@@ -868,8 +859,6 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-const inputCls =
-  "w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg shadow-sm focus:border-court-accent focus:outline-none disabled:cursor-not-allowed disabled:bg-court-surface-subtle/60 disabled:text-court-fg-muted";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -919,21 +908,21 @@ function ContactSection({
         <div className="mt-3 flex flex-col gap-3">
           {contacts.map((c, i) => (
             <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
-              <input
+              <Input
                 type="text"
                 disabled={disabled}
                 placeholder="Name"
                 value={c.name}
                 onChange={(e) => onChange(i, "name", e.target.value)}
-                className={inputCls}
+                containerClassName="min-w-0"
               />
-              <input
+              <Input
                 type="email"
                 disabled={disabled}
                 placeholder="email@company.com"
                 value={c.email}
                 onChange={(e) => onChange(i, "email", e.target.value)}
-                className={inputCls}
+                containerClassName="min-w-0"
               />
               {!disabled ? (
                 <button
