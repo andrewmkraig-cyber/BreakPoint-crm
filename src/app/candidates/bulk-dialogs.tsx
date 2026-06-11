@@ -1298,29 +1298,32 @@ export function BulkEmailDialog({
 
           {/* Right side: Cancel + Send Later + Send */}
           <div className="flex items-center gap-2">
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={onClose}
               disabled={isSending}
-              className={ghostPill}
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
               ref={sendLater.triggerRef}
               onClick={() => sendLater.setOpen(true)}
               disabled={isSending || confirmDraft !== null}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 text-[12px] font-semibold text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
             >
               <Clock className="h-3 w-3" /> Send Later
-            </button>
+            </Button>
             {sendLater.popover}
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="sm"
               onClick={onSendClick}
               disabled={isSending || confirmDraft !== null}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-4 text-[12px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
             >
               {isSending ? (
                 <>
@@ -1331,7 +1334,7 @@ export function BulkEmailDialog({
                   <Send className="h-3 w-3" /> Send to {n} candidate{n === 1 ? "" : "s"}
                 </>
               )}
-            </button>
+            </Button>
           </div>
         </div>
 
