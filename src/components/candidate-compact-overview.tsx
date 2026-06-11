@@ -21,6 +21,12 @@ import {
 import { toast } from "sonner";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { Button } from "@/components/ui/button";
+import {
+  Input,
+  Select,
+  INPUT_FRAME_RECT_CLASS,
+  INPUT_CONTROL_CLASS,
+} from "@/components/ui/input";
 import { MaskedCurrencyInput } from "@/components/ui/masked-currency-input";
 import { LEAD_SOURCES } from "@/lib/lead-sources";
 import { cn, formatLocation } from "@/lib/utils";
@@ -252,38 +258,38 @@ export function CandidateCompactOverview({
       {editing ? (
         <div className="mt-3 space-y-2 text-xs">
           <EditField label="Title">
-            <input
+            <Input
               type="text"
               value={titleDraft}
               disabled={isSaving}
               onChange={(e) => setTitleDraft(e.target.value)}
-              className={EDIT_INPUT_CLASS}
+              className="px-2 py-1"
             />
           </EditField>
           <EditField label="Employer">
-            <input
+            <Input
               type="text"
               value={employerDraft}
               disabled={isSaving}
               onChange={(e) => setEmployerDraft(e.target.value)}
-              className={EDIT_INPUT_CLASS}
+              className="px-2 py-1"
             />
           </EditField>
           <EditField label="Location">
-            <input
+            <Input
               type="text"
               value={locationDraft}
               disabled={isSaving}
               onChange={(e) => setLocationDraft(e.target.value)}
-              className={EDIT_INPUT_CLASS}
+              className="px-2 py-1"
             />
           </EditField>
           <EditField label="Source">
-            <select
+            <Select
               value={sourceDraft}
               disabled={isSaving}
               onChange={(e) => setSourceDraft(e.target.value)}
-              className={EDIT_INPUT_CLASS}
+              className="px-2 py-1"
             >
               <option value="">Select source...</option>
               {LEAD_SOURCES.map((option) => (
@@ -295,15 +301,20 @@ export function CandidateCompactOverview({
                 !LEAD_SOURCES.some(
                   (option) => option.toLowerCase() === sourceDraft.toLowerCase(),
                 ) && <option value={sourceDraft}>{sourceDraft}</option>}
-            </select>
+            </Select>
           </EditField>
           <EditField label="Comp">
-            <MaskedCurrencyInput
-              value={compDraft}
-              disabled={isSaving}
-              onChange={setCompDraft}
-              className={EDIT_INPUT_CLASS}
-            />
+            {/* MaskedCurrencyInput wrapped in the shared rect frame +
+                INPUT_CONTROL_CLASS (the editable-helpers currency pattern) so
+                it matches the migrated sibling fields. */}
+            <div className={cn(INPUT_FRAME_RECT_CLASS, "w-full", isSaving && "opacity-60")}>
+              <MaskedCurrencyInput
+                value={compDraft}
+                disabled={isSaving}
+                onChange={setCompDraft}
+                className={cn(INPUT_CONTROL_CLASS, "px-2 py-1 text-sm")}
+              />
+            </div>
           </EditField>
           <EditField label="Email">
             <StringListField
@@ -414,8 +425,6 @@ export function CandidateCompactOverview({
   );
 }
 
-const EDIT_INPUT_CLASS =
-  "w-full rounded border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand/30 disabled:opacity-60";
 
 function EditField({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -450,7 +459,7 @@ function StringListField({
     <div className="space-y-1.5">
       {rows.map((v, i) => (
         <div key={i} className="flex items-center gap-1.5">
-          <input
+          <Input
             type={type}
             value={v}
             disabled={disabled}
@@ -459,7 +468,8 @@ function StringListField({
               next[i] = e.target.value;
               onChange(next);
             }}
-            className={EDIT_INPUT_CLASS}
+            containerClassName="flex-1"
+            className="px-2 py-1"
           />
           {i > 0 && (
             <button
