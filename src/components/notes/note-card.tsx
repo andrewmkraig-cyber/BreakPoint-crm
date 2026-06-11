@@ -19,6 +19,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/input";
 import {
   attachNote,
   deleteNote,
@@ -146,11 +147,10 @@ export function NoteCard({ note }: { note: NoteRow }) {
             placeholder="Title (optional)"
             className="w-full rounded-md bg-transparent text-base font-semibold text-court-fg placeholder:text-court-fg-muted/60 outline-none"
           />
-          <textarea
+          <Textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
             rows={4}
-            className="w-full rounded-md border border-court-border bg-court-surface-subtle px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 outline-none focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
           />
           <div className="flex items-center justify-end gap-2">
             <Button

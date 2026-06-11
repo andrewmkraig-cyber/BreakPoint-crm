@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import type { JobBoardStatus } from "@prisma/client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   MAJOR_BOARDS,
   nextStatusValue,
@@ -165,15 +166,13 @@ function ApplyLinkCard({ applyLink }: { applyLink: string | null }) {
       </p>
       {applyLink ? (
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-          <input
+          <Input
             type="url"
             readOnly
             value={applyLink}
             onFocus={(e) => e.currentTarget.select()}
-            className={cn(
-              "flex-1 truncate rounded-md border border-court-border bg-court-bg px-3 py-2 text-sm text-court-fg shadow-sm",
-              "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-            )}
+            containerClassName="flex-1"
+            className="truncate"
           />
           <div className="flex items-center gap-2">
             <Button type="button" variant="secondary" size="sm" onClick={onCopy}>
@@ -286,12 +285,13 @@ function BoardRow({
     <div className="grid grid-cols-1 gap-2 px-4 py-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,2fr)_auto]">
       <div className="flex flex-wrap items-center gap-2">
         {kind === "local" ? (
-          <input
+          <Input
             type="text"
             value={boardName}
             onChange={(e) => setBoardName(e.target.value)}
             onBlur={onBlurFields}
-            className="w-full rounded-md border border-court-border bg-court-bg px-2 py-1 text-sm font-semibold text-court-fg shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            containerClassName="w-full"
+            className="py-1 font-semibold"
           />
         ) : (
           <span className="font-semibold text-court-fg">{row.boardName}</span>
@@ -314,19 +314,21 @@ function BoardRow({
           {STATUS_LABELS[status]}
         </button>
       </div>
-      <input
+      <Input
         type="url"
         value={url}
         onChange={(e) => setUrl(e.target.value)}
         onBlur={onBlurFields}
-        className="rounded-md border border-court-border bg-court-bg px-2 py-1 text-xs text-court-fg shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        containerClassName="min-w-0"
+        className="py-1 text-xs"
       />
-      <input
+      <Input
         type="text"
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         onBlur={onBlurFields}
-        className="rounded-md border border-court-border bg-court-bg px-2 py-1 text-xs text-court-fg shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        containerClassName="min-w-0"
+        className="py-1 text-xs"
       />
       <div className="flex items-center justify-end gap-2">
         {url && /^https?:\/\//i.test(url) && (
@@ -396,29 +398,33 @@ function AddLocalBoardForm({ jobId }: { jobId: string }) {
         Add a board
       </div>
       <div className="mt-2 grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,2fr)_auto]">
-        <input
+        <Input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="rounded-md border border-court-border bg-court-bg px-2 py-1 text-sm text-court-fg shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          containerClassName="min-w-0"
+          className="py-1"
         />
-        <input
+        <Input
           type="text"
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          className="rounded-md border border-court-border bg-court-bg px-2 py-1 text-xs text-court-fg shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          containerClassName="min-w-0"
+          className="py-1 text-xs"
         />
-        <input
+        <Input
           type="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          className="rounded-md border border-court-border bg-court-bg px-2 py-1 text-xs text-court-fg shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          containerClassName="min-w-0"
+          className="py-1 text-xs"
         />
-        <input
+        <Input
           type="text"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="rounded-md border border-court-border bg-court-bg px-2 py-1 text-xs text-court-fg shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          containerClassName="min-w-0"
+          className="py-1 text-xs"
         />
         <Button type="button" size="sm" onClick={onAdd} disabled={pending}>
           {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}

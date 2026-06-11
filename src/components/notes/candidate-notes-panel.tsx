@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 
 import { SectionCard } from "@/app/candidates/[id]/editable-helpers";
+import { Textarea } from "@/components/ui/input";
 import {
   createNoteAttachedTo,
   deleteNote,
@@ -115,12 +116,12 @@ export function CandidateNotesPanel({
     >
       <div className="space-y-3">
         <div className="rounded-lg border border-dashed border-court-border bg-court-surface-subtle/40 p-3">
-          <textarea
+          <Textarea
             value={newNote}
             onChange={(e) => setNewNote(e.target.value)}
             rows={3}
             placeholder="Add a note…"
-            className="w-full resize-vertical rounded-md border border-transparent bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="resize-vertical"
           />
           <div className="mt-2 flex items-center justify-end">
             <button
@@ -145,11 +146,11 @@ export function CandidateNotesPanel({
                 >
                   {isEditing ? (
                     <div className="space-y-2">
-                      <textarea
+                      <Textarea
                         value={editDraft}
                         onChange={(e) => setEditDraft(e.target.value)}
                         rows={4}
-                        className="w-full resize-vertical rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                        className="resize-vertical"
                         autoFocus
                       />
                       <div className="flex items-center justify-end gap-2">

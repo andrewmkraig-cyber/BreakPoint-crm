@@ -6,7 +6,6 @@ import {
   ArrowDown,
   Bookmark,
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
@@ -38,6 +37,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { Button, ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
+import { Input, Select } from "@/components/ui/input";
 import { TabStrip } from "@/components/ui/tab-strip";
 import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
 import type { MatchTarget } from "@/lib/find-matches-context";
@@ -259,31 +259,24 @@ function buildQuery(
 // matching the rest of the page instead of glaring white. Mirrors the
 // same fix already applied to the /candidates page filter rail (see
 // src/app/candidates/page.tsx:220-225).
-const inputCls =
-  "block h-8 w-full rounded-md border border-court-border bg-court-surface px-2.5 text-xs text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
-
-const selectBareCls =
-  "block h-8 w-full appearance-none truncate rounded-md border border-court-border bg-court-surface pl-2.5 pr-7 text-xs text-court-fg focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
-
+// Generic match-rail filter select. Uses the neutral shared <Select> (the
+// owner-filter branded chip is reserved for owner-scope filters - see the
+// ACE_DESIGN owner-filter standard). Kept compact (h-8 / text-xs); the
+// wrapper stays min-w-0 so the select never overflows its grid column.
 function SelectField({
   className,
   children,
   ...rest
 }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    // w-full + min-w-0 on the wrapper so the select never overflows
-    // its grid column (Location / Employer rows pair this with a
-    // fixed-width sibling and rely on the second column staying
-    // exactly that width).
-    <div className="relative w-full min-w-0">
-      <select className={`${selectBareCls}${className ? ` ${className}` : ""}`} {...rest}>
-        {children}
-      </select>
-      <ChevronDown
-        className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-court-fg-muted"
-        strokeWidth={2}
-      />
-    </div>
+    <Select
+      containerClassName="min-w-0"
+      frameClassName="h-8"
+      className={cn("py-1 text-xs", className)}
+      {...rest}
+    >
+      {children}
+    </Select>
   );
 }
 
@@ -1312,12 +1305,13 @@ export function MatchesTab({
             <div className="space-y-1.5">
               <div>
                 <FieldLabel>Keyword / Boolean</FieldLabel>
-                <input
+                <Input
                   type="text"
                   value={filters.q}
                   onChange={(e) => setField("q", e.target.value)}
                   placeholder=""
-                  className={inputCls}
+                  frameClassName="h-8"
+                  className="py-1 text-xs"
                 />
               </div>
               <div>
@@ -1352,17 +1346,19 @@ export function MatchesTab({
           <section className="border-b border-court-border/60 px-3 py-1.5">
             <SectionTitle>Compensation</SectionTitle>
             <div className="grid grid-cols-2 gap-2">
-              <input
+              <Input
                 type="number"
                 value={filters.minComp}
                 onChange={(e) => setField("minComp", e.target.value)}
-                className={inputCls}
+                frameClassName="h-8"
+                className="py-1 text-xs"
               />
-              <input
+              <Input
                 type="number"
                 value={filters.maxComp}
                 onChange={(e) => setField("maxComp", e.target.value)}
-                className={inputCls}
+                frameClassName="h-8"
+                className="py-1 text-xs"
               />
             </div>
           </section>

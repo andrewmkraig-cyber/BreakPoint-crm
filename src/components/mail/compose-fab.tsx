@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input, Textarea } from "@/components/ui/input";
 import { useComposerManager } from "@/lib/composer-manager";
 import { useCalendarDrawer } from "@/lib/calendar-drawer-context";
 import {
@@ -1032,20 +1033,20 @@ export function ComposeFAB() {
                   <X className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <input
+              <Input
                 type="text"
                 value={noteTitle}
                 onChange={(e) => setNoteTitle(e.target.value)}
                 placeholder="Title (optional)"
-                className="mb-2 w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-sm font-semibold text-court-fg placeholder:text-court-fg-muted/60 outline-none focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
+                containerClassName="mb-2"
+                className="font-semibold"
               />
-              <textarea
+              <Textarea
                 ref={noteTextareaRef}
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
                 rows={4}
                 placeholder="Write a note. Attach to any candidates, clients, or jobs below."
-                className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 outline-none focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
               />
               <div className="mt-3 flex items-center justify-between gap-2">
                 <span className="text-[11px] text-court-fg-muted">
