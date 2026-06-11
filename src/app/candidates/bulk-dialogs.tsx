@@ -33,7 +33,7 @@ import {
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
 import type { EmailDraft } from "@/components/email-composer";
 import { EditWithClaudeMenu, EditWithClaudeCustomPanel, type EditType } from "@/components/edit-with-claude-menu";
-import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
+import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import { Input, Textarea, Select } from "@/components/ui/input";
 import { useSendLater } from "@/components/mail/send-later-popover";
 import { formatScheduledTime } from "@/lib/timezone";
@@ -928,11 +928,12 @@ export function BulkEmailDialog({
           )}
 
           <div className="flex items-center justify-between gap-2 pt-1">
-            <button
+            <Button
               type="button"
+              variant="reject"
+              size="sm"
               onClick={onCancelRemaining}
               disabled={canceling}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-300 bg-transparent px-3 text-[12px] font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-60"
             >
               {canceling ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -940,15 +941,16 @@ export function BulkEmailDialog({
                 <X className="h-3 w-3" />
               )}
               Cancel remaining
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="primary"
+              size="sm"
               onClick={onDone}
               disabled={canceling}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-4 text-[12px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
             >
               Done
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -990,14 +992,21 @@ export function BulkEmailDialog({
               {existingQueue.pending} email{existingQueue.pending === 1 ? "" : "s"} already
               queued from {existingQueue.sender}. A new send appends after them.
             </span>
-            <button
+            <Button
               type="button"
+              variant="reject"
+              size="sm"
               onClick={onCancelRemaining}
               disabled={canceling}
-              className="shrink-0 font-semibold text-red-700 hover:underline disabled:opacity-60"
+              className="shrink-0"
             >
-              {canceling ? "Canceling…" : "Cancel queued"}
-            </button>
+              {canceling ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <X className="h-3 w-3" />
+              )}
+              Cancel queued
+            </Button>
           </div>
         )}
 

@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 
-import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   setBulkSendSpacing,
   setBulkDailyCap,
@@ -16,6 +17,9 @@ import {
 // the per-minute queue allows). Daily cap = max bulk emails per Eastern
 // calendar day before overflow rolls to the next day at 8am ET. Both
 // persist org-wide via the app preferences blob.
+//
+// Chrome uses the shared <Button> (primary = the canonical Save) and
+// <Input> field components - no hand-rolled control styling.
 export function BulkSendSettingsView({
   initialSpacing,
   initialDailyCap,
@@ -72,27 +76,27 @@ export function BulkSendSettingsView({
             <span className="font-semibold text-court-fg">0</span> to send as fast
             as the queue allows.
           </div>
-          <div className={`${INPUT_FRAME_RECT_CLASS} mt-2 w-32`}>
-            <input
-              type="number"
-              min={0}
-              max={120}
-              step={1}
-              inputMode="numeric"
-              value={spacing}
-              onChange={(e) => setSpacing(e.target.value)}
-              className={`${INPUT_CONTROL_CLASS} text-sm`}
-            />
-          </div>
+          <Input
+            type="number"
+            min={0}
+            max={120}
+            step={1}
+            inputMode="numeric"
+            value={spacing}
+            onChange={(e) => setSpacing(e.target.value)}
+            containerClassName="mt-2 w-32"
+          />
         </label>
-        <button
+        <Button
           type="button"
+          variant="primary"
+          size="sm"
           onClick={onSaveSpacing}
           disabled={savingSpacing || !spacingChanged || spacing.trim() === ""}
-          className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
         >
-          {savingSpacing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save
-        </button>
+          {savingSpacing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          Save
+        </Button>
       </div>
 
       <div className="flex items-end justify-between gap-4 border-t border-court-border pt-5">
@@ -106,27 +110,27 @@ export function BulkSendSettingsView({
             spreads out instead of torching your domain&apos;s reputation. Spacing
             alone doesn&apos;t limit volume; this does.
           </div>
-          <div className={`${INPUT_FRAME_RECT_CLASS} mt-2 w-32`}>
-            <input
-              type="number"
-              min={1}
-              max={5000}
-              step={1}
-              inputMode="numeric"
-              value={cap}
-              onChange={(e) => setCap(e.target.value)}
-              className={`${INPUT_CONTROL_CLASS} text-sm`}
-            />
-          </div>
+          <Input
+            type="number"
+            min={1}
+            max={5000}
+            step={1}
+            inputMode="numeric"
+            value={cap}
+            onChange={(e) => setCap(e.target.value)}
+            containerClassName="mt-2 w-32"
+          />
         </label>
-        <button
+        <Button
           type="button"
+          variant="primary"
+          size="sm"
           onClick={onSaveCap}
           disabled={savingCap || !capChanged || cap.trim() === ""}
-          className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
         >
-          {savingCap ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save
-        </button>
+          {savingCap ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          Save
+        </Button>
       </div>
     </div>
   );
