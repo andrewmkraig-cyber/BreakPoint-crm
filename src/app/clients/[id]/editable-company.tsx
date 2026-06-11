@@ -106,7 +106,7 @@ export function EditableCompany({
   const addressLines = [
     draft.street1,
     draft.street2,
-    [draft.city, draft.state, draft.postalCode].filter(Boolean).join(", "),
+    formatCityStateZip(draft.city, draft.state, draft.postalCode),
   ].filter(Boolean);
   const websiteHref = draft.website
     ? draft.website.startsWith("http")
@@ -476,4 +476,12 @@ function Detail({
       </dd>
     </div>
   );
+}
+
+function formatCityStateZip(cityRaw: string, stateRaw: string, postalRaw: string): string {
+  const city = cityRaw.trim();
+  const state = stateRaw.trim();
+  const postal = postalRaw.trim();
+  const cityState = [city, state].filter(Boolean).join(", ");
+  return [cityState, postal].filter(Boolean).join(" ");
 }

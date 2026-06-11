@@ -48,6 +48,7 @@ const EMPTY: FormState = {
   phone: "",
   city: "",
   state: "",
+  zip: "",
   linkedin: "",
   overview: "",
   primaryContact: { firstName: "", lastName: "", title: "", email: "", phone: "", linkedin: "" },
@@ -172,6 +173,7 @@ export function NewClientForm() {
           industry: f.industry ? matchIndustry(f.industry) ?? prev.industry : prev.industry,
           city: f.city ?? prev.city,
           state: f.state ? matchState(f.state) ?? prev.state : prev.state,
+          zip: f.zip ?? prev.zip,
           phone: f.phone ?? prev.phone,
           linkedin: f.linkedin ?? prev.linkedin,
           overview: f.overview ?? prev.overview,
@@ -357,15 +359,14 @@ export function NewClientForm() {
                 ))}
               </select>
             </label>
-            <div className="sm:col-span-2">
-              <Field
-                label="LinkedIn"
-                type="url"
-                value={form.linkedin}
-                onChange={(v) => setForm({ ...form, linkedin: v })}
-                placeholder=""
-              />
-            </div>
+            <Field label="Zip code" value={form.zip} onChange={(v) => setForm({ ...form, zip: v })} />
+            <Field
+              label="LinkedIn"
+              type="url"
+              value={form.linkedin}
+              onChange={(v) => setForm({ ...form, linkedin: v })}
+              placeholder=""
+            />
             <div className="sm:col-span-2">
               <label className="block text-sm">
                 <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Overview</span>

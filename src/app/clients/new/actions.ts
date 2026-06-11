@@ -58,6 +58,7 @@ export type CreateClientPayload = {
   phone: string;
   city: string;
   state: string;
+  zip: string;
   linkedin: string;
   overview: string;
   primaryContact: {
@@ -99,11 +100,13 @@ export async function createClient(payload: CreateClientPayload): Promise<Create
 
     const city = payload.city.trim();
     const state = payload.state.trim();
+    const zip = payload.zip.trim();
     const locationJson: Record<string, string> | undefined =
-      city || state
+      city || state || zip
         ? {
             ...(city ? { city } : {}),
             ...(state ? { state } : {}),
+            ...(zip ? { postal_code: zip } : {}),
           }
         : undefined;
     const phone = normalizeToE164(payload.phone) ?? "";
@@ -182,6 +185,7 @@ export type WebsiteParseFields = {
   industry: string | null;
   city: string | null;
   state: string | null;
+  zip: string | null;
   phone: string | null;
   linkedin: string | null;
   overview: string | null;
@@ -292,6 +296,7 @@ async function extractFieldsFromHomepage(url: string, pageText: string): Promise
           '  "industry": string|null,    // one short phrase: "Software", "Healthcare", "Financial Services"\n' +
           '  "city": string|null,        // HQ city if present\n' +
           '  "state": string|null,       // US state abbreviation (e.g. "OH"), else country\n' +
+          '  "zip": string|null,         // 5-digit US ZIP/postal code if present\n' +
           '  "phone": string|null,       // a contact phone if listed\n' +
           '  "linkedin": string|null,    // full LinkedIn URL if linked\n' +
           '  "overview": string|null     // 1-2 sentence description of what the company does\n' +
@@ -317,6 +322,7 @@ async function extractFieldsFromHomepage(url: string, pageText: string): Promise
     industry: strOrNull(parsed?.industry),
     city: strOrNull(parsed?.city),
     state: strOrNull(parsed?.state),
+    zip: strOrNull(parsed?.zip),
     phone: strOrNull(parsed?.phone),
     linkedin: strOrNull(parsed?.linkedin),
     overview: strOrNull(parsed?.overview),
