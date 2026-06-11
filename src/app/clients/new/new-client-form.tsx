@@ -51,7 +51,7 @@ const EMPTY: FormState = {
   zip: "",
   linkedin: "",
   overview: "",
-  primaryContact: { firstName: "", lastName: "", title: "", email: "", phone: "", linkedin: "" },
+  primaryContact: { firstName: "", lastName: "", title: "", email: "", phone: "", extension: "", linkedin: "" },
 };
 
 export function NewClientForm() {
@@ -410,11 +410,32 @@ export function NewClientForm() {
               value={form.primaryContact.email}
               onChange={(v) => setForm({ ...form, primaryContact: { ...form.primaryContact, email: v } })}
             />
-            <Field
-              label="Phone"
-              value={form.primaryContact.phone}
-              onChange={(v) => setForm({ ...form, primaryContact: { ...form.primaryContact, phone: v } })}
-            />
+            <div className="block text-sm">
+              <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Phone</span>
+              <div className="mt-1 flex gap-2">
+                <div className={`${INPUT_FRAME_RECT_CLASS} min-w-0 flex-1`}>
+                  <input
+                    type="text"
+                    value={form.primaryContact.phone}
+                    onChange={(e) =>
+                      setForm({ ...form, primaryContact: { ...form.primaryContact, phone: e.target.value } })
+                    }
+                    className={`${INPUT_CONTROL_CLASS} text-sm`}
+                  />
+                </div>
+                <div className={`${INPUT_FRAME_RECT_CLASS} w-24 shrink-0`}>
+                  <input
+                    type="text"
+                    value={form.primaryContact.extension}
+                    placeholder="Ext."
+                    onChange={(e) =>
+                      setForm({ ...form, primaryContact: { ...form.primaryContact, extension: e.target.value } })
+                    }
+                    className={`${INPUT_CONTROL_CLASS} text-sm`}
+                  />
+                </div>
+              </div>
+            </div>
             <Field
               label="LinkedIn URL"
               type="url"

@@ -67,6 +67,7 @@ export type CreateClientPayload = {
     title: string;
     email: string;
     phone: string;
+    extension: string;
     linkedin: string;
   };
 };
@@ -114,6 +115,7 @@ export async function createClient(payload: CreateClientPayload): Promise<Create
     const pc = payload.primaryContact;
     const hasContact = (pc.firstName + pc.lastName + pc.email + pc.phone + pc.linkedin).trim().length > 0;
     const primaryContactPhone = normalizeToE164(pc.phone) ?? "";
+    const primaryContactExt = pc.extension.trim();
 
     const client = await prisma.client.create({
       data: {
@@ -141,7 +143,9 @@ export async function createClient(payload: CreateClientPayload): Promise<Create
           lastName: last || null,
           name: [first, last].filter(Boolean).join(" "),
           emails: pc.email.trim() ? [pc.email.trim()] : [],
-          phoneNumbers: primaryContactPhone ? [{ number: primaryContactPhone }] : undefined,
+          phoneNumbers: primaryContactPhone
+            ? [primaryContactExt ? { number: primaryContactPhone, extension: primaryContactExt } : { number: primaryContactPhone }]
+            : undefined,
           currentDesignation: pc.title.trim() || null,
           linkedinProfile: pc.linkedin.trim() || null,
           clientId: client.id,
