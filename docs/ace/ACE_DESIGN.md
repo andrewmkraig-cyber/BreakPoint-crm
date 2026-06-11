@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-06-10 · Ace 90.0
+Last updated: 2026-06-11 · Ace 91.0
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -365,6 +365,13 @@ Mirrored in ACE_RULES.md. Permanent, apply to every surface.
 - **TabStrip is mandatory for grouped controls.** Any in-page filter, tab, time-range selector, or nav group uses `TabStrip` (`src/components/ui/tab-strip.tsx`). No hand-rolled button rows. The Clubhouse "This Week / Last Week" strip is the reference.
 - **Both-modes verification gates every button task.** Every button and interactive element is visually verified in BOTH light and dark mode across the Court themes before the task is done. Token compliance alone is not sufficient.
 - **Input Field Treatment (above) is the source of truth for input shape.** Forms use rectangular `court-input-rect`; the search bar, SMS composer, and Ace Assistant keep the pill `court-input-frame`.
+
+## Owner-Filter Standard (added 2026-06-11 · Ace 91.0 - PERMANENT)
+Resolves the audit F6 filter-select question. Two distinct filter-select styles, by purpose:
+- **Owner-scope filters use the branded green chip.** The "whose book" filter (My Jobs / My Clients / My Pipeline) is a soft-green native dropdown: `appearance-none rounded-md border-court-brand/40 bg-court-brand/5 text-court-brand` + a custom brand-tinted `ChevronDown`, sized to the TabStrip pill height. This is the shipped `OwnerScopeSelect` on `jobs-view.tsx`, `clients-view.tsx`, `pipeline-view.tsx` (and `jobs/page.tsx`). It is the standard for ANY future owner-scope / "mine vs theirs vs all" filter. The green tint signals "this is filtering by ownership," distinct from a generic value filter.
+- **All other (generic) filter selects use the neutral shared `Select`** (`src/components/ui/input.tsx`) - the `court-input-rect` frame + its built-in chevron, no brand tint. This covers the candidate sourcing-rail filters (`candidates/page.tsx` `SelectField`), the job match-rail filters (`jobs/[id]/matches-tab.tsx` `SelectField`), the candidates "Filter by list" select, and every value/range/date filter dropdown.
+- **Candidates have no owner-scope filter** (candidates are not per-user owned - only clients/jobs/pipeline carry ownership), so there is no branded owner chip on the Candidates list; its filters are all generic and use the neutral shared Select.
+- **Both-modes verification** (Ace 66.0) applies: confirm the green chip reads correctly on all Court themes in light + dark.
 
 ## Distance + Pipeline Row Standards (added 2026-05-29 · Ace 68.0 - PERMANENT)
 Mirrored in ACE_RULES.md. Apply to any candidate→job distance and any pipeline row.
