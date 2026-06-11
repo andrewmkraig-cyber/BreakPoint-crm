@@ -1,8 +1,17 @@
 # ACE_STATE.md
-Last updated: 2026-06-10 · Ace 90.0
-Current Version: Ace 90.0
-Last Shipped: 2026-06-09
+Last updated: 2026-06-11 · Ace 92.0
+Current Version: Ace 92.0
+Last Shipped: 2026-06-11
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 91.0-92.0 (2026-06-11) - UI-consistency audit CLOSED (shared inputs + shared tables)
+
+The multi-session UI-consistency audit is complete and the project is **CLOSED**. All commits pushed to main; `npm run build` exits 0 after each group. No schema changes.
+
+- **Shared input migration (Ace 91.0).** Built shared `Input` / `Textarea` / `Select` (`src/components/ui/input.tsx`) wrapping the Ace 66.0 court-input-rect standard (no new styling) and migrated the hand-rolled form inputs across the app in three waves (F3 composers/modals; settings + F2 editables + misc; then the final pass: contacts-tab, invoice-detail, promote-tab, matches-tab, notes panels, compose-fab). Resolved audit F6 with the permanent **Owner-Filter Standard** (ACE_DESIGN.md): branded green chip for owner-scope filters (Jobs/Clients/Pipeline), neutral shared Select for all other generic filters. Genuinely-non-fitting controls flagged + skipped (calendar icon-composite frame family, chip widgets, frameless note titles, file pickers, checkboxes/radios, pill surfaces). Full record in ACE_ROADMAP.md.
+- **Table migration (Ace 92.0).** Routed the last two hand-rolled list tables (`candidates-view.tsx`, `clients-view.tsx`) through the shared `DataTableBody` + `DataTableRow` (`ui/data-table.tsx`), so all recruiter list tables (Pipeline / Jobs / Applicants / Candidates / Clients) share the canonical row treatment (soft dividers, `hover:bg-court-surface-subtle/60`, `px-3 py-2`). Fixed the remaining table-audit items: **T5** (candidates dropped its per-row `border-b border-court-border/40` heavy divider), **T6** (clients: only the name stays emphasized - Open count + Fee % de-bolded), **T7** (client name `font-semibold` -> `font-medium`), **T8** (candidates: one metadata size per row - Location + Last Updated normalized to `text-sm text-court-fg-muted`). No shared-component extension needed - `DataTableRow` already spreads `onClick` + className, so the candidates checkbox column + selected-row accent tint compose without forking. Sorting, row click-through, bulk select, badges, logos, empty states, and pagination are all unchanged.
+- **Input follow-up.** `candidate-compact-overview.tsx` (skipped earlier for then-uncommitted WIP that has since landed) migrated: Title/Employer/Location inputs + Source select + email/phone list rows -> shared Input/Select; the Comp `MaskedCurrencyInput` wrapped in the rect frame (editable-helpers currency pattern).
+- **Not part of this audit (still open):** the Action-row button audit (ACE_ROADMAP Next Up #1) is a separate 71.0-audit item and is untouched.
 
 ## What Shipped in Ace 90.0 (2026-06-09) - Cleanup follow-ups + Invoice Email template-wiring (Path-B)
 
