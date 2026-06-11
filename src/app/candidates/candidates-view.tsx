@@ -12,7 +12,7 @@ import {
   type DragEvent,
 } from "react";
 import { Search, Loader2, Settings, X, ListPlus, Send, Upload, Trash2 } from "lucide-react";
-import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
+import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS, Select } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { toast } from "sonner";
@@ -218,12 +218,11 @@ export function CandidatesView({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <select
+          <Select
             value={selectedListId}
             onChange={(e) => goToList(e.target.value)}
             disabled={isPending}
             aria-label="Filter by list"
-            className="rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg outline-none focus:border-court-accent focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
           >
             <option value="">All candidates</option>
             {lists.map((l) => (
@@ -231,7 +230,7 @@ export function CandidatesView({
                 {l.name} ({l.memberCount})
               </option>
             ))}
-          </select>
+          </Select>
           <Link
             href="/candidates/lists"
             className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-[11px] font-medium text-court-fg-muted transition hover:border-brand/40 hover:text-court-fg"

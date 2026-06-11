@@ -7,7 +7,6 @@ import {
   ArrowUp,
   Bookmark,
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
@@ -46,6 +45,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { Button, ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
+import { Select } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { flattenBooleanQuery } from "@/lib/search/boolean-query";
 
@@ -224,26 +224,19 @@ function buildQuery(f: Filters): string {
 const inputCls =
   "block h-8 w-full rounded-md border border-court-border bg-court-surface px-2.5 text-xs text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
 
-// Bare select class. Wrap with SelectField so the inline chevron paints
-// over the native arrow we strip with appearance-none.
-const selectBareCls =
-  "block h-8 w-full appearance-none rounded-md border border-court-border bg-court-surface pl-2.5 pr-7 text-xs text-court-fg focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
-
+// Generic candidate filter select. Uses the neutral shared <Select> (the
+// court-input-rect frame + its own chevron) - the branded green-chip is
+// reserved for owner-scope filters only (see ACE_DESIGN owner-filter
+// standard). Kept compact (h-8 / text-xs) to fit the dense filter panel.
 function SelectField({
   className,
   children,
   ...rest
 }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <div className="relative">
-      <select className={`${selectBareCls}${className ? ` ${className}` : ""}`} {...rest}>
-        {children}
-      </select>
-      <ChevronDown
-        className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-court-fg-muted"
-        strokeWidth={2}
-      />
-    </div>
+    <Select frameClassName="h-8" className={cn("py-1 text-xs", className)} {...rest}>
+      {children}
+    </Select>
   );
 }
 
