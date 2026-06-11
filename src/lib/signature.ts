@@ -48,8 +48,8 @@ export type UserProfileRecord = UserProfileInput & {
 };
 
 const ANDREW_DEFAULTS = {
-  jobTitle: "Managing Partner & Founder",
-  phone: "216-870-4655",
+  jobTitle: "Founder & Managing Partner",
+  phone: "216-340-9511",
   website: "www.breakpointtalent.com",
 };
 
@@ -191,11 +191,11 @@ function buildContactRows(p: UserProfileRecord, assetUrls?: SignatureAssetUrls):
       href,
     });
   }
-  // Company LinkedIn — always the bottom row (constant URL, label
-  // reads "LinkedIn" rather than the long /company/ path).
+  // Company LinkedIn — always the bottom row (constant URL, branded label
+  // rather than the long /company/ path).
   rows.push({
     iconSrc: assetUrls?.iconLinkedin ?? linkedinIcon(),
-    text: "LinkedIn",
+    text: "BreakPoint Talent | LinkedIn",
     href: LINKEDIN_URL,
   });
   return rows;
@@ -234,7 +234,7 @@ export function renderSignatureHtml(
       : "";
   const contactRows = buildContactRows(profile, assetUrls);
   const nameLine = profile.fullName
-    ? `<div style="font-family: Georgia, 'Cormorant Garamond', serif; font-weight: 700; font-size: 18px; color: ${SIGNATURE_DARK}; line-height: 1.2;">${escape(profile.fullName)}</div>`
+    ? `<div style="font-family: Georgia, 'Cormorant Garamond', serif; font-weight: 700; font-size: 24px; color: ${SIGNATURE_DARK}; line-height: 1.12;">${escape(profile.fullName)}</div>`
     : "";
   const titleLine = profile.jobTitle
     ? `<div style="font-family: Arial, Helvetica, sans-serif; font-weight: 700; font-size: 11px; color: ${SIGNATURE_GREEN}; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 4px;">${escape(profile.jobTitle)}</div>`
@@ -248,7 +248,7 @@ export function renderSignatureHtml(
             <img src="${r.iconSrc}" width="20" height="20" alt="" style="display: block; border: 0;"/>
           </td>
           <td style="padding: 2px 0; vertical-align: middle; font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: ${SIGNATURE_DARK};">
-            <a href="${escape(r.href)}" style="color: ${SIGNATURE_DARK}; text-decoration: underline;">${escape(r.text)}</a>
+            <a href="${escape(r.href)}" style="color: ${SIGNATURE_DARK}; text-decoration: none;">${escape(r.text)}</a>
           </td>
         </tr>`,
     )

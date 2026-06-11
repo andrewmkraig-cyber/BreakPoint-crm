@@ -13,7 +13,7 @@
 // Run via: npx tsx tests/unit/signature-inline-images.test.ts
 // Exits non-zero on the first assertion failure.
 
-import { renderSignatureInline, type UserProfileRecord } from "@/lib/signature";
+import { LINKEDIN_URL, renderSignatureInline, type UserProfileRecord } from "@/lib/signature";
 
 let failures = 0;
 function assert(cond: boolean, msg: string) {
@@ -29,7 +29,7 @@ const profile: UserProfileRecord = {
   userId: "u1",
   email: "andrew@breakpointtalent.com",
   fullName: "Andrew Kraig",
-  jobTitle: "Managing Partner & Founder",
+  jobTitle: "Founder & Managing Partner",
   phone: "216-340-9511",
   website: "www.breakpointtalent.com",
   logoDataBase64: "TE9HT0JBU0U2NA==", // "LOGOBASE64"
@@ -42,8 +42,11 @@ const { html, images } = renderSignatureInline(profile, "bptsig-test");
 // 1. No data: URIs survive — Gmail has nothing to rewrite into attachments.
 assert(!/data:/i.test(html), "html contains no data: URIs");
 
-// 2. Logo + 3 contact icons collected as inline images.
-assert(images.length === 4, `4 inline images collected (got ${images.length})`);
+// 2. Logo + 4 contact icons collected as inline images.
+assert(images.length === 5, `5 inline images collected (got ${images.length})`);
+assert(html.includes("BreakPoint Talent | LinkedIn"), "LinkedIn row has branded visible text");
+assert(html.includes(LINKEDIN_URL), "LinkedIn row links to the company page");
+assert(html.includes("text-decoration: none"), "signature links suppress default blue underline styling");
 
 // 3. Every collected image's cid is referenced exactly once in the html via
 //    cid:, and nowhere is the same cid duplicated (no double-render source).
@@ -63,9 +66,9 @@ assert(html.includes("cid:bptsig-test-logo"), "html references logo cid");
 const tableCount = (html.match(/<table/g) ?? []).length;
 assert(tableCount === 2, `signature has the outer + contacts table only (got ${tableCount})`);
 
-// 6. Icons map 1:1 with present contact fields. Drop the website -> 3 images.
+// 6. Icons map 1:1 with present contact fields. Drop the website -> 4 images.
 const noSite = renderSignatureInline({ ...profile, website: "" }, "p2");
-assert(noSite.images.length === 3, `no website -> 3 images (got ${noSite.images.length})`);
+assert(noSite.images.length === 4, `no website -> 4 images (got ${noSite.images.length})`);
 assert(!noSite.html.includes("cid:p2-globe"), "no globe cid when website absent");
 
 if (failures > 0) {

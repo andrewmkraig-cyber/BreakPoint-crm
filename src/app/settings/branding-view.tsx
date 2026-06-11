@@ -2,8 +2,9 @@
 
 import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Loader2, Save, Upload, Trash2, Copy } from "lucide-react";
+import { Copy, Loader2, Save, Send, Trash2, Upload } from "lucide-react";
 import {
+  pushSignatureToGmail,
   resetBrandingLogo,
   saveBrandingFields,
   uploadBrandingLogo,
@@ -43,6 +44,7 @@ export function BrandingView({
   const [saving, startSaving] = useTransition();
   const [uploading, startUploading] = useTransition();
   const [resetting, startResetting] = useTransition();
+  const [pushing, startPushing] = useTransition();
   const [copying, setCopying] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -54,6 +56,19 @@ export function BrandingView({
         return;
       }
       toast.success("Branding saved");
+    });
+  }
+
+  function onPushToGmail() {
+    startPushing(async () => {
+      const res = await pushSignatureToGmail();
+      if (!res.ok) {
+        toast.error("Could not push signature", { description: res.error });
+        return;
+      }
+      toast.success("Gmail signature updated", {
+        description: `Updated ${res.value.targetEmail}.`,
+      });
     });
   }
 
@@ -228,15 +243,26 @@ export function BrandingView({
             <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
               Signature preview
             </div>
-            <button
-              type="button"
-              onClick={onCopy}
-              disabled={copying}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg shadow-sm transition hover:text-brand-dark disabled:opacity-60"
-            >
-              {copying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
-              Copy signature
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onPushToGmail}
+                disabled={pushing}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand-dark shadow-sm transition hover:bg-brand/20 disabled:opacity-60"
+              >
+                {pushing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                Push to Gmail
+              </button>
+              <button
+                type="button"
+                onClick={onCopy}
+                disabled={copying}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg shadow-sm transition hover:text-brand-dark disabled:opacity-60"
+              >
+                {copying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
+                Copy signature
+              </button>
+            </div>
           </div>
           <div className="text-xs text-court-fg-muted">
             What recipients see at the bottom of every email Ace sends. Copy
