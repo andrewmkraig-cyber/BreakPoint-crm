@@ -25,7 +25,7 @@ import {
   type BulkPickerJob,
 } from "@/app/candidates/bulk-actions";
 import { setCandidateNavList } from "@/lib/candidate-nav";
-import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
+import { DataTableHead, DataTableHeaderCell, DataTableBody, DataTableRow } from "@/components/ui/data-table";
 
 type Candidate = {
   id: string;
@@ -327,7 +327,7 @@ export function CandidatesView({
               <DataTableHeaderCell align="center">Last Updated</DataTableHeaderCell>
             </tr>
           </DataTableHead>
-          <tbody>
+          <DataTableBody>
             {candidates.length === 0 && !error && (
               <tr>
                 <td colSpan={6} className="px-5 py-12 text-center text-sm text-court-fg-muted">
@@ -338,13 +338,14 @@ export function CandidatesView({
             {candidates.map((c) => {
               const checked = selectedIds.has(c.id);
               return (
-                <tr
+                <DataTableRow
                   key={c.id}
+                  // Selected rows keep the accent tint even on hover; the
+                  // shared row hover (bg-court-surface-subtle/60) applies to
+                  // unselected rows.
                   className={
-                    "cursor-pointer border-b border-court-border/40 transition " +
-                    (checked
-                      ? "bg-court-accent-tint/60"
-                      : "hover:bg-court-surface-subtle")
+                    "cursor-pointer" +
+                    (checked ? " bg-court-accent-tint/60 hover:bg-court-accent-tint/60" : "")
                   }
                   onClick={() => router.push(`/candidates/${c.id}`)}
                 >
@@ -371,14 +372,14 @@ export function CandidatesView({
                   </td>
                   <td className="px-3 py-2 text-court-fg-muted">{c.title || "—"}</td>
                   <td className="px-3 py-2 text-court-fg-muted">{c.employer || "—"}</td>
-                  <td className="px-3 py-2 text-xs text-court-fg-muted/70">{c.location || "—"}</td>
-                  <td className="px-3 py-2 text-center text-xs text-court-fg-muted/70">
+                  <td className="px-3 py-2 text-court-fg-muted">{c.location || "—"}</td>
+                  <td className="px-3 py-2 text-center text-court-fg-muted">
                     {c.updatedAt ? new Date(c.updatedAt).toLocaleDateString() : "—"}
                   </td>
-                </tr>
+                </DataTableRow>
               );
             })}
-          </tbody>
+          </DataTableBody>
         </table>
       </div>
 
