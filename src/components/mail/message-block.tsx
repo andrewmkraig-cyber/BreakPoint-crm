@@ -216,9 +216,9 @@ export function MessageBlock({
   headerActions?: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(isLatest);
-  // Mobile-only tap-to-copy for the sender address (Item 3). stopPropagation
-  // so the tap copies instead of collapsing the message card. Brief
-  // "Copied" confirmation auto-clears after 1.5s.
+  // Tap/click-to-copy for the sender address. stopPropagation so the
+  // click copies instead of collapsing the message card. Brief "Copied"
+  // confirmation auto-clears after 1.5s.
   const [copiedEmail, setCopiedEmail] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   function copyFromEmail(e: ReactMouseEvent) {
@@ -308,12 +308,24 @@ export function MessageBlock({
             </div>
             {msg.fromEmail && (
               <>
-                {/* Desktop (lg+): unchanged truncated address. */}
-                <div className="mt-0.5 hidden truncate text-xs text-court-fg-muted lg:block">
-                  {msg.fromEmail}
-                </div>
-                {/* Mobile (<lg): full address, tap to copy with a brief
-                    "Copied" confirmation. break-all so a long address
+                {/* Desktop (lg+): visually same truncated address, now
+                    clickable to copy. */}
+                <button
+                  type="button"
+                  onClick={copyFromEmail}
+                  title="Click to copy email address"
+                  aria-label={`Copy email address ${msg.fromEmail}`}
+                  className="mt-0.5 hidden max-w-full truncate text-left text-xs text-court-fg-muted transition hover:text-court-fg lg:block"
+                >
+                  {copiedEmail ? (
+                    <span className="inline-flex items-center gap-1 font-medium text-court-brand-dark">
+                      <Check className="h-3 w-3 shrink-0" /> Copied
+                    </span>
+                  ) : (
+                    msg.fromEmail
+                  )}
+                </button>
+                {/* Mobile (<lg): full address. break-all so a long address
                     wraps instead of overflowing. */}
                 <button
                   type="button"

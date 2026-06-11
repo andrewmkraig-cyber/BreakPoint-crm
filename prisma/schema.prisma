@@ -414,8 +414,8 @@ model Placement {
   source String?
 
   // Sourcing channel the candidate originally came from for this placement.
-  // One of: "LinkedIn" | "Pin" | "Indeed" | "Network" | "Referral" |
-  // "Apollo BD" | "Other". Powers the Financial Performance source mix.
+  // Uses the display strings in src/lib/lead-sources.ts; legacy free-form
+  // values such as "Apollo BD" are preserved when already stored.
   candidateSource String?
 
   createdById    String
