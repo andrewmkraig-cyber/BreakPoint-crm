@@ -8,8 +8,15 @@ import { prisma } from "@/lib/prisma";
 import { getRfJobsForOrg, getRfClientsForOrg } from "@/lib/candidates";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { logActivity } from "@/lib/activity";
-import { sendGmail, plainToHtml } from "@/lib/gmail";
+import { plainToHtml } from "@/lib/gmail";
 import { createScheduledEmail } from "@/lib/scheduled-email";
+import { getBulkSendSettings } from "@/lib/preferences";
+import {
+  computeBulkSchedule,
+  etDayKey,
+  startOfEtDay,
+} from "@/lib/bulk-send-queue";
+import { DEFAULT_TIMEZONE } from "@/lib/timezone";
 import {
   applyMergeFields,
   htmlEmailWrap,
@@ -365,11 +372,41 @@ export async function bulkAddCandidatesToNewList(input: {
 // surface a partial-success toast.
 export type BulkEmailResult = {
   ok: boolean;
+  // For the throttled bulk path this is the count QUEUED (not yet sent).
+  // For scheduleBulkEmail it is the count scheduled at the chosen time.
   sent: number;
   skipped: number;
   errors: string[];
+  // Present only on the throttled bulkSendEmail path. Lets the dialog show
+  // the queue summary (spacing, ETA, next-day overflow, sender).
+  queue?: {
+    queued: number;
+    firstAt: string | null; // ISO of the earliest send in this batch
+    lastAt: string | null; // ISO of the latest send (the "finishes by" ETA)
+    overflowCount: number; // how many rolled to a future ET day past the cap
+    spacingMinutes: number;
+    sender: string; // from-address for this batch (one Gmail today)
+  };
 };
 
+// Live snapshot of the user's bulk send queue for the status panel.
+export type BulkQueueStatus = {
+  pending: number; // still waiting to send
+  sentToday: number; // bulk emails already sent this ET day
+  failed: number; // bulk rows that errored on send (not yet cleared)
+  nextAt: string | null; // ISO of the next pending send
+  lastAt: string | null; // ISO of the last pending send (ETA)
+  overflowToNextDay: number; // pending rows scheduled past today (ET)
+  sender: string;
+  spacingMinutes: number;
+  dailyCap: number;
+};
+
+// "Send to N candidates" - the throttled bulk path. Despite the name it no
+// longer sends inline; it enqueues one ScheduledEmail per recipient with a
+// staggered scheduledSendAt (spacing + jitter + per-ET-day cap from
+// Settings) and lets the per-minute cron drain them. Returns the count
+// queued plus a `queue` summary for the dialog's status panel.
 export async function bulkSendEmail(input: {
   candidateIds: string[];
   subject: string;
@@ -409,11 +446,22 @@ export async function bulkSendEmail(input: {
     },
   });
 
-  let sent = 0;
   let skipped = 0;
   const errors: string[] = [];
 
   const jobValues = input.jobMergeValues ?? {};
+
+  // Resolve every recipient's merged content NOW (same per-candidate merge
+  // the old instant loop did), but instead of sending we hand the batch to
+  // the throttled queue below. Candidates with no email on file are skipped.
+  type ReadyRecipient = {
+    candidateId: string;
+    email: string;
+    subject: string;
+    bodyText: string;
+    bodyHtml?: string;
+  };
+  const ready: ReadyRecipient[] = [];
 
   for (const c of candidates) {
     const email = (c.email ?? "").trim();
@@ -440,39 +488,13 @@ export async function bulkSendEmail(input: {
       : looksLikeHtml(mergedBody)
         ? htmlEmailWrap(mergedBody)
         : undefined;
-
-    try {
-      await sendGmail({
-        userId: user.id,
-        from: user.email,
-        to: [email],
-        subject: mergedSubject,
-        bodyText: mergedBody,
-        bodyHtml: mergedHtml,
-      });
-      sent += 1;
-      try {
-        await logActivity({
-          organizationId,
-          userId: user.id,
-          actionType: "email_sent",
-          targetType: "candidate",
-          targetId: c.id,
-          metadata: {
-            source: "bulk_email",
-            subject: mergedSubject,
-            recipient: email,
-            jobMergeApplied: Object.keys(jobValues).length > 0,
-          },
-        });
-      } catch {
-        // Audit write is observability — never fail the send.
-      }
-    } catch (e) {
-      const name =
-        [c.firstName, c.lastName].filter(Boolean).join(" ").trim() || email;
-      errors.push(`${name}: ${e instanceof Error ? e.message : "send failed"}`);
-    }
+    ready.push({
+      candidateId: c.id,
+      email,
+      subject: mergedSubject,
+      bodyText: mergedBody,
+      bodyHtml: mergedHtml,
+    });
   }
 
   // Skip any candidate that didn't come back from the org-scoped
@@ -480,10 +502,69 @@ export async function bulkSendEmail(input: {
   // selection and send). Count those toward `skipped` so the UI
   // reports an honest total.
   const foundIds = new Set(candidates.map((c) => c.id));
-  const missing = input.candidateIds.filter((id) => !foundIds.has(id)).length;
-  skipped += missing;
+  skipped += input.candidateIds.filter((id) => !foundIds.has(id)).length;
 
-  return { ok: errors.length === 0, sent, skipped, errors };
+  if (ready.length === 0) {
+    return { ok: true, sent: 0, skipped, errors: [] };
+  }
+
+  // Throttled enqueue. Each recipient becomes one ScheduledEmail row with a
+  // staggered scheduledSendAt; the per-minute cron fires them one at a time
+  // so the send keeps going after the tab closes. computeBulkSchedule
+  // appends after any in-flight queue, spaces + jitters the sends, and rolls
+  // daily-cap overflow to the next ET day at 8am. The activity-log
+  // "email_sent" row is written by fireScheduledEmail when each one
+  // actually sends, not here.
+  const { spacingMinutes, dailyCap } = await getBulkSendSettings();
+  const { sendTimes, overflowCount } = await computeBulkSchedule({
+    userId: user.id,
+    count: ready.length,
+    spacingMinutes,
+    dailyCap,
+  });
+
+  let queued = 0;
+  for (let i = 0; i < ready.length; i++) {
+    const r = ready[i];
+    try {
+      await createScheduledEmail({
+        organizationId,
+        userId: user.id,
+        userEmail: user.email,
+        // Sender stored explicitly on the row. Single Gmail today; when
+        // domain rotation lands later this is the only field that varies.
+        sendAsEmail: user.email,
+        to: [r.email],
+        subject: r.subject,
+        bodyHtml: r.bodyHtml ?? plainToHtml(r.bodyText),
+        bodyText: r.bodyText,
+        scheduledSendAt: sendTimes[i],
+        timezone: DEFAULT_TIMEZONE,
+        createDraft: false,
+        autoTag: true,
+        candidateId: r.candidateId,
+        source: "bulk_email",
+      });
+      queued += 1;
+    } catch (e) {
+      errors.push(`${r.email}: ${e instanceof Error ? e.message : "queue failed"}`);
+    }
+  }
+
+  return {
+    ok: errors.length === 0,
+    sent: queued,
+    skipped,
+    errors,
+    queue: {
+      queued,
+      firstAt: sendTimes.length ? sendTimes[0].toISOString() : null,
+      lastAt: sendTimes.length ? sendTimes[sendTimes.length - 1].toISOString() : null,
+      overflowCount,
+      spacingMinutes,
+      sender: user.email,
+    },
+  };
 }
 
 // "Send Later" sibling of bulkSendEmail. Resolves each candidate's
@@ -600,6 +681,84 @@ export async function scheduleBulkEmail(input: {
   skipped += missing;
 
   return { ok: errors.length === 0, sent, skipped, errors };
+}
+
+// Live status of the throttled bulk queue for the signed-in user. Powers
+// the "Email queue" panel: how many are pending, when they finish, how
+// many slipped past today's cap, and the single sender they go out from.
+export async function getBulkQueueStatus(): Promise<BulkQueueStatus | null> {
+  const user = await requireUser();
+  if (!user) return null;
+
+  const { spacingMinutes, dailyCap } = await getBulkSendSettings();
+
+  const pendingRows = await prisma.scheduledEmail.findMany({
+    where: { userId: user.id, source: "bulk_email", status: "SCHEDULED" },
+    orderBy: { scheduledSendAt: "asc" },
+    select: { scheduledSendAt: true },
+  });
+  const pending = pendingRows.length;
+  const nextAt = pending ? pendingRows[0].scheduledSendAt.toISOString() : null;
+  const lastAt = pending
+    ? pendingRows[pending - 1].scheduledSendAt.toISOString()
+    : null;
+
+  const now = new Date();
+  const todayKey = etDayKey(now);
+  const overflowToNextDay = pendingRows.filter(
+    (r) => etDayKey(r.scheduledSendAt) > todayKey,
+  ).length;
+
+  const [sentToday, failed] = await Promise.all([
+    prisma.scheduledEmail.count({
+      where: {
+        userId: user.id,
+        source: "bulk_email",
+        status: "SENT",
+        scheduledSendAt: { gte: startOfEtDay(now) },
+      },
+    }),
+    prisma.scheduledEmail.count({
+      where: { userId: user.id, source: "bulk_email", status: "FAILED" },
+    }),
+  ]);
+
+  return {
+    pending,
+    sentToday,
+    failed,
+    nextAt,
+    lastAt,
+    overflowToNextDay,
+    sender: user.email,
+    spacingMinutes,
+    dailyCap,
+  };
+}
+
+// Cancel every still-pending bulk email for the signed-in user. Flips
+// SCHEDULED rows to CANCELED; rows the cron has already claimed (SENDING)
+// or sent are untouched, so this never cancels an in-flight send.
+export async function cancelBulkQueue(): Promise<{
+  ok: boolean;
+  canceled: number;
+  error?: string;
+}> {
+  const user = await requireUser();
+  if (!user) return { ok: false, canceled: 0, error: "Not signed in." };
+  try {
+    const res = await prisma.scheduledEmail.updateMany({
+      where: { userId: user.id, source: "bulk_email", status: "SCHEDULED" },
+      data: { status: "CANCELED" },
+    });
+    return { ok: true, canceled: res.count };
+  } catch (e) {
+    return {
+      ok: false,
+      canceled: 0,
+      error: e instanceof Error ? e.message : "Cancel failed.",
+    };
+  }
 }
 
 // Lazy fetch for the BulkEmailDialog's "View N recipients" panel.

@@ -3,7 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { updateAppPreferences, setNotifChannelForEmail } from "@/lib/preferences";
+import {
+  updateAppPreferences,
+  setNotifChannelForEmail,
+  BULK_SPACING_MIN,
+  BULK_SPACING_MAX,
+  BULK_DAILY_CAP_MIN,
+  BULK_DAILY_CAP_MAX,
+} from "@/lib/preferences";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -61,6 +68,38 @@ export async function setPhoneNotificationsEnabled(enabled: boolean): Promise<Re
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to save setting." };
+  }
+}
+
+// Bulk send spacing, in whole minutes between each candidate send. 0 =
+// send as fast as the per-minute queue allows. Stored org-wide.
+export async function setBulkSendSpacing(minutes: number): Promise<Result> {
+  if (!(await requireEmail())) return { ok: false, error: "Not signed in." };
+  if (!Number.isFinite(minutes) || minutes < BULK_SPACING_MIN || minutes > BULK_SPACING_MAX) {
+    return { ok: false, error: `Spacing must be between ${BULK_SPACING_MIN} and ${BULK_SPACING_MAX} minutes.` };
+  }
+  try {
+    await updateAppPreferences({ bulkSendSpacingMinutes: Math.round(minutes) });
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to save spacing." };
+  }
+}
+
+// Max bulk candidate emails per Eastern calendar day. Overflow rolls to
+// the next day at 8am ET.
+export async function setBulkDailyCap(cap: number): Promise<Result> {
+  if (!(await requireEmail())) return { ok: false, error: "Not signed in." };
+  if (!Number.isFinite(cap) || cap < BULK_DAILY_CAP_MIN || cap > BULK_DAILY_CAP_MAX) {
+    return { ok: false, error: `Daily cap must be between ${BULK_DAILY_CAP_MIN} and ${BULK_DAILY_CAP_MAX}.` };
+  }
+  try {
+    await updateAppPreferences({ bulkDailyCap: Math.round(cap) });
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to save daily cap." };
   }
 }
 

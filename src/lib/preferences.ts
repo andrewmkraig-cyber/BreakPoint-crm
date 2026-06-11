@@ -19,7 +19,20 @@ export type AppPreferences = {
   recruiterPhones: Record<string, string>;
   emailSignatures: Record<string, string>;
   notifPrefs: Record<string, NotifChannelPrefs>;
+  // Bulk email pacing. spacing = minutes between each candidate send in a
+  // throttled bulk batch (0 = send as fast as the per-minute sender
+  // allows). dailyCap = max bulk candidate emails per Eastern calendar
+  // day; anything over the cap rolls to the next day at 8am ET. Both are
+  // org-wide (single-tenant internal app). Consumed by the bulk send queue
+  // (src/lib/bulk-send-queue.ts).
+  bulkSendSpacingMinutes: number;
+  bulkDailyCap: number;
 };
+
+export const BULK_SPACING_MIN = 0;
+export const BULK_SPACING_MAX = 120;
+export const BULK_DAILY_CAP_MIN = 1;
+export const BULK_DAILY_CAP_MAX = 5000;
 
 const DEFAULT_SIGNATURE =
   "Andrew Kraig\n" +
@@ -37,7 +50,18 @@ const DEFAULT_PREFS: AppPreferences = {
     "andrew@breakpointtalent.com": DEFAULT_SIGNATURE,
   },
   notifPrefs: {},
+  bulkSendSpacingMinutes: 2,
+  bulkDailyCap: 50,
 };
+
+// Coerce a stored number into the allowed range, falling back to the
+// default on any non-finite / out-of-range value. Bulk pacing inputs
+// come from a user-facing settings field, so we never trust them raw.
+function clampInt(v: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
 
 function normalize(raw: unknown): AppPreferences {
   const obj = (raw as Partial<AppPreferences> | null | undefined) ?? {};
@@ -52,6 +76,18 @@ function normalize(raw: unknown): AppPreferences {
       ? { ...DEFAULT_PREFS.emailSignatures, ...obj.emailSignatures }
       : DEFAULT_PREFS.emailSignatures,
     notifPrefs: normalizeNotifPrefs(obj.notifPrefs),
+    bulkSendSpacingMinutes: clampInt(
+      obj.bulkSendSpacingMinutes,
+      BULK_SPACING_MIN,
+      BULK_SPACING_MAX,
+      DEFAULT_PREFS.bulkSendSpacingMinutes,
+    ),
+    bulkDailyCap: clampInt(
+      obj.bulkDailyCap,
+      BULK_DAILY_CAP_MIN,
+      BULK_DAILY_CAP_MAX,
+      DEFAULT_PREFS.bulkDailyCap,
+    ),
   };
 }
 
@@ -81,6 +117,19 @@ export async function getAppPreferences(): Promise<AppPreferences> {
   return normalize(row?.value);
 }
 
+// Bulk pacing settings, resolved + clamped. The bulk send queue reads
+// this to space each candidate send and to enforce the per-ET-day cap.
+export async function getBulkSendSettings(): Promise<{
+  spacingMinutes: number;
+  dailyCap: number;
+}> {
+  const prefs = await getAppPreferences();
+  return {
+    spacingMinutes: prefs.bulkSendSpacingMinutes,
+    dailyCap: prefs.bulkDailyCap,
+  };
+}
+
 export async function updateAppPreferences(patch: Partial<AppPreferences>): Promise<AppPreferences> {
   const current = await getAppPreferences();
   const next: AppPreferences = {
@@ -99,6 +148,14 @@ export async function updateAppPreferences(patch: Partial<AppPreferences>): Prom
     // Per-email deep merge: a patch that sets one user's {mail} must not
     // wipe their {phone} (or another user's entry entirely).
     notifPrefs: mergeNotifPrefs(current.notifPrefs, patch.notifPrefs),
+    bulkSendSpacingMinutes:
+      patch.bulkSendSpacingMinutes != null
+        ? clampInt(patch.bulkSendSpacingMinutes, BULK_SPACING_MIN, BULK_SPACING_MAX, current.bulkSendSpacingMinutes)
+        : current.bulkSendSpacingMinutes,
+    bulkDailyCap:
+      patch.bulkDailyCap != null
+        ? clampInt(patch.bulkDailyCap, BULK_DAILY_CAP_MIN, BULK_DAILY_CAP_MAX, current.bulkDailyCap)
+        : current.bulkDailyCap,
   };
   await prisma.setting.upsert({
     where: { key: PREFS_KEY },

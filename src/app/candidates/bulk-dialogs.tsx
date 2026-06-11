@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import {
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -24,7 +25,10 @@ import {
   scheduleBulkEmail,
   getJobMergeValuesForBulk,
   getOpenJobsForBulkPicker,
+  getBulkQueueStatus,
+  cancelBulkQueue,
   type BulkPickerJob,
+  type BulkQueueStatus,
 } from "@/app/candidates/bulk-actions";
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
 import type { EmailDraft } from "@/components/email-composer";
@@ -330,6 +334,19 @@ function applyJobTokensOnly(text: string, jobValues: MergeFieldValues): string {
   return out;
 }
 
+// Post-send summary the dialog shows in place of the composer once a
+// throttled batch is queued.
+type QueuedSummary = {
+  queued: number;
+  skipped: number;
+  errors: string[];
+  firstAt: string | null;
+  lastAt: string | null;
+  overflowCount: number;
+  spacingMinutes: number;
+  sender: string;
+};
+
 export function BulkEmailDialog({
   candidateIds,
   onClose,
@@ -361,6 +378,14 @@ export function BulkEmailDialog({
   const [isGenerating, startGenerate] = useTransition();
   const [isEditing, startEdit] = useTransition();
   const [isSending, startSend] = useTransition();
+  // After a throttled send the dialog flips to this queue-summary view
+  // (instead of closing) so the recruiter sees the pacing + a cancel
+  // button. null = still composing.
+  const [queuedSummary, setQueuedSummary] = useState<QueuedSummary | null>(null);
+  const [canceling, startCancel] = useTransition();
+  // Existing pending bulk queue, loaded on open so reopening the dialog
+  // surfaces what's already in flight (with a cancel affordance).
+  const [existingQueue, setExistingQueue] = useState<BulkQueueStatus | null>(null);
   // Inline panel for the Edit-with-Claude "Custom…" option. Same
   // pattern as the Generate prompt strip above the toolbar.
   const [customEditOpen, setCustomEditOpen] = useState(false);
@@ -390,6 +415,22 @@ export function BulkEmailDialog({
         if (cancelled) return;
         setLocalTemplatesError("Couldn't load templates");
         setLocalTemplatesLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Surface any bulk emails already pending in the queue when the dialog
+  // opens, so the recruiter can see / cancel an in-flight batch.
+  useEffect(() => {
+    let cancelled = false;
+    getBulkQueueStatus()
+      .then((s) => {
+        if (!cancelled) setExistingQueue(s);
+      })
+      .catch(() => {
+        /* status is best-effort chrome; never block the composer. */
       });
     return () => {
       cancelled = true;
@@ -590,22 +631,51 @@ export function BulkEmailDialog({
     });
     if (res.sent === 0) {
       const head = res.errors[0] ?? "No candidates had an email on file.";
-      toast.error("Bulk email send failed", { description: head });
+      toast.error("Bulk email queue failed", { description: head });
       throw new Error(head);
     }
-    const tail = [
-      res.skipped > 0 ? `${res.skipped} skipped` : null,
-      res.errors.length > 0 ? `${res.errors.length} errors` : null,
-    ]
-      .filter(Boolean)
-      .join(" · ");
+    const q = res.queue;
+    const pace =
+      q && q.spacingMinutes > 0
+        ? `Sending 1 every ~${q.spacingMinutes} min`
+        : "Sending as fast as the queue allows";
     toast.success(
-      `Sent to ${res.sent} candidate${res.sent === 1 ? "" : "s"}${tail ? `: ${tail}` : ""}`,
-      res.errors.length > 0
-        ? { description: res.errors.slice(0, 3).join("\n") }
-        : undefined,
+      `Queued ${res.sent} email${res.sent === 1 ? "" : "s"}`,
+      { description: pace },
     );
-    onDone();
+    // Flip the dialog into the queue-status view instead of closing, so the
+    // recruiter sees the pacing + a Cancel remaining button. The selection
+    // is cleared (onDone) only when they close that view.
+    setConfirmDraft(null);
+    setQueuedSummary({
+      queued: res.sent,
+      skipped: res.skipped,
+      errors: res.errors,
+      firstAt: q?.firstAt ?? null,
+      lastAt: q?.lastAt ?? null,
+      overflowCount: q?.overflowCount ?? 0,
+      spacingMinutes: q?.spacingMinutes ?? 0,
+      sender: q?.sender ?? fromEmail,
+    });
+  }
+
+  function onCancelRemaining() {
+    startCancel(async () => {
+      const res = await cancelBulkQueue();
+      if (!res.ok) {
+        toast.error("Couldn't cancel queue", { description: res.error });
+        return;
+      }
+      toast.success(
+        res.canceled > 0
+          ? `Canceled ${res.canceled} pending email${res.canceled === 1 ? "" : "s"}`
+          : "No pending emails to cancel",
+      );
+      // From the post-send view, close out (selection clears). From the
+      // compose-time banner, just clear the banner and keep the draft.
+      if (queuedSummary) onDone();
+      else setExistingQueue(null);
+    });
   }
 
   function onSendClick() {
@@ -791,6 +861,100 @@ export function BulkEmailDialog({
   // Send Later picker, anchored to the footer's Send Later button.
   const sendLater = useSendLater(scheduleLater);
 
+  // Post-send queue view. Replaces the composer once a throttled batch is
+  // queued: shows pacing, ETA, today/tomorrow split, and a cancel button.
+  if (queuedSummary) {
+    const q = queuedSummary;
+    const ET = "America/New_York";
+    const starts = q.firstAt ? formatScheduledTime(q.firstAt, ET) : null;
+    const finishes = q.lastAt ? formatScheduledTime(q.lastAt, ET) : null;
+    const todayCount = Math.max(0, q.queued - q.overflowCount);
+    const pace =
+      q.spacingMinutes > 0
+        ? `one every ~${q.spacingMinutes} min (randomized ±20%)`
+        : "as fast as the queue allows";
+    return (
+      <div
+        role="dialog"
+        aria-label="Bulk email queued"
+        className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 p-4"
+        onClick={onDone}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="relative flex w-full max-w-md flex-col gap-4 rounded-xl border border-court-border bg-court-surface p-6 shadow-2xl"
+        >
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-court-brand-tint text-court-brand-dark">
+              <CheckCircle2 className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="font-serif text-base font-semibold text-court-fg">
+                Queued {q.queued} email{q.queued === 1 ? "" : "s"}
+              </h2>
+              <p className="mt-0.5 text-xs text-court-fg-muted">
+                Sending from {q.sender}, {pace}. This keeps going even if you
+                close this tab.
+              </p>
+            </div>
+          </div>
+
+          <dl className="grid grid-cols-2 gap-3 rounded-lg border border-court-border bg-court-surface-subtle/40 p-3 text-xs">
+            <QueueStat label="Pending today" value={String(todayCount)} />
+            <QueueStat
+              label="Tomorrow 8am ET"
+              value={q.overflowCount > 0 ? String(q.overflowCount) : "0"}
+            />
+            <QueueStat label="First send" value={starts ?? "soon"} />
+            <QueueStat label="Finishes by" value={finishes ?? "soon"} />
+          </dl>
+
+          {q.overflowCount > 0 && (
+            <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+              {q.overflowCount} email{q.overflowCount === 1 ? "" : "s"} went past
+              today&apos;s daily cap and {q.overflowCount === 1 ? "is" : "are"}{" "}
+              scheduled for tomorrow starting 8am ET.
+            </p>
+          )}
+          {q.skipped > 0 && (
+            <p className="text-[12px] text-court-fg-muted">
+              {q.skipped} skipped (no email on file).
+            </p>
+          )}
+          {q.errors.length > 0 && (
+            <p className="text-[12px] text-red-700">
+              {q.errors.length} could not be queued: {q.errors.slice(0, 2).join("; ")}
+            </p>
+          )}
+
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onCancelRemaining}
+              disabled={canceling}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-300 bg-transparent px-3 text-[12px] font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-60"
+            >
+              {canceling ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <X className="h-3 w-3" />
+              )}
+              Cancel remaining
+            </button>
+            <button
+              type="button"
+              onClick={onDone}
+              disabled={canceling}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-4 text-[12px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       role="dialog"
@@ -816,6 +980,26 @@ export function BulkEmailDialog({
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        {/* Existing-queue banner: shows when a previous batch is still
+            draining so this new send appends to it rather than racing. */}
+        {existingQueue && existingQueue.pending > 0 && (
+          <div className="flex items-center justify-between gap-3 border-b border-court-border bg-court-surface-subtle/40 px-5 py-2 text-[12px]">
+            <span className="flex items-center gap-1.5 text-court-fg-muted">
+              <Clock className="h-3.5 w-3.5 shrink-0" />
+              {existingQueue.pending} email{existingQueue.pending === 1 ? "" : "s"} already
+              queued from {existingQueue.sender}. A new send appends after them.
+            </span>
+            <button
+              type="button"
+              onClick={onCancelRemaining}
+              disabled={canceling}
+              className="shrink-0 font-semibold text-red-700 hover:underline disabled:opacity-60"
+            >
+              {canceling ? "Canceling…" : "Cancel queued"}
+            </button>
+          </div>
+        )}
 
         {/* FROM / TO / SUBJECT rows */}
         <div className="space-y-2 border-b border-court-border px-5 py-3">
@@ -1178,6 +1362,17 @@ export function BulkEmailDialog({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function QueueStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 flex-col">
+      <dt className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+        {label}
+      </dt>
+      <dd className="mt-0.5 truncate text-xs font-medium text-court-fg">{value}</dd>
     </div>
   );
 }

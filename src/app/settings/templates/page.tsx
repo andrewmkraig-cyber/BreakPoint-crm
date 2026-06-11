@@ -11,6 +11,7 @@ import {
   getTemplatesForTrigger,
 } from "@/app/settings/triggers-actions";
 import { TemplatesTriggersView } from "@/app/settings/templates-triggers-view";
+import { BulkSendSettingsView } from "@/app/settings/bulk-send-settings-view";
 import type { TemplateRow, TemplateUsage } from "@/app/settings/templates-view";
 
 export const dynamic = "force-dynamic";
@@ -68,18 +69,31 @@ export default async function TemplatesTriggersSettingsPage() {
   }));
 
   return (
-    <CollapsibleSection
-      id="templates"
-      title="Templates + Triggers"
-      description="Reusable email templates plus the pipeline triggers that fire them. Every Trigger row points at a Template; click a Used by badge to jump between them."
-    >
-      <TemplatesTriggersView
-        templates={rows}
-        rules={rules}
-        templateOptionsByKey={templateOptionsByKey}
-        autoSendCandidateConfirmation={prefs.autoSendCandidateConfirmation}
-        gmailConnected={gmailStatus.state === "connected"}
-      />
-    </CollapsibleSection>
+    <div className="space-y-4">
+      <CollapsibleSection
+        id="templates"
+        title="Templates + Triggers"
+        description="Reusable email templates plus the pipeline triggers that fire them. Every Trigger row points at a Template; click a Used by badge to jump between them."
+      >
+        <TemplatesTriggersView
+          templates={rows}
+          rules={rules}
+          templateOptionsByKey={templateOptionsByKey}
+          autoSendCandidateConfirmation={prefs.autoSendCandidateConfirmation}
+          gmailConnected={gmailStatus.state === "connected"}
+        />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        id="bulk-pacing"
+        title="Bulk email pacing"
+        description="How the &ldquo;Send to N candidates&rdquo; button spaces sends and caps daily volume, to protect deliverability."
+      >
+        <BulkSendSettingsView
+          initialSpacing={prefs.bulkSendSpacingMinutes}
+          initialDailyCap={prefs.bulkDailyCap}
+        />
+      </CollapsibleSection>
+    </div>
   );
 }
