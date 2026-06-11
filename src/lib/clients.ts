@@ -132,6 +132,25 @@ export async function getClientsForOrg(): Promise<ClientListRow[]> {
     target.set(g.clientId, g._count._all);
   }
 
+  // Ace-native verification source of truth (Rule 6). The verified shield
+  // means "signed fee agreement on file" — the canonical signal is an
+  // uploaded ClientAgreement (uploadComplete), the SAME table the client
+  // detail page reads. Without this, the lists fell back to legacy RF
+  // raw data only, so an agreement uploaded in Ace lit the badge on the
+  // detail page but not on /clients or /jobs. One tenant-scoped query
+  // (Rule 8); we key by both clientId (Ace-native canonical) and the
+  // legacy clientRfId so older records that only carry the RF id match.
+  const agreementRows = await prisma.clientAgreement.findMany({
+    where: { organizationId: org.id, uploadComplete: true },
+    select: { clientId: true, clientRfId: true },
+  });
+  const agreementClientIds = new Set<string>();
+  const agreementRfIds = new Set<number>();
+  for (const a of agreementRows) {
+    if (a.clientId) agreementClientIds.add(a.clientId);
+    if (a.clientRfId != null) agreementRfIds.add(a.clientRfId);
+  }
+
   return rows.map((r) => {
     const raw = (r.raw ?? null) as RFClient | null;
     const phoneFromJson = Array.isArray(r.phoneNumbers) && r.phoneNumbers.length > 0
@@ -150,7 +169,12 @@ export async function getClientsForOrg(): Promise<ClientListRow[]> {
     const fileWithAgreement = Array.isArray(raw?.files)
       ? raw!.files!.some((f) => typeof f?.filename === "string" && f.filename.toLowerCase().includes("agreement"))
       : false;
-    const isVerified = Boolean(signed) || fileWithAgreement;
+    // Ace-native uploaded agreement is PRIMARY (matches the detail page);
+    // legacy RF custom-field / file signals stay as back-compat fallback
+    // for clients that predate Ace-native uploads.
+    const hasAceAgreement =
+      agreementClientIds.has(r.id) || (r.legacyRfId != null && agreementRfIds.has(r.legacyRfId));
+    const isVerified = hasAceAgreement || Boolean(signed) || fileWithAgreement;
 
     const feeField = Array.isArray(raw?.custom_fields)
       ? raw!.custom_fields!.find(
