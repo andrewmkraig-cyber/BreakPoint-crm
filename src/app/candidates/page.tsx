@@ -1971,11 +1971,11 @@ export default function CandidatesPage() {
       {addMultipleOpen && (
         <AddMultipleDialog
           onClose={() => setAddMultipleOpen(false)}
-          onDone={() => {
-            setAddMultipleOpen(false);
+          onImported={() => {
             // Re-run the current search so freshly imported candidates
             // appear in the results without a manual re-query. No-op when
-            // no filter is active (empty start state).
+            // no filter is active (empty start state). The dialog decides
+            // whether to also close (clean import) or stay open (skips).
             if (hasFilters) void runFetch(filters);
           }}
         />

@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Loader2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 
 // Bulk candidate import modal, opened from the Candidates topbar "Add
@@ -49,6 +50,11 @@ type CsvImportResult = {
   imported: number;
   duplicates: number;
   skipped: number;
+  skippedNoName: number;
+  skippedError: number;
+  importedNoEmail: number;
+  total: number;
+  format: string | null;
   error: string | null;
 };
 
@@ -70,12 +76,42 @@ function isPdfFile(f: File): boolean {
 // PDFs run through the existing match-by-name → resume-upload pipeline
 // (single match call + N=5 worker pool). Both paths fire concurrently
 // from a single Import click and produce one combined toast.
+// Friendly label for the format the server detected from the header row.
+const FORMAT_LABEL: Record<string, string> = {
+  pin: "Pin export",
+  zoominfo: "ZoomInfo export",
+  generic: "Generic (best-effort)",
+};
+
+// Post-import breakdown rendered in-dialog so a partial or zero import
+// explains itself instead of vanishing behind a toast.
+type ImportReport = {
+  csvFiles: number;
+  csvTotalRows: number;
+  csvImported: number;
+  csvImportedNoEmail: number;
+  csvDuplicates: number;
+  csvSkippedNoName: number;
+  csvSkippedError: number;
+  csvFormats: string[];
+  csvFileErrors: { filename: string; error: string }[];
+  pdfFiles: number;
+  pdfAttached: number;
+  pdfCreated: number;
+  pdfUnmatched: string[];
+  pdfFailed: { filename: string; error: string }[];
+};
+
 export function AddMultipleDialog({
   onClose,
-  onDone,
+  onImported,
 }: {
   onClose: () => void;
-  onDone: () => void;
+  // Called whenever the import changed the database (imported > 0) so the
+  // caller can refresh the list behind the modal. Distinct from onClose:
+  // a partial/zero import keeps the dialog open AND may still have
+  // imported some rows worth refreshing for.
+  onImported?: () => void;
 }) {
   const [csvFiles, setCsvFiles] = useState<CsvQueueItem[]>([]);
   const [pdfFiles, setPdfFiles] = useState<PdfQueueItem[]>([]);
@@ -83,6 +119,9 @@ export function AddMultipleDialog({
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Post-import breakdown. When set, the dialog shows the results panel
+  // instead of the dropzone and stays open so the recruiter can read it.
+  const [report, setReport] = useState<ImportReport | null>(null);
   const dragDepth = useRef(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -227,6 +266,16 @@ export function AddMultipleDialog({
     setPdfFiles((prev) => prev.filter((p) => p.key !== key));
   }
 
+  // Clear the report and the queue so the recruiter can run another
+  // import without reopening the dialog.
+  function resetForAnother() {
+    setReport(null);
+    setCsvFiles([]);
+    setPdfFiles([]);
+    setError(null);
+    setProgress(null);
+  }
+
   async function importCsvOne(file: File): Promise<CsvImportResult> {
     try {
       const fd = new FormData();
@@ -236,7 +285,16 @@ export function AddMultipleDialog({
         body: fd,
       });
       const json = (await res.json().catch(() => ({}))) as
-        | { imported: number; skipped: number; duplicates: number }
+        | {
+            imported: number;
+            skipped: number;
+            duplicates: number;
+            skippedNoName?: number;
+            skippedError?: number;
+            importedNoEmail?: number;
+            total?: number;
+            format?: string;
+          }
         | { error: string };
       if (!res.ok || "error" in json) {
         return {
@@ -244,6 +302,11 @@ export function AddMultipleDialog({
           imported: 0,
           duplicates: 0,
           skipped: 0,
+          skippedNoName: 0,
+          skippedError: 0,
+          importedNoEmail: 0,
+          total: 0,
+          format: null,
           error: "error" in json ? json.error : `HTTP ${res.status}`,
         };
       }
@@ -252,6 +315,11 @@ export function AddMultipleDialog({
         imported: json.imported ?? 0,
         duplicates: json.duplicates ?? 0,
         skipped: json.skipped ?? 0,
+        skippedNoName: json.skippedNoName ?? 0,
+        skippedError: json.skippedError ?? 0,
+        importedNoEmail: json.importedNoEmail ?? 0,
+        total: json.total ?? 0,
+        format: json.format ?? null,
         error: null,
       };
     } catch (err) {
@@ -260,6 +328,11 @@ export function AddMultipleDialog({
         imported: 0,
         duplicates: 0,
         skipped: 0,
+        skippedNoName: 0,
+        skippedError: 0,
+        importedNoEmail: 0,
+        total: 0,
+        format: null,
         error: err instanceof Error ? err.message : "Network error",
       };
     }
@@ -400,67 +473,69 @@ export function AddMultipleDialog({
         pdfJob,
       ]);
 
-      const csvImported = csvResults.reduce((acc, r) => acc + r.imported, 0);
-      const csvDuplicates = csvResults.reduce((acc, r) => acc + r.duplicates, 0);
-      const csvSkipped = csvResults.reduce((acc, r) => acc + r.skipped, 0);
-      const csvErrored = csvResults.filter((r) => r.error);
+      const csvImported = csvResults.reduce((a, r) => a + r.imported, 0);
+      const csvDuplicates = csvResults.reduce((a, r) => a + r.duplicates, 0);
+      const csvSkippedNoName = csvResults.reduce((a, r) => a + r.skippedNoName, 0);
+      const csvSkippedError = csvResults.reduce((a, r) => a + r.skippedError, 0);
+      const csvImportedNoEmail = csvResults.reduce((a, r) => a + r.importedNoEmail, 0);
+      const csvTotalRows = csvResults.reduce((a, r) => a + r.total, 0);
+      const csvFormats = Array.from(
+        new Set(csvResults.map((r) => r.format).filter((f): f is string => !!f)),
+      );
+      const csvFileErrors = csvResults
+        .filter((r) => r.error)
+        .map((r) => ({ filename: r.filename, error: r.error as string }));
 
-      const summary = [
-        csvSnapshot.length > 0
-          ? `Imported ${csvImported} candidate${csvImported === 1 ? "" : "s"} from CSV`
-          : null,
-        pdfSnapshot.length > 0
-          ? `attached ${pdfResults.attached} resume${pdfResults.attached === 1 ? "" : "s"}`
-          : null,
-        pdfResults.created > 0
-          ? `${pdfResults.created} new candidate${pdfResults.created === 1 ? "" : "s"} created from PDF`
-          : null,
-      ]
-        .filter(Boolean)
-        .join(", ");
+      const nextReport: ImportReport = {
+        csvFiles: csvSnapshot.length,
+        csvTotalRows,
+        csvImported,
+        csvImportedNoEmail,
+        csvDuplicates,
+        csvSkippedNoName,
+        csvSkippedError,
+        csvFormats,
+        csvFileErrors,
+        pdfFiles: pdfSnapshot.length,
+        pdfAttached: pdfResults.attached,
+        pdfCreated: pdfResults.created,
+        pdfUnmatched: pdfResults.unmatched.map((u) => u.filename),
+        pdfFailed: pdfResults.failed.map((u) => ({
+          filename: u.filename,
+          error: u.error,
+        })),
+      };
 
-      const descParts: string[] = [];
-      if (csvDuplicates > 0) {
-        descParts.push(
-          `${csvDuplicates} CSV duplicate${csvDuplicates === 1 ? "" : "s"} skipped`,
-        );
-      }
-      if (csvSkipped > 0) {
-        descParts.push(
-          `${csvSkipped} CSV row${csvSkipped === 1 ? "" : "s"} skipped`,
-        );
-      }
-      if (csvErrored.length > 0) {
-        descParts.push(
-          `CSV errors: ${csvErrored.map((r) => `${r.filename} (${r.error})`).join("; ")}`,
-        );
-      }
-      if (pdfResults.unmatched.length > 0) {
-        descParts.push(
-          `Unparseable PDFs: ${pdfResults.unmatched.map((u) => u.filename).join(", ")}`,
-        );
-      }
-      if (pdfResults.failed.length > 0) {
-        descParts.push(
-          `PDF failures: ${pdfResults.failed.map((u) => `${u.filename} (${u.error})`).join("; ")}`,
-        );
-      }
-      const description = descParts.join(" · ");
+      const importedTotal = csvImported + pdfResults.attached + pdfResults.created;
+      const problems =
+        csvSkippedNoName +
+        csvSkippedError +
+        csvDuplicates +
+        csvFileErrors.length +
+        pdfResults.unmatched.length +
+        pdfResults.failed.length;
 
-      const anySuccess =
-        csvImported > 0 || pdfResults.attached + pdfResults.created > 0;
-      const anyHardFailure =
-        csvErrored.length > 0 || pdfResults.failed.length > 0;
+      // Anything imported means the list behind the modal changed.
+      if (importedTotal > 0) onImported?.();
 
-      const finalSummary = summary || "Nothing imported";
-      if (anySuccess && !anyHardFailure) {
-        toast.success(finalSummary, description ? { description } : undefined);
-      } else if (anySuccess) {
-        toast.success(finalSummary, { description });
+      if (importedTotal > 0 && problems === 0) {
+        // Clean run: brief success toast and dismiss.
+        toast.success(
+          `Imported ${importedTotal} candidate${importedTotal === 1 ? "" : "s"}.`,
+        );
+        onClose();
       } else {
-        toast.error(finalSummary, description ? { description } : undefined);
+        // Partial or zero import: keep the dialog open and show why. A
+        // zero-import on a real file reads as an error, not a success.
+        setReport(nextReport);
+        if (importedTotal > 0) {
+          toast.success(
+            `Imported ${importedTotal}, ${problems} need attention.`,
+          );
+        } else {
+          toast.error("Imported 0 candidates. See details in the dialog.");
+        }
       }
-      onDone();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Import failed.";
       setError(msg);
@@ -475,10 +550,18 @@ export function AddMultipleDialog({
 
   return (
     <BulkModal title="Add multiple candidates" onClose={onClose}>
+      {report ? (
+        <ImportReportView
+          report={report}
+          onImportAnother={resetForAnother}
+          onClose={onClose}
+        />
+      ) : (
+      <>
       <p className="mb-3 text-xs text-court-fg-muted">
-        Drop a Pin CSV export and/or resume PDFs in any combination. CSV
-        rows import as new candidates; PDFs match existing candidates by
-        first + last name and create a record on miss. Up to {MAX_QUEUE_FILES} files at a time.
+        Drop a Pin or ZoomInfo CSV export and/or resume PDFs in any
+        combination. CSV rows import as new candidates; PDFs match existing
+        candidates by first + last name and create a record on miss. Up to {MAX_QUEUE_FILES} files at a time.
       </p>
       <div
         onDragEnter={onDragEnter}
@@ -631,7 +714,161 @@ export function AddMultipleDialog({
           {busy ? "Importing…" : `Import ${totalCount || ""}`.trim()}
         </button>
       </div>
+      </>
+      )}
     </BulkModal>
+  );
+}
+
+// Post-import results panel. Shown in place of the dropzone after an
+// import so a partial or zero result explains itself and the dialog
+// stays open. Rendered inside the existing BulkModal shell.
+function ImportReportView({
+  report,
+  onImportAnother,
+  onClose,
+}: {
+  report: ImportReport;
+  onImportAnother: () => void;
+  onClose: () => void;
+}) {
+  const importedTotal =
+    report.csvImported + report.pdfAttached + report.pdfCreated;
+  const zero = importedTotal === 0;
+  const formatLabel = report.csvFormats
+    .map((f) => FORMAT_LABEL[f] ?? f)
+    .join(", ");
+  // Unrecognized = the generic mapper couldn't find a name in any row,
+  // so the whole file was skipped. Distinct from "a few rows had no name".
+  const unrecognized =
+    report.csvFiles > 0 &&
+    report.csvImported === 0 &&
+    report.csvSkippedNoName > 0 &&
+    report.csvFormats.every((f) => f === "generic");
+
+  type Line = { tone: "good" | "warn" | "bad"; text: string };
+  const lines: Line[] = [];
+  if (report.csvImported > 0) {
+    lines.push({
+      tone: "good",
+      text:
+        `${report.csvImported} candidate${report.csvImported === 1 ? "" : "s"} imported from CSV` +
+        (report.csvImportedNoEmail > 0
+          ? ` (${report.csvImportedNoEmail} without an email)`
+          : ""),
+    });
+  }
+  if (report.pdfAttached > 0) {
+    lines.push({
+      tone: "good",
+      text: `${report.pdfAttached} resume${report.pdfAttached === 1 ? "" : "s"} attached`,
+    });
+  }
+  if (report.pdfCreated > 0) {
+    lines.push({
+      tone: "good",
+      text: `${report.pdfCreated} new candidate${report.pdfCreated === 1 ? "" : "s"} created from PDF`,
+    });
+  }
+  if (report.csvDuplicates > 0) {
+    lines.push({
+      tone: "warn",
+      text: `${report.csvDuplicates} duplicate${report.csvDuplicates === 1 ? "" : "s"} skipped (already in your candidates)`,
+    });
+  }
+  if (report.csvSkippedNoName > 0) {
+    lines.push({
+      tone: unrecognized ? "bad" : "warn",
+      text: unrecognized
+        ? `${report.csvSkippedNoName} row${report.csvSkippedNoName === 1 ? "" : "s"} skipped: no name column recognized`
+        : `${report.csvSkippedNoName} row${report.csvSkippedNoName === 1 ? "" : "s"} skipped (no name)`,
+    });
+  }
+  if (report.csvSkippedError > 0) {
+    lines.push({
+      tone: "bad",
+      text: `${report.csvSkippedError} row${report.csvSkippedError === 1 ? "" : "s"} failed to import`,
+    });
+  }
+  for (const fe of report.csvFileErrors) {
+    lines.push({ tone: "bad", text: `CSV ${fe.filename}: ${fe.error}` });
+  }
+  if (report.pdfUnmatched.length > 0) {
+    lines.push({
+      tone: "warn",
+      text: `${report.pdfUnmatched.length} PDF${report.pdfUnmatched.length === 1 ? "" : "s"} could not be matched`,
+    });
+  }
+  for (const pf of report.pdfFailed) {
+    lines.push({ tone: "bad", text: `PDF ${pf.filename}: ${pf.error}` });
+  }
+
+  const toneClass: Record<Line["tone"], string> = {
+    good: "text-court-fg",
+    warn: "text-amber-700 dark:text-amber-300",
+    bad: "text-red-600 dark:text-red-400",
+  };
+
+  return (
+    <div>
+      <div
+        className={
+          "mb-3 rounded-md border p-3 " +
+          (zero
+            ? "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/40"
+            : "border-court-border bg-court-surface-subtle")
+        }
+      >
+        <p className="text-sm font-semibold text-court-fg">
+          {zero
+            ? "Nothing imported"
+            : `Imported ${importedTotal} candidate${importedTotal === 1 ? "" : "s"}`}
+        </p>
+        {report.csvFiles > 0 && (
+          <p className="mt-0.5 text-[11px] text-court-fg-muted">
+            {report.csvTotalRows} CSV row{report.csvTotalRows === 1 ? "" : "s"} read
+            {formatLabel ? ` · detected ${formatLabel}` : ""}
+          </p>
+        )}
+      </div>
+
+      {unrecognized && (
+        <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          Couldn&apos;t recognize the columns in this file. Expected a Pin or
+          ZoomInfo export, or common headers like First Name / Last Name /
+          Email. Check the file&apos;s header row and try again.
+        </div>
+      )}
+
+      <ul className="space-y-1 text-xs">
+        {lines.map((l, i) => (
+          <li
+            key={i}
+            className={"flex items-start gap-1.5 " + toneClass[l.tone]}
+          >
+            <span
+              aria-hidden
+              className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-current"
+            />
+            <span>{l.text}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={onImportAnother}
+        >
+          Import another file
+        </Button>
+        <Button type="button" variant="primary" size="sm" onClick={onClose}>
+          Done
+        </Button>
+      </div>
+    </div>
   );
 }
 

@@ -28,6 +28,26 @@ const MAX_EDUCATIONS = 5;
 
 type Row = Record<string, string | undefined>;
 
+// Source export the CSV came from. "pin" = Pin's dotted-namespace
+// export; "zoominfo" = a ZoomInfo PERSON export (human-readable
+// headers); "generic" = anything else, mapped best-effort by common
+// column names so a stray export still imports instead of silently
+// skipping every row.
+type SourceFormat = "pin" | "zoominfo" | "generic";
+
+type NormalizedRow = {
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  title: string;
+  company: string;
+  location: string | null;
+  linkedin: string | null;
+  experiences: WorkEntry[];
+  educations: EduEntry[];
+};
+
 function clean(v: string | undefined): string {
   return (v ?? "").trim();
 }
@@ -37,6 +57,35 @@ function normalizeEmail(raw: string | undefined): string | null {
   if (!s) return null;
   if (!s.includes("@")) return null;
   return s;
+}
+
+// Split a single "Full Name" cell into first + last for exports that
+// don't separate the two. First token is the first name; the remainder
+// (which may be multi-word) is the last name.
+function splitFullName(full: string): { first: string; last: string } {
+  const parts = clean(full).split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { first: "", last: "" };
+  if (parts.length === 1) return { first: parts[0], last: "" };
+  return { first: parts[0], last: parts.slice(1).join(" ") };
+}
+
+// Header-driven format detection. Pin exports carry dotted
+// "candidate.*" columns; ZoomInfo PERSON exports carry "First Name" +
+// "Email Address" / "Company Name". Everything else is treated as
+// generic and matched best-effort below.
+function detectFormat(fields: string[]): SourceFormat {
+  const set = new Set(fields.map((f) => f.trim().toLowerCase()));
+  if (set.has("candidate.firstname") || set.has("candidate.emails.0")) {
+    return "pin";
+  }
+  const hasName = set.has("first name") || set.has("last name");
+  const hasZoomCol =
+    set.has("email address") ||
+    set.has("company name") ||
+    set.has("direct phone number") ||
+    set.has("person city");
+  if (hasName && hasZoomCol) return "zoominfo";
+  return "generic";
 }
 
 // Pin date columns come as raw strings (ISO, year-only, "Present", or
@@ -178,7 +227,133 @@ export async function POST(req: Request) {
   }
 
   const rows = parsed.data ?? [];
+  const fields = parsed.meta.fields ?? [];
+  const format = detectFormat(fields);
   const org = await getCurrentOrg();
+
+  // Case-insensitive header lookup for the ZoomInfo + generic mappers.
+  // ZoomInfo/CRM exports vary header casing ("Mobile phone" vs "Mobile
+  // Phone"), so we resolve by lowercased name to the real column key.
+  const lc = new Map<string, string>();
+  for (const f of fields) lc.set(f.trim().toLowerCase(), f);
+  const getCI = (row: Row, name: string): string => {
+    const key = lc.get(name.toLowerCase());
+    return key ? clean(row[key]) : "";
+  };
+  const getCIFirst = (row: Row, names: string[]): string => {
+    for (const n of names) {
+      const v = getCI(row, n);
+      if (v) return v;
+    }
+    return "";
+  };
+
+  function mapRow(row: Row): NormalizedRow {
+    if (format === "pin") {
+      const experiences = collectExperiences(row);
+      const educations = collectEducations(row);
+      const head = experiences[0];
+      return {
+        firstName: clean(row[COL.firstName]),
+        lastName: clean(row[COL.lastName]),
+        email: normalizeEmail(row[COL.email]),
+        phone: clean(row[COL.phone]) || null,
+        title: head?.title || "",
+        company: head?.company || "",
+        location: clean(row[COL.location]) || null,
+        linkedin: clean(row[COL.linkedin]) || null,
+        experiences,
+        educations,
+      };
+    }
+    if (format === "zoominfo") {
+      const city = getCI(row, "Person City");
+      const state = getCI(row, "Person State");
+      const loc = [city, state].filter(Boolean).join(", ");
+      return {
+        firstName: getCI(row, "First Name"),
+        lastName: getCI(row, "Last Name"),
+        email: normalizeEmail(getCI(row, "Email Address")),
+        // Prefer mobile, fall back to the direct line.
+        phone:
+          getCIFirst(row, [
+            "Mobile phone",
+            "Mobile Phone",
+            "Mobile Phone Number",
+            "Direct Phone Number",
+          ]) || null,
+        title: getCI(row, "Job Title"),
+        company: getCI(row, "Company Name"),
+        location: loc || null,
+        linkedin:
+          getCIFirst(row, [
+            "LinkedIn Contact Profile URL",
+            "LinkedIn URL",
+          ]) || null,
+        experiences: [],
+        educations: [],
+      };
+    }
+    // generic best-effort
+    let firstName = getCIFirst(row, ["First Name", "FirstName", "First"]);
+    let lastName = getCIFirst(row, [
+      "Last Name",
+      "LastName",
+      "Last",
+      "Surname",
+    ]);
+    if (!firstName && !lastName) {
+      const full = getCIFirst(row, ["Full Name", "Name", "Contact Name"]);
+      if (full) {
+        const s = splitFullName(full);
+        firstName = s.first;
+        lastName = s.last;
+      }
+    }
+    const city = getCIFirst(row, ["City", "Person City"]);
+    const state = getCIFirst(row, ["State", "Person State", "Region"]);
+    const locJoin = [city, state].filter(Boolean).join(", ");
+    return {
+      firstName,
+      lastName,
+      email: normalizeEmail(
+        getCIFirst(row, ["Email", "Email Address", "E-mail", "Work Email"]),
+      ),
+      phone:
+        getCIFirst(row, [
+          "Mobile phone",
+          "Mobile",
+          "Cell",
+          "Phone",
+          "Phone Number",
+          "Direct Phone Number",
+          "Work Phone",
+        ]) || null,
+      title: getCIFirst(row, ["Job Title", "Title", "Position", "Role"]),
+      company: getCIFirst(row, [
+        "Company Name",
+        "Company",
+        "Employer",
+        "Organization",
+        "Current Employer",
+      ]),
+      location: getCIFirst(row, ["Location"]) || locJoin || null,
+      linkedin:
+        getCIFirst(row, [
+          "LinkedIn",
+          "LinkedIn URL",
+          "LinkedIn Contact Profile URL",
+          "Linkedin Profile",
+        ]) || null,
+      experiences: [],
+      educations: [],
+    };
+  }
+
+  // Normalize every row once, up front, so the dedup pre-scan and the
+  // import loop share the same mapped values (the Pin mapper does real
+  // work per row via collectExperiences).
+  const normalized = rows.map(mapRow);
 
   // Batch the duplicate-email check: collect every normalized email in the
   // CSV up front and resolve existing candidates in one query instead of a
@@ -186,8 +361,8 @@ export async function POST(req: Request) {
   // single findMany mirrors the original per-row lookup semantics.
   const csvEmails = Array.from(
     new Set(
-      rows
-        .map((row) => normalizeEmail(row[COL.email]))
+      normalized
+        .map((n) => n.email)
         .filter((e): e is string => !!e),
     ),
   );
@@ -202,7 +377,9 @@ export async function POST(req: Request) {
   );
 
   let imported = 0;
-  let skipped = 0;
+  let importedNoEmail = 0;
+  let skippedNoName = 0;
+  let skippedError = 0;
   let duplicates = 0;
   // Geocode per imported row so a CSV-imported candidate gets a distance
   // sub-line without waiting for the next scripts/geocode-candidates.ts
@@ -218,47 +395,41 @@ export async function POST(req: Request) {
   let geocodeAttempts = 0;
   let geocodeDeferred = 0;
 
-  for (const row of rows) {
-    const firstName = clean(row[COL.firstName]);
-    const lastName = clean(row[COL.lastName]);
-    if (!firstName && !lastName) {
-      skipped += 1;
+  for (const n of normalized) {
+    if (!n.firstName && !n.lastName) {
+      skippedNoName += 1;
       continue;
     }
 
-    const email = normalizeEmail(row[COL.email]);
-    if (email && existingEmails.has(email)) {
+    if (n.email && existingEmails.has(n.email)) {
       duplicates += 1;
       continue;
     }
 
-    const experiences = collectExperiences(row);
-    const educations = collectEducations(row);
-    const head = experiences[0];
-
-    const rowLocation = clean(row[COL.location]) || null;
+    const rowLocation = n.location;
     try {
       const createdRow = await prisma.candidate.create({
         data: {
-          firstName: firstName || lastName,
-          lastName: firstName ? lastName || null : null,
-          email,
-          phone: clean(row[COL.phone]) || null,
-          currentDesignation: head?.title || null,
-          currentOrganization: head?.company || null,
+          firstName: n.firstName || n.lastName,
+          lastName: n.firstName ? n.lastName || null : null,
+          email: n.email,
+          phone: n.phone,
+          currentDesignation: n.title || null,
+          currentOrganization: n.company || null,
           location: rowLocation,
-          linkedinProfile: clean(row[COL.linkedin]) || null,
-          experience: experiences.length ? experiences : undefined,
-          education: educations.length ? educations : undefined,
+          linkedinProfile: n.linkedin,
+          experience: n.experiences.length ? n.experiences : undefined,
+          education: n.educations.length ? n.educations : undefined,
           createdById: user.id,
           organizationId: org.id,
         },
         select: { id: true },
       });
       imported += 1;
+      if (!n.email) importedNoEmail += 1;
       // Track this email so a later row in the same CSV with the same address
       // is counted as a duplicate without a failing insert + P2002 round trip.
-      if (email) existingEmails.add(email);
+      if (n.email) existingEmails.add(n.email);
 
       // Awaited, failure-isolated, tenant-scoped geocode (same shape as
       // createCandidate, Ace 68.0 / f2d48d8). The row is already imported
@@ -299,7 +470,7 @@ export async function POST(req: Request) {
       }
       // eslint-disable-next-line no-console
       console.error("[import-csv] row create failed:", err);
-      skipped += 1;
+      skippedError += 1;
     }
   }
 
@@ -316,5 +487,17 @@ export async function POST(req: Request) {
     });
   }
 
-  return NextResponse.json({ imported, skipped, duplicates, geocoded, geocodeDeferred });
+  return NextResponse.json({
+    imported,
+    skipped: skippedNoName + skippedError,
+    duplicates,
+    // Breakdown the dialog uses to explain a partial or zero import.
+    format,
+    total: rows.length,
+    skippedNoName,
+    skippedError,
+    importedNoEmail,
+    geocoded,
+    geocodeDeferred,
+  });
 }
