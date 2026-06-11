@@ -30,6 +30,11 @@ import {
 import { MaskedCurrencyInput } from "@/components/ui/masked-currency-input";
 import { LEAD_SOURCES } from "@/lib/lead-sources";
 import { cn, formatLocation } from "@/lib/utils";
+import {
+  composeCandidateLocation,
+  splitCandidateLocation,
+  type CandidateLocationParts,
+} from "@/lib/candidate-location-parts";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 import { buildTokenColorMap } from "@/app/candidates/[id]/resume-matches-rail";
 import type { CandidateCompactOverviewExpectedSalary } from "@/components/candidate-overview-helpers";
@@ -116,7 +121,9 @@ export function CandidateCompactOverview({
   const [editing, setEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(titleSaved);
   const [employerDraft, setEmployerDraft] = useState(employerSaved);
-  const [locationDraft, setLocationDraft] = useState(locationSaved);
+  const [locationDraft, setLocationDraft] = useState<CandidateLocationParts>(() =>
+    splitCandidateLocation(locationSaved),
+  );
   const [sourceDraft, setSourceDraft] = useState(sourceSaved);
   const [compDraft, setCompDraft] = useState<string>(formatCompForEdit(compSaved));
   const [emailsDraft, setEmailsDraft] = useState<string[]>(emailsSaved);
@@ -127,7 +134,7 @@ export function CandidateCompactOverview({
     if (editing) return;
     setTitleDraft(titleSaved);
     setEmployerDraft(employerSaved);
-    setLocationDraft(locationSaved);
+    setLocationDraft(splitCandidateLocation(locationSaved));
     setSourceDraft(sourceSaved);
     setCompDraft(formatCompForEdit(compSaved));
     setEmailsDraft(emailsSaved);
@@ -143,7 +150,7 @@ export function CandidateCompactOverview({
   function beginEdit() {
     setTitleDraft(titleSaved);
     setEmployerDraft(employerSaved);
-    setLocationDraft(locationSaved);
+    setLocationDraft(splitCandidateLocation(locationSaved));
     setSourceDraft(sourceSaved);
     setCompDraft(formatCompForEdit(compSaved));
     // Seed at least one empty row so the recruiter can type straight away.
@@ -160,7 +167,7 @@ export function CandidateCompactOverview({
   function commitEdit() {
     const nextTitle = titleDraft.trim();
     const nextEmployer = employerDraft.trim();
-    const nextLocation = locationDraft.trim();
+    const nextLocation = composeCandidateLocation(locationDraft);
     const nextSource = sourceDraft.trim();
     const nextCompNumber = parseCompensation(compDraft.trim());
     const currency = (compSaved?.currency ?? "USD").toUpperCase().slice(0, 3) || "USD";
@@ -275,15 +282,41 @@ export function CandidateCompactOverview({
               className="px-2 py-1"
             />
           </EditField>
-          <EditField label="Location">
-            <Input
-              type="text"
-              value={locationDraft}
-              disabled={isSaving}
-              onChange={(e) => setLocationDraft(e.target.value)}
-              className="px-2 py-1"
-            />
-          </EditField>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <EditField label="City">
+              <Input
+                type="text"
+                value={locationDraft.city}
+                disabled={isSaving}
+                onChange={(e) =>
+                  setLocationDraft((prev) => ({ ...prev, city: e.target.value }))
+                }
+                className="px-2 py-1"
+              />
+            </EditField>
+            <EditField label="State">
+              <Input
+                type="text"
+                value={locationDraft.state}
+                disabled={isSaving}
+                onChange={(e) =>
+                  setLocationDraft((prev) => ({ ...prev, state: e.target.value }))
+                }
+                className="px-2 py-1"
+              />
+            </EditField>
+            <EditField label="ZIP">
+              <Input
+                type="text"
+                value={locationDraft.zip}
+                disabled={isSaving}
+                onChange={(e) =>
+                  setLocationDraft((prev) => ({ ...prev, zip: e.target.value }))
+                }
+                className="px-2 py-1"
+              />
+            </EditField>
+          </div>
           <EditField label="Source">
             <Select
               value={sourceDraft}

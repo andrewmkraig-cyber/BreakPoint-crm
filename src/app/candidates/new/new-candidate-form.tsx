@@ -12,6 +12,10 @@ import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { LEAD_SOURCES } from "@/lib/lead-sources";
 import {
+  composeCandidateLocation,
+  splitCandidateLocation,
+} from "@/lib/candidate-location-parts";
+import {
   checkCandidateEmail,
   createCandidate,
   discardResumeUpload,
@@ -23,6 +27,9 @@ import {
 } from "@/app/candidates/new/actions";
 
 type FormState = CreateCandidatePayload & {
+  locationCity: string;
+  locationState: string;
+  locationZip: string;
   skillsText: string;
   experience: ParsedExperienceRow[];
   education: ParsedEducationRow[];
@@ -36,6 +43,9 @@ const EMPTY: FormState = {
   current_designation: "",
   current_organization: "",
   location: "",
+  locationCity: "",
+  locationState: "",
+  locationZip: "",
   linkedin_profile: "",
   source: "",
   skills: [],
@@ -185,6 +195,7 @@ export function NewCandidateForm({
           p.current_organization,
           currentExp?.organization,
         );
+        const parsedLocation = p.location ? splitCandidateLocation(p.location) : null;
         const expRows: ParsedExperienceRow[] = (p.experience ?? []).map((r) => ({
           designation: r.designation ?? "",
           organization: r.organization ?? "",
@@ -207,7 +218,12 @@ export function NewCandidateForm({
           phone: p.phone ?? prev.phone,
           current_designation: backfillDesignation || prev.current_designation,
           current_organization: backfillOrganization || prev.current_organization,
-          location: p.location ?? prev.location,
+          location: parsedLocation
+            ? composeCandidateLocation(parsedLocation)
+            : prev.location,
+          locationCity: parsedLocation?.city ?? prev.locationCity,
+          locationState: parsedLocation?.state ?? prev.locationState,
+          locationZip: parsedLocation?.zip ?? prev.locationZip,
           linkedin_profile: p.linkedin_profile ?? nextUrl.trim() ?? prev.linkedin_profile,
           skills: p.skills.length ? p.skills : prev.skills,
           skillsText: p.skills.length ? p.skills.join(", ") : prev.skillsText,
@@ -289,8 +305,14 @@ export function NewCandidateForm({
 
   function onSave() {
     setSaveError(null);
+    const composedLocation = composeCandidateLocation({
+      city: form.locationCity,
+      state: form.locationState,
+      zip: form.locationZip,
+    });
     const payload: CreateCandidatePayload = {
       ...form,
+      location: composedLocation,
       skills: form.skillsText
         .split(",")
         .map((s) => s.trim())
@@ -586,7 +608,9 @@ export function NewCandidateForm({
             <Field label="Current title" value={form.current_designation} onChange={(v) => setForm({ ...form, current_designation: v })} />
             <Field label="Current employer" value={form.current_organization} onChange={(v) => setForm({ ...form, current_organization: v })} />
             <Field label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
-            <Field label="Location" value={form.location} onChange={(v) => setForm({ ...form, location: v })} />
+            <Field label="City" value={form.locationCity} onChange={(v) => setForm({ ...form, locationCity: v })} />
+            <Field label="State" value={form.locationState} onChange={(v) => setForm({ ...form, locationState: v })} />
+            <Field label="ZIP" value={form.locationZip} onChange={(v) => setForm({ ...form, locationZip: v })} />
             <Field label="LinkedIn" type="url" value={form.linkedin_profile} onChange={(v) => setForm({ ...form, linkedin_profile: v })} />
             <SelectField
               label="Source"
