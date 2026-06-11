@@ -803,10 +803,20 @@ const REQUIRED_JD_HEADERS = [
   "You Should Have Most of the Following",
 ] as const;
 
-function missingRequiredJdHeaders(text: string): string[] {
+// Exported so the create-job server action can detect a description that
+// is NOT in canonical BreakPoint JD markdown (e.g. the raw parse-url
+// extraction text left behind when the markdown reformat fell back, or
+// raw text a recruiter pasted and saved without running Parse & Generate)
+// and normalize it through generateJobDescription before persisting.
+export function missingRequiredJdHeaders(text: string): string[] {
   const lower = text.toLowerCase();
   return REQUIRED_JD_HEADERS.filter((h) => !lower.includes(h.toLowerCase()));
 }
+
+// Total count of canonical JD section headers. Lets callers compare
+// "how many headers are missing" against the full set without re-deriving
+// the list.
+export const REQUIRED_JD_HEADER_COUNT = REQUIRED_JD_HEADERS.length;
 
 // Candidate submittal writeup for a specific job. Produces the exact
 // BreakPoint format the recruiter pastes into the submittal email. Plain text

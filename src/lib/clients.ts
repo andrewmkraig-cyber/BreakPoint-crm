@@ -75,7 +75,9 @@ function compactLocation(raw: LocationJson): string {
   if (!raw) return "";
   const city = raw.city?.trim() ?? "";
   const state = raw.state?.trim() ?? "";
-  return [city, state].filter(Boolean).join(", ");
+  const postalCode = raw.postal_code?.trim() ?? "";
+  const cityState = [city, state].filter(Boolean).join(", ");
+  return [cityState, postalCode].filter(Boolean).join(" ");
 }
 
 function slugFor(row: { id: string; legacyRfId: number | null }): string {

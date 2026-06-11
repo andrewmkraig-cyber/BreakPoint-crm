@@ -5,7 +5,13 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import { extractJobFieldsFromGeneratedJd, generateJobDescription, type ExtractedJdFields } from "@/lib/claude";
+import {
+  extractJobFieldsFromGeneratedJd,
+  generateJobDescription,
+  missingRequiredJdHeaders,
+  REQUIRED_JD_HEADER_COUNT,
+  type ExtractedJdFields,
+} from "@/lib/claude";
 import { ensureMajorBoardsSeeded } from "@/lib/job-boards";
 import { validateUsCity, validateUsZip } from "@/lib/location-validation";
 
@@ -179,9 +185,45 @@ export async function createJob(
       clientId = client.id;
     }
 
-    const description = input.description.trim();
+    let description = input.description.trim();
     const jobType = input.jobType.trim();
     const employmentType = input.employmentType.trim();
+
+    // Format guarantee: every created job must store its JD in the canonical
+    // BreakPoint markdown structure (## A Bit About Us / ## Why Join Us /
+    // ## Job Details with ### sub-sections), regardless of how the recruiter
+    // sourced it (pasted URL, dropped file, or pasted raw text). All three
+    // input methods funnel through this one action, so normalizing here is
+    // the single bulletproof chokepoint.
+    //
+    // The form already runs the markdown generator client-side, but that
+    // call can fall back to the raw parse-url extraction text when Claude is
+    // momentarily busy (the "Title: / About the Company: / Responsibilities:"
+    // flat shape) - that fallback is what was getting saved unformatted. We
+    // re-format only when the description clearly is NOT a BreakPoint JD
+    // (3+ of the 5 canonical headers missing); an already-formatted JD, or a
+    // recruiter's hand-edit of one, keeps all/most headers and is left
+    // untouched so we never clobber deliberate edits or burn a needless call.
+    if (
+      description &&
+      process.env.ANTHROPIC_API_KEY &&
+      missingRequiredJdHeaders(description).length >= Math.min(3, REQUIRED_JD_HEADER_COUNT)
+    ) {
+      try {
+        const formatted = await generateJobDescription({
+          sourceText: description,
+          jobTitle: title,
+        });
+        if (formatted && missingRequiredJdHeaders(formatted).length === 0) {
+          description = formatted.trim();
+        }
+      } catch (e) {
+        // Never block a save on the reformat - keep the original text. The
+        // recruiter can still Regenerate with Claude on the JD tab later.
+        // eslint-disable-next-line no-console
+        console.error("[createJob] JD reformat failed, saving original:", e);
+      }
+    }
 
     // Normalize the new structured-location parts and compose the legacy
     // free-form "City, ST Zip" string from them. Empty parts collapse —
