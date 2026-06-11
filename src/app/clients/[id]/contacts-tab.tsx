@@ -8,6 +8,7 @@ import { addContact, updateContact } from "@/app/clients/[id]/actions";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input, Textarea } from "@/components/ui/input";
 
 export type ContactPhone = { number: string; extension: string };
 
@@ -31,9 +32,6 @@ export type ContactRow = {
   lastContactedAt: string | null;
 };
 
-// Shared input styling, matching the Field / EditorField inputs in this file.
-const FIELD_INPUT_CLASS =
-  "w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20";
 
 export function ContactsTab({
   clientCuid,
@@ -411,14 +409,11 @@ function ContactEditor({
           <EditorField label="LinkedIn URL" value={linkedin} onChange={setLinkedin} />
           <label className="block text-sm">
             <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Notes</span>
-            <textarea
+            <Textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={5}
-              className={cn(
-                "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
-                "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-              )}
+              frameClassName="mt-1"
             />
           </label>
           {error && (
@@ -473,17 +468,14 @@ function EditorField({
         {label}
         {required && <span className="ml-0.5 text-red-500">*</span>}
       </span>
-      <input
+      <Input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required={required}
         placeholder={placeholder}
         autoFocus={autoFocus}
-        className={cn(
-          "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
-          "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-        )}
+        frameClassName="mt-1"
       />
     </label>
   );
@@ -512,16 +504,13 @@ function Field({
         {label}
         {required && <span className="ml-0.5 text-red-500">*</span>}
       </span>
-      <input
+      <Input
         name={name}
         type={type}
         required={required}
         placeholder={placeholder}
         autoFocus={autoFocus}
-        className={cn(
-          "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
-          "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-        )}
+        frameClassName="mt-1"
       />
     </label>
   );
@@ -547,7 +536,7 @@ function EmailListField({
       <div className="mt-1 space-y-2">
         {rows.map((v, i) => (
           <div key={i} className="flex items-center gap-2">
-            <input
+            <Input
               type="email"
               name={name}
               value={v}
@@ -556,7 +545,7 @@ function EmailListField({
                 next[i] = e.target.value;
                 onChange(next);
               }}
-              className={FIELD_INPUT_CLASS}
+              containerClassName="flex-1"
             />
             {i > 0 && (
               <button
@@ -603,7 +592,7 @@ function PhoneListField({
         {rows.map((p, i) => (
           <div key={i} className="flex items-center gap-2">
             <div className="grid flex-1 grid-cols-[1fr_auto] gap-2">
-              <input
+              <Input
                 name={numberName}
                 value={p.number}
                 onChange={(e) => {
@@ -611,9 +600,9 @@ function PhoneListField({
                   next[i].number = e.target.value;
                   onChange(next);
                 }}
-                className={FIELD_INPUT_CLASS}
+                containerClassName="min-w-0"
               />
-              <input
+              <Input
                 name={extName}
                 value={p.extension}
                 onChange={(e) => {
@@ -622,7 +611,7 @@ function PhoneListField({
                   onChange(next);
                 }}
                 placeholder="Ext."
-                className={cn(FIELD_INPUT_CLASS, "w-20")}
+                containerClassName="w-20"
               />
             </div>
             {i > 0 && (
