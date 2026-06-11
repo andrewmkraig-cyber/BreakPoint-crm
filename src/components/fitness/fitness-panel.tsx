@@ -2448,7 +2448,7 @@ function ExerciseCard({
               </span>
             ) : null}
           </div>
-          <p className="mt-1 truncate pl-6 text-xs text-court-fg-muted">
+          <p className="mt-1 truncate pl-6 pr-1 text-xs leading-4 text-court-fg-muted">
             {lastLabel}
           </p>
         </div>
@@ -2460,7 +2460,7 @@ function ExerciseCard({
       {expanded ? (
         <div className="border-t border-court-border px-3 pb-3 pt-3">
           <div className="mb-3 flex items-center justify-between gap-3 rounded-md bg-court-surface-subtle px-2 py-2">
-            <p className="min-w-0 truncate text-xs font-medium text-court-fg-muted">
+            <p className="min-w-0 truncate pr-1 text-xs font-medium leading-4 text-court-fg-muted">
               Last time - {lastLabel}
             </p>
             <button
