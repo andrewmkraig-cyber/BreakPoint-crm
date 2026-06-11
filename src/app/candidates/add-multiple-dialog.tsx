@@ -696,23 +696,25 @@ export function AddMultipleDialog({
       )}
 
       <div className="mt-4 flex items-center justify-end gap-2">
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={onClose}
           disabled={busy}
-          className="rounded-md px-3 py-1.5 text-xs font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
         >
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="primary"
+          size="sm"
           onClick={onImport}
           disabled={busy || totalCount === 0}
-          className="inline-flex items-center gap-1 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
         >
           {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
           {busy ? "Importing…" : `Import ${totalCount || ""}`.trim()}
-        </button>
+        </Button>
       </div>
       </>
       )}
