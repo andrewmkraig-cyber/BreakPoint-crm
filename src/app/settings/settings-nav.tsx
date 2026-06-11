@@ -8,21 +8,25 @@ import { cn } from "@/lib/utils";
 // nav (client component) share the same source of truth.
 //
 // Order: Appearance + Notifications first, then the live-health
-// Connectors panel, then BD Engine right after it, then the workflow
-// and housekeeping panels (rarely visited ones last). Email Preferences
-// was removed; phone + signature are owned by Branding now, and the
-// auto-send trigger moved into Templates/Triggers. "Personal Info" and
-// "Branding" merged into one entry — both forms now render on the
-// /settings/personal-info page with brand below personal info.
+// Connectors panel, then BD Engine right after it, then the email
+// workflow panels (Bulk Email Pacing above Templates + Triggers), then
+// housekeeping. Personal Trainer sits near the bottom above Claude
+// History (rarely visited). Email Preferences was removed; phone +
+// signature are owned by Branding now, and the auto-send trigger moved
+// into Templates/Triggers. "Personal Info" and "Branding" merged into
+// one entry — both forms now render on the /settings/personal-info page
+// with brand below personal info. Bulk email pacing was split out of
+// /settings/templates into its own category.
 export const SETTINGS_CATEGORIES = [
   { slug: "appearance",        label: "Appearance" },
   { slug: "notifications",     label: "Notifications" },
   { slug: "connectors",        label: "Connectors" },
   { slug: "bd",                label: "BD Engine" },
-  { slug: "personal-trainer",  label: "Personal Trainer" },
+  { slug: "bulk-email",        label: "Bulk Email Pacing" },
   { slug: "templates",         label: "Templates + Triggers" },
   { slug: "billing",           label: "Billing" },
   { slug: "personal-info",     label: "Personal Info + Brand" },
+  { slug: "personal-trainer",  label: "Personal Trainer" },
   { slug: "history",           label: "Claude History" },
 ] as const;
 
@@ -40,7 +44,7 @@ export function SettingsNav() {
   return (
     <>
       {/* Mobile (< lg): horizontal scrollable pill strip. Mirrors the
-          MobileBucketTabs pattern from /phone — all 11 categories stay
+          MobileBucketTabs pattern from /phone — all categories stay
           reachable on a 375px viewport via overflow-x scroll, no
           wrapping. Hidden at lg+ where the vertical sidebar takes
           over. */}
