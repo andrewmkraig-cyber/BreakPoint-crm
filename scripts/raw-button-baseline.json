@@ -23,7 +23,7 @@
   "src/app/candidates/[id]/local-profile.tsx": 2,
   "src/app/candidates/[id]/resume-editor.tsx": 5,
   "src/app/candidates/add-multiple-dialog.tsx": 3,
-  "src/app/candidates/bulk-dialogs.tsx": 18,
+  "src/app/candidates/bulk-dialogs.tsx": 16,
   "src/app/candidates/lists/[id]/list-detail-view.tsx": 3,
   "src/app/candidates/lists/lists-management-view.tsx": 5,
   "src/app/candidates/new/new-candidate-form.tsx": 3,

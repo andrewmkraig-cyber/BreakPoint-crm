@@ -1,10 +1,10 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import {
   CheckCircle2,
   ChevronDown,
-  ChevronRight,
   Clock,
   FileText,
   Loader2,
@@ -32,14 +32,41 @@ import {
 } from "@/app/candidates/bulk-actions";
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
 import type { EmailDraft } from "@/components/email-composer";
+import type { RichTextBodyEditorHandle } from "@/components/rich-text-body-editor";
 import { EditWithClaudeMenu, EditWithClaudeCustomPanel, type EditType } from "@/components/edit-with-claude-menu";
-import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
-import { Input, Textarea, Select } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Input, Select } from "@/components/ui/input";
 import { useSendLater } from "@/components/mail/send-later-popover";
 import { formatScheduledTime } from "@/lib/timezone";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
-import { MERGE_FIELDS, htmlToReadableText, type MergeFieldValues } from "@/lib/merge-fields";
+import { MERGE_FIELDS, htmlToReadableText, looksLikeHtml, type MergeFieldValues } from "@/lib/merge-fields";
 import { cn } from "@/lib/utils";
+
+// Lazy-load the Tiptap rich-text body editor — same component the main
+// MailComposer uses (showToolbar gives Bold/Italic/Underline/lists/link).
+// Pulls in ProseMirror, so keep it out of the candidates-page bundle until
+// the bulk dialog actually opens.
+const RichTextBodyEditor = dynamic(
+  () => import("@/components/rich-text-body-editor").then((m) => m.RichTextBodyEditor),
+  { ssr: false },
+);
+
+// Client-safe plain-text → HTML for the rich body editor. Legacy templates
+// store plain text; the rich editor needs HTML or ProseMirror collapses the
+// line breaks. HTML templates pass straight through. (plainToHtml lives in
+// gmail.ts, which is server-only, so this is the client mirror.)
+function templateBodyToHtml(raw: string): string {
+  if (!raw) return "";
+  if (looksLikeHtml(raw)) return raw;
+  const esc = raw
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return esc
+    .split(/\n{2,}/)
+    .map((para) => `<p>${para.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
 
 // Shared bulk-action modals used by both the /candidates global page
 // and the job Matches tab. Extracted out of candidates-view.tsx so the
@@ -361,20 +388,25 @@ export function BulkEmailDialog({
   const fromEmail = session?.user?.email ?? "";
 
   // Composer state lives locally — EmailComposer is no longer mounted.
+  // `body` holds the HTML the rich-text editor emits (same as the main
+  // MailComposer's rich-text mode).
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const subjectRef = useRef<HTMLInputElement | null>(null);
-  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+  // Imperative handle on the Tiptap editor — lets Insert Field splice a
+  // merge token at the caret and lets Edit-with-Claude swap the body with
+  // an undoable transaction.
+  const richTextRef = useRef<RichTextBodyEditorHandle | null>(null);
   const [lastFocus, setLastFocus] = useState<"subject" | "body">("subject");
   const subjectCaret = useRef<number | null>(null);
-  const bodyCaret = useRef<number | null>(null);
 
-  // Recruiter-typed prompt for Generate-with-Claude. Collapsible strip
-  // above the AI toolbar so the recruiter can describe the email before
-  // firing the generator.
-  const [aiPrompt, setAiPrompt] = useState("");
-  const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  // Plain-text projection of the HTML body. Used for empty-checks (an empty
+  // Tiptap editor still emits "<p></p>", which would falsely read as
+  // non-empty) and for the plain-text MIME part on send. Merge tokens like
+  // [Candidate First Name] are bracket text, not tags, so they survive.
+  const bodyText = htmlToReadableText(body);
+
   const [isGenerating, startGenerate] = useTransition();
   const [isEditing, startEdit] = useTransition();
   const [isSending, startSend] = useTransition();
@@ -505,9 +537,10 @@ export function BulkEmailDialog({
     const subj = jobValues ? applyJobTokensOnly(template.subject, jobValues) : template.subject;
     const bod = jobValues ? applyJobTokensOnly(template.body, jobValues) : template.body;
     setSubject(subj);
-    // Bulk composer body is a plain textarea; flatten any HTML template
-    // body to readable text so bolded templates don't surface raw tags.
-    setBody(htmlToReadableText(bod));
+    // Bulk composer body is now a rich-text editor; preserve the template's
+    // HTML formatting (bold, lists) and lift legacy plain-text templates to
+    // HTML so ProseMirror keeps the line breaks.
+    setBody(templateBodyToHtml(bod));
   }
 
   function onPickLocalTemplate(template: ActiveTemplateSummary) {
@@ -586,7 +619,6 @@ export function BulkEmailDialog({
   function rememberCaret(el: HTMLInputElement | HTMLTextAreaElement) {
     const pos = el.selectionStart ?? 0;
     if (el === subjectRef.current) subjectCaret.current = pos;
-    else if (el === bodyRef.current) bodyCaret.current = pos;
   }
 
   function insertMergeToken(token: string) {
@@ -603,17 +635,9 @@ export function BulkEmailDialog({
         subjectCaret.current = pos;
       });
     } else {
-      const el = bodyRef.current;
-      const start = bodyCaret.current ?? el?.selectionStart ?? body.length;
-      const next = body.slice(0, start) + token + body.slice(start);
-      setBody(next);
-      requestAnimationFrame(() => {
-        if (!el) return;
-        el.focus();
-        const pos = start + token.length;
-        el.setSelectionRange(pos, pos);
-        bodyCaret.current = pos;
-      });
+      // Rich-text body: splice the token in at the ProseMirror selection so
+      // surrounding formatting stays intact (same path the main composer uses).
+      richTextRef.current?.insertPlainText(token);
     }
     setFieldOpen(false);
   }
@@ -627,6 +651,7 @@ export function BulkEmailDialog({
       candidateIds,
       subject: draft.subject,
       body: draft.body,
+      bodyHtml: draft.bodyHtml,
       jobMergeValues: jobMergeValues ?? undefined,
     });
     if (res.sent === 0) {
@@ -680,21 +705,23 @@ export function BulkEmailDialog({
 
   function onSendClick() {
     setErr(null);
-    if (!subject.trim() || !body.trim()) {
+    if (!subject.trim() || !bodyText.trim()) {
       setErr("Subject and body are required.");
       return;
     }
     // Block sending when the draft still carries unresolved job tokens
     // (recruiter cancelled the picker after applying a job-using
     // template, or typed tokens manually without picking a job).
-    const haystack = `${subject}\n${body}`;
+    const haystack = `${subject}\n${bodyText}`;
     if (textNeedsJob(haystack) && !jobMergeValues) {
       const msg = "Pick a job for the job context fields, or remove them from the body.";
       setErr(msg);
       toast.error(msg);
       return;
     }
-    const draft: EmailDraft = { to: [], cc: [], bcc: [], subject, body };
+    // body is the editor HTML (rich part); bodyText is the plain-text MIME
+    // fallback. Both get per-recipient merge resolution server-side.
+    const draft: EmailDraft = { to: [], cc: [], bcc: [], subject, body: bodyText, bodyHtml: body };
     if (n > BULK_EMAIL_CONFIRM_THRESHOLD) {
       setConfirmDraft(draft);
       return;
@@ -724,11 +751,11 @@ export function BulkEmailDialog({
   // ScheduledEmail per candidate. Throws so the picker stays open on error.
   async function scheduleLater(scheduledSendAtISO: string, timezone: string) {
     setErr(null);
-    if (!subject.trim() || !body.trim()) {
+    if (!subject.trim() || !bodyText.trim()) {
       setErr("Subject and body are required.");
       throw new Error("Subject and body are required.");
     }
-    const haystack = `${subject}\n${body}`;
+    const haystack = `${subject}\n${bodyText}`;
     if (textNeedsJob(haystack) && !jobMergeValues) {
       const msg = "Pick a job for the job context fields, or remove them from the body.";
       setErr(msg);
@@ -737,7 +764,8 @@ export function BulkEmailDialog({
     const res = await scheduleBulkEmail({
       candidateIds,
       subject,
-      body,
+      body: bodyText,
+      bodyHtml: body,
       jobMergeValues: jobMergeValues ?? undefined,
       scheduledSendAt: scheduledSendAtISO,
       timezone,
@@ -762,20 +790,39 @@ export function BulkEmailDialog({
     onDone();
   }
 
-  function onGenerateClick() {
-    const prompt = aiPrompt.trim();
-    if (!prompt) {
-      setAiPanelOpen(true);
-      toast.error("Type a prompt in the AI panel first.");
-      return;
+  // Build the generation prompt from the bulk context — the selected
+  // candidate count plus any resolved job/client fields — so the recruiter
+  // gets a usable draft from a single click, no prompt textarea required.
+  function buildBulkGeneratePrompt(): string {
+    const parts: string[] = [];
+    parts.push(
+      `Write a concise, warm recruiting outreach email that will be sent individually to ${n} selected candidate${n === 1 ? "" : "s"} as a bulk send.`,
+    );
+    const jv = jobMergeValues;
+    if (jv && (jv.jobTitle || jv.clientCompanyName || jv.jobLocation)) {
+      if (jv.jobTitle) parts.push(`The email is about an open role: ${jv.jobTitle}.`);
+      if (jv.clientCompanyName) parts.push(`Hiring company: ${jv.clientCompanyName}.`);
+      if (jv.jobLocation) parts.push(`Location: ${jv.jobLocation}.`);
+    } else {
+      parts.push(`This is a general candidate outreach email.`);
     }
+    parts.push(
+      `Open with "Hi [Candidate First Name]," exactly, using that literal placeholder so each recipient's first name fills in automatically at send time. Do not invent or guess a real name.`,
+    );
+    parts.push(
+      `Keep it to 3 to 5 short sentences, professional and friendly, ending with a clear call to action to reply or learn more. Do not write a subject line. Do not use em dashes; use hyphens or commas instead.`,
+    );
+    return parts.join(" ");
+  }
+
+  function onGenerateClick() {
     setErr(null);
     startGenerate(async () => {
       try {
         const res = await fetch("/api/mail/ai-compose", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, includeSubject: false }),
+          body: JSON.stringify({ prompt: buildBulkGeneratePrompt(), includeSubject: false }),
         });
         const json = await res.json().catch(() => null);
         if (!res.ok) {
@@ -800,7 +847,7 @@ export function BulkEmailDialog({
 
   function onEditClick(editType: EditType) {
     if (editType === "custom") {
-      if (!body.trim()) return;
+      if (!bodyText.trim()) return;
       setErr(null);
       setCustomEditOpen(true);
       return;
@@ -810,12 +857,12 @@ export function BulkEmailDialog({
 
   function runCustomEdit() {
     const instruction = customInstruction.trim();
-    if (!instruction || !body.trim()) return;
+    if (!instruction || !bodyText.trim()) return;
     runEdit({ editType: "custom", customInstruction: instruction });
   }
 
   function runEdit(opts: { editType: EditType; customInstruction?: string }) {
-    if (!body.trim()) return;
+    if (!bodyText.trim()) return;
     setErr(null);
     startEdit(async () => {
       try {
@@ -825,7 +872,7 @@ export function BulkEmailDialog({
           body: JSON.stringify({
             body,
             editType: opts.editType,
-            format: "text",
+            format: "html",
             ...(opts.customInstruction
               ? { customInstruction: opts.customInstruction }
               : {}),
@@ -841,12 +888,18 @@ export function BulkEmailDialog({
         }
         const next = (json?.body ?? "").trim();
         if (!next) throw new Error("Claude returned an empty edit.");
-        setBody(next);
+        // Route through the Tiptap chain so the swap lands in ProseMirror's
+        // history and Cmd+Z restores the recruiter's original draft.
+        if (richTextRef.current) {
+          richTextRef.current.replaceWithUndo(next);
+        } else {
+          setBody(next);
+        }
         if (opts.editType === "custom") {
           setCustomEditOpen(false);
           setCustomInstruction("");
         }
-        toast.success("Draft revised");
+        toast.success("Draft revised", { description: "Cmd+Z to restore your original." });
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to edit draft.";
         setErr(msg);
@@ -1049,45 +1102,16 @@ export function BulkEmailDialog({
           </div>
         </div>
 
-        {/* AI prompt — collapsible */}
-        <div className="border-b border-court-border bg-court-surface-subtle/40">
-          <button
-            type="button"
-            onClick={() => setAiPanelOpen((v) => !v)}
-            className="flex w-full items-center gap-1.5 px-5 py-1.5 text-left text-[11px] font-medium uppercase tracking-wider text-court-fg-muted transition hover:text-court-fg"
-          >
-            {aiPanelOpen ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
-            <Sparkles className="h-3 w-3" />
-            AI prompt
-            {aiPrompt.trim().length > 0 && !aiPanelOpen && (
-              <span className="ml-1 normal-case tracking-normal text-court-fg">
-                : &ldquo;{aiPrompt.trim().slice(0, 60)}
-                {aiPrompt.trim().length > 60 ? "…" : ""}&rdquo;
-              </span>
-            )}
-          </button>
-          {aiPanelOpen && (
-            <div className="px-5 pb-3">
-              <Textarea
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
-                rows={2}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* AI toolbar above body */}
+        {/* AI toolbar above body — Generate + Edit are surface-level buttons,
+            same treatment as the main MailComposer. No separate prompt
+            textarea: Generate drafts straight from the job + candidate context. */}
         <div className="flex flex-wrap items-center gap-2 border-b border-court-border px-5 py-2">
-          <button
+          <Button
             type="button"
+            variant="ai-primary"
+            size="sm"
             onClick={onGenerateClick}
             disabled={isGenerating || isSending || isEditing}
-            className={CLAUDE_PILL_CLASS}
           >
             {isGenerating ? (
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -1095,10 +1119,10 @@ export function BulkEmailDialog({
               <Sparkles className="h-3 w-3" />
             )}
             Generate with Claude
-          </button>
+          </Button>
           <EditWithClaudeMenu
             isEditing={isEditing}
-            disabled={!body.trim() || isGenerating || isSending}
+            disabled={!bodyText.trim() || isGenerating || isSending}
             onPick={onEditClick}
           />
         </div>
@@ -1116,23 +1140,21 @@ export function BulkEmailDialog({
           />
         )}
 
-        {/* Body fills available space */}
-        <div className="flex min-h-0 flex-1 px-5 py-3">
-          <Textarea
-            ref={bodyRef}
+        {/* Body — rich-text editor with the same formatting toolbar as the
+            main MailComposer (Bold / Italic / Underline / bulleted list /
+            numbered list / insert link). Emits HTML on every change. */}
+        <div
+          className="min-h-0 flex-1 overflow-y-auto px-5 py-3"
+          onFocus={() => setLastFocus("body")}
+          onClick={() => setLastFocus("body")}
+        >
+          <RichTextBodyEditor
+            ref={richTextRef}
+            initialHtml={body}
             value={body}
-            onChange={(e) => setBody(e.target.value)}
-            onFocus={(e) => {
-              setLastFocus("body");
-              rememberCaret(e.currentTarget);
-            }}
-            onSelect={(e) => rememberCaret(e.currentTarget)}
-            onKeyUp={(e) => rememberCaret(e.currentTarget)}
-            onClick={(e) => rememberCaret(e.currentTarget)}
+            onChange={(html) => setBody(html)}
             placeholder="Write your message, or click Generate with Claude above."
-            containerClassName="flex min-h-0 w-full flex-1 flex-col"
-            frameClassName="h-full min-h-[200px]"
-            className="h-full resize-none whitespace-pre-wrap leading-relaxed"
+            showToolbar
           />
         </div>
 
