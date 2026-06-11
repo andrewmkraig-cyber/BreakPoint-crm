@@ -25,7 +25,7 @@ import {
   BulkAddToListDialog,
   BulkEmailDialog,
 } from "@/app/candidates/bulk-dialogs";
-import { AddMultipleDialog } from "@/app/candidates/candidates-view";
+import { AddMultipleDialog } from "@/app/candidates/add-multiple-dialog";
 import {
   getOpenJobsForBulkPicker,
   type BulkPickerJob,
