@@ -1,17 +1,25 @@
 import { NotificationPreferencesView } from "@/app/settings/preferences-view";
 import { NotificationSoundsView } from "@/app/settings/sounds-view";
 import { CollapsibleSection } from "@/components/settings/collapsible-section";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { getNotifPrefsForEmail } from "@/lib/preferences";
 
 export const dynamic = "force-dynamic";
 
-export default function NotificationsSettingsPage() {
+export default async function NotificationsSettingsPage() {
+  const session = await getServerSession(authOptions);
+  const notifPrefs = await getNotifPrefsForEmail(session?.user?.email);
   return (
     <CollapsibleSection
       id="notifications"
       title="Notification Preferences"
-      description="In-app popups + sounds for new mail, calls, and texts."
+      description="In-app popups + desktop alerts + sounds for new mail, calls, and texts."
     >
-      <NotificationPreferencesView />
+      <NotificationPreferencesView
+        initialMailEnabled={notifPrefs.mail}
+        initialPhoneEnabled={notifPrefs.phone}
+      />
       <div className="mt-5 border-t border-court-border pt-5">
         <div className="mb-3">
           <div className="text-sm font-semibold text-court-fg">Notification sounds</div>

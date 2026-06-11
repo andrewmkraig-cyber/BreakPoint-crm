@@ -9,6 +9,7 @@ import { badgePayloadFields } from "@/lib/badge-math";
 import { checkGmailWebhookSecret } from "@/lib/gmail-webhook-auth";
 import { getUnreadCountsForUser } from "@/lib/unread-counts";
 import { sendPushToUser, type PushPayload } from "@/lib/web-push";
+import { isChannelPushEnabledForUserId } from "@/lib/preferences";
 
 export const dynamic = "force-dynamic";
 
@@ -161,6 +162,11 @@ async function sendNewMailPushes({
   threads: NewUnreadInboxThread[];
 }) {
   if (threads.length === 0) return;
+
+  // Per-user channel switch: skip the OS push when the recruiter turned
+  // Email notifications off in Settings. (In-app mail popups are gated
+  // client-side via localStorage; this is the desktop/push side.)
+  if (!(await isChannelPushEnabledForUserId(userId, "mail"))) return;
 
   const counts = await getUnreadCountsForUser(organizationId, userId, {
     extraUnreadMailThreadIds: threads.map((t) => t.threadId),

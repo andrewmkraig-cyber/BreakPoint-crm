@@ -7,6 +7,7 @@ import { getUnreadCountsForUser } from '@/lib/unread-counts'
 import { badgePayloadFields } from '@/lib/badge-math'
 import { pickPhone, redactPhone } from '@/lib/quo-phone'
 import { resolveQuoLineOwnerUserId } from '@/lib/quo-line-owner'
+import { isChannelPushEnabledForUserId } from '@/lib/preferences'
 
 // Quo (formerly KrispCall / OpenPhone) inbound webhook.
 //
@@ -144,6 +145,12 @@ export async function POST(req: NextRequest) {
           fromNumber,
         })
         if (!pushUserId) {
+          return NextResponse.json({ ok: true })
+        }
+        // Per-user channel switch: the recruiter turned Phone notifications
+        // off in Settings. The row is already persisted above; we just skip
+        // the OS push. (In-app text popups are gated client-side too.)
+        if (!(await isChannelPushEnabledForUserId(pushUserId, 'phone'))) {
           return NextResponse.json({ ok: true })
         }
         // getUnreadCountsForUser degrades any unprovable count to null
@@ -469,6 +476,11 @@ export async function POST(req: NextRequest) {
           fromNumber,
         })
         if (!pushUserId) {
+          return NextResponse.json({ ok: true })
+        }
+        // Same Phone-channel switch as the SMS branch above. CallLog row
+        // already written; only the OS push is suppressed when off.
+        if (!(await isChannelPushEnabledForUserId(pushUserId, 'phone'))) {
           return NextResponse.json({ ok: true })
         }
         // Same reliable-or-omit contract as the SMS branch.

@@ -8,13 +8,13 @@ import {
   type InboundTextEvent,
   type InboundCallEvent,
 } from "@/components/text-notification-toast";
-import { MAIL_NOTIFICATIONS_PREF_KEY } from "@/lib/mail-context";
+import { PHONE_NOTIFICATIONS_PREF_KEY } from "@/lib/mail-context";
 import { playSmsSound } from "@/lib/notification-sound";
 
 // Polls /api/krispcall/recent every 30s and fires in-app text/call
-// toasts. Reuses the MAIL_NOTIFICATIONS_PREF_KEY localStorage flag —
-// same toggle gates email + text/call popups (Andrew didn't ask for a
-// separate switch).
+// toasts. Gated by PHONE_NOTIFICATIONS_PREF_KEY — the Phone half of the
+// split notification toggle (Email vs Phone). The matching OS push is
+// gated server-side in the Quo webhook via notifPrefs.
 //
 // Mounted as a sibling of MailProvider in app-shell so it's a no-op on
 // the unauthenticated /sign-in surface.
@@ -125,7 +125,7 @@ export function TextingProvider({ children }: { children: ReactNode }) {
   function apply(body: RecentResponse) {
     const enabled =
       typeof window !== "undefined" &&
-      window.localStorage.getItem(MAIL_NOTIFICATIONS_PREF_KEY) === "true";
+      window.localStorage.getItem(PHONE_NOTIFICATIONS_PREF_KEY) === "true";
     // Toast only when this window is the one sw.js withheld the OS push
     // from (focused + visible). Combined with the after-mount check below,
     // every inbound event produces exactly one notification: an OS push

@@ -199,3 +199,7 @@ export function useMailContext(): MailContextValue {
 }
 
 export const MAIL_NOTIFICATIONS_PREF_KEY = MAIL_NOTIFICATIONS_KEY;
+// Phone (texts + calls) in-app popup opt-in. Separate from the mail key
+// so Settings can silence phone popups without touching email. The Quo
+// webhook gates the matching OS push server-side via notifPrefs.
+export const PHONE_NOTIFICATIONS_PREF_KEY = "ace_phone_notifications";

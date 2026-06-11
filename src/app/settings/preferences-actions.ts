@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { updateAppPreferences } from "@/lib/preferences";
+import { updateAppPreferences, setNotifChannelForEmail } from "@/lib/preferences";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -34,6 +34,33 @@ export async function setMyRecruiterPhone(phone: string): Promise<Result> {
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to save phone." };
+  }
+}
+
+// Persist the OS/desktop push side of a notification channel switch.
+// The in-app popup side is gated client-side via localStorage; the
+// settings toggle writes both so one switch silences both surfaces.
+export async function setMailNotificationsEnabled(enabled: boolean): Promise<Result> {
+  const email = await requireEmail();
+  if (!email) return { ok: false, error: "Not signed in." };
+  try {
+    await setNotifChannelForEmail(email, "mail", enabled);
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to save setting." };
+  }
+}
+
+export async function setPhoneNotificationsEnabled(enabled: boolean): Promise<Result> {
+  const email = await requireEmail();
+  if (!email) return { ok: false, error: "Not signed in." };
+  try {
+    await setNotifChannelForEmail(email, "phone", enabled);
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to save setting." };
   }
 }
 

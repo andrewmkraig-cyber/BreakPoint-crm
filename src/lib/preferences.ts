@@ -7,10 +7,18 @@ import { prisma } from "@/lib/prisma";
 
 const PREFS_KEY = "app.preferences";
 
+// Per-user notification channel switches. `true` = that channel's
+// notifications (OS/desktop push AND in-app popups) fire for the user;
+// `false` = silenced. Missing entry defaults to enabled, so existing
+// users keep the always-on push behavior until they explicitly turn a
+// channel off in Settings. "phone" covers both texts and calls.
+export type NotifChannelPrefs = { mail: boolean; phone: boolean };
+
 export type AppPreferences = {
   autoSendCandidateConfirmation: boolean;
   recruiterPhones: Record<string, string>;
   emailSignatures: Record<string, string>;
+  notifPrefs: Record<string, NotifChannelPrefs>;
 };
 
 const DEFAULT_SIGNATURE =
@@ -28,6 +36,7 @@ const DEFAULT_PREFS: AppPreferences = {
   emailSignatures: {
     "andrew@breakpointtalent.com": DEFAULT_SIGNATURE,
   },
+  notifPrefs: {},
 };
 
 function normalize(raw: unknown): AppPreferences {
@@ -42,12 +51,29 @@ function normalize(raw: unknown): AppPreferences {
     emailSignatures: isStringMap(obj.emailSignatures)
       ? { ...DEFAULT_PREFS.emailSignatures, ...obj.emailSignatures }
       : DEFAULT_PREFS.emailSignatures,
+    notifPrefs: normalizeNotifPrefs(obj.notifPrefs),
   };
 }
 
 function isStringMap(v: unknown): v is Record<string, string> {
   if (!v || typeof v !== "object") return false;
   return Object.values(v as Record<string, unknown>).every((x) => typeof x === "string");
+}
+
+// Coerce a stored notifPrefs blob into a clean { email -> {mail,phone} }
+// map. Any missing / non-boolean channel defaults to true (enabled) so a
+// partially-written entry never silences a channel by accident.
+function normalizeNotifPrefs(v: unknown): Record<string, NotifChannelPrefs> {
+  if (!v || typeof v !== "object") return {};
+  const out: Record<string, NotifChannelPrefs> = {};
+  for (const [email, val] of Object.entries(v as Record<string, unknown>)) {
+    const o = (val ?? {}) as Partial<NotifChannelPrefs>;
+    out[email] = {
+      mail: typeof o.mail === "boolean" ? o.mail : true,
+      phone: typeof o.phone === "boolean" ? o.phone : true,
+    };
+  }
+  return out;
 }
 
 export async function getAppPreferences(): Promise<AppPreferences> {
@@ -70,6 +96,9 @@ export async function updateAppPreferences(patch: Partial<AppPreferences>): Prom
       ...current.emailSignatures,
       ...(patch.emailSignatures ?? {}),
     },
+    // Per-email deep merge: a patch that sets one user's {mail} must not
+    // wipe their {phone} (or another user's entry entirely).
+    notifPrefs: mergeNotifPrefs(current.notifPrefs, patch.notifPrefs),
   };
   await prisma.setting.upsert({
     where: { key: PREFS_KEY },
@@ -111,6 +140,68 @@ export async function ensureDefaultPreferences(): Promise<void> {
       },
     });
   }
+}
+
+function mergeNotifPrefs(
+  current: Record<string, NotifChannelPrefs>,
+  patch: Record<string, NotifChannelPrefs> | undefined,
+): Record<string, NotifChannelPrefs> {
+  if (!patch) return current;
+  const next = { ...current };
+  for (const [email, channels] of Object.entries(patch)) {
+    const existing = next[email] ?? { mail: true, phone: true };
+    next[email] = {
+      mail: typeof channels.mail === "boolean" ? channels.mail : existing.mail,
+      phone: typeof channels.phone === "boolean" ? channels.phone : existing.phone,
+    };
+  }
+  return next;
+}
+
+// Resolve a user's notification switches by email. Missing entry => both
+// channels enabled (the default-on contract).
+export async function getNotifPrefsForEmail(
+  email: string | null | undefined,
+): Promise<NotifChannelPrefs> {
+  if (!email) return { mail: true, phone: true };
+  const prefs = await getAppPreferences();
+  return (
+    prefs.notifPrefs[email.toLowerCase()] ??
+    prefs.notifPrefs[email] ?? { mail: true, phone: true }
+  );
+}
+
+// Server-side push gate used by the Quo + Gmail webhooks. Resolves the
+// target user's email from their id, then checks the channel switch.
+// Defaults to enabled on any miss so a lookup hiccup never silently
+// drops a notification.
+export async function isChannelPushEnabledForUserId(
+  userId: string,
+  channel: keyof NotifChannelPrefs,
+): Promise<boolean> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (!user?.email) return true;
+    const prefs = await getNotifPrefsForEmail(user.email);
+    return prefs[channel];
+  } catch {
+    return true;
+  }
+}
+
+// Write a single channel switch for a user, preserving the other channel.
+export async function setNotifChannelForEmail(
+  email: string,
+  channel: keyof NotifChannelPrefs,
+  enabled: boolean,
+): Promise<NotifChannelPrefs> {
+  const next = await updateAppPreferences({
+    notifPrefs: { [email.toLowerCase()]: { [channel]: enabled } as NotifChannelPrefs },
+  });
+  return next.notifPrefs[email.toLowerCase()] ?? { mail: true, phone: true };
 }
 
 export async function getRecruiterPhone(email: string | null | undefined): Promise<string> {

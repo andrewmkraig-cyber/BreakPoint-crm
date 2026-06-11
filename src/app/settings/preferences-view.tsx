@@ -5,9 +5,15 @@ import { useRouter } from "next/navigation";
 import { Loader2, Save, Mail, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { setAutoSendCandidateConfirmation, setMyEmailSignature, setMyRecruiterPhone } from "@/app/settings/preferences-actions";
+import {
+  setAutoSendCandidateConfirmation,
+  setMyEmailSignature,
+  setMyRecruiterPhone,
+  setMailNotificationsEnabled,
+  setPhoneNotificationsEnabled,
+} from "@/app/settings/preferences-actions";
 import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
-import { MAIL_NOTIFICATIONS_PREF_KEY } from "@/lib/mail-context";
+import { MAIL_NOTIFICATIONS_PREF_KEY, PHONE_NOTIFICATIONS_PREF_KEY } from "@/lib/mail-context";
 import {
   DEFAULT_TOAST_THEME,
   MAIL_TOAST_THEME_KEY,
@@ -33,14 +39,30 @@ import { renderNewMailToast } from "@/components/mail-notification-toast";
 import { renderNewTextToast } from "@/components/text-notification-toast";
 
 // ----------------------------------------------------------------
-// NotificationPreferencesView — in-app notif master switch + email
-// and phone toast style pickers. The master switch gates mail, text,
-// and call toasts (per Phone Tab Phase 3 wiring; today only mail
-// auto-fires, but the gate is set up to cover all three).
+// NotificationPreferencesView — two independent channel switches
+// (Email and Phone) plus the toast style / duration / stack pickers.
+// Each switch silences BOTH surfaces for its channel: the in-app popup
+// (localStorage key, read live by the mail + texting providers) and the
+// OS/desktop push (server-side notifPrefs, checked in the Gmail + Quo
+// webhooks). "Phone" covers texts and calls together.
+//
+// Source of truth for the switch VALUE is the server (notifPrefs),
+// passed in as initial props so it's consistent across devices. The
+// mount effect syncs this device's localStorage to that truth so the
+// in-app popups match without the user having to re-toggle per device.
 // ----------------------------------------------------------------
 
-export function NotificationPreferencesView() {
-  const [mailNotifs, setMailNotifs] = useState(false);
+export function NotificationPreferencesView({
+  initialMailEnabled,
+  initialPhoneEnabled,
+}: {
+  initialMailEnabled: boolean;
+  initialPhoneEnabled: boolean;
+}) {
+  const [mailNotifs, setMailNotifs] = useState(initialMailEnabled);
+  const [phoneNotifs, setPhoneNotifs] = useState(initialPhoneEnabled);
+  const [isMailPending, startMail] = useTransition();
+  const [isPhonePending, startPhone] = useTransition();
   const [toastTheme, setToastTheme] = useState<ToastThemeId>(DEFAULT_TOAST_THEME);
   const [textToastTheme, setTextToastTheme] = useState<ToastThemeId>(DEFAULT_TOAST_THEME);
   const [toastDuration, setToastDuration] = useState<ToastDurationId>(DEFAULT_TOAST_DURATION);
@@ -48,7 +70,9 @@ export function NotificationPreferencesView() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setMailNotifs(window.localStorage.getItem(MAIL_NOTIFICATIONS_PREF_KEY) === "true");
+    // Reconcile this device's in-app popup flags to the server truth.
+    window.localStorage.setItem(MAIL_NOTIFICATIONS_PREF_KEY, initialMailEnabled ? "true" : "false");
+    window.localStorage.setItem(PHONE_NOTIFICATIONS_PREF_KEY, initialPhoneEnabled ? "true" : "false");
     const storedMailTheme = window.localStorage.getItem(MAIL_TOAST_THEME_KEY);
     if (storedMailTheme && storedMailTheme in TOAST_THEMES) {
       setToastTheme(storedMailTheme as ToastThemeId);
@@ -59,14 +83,40 @@ export function NotificationPreferencesView() {
     }
     setToastDuration(getStoredToastDurationId());
     setStackDir(getStoredToastStackDir());
-  }, []);
+  }, [initialMailEnabled, initialPhoneEnabled]);
+
+  function writeLocal(key: string, next: boolean) {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(key, next ? "true" : "false");
+    }
+  }
 
   function onToggleMailNotifs(next: boolean) {
     setMailNotifs(next);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(MAIL_NOTIFICATIONS_PREF_KEY, next ? "true" : "false");
-    }
+    writeLocal(MAIL_NOTIFICATIONS_PREF_KEY, next);
+    startMail(async () => {
+      const result = await setMailNotificationsEnabled(next);
+      if (!result.ok) {
+        setMailNotifs(!next);
+        writeLocal(MAIL_NOTIFICATIONS_PREF_KEY, !next);
+        toast.error("Couldn't save setting", { description: result.error });
+      }
+    });
   }
+
+  function onTogglePhoneNotifs(next: boolean) {
+    setPhoneNotifs(next);
+    writeLocal(PHONE_NOTIFICATIONS_PREF_KEY, next);
+    startPhone(async () => {
+      const result = await setPhoneNotificationsEnabled(next);
+      if (!result.ok) {
+        setPhoneNotifs(!next);
+        writeLocal(PHONE_NOTIFICATIONS_PREF_KEY, !next);
+        toast.error("Couldn't save setting", { description: result.error });
+      }
+    });
+  }
+
   function onPickToastTheme(next: ToastThemeId) {
     setToastTheme(next);
     if (typeof window !== "undefined") {
@@ -91,10 +141,18 @@ export function NotificationPreferencesView() {
   return (
     <div className="space-y-3">
       <ToggleRow
-        label="In-app notifications"
-        description="Show a popup when new mail, texts, or calls arrive. Off silences all three."
+        label="Email notifications"
+        description="Popups in Ace plus desktop/phone alerts when new mail arrives. Off silences both."
         checked={mailNotifs}
         onChange={onToggleMailNotifs}
+        disabled={isMailPending}
+      />
+      <ToggleRow
+        label="Phone notifications (texts & calls)"
+        description="Popups in Ace plus desktop/phone alerts when texts or calls come in. Off silences both."
+        checked={phoneNotifs}
+        onChange={onTogglePhoneNotifs}
+        disabled={isPhonePending}
       />
       <SegmentedSetting
         label="Notification duration"
@@ -121,7 +179,7 @@ export function NotificationPreferencesView() {
           Phone notification style
         </div>
         <div className="mt-0.5 text-xs text-court-fg-muted">
-          Applies once Quo text notifications are wired up.
+          Styles the in-app popup for new texts and calls.
         </div>
         <NotifStylePicker value={textToastTheme} onPick={onPickTextToastTheme} kind="text" />
       </div>
