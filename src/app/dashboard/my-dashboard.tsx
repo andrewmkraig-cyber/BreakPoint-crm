@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { DashboardAutoRefresh } from "@/app/dashboard/auto-refresh";
 import { FinancialStrip } from "@/app/dashboard/financial-strip";
-import { KpiTile } from "@/app/dashboard/kpi-tile";
+import { ClubhouseKpiGrid } from "@/app/dashboard/clubhouse-kpi-grid";
 import { ThisWeekWidget } from "@/app/dashboard/this-week-widget";
 import { NewsFeed } from "@/components/news-feed";
 import { prisma } from "@/lib/prisma";
@@ -15,14 +15,6 @@ import {
   type TimeRangeSelection,
 } from "@/lib/time-range";
 import { CLUBHOUSE_PERIOD_PARAM } from "@/app/dashboard/clubhouse-period";
-import {
-  Building2,
-  CalendarDays,
-  DollarSign,
-  FileSignature,
-  Handshake,
-  Send,
-} from "lucide-react";
 
 // Every count in the activity strip is ACTIVITY-based: it counts the
 // stage transition that happened inside the selected window, NOT the
@@ -116,14 +108,17 @@ export async function MyDashboard({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
-        <KpiTile label="New Clients" value={newClientsCount} icon={Building2} live={newClientsCount > 0} />
-        <KpiTile label="Agreements Signed" value={agreementsSignedCount} icon={FileSignature} live={agreementsSignedCount > 0} />
-        <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} live={submitLogCount > 0} />
-        <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} live={interviewsScheduledCount > 0} />
-        <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} live={offersExtendedCount > 0} />
-        <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} live={placementsMadeCount > 0} />
-      </div>
+      <ClubhouseKpiGrid
+        counts={{
+          new_clients: newClientsCount,
+          agreements_signed: agreementsSignedCount,
+          candidates_submitted: submitLogCount,
+          interviews_scheduled: interviewsScheduledCount,
+          offers_extended: offersExtendedCount,
+          placements_made: placementsMadeCount,
+        }}
+        selection={selection}
+      />
 
       <FinancialStrip
         initial={billingTowerInitial}
