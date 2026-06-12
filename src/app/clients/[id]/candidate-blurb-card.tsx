@@ -29,19 +29,19 @@ export function CandidateBlurbCard({
   const [editing, setEditing] = useState(false);
   // Committed value shown when not editing.
   const [saved, setSaved] = useState(initialBlurb);
-  const [draft, setDraft] = useState(initialBlurb);
+  const [draft, setDraft] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [isSaving, startSave] = useTransition();
   const [isGenerating, startGenerate] = useTransition();
 
   function onEdit() {
-    setDraft(saved);
+    setDraft("");
     setErr(null);
     setEditing(true);
   }
 
   function onCancel() {
-    setDraft(saved);
+    setDraft("");
     setErr(null);
     setEditing(false);
   }
@@ -73,7 +73,7 @@ export function CandidateBlurbCard({
         return;
       }
       setSaved(result.value.blurb);
-      setDraft(result.value.blurb);
+      setDraft("");
       setEditing(false);
       router.refresh();
     });
@@ -103,7 +103,6 @@ export function CandidateBlurbCard({
           <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="a growing CPA firm in Northeast Ohio"
             disabled={busy}
           />
           {err && (

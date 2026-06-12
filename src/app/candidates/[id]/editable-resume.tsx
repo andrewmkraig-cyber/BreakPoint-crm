@@ -695,7 +695,6 @@ export function EditableResume({
               disabled={isEditingWithClaude}
               rows={4}
               autoFocus
-              placeholder="e.g. Change the job title under Acme Corp to Senior Analyst, or remove the 2018 internship."
               containerClassName="mt-4"
             />
             <div className="mt-4 flex items-center justify-end gap-2">
@@ -744,5 +743,4 @@ export function EditableResume({
     </div>
   );
 }
-
 
