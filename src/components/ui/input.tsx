@@ -163,7 +163,12 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         >
           <select
             ref={ref}
-            className={cn(INPUT_CONTROL_CLASS, "text-sm", !isListbox && "pr-8", className)}
+            className={cn(
+              INPUT_CONTROL_CLASS,
+              "text-sm",
+              className,
+              !isListbox && "truncate pr-10",
+            )}
             {...props}
           >
             {children}

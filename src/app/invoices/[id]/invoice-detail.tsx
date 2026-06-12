@@ -682,6 +682,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
                       setPaymentMethod(e.target.value as InvoicePaymentMethod | "")
                     }
                     disabled={isPending}
+                    containerClassName="w-28 shrink-0"
                     className="px-2 py-1 text-[11px] font-medium normal-case tracking-normal"
                   >
                     <option value="">Select…</option>
