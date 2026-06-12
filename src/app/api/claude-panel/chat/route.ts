@@ -18,6 +18,8 @@ import { getJobByIdentifier } from "@/lib/jobs";
 import { formatLocation } from "@/lib/utils";
 import { createReminder } from "@/app/calendar/reminder-actions";
 import { parseReminderToolInput, claimsReminderSaved } from "@/lib/claude-panel/reminders";
+import { createContact } from "@/lib/contacts";
+import { normalizeToE164 } from "@/lib/rf-payload-shapes";
 
 // Live Claude call for the global Claude Panel (Sparkles topbar
 // toggle). Streams text deltas as NDJSON events back to the client so
@@ -72,6 +74,7 @@ const SYSTEM_PROMPT =
   "Action tools (move_candidate_stage / add_note / draft_email / inactivate_job / privatize_job / reactivate_job / delete_job / delete_candidate / reset_activity_log / reset_placements / update_placement_field) are PROPOSALS, not executions. Calling one stops your turn and the recruiter gets a Confirm/Cancel card. Never call an action tool with invented ids; resolve real candidates / placements / clients / jobs via the search tools first. Job lifecycle routing: 'close out' / 'mark inactive' → inactivate_job; 'make private' / 'hide from active' → privatize_job; 'reopen' / 'reactivate' → reactivate_job. delete_job and delete_candidate are destructive and cascade. Only use them when the recruiter explicitly says 'delete' or 'permanently remove' the named record. " +
   "Data-reset tools (reset_activity_log / reset_placements / update_placement_field) are destructive and require explicit recruiter intent. reset_activity_log wipes ActionLog rows in a date range (omit dateFrom/dateTo to wipe everything). reset_placements deletes Placements matching dateFrom/dateTo/stage filters and cascades to dependent Interview rows. update_placement_field edits exactly one field on one placement; the only editable fields are placedAt, startConfirmedAt, stage, feeAmount, offerReceivedAt. Resolve the placementId via search_candidates → get_pipeline first; never invent it. Use ISO 8601 (YYYY-MM-DD or full ISO timestamp) for any date value. The current Eastern Time is {{NOW_ET}} (today's date is {{TODAY}}). Use the current time to resolve relative phrases like 'this week' / 'last month' / 'this afternoon' into ISO dates. " +
   "Creating reminders - create_reminder is a DIRECT action, NOT a Confirm-card proposal: calling it writes an Ace reminder immediately and the recruiter gets a single summary receipt. Use it for 'remind me…' / 'add a reminder…' requests and for a pasted list of timed items - emit ONE create_reminder call PER reminder in the same turn (six reminders = six calls). The CURRENT Eastern time is {{NOW_ET}} - resolve EVERY relative phrase against it: 'in 20 minutes' = {{NOW_ET}} + 20 min, 'in 2 hours' = {{NOW_ET}} + 2h, 'tonight' / 'tomorrow at 3pm' relative to that same clock. Do NOT guess the current time. reminderAtIso MUST carry an explicit Eastern Time offset: the current Eastern offset is {{ET_OFFSET}} (use -04:00 during EDT / -05:00 during EST to match the reminder's date). Example: at 2026-06-10T15:00:00-04:00, 'in 20 minutes' is 2026-06-10T15:20:00-04:00. A reminderAtIso WITHOUT an explicit offset is rejected, not created - never emit a bare/naive datetime. CRITICAL - NEVER claim a reminder was saved in your own text. Do NOT write any sentence like 'Added 1 reminder', 'Reminder set', 'I've added/created/scheduled that reminder', or 'Done' for a reminder. The ONLY valid confirmation a reminder was saved is the tool-execution receipt, which the app renders automatically when create_reminder actually runs. Writing a success sentence yourself is a LIE if the tool did not run - the user cannot tell your text apart from the real receipt. So: to save a reminder you MUST call create_reminder, and then write NOTHING. If you cannot call create_reminder for any reason (missing time, unclear request, etc.), say plainly that nothing was saved and ask the recruiter to retry - never imply it was saved. " +
+  "Adding contacts - create_contact is a DIRECT action like create_reminder, NOT a Confirm-card proposal: it adds a person to a client and the recruiter gets a single receipt. Use it for 'add a contact…' / 'add <name> at <client>' / 'new contact for <client>'. Provide the client by name (exact or a clear prefix) or id and the contact's first name; lastName / email / phone / title are optional. Emit ONE create_contact call PER contact. Do NOT pre-resolve the client yourself with search_clients - the tool resolves it server-side and will ask the recruiter to clarify if the name is ambiguous or unknown, so just pass the name the recruiter used. NEVER claim a contact was added in your own text (no 'Added John', 'Done', 'Contact created') - the tool receipt is the only valid confirmation; if you cannot call create_contact, say plainly nothing was added. After calling create_contact, write NOTHING. " +
   "After calling an action tool do not write any more text. The card speaks for itself. " +
   "BULK actions - when the recruiter wants the SAME action on MORE THAN ONE record at once ('make all active jobs inactive', 'reactivate every private job', 'delete these 5 candidates'), use the BULK tools, NOT N single-id calls. The bulk tools are inactivate_jobs { jobIds: [...] }, reactivate_jobs { jobIds: [...] }, delete_jobs { jobIds: [...] }, and delete_candidates { candidateIds: [...] }. The flow is always: FIRST enumerate the real target ids via a read tool (search_jobs / get_pipeline / search_candidates) - never invent ids - THEN emit ONE bulk call carrying EVERY id in the array (eleven jobs = one inactivate_jobs call with eleven ids, NOT eleven inactivate_job calls). One bulk call produces ONE Confirm card listing all the records. Use the single-id tools (inactivate_job / reactivate_job / delete_job / delete_candidate) only for a genuine one-off - a single named record. delete_jobs and delete_candidates are destructive and cascade; they still require Confirm, just one batched card for the whole set. If a read tool reports more total matches than it returned in one batch, page for the rest before the bulk call so the id set is complete.";
 
@@ -202,6 +205,33 @@ const DATA_TOOLS: Anthropic.Tool[] = [
       required: ["title", "reminderAtIso"],
     },
   },
+  // create_contact — a DIRECT-execute action tool (NOT in
+  // ACTION_TOOL_NAMES), same reversible-create carve-out as create_reminder:
+  // the chat loop runs it server-side, resolves the client + tenant from the
+  // session, dedupes, and returns ONE receipt. Over-10 in a turn falls back
+  // to a non-executing prompt (runaway-paste brake).
+  {
+    name: "create_contact",
+    description:
+      "Add a contact (a person) to a client company. Use for 'add a contact…', 'add John Smith at InventWealth', 'new contact for <client>'. Provide the client by name (exact or a clear prefix) or id, plus the contact's first name; lastName, email, phone, and title are optional. The server resolves the client org-scoped: an exact or unambiguous prefix match proceeds; if the name is ambiguous or matches nothing, NOTHING is created and the recruiter is asked to clarify. If a contact with the same email already exists on that client, it is NOT duplicated. Emit ONE create_contact call PER contact. create_contact executes immediately with no Confirm card; do not also write a confirmation sentence afterward - the receipt is the only valid confirmation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        client: {
+          type: "string",
+          description:
+            "The client company to attach the contact to - its name (exact or an unambiguous prefix) or its id.",
+        },
+        firstName: { type: "string", description: "Contact's first name (required)." },
+        lastName: { type: "string", description: "Contact's last name (optional)." },
+        email: { type: "string", description: "Contact's email (optional)." },
+        phone: { type: "string", description: "Contact's phone number (optional)." },
+        title: { type: "string", description: "Contact's job title / designation (optional)." },
+      },
+      required: ["client", "firstName"],
+    },
+  },
+
   // Action tools — these never execute server-side. The chat route
   // intercepts the tool_use, emits an action_pending event back to the
   // panel, and stops streaming. The recruiter clicks Confirm/Cancel in
@@ -539,6 +569,11 @@ const MAX_TOOL_ROUNDS = 4;
 // receipt; ABOVE it we fall back to a single batch Confirm card so a
 // huge accidental paste can't silently create dozens of reminders.
 const MAX_DIRECT_REMINDERS = 10;
+
+// Same runaway-paste brake for create_contact: at or under this many in one
+// turn we add them directly and return one receipt; above it we refuse and
+// ask the recruiter to split, rather than firing an unbounded batch.
+const MAX_DIRECT_CONTACTS = 10;
 
 // Grammatical filler we strip before searching. Meaningful filter words
 // (open, active, current, remote, hired, etc.) intentionally aren't in
@@ -2169,6 +2204,151 @@ async function runCreateReminder(
   }
 }
 
+// Resolve a client for create_contact, org-scoped. An id match or an exact
+// (case-insensitive) name match wins; otherwise an UNAMBIGUOUS prefix match
+// (exactly one) proceeds. Multiple matches → ambiguous; none → not_found.
+// The caller turns ambiguous/not_found into a clarify message and creates
+// nothing.
+type ClientResolution =
+  | { kind: "ok"; client: { id: string; name: string } }
+  | { kind: "ambiguous"; names: string[] }
+  | { kind: "not_found" };
+
+async function resolveClientForContact(
+  ref: string,
+  organizationId: string,
+): Promise<ClientResolution> {
+  // Direct id match (the model may pass a cuid).
+  const byId = await prisma.client.findFirst({
+    where: { id: ref, organizationId },
+    select: { id: true, name: true },
+  });
+  if (byId) return { kind: "ok", client: byId };
+
+  // Exact name (case-insensitive).
+  const exact = await prisma.client.findMany({
+    where: { organizationId, name: { equals: ref, mode: "insensitive" } },
+    select: { id: true, name: true },
+    take: 6,
+  });
+  if (exact.length === 1) return { kind: "ok", client: exact[0] };
+  if (exact.length > 1) return { kind: "ambiguous", names: exact.map((c) => c.name) };
+
+  // Unambiguous prefix.
+  const prefix = await prisma.client.findMany({
+    where: { organizationId, name: { startsWith: ref, mode: "insensitive" } },
+    select: { id: true, name: true },
+    take: 6,
+  });
+  if (prefix.length === 1) return { kind: "ok", client: prefix[0] };
+  if (prefix.length > 1) return { kind: "ambiguous", names: prefix.map((c) => c.name) };
+
+  return { kind: "not_found" };
+}
+
+// Execute one create_contact tool call. Resolves the client + dedupes, then
+// creates via the shared createContact (the SAME insert the Contacts tab
+// uses). `organizationId` + `userId` come from the route's server session
+// (Rule 8) — never from the tool input. Returns a single receipt line; ok
+// reflects whether a contact was actually added.
+async function runCreateContact(
+  rawInput: unknown,
+  organizationId: string,
+  userId: string,
+): Promise<{ ok: boolean; line: string }> {
+  const inp = (rawInput && typeof rawInput === "object" ? rawInput : {}) as Record<string, unknown>;
+  const clientRef = typeof inp.client === "string" ? inp.client.trim() : "";
+  const firstName = typeof inp.firstName === "string" ? inp.firstName.trim() : "";
+  const lastName = typeof inp.lastName === "string" ? inp.lastName.trim() : "";
+  const email = typeof inp.email === "string" ? inp.email.trim() : "";
+  const phoneRaw = typeof inp.phone === "string" ? inp.phone.trim() : "";
+  const title = typeof inp.title === "string" ? inp.title.trim() : "";
+  const fullName = [firstName, lastName].filter(Boolean).join(" ");
+
+  if (!firstName) {
+    log("create_contact", {}, 0, "rejected: missing first name");
+    return { ok: false, line: "Skipped a contact - a first name is required." };
+  }
+  if (!clientRef) {
+    return { ok: false, line: `Couldn't add ${fullName} - tell me which client to add them to.` };
+  }
+
+  const resolution = await resolveClientForContact(clientRef, organizationId);
+  if (resolution.kind === "not_found") {
+    log("create_contact", { client: clientRef }, 0, "client not found");
+    return {
+      ok: false,
+      line: `No client matches "${clientRef}" - give me the exact client name and I'll add ${fullName}.`,
+    };
+  }
+  if (resolution.kind === "ambiguous") {
+    const sample = resolution.names.slice(0, 4).join(", ");
+    log("create_contact", { client: clientRef }, 0, "client ambiguous");
+    return {
+      ok: false,
+      line: `"${clientRef}" matches multiple clients (${sample}) - tell me which one and I'll add ${fullName}.`,
+    };
+  }
+  const client = resolution.client;
+
+  // Dedup guard (Item 2). Pull this client's contacts once.
+  const existing = await prisma.contact.findMany({
+    where: { clientId: client.id, organizationId },
+    select: { name: true, firstName: true, lastName: true, emails: true },
+  });
+  if (email) {
+    const emailLc = email.toLowerCase();
+    const dup = existing.find((c) => c.emails.some((e) => e.toLowerCase() === emailLc));
+    if (dup) {
+      log("create_contact", { client: client.name, email }, 0, "duplicate email");
+      return {
+        ok: false,
+        line: `${fullName} (${email}) already exists on ${client.name} - not added again.`,
+      };
+    }
+  }
+  // Same-name, no-email: create anyway but flag a possible duplicate.
+  let possibleDup = false;
+  if (!email && fullName) {
+    const nameLc = fullName.toLowerCase();
+    possibleDup = existing.some((c) => {
+      const cn = (c.name || [c.firstName, c.lastName].filter(Boolean).join(" ")).trim().toLowerCase();
+      return cn !== "" && cn === nameLc;
+    });
+  }
+
+  const phones: Array<{ number: string }> = [];
+  if (phoneRaw) {
+    const e164 = normalizeToE164(phoneRaw);
+    if (e164) phones.push({ number: e164 });
+  }
+
+  try {
+    await createContact({
+      organizationId,
+      userId,
+      clientId: client.id,
+      firstName,
+      lastName,
+      emails: email ? [email] : [],
+      phones,
+      title,
+    });
+    log("create_contact", { client: client.name, name: fullName }, 1);
+    const base = `Added ${fullName} to ${client.name}`;
+    return {
+      ok: true,
+      line: possibleDup
+        ? `${base} (possible duplicate - same name already on file, no email to confirm)`
+        : base,
+    };
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : "create failed";
+    log("create_contact", { client: client.name, name: fullName }, 0, `error: ${reason}`);
+    return { ok: false, line: `Couldn't add ${fullName} to ${client.name}: ${reason}` };
+  }
+}
+
 // Today's date + the CURRENT wall-clock time in Eastern, plus the live
 // Eastern UTC offset, all injected into the system prompt. ET (not UTC)
 // so "remind me tomorrow" resolves against the recruiter's actual day
@@ -2567,6 +2747,49 @@ export async function POST(req: NextRequest) {
             });
             log("create_reminder_batch", { requested: reminderUses.length }, created);
             reminderHandledThisRequest = true;
+            break;
+          }
+
+          // create_contact — direct-execute reversible create, same carve-out
+          // as reminders. Resolve client + tenant server-side, dedupe, add via
+          // the shared createContact, and return ONE contact receipt. Over the
+          // cap we do NOT fire: a single non-executing receipt asks the
+          // recruiter to split, so a runaway paste can't add an unbounded set.
+          const contactUses = toolUses.filter((tu) => tu.name === "create_contact");
+          if (contactUses.length > 0) {
+            conversation.push({ role: "assistant", content: finalMsg.content });
+
+            if (contactUses.length > MAX_DIRECT_CONTACTS) {
+              send({
+                t: "batch_receipt",
+                kind: "contact",
+                created: 0,
+                failed: contactUses.length,
+                lines: [
+                  `That's ${contactUses.length} contacts in one turn - over the ${MAX_DIRECT_CONTACTS}-at-once limit. Nothing was added; re-send them in batches of ${MAX_DIRECT_CONTACTS} or fewer.`,
+                ],
+                failures: [],
+              });
+              log("create_contact_over_cap", { requested: contactUses.length }, 0);
+              break;
+            }
+
+            const results = await Promise.all(
+              contactUses.map((tu) =>
+                runCreateContact(tu.input, org.id, session.user.id),
+              ),
+            );
+            const created = results.filter((r) => r.ok).length;
+            const failed = results.length - created;
+            send({
+              t: "batch_receipt",
+              kind: "contact",
+              created,
+              failed,
+              lines: results.map((r) => r.line),
+              failures: [],
+            });
+            log("create_contact_batch", { requested: contactUses.length }, created);
             break;
           }
 

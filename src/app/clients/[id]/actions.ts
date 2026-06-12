@@ -7,6 +7,7 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { linkedinUrlFrom, normalizeToE164 } from "@/lib/rf-payload-shapes";
 import { backfillClientGmailThreadTags } from "@/lib/gmail";
+import { createContact } from "@/lib/contacts";
 import {
   summarizeAgreementTerms as summarizeAgreementTermsWithClaude,
   summarizeBenefits as summarizeBenefitsWithClaude,
@@ -70,28 +71,19 @@ export async function addContact(clientCuid: string, formData: FormData): Promis
     });
     if (!client) return { ok: false, error: "Client not found." };
 
-    const created = await prisma.contact.create({
-      data: {
-        firstName: first,
-        lastName: last || null,
-        name: [first, last].filter(Boolean).join(" "),
-        emails,
-        phoneNumbers: phones.length ? phones : undefined,
-        currentDesignation: title || null,
-        linkedinProfile: linkedin || null,
-        clientId: client.id,
-        organizationId: org.id,
-        addedAt: new Date(),
-      },
-      select: { id: true },
-    });
-    await backfillClientGmailThreadTags({
-      userId: user.id,
+    // Single shared insert path (also used by the Assistant create_contact
+    // tool) — see createContact in @/lib/contacts. Same row shape + Gmail
+    // backfill this action has always performed.
+    const created = await createContact({
       organizationId: org.id,
+      userId: user.id,
       clientId: client.id,
-      addresses: emails,
-    }).catch((err) => {
-      console.warn("[addContact] Gmail backfill failed", err);
+      firstName: first,
+      lastName: last,
+      emails,
+      phones,
+      title,
+      linkedin,
     });
     const urlSlug = client.legacyRfId != null ? String(client.legacyRfId) : client.id;
     revalidatePath(`/clients/${urlSlug}`);

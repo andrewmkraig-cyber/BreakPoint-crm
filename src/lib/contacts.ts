@@ -2,7 +2,66 @@ import type { Contact, Prisma } from "@prisma/client";
 
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
+import { backfillClientGmailThreadTags } from "@/lib/gmail";
 import type { RFContact } from "@/lib/rf-payload-shapes";
+
+export type CreateContactInput = {
+  // Tenant + actor are resolved by the CALLER from the server session
+  // (Rule 8 — never client-supplied), then passed in here.
+  organizationId: string;
+  userId: string;
+  // Client cuid, already verified to belong to organizationId by the caller.
+  clientId: string;
+  firstName: string;
+  lastName?: string | null;
+  emails?: string[];
+  // Already-normalized phone entries (E.164 number + optional extension).
+  phones?: Array<{ number: string; extension?: string }>;
+  title?: string | null;
+  linkedin?: string | null;
+};
+
+// Single source of truth for inserting a Contact. Used by the client-profile
+// Contacts tab (addContact) AND the Ace Assistant create_contact tool, so
+// there is exactly ONE insert path — no parallel writes. Mirrors the row shape
+// addContact has always written (name composed from first+last, blank-stripped
+// emails, phoneNumbers omitted when empty) and fires the same Gmail
+// thread-tag backfill. Does NOT validate or dedupe — callers own that.
+export async function createContact(
+  input: CreateContactInput,
+): Promise<{ id: string }> {
+  const first = input.firstName.trim();
+  const last = (input.lastName ?? "").trim();
+  const emails = (input.emails ?? []).map((e) => e.trim()).filter(Boolean);
+  const phones = (input.phones ?? []).filter((p) => p.number);
+
+  const created = await prisma.contact.create({
+    data: {
+      firstName: first,
+      lastName: last || null,
+      name: [first, last].filter(Boolean).join(" "),
+      emails,
+      phoneNumbers: phones.length ? phones : undefined,
+      currentDesignation: input.title?.trim() || null,
+      linkedinProfile: input.linkedin?.trim() || null,
+      clientId: input.clientId,
+      organizationId: input.organizationId,
+      addedAt: new Date(),
+    },
+    select: { id: true },
+  });
+
+  await backfillClientGmailThreadTags({
+    userId: input.userId,
+    organizationId: input.organizationId,
+    clientId: input.clientId,
+    addresses: emails,
+  }).catch((err) => {
+    console.warn("[createContact] Gmail backfill failed", err);
+  });
+
+  return created;
+}
 
 // Phase 5: Neon-native contact list helper. Replaces
 // getRfContactsForOrg (which read from Neon too but shaped its output

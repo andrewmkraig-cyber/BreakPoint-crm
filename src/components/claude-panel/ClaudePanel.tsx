@@ -222,7 +222,7 @@ type ActionCard = {
 type BatchReceipt = {
   kind: "receipt";
   id: string;
-  receiptKind: "reminder" | "job" | "candidate";
+  receiptKind: "reminder" | "job" | "candidate" | "contact";
   // Action verb for the headline ("Added" for reminders, "Inactivated" /
   // "Reactivated" / "Deleted" for bulk job/candidate batches). Defaults
   // to "Added" when absent so the reminder path is unchanged.
@@ -230,6 +230,10 @@ type BatchReceipt = {
   created: number;
   failed: number;
   failures: Array<{ title: string; reason: string }>;
+  // Per-item human lines (create_contact: "Added John Smith to InventWealth",
+  // dedup skips, clarify prompts). Reminders/jobs/candidates leave this unset,
+  // so their rendering is unchanged.
+  lines?: string[];
 };
 
 type RenderItem = ChatMessage | ActionCard | BatchReceipt;
@@ -237,6 +241,8 @@ type RenderItem = ChatMessage | ActionCard | BatchReceipt;
 // One-line summary string for a batch receipt — used for the persisted
 // assistant message (the in-session card renders its own richer view).
 function receiptLine(r: BatchReceipt): string {
+  // Per-item receipts (create_contact) persist their own outcome lines.
+  if (r.lines && r.lines.length > 0) return r.lines.join(" · ");
   const total = r.created + r.failed;
   const verb = r.verb ?? "Added";
   const word = r.receiptKind === "reminder" ? "reminder" : r.receiptKind;
@@ -945,6 +951,7 @@ export function ClaudePanel() {
           created?: unknown;
           failed?: unknown;
           failures?: unknown;
+          lines?: unknown;
         };
         try {
           event = JSON.parse(line);
@@ -1026,6 +1033,23 @@ export function ClaudePanel() {
             created,
             failed,
             failures,
+          });
+        } else if (event.t === "batch_receipt" && event.kind === "contact") {
+          // create_contact receipt: per-contact outcome lines ("Added John
+          // Smith to InventWealth", dedup skips, clarify prompts).
+          const created = typeof event.created === "number" ? event.created : 0;
+          const failed = typeof event.failed === "number" ? event.failed : 0;
+          const lines = Array.isArray(event.lines)
+            ? event.lines.filter((l): l is string => typeof l === "string")
+            : [];
+          receipts.push({
+            kind: "receipt",
+            id: `receipt-${receipts.length}-c-${created}-${failed}`,
+            receiptKind: "contact",
+            created,
+            failed,
+            failures: [],
+            lines,
           });
         } else if (event.t === "error") {
           streamErr =
@@ -1709,6 +1733,14 @@ function BatchReceiptLine({ receipt }: { receipt: BatchReceipt }) {
             .map((f) => `${f.title || "(untitled)"}: ${f.reason}`)
             .join(" · ")}
           {receipt.failures.length > 3 ? ` · +${receipt.failures.length - 3} more` : ""}
+        </div>
+      )}
+      {/* Per-item lines (create_contact). Each outcome on its own row. */}
+      {receipt.lines && receipt.lines.length > 0 && (
+        <div className="flex flex-col gap-0.5 text-[11px] text-court-fg-muted">
+          {receipt.lines.map((l, i) => (
+            <span key={i}>{l}</span>
+          ))}
         </div>
       )}
     </div>
