@@ -52,14 +52,14 @@ export type KpiDetailResponse = {
 
 const ET = "America/New_York";
 
-// Candidate display name: "Caroline C." (first name + last initial).
+// Candidate display name: full first + last name ("Caroline Chen").
 function candLabel(
   c: { firstName: string; lastName: string | null } | null,
   rfId?: number | null,
 ): string {
   if (!c) return rfId != null ? `Candidate #${rfId}` : "Unknown candidate";
-  const li = c.lastName?.trim()?.[0];
-  return li ? `${c.firstName} ${li}.` : c.firstName;
+  const last = c.lastName?.trim();
+  return last ? `${c.firstName} ${last}` : c.firstName;
 }
 
 function usd(n: number | null | undefined): string {
