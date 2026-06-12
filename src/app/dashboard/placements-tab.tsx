@@ -138,6 +138,7 @@ function toLedgerRows(rows: PlacementsDashboardRow[]): LedgerRow[] {
     feePercentage: r.feePercentage,
     placementNotes: r.placementNotes,
     acceptedSalary: r.baseSalary,
+    acceptedCompensationType: r.acceptedCompensationType,
     candidateSource: r.leadSource ?? null,
     billingStatus: r.billingStatus,
     leadSource: r.leadSource ?? null,
@@ -155,4 +156,3 @@ function toLedgerRows(rows: PlacementsDashboardRow[]): LedgerRow[] {
     guaranteePeriodDays: r.guaranteePeriodDays,
   }));
 }
-

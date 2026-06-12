@@ -343,7 +343,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
           <DialogOrNav
             icon={Edit3}
             label="Edit Offer"
-            title="Edit offered salary, title, or start date"
+            title="Edit offered compensation, title, or start date"
             tone="default"
             onClick={props.onOffer}
             href={profileHref}

@@ -1,6 +1,10 @@
 "use server";
 
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import {
+  normalizePlacementCompensationType,
+  type PlacementCompensationType,
+} from "@/lib/placement-compensation";
 import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
 import { prisma } from "@/lib/prisma";
 
@@ -15,6 +19,7 @@ export type UpdatePlacementInput = {
   // field. Anything else gets parsed and stored as a Date.
   expectedStartDate: string | null;
   acceptedSalary: number | null;
+  acceptedCompensationType?: PlacementCompensationType | null;
   feeTotal: number | null;
   feePercentage: number | null;
   placementNotes: string | null;
@@ -82,6 +87,10 @@ export async function updatePlacement(
       data: {
         expectedStartDate: parsedDate,
         acceptedSalary: input.acceptedSalary,
+        acceptedCompensationType:
+          input.acceptedCompensationType == null
+            ? undefined
+            : normalizePlacementCompensationType(input.acceptedCompensationType),
         feeTotal: input.feeTotal,
         feePercentage: input.feePercentage,
         placementNotes: trimmedNotes ? trimmedNotes : null,

@@ -80,6 +80,13 @@ import { StageBadge } from "@/components/stage-badge";
 import type { PipelineBucket } from "@/lib/rf-payload-shapes";
 import { cn } from "@/lib/utils";
 import {
+  HOURS_PER_YEAR_FOR_HOURLY_PLACEMENT,
+  formatPlacementCompensation,
+  normalizePlacementCompensationType,
+  placementFeeBasisAmount,
+  type PlacementCompensationType,
+} from "@/lib/placement-compensation";
+import {
   useDraggableResizable,
   MODAL_MIN_W,
   MODAL_MIN_H,
@@ -135,11 +142,13 @@ export type LocalInterview = {
 // carry no offer or placement data yet.
 export type LocalPlacementSnapshot = {
   offerSalary: number | null;
+  offerCompensationType: PlacementCompensationType | null;
   offerCurrency: string | null;
   offerTitle: string | null;
   offerStartDate: string | null;
   offerNotes: string | null;
   acceptedSalary: number | null;
+  acceptedCompensationType: PlacementCompensationType | null;
   acceptedCurrency: string | null;
   feePercentage: number | null;
   feeTotal: number | null;
@@ -885,7 +894,7 @@ function LocalJobActionRow({
               size="sm"
               variant="secondary"
               onClick={onOffer}
-              title="Edit offered salary, title, or start date"
+              title="Edit offered compensation, title, or start date"
               className={CHIP_BTN_CLS}
             >
               <Edit3 className="h-3 w-3" />
@@ -1057,6 +1066,9 @@ function OfferDialog({
   const [salary, setSalary] = useState(
     snap?.offerSalary != null ? String(snap.offerSalary) : "",
   );
+  const [compensationType, setCompensationType] = useState<PlacementCompensationType>(
+    normalizePlacementCompensationType(snap?.offerCompensationType),
+  );
   // USD is the only allowed currency on offer rows (Ace fix 2026-05-27).
   // The dropdown was removed but offerCurrency / acceptedCurrency are still
   // written to the DB on save — held as a const here so the save payload and
@@ -1084,11 +1096,12 @@ function OfferDialog({
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
 
-  const salaryNum = parseAmount(salary);
+  const salaryNum = parseCompensationAmount(salary);
   const pctNum = parseFloat(feePct) || 0;
   const minFeeNum = parseAmount(minFee);
   const overrideNum = parseAmount(feeAmountOverride);
-  const rawFee = salaryNum && pctNum ? Math.round(salaryNum * (pctNum / 100)) : 0;
+  const feeBasisAmount = placementFeeBasisAmount(salaryNum, compensationType);
+  const rawFee = feeBasisAmount && pctNum ? Math.round(feeBasisAmount * (pctNum / 100)) : 0;
   // Fee resolution priority matches the RF OfferDialog: override > min-vs-calc > calc.
   const calcFee = minFeeNum && rawFee < minFeeNum ? minFeeNum : rawFee;
   const feeTotal = overrideNum != null ? overrideNum : calcFee;
@@ -1097,17 +1110,18 @@ function OfferDialog({
 
   function onSave() {
     setErr(null);
-    if (salaryNum != null && salaryNum < 0) return setErr("Salary can't be negative.");
+    if (salaryNum != null && salaryNum < 0) return setErr("Compensation can't be negative.");
     if (overrideNum != null && overrideNum < 0) return setErr("Fee amount can't be negative.");
     if (minFeeNum != null && minFeeNum < 0) return setErr("Minimum fee can't be negative.");
     if (pctNum < 0) return setErr("Fee percentage can't be negative.");
     if (feeTotal <= 0) {
-      return setErr("Fee amount is required at this stage — enter salary + fee %, or a flat amount.");
+      return setErr("Fee amount is required at this stage — enter compensation + fee %, or a flat amount.");
     }
     startSave(async () => {
       const result = await recordLocalOffer({
         placementId: job.placementId,
         salary: salaryNum,
+        compensationType,
         currency: currency.toUpperCase().slice(0, 3),
         title: title.trim(),
         startDate: startDate || null,
@@ -1149,18 +1163,14 @@ function OfferDialog({
             The `currency` state still defaults to "USD" and is written to
             Placement.offerCurrency / acceptedCurrency on save — the dropdown
             is gone but the DB column stays populated. The salary + fee $
-            fields now use the shared MaskedCurrencyInput (`currency` prop):
-            blank at rest, a leading "$" + thousands commas appear as digits
-            are typed, no USD suffix, and the masked input strips every
-            non-digit (including "-") before emitting, so negatives can't be
-            entered and the on-submit/server negative checks remain as
-            defense-in-depth. Fee % stays a plain field (it takes decimals,
-            not dollars). A fresh Make Offer renders all fields blank. */}
-        <OfferField
-          label="Offered salary"
+            Fee % stays a plain field (it takes decimals, not dollars).
+            A fresh Make Offer renders all fields blank. */}
+        <CompensationField
+          label="Offered compensation"
           value={salary}
           onChange={setSalary}
-          currency
+          type={compensationType}
+          onTypeChange={setCompensationType}
         />
         <div className="sm:col-span-2">
           <OfferField label="Offered title" value={title} onChange={setTitle} />
@@ -1199,15 +1209,16 @@ function OfferDialog({
         </div>
         {usedOverride ? (
           <div className="mt-1 text-xs text-court-fg-muted">
-            Flat-fee amount; salary × fee % calc is ignored while this is set.
+            Flat-fee amount; compensation × fee % calc is ignored while this is set.
           </div>
-        ) : salaryNum && pctNum ? (
+        ) : salaryNum && feeBasisAmount && pctNum ? (
           <div className="mt-1 text-xs text-court-fg-muted">
-            {formatMoney(salaryNum, currency)} × {pctNum}% = {formatMoney(rawFee, currency)}
+            {formatFeeBasisForDialog(salaryNum, compensationType, currency)} × {pctNum}% ={" "}
+            {formatMoney(rawFee, currency)}
           </div>
         ) : (
           <div className="mt-1 text-xs text-court-fg-muted">
-            Enter salary + fee % to calculate, or type a flat fee amount above.
+            Enter compensation + fee % to calculate, or type a flat fee amount above.
           </div>
         )}
       </div>
@@ -1254,6 +1265,12 @@ function LocalPlacementDialog({
         ? String(snap.offerSalary)
         : "",
   );
+  const [acceptedCompensationType, setAcceptedCompensationType] =
+    useState<PlacementCompensationType>(
+      normalizePlacementCompensationType(
+        snap?.acceptedCompensationType ?? snap?.offerCompensationType,
+      ),
+    );
   // USD is the only allowed currency on placement rows (Ace fix 2026-06-09).
   // Mirrors the Offer row above: the free-text Currency field was removed but
   // acceptedCurrency is still written to the DB on save — held as a const here
@@ -1345,11 +1362,12 @@ function LocalPlacementDialog({
   // while the cancelPlacement server action runs.
   const [cancelPending, startCancel] = useTransition();
 
-  const salaryNum = parseAmount(acceptedSalary);
+  const salaryNum = parseCompensationAmount(acceptedSalary);
   const pctNum = parseFloat(feePct) || 0;
   const minFeeNum = parseAmount(minFee);
   const overrideNum = parseAmount(feeAmountOverride);
-  const rawFee = salaryNum && pctNum ? Math.round(salaryNum * (pctNum / 100)) : 0;
+  const feeBasisAmount = placementFeeBasisAmount(salaryNum, acceptedCompensationType);
+  const rawFee = feeBasisAmount && pctNum ? Math.round(feeBasisAmount * (pctNum / 100)) : 0;
   const calcFee = minFeeNum && rawFee < minFeeNum ? minFeeNum : rawFee;
   const feeTotal = overrideNum != null ? overrideNum : calcFee;
   const guaranteeDaysNum = parseAmount(guaranteeDays);
@@ -1360,13 +1378,13 @@ function LocalPlacementDialog({
   function onSave(origin?: CelebrationOrigin) {
     setErr(null);
     if (salaryNum == null || salaryNum <= 0) {
-      return setErr("Accepted salary is required.");
+      return setErr("Accepted compensation is required.");
     }
     if (!startDate) {
       return setErr("Expected start date is required.");
     }
     if (feeTotal <= 0) {
-      return setErr("Fee amount is required — enter salary + fee %, or a flat fee.");
+      return setErr("Fee amount is required — enter compensation + fee %, or a flat fee.");
     }
     // Lead Source required (Ace 67.17) so the Financial Performance
     // By Source widget never has to bucket placements as "Unknown".
@@ -1392,6 +1410,7 @@ function LocalPlacementDialog({
       const result = await recordLocalPlacement({
         placementId: job.placementId,
         acceptedSalary: salaryNum,
+        acceptedCompensationType,
         acceptedCurrency: currency.toUpperCase().slice(0, 3),
         feePercentage: pctNum > 0 ? pctNum : null,
         feeTotal,
@@ -1480,7 +1499,7 @@ function LocalPlacementDialog({
       onClose={onClose}
       // Ace 67.17: lock to X-only close + draggable header + bottom-right
       // resize corner, matching the OfferDialog precedent from 67.10/67.11.
-      // The modal collects accepted salary, fee math, billing/hiring, and
+      // The modal collects accepted compensation, fee math, billing/hiring, and
       // required Lead Source — a stray backdrop click or reflexive Escape
       // press can't throw that work away. Drag/resize means the recruiter
       // can move the panel off the pipeline row underneath or widen it past
@@ -1505,11 +1524,12 @@ function LocalPlacementDialog({
           blank, so the Financial Performance By Source widget couldn't
           bucket the placement cleanly. Required on save (see onSave). */}
       <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2">
-        <OfferField
-          label="Accepted salary"
+        <CompensationField
+          label="Accepted compensation"
           value={acceptedSalary}
           onChange={setAcceptedSalary}
-          currency
+          type={acceptedCompensationType}
+          onTypeChange={setAcceptedCompensationType}
         />
         <OfferField label="Fee %" value={feePct} onChange={setFeePct} />
         <OfferField label="Min fee" value={minFee} onChange={setMinFee} currency />
@@ -1573,10 +1593,10 @@ function LocalPlacementDialog({
           </div>
           <div className="truncate text-[11px] text-court-fg-muted">
             {usedOverride
-              ? "Flat-fee amount; salary × fee % ignored."
-              : salaryNum && pctNum
-                ? `${formatMoney(salaryNum, currency)} × ${pctNum}% = ${formatMoney(rawFee, currency)}`
-                : "Enter salary + fee % to calculate, or type a flat fee above."}
+              ? "Flat-fee amount; compensation × fee % ignored."
+              : salaryNum && feeBasisAmount && pctNum
+                ? `${formatFeeBasisForDialog(salaryNum, acceptedCompensationType, currency)} × ${pctNum}% = ${formatMoney(rawFee, currency)}`
+                : "Enter compensation + fee % to calculate, or type a flat fee above."}
           </div>
         </div>
         <div className="shrink-0 text-right">
@@ -1931,6 +1951,70 @@ function OfferField({
   );
 }
 
+function CompensationField({
+  label,
+  value,
+  onChange,
+  type,
+  onTypeChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type: PlacementCompensationType;
+  onTypeChange: (v: PlacementCompensationType) => void;
+}) {
+  const inputId = useId();
+  const selectId = useId();
+  return (
+    <div className="block text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <label
+          htmlFor={inputId}
+          className="text-[11px] uppercase tracking-wider text-court-fg-muted"
+        >
+          {label}
+        </label>
+        <label htmlFor={selectId} className="sr-only">
+          Compensation type
+        </label>
+      </div>
+      <div className="mt-1 grid grid-cols-[minmax(0,1fr)_7.25rem] gap-2">
+        <div className="flex h-10 items-center rounded-lg border border-court-border bg-court-surface px-3 text-sm text-court-fg focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20">
+          <span className="mr-1 text-court-fg-muted">$</span>
+          <input
+            id={inputId}
+            type="text"
+            inputMode="decimal"
+            value={value}
+            onChange={(e) => onChange(e.target.value.replace(/-/g, ""))}
+            placeholder={type === "hourly" ? "19.50" : "120000"}
+            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-court-fg-muted/60"
+          />
+          {type === "hourly" ? (
+            <span className="ml-2 shrink-0 text-xs font-medium text-court-fg-muted">
+              /hr
+            </span>
+          ) : null}
+        </div>
+        <select
+          id={selectId}
+          value={type}
+          onChange={(e) =>
+            onTypeChange(
+              normalizePlacementCompensationType(e.target.value),
+            )
+          }
+          className="h-10 rounded-lg border border-court-border bg-court-surface px-3 text-sm font-medium text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        >
+          <option value="salary">Salary</option>
+          <option value="hourly">Hourly</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
 // Days-after-start columns are Int?, so coerce a parsed amount to a whole
 // number (or null). Keeps Prisma from rejecting a Float on an Int column.
 function truncOrNull(n: number | null): number | null {
@@ -1950,6 +2034,17 @@ function parseAmount(raw: string): number | null {
   return Math.round(num);
 }
 
+function parseCompensationAmount(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const cleaned = trimmed.replace(/[$,\s]/g, "").toLowerCase();
+  const kMatch = cleaned.match(/^(\d+(?:\.\d+)?)k$/);
+  if (kMatch) return Math.round(parseFloat(kMatch[1]) * 1000);
+  const num = Number(cleaned);
+  if (!Number.isFinite(num)) return null;
+  return num;
+}
+
 function formatMoney(amount: number, currency: string): string {
   try {
     return new Intl.NumberFormat(undefined, {
@@ -1960,6 +2055,17 @@ function formatMoney(amount: number, currency: string): string {
   } catch {
     return `${currency.toUpperCase()} ${amount.toLocaleString()}`;
   }
+}
+
+function formatFeeBasisForDialog(
+  amount: number,
+  type: PlacementCompensationType,
+  currency: string,
+): string {
+  if (type === "hourly") {
+    return `${formatPlacementCompensation(amount, currency, "hourly")} × ${HOURS_PER_YEAR_FOR_HOURLY_PLACEMENT.toLocaleString()} hrs`;
+  }
+  return formatPlacementCompensation(amount, currency, "salary");
 }
 
 // ---- Shared dialog primitives ----

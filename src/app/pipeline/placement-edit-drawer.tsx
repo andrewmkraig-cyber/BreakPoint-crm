@@ -12,6 +12,10 @@ import { TabStrip } from "@/components/ui/tab-strip";
 import { cn } from "@/lib/utils";
 import { updatePlacement } from "@/app/pipeline/placement-update-action";
 import { LEAD_SOURCES } from "@/lib/lead-sources";
+import {
+  normalizePlacementCompensationType,
+  type PlacementCompensationType,
+} from "@/lib/placement-compensation";
 
 export type PlacementDrawerContext = {
   placementId: string;
@@ -24,6 +28,7 @@ export type PlacementDrawerContext = {
   // "YYYY-MM-DD" shape <input type="date"> expects.
   expectedStartDate: string | null;
   acceptedSalary: number | null;
+  acceptedCompensationType: PlacementCompensationType | null;
   feeTotal: number | null;
   feePercentage: number | null;
   placementNotes: string | null;
@@ -92,6 +97,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
   const [pending, startTransition] = useTransition();
   const [startDate, setStartDate] = useState("");
   const [salary, setSalary] = useState("");
+  const [salaryType, setSalaryType] = useState<PlacementCompensationType>("salary");
   const [feeTotal, setFeeTotal] = useState("");
   const [feePct, setFeePct] = useState("");
   const [notes, setNotes] = useState("");
@@ -118,6 +124,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
     if (!context) return;
     setStartDate(isoToDateInput(context.expectedStartDate));
     setSalary(context.acceptedSalary != null ? String(context.acceptedSalary) : "");
+    setSalaryType(normalizePlacementCompensationType(context.acceptedCompensationType));
     setFeeTotal(context.feeTotal != null ? String(context.feeTotal) : "");
     setFeePct(context.feePercentage != null ? String(context.feePercentage) : "");
     setNotes(context.placementNotes ?? "");
@@ -186,6 +193,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
         placementId: context.placementId,
         expectedStartDate: startDate.trim() ? startDate.trim() : null,
         acceptedSalary: parseNumberOrNull(salary),
+        acceptedCompensationType: salaryType,
         feeTotal: parseNumberOrNull(feeTotal),
         feePercentage: parseNumberOrNull(feePct),
         placementNotes: notes,
@@ -278,16 +286,33 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
               />
             </div>
             <div>
-              <FieldLabel>Base salary (USD)</FieldLabel>
-              <Input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                value={salary}
-                onChange={(e) => setSalary(e.target.value)}
-                frameClassName={FIELD_FRAME_CLS}
-                className={FIELD_TEXT_CLS}
-              />
+              <FieldLabel>Compensation</FieldLabel>
+              <div className="grid grid-cols-[minmax(0,1fr)_6.75rem] gap-2">
+                <Input
+                  type="number"
+                  step={salaryType === "hourly" ? "0.01" : "1"}
+                  inputMode="decimal"
+                  min={0}
+                  value={salary}
+                  onChange={(e) => setSalary(e.target.value)}
+                  frameClassName={FIELD_FRAME_CLS}
+                  className={FIELD_TEXT_CLS}
+                />
+                <Select
+                  value={salaryType}
+                  onChange={(e) =>
+                    setSalaryType(
+                      normalizePlacementCompensationType(e.target.value),
+                    )
+                  }
+                  frameClassName={FIELD_FRAME_CLS}
+                  className={FIELD_TEXT_CLS}
+                  aria-label="Compensation type"
+                >
+                  <option value="salary">Salary</option>
+                  <option value="hourly">Hourly</option>
+                </Select>
+              </div>
             </div>
             <div>
               <FieldLabel>Fee amount (USD)</FieldLabel>

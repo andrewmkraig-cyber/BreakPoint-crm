@@ -18,6 +18,10 @@ import { fanOutPlacementNote } from "@/lib/notes/placement-fanout";
 import { prisma } from "@/lib/prisma";
 import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
 import {
+  normalizePlacementCompensationType,
+  type PlacementCompensationType,
+} from "@/lib/placement-compensation";
+import {
   submittalEditorHtmlToPlainText,
   submittalToHtml,
   submittalToPlainText,
@@ -1049,6 +1053,7 @@ export async function dismissPlacementFromProfile(input: {
 export type RecordLocalOfferInput = {
   placementId: string;
   salary: number | null;
+  compensationType?: PlacementCompensationType;
   currency: string;
   title: string;
   startDate: string | null; // ISO date
@@ -1076,6 +1081,7 @@ export async function recordLocalOffer(
   }
   const org = await getCurrentOrg();
   try {
+    const compensationType = normalizePlacementCompensationType(input.compensationType);
     const placement = await prisma.placement.findFirst({
       where: { id: input.placementId, organizationId: org.id },
       select: {
@@ -1099,6 +1105,7 @@ export async function recordLocalOffer(
         stage: "offer",
         offerReceivedAt: new Date(),
         offerSalary: input.salary ?? null,
+        offerCompensationType: compensationType,
         offerCurrency: input.currency || "USD",
         offerTitle: input.title || null,
         offerStartDate: startDate,
@@ -1108,6 +1115,7 @@ export async function recordLocalOffer(
         // isn't opened to type it in again — matches the RF recordOffer
         // semantics.
         acceptedSalary: input.salary ?? null,
+        acceptedCompensationType: compensationType,
         acceptedCurrency: input.currency || "USD",
         feePercentage: input.feePercentage,
         feeTotal: input.feeTotal,
@@ -1127,6 +1135,7 @@ export async function recordLocalOffer(
       targetId: row.id,
       metadata: {
         offerAmount: input.salary ?? null,
+        compensationType,
         currency: input.currency || "USD",
         title: input.title || null,
         startDate: input.startDate ?? null,
@@ -1207,6 +1216,7 @@ export async function recordLocalOffer(
 export type RecordLocalPlacementInput = {
   placementId: string;
   acceptedSalary: number;
+  acceptedCompensationType?: PlacementCompensationType;
   acceptedCurrency: string;
   feePercentage: number | null;
   feeTotal: number;
@@ -1259,6 +1269,9 @@ export async function recordLocalPlacement(
   }
   const org = await getCurrentOrg();
   try {
+    const acceptedCompensationType = normalizePlacementCompensationType(
+      input.acceptedCompensationType,
+    );
     const placement = await prisma.placement.findFirst({
       where: { id: input.placementId, organizationId: org.id },
       select: {
@@ -1335,6 +1348,7 @@ export async function recordLocalPlacement(
         // the RF recordPlacement uses.
         placedAt: placement.placedAt ?? new Date(),
         acceptedSalary: input.acceptedSalary,
+        acceptedCompensationType,
         acceptedCurrency: input.acceptedCurrency || "USD",
         feePercentage: input.feePercentage,
         feeTotal: input.feeTotal,
@@ -1366,6 +1380,7 @@ export async function recordLocalPlacement(
       targetId: row.id,
       metadata: {
         acceptedSalary: input.acceptedSalary,
+        acceptedCompensationType,
         currency: input.acceptedCurrency || "USD",
         feeTotal: input.feeTotal,
         feePercentage: input.feePercentage,

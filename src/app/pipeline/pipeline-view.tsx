@@ -33,6 +33,10 @@ import {
   type PlacementDrawerContext,
 } from "@/app/pipeline/placement-edit-drawer";
 import {
+  formatPlacementCompensation,
+  type PlacementCompensationType,
+} from "@/lib/placement-compensation";
+import {
   GuaranteePeriodTable,
   type GuaranteePeriodRow,
 } from "@/components/placements/guarantee-period-table";
@@ -90,6 +94,7 @@ export type PlacementDetails = {
   stage: "offer" | "pending_start" | "hired";
   syncedToRf: boolean;
   acceptedSalary: number | null;
+  acceptedCompensationType: PlacementCompensationType | null;
   acceptedCurrency: string | null;
   feePercentage: number | null;
   feeTotal: number | null;
@@ -631,6 +636,7 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
       stageLabel: row.stageName,
       expectedStartDate: row.placement.expectedStartDate,
       acceptedSalary: row.placement.acceptedSalary,
+      acceptedCompensationType: row.placement.acceptedCompensationType,
       feeTotal: row.placement.feeTotal,
       feePercentage: row.placement.feePercentage,
       placementNotes: row.placement.placementNotes,
@@ -1045,7 +1051,11 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
                           {stage === "offer" && (
                             <>
                               <td className="px-3 py-2 align-top text-center text-sm text-court-fg">
-                                {formatMoney(r.placement?.acceptedSalary ?? null, r.placement?.acceptedCurrency)}
+                                {formatCompensation(
+                                  r.placement?.acceptedSalary ?? null,
+                                  r.placement?.acceptedCurrency,
+                                  r.placement?.acceptedCompensationType,
+                                )}
                               </td>
                               <td className="px-3 py-2 align-top text-center text-sm text-court-fg">
                                 {formatMoney(r.placement?.feeTotal ?? null, r.placement?.acceptedCurrency)}
@@ -1382,6 +1392,15 @@ function formatMoney(n: number | null, currency: string | null | undefined): str
   if (!n) return "—";
   const sym = (currency ?? "USD").toUpperCase() === "USD" ? "$" : `${(currency ?? "USD").toUpperCase()} `;
   return `${sym}${n.toLocaleString()}`;
+}
+
+function formatCompensation(
+  n: number | null,
+  currency: string | null | undefined,
+  type: PlacementCompensationType | null | undefined,
+): string {
+  if (!n) return "—";
+  return formatPlacementCompensation(n, currency, type ?? "salary");
 }
 
 function StageTabs({

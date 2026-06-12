@@ -84,9 +84,10 @@ export type PlacementsDashboardRow = {
   // High-level bucket the placement maps to for the By-Sourcing card.
   // Derived from Placement.source — see deriveSourceChannel().
   sourceChannel: PlacementsDashboardSourceChannel;
-  // Snapshot of Placement.acceptedSalary (annual base) for direct-hire
-  // placements. null when not captured (typical for contract roles).
+  // Snapshot of Placement.acceptedSalary. When acceptedCompensationType is
+  // "salary" this is annual base; when "hourly" this is the hourly rate.
   baseSalary: number | null;
+  acceptedCompensationType: "salary" | "hourly" | null;
   // Placement.placedAt — the moment the offer was accepted and the fee
   // locked. Drives the Offer→Start lead-time KPI alongside startDate.
   offerAcceptedAt: Date | null;
@@ -302,6 +303,7 @@ export async function getPlacementsDashboardData(
         feePercentage: true,
         placementNotes: true,
         acceptedSalary: true,
+        acceptedCompensationType: true,
         cityOverride: true,
         source: true,
         candidateSource: true,
@@ -440,6 +442,7 @@ export async function getPlacementsDashboardData(
       placementNotes: p.placementNotes ?? null,
       sourceChannel: deriveSourceChannel(p.candidateSource ?? p.source),
       baseSalary: p.acceptedSalary ?? null,
+      acceptedCompensationType: p.acceptedCompensationType === "hourly" ? "hourly" : "salary",
       offerAcceptedAt: p.placedAt,
       placementType,
       clientHadPriorYearPlacement: p.clientId

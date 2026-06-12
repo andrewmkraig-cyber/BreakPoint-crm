@@ -37,6 +37,7 @@ import { authOptions } from "@/lib/auth";
 import { getPlacementsForOrg } from "@/lib/placements";
 import { getInterviewsForOrg } from "@/lib/interviews";
 import { getAppPreferences } from "@/lib/preferences";
+import { normalizePlacementCompensationType } from "@/lib/placement-compensation";
 
 
 // Normalize a Placement.billingContacts / hiringContacts JSON value into the
@@ -606,11 +607,13 @@ export async function LocalCandidateProfile({
     // Date class through React's serialization boundary.
     const placementSnapshot = {
       offerSalary: p.offerSalary,
+      offerCompensationType: normalizePlacementCompensationType(p.offerCompensationType),
       offerCurrency: p.offerCurrency,
       offerTitle: p.offerTitle,
       offerStartDate: p.offerStartDate?.toISOString() ?? null,
       offerNotes: p.offerNotes,
       acceptedSalary: p.acceptedSalary,
+      acceptedCompensationType: normalizePlacementCompensationType(p.acceptedCompensationType),
       acceptedCurrency: p.acceptedCurrency,
       feePercentage: p.feePercentage,
       feeTotal: p.feeTotal,

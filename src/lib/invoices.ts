@@ -414,6 +414,7 @@ export async function getInvoice(id: string, organizationId: string) {
           expectedStartDate: true,
           offerTitle: true,
           acceptedSalary: true,
+          acceptedCompensationType: true,
           feePercentage: true,
           feeTotal: true,
           minFee: true,

@@ -344,6 +344,8 @@ export type InvoicePdfInput = {
   clientAddress: string;
   startDateLabel: string;
   baseSalaryUsd: number | null;
+  baseSalaryLabel?: string | null;
+  feeBasisBaseLabel?: string | null;
   feePercentage: number | null;
   // Pre-resolved label for the FEE field. The route decides "%" vs
   // "Min Fee" (flat override / below-minimum) from the placement's fee
@@ -422,6 +424,8 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
     clientAddress,
     startDateLabel,
     baseSalaryUsd,
+    baseSalaryLabel,
+    feeBasisBaseLabel,
     feePercentage,
     feeBasisLabel,
     minFeeUsd,
@@ -453,13 +457,16 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
   // instead of a percentage that did not actually produce the number. When
   // a true percentage drove it, keep the "X% of $[base] base" wording.
   const minimumFeeAppliedUsd = minFeeUsd ?? lineItemRateUsd;
+  const resolvedFeeBasisBaseLabel =
+    feeBasisBaseLabel ??
+    (baseSalaryUsd != null ? `${formatUsdCompact(baseSalaryUsd)} base` : null);
   const feeBasisDescription =
-    feeBasisLabel === "Min Fee" && minimumFeeAppliedUsd != null && baseSalaryUsd != null
-      ? `${formatUsdCompact(baseSalaryUsd)} base (minimum fee of ${formatUsdCompact(minimumFeeAppliedUsd)} applied)`
-      : feePercentage != null && baseSalaryUsd != null
-        ? `${feePercentage}% of ${formatUsdCompact(baseSalaryUsd)} base`
-        : baseSalaryUsd != null
-          ? `${formatUsdCompact(baseSalaryUsd)} base`
+    feeBasisLabel === "Min Fee" && minimumFeeAppliedUsd != null && resolvedFeeBasisBaseLabel != null
+      ? `${resolvedFeeBasisBaseLabel} (minimum fee of ${formatUsdCompact(minimumFeeAppliedUsd)} applied)`
+      : feePercentage != null && resolvedFeeBasisBaseLabel != null
+        ? `${feePercentage}% of ${resolvedFeeBasisBaseLabel}`
+        : resolvedFeeBasisBaseLabel
+          ? resolvedFeeBasisBaseLabel
           : null;
   const feeSummaryLabel = feeBasisLabel ?? (feePercentage != null ? `${feePercentage}%` : "-");
 
@@ -592,7 +599,7 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
         summaryItem("START DATE", startDateLabel || "-"),
         summaryItem("PLACEMENT TYPE", "Direct Hire"),
         summaryItem("ACCOUNT EXEC", accountExecName || "-"),
-        summaryItem("BASE SALARY", formatUsdCompact(baseSalaryUsd)),
+        summaryItem("COMPENSATION", baseSalaryLabel ?? formatUsdCompact(baseSalaryUsd)),
         summaryItem("FEE %", feeSummaryLabel),
         summaryItem("GUARANTEE", guaranteeLabel || "90 days"),
       ),

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import type { PlacementsDashboardBillingStatus } from "@/lib/placements-dashboard";
 import { formatMoneyShort } from "@/lib/placements-map-geo";
 import { formatDate } from "@/lib/utils";
+import type { PlacementCompensationType } from "@/lib/placement-compensation";
 import {
   PlacementEditDrawer,
   type PlacementDrawerContext,
@@ -37,6 +38,7 @@ export type LedgerRow = {
   feePercentage: number | null;
   placementNotes: string | null;
   acceptedSalary: number | null;
+  acceptedCompensationType: PlacementCompensationType | null;
   candidateSource: string | null;
   billingStatus: PlacementsDashboardBillingStatus;
   leadSource: string | null;
@@ -135,6 +137,7 @@ function toDrawerContext(row: LedgerRow): PlacementDrawerContext {
     stageLabel: STAGE_LABEL[row.stage],
     expectedStartDate: row.expectedStartDateIso,
     acceptedSalary: row.acceptedSalary,
+    acceptedCompensationType: row.acceptedCompensationType,
     feeTotal: row.feeTotal,
     feePercentage: row.feePercentage,
     placementNotes: row.placementNotes,

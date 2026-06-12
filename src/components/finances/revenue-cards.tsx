@@ -8,12 +8,9 @@ import {
 } from "@/lib/time-range";
 import { QUARTERLY_REVENUE_GOAL_USD } from "@/app/dashboard/goal-pacing";
 
-// The three Revenue cards (By client / By source / Trend) lifted out of
+// The three Revenue cards (By client / Average deal size / Trend) lifted out of
 // the deleted "Revenue & Profitability" Finances tab and mounted above
-// the Placements map. Data wiring + styling are carried over verbatim
-// from the old FinancialPerformanceTab revenue section so the cards read
-// exactly as they did before the move. Honors the same period selection
-// the Placements tab uses.
+// the Placements map. Honors the same period selection the Placements tab uses.
 
 const USD_NO_CENTS = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -31,6 +28,16 @@ function decimalToNumber(d: { toString(): string } | null): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function joinName(
+  firstName: string | null | undefined,
+  lastName: string | null | undefined,
+): string {
+  return [firstName, lastName]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
 const MONTH_FULL = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -42,7 +49,12 @@ type ClientRow = {
   revenueUsd: number;
   placements: number;
 };
-type SourceRow = { source: string; revenueUsd: number; placements: number };
+type DealSizeRow = {
+  id: string;
+  name: string;
+  detail: string;
+  revenueUsd: number;
+};
 
 export async function RevenueCards({
   selection = DEFAULT_TIME_RANGE,
@@ -79,9 +91,20 @@ export async function RevenueCards({
           feeAmount: true,
           sentAt: true,
           paidAt: true,
+          id: true,
+          invoiceNumber: true,
+          placementId: true,
+          roleTitle: true,
           clientId: true,
           client: { select: { name: true } },
-          placement: { select: { candidateSource: true } },
+          candidate: { select: { firstName: true, lastName: true } },
+          placement: {
+            select: {
+              candidate: { select: { firstName: true, lastName: true } },
+              job: { select: { title: true } },
+              offerTitle: true,
+            },
+          },
         },
       }),
       prisma.placement.findMany({
@@ -89,7 +112,7 @@ export async function RevenueCards({
           organizationId: org.id,
           placedAt: { gte: revStart, lt: revEnd },
         },
-        select: { clientId: true, candidateSource: true },
+        select: { clientId: true },
       }),
       // Uninvoiced placements (locked fee, no invoice yet) folded into the
       // same revenue aggregations as invoiced placements, mirroring the
@@ -103,20 +126,22 @@ export async function RevenueCards({
           placedAt: { gte: revStart, lt: revEnd },
         },
         select: {
+          id: true,
           feeTotal: true,
           placedAt: true,
           clientId: true,
           client: { select: { name: true } },
-          candidateSource: true,
+          candidate: { select: { firstName: true, lastName: true } },
+          job: { select: { title: true } },
+          offerTitle: true,
         },
       }),
     ]);
 
   const periodLabel = range.label;
 
-  // Placement counts per client + per source.
+  // Placement counts per client.
   const placementsByClient = new Map<string, number>();
-  const placementsBySource = new Map<string, number>();
   for (const p of placementsYtd) {
     if (p.clientId) {
       placementsByClient.set(
@@ -124,8 +149,6 @@ export async function RevenueCards({
         (placementsByClient.get(p.clientId) ?? 0) + 1,
       );
     }
-    const src = p.candidateSource?.trim() || "Untagged";
-    placementsBySource.set(src, (placementsBySource.get(src) ?? 0) + 1);
   }
   const totalPlacementsYtd = placementsYtd.length;
 
@@ -164,26 +187,53 @@ export async function RevenueCards({
   const byClientOthersUsd = byClientOthers.reduce((s, r) => s + r.revenueUsd, 0);
   const byClientMaxUsd = byClientTop[0]?.revenueUsd ?? 0;
 
-  // By Source: aggregate invoice revenue by placement.candidateSource.
-  const bySourceMap = new Map<string, number>();
+  // Average deal size: one row per placement/deal, sorted largest to smallest.
+  const dealSizeMap = new Map<string, DealSizeRow>();
+  function addDealSizeRow(row: DealSizeRow) {
+    const existing = dealSizeMap.get(row.id);
+    if (existing) {
+      existing.revenueUsd += row.revenueUsd;
+      return;
+    }
+    dealSizeMap.set(row.id, row);
+  }
   for (const inv of revenueInvoices) {
-    const src = inv.placement?.candidateSource?.trim() || "Untagged";
-    bySourceMap.set(src, (bySourceMap.get(src) ?? 0) + decimalToNumber(inv.feeAmount));
+    const candidateName = joinName(
+      inv.candidate?.firstName ?? inv.placement?.candidate?.firstName,
+      inv.candidate?.lastName ?? inv.placement?.candidate?.lastName,
+    );
+    const clientName = inv.client?.name ?? "Unattached";
+    const roleTitle =
+      inv.roleTitle?.trim() ||
+      inv.placement?.offerTitle?.trim() ||
+      inv.placement?.job?.title?.trim() ||
+      "";
+    addDealSizeRow({
+      id: inv.placementId ? `placement:${inv.placementId}` : `invoice:${inv.id}`,
+      name: candidateName || clientName || inv.invoiceNumber,
+      detail: [clientName, roleTitle].filter(Boolean).join(" · "),
+      revenueUsd: decimalToNumber(inv.feeAmount),
+    });
   }
   for (const p of uninvoicedPlacementsPeriod) {
-    const src = p.candidateSource?.trim() || "Untagged";
-    bySourceMap.set(src, (bySourceMap.get(src) ?? 0) + (p.feeTotal ?? 0));
+    const candidateName = joinName(p.candidate?.firstName, p.candidate?.lastName);
+    const clientName = p.client?.name ?? "Unattached";
+    const roleTitle = p.offerTitle?.trim() || p.job?.title?.trim() || "";
+    addDealSizeRow({
+      id: `placement:${p.id}`,
+      name: candidateName || clientName,
+      detail: [clientName, roleTitle].filter(Boolean).join(" · "),
+      revenueUsd: p.feeTotal ?? 0,
+    });
   }
-  const bySourceAll: SourceRow[] = Array.from(bySourceMap, ([source, revenueUsd]) => ({
-    source,
-    revenueUsd,
-    placements: placementsBySource.get(source) ?? 0,
-  })).sort((a, b) => b.revenueUsd - a.revenueUsd);
-  const bySourceTotalUsd = bySourceAll.reduce((s, r) => s + r.revenueUsd, 0);
-  const bySourceTop = bySourceAll.slice(0, 6);
-  const bySourceOthers = bySourceAll.slice(6);
-  const bySourceOthersUsd = bySourceOthers.reduce((s, r) => s + r.revenueUsd, 0);
-  const bySourceMaxUsd = bySourceTop[0]?.revenueUsd ?? 0;
+  const dealSizeRows = Array.from(dealSizeMap.values())
+    .filter((r) => r.revenueUsd > 0)
+    .sort((a, b) => b.revenueUsd - a.revenueUsd);
+  const dealSizeTotalUsd = dealSizeRows.reduce((s, r) => s + r.revenueUsd, 0);
+  const averageDealUsd =
+    dealSizeRows.length > 0 ? dealSizeTotalUsd / dealSizeRows.length : 0;
+  const dealSizeTop = dealSizeRows.slice(0, 6);
+  const dealSizeMaxUsd = dealSizeTop[0]?.revenueUsd ?? 0;
 
   // Trend card: revenue per month inside the current calendar quarter.
   const quarterMonths = [qStartMonth, qStartMonth + 1, qStartMonth + 2];
@@ -247,12 +297,11 @@ export async function RevenueCards({
           maxUsd={byClientMaxUsd}
           totalPlacementsYtd={totalPlacementsYtd}
         />
-        <BySourceCard
-          rows={bySourceTop}
-          othersCount={bySourceOthers.length}
-          othersUsd={bySourceOthersUsd}
-          totalUsd={bySourceTotalUsd}
-          maxUsd={bySourceMaxUsd}
+        <AverageDealSizeCard
+          rows={dealSizeTop}
+          averageDealUsd={averageDealUsd}
+          totalDeals={dealSizeRows.length}
+          maxUsd={dealSizeMaxUsd}
         />
         <TrendCard
           quarterLabel={quarterLabel}
@@ -313,38 +362,37 @@ function ByClientCard({
   );
 }
 
-function BySourceCard({
+function AverageDealSizeCard({
   rows,
-  othersCount,
-  othersUsd,
-  totalUsd,
+  averageDealUsd,
+  totalDeals,
   maxUsd,
 }: {
-  rows: SourceRow[];
-  othersCount: number;
-  othersUsd: number;
-  totalUsd: number;
+  rows: DealSizeRow[];
+  averageDealUsd: number;
+  totalDeals: number;
   maxUsd: number;
 }) {
   return (
-    <Panel title="By source" subline="How the deal entered the desk">
+    <Panel
+      title="Average deal size"
+      subline={`${formatUsd(averageDealUsd)} average · ${totalDeals} deal${
+        totalDeals === 1 ? "" : "s"
+      }`}
+    >
       {rows.length === 0 ? (
-        <EmptyBlock>No billed revenue logged this year yet.</EmptyBlock>
+        <EmptyBlock>No deal revenue logged this period yet.</EmptyBlock>
       ) : (
         <ul className="mt-3 space-y-1">
           {rows.map((r) => (
-            <BarRow
-              key={r.source}
-              name={r.source}
-              count={r.placements}
+            <DealSizeRowItem
+              key={r.id}
+              name={r.name}
+              detail={r.detail}
               revenueUsd={r.revenueUsd}
-              pctOfTotal={totalUsd > 0 ? (r.revenueUsd / totalUsd) * 100 : 0}
               pctOfMax={maxUsd > 0 ? (r.revenueUsd / maxUsd) * 100 : 0}
             />
           ))}
-          {othersCount > 0 && (
-            <OthersRow count={othersCount} revenueUsd={othersUsd} totalUsd={totalUsd} />
-          )}
         </ul>
       )}
     </Panel>
@@ -403,6 +451,46 @@ function BarRow({
           </div>
           <div className="w-9 shrink-0 text-right text-xs tabular-nums text-court-fg-muted">
             {pctLabel}
+          </div>
+        </div>
+        <div className="mt-1 h-1 overflow-hidden rounded-full bg-court-surface-subtle">
+          <div
+            className="h-full rounded-full bg-court-brand"
+            style={{ width: `${Math.max(0, Math.min(100, pctOfMax))}%` }}
+          />
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function DealSizeRowItem({
+  name,
+  detail,
+  revenueUsd,
+  pctOfMax,
+}: {
+  name: string;
+  detail: string;
+  revenueUsd: number;
+  pctOfMax: number;
+}) {
+  return (
+    <li>
+      <div className="px-1 py-1.5">
+        <div className="flex items-baseline gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium text-court-fg">
+              {name}
+            </div>
+            {detail ? (
+              <div className="truncate text-[11px] text-court-fg-muted">
+                {detail}
+              </div>
+            ) : null}
+          </div>
+          <div className="shrink-0 text-sm font-semibold tabular-nums tracking-tight text-court-fg">
+            {formatUsd(revenueUsd)}
           </div>
         </div>
         <div className="mt-1 h-1 overflow-hidden rounded-full bg-court-surface-subtle">

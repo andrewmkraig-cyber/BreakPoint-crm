@@ -33,6 +33,11 @@ import { createReminder } from "@/app/calendar/reminder-actions";
 import { zonedWallTimeToUtc } from "@/lib/timezone";
 import { priorFridayIfWeekendUtc } from "@/lib/business-days";
 import {
+  formatPlacementCompensation,
+  normalizePlacementCompensationType,
+  type PlacementCompensationType,
+} from "@/lib/placement-compensation";
+import {
   CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
   CANDIDATE_CONFIRMATION_TRIGGER,
   CANDIDATE_HIRED_WELCOME_TRIGGER,
@@ -133,6 +138,7 @@ export type RecordOfferInput = {
   jobCuid?: string | null;
   clientCuid?: string | null;
   salary: number | null;
+  compensationType?: PlacementCompensationType;
   currency: string;
   title: string;
   startDate: string | null; // ISO date
@@ -165,6 +171,7 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
   }
   const org = await getCurrentOrg();
   const startDate = input.startDate ? new Date(input.startDate) : null;
+  const compensationType = normalizePlacementCompensationType(input.compensationType);
 
   const sync = await trySyncRfStage({
     candidateRfId: input.candidateRfId,
@@ -192,6 +199,7 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
         stage: "offer",
         offerReceivedAt: new Date(),
         offerSalary: input.salary ?? null,
+        offerCompensationType: compensationType,
         offerCurrency: input.currency || "USD",
         offerTitle: input.title || null,
         offerStartDate: startDate,
@@ -201,6 +209,7 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
         // opened to type it in again. PlacementDialog still wins on edit
         // (its own save call writes acceptedSalary explicitly).
         acceptedSalary: input.salary ?? null,
+        acceptedCompensationType: compensationType,
         acceptedCurrency: input.currency || "USD",
         feePercentage: input.feePercentage,
         feeTotal: input.feeTotal,
@@ -213,11 +222,13 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
         stage: "offer",
         offerReceivedAt: new Date(),
         offerSalary: input.salary ?? null,
+        offerCompensationType: compensationType,
         offerCurrency: input.currency || "USD",
         offerTitle: input.title || null,
         offerStartDate: startDate,
         offerNotes: input.notes || null,
         acceptedSalary: input.salary ?? null,
+        acceptedCompensationType: compensationType,
         acceptedCurrency: input.currency || "USD",
         feePercentage: input.feePercentage,
         feeTotal: input.feeTotal,
@@ -236,6 +247,7 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
       targetId: row.id,
       metadata: {
         offerAmount: input.salary ?? null,
+        compensationType,
         currency: input.currency || "USD",
         title: input.title || null,
         startDate: input.startDate ?? null,
@@ -253,7 +265,7 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
     // Ace-native offer flow that passes jobCuid/clientCuid (and
     // eventually candidateId) Just Works without re-plumbing.
     const offerAmount = input.salary
-      ? formatCurrencyInline(input.salary, input.currency || "USD")
+      ? formatPlacementCompensation(input.salary, input.currency || "USD", compensationType)
       : "";
     const startDateLabel = input.startDate
       ? new Date(input.startDate).toLocaleDateString()
@@ -296,6 +308,7 @@ export type RecordPlacementInput = {
   jobCuid?: string | null;
   clientCuid?: string | null;
   acceptedSalary: number;
+  acceptedCompensationType?: PlacementCompensationType;
   acceptedCurrency: string;
   feePercentage: number;
   feeTotal: number;
@@ -348,6 +361,9 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
     return { ok: false, error: "Fee amount is required at this stage." };
   }
   const org = await getCurrentOrg();
+  const acceptedCompensationType = normalizePlacementCompensationType(
+    input.acceptedCompensationType,
+  );
 
   const sync = await trySyncRfStage({
     candidateRfId: input.candidateRfId,
@@ -436,6 +452,7 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
       : {};
     const commonData = {
       acceptedSalary: input.acceptedSalary,
+      acceptedCompensationType,
       acceptedCurrency: input.acceptedCurrency || "USD",
       feePercentage: input.feePercentage,
       feeTotal: input.feeTotal,
@@ -622,6 +639,7 @@ export async function confirmStart(
         candidateRfId: true,
         feeTotal: true,
         acceptedSalary: true,
+        acceptedCompensationType: true,
         feePercentage: true,
         expectedStartDate: true,
         // Needed before the full-fee auto-draft below so we can suppress it
@@ -664,6 +682,7 @@ export async function confirmStart(
       metadata: {
         feeAmount: existing?.feeTotal ?? null,
         acceptedSalary: existing?.acceptedSalary ?? null,
+        acceptedCompensationType: existing?.acceptedCompensationType ?? null,
         feePercentage: existing?.feePercentage ?? null,
         startDate: existing?.expectedStartDate?.toISOString() ?? null,
       },
@@ -2816,20 +2835,4 @@ export async function getCandidatePlacementSnapshots(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Snapshot fetch failed." };
   }
-}
-
-// Server-side currency formatter for trigger fires (the rich
-// formatMoney variants live in client components and can't be
-// imported here). Mirrors the "$120k" condensed form used elsewhere
-// in the app for offer amounts.
-function formatCurrencyInline(amount: number, currency: string): string {
-  if (!Number.isFinite(amount)) return "";
-  const ccy = (currency || "USD").toUpperCase();
-  const symbol = ccy === "USD" ? "$" : `${ccy} `;
-  if (amount >= 1000) {
-    const k = amount / 1000;
-    const fixed = k % 1 === 0 ? k.toFixed(0) : k.toFixed(1);
-    return `${symbol}${fixed}k`;
-  }
-  return `${symbol}${amount}`;
 }

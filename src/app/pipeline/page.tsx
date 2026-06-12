@@ -1186,6 +1186,7 @@ function toPlacementDetails(
     stage: p.stage as "offer" | "pending_start" | "hired",
     syncedToRf: p.syncedToRf,
     acceptedSalary: p.acceptedSalary,
+    acceptedCompensationType: p.acceptedCompensationType === "hourly" ? "hourly" : "salary",
     acceptedCurrency: p.acceptedCurrency,
     feePercentage: p.feePercentage,
     feeTotal: p.feeTotal,

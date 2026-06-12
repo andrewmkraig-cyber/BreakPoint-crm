@@ -4,6 +4,12 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getBillingSettings } from "@/lib/billing-settings";
 import { getInvoice, parseInvoiceContacts } from "@/lib/invoices";
 import { renderInvoicePdfBuffer } from "@/lib/invoice-pdf";
+import {
+  formatPlacementCompensation,
+  formatPlacementFeeBasis,
+  normalizePlacementCompensationType,
+  placementFeeBasisAmount,
+} from "@/lib/placement-compensation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,6 +80,18 @@ export async function GET(
   const baseSalaryUsd = invoice.baseSalary
     ? Number(invoice.baseSalary.toString())
     : invoice.placement?.acceptedSalary ?? null;
+  const compensationType = normalizePlacementCompensationType(
+    invoice.placement?.acceptedCompensationType,
+  );
+  const feeBasisAmountUsd = placementFeeBasisAmount(baseSalaryUsd, compensationType);
+  const baseSalaryLabel =
+    baseSalaryUsd != null
+      ? formatPlacementCompensation(baseSalaryUsd, "USD", compensationType)
+      : null;
+  const feeBasisBaseLabel =
+    baseSalaryUsd != null
+      ? formatPlacementFeeBasis(baseSalaryUsd, "USD", compensationType)
+      : null;
   const feePercentageNum = invoice.feePercentage
     ? Number(invoice.feePercentage.toString())
     : invoice.placement?.feePercentage ?? null;
@@ -91,8 +109,8 @@ export async function GET(
   const placementMinFee = invoice.placement?.minFee ?? null;
   const totalFeeAmountUsd = placementFullFee ?? feeAmountUsd;
   let feeBasisLabel: string | null = null;
-  if (feePercentageNum != null && feePercentageNum > 0 && baseSalaryUsd != null) {
-    const rawFee = Math.round(baseSalaryUsd * (feePercentageNum / 100));
+  if (feePercentageNum != null && feePercentageNum > 0 && feeBasisAmountUsd != null) {
+    const rawFee = Math.round(feeBasisAmountUsd * (feePercentageNum / 100));
     const belowMin = placementMinFee != null && rawFee < placementMinFee;
     const flatOverride = placementFullFee != null && placementFullFee !== rawFee;
     feeBasisLabel = belowMin || flatOverride ? "Min Fee" : `${feePercentageNum}%`;
@@ -134,6 +152,8 @@ export async function GET(
     clientAddress,
     startDateLabel: formatInvoiceDate(invoice.startDate),
     baseSalaryUsd,
+    baseSalaryLabel,
+    feeBasisBaseLabel,
     feePercentage: feePercentageNum,
     feeBasisLabel,
     // Real min fee off the placement, so the line-item description can read

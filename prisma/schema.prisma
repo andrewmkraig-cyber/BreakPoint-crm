@@ -337,16 +337,22 @@ model Placement {
 
   // Offer details
   offerReceivedAt DateTime?
-  offerSalary     Int? // annual base in whole currency units
-  offerCurrency   String?   @default("USD")
+  // Offered compensation amount. For offerCompensationType="salary" this is
+  // annual base; for "hourly" this is the hourly rate.
+  offerSalary           Float?
+  offerCompensationType String?   @default("salary") // "salary" | "hourly"
+  offerCurrency         String?   @default("USD")
   offerTitle      String?
   offerStartDate  DateTime?
   offerNotes      String?   @db.Text
 
   // Placement (offer accepted, fee locked) details
   placedAt            DateTime?
-  acceptedSalary      Int?
-  acceptedCurrency    String?   @default("USD")
+  // Accepted compensation amount. For acceptedCompensationType="salary" this
+  // is annual base; for "hourly" this is the hourly rate.
+  acceptedSalary           Float?
+  acceptedCompensationType String?   @default("salary") // "salary" | "hourly"
+  acceptedCurrency         String?   @default("USD")
   feePercentage       Float?
   feeTotal            Int?
   minFee              Int?
