@@ -249,10 +249,20 @@ export type DetectedAgreementFields = {
   agreementDateIso: string;
 };
 
+// What summarize actually WROTE to the client (write-if-empty auto-apply).
+// A field is non-null here only when it was both detected AND the client's
+// corresponding field was empty, so we never clobber a recruiter-set value.
+export type AppliedAgreementFields = {
+  signed: boolean | null;
+  feePct: number | null;
+  signedAt: string | null; // YYYY-MM-DD, set when signed was auto-applied
+};
+
 export type SummarizeAgreementResult = ActionResult<{
   summary: string;
   summaryUpdatedAt: string;
   detected: DetectedAgreementFields;
+  applied: AppliedAgreementFields;
 }>;
 
 export async function summarizeAgreement(agreementId: string): Promise<SummarizeAgreementResult> {
@@ -273,13 +283,52 @@ export async function summarizeAgreement(agreementId: string): Promise<Summarize
       data: Buffer.from(agreement.data),
     });
     const now = new Date();
-    // Only the summary is persisted here — the detected fee fields are NOT
-    // written until the user confirms via the "Apply" box (which routes
-    // through updateClientCompany). Summarizing never mutates client fields.
+    const agreementDateIso = agreement.uploadedAt.toISOString().slice(0, 10);
     await prisma.clientAgreement.update({
       where: { id: agreementId },
       data: { summary, summaryUpdatedAt: now },
     });
+
+    // Auto-apply the detected fee-agreement fields to the client, WRITE-IF-
+    // EMPTY only. This is what makes Summarize Terms actually populate the
+    // Company & Fee Agreement section end-to-end: it persists server-side and
+    // survives a refresh. The previous flow wrote nothing here and relied on
+    // an ephemeral in-memory "Apply" box, so a user who summarized and then
+    // refreshed/navigated away (as happens naturally) lost the detection and
+    // the fields stayed blank. We only fill a field that is currently empty,
+    // so a value the recruiter set by hand is never clobbered; genuine
+    // conflicts still surface the manual Apply box in the UI for an explicit
+    // overwrite.
+    const applied: AppliedAgreementFields = { signed: null, feePct: null, signedAt: null };
+    if (agreement.clientId) {
+      const client = await prisma.client.findUnique({
+        where: { id: agreement.clientId },
+        select: { feeAgreementSigned: true, feeAgreementSignedAt: true, feePct: true },
+      });
+      if (client) {
+        const data: {
+          feeAgreementSigned?: boolean;
+          feeAgreementSignedAt?: Date;
+          feePct?: number;
+        } = {};
+        if (extracted.signed !== null && client.feeAgreementSigned === null) {
+          data.feeAgreementSigned = extracted.signed;
+          applied.signed = extracted.signed;
+          if (extracted.signed === true && client.feeAgreementSignedAt === null) {
+            data.feeAgreementSignedAt = agreement.uploadedAt;
+            applied.signedAt = agreementDateIso;
+          }
+        }
+        if (extracted.feePercent !== null && client.feePct === null) {
+          data.feePct = extracted.feePercent;
+          applied.feePct = extracted.feePercent;
+        }
+        if (Object.keys(data).length > 0) {
+          await prisma.client.update({ where: { id: agreement.clientId }, data });
+        }
+      }
+    }
+
     if (agreement.clientId) revalidatePath(`/clients/${agreement.clientId}`);
     return {
       ok: true,
@@ -290,8 +339,9 @@ export async function summarizeAgreement(agreementId: string): Promise<Summarize
           signed: extracted.signed,
           feePct: extracted.feePercent,
           // Agreement date = the upload date (YYYY-MM-DD, local-safe slice).
-          agreementDateIso: agreement.uploadedAt.toISOString().slice(0, 10),
+          agreementDateIso,
         },
+        applied,
       },
     };
   } catch (e) {

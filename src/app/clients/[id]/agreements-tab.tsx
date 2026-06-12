@@ -204,7 +204,28 @@ function AgreementItem({
       }
       setSummary(result.value.summary);
       setSummaryUpdatedAt(result.value.summaryUpdatedAt);
-      setDetected(result.value.detected);
+
+      // Fields are now auto-applied server-side (write-if-empty). Toast what
+      // landed, and only surface the manual confirm box for fields that were
+      // detected but NOT applied because the client already had a value there
+      // (a genuine conflict the recruiter can choose to overwrite).
+      const { detected: det, applied } = result.value;
+      if (applied.signed !== null || applied.feePct !== null) {
+        toast.success("Fee agreement details applied", {
+          description: formatDetected({
+            signed: applied.signed,
+            feePct: applied.feePct,
+            agreementDateIso: applied.signedAt ?? det.agreementDateIso,
+          }),
+        });
+      }
+      const pendingSigned = det.signed !== null && applied.signed === null ? det.signed : null;
+      const pendingFee = det.feePct !== null && applied.feePct === null ? det.feePct : null;
+      setDetected(
+        pendingSigned !== null || pendingFee !== null
+          ? { signed: pendingSigned, feePct: pendingFee, agreementDateIso: det.agreementDateIso }
+          : null,
+      );
       setExpanded(true);
       router.refresh();
     } finally {
