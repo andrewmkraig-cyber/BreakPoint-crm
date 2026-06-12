@@ -330,6 +330,9 @@ export async function summarizeAgreement(agreementId: string): Promise<Summarize
     }
 
     if (agreement.clientId) revalidatePath(`/clients/${agreement.clientId}`);
+    // Auto-apply can change fee/signed; refresh the grid too so the card's
+    // "Fee X%" + verified shield update without a full reload.
+    revalidatePath(`/clients`);
     return {
       ok: true,
       value: {

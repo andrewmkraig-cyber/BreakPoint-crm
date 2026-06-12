@@ -103,6 +103,11 @@ export async function getClientsForOrg(): Promise<ClientListRow[]> {
       linkedinPage: true,
       location: true,
       phoneNumbers: true,
+      // Canonical fee column written by updateClientCompany + the agreement
+      // auto-fill, and read by the client Overview. The grid cards must read
+      // the SAME field (see feePct below) so a fee set in Ace shows on the
+      // /clients cards, not just the detail page.
+      feePct: true,
       raw: true,
       ownerId: true,
       owner: { select: { name: true } },
@@ -178,13 +183,12 @@ export async function getClientsForOrg(): Promise<ClientListRow[]> {
       agreementClientIds.has(r.id) || (r.legacyRfId != null && agreementRfIds.has(r.legacyRfId));
     const isVerified = hasAceAgreement || Boolean(signed) || fileWithAgreement;
 
-    const feeField = Array.isArray(raw?.custom_fields)
-      ? raw!.custom_fields!.find(
-          (f) => typeof f?.name === "string" && (f.name.toLowerCase().includes("avg fee") || f.name.toLowerCase().includes("fee %")),
-        )?.value
-      : undefined;
-    const feePct =
-      typeof feeField === "number" ? feeField : typeof feeField === "string" ? parseFloat(feeField) || null : null;
+    // Canonical Neon column FIRST (set by updateClientCompany + agreement
+    // auto-fill, and what the Overview shows); fall back to the legacy RF
+    // custom field only for RF-imported rows whose Client.feePct was never
+    // backfilled. Ace-native clients have raw === null, so the old
+    // raw-only read always returned null and their cards showed no fee.
+    const feePct = r.feePct ?? extractFeePctFromCustomFields(raw?.custom_fields);
 
     return {
       id: r.id,
