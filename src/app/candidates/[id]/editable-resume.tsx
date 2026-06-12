@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/input";
 import { DocumentDropzone } from "@/components/document-dropzone";
 import { DocxPreview } from "@/components/docx-preview";
 import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
@@ -27,7 +28,10 @@ import {
   deleteCandidateResume,
   renameCandidateResume,
 } from "@/app/candidates/[id]/actions";
-import { generateAiResume } from "@/app/candidates/[id]/generate-resume-action";
+import {
+  generateAiResume,
+  editResumeWithClaude,
+} from "@/app/candidates/[id]/generate-resume-action";
 import {
   buildTokenMarkBgMap,
   HighlightTokenChips,
@@ -148,6 +152,11 @@ export function EditableResume({
   // to isUploading so both actions share the disable state on the
   // upload button + dropzone while either is in flight.
   const [isGenerating, setIsGenerating] = useState(false);
+  // Edit-with-Claude dialog: instruction textarea + in-flight flag. The
+  // action edits the candidate's current resume and saves a NEW version.
+  const [claudeEditOpen, setClaudeEditOpen] = useState(false);
+  const [claudeInstruction, setClaudeInstruction] = useState("");
+  const [isEditingWithClaude, setIsEditingWithClaude] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Selected version key. Re-syncs to the new default whenever the
@@ -243,6 +252,37 @@ export function EditableResume({
       });
     } finally {
       setIsGenerating(false);
+    }
+  }
+
+  async function onApplyClaudeEdit() {
+    const instruction = claudeInstruction.trim();
+    if (!instruction) {
+      toast.error("Describe what you want changed first.");
+      return;
+    }
+    setIsEditingWithClaude(true);
+    const toastId = toast.loading("Editing resume with Claude…");
+    try {
+      const result = await editResumeWithClaude(candidateId, instruction);
+      if (!result.ok) {
+        toast.error("Couldn't edit resume", { id: toastId, description: result.error });
+        return;
+      }
+      toast.success("Resume edited", { id: toastId });
+      // Select + reveal the new "Edited - <date>" version once the refreshed
+      // payload arrives.
+      setPendingSelectId(result.value.resumeId);
+      setClaudeEditOpen(false);
+      setClaudeInstruction("");
+      router.refresh();
+    } catch (err) {
+      toast.error("Couldn't edit resume", {
+        id: toastId,
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setIsEditingWithClaude(false);
     }
   }
 
@@ -503,6 +543,25 @@ export function EditableResume({
             to fit them on one row with the version selector. ml-auto
             pushes the group to the right edge of the toolbar. */}
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {/* Edit with Claude — applies a natural-language instruction to the
+              current resume and saves the result as a new "Edited - <date>"
+              version. Only rendered in the has-resume branch, so the resume
+              always exists when this shows. ai-primary = the canonical Claude
+              pill treatment. */}
+          <Button
+            type="button"
+            variant="ai-primary"
+            size="sm"
+            onClick={() => setClaudeEditOpen(true)}
+            disabled={isUploading || isPending || isEditingWithClaude}
+          >
+            {isEditingWithClaude ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Sparkles className="h-3 w-3" />
+            )}
+            Edit with Claude
+          </Button>
           {canEdit && (
             <button
               type="button"
@@ -608,6 +667,65 @@ export function EditableResume({
           )}
         </div>
       </div>
+
+      {claudeEditOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => {
+            if (!isEditingWithClaude) setClaudeEditOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-court-border bg-court-surface p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-court-fg-muted" />
+              <h2 className="font-serif text-lg font-semibold text-court-fg">Edit Resume with Claude</h2>
+            </div>
+            <p className="mt-1 text-xs text-court-fg-muted">
+              Claude applies only the change you describe and keeps everything
+              else as-is, then saves a new version. The original is never
+              touched.
+            </p>
+            <Textarea
+              label="What do you want changed?"
+              value={claudeInstruction}
+              onChange={(e) => setClaudeInstruction(e.target.value)}
+              disabled={isEditingWithClaude}
+              rows={4}
+              autoFocus
+              placeholder="e.g. Change the job title under Acme Corp to Senior Analyst, or remove the 2018 internship."
+              containerClassName="mt-4"
+            />
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setClaudeEditOpen(false)}
+                disabled={isEditingWithClaude}
+              >
+                <X className="h-3 w-3" /> Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="ai-primary"
+                size="sm"
+                onClick={() => void onApplyClaudeEdit()}
+                disabled={isEditingWithClaude || !claudeInstruction.trim()}
+              >
+                {isEditingWithClaude ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3 w-3" />
+                )}
+                Apply Edit
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editorOpen && canEdit && (
         <ResumeEditor

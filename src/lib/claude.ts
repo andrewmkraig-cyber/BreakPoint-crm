@@ -27,7 +27,7 @@ export const DOCX_UNPARSEABLE_PREFIX = "DOCX_UNPARSEABLE";
 // happens we fall back to reading the raw XML parts directly and
 // harvesting every <w:t> text node. Only if both paths come up empty do
 // we give up and throw DOCX_UNPARSEABLE.
-async function extractDocxText(data: Buffer): Promise<string> {
+export async function extractDocxText(data: Buffer): Promise<string> {
   const fromMammoth = await tryMammothExtract(data);
   if (fromMammoth.trim().length >= 50) return fromMammoth;
 

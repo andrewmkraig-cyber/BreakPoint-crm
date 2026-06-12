@@ -8,7 +8,9 @@ import { put } from "@vercel/blob";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import { CLAUDE_MODEL } from "@/lib/claude";
+import { CLAUDE_MODEL, extractDocxText } from "@/lib/claude";
+import { buildPersonalTrainerBlock } from "@/lib/personal-trainer";
+import { getResumeBytes } from "@/lib/resume-bytes";
 import type {
   ResumeData,
   ResumeEducationEntry,
@@ -166,66 +168,269 @@ export async function generateAiResume(input: {
       };
     }
 
-    // ---- JSX → PDF via @react-pdf/renderer -----------------------------
-    // pure-JS render, no Chromium. The template lives in
-    // resume-pdf-template.tsx; this action just hands it the parsed
-    // ResumeData and pulls the rendered bytes out as a Buffer.
-    const { pdf } = await import("@react-pdf/renderer");
-    const { ResumeDocument } = await import(
-      "@/app/candidates/[id]/resume-pdf-template"
-    );
-    // Calling the component as a plain function returns the <Document>
-    // element directly, which is what pdf() wants. createElement wraps
-    // the result in a FunctionComponentElement that pdf()'s types don't
-    // accept.
-    //
-    // @react-pdf/renderer v4 changed toBuffer() to return a Node
-    // ReadableStream — we drain it into chunks and concat into a single
-    // Buffer before converting to the Uint8Array Prisma's Bytes column
-    // expects.
-    const pdfDoc = pdf(ResumeDocument({ data: resumeData }));
-    const stream = await pdfDoc.toBuffer();
-    const chunks: Buffer[] = [];
-    for await (const chunk of stream as unknown as AsyncIterable<Buffer | Uint8Array>) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    }
-    const outputBytes = new Uint8Array(Buffer.concat(chunks));
-    const safeName = fullName.replace(/[^A-Za-z0-9_-]+/g, "_");
-    const filename = `${safeName || "resume"}_AI_Generated.pdf`;
-
-    const blob = await put(
-      `resumes/${candidate.id}/generated-${filename}`,
-      Buffer.from(outputBytes),
-      { access: "private", contentType: "application/pdf", addRandomSuffix: true },
-    );
-
-    const created = await prisma.candidateResume.create({
-      data: {
-        candidateId: candidate.id,
-        candidateRfId: candidate.rfId,
-        organizationId: org.id,
-        filename,
-        // displayName drives the version dropdown label via
-        // dropdownLabelFor() in editable-resume.tsx.
-        displayName: "AI Generated",
-        mimeType: "application/pdf",
-        size: outputBytes.byteLength,
-        data: Buffer.alloc(0),
-        blobUrl: blob.url,
-        uploadComplete: true,
-        uploadedById: user.id,
-      },
-      select: { id: true },
+    const safeName = fullName.replace(/[^A-Za-z0-9_-]+/g, "_") || "resume";
+    const resumeId = await renderResumeDataToVersion({
+      candidateId: candidate.id,
+      candidateRfId: candidate.rfId,
+      organizationId: org.id,
+      userId: user.id,
+      resumeData,
+      displayName: "AI Generated",
+      filename: `${safeName}_AI_Generated.pdf`,
+      blobPath: `resumes/${candidate.id}/generated-${safeName}_AI_Generated.pdf`,
     });
 
-    revalidatePath(`/candidates/${candidate.id}`);
-    if (candidate.rfId != null) revalidatePath(`/candidates/${candidate.rfId}`);
-
-    return { ok: true, value: { resumeId: created.id } };
+    return { ok: true, value: { resumeId } };
   } catch (e) {
     return {
       ok: false,
       error: e instanceof Error ? e.message : "Failed to generate resume.",
+    };
+  }
+}
+
+// Shared render→upload→save tail used by BOTH generateAiResume and
+// editResumeWithClaude so every AI resume goes through the SAME @react-pdf
+// renderer (resume-pdf-template.tsx) and the SAME CandidateResume version
+// save shape. Renders the ResumeData to PDF bytes (pure JS, no Chromium),
+// uploads to Vercel Blob, and writes a NEW CandidateResume row (never
+// overwrites an existing one). Returns the new row id. Revalidates the
+// candidate profile so the version dropdown picks up the new entry.
+async function renderResumeDataToVersion(params: {
+  candidateId: string;
+  candidateRfId: number | null;
+  organizationId: string;
+  userId: string;
+  resumeData: ResumeData;
+  displayName: string;
+  filename: string;
+  blobPath: string;
+}): Promise<string> {
+  const { pdf } = await import("@react-pdf/renderer");
+  const { ResumeDocument } = await import(
+    "@/app/candidates/[id]/resume-pdf-template"
+  );
+  // Calling the component as a plain function returns the <Document>
+  // element directly, which is what pdf() wants. @react-pdf/renderer v4's
+  // toBuffer() returns a Node ReadableStream — drain into chunks and concat
+  // into one Buffer before converting to the Uint8Array Prisma's Bytes
+  // column expects.
+  const pdfDoc = pdf(ResumeDocument({ data: params.resumeData }));
+  const stream = await pdfDoc.toBuffer();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream as unknown as AsyncIterable<Buffer | Uint8Array>) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  const outputBytes = new Uint8Array(Buffer.concat(chunks));
+
+  const blob = await put(params.blobPath, Buffer.from(outputBytes), {
+    access: "private",
+    contentType: "application/pdf",
+    addRandomSuffix: true,
+  });
+
+  const created = await prisma.candidateResume.create({
+    data: {
+      candidateId: params.candidateId,
+      candidateRfId: params.candidateRfId,
+      organizationId: params.organizationId,
+      filename: params.filename,
+      // displayName drives the version dropdown label via dropdownLabelFor().
+      displayName: params.displayName,
+      mimeType: "application/pdf",
+      size: outputBytes.byteLength,
+      data: Buffer.alloc(0),
+      blobUrl: blob.url,
+      uploadComplete: true,
+      uploadedById: params.userId,
+    },
+    select: { id: true },
+  });
+
+  revalidatePath(`/candidates/${params.candidateId}`);
+  if (params.candidateRfId != null) revalidatePath(`/candidates/${params.candidateRfId}`);
+
+  return created.id;
+}
+
+// Today's date as "Mon D, YYYY" for the Edited version's display name.
+function todayLabel(): string {
+  return new Date().toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+// Extracts plain text from a candidate's current (most-recent) resume,
+// reusing the app's existing extraction: pdf-parse for PDFs (already a
+// dependency, used by ai-workspace-context + resume-fallback) and
+// extractDocxText for Word docs. Returns "" when there's no resume or the
+// text can't be read; the caller turns that into a user-facing error.
+async function extractCurrentResumeText(
+  candidateId: string,
+  organizationId: string,
+): Promise<string> {
+  const resume = await prisma.candidateResume.findFirst({
+    where: { candidateId, organizationId, uploadComplete: true },
+    orderBy: { uploadedAt: "desc" },
+    select: { data: true, blobUrl: true, mimeType: true, filename: true },
+  });
+  if (!resume) return "";
+  if (!resume.blobUrl && (!resume.data || resume.data.byteLength === 0)) return "";
+
+  const mime = (resume.mimeType ?? "").toLowerCase();
+  const name = (resume.filename ?? "").toLowerCase();
+  const bytes = await getResumeBytes(resume);
+
+  if (mime.includes("pdf") || name.endsWith(".pdf")) {
+    const mod = (await import("pdf-parse")) as unknown as
+      | { default: (buf: Buffer) => Promise<{ text: string }> }
+      | ((buf: Buffer) => Promise<{ text: string }>);
+    const parse = typeof mod === "function" ? mod : mod.default;
+    const out = await parse(bytes);
+    return (out.text ?? "").trim();
+  }
+  if (
+    mime.includes("officedocument.wordprocessingml") ||
+    mime === "application/msword" ||
+    name.endsWith(".docx") ||
+    name.endsWith(".doc")
+  ) {
+    return (await extractDocxText(bytes)).trim();
+  }
+  if (mime.startsWith("text/") || name.endsWith(".txt")) {
+    return bytes.toString("utf-8").trim();
+  }
+  return "";
+}
+
+// Edit-with-Claude. Loads the candidate's current resume, extracts its
+// text, and asks Claude to apply ONLY the requested change (everything
+// else preserved verbatim), returning the full revised resume in the same
+// structured JSON the generator uses. The result is rendered through the
+// SAME @react-pdf template and saved as a NEW version named
+// "Edited - <today>" — the original file is never touched.
+export async function editResumeWithClaude(
+  candidateId: string,
+  instruction: string,
+): Promise<ActionResult<{ resumeId: string }>> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) return { ok: false, error: "Not signed in." };
+  if (!candidateId) return { ok: false, error: "Missing candidate id." };
+  const trimmedInstruction = (instruction ?? "").trim();
+  if (!trimmedInstruction) {
+    return { ok: false, error: "Describe what you want changed first." };
+  }
+
+  try {
+    const org = await getCurrentOrg();
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true },
+    });
+    if (!user) return { ok: false, error: "Not signed in." };
+
+    const candidate = await prisma.candidate.findFirst({
+      where: { id: candidateId, organizationId: org.id },
+      select: {
+        id: true,
+        rfId: true,
+        firstName: true,
+        lastName: true,
+        currentDesignation: true,
+        email: true,
+        phone: true,
+        location: true,
+        linkedinProfile: true,
+        skills: true,
+      },
+    });
+    if (!candidate) return { ok: false, error: "Candidate not found." };
+
+    const fullName =
+      [candidate.firstName, candidate.lastName].filter(Boolean).join(" ").trim() ||
+      "(no name on file)";
+
+    const resumeText = await extractCurrentResumeText(candidate.id, org.id);
+    if (!resumeText) {
+      return {
+        ok: false,
+        error:
+          "Couldn't read the current resume's text to edit. Make sure a PDF, Word, or text resume is on file.",
+      };
+    }
+
+    // Same JSON contract as the generator so the @react-pdf template can
+    // render the result. The edit-specific rules pin Claude to the single
+    // requested change and forbid touching anything else. Personal Trainer
+    // rules are appended, matching every other Claude caller in Ace.
+    const systemPrompt =
+      [
+        "You are a professional resume editor for a recruiting agency.",
+        "You are given a candidate's CURRENT resume text and ONE editing instruction.",
+        "Apply ONLY the requested change. Preserve every other piece of content verbatim — same wording, same bullets, same dates, same order. Do not rewrite, embellish, reorder, or drop anything the instruction did not ask you to change.",
+        "Never invent facts. If the instruction asks for something the source can't support, make the smallest faithful change and leave the rest untouched.",
+        "Return the FULL revised resume as STRICT JSON only. No commentary, no markdown, no fences.",
+        "Schema:",
+        "{",
+        '  "name": string,',
+        '  "title": string,',
+        '  "contact": { "email"?: string, "phone"?: string, "location"?: string, "linkedin"?: string },',
+        '  "summary"?: string,',
+        '  "experience": [{ "title": string, "company": string, "dates": string, "location"?: string, "bullets": string[] }],',
+        '  "education": [{ "degree": string, "school": string, "year"?: string, "details"?: string }],',
+        '  "skills": string[],',
+        '  "certifications": string[]',
+        "}",
+        "Output ONLY the JSON document.",
+      ].join("\n") + (await buildPersonalTrainerBlock(org.id));
+
+    const userMessage = [
+      "CURRENT RESUME (source of truth — preserve verbatim except as instructed):",
+      resumeText.slice(0, 24_000),
+      "",
+      `EDITING INSTRUCTION: ${trimmedInstruction}`,
+      "",
+      "Return the full revised resume JSON now.",
+    ].join("\n");
+
+    const response = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 2048,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userMessage }],
+    });
+
+    const rawText = response.content
+      .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")
+      .map((b) => b.text)
+      .join("\n\n")
+      .trim();
+    if (!rawText) return { ok: false, error: "Claude returned no resume content." };
+
+    const resumeData = parseResumeJson(rawText, fullName, candidate);
+    if (!resumeData) {
+      return { ok: false, error: "Couldn't parse the revised resume from Claude. Try again." };
+    }
+
+    const safeName = fullName.replace(/[^A-Za-z0-9_-]+/g, "_") || "resume";
+    const resumeId = await renderResumeDataToVersion({
+      candidateId: candidate.id,
+      candidateRfId: candidate.rfId,
+      organizationId: org.id,
+      userId: user.id,
+      resumeData,
+      displayName: `Edited - ${todayLabel()}`,
+      filename: `${safeName}_Edited.pdf`,
+      blobPath: `resumes/${candidate.id}/edited-${safeName}_Edited.pdf`,
+    });
+
+    return { ok: true, value: { resumeId } };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Failed to edit resume.",
     };
   }
 }
