@@ -160,7 +160,22 @@ function nonEmpty(...candidates: Array<string | undefined | null>): string {
   return "";
 }
 
-export function applyMergeFields(text: string, values: MergeFieldValues): string {
+// Resolve merge tokens against a values map. By default values are spliced
+// in verbatim — correct for plain-text bodies and subjects. Pass
+// { html: true } when the target is an HTML body: each value is then
+// HTML-escaped and its newlines become <br/> via plainToHtmlInline, so a
+// multi-line value like {{job_description}} keeps its line breaks instead
+// of collapsing into one run-on line when the browser renders the email.
+export function applyMergeFields(
+  text: string,
+  values: MergeFieldValues,
+  opts?: { html?: boolean },
+): string {
+  // Splice values with a replacement FUNCTION (not a string) so any "$" the
+  // value carries — e.g. a "$120,000" comp — is treated literally instead of
+  // as a $-pattern reference. In html mode the value is escaped + <br/>'d.
+  const renderValue = (v: string): string =>
+    opts?.html ? plainToHtmlInline(v) : v;
   const fullName = nonEmpty(
     values.candidateFullName,
     [values.candidateFirstName, values.candidateLastName].filter(Boolean).join(" "),
@@ -246,7 +261,8 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
   };
   let out = text;
   for (const field of MERGE_FIELDS) {
-    out = out.replace(new RegExp(escapeForRegex(field.token), "g"), map[field.token]);
+    const replacement = renderValue(map[field.token]);
+    out = out.replace(new RegExp(escapeForRegex(field.token), "g"), () => replacement);
   }
   const aliases: Array<readonly [string, string]> = [
     ["[Candidate Comp]", candidateCompensation],
@@ -273,7 +289,8 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
     ["{{public_accounting_submittal_bullets}}", values.publicAccountingSubmittalBullets ?? ""],
   ];
   for (const [alias, value] of aliases) {
-    out = out.replace(new RegExp(escapeForRegex(alias), "g"), value);
+    const replacement = renderValue(value);
+    out = out.replace(new RegExp(escapeForRegex(alias), "g"), () => replacement);
   }
   return out;
 }
@@ -335,14 +352,25 @@ function escapeHtmlEntities(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// Single source of truth for turning plain text into inline HTML: escape
+// entities, then every newline (CRLF/CR/LF) becomes a <br/>. A blank line
+// (\n\n) becomes <br/><br/>, which renders as a visible paragraph gap.
+// Shared by templateBodyToEditorHtml (whole-body conversion) and
+// applyMergeFields' html mode (per-value insertion) so a template's own
+// blank lines and a multi-line merge value get IDENTICAL break handling.
+function plainToHtmlInline(s: string): string {
+  return escapeHtmlEntities(s).replace(/\r\n|\r|\n/g, "<br/>");
+}
+
 // Convert a stored template body to the HTML the TipTap editor seeds
 // from. Already-HTML bodies pass through untouched; legacy plain text is
 // escaped and its newlines become <br/> inside a single paragraph
-// (mirrors the mail composer's pickTemplate conversion).
+// (mirrors the mail composer's pickTemplate conversion). This is the ONE
+// converter the bulk composer reuses too — no second copy.
 export function templateBodyToEditorHtml(body: string): string {
   if (!body) return "";
   if (looksLikeHtml(body)) return body;
-  return `<p>${escapeHtmlEntities(body).replace(/\n/g, "<br/>")}</p>`;
+  return `<p>${plainToHtmlInline(body)}</p>`;
 }
 
 // Wrap already-HTML body content in the same email-safe container

@@ -486,7 +486,10 @@ export async function bulkSendEmail(input: {
     // Defensive: if a rich (HTML) template body reached here as text,
     // wrap it so <strong> survives instead of being escaped on send.
     const mergedHtml = input.bodyHtml
-      ? applyMergeFields(input.bodyHtml, values)
+      ? // html: true so multi-line values (e.g. the {{job_description}}
+        // token) get their newlines turned into <br/> instead of collapsing
+        // into one run-on line in the recipient's inbox.
+        applyMergeFields(input.bodyHtml, values, { html: true })
       : looksLikeHtml(mergedBody)
         ? htmlEmailWrap(mergedBody)
         : undefined;
@@ -649,7 +652,10 @@ export async function scheduleBulkEmail(input: {
     // Defensive: rich (HTML) template body reaching here as text gets
     // wrapped so its formatting survives the scheduled send.
     const mergedHtml = input.bodyHtml
-      ? applyMergeFields(input.bodyHtml, values)
+      ? // html: true so multi-line values (e.g. the {{job_description}}
+        // token) get their newlines turned into <br/> instead of collapsing
+        // into one run-on line in the recipient's inbox.
+        applyMergeFields(input.bodyHtml, values, { html: true })
       : looksLikeHtml(mergedBody)
         ? htmlEmailWrap(mergedBody)
         : undefined;

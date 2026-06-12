@@ -39,7 +39,7 @@ import { Input, Select } from "@/components/ui/input";
 import { useSendLater } from "@/components/mail/send-later-popover";
 import { formatScheduledTime } from "@/lib/timezone";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
-import { MERGE_FIELDS, htmlToReadableText, looksLikeHtml, type MergeFieldValues } from "@/lib/merge-fields";
+import { MERGE_FIELDS, htmlToReadableText, templateBodyToEditorHtml, type MergeFieldValues } from "@/lib/merge-fields";
 import { cn } from "@/lib/utils";
 
 // Lazy-load the Tiptap rich-text body editor — same component the main
@@ -50,23 +50,6 @@ const RichTextBodyEditor = dynamic(
   () => import("@/components/rich-text-body-editor").then((m) => m.RichTextBodyEditor),
   { ssr: false },
 );
-
-// Client-safe plain-text → HTML for the rich body editor. Legacy templates
-// store plain text; the rich editor needs HTML or ProseMirror collapses the
-// line breaks. HTML templates pass straight through. (plainToHtml lives in
-// gmail.ts, which is server-only, so this is the client mirror.)
-function templateBodyToHtml(raw: string): string {
-  if (!raw) return "";
-  if (looksLikeHtml(raw)) return raw;
-  const esc = raw
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  return esc
-    .split(/\n{2,}/)
-    .map((para) => `<p>${para.replace(/\n/g, "<br>")}</p>`)
-    .join("");
-}
 
 // Shared bulk-action modals used by both the /candidates global page
 // and the job Matches tab. Extracted out of candidates-view.tsx so the
@@ -549,7 +532,7 @@ export function BulkEmailDialog({
     // Bulk composer body is now a rich-text editor; preserve the template's
     // HTML formatting (bold, lists) and lift legacy plain-text templates to
     // HTML so ProseMirror keeps the line breaks.
-    setBody(templateBodyToHtml(bod));
+    setBody(templateBodyToEditorHtml(bod));
   }
 
   function onPickLocalTemplate(template: ActiveTemplateSummary) {
