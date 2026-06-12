@@ -34,7 +34,15 @@ export const MERGE_FIELDS = [
   // Job
   { token: "[Job Title]", label: "Job Title", group: "Job" },
   { token: "[Job Location]", label: "Job Location", group: "Job" },
+  // City portion only of the job location (no state, no zip), e.g.
+  // "Great Neck" not "Great Neck, NY 11021". Uses the {{snake_case}} form
+  // to match the Candidate Recruit outreach wording.
+  { token: "{{job_city}}", label: "Job City", group: "Job" },
   { token: "[Job Description]", label: "Job Description", group: "Job" },
+  // Job description as clean plain text (markdown stripped). Same value as
+  // [Job Description]; the {{snake_case}} form pairs with {{job_city}} in
+  // the outreach template.
+  { token: "{{job_description}}", label: "Job Description (plain text)", group: "Job" },
   { token: "[Job Salary Range]", label: "Job Salary Range", group: "Job" },
   // Interview
   { token: "[Interview Date]", label: "Interview Date", group: "Interview" },
@@ -96,6 +104,9 @@ export type MergeFieldValues = {
   // Job
   jobTitle?: string;
   jobLocation?: string;
+  // City portion only ({{job_city}}). When absent it is derived from
+  // jobLocation (everything before the first comma).
+  jobCity?: string;
   jobDescription?: string;
   jobSalaryRange?: string;
   // Interview
@@ -160,6 +171,13 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
   const candidateLocation = values.candidateLocation ?? "";
   const candidateCity = nonEmpty(values.candidateCity, extractCityFromLocation(candidateLocation));
   const candidateCompensation = values.candidateCompensation ?? "";
+  // City portion only of the job location — reuse the shared
+  // extractCityFromLocation (everything before the first comma) rather
+  // than a second parser. Falls back to an explicit jobCity if provided.
+  const jobCity = nonEmpty(values.jobCity, extractCityFromLocation(values.jobLocation));
+  // JD as clean plain text — computed once, shared by [Job Description]
+  // and {{job_description}}.
+  const jobDescriptionPlain = values.jobDescription ? stripMarkdownToPlain(values.jobDescription) : "";
   const greeting = nonEmpty(
     values.greeting,
     values.clientContactFirstName
@@ -192,10 +210,12 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
     // Job
     "[Job Title]": values.jobTitle ?? "",
     "[Job Location]": values.jobLocation ?? "",
+    "{{job_city}}": jobCity,
     // JD is stored as markdown for the rich JD preview render — convert
     // back to plain text here so the token pastes cleanly into email body
     // copy without literal `##` characters.
-    "[Job Description]": values.jobDescription ? stripMarkdownToPlain(values.jobDescription) : "",
+    "[Job Description]": jobDescriptionPlain,
+    "{{job_description}}": jobDescriptionPlain,
     "[Job Salary Range]": values.jobSalaryRange ?? "",
     // Interview
     "[Interview Date]": values.interviewDate ?? "",

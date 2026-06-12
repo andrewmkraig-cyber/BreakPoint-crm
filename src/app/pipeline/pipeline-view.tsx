@@ -197,7 +197,14 @@ export type AppliedRow = {
   clientName: string;
   clientIsVerified: boolean;
   appliedAt: string | null;
+  // Placement.source ("recruiter_applied" etc). Retained for any
+  // placement-origin logic; the Source COLUMN renders candidateSource.
   source: string | null;
+  // The candidate's own acquisition source (Candidate.source / RF
+  // source_name) — the same field the candidate profile sidebar shows
+  // (e.g. "Pin"). This is what the Source column displays; null/"" renders
+  // blank.
+  candidateSource: string | null;
   // Owner of the parent client. Resolved server-side so the page-level
   // owner-scope filter can apply the same Mine/Theirs/All cut here.
   clientOwnerId: string | null;
@@ -1496,13 +1503,6 @@ function rowKey(r: { candidateId: number | string; jobId: number | string }): st
   return `${r.candidateId}-${r.jobId}`;
 }
 
-// Render the Placement.source / RF source_name into a human label.
-function formatSourceLabel(raw: string | null): string {
-  if (!raw) return "—";
-  if (raw === "recruiter_applied") return "Recruiter Applied";
-  return raw;
-}
-
 // JobCell removed Ace 68.0 — the uniform LEFT column set now renders
 // Job + Client + Location in dedicated columns, replacing this combined
 // Job + jobLocation + clientName cell that the old IntakeTable used.
@@ -1913,7 +1913,10 @@ function AppliedRowView({
       {/* Uniform LEFT (6 cells). appliedAt becomes the Last Action
           source for this row. */}
       <UniformLeftRowCells row={row} lastActionAt={row.appliedAt} />
-      <td className="px-3 py-2 align-top text-center text-sm text-court-fg-muted">{formatSourceLabel(row.source)}</td>
+      {/* Candidate's acquisition source (the field the profile sidebar
+          shows), NOT the placement's "recruiter_applied" source. Already a
+          display string; blank when the candidate has no source. */}
+      <td className="px-3 py-2 align-top text-center text-sm text-court-fg-muted">{row.candidateSource ?? ""}</td>
       <td className="px-3 py-2 align-top">
         <div className="ml-auto flex w-28 flex-col gap-1">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
@@ -2072,8 +2075,9 @@ function sortApplied(rows: AppliedRow[], key: IntakeSortKey, dir: IntakeSortDir)
         vb = b.appliedAt ? new Date(b.appliedAt).getTime() : 0;
         break;
       case "source":
-        va = (a.source ?? "").toLowerCase();
-        vb = (b.source ?? "").toLowerCase();
+        // Sort by the displayed value — the candidate's source.
+        va = (a.candidateSource ?? "").toLowerCase();
+        vb = (b.candidateSource ?? "").toLowerCase();
         break;
     }
     if (typeof va === "number" && typeof vb === "number") return (va - vb) * mul;

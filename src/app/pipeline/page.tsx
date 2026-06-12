@@ -795,6 +795,10 @@ export default async function PipelinePage({
             currentOrganization: true,
             location: true,
             expectedSalary: true,
+            // Candidate acquisition source ("Pin", "LinkedIn", ...) for the
+            // Applicants Source column — the same field the profile sidebar
+            // shows.
+            source: true,
             createdAt: true,
           },
         })
@@ -847,6 +851,7 @@ export default async function PipelinePage({
             : false,
           appliedAt: j.stage_moved ?? j.added_time ?? c.added_time ?? null,
           source: c.source_name ?? null,
+          candidateSource: c.source_name ?? null,
           clientOwnerId: intakeOwnerId(null, desc.clientName),
         });
       }
@@ -889,6 +894,9 @@ export default async function PipelinePage({
               : false,
           appliedAt: p.updatedAt.toISOString(),
           source: p.source ?? cand?.source_name ?? null,
+          // Source column shows the candidate's own source, not the
+          // placement's "recruiter_applied" — that was the Matt Laughlin bug.
+          candidateSource: cand?.source_name ?? null,
           clientOwnerId: intakeOwnerId(p.clientId, desc.clientName),
         });
         continue;
@@ -918,6 +926,9 @@ export default async function PipelinePage({
               : false,
           appliedAt: p.updatedAt.toISOString(),
           source: p.source ?? null,
+          // Candidate's own source (the profile-sidebar field), not the
+          // placement source. Empty when the Ace candidate has none.
+          candidateSource: ace?.source ?? null,
           clientOwnerId: intakeOwnerId(p.clientId, desc.clientName),
         });
       }

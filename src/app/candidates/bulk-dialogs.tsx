@@ -324,6 +324,9 @@ const BULK_EMAIL_CONFIRM_THRESHOLD = 25;
 const JOB_MERGE_TOKENS = [
   "[Job Title]",
   "[Job Location]",
+  "{{job_city}}",
+  "[Job Description]",
+  "{{job_description}}",
   "[Client Company Name]",
   "{{client_blurb}}",
   "[Client Company Website]",
@@ -347,9 +350,13 @@ function templateNeedsJob(template: ActiveTemplateSummary): boolean {
 // would render "Hi ," because the candidate token gets blanked the
 // moment a job is picked.
 function applyJobTokensOnly(text: string, jobValues: MergeFieldValues): string {
+  // {{job_description}} / [Job Description] are intentionally NOT resolved
+  // here — they stay tokens through pick time and resolve (with markdown
+  // stripped) at send via applyMergeFields, matching [Job Description].
   const map: Record<string, string | undefined> = {
     "[Job Title]": jobValues.jobTitle,
     "[Job Location]": jobValues.jobLocation,
+    "{{job_city}}": jobValues.jobCity,
     "[Client Company Name]": jobValues.clientCompanyName,
     "{{client_blurb}}": jobValues.candidateBlurb,
     "[Client Company Website]": jobValues.clientCompanyWebsite,

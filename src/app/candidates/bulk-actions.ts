@@ -24,6 +24,7 @@ import {
   type MergeFieldValues,
 } from "@/lib/merge-fields";
 import { generateAndSaveClientBlurb } from "@/lib/client-blurb";
+import { extractCityFromLocation } from "@/lib/candidate-compensation";
 
 // Bulk Apply / Add-to-List actions backing the /candidates page's
 // multi-row checkbox toolbar. Single-candidate flows still live in
@@ -812,17 +813,17 @@ export async function getJobMergeValuesForBulk(input: {
   // carry multiple location strings); we surface the first entry for
   // the [Job Location] merge token since recruiters typically pick a
   // single job per bulk send.
-  let jobRow: { title: string; locations: string[] } | null = null;
+  let jobRow: { title: string; locations: string[]; description: string | null } | null = null;
   if (input.jobCuid) {
     jobRow = await prisma.job.findFirst({
       where: { id: input.jobCuid, organizationId },
-      select: { title: true, locations: true },
+      select: { title: true, locations: true, description: true },
     });
   }
   if (!jobRow && input.jobRfId != null) {
     jobRow = await prisma.job.findFirst({
       where: { legacyRfId: input.jobRfId, organizationId },
-      select: { title: true, locations: true },
+      select: { title: true, locations: true, description: true },
     });
   }
 
@@ -869,9 +870,17 @@ export async function getJobMergeValuesForBulk(input: {
     }
   }
 
+  const jobLocation = jobRow?.locations[0] ?? "";
   return {
     jobTitle: jobRow?.title ?? "",
-    jobLocation: jobRow?.locations[0] ?? "",
+    jobLocation,
+    // City portion only ({{job_city}}) via the shared extractCityFromLocation
+    // (everything before the first comma). Resolved here so the bulk dialog's
+    // pick-time preview (applyJobTokensOnly) shows the city immediately.
+    jobCity: extractCityFromLocation(jobLocation),
+    // Raw description — applyMergeFields strips markdown to plain text on
+    // resolve, so {{job_description}} never leaks `##` into the email.
+    jobDescription: jobRow?.description ?? "",
     clientCompanyName: clientRow?.name ?? "",
     candidateBlurb,
     clientCompanyWebsite: clientRow?.domain ?? "",
