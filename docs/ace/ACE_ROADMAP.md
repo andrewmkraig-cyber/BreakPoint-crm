@@ -1,7 +1,22 @@
 # Ace Roadmap
-Last updated: 2026-06-11 · Ace 92.0
+Last updated: 2026-06-12 · Ace 94.0
 
 ## Active Build Sequence
+
+### DONE this session (Ace 94.0, 2026-06-12) - merge-field arc + bulk cleanup + Edit Resume + agreement auto-fill + create_contact
+All shipped to main; `npm run build` exits 0. Full detail in ACE_STATE.md ▸ Ace 94.0.
+- ~~**Merge fields `{{job_city}}` / `{{job_description}}` / `{{client_blurb}}`**~~ DONE - registered + resolved through ONE shared path across bulk AND trigger sends; `resolveClientBlurb` generate-once fallback; client names never reach candidates (now a PERMANENT rule).
+- ~~**Candidate Recruit + Application Received templates swapped to city/blurb/description tokens**~~ DONE - applied to prod via idempotent dry-run/`--apply` scripts.
+- ~~**Bulk composer cleanup**~~ DONE - removed AI-prompt accordion, added formatting toolbar; bulk HTML blank-line spacing fix + markdown `**bold**` -> `<strong>` fix in `applyMergeFields`.
+- ~~**Pipeline Source column reads candidate source; job pickers active-only via shared lifecycle helper**~~ DONE.
+- ~~**Clubhouse KPI detail popups**~~ DONE - six categories, period toggle, full names.
+- ~~**Edit Resume with Claude**~~ DONE - new candidate-profile action (saves an "Edited - <date>" version, original untouched). Survived a 3-round Vercel serverless saga: DOMMatrix JS polyfill, workerless main-thread pdfjs, then a flexible source-mirroring section schema + single-column edit renderer. Verified end-to-end against the real Claude API (before/after PDF text-diff = only the instructed change). PDF-serverless + client-blurb lessons are now PERMANENT rules.
+- ~~**Agreement auto-fill on Summarize Terms**~~ DONE - structured status/fee extraction + confirm box to Apply to the client.
+- ~~**Ace Assistant `create_contact` tool**~~ DONE - write-tool pattern, duplicate guard.
+
+**Open follow-ups from this session:**
+- **Agreement backfill - confirm prod status.** The Summarize-Terms backfill script ships dry-run-by-default. Confirm whether it was `--apply`-run against prod or is still pending; if pending, run the dry run, review, then apply.
+- **Client blurb review pass (recommended).** `{{client_blurb}}` now appears in candidate-facing templates via `resolveClientBlurb`'s generate-once fallback. Recommend a review pass over ACTIVE clients to set/curate each `candidateBlurb` so candidates see an intentional anonymized descriptor rather than an auto-generated one.
 
 ### UI-consistency audit (inputs + tables) - COMPLETE (Ace 91.0/92.0, 2026-06-11)
 Consolidated the hand-rolled form inputs AND the recruiter-facing list tables onto shared components. **Both halves are DONE; the original UI-consistency audit is CLOSED** (the only separately-tracked survivor is the Action-row button audit under Next Up #1, which is its own 71.0-audit item, not part of the input/table work).

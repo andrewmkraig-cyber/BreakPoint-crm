@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-06-09 · Ace 90.0
+Last updated: 2026-06-12 · Ace 94.0
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -37,7 +37,7 @@ All time estimates calibrated against actual build pace: Game Plan Context Depth
 
 ## Code Prompt Rules
 - Max 3 items per prompt. No exceptions.
-- Step 0 on every prompt touching candidate/job/client/placement/pipeline: grep for relevant files and report exact counts before writing any code. Baseline FILE counts (the `-l | wc -l` commands count files, measured 2026-06-08 · Ace 89.0): `recruiterflow` = 3 files, `RecruiterFlow` = 10 files, `RfId` = 80 files. Compare against these file-count baselines and flag any increase.
+- Step 0 on every prompt touching candidate/job/client/placement/pipeline: grep for relevant files and report exact counts before writing any code. Baseline FILE counts (the `-l | wc -l` commands count files, measured 2026-06-08 · Ace 89.0): `recruiterflow` = 3 files, `RecruiterFlow` = 10 files, `RfId` = 80 files. Compare against these file-count baselines and flag any increase. **Measure Step 0 baselines against COMMITTED history (`git grep` / a clean HEAD), never the raw working tree** - uncommitted files (e.g. concurrent Codex work left in the tree) inflate the counts and caused a false "drift" report this session. If the tree is dirty, note it and baseline against HEAD.
 - Always commit and push immediately after the build succeeds (`npm run build` exits 0). Browser verification is Andrew's responsibility after deploy, not a gate before push. Never hold changes waiting for browser verification.
 - Dual-file awareness: always name BOTH files when a feature touches more than one.
 - Single terminal only. Never suggest parallel Claude Code sessions or multiple terminals.
@@ -163,6 +163,14 @@ The build gate `scripts/check-raw-buttons.mjs` (wired into `npm run build`) bloc
 `npm run build` runs `npm run check:ui` before `next build`, so Vercel and local builds both enforce the structural gates. Never delete a gate or weaken it to make a build pass - fix the code.
 - **Raw `<button>` gate** - `scripts/check-raw-buttons.mjs` + `scripts/raw-button-baseline.json`. See "Raw-button baseline ratchet" above for the convert-and-shrink rule.
 - **Candidates topbar smoke test** - `tests/unit/candidates-topbar-actions.test.mjs`. The build FAILS if the topbar spec (`src/components/top-bar-page-title.tsx`) ever stops emitting both **New Candidate** and **Add Multiple** for `/candidates`. This is a regression guard so the bulk-import entry point can't silently vanish again (it did once - see the redesign lesson below).
+
+## Server-side PDF / native-library rule (added 2026-06-12 · Ace 94.0 - PERMANENT)
+PDF and other native-dependent libraries in SERVER code must be verified against Vercel's serverless bundle, NOT a local run. Local development has native binaries and library files (optional `.node` modules, worker files) that the Vercel lambda does NOT - Next's file tracing silently omits them. A fix that passes locally can do nothing in prod (this happened TWICE in one session with the same bug).
+- **Before declaring any PDF-path fix verified, simulate the serverless condition locally:** force the optional native dependency to fail to load, and/or make the worker/asset file unreachable, then reproduce the exact prod error and confirm the fix clears it.
+- **pdfjs-dist runs server-side WITHOUT a worker and WITHOUT `@napi-rs/canvas`.** We install a pure-JS `DOMMatrix` polyfill (`src/lib/pdf-node-globals.ts`, call `ensurePdfNodeGlobals()` first) and register the worker on the main thread (`await import("pdfjs-dist/legacy/build/pdf.worker.mjs")` so `globalThis.pdfjsWorker` is set and Next traces the file in). **Never reintroduce a dependence on `@napi-rs/canvas`** - its platform `.node` binary does not ship to the lambda. Full saga in ACE_STATE.md ▸ Ace 94.0.
+
+## Client descriptor in candidate-facing copy (added 2026-06-12 · Ace 94.0 - PERMANENT)
+The per-client **candidateBlurb** (an anonymized description like "a fast-growing fintech in Austin") is the ONLY client descriptor that may appear in candidate-facing templates. **Client NAMES never go to candidates.** `resolveClientBlurb` is the single resolution path for the `{{client_blurb}}` merge field across BOTH the bulk and trigger send paths - it generates a fallback blurb once when none is stored, and that one path is shared so the two never drift. Never inline a client name or hand-roll a second blurb resolver in a candidate-facing send.
 
 ## Redesign + audit lessons (added 2026-06-11 · PERMANENT)
 - **A grep hit is NOT proof a feature is live.** Orphaned code still type-checks and still matches grep. Before reporting a UI element as present, trace the actual rendered route's imports (does the page file import the component?) and check git history for a redesign that swapped the page out. The "Add Multiple" button matched grep inside `candidates-view.tsx` for weeks after that file had stopped being the rendered Candidates page, which produced a false "feature is live" audit.
