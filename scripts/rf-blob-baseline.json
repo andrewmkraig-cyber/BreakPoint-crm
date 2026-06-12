@@ -1,0 +1,7 @@
+{
+  "src/app/candidates/[id]/placement-actions.ts": 2,
+  "src/app/clients/[id]/page.tsx": 3,
+  "src/app/pipeline/page.tsx": 2,
+  "src/lib/candidates.ts": 5,
+  "src/lib/clients.ts": 4
+}
