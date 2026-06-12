@@ -5,6 +5,7 @@
 // depend on the old convention aren't affected.
 
 import { stripMarkdownToPlain } from "@/lib/markdown-to-plain";
+import { extractCityFromLocation } from "@/lib/candidate-compensation";
 
 export type MailMergeContext = {
   candidate?: {
@@ -138,6 +139,14 @@ function resolveOne(tag: string, ctx: MailMergeContext): string | undefined {
       return trimOr(ctx.job?.clientName);
     case "{{job.city}}":
       return trimOr(ctx.job?.city);
+    // {{job_city}} is the cross-path city token (what the legacy
+    // [Square Bracket] resolver + bulk/trigger sends register, and what the
+    // [Job Location] sweep writes into templates). Resolve via the shared
+    // extractCityFromLocation and return a STRING (never undefined) so a
+    // swept template never renders the token literal in the Mail composer —
+    // it shows the city, or empty when missing, like the other send paths.
+    case "{{job_city}}":
+      return extractCityFromLocation(ctx.job?.city ?? "");
     case "{{job.state}}":
       return trimOr(ctx.job?.state);
     case "{{job.description}}":

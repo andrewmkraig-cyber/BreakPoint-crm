@@ -12,6 +12,7 @@ import {
 import { getClientsForOrg } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { resolveJobLifecycle } from "@/lib/job-lifecycle";
 import { getCurrentUserId } from "@/lib/auth/getCurrentUserId";
 
 export const dynamic = "force-dynamic";
@@ -135,14 +136,7 @@ export default async function JobsPage({
       // straight from the Neon column); legacy rows that haven't been
       // touched since the migration fall back to the isOpen mapping.
       const rawLifecycle = (raw as { _lifecycle?: string | null })._lifecycle;
-      const lifecycle: JobLifecycle =
-        rawLifecycle === "private"
-          ? "private"
-          : rawLifecycle === "inactive"
-            ? "inactive"
-            : j.isOpen
-              ? "active"
-              : "inactive";
+      const lifecycle: JobLifecycle = resolveJobLifecycle(rawLifecycle, j.isOpen);
       // RF-imported rows route via the positive legacyRfId (j.id is the
       // real RF id). Ace-native rows have a synthetic negative id that
       // would 404 against /jobs/[id]; route via the cuid carried on

@@ -7,6 +7,7 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { getRfJobsForOrg, getRfClientsForOrg } from "@/lib/candidates";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
+import { isActiveJobLifecycle } from "@/lib/job-lifecycle";
 import { logActivity } from "@/lib/activity";
 import { plainToHtml } from "@/lib/gmail";
 import { createScheduledEmail } from "@/lib/scheduled-email";
@@ -91,7 +92,17 @@ export async function getOpenJobsForBulkPicker(): Promise<BulkPickerJob[]> {
   for (const cl of allClients) clientById.set(cl.id, normalizeClient(cl));
 
   const rows = allJobs
-    .filter((j) => j.is_open !== false)
+    // ACTIVE jobs only — mirror the canonical /jobs Active-tab test via the
+    // shared helper. isOpen=true alone covers BOTH "active" AND "private"
+    // lifecycles, so the old `is_open !== false` filter leaked private and
+    // lifecycle-inactive jobs (e.g. Sheehan Brothers, Excellware) into the
+    // bulk picker. _lifecycle is carried on every row by getRfJobsForOrg.
+    .filter((j) =>
+      isActiveJobLifecycle(
+        (j as { _lifecycle?: string | null })._lifecycle,
+        j.is_open !== false,
+      ),
+    )
     .map((raw) => {
       const j = normalizeJob(raw);
       const client = j.companyId != null ? clientById.get(j.companyId) ?? null : null;
