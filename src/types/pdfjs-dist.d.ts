@@ -6,3 +6,9 @@
 // reasoning). The `any` type is fine — pdfjs-loader.ts casts to an
 // explicit PdfJsLib shape before exposing anything to callers.
 declare module "pdfjs-dist/build/pdf.mjs";
+
+// The legacy worker bundle has no typings. We import it purely for its side
+// effect (it sets globalThis.pdfjsWorker so pdfjs runs its message handler on
+// the main thread in Node, avoiding a dynamic import of an untraced worker
+// file in the Vercel lambda — see generate-resume-action.ts / redact-pdf.ts).
+declare module "pdfjs-dist/legacy/build/pdf.worker.mjs";

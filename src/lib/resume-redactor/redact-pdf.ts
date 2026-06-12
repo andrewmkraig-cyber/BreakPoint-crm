@@ -116,6 +116,11 @@ async function extractTextItemsByPage(
   // @napi-rs/canvas polyfill source does not load). See pdf-node-globals.ts.
   const { ensurePdfNodeGlobals } = await import("@/lib/pdf-node-globals");
   ensurePdfNodeGlobals();
+  // Import the worker so globalThis.pdfjsWorker is set; otherwise pdfjs's Node
+  // fake-worker path dynamically imports workerSrc ("./pdf.worker.mjs"), which
+  // is not traced into the Vercel lambda ("Setting up fake worker failed").
+  // See pdf-node-globals.ts.
+  await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
   // Use legacy build for Node. Disable worker and font loading warnings.
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   // pdfjs in Node: no worker, no DOM. disableFontFace stops it from trying

@@ -268,9 +268,12 @@ function todayLabel(): string {
 // class-based rewrite backed by the non-legacy pdfjs bundle, which needs
 // browser globals (DOMMatrix) that don't exist in the server action
 // runtime — that's the "DOMMatrix is not defined" failure this replaces.
-// The legacy build self-polyfills those globals and runs headless (no
-// worker, no DOM). Text is reassembled line-by-line off each item's
-// baseline y so the result keeps the resume's line breaks for Claude.
+// The legacy build does NOT self-polyfill DOMMatrix; it relies on the
+// optional native @napi-rs/canvas, which never loads in the Vercel lambda.
+// So we install our own DOMMatrix + register the worker on the main thread
+// (see ensurePdfNodeGlobals + the worker import below) before getDocument.
+// Text is reassembled line-by-line off each item's baseline y so the result
+// keeps the resume's line breaks for Claude.
 async function extractPdfTextNode(bytes: Buffer): Promise<string> {
   // Install our pure-JS DOMMatrix BEFORE importing pdfjs. The legacy build
   // does `const SCALE_MATRIX = new DOMMatrix()` at module-eval and otherwise
@@ -278,6 +281,14 @@ async function extractPdfTextNode(bytes: Buffer): Promise<string> {
   // lambda) to define it. See src/lib/pdf-node-globals.ts.
   const { ensurePdfNodeGlobals } = await import("@/lib/pdf-node-globals");
   ensurePdfNodeGlobals();
+  // Import the worker module so it sets globalThis.pdfjsWorker. pdfjs's Node
+  // "fake worker" path otherwise does a dynamic import of GlobalWorkerOptions.
+  // workerSrc ("./pdf.worker.mjs"), which is NOT traced into the Vercel lambda
+  // -> "Setting up fake worker failed: Cannot find module .../pdf.worker.mjs".
+  // With globalThis.pdfjsWorker set, pdfjs uses the main-thread handler and
+  // never resolves workerSrc; this explicit import also makes Next's file
+  // tracing ship the worker into the bundle. See pdf-node-globals.ts.
+  await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
   const pdfjs = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as unknown as {
     getDocument: (args: {
       data: Uint8Array;
