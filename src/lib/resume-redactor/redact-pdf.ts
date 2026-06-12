@@ -110,6 +110,12 @@ async function extractTextItemsByPage(
   data: Uint8Array,
   expectedPages: number,
 ): Promise<TextItemPos[][]> {
+  // Install our pure-JS DOMMatrix before pdfjs imports — the legacy Node
+  // build constructs `new DOMMatrix()` at module-eval and would otherwise
+  // throw "DOMMatrix is not defined" in the Vercel lambda (where the native
+  // @napi-rs/canvas polyfill source does not load). See pdf-node-globals.ts.
+  const { ensurePdfNodeGlobals } = await import("@/lib/pdf-node-globals");
+  ensurePdfNodeGlobals();
   // Use legacy build for Node. Disable worker and font loading warnings.
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   // pdfjs in Node: no worker, no DOM. disableFontFace stops it from trying

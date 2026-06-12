@@ -272,6 +272,12 @@ function todayLabel(): string {
 // worker, no DOM). Text is reassembled line-by-line off each item's
 // baseline y so the result keeps the resume's line breaks for Claude.
 async function extractPdfTextNode(bytes: Buffer): Promise<string> {
+  // Install our pure-JS DOMMatrix BEFORE importing pdfjs. The legacy build
+  // does `const SCALE_MATRIX = new DOMMatrix()` at module-eval and otherwise
+  // depends on the native @napi-rs/canvas (which does not load in the Vercel
+  // lambda) to define it. See src/lib/pdf-node-globals.ts.
+  const { ensurePdfNodeGlobals } = await import("@/lib/pdf-node-globals");
+  ensurePdfNodeGlobals();
   const pdfjs = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as unknown as {
     getDocument: (args: {
       data: Uint8Array;
