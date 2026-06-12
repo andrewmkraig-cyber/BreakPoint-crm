@@ -617,6 +617,7 @@ export default async function ClientDetailPage({
         <AgreementsTab
           clientId={client.id}
           canWrite={canWrite}
+          companyState={companyInitial}
           items={agreements.map((a) => ({
             id: a.id,
             filename: a.filename,

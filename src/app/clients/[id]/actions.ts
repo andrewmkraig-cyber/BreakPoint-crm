@@ -246,7 +246,22 @@ export async function updateContact(input: UpdateContactInput): Promise<UpdateCo
 // Uploads go through /api/uploads/agreement (chunked). Summarize and delete
 // stay as server actions because they're small one-shot calls.
 
-export type SummarizeAgreementResult = ActionResult<{ summary: string; summaryUpdatedAt: string }>;
+// Fields Claude detected in the agreement, surfaced to the UI's "Detected:"
+// confirm box. signed/feePct are null when not confidently extracted (the UI
+// omits a null field rather than guessing). agreementDateIso is the upload
+// date (YYYY-MM-DD) — we use the upload date as the agreement date, so it is
+// always present.
+export type DetectedAgreementFields = {
+  signed: boolean | null;
+  feePct: number | null;
+  agreementDateIso: string;
+};
+
+export type SummarizeAgreementResult = ActionResult<{
+  summary: string;
+  summaryUpdatedAt: string;
+  detected: DetectedAgreementFields;
+}>;
 
 export async function summarizeAgreement(agreementId: string): Promise<SummarizeAgreementResult> {
   const user = await requireUserId();
@@ -255,23 +270,38 @@ export async function summarizeAgreement(agreementId: string): Promise<Summarize
   const org = await getCurrentOrg();
   const agreement = await prisma.clientAgreement.findFirst({
     where: { id: agreementId, organizationId: org.id },
-    select: { clientId: true, filename: true, mimeType: true, data: true },
+    select: { clientId: true, filename: true, mimeType: true, data: true, uploadedAt: true },
   });
   if (!agreement) return { ok: false, error: "Agreement not found." };
 
   try {
-    const summary = await summarizeAgreementTermsWithClaude({
+    const { summary, extracted } = await summarizeAgreementTermsWithClaude({
       filename: agreement.filename,
       mimeType: agreement.mimeType,
       data: Buffer.from(agreement.data),
     });
     const now = new Date();
+    // Only the summary is persisted here — the detected fee fields are NOT
+    // written until the user confirms via the "Apply" box (which routes
+    // through updateClientCompany). Summarizing never mutates client fields.
     await prisma.clientAgreement.update({
       where: { id: agreementId },
       data: { summary, summaryUpdatedAt: now },
     });
     if (agreement.clientId) revalidatePath(`/clients/${agreement.clientId}`);
-    return { ok: true, value: { summary, summaryUpdatedAt: now.toISOString() } };
+    return {
+      ok: true,
+      value: {
+        summary,
+        summaryUpdatedAt: now.toISOString(),
+        detected: {
+          signed: extracted.signed,
+          feePct: extracted.feePercent,
+          // Agreement date = the upload date (YYYY-MM-DD, local-safe slice).
+          agreementDateIso: agreement.uploadedAt.toISOString().slice(0, 10),
+        },
+      },
+    };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Claude summarization failed" };
   }

@@ -15,10 +15,16 @@ import {
 import { MarkdownProse } from "@/components/markdown-prose";
 import { DocumentDropzone } from "@/components/document-dropzone";
 import { toast } from "sonner";
-import { deleteAgreement, summarizeAgreement } from "@/app/clients/[id]/actions";
+import {
+  deleteAgreement,
+  summarizeAgreement,
+  updateClientCompany,
+  type DetectedAgreementFields,
+} from "@/app/clients/[id]/actions";
+import type { CompanyState } from "@/app/clients/[id]/editable-company";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { cn } from "@/lib/utils";
-import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
+import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
 
 export type AgreementRow = {
   id: string;
@@ -34,6 +40,7 @@ export type AgreementRow = {
 export function AgreementsTab({
   clientId,
   items,
+  companyState,
   canWrite = true,
 }: {
   // The client's canonical cuid. Uploads POST this to /api/uploads/agreement,
@@ -41,6 +48,11 @@ export function AgreementsTab({
   // guard (suppresses the upload card); every real client has a cuid.
   clientId: string | null;
   items: AgreementRow[];
+  // Current company/fee-agreement field values (the same seed EditableCompany
+  // edits). The "Detected fields → Apply" box merges its overrides onto this
+  // and calls the SAME updateClientCompany action, so applying detected fee
+  // terms never clobbers the client's other company fields.
+  companyState: CompanyState;
   // When false (client you don't own) the upload card plus the per-item
   // summarize and delete buttons are hidden. Files stay downloadable.
   canWrite?: boolean;
@@ -134,7 +146,14 @@ export function AgreementsTab({
         ) : (
           <ul className="divide-y divide-border">
             {items.map((a) => (
-              <AgreementItem key={a.id} agreement={a} onDelete={onDelete} canWrite={canWrite} />
+              <AgreementItem
+                key={a.id}
+                agreement={a}
+                onDelete={onDelete}
+                canWrite={canWrite}
+                clientId={clientId}
+                companyState={companyState}
+              />
             ))}
           </ul>
         )}
@@ -147,10 +166,14 @@ function AgreementItem({
   agreement,
   onDelete,
   canWrite = true,
+  clientId,
+  companyState,
 }: {
   agreement: AgreementRow;
   onDelete: (id: string, name: string) => void;
   canWrite?: boolean;
+  clientId: string | null;
+  companyState: CompanyState;
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState<boolean>(Boolean(agreement.summary));
@@ -162,6 +185,11 @@ function AgreementItem({
   // 20s+ on a multi-page PDF; without an immediate visible flip the
   // button looked frozen.
   const [isPending, setIsPending] = useState(false);
+  // Fields Claude detected on the most recent summarize. null until a fresh
+  // summarize returns; cleared on Apply / Dismiss. (Not persisted, so it never
+  // resurfaces on reload — only right after the user runs Summarize.)
+  const [detected, setDetected] = useState<DetectedAgreementFields | null>(null);
+  const [isApplying, setIsApplying] = useState(false);
 
   const isPdf = agreement.mimeType === "application/pdf";
 
@@ -176,10 +204,42 @@ function AgreementItem({
       }
       setSummary(result.value.summary);
       setSummaryUpdatedAt(result.value.summaryUpdatedAt);
+      setDetected(result.value.detected);
       setExpanded(true);
       router.refresh();
     } finally {
       setIsPending(false);
+    }
+  }
+
+  // Write the detected fee-agreement fields onto the client by reusing the
+  // SAME updateClientCompany action the manual Company & Fee Agreement editor
+  // uses. We spread the current companyState first so every other field keeps
+  // its value, then overlay only the fields Claude confidently extracted
+  // (null fields are omitted → never written as a guess). The agreement date
+  // is the upload date.
+  async function onApplyDetected() {
+    if (!detected || !clientId) return;
+    setError(null);
+    setIsApplying(true);
+    try {
+      const overrides: Partial<CompanyState> = {
+        feeAgreementSignedAt: detected.agreementDateIso,
+      };
+      if (detected.signed !== null) overrides.feeAgreementSigned = detected.signed;
+      if (detected.feePct !== null) overrides.feePct = String(detected.feePct);
+
+      const result = await updateClientCompany({ clientCuid: clientId, ...companyState, ...overrides });
+      if (!result.ok) {
+        setError(result.error);
+        toast.error("Couldn't apply", { description: result.error });
+        return;
+      }
+      toast.success("Fee agreement details applied");
+      setDetected(null);
+      router.refresh();
+    } finally {
+      setIsApplying(false);
     }
   }
 
@@ -251,6 +311,36 @@ function AgreementItem({
 
       {error && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{error}</div>}
 
+      {canWrite && clientId && detected && (detected.signed !== null || detected.feePct !== null) && (
+        <div className="mt-3 flex flex-col gap-2 rounded-lg border border-court-border/60 bg-court-surface-subtle/40 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-xs text-court-fg">
+            <span className="font-semibold">Detected:</span>{" "}
+            {formatDetected(detected)}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="apply"
+              size="sm"
+              onClick={() => void onApplyDetected()}
+              disabled={isApplying}
+            >
+              {isApplying ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              {isApplying ? "Applying…" : "Apply"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setDetected(null)}
+              disabled={isApplying}
+            >
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
+
       {summary && expanded && (
         <div className={cn("mt-3 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 p-4")}>
           <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
@@ -262,6 +352,20 @@ function AgreementItem({
       )}
     </li>
   );
+}
+
+// "Signed · 20% fee · Jun 12, 2026" — only the parts that were confidently
+// extracted (signed/fee omitted when null); the upload date is always shown.
+function formatDetected(d: DetectedAgreementFields): string {
+  const parts: string[] = [];
+  if (d.signed !== null) parts.push(d.signed ? "Signed" : "Unsigned");
+  if (d.feePct !== null) parts.push(`${d.feePct}% fee`);
+  // Parse as local midnight so the YYYY-MM-DD upload date doesn't shift a day.
+  const date = new Date(`${d.agreementDateIso}T00:00:00`);
+  if (!Number.isNaN(date.getTime())) {
+    parts.push(date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }));
+  }
+  return parts.join(" · ");
 }
 
 function formatBytes(n: number): string {

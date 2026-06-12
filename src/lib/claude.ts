@@ -449,11 +449,48 @@ function safeParseJSON(raw: string): Partial<ParsedCandidate> | null {
 // Extract and summarize the key terms of a placement fee agreement. PDF-only
 // for now — .doc/.docx binaries aren't natively readable by Claude without
 // server-side text extraction, which we'll add if it becomes a blocker.
+// Structured fields pulled from the agreement alongside the markdown summary.
+// Each is null when the document doesn't clearly state it / Claude can't tell —
+// callers MUST treat null as "omit", never as a guessed default. The agreement
+// DATE is intentionally not here: callers use the upload date for that.
+export type AgreementExtraction = {
+  // true = appears executed/signed, false = appears to be an unsigned
+  // draft/template, null = can't tell.
+  signed: boolean | null;
+  // Direct-hire conversion/placement fee as a number (e.g. 20 for "20%"),
+  // null when not clearly stated. Never guessed.
+  feePercent: number | null;
+};
+
+// Marker that separates the human-facing markdown summary from the machine
+// JSON tail in Claude's response. Chosen so it can't collide with agreement
+// prose or a markdown bullet.
+const AGREEMENT_FIELDS_MARKER = "===FIELDS_JSON===";
+
+function parseAgreementExtraction(jsonTail: string): AgreementExtraction {
+  const empty: AgreementExtraction = { signed: null, feePercent: null };
+  // Strip any accidental code fences, then grab the first {...} block.
+  const cleaned = jsonTail.replace(/```json|```/gi, "").trim();
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  if (!match) return empty;
+  try {
+    const raw = JSON.parse(match[0]) as { signed?: unknown; feePercent?: unknown };
+    const signed = typeof raw.signed === "boolean" ? raw.signed : null;
+    const feePercent =
+      typeof raw.feePercent === "number" && Number.isFinite(raw.feePercent)
+        ? raw.feePercent
+        : null;
+    return { signed, feePercent };
+  } catch {
+    return empty;
+  }
+}
+
 export async function summarizeAgreementTerms(params: {
   filename: string;
   mimeType: string;
   data: Buffer;
-}): Promise<string> {
+}): Promise<{ summary: string; extracted: AgreementExtraction }> {
   if (params.mimeType !== "application/pdf") {
     throw new Error("Only PDF agreements can be auto-summarized right now. Re-upload as PDF to use this.");
   }
@@ -497,7 +534,12 @@ export async function summarizeAgreementTerms(params: {
               "- **Candidate Ownership Period:** (e.g. '12 months from introduction')\n" +
               "- **Governing Law:** (state/jurisdiction)\n" +
               "- **{Other term label}:** (add a bullet for any other notable/custom term - indemnification cap, arbitration, non-solicit scope, background-check responsibility, etc. One bullet per term. Omit if nothing else is notable.)\n\n" +
-              "No other content. Just the markdown bullets, one per line.",
+              "After the markdown bullets, and ONLY after them, output a line containing exactly " +
+              AGREEMENT_FIELDS_MARKER +
+              " and then a single minified JSON object (no code fences, nothing after it) with exactly these keys:\n" +
+              '- "signed": true if the document appears executed/signed (a completed signature block, dated signatures, DocuSign/e-sign certificate or envelope id, initials on each page), false if it is clearly an unsigned draft/template/blank form, or null if you cannot tell.\n' +
+              '- "feePercent": the direct-hire / permanent placement conversion fee as a NUMBER only (e.g. 20 for "20%"). Use null if the document does not clearly state a single direct-hire fee percentage. NEVER guess a percentage that is not explicitly written in the document.\n' +
+              "The markdown summary above must be exactly what it would be without this JSON request - do not change it.",
           },
         ],
       },
@@ -511,12 +553,23 @@ export async function summarizeAgreementTerms(params: {
     .trim();
 
   if (!text) throw new Error("Claude returned no summary. Try again or check the PDF is readable.");
+
+  // Split the human-facing markdown summary from the JSON tail. Everything
+  // BEFORE the marker is the summary the user sees - byte-for-byte the same
+  // bullets the un-extended prompt produced; the JSON tail never reaches the
+  // UI. If the marker is absent (older behavior / model omitted it), the whole
+  // response is the summary and extraction falls back to all-null.
+  const markerIdx = text.indexOf(AGREEMENT_FIELDS_MARKER);
+  const summaryRaw = markerIdx >= 0 ? text.slice(0, markerIdx).trim() : text;
+  const jsonTail = markerIdx >= 0 ? text.slice(markerIdx + AGREEMENT_FIELDS_MARKER.length) : "";
+  const extracted = parseAgreementExtraction(jsonTail);
+
   // Keep the markdown bullets intact (MarkdownProse renders `- **Label:** value`
   // as a clean bold-labeled bullet list); only strip the banned em/en dashes.
   // Running stripMarkdownToPlain here was the regression - it flattened the
   // bullets to "•" lines joined by single newlines, which the markdown renderer
   // then collapsed into one run-together paragraph.
-  return stripBannedDashes(text);
+  return { summary: stripBannedDashes(summaryRaw), extracted };
 }
 
 // Takes an uploaded job description (PDF / DOCX / pasted text) and produces
