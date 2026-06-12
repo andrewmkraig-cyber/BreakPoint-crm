@@ -15,7 +15,7 @@ All shipped to main; `npm run build` exits 0. Full detail in ACE_STATE.md ▸ Ac
 - ~~**Ace Assistant `create_contact` tool**~~ DONE - write-tool pattern, duplicate guard.
 
 **Open follow-ups from this session:**
-- **Agreement backfill - confirm prod status.** The Summarize-Terms backfill script ships dry-run-by-default. Confirm whether it was `--apply`-run against prod or is still pending; if pending, run the dry run, review, then apply.
+- ~~**Agreement backfill - confirm prod status.**~~ CLOSED (superseded `0233cd0`). A separate backfill is no longer needed: per-client Summarize Terms now auto-fills the fee/signed/date server-side (write-if-empty) every time it runs, so re-summarizing any client populates its fields directly. Run Summarize Terms on a client to fill it; no batch script to apply.
 - **Client blurb review pass (recommended).** `{{client_blurb}}` now appears in candidate-facing templates via `resolveClientBlurb`'s generate-once fallback. Recommend a review pass over ACTIVE clients to set/curate each `candidateBlurb` so candidates see an intentional anonymized descriptor rather than an auto-generated one.
 
 ### UI-consistency audit (inputs + tables) - COMPLETE (Ace 91.0/92.0, 2026-06-11)
