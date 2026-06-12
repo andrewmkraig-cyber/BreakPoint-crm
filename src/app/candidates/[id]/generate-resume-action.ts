@@ -16,6 +16,11 @@ import type {
   ResumeEducationEntry,
   ResumeExperienceEntry,
 } from "@/app/candidates/[id]/resume-pdf-template";
+import type {
+  EditedResume,
+  EditedResumeEntry,
+  EditedResumeSection,
+} from "@/app/candidates/[id]/edited-resume-template";
 
 type ActionResult<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -253,6 +258,61 @@ async function renderResumeDataToVersion(params: {
   return created.id;
 }
 
+// Render path for Edit Resume: the source-mirroring EditedResume model
+// through the single-column EditedResumeDocument. Otherwise identical to
+// renderResumeDataToVersion (drain the @react-pdf stream, upload to Blob,
+// create a new CandidateResume version).
+async function renderEditedResumeToVersion(params: {
+  candidateId: string;
+  candidateRfId: number | null;
+  organizationId: string;
+  userId: string;
+  editedResume: EditedResume;
+  displayName: string;
+  filename: string;
+  blobPath: string;
+}): Promise<string> {
+  const { pdf } = await import("@react-pdf/renderer");
+  const { EditedResumeDocument } = await import(
+    "@/app/candidates/[id]/edited-resume-template"
+  );
+  const pdfDoc = pdf(EditedResumeDocument({ data: params.editedResume }));
+  const stream = await pdfDoc.toBuffer();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream as unknown as AsyncIterable<Buffer | Uint8Array>) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  const outputBytes = new Uint8Array(Buffer.concat(chunks));
+
+  const blob = await put(params.blobPath, Buffer.from(outputBytes), {
+    access: "private",
+    contentType: "application/pdf",
+    addRandomSuffix: true,
+  });
+
+  const created = await prisma.candidateResume.create({
+    data: {
+      candidateId: params.candidateId,
+      candidateRfId: params.candidateRfId,
+      organizationId: params.organizationId,
+      filename: params.filename,
+      displayName: params.displayName,
+      mimeType: "application/pdf",
+      size: outputBytes.byteLength,
+      data: Buffer.alloc(0),
+      blobUrl: blob.url,
+      uploadComplete: true,
+      uploadedById: params.userId,
+    },
+    select: { id: true },
+  });
+
+  revalidatePath(`/candidates/${params.candidateId}`);
+  if (params.candidateRfId != null) revalidatePath(`/candidates/${params.candidateRfId}`);
+
+  return created.id;
+}
+
 // Today's date as "Mon D, YYYY" for the Edited version's display name.
 function todayLabel(): string {
   return new Date().toLocaleDateString("en-US", {
@@ -312,22 +372,47 @@ async function extractPdfTextNode(bytes: Buffer): Promise<string> {
     const content = await page.getTextContent({ includeMarkedContent: false });
     const parts: string[] = [];
     let lastY: number | null = null;
+    let lastHeight = 11;
     for (const raw of content.items) {
-      const item = raw as { str?: string; transform?: number[] };
+      const item = raw as { str?: string; transform?: number[]; height?: number };
       if (typeof item.str !== "string") continue;
       const y = item.transform?.[5] ?? null;
-      // New line whenever the baseline moves vertically by more than a hair.
-      if (lastY !== null && y !== null && Math.abs(y - lastY) > 2) {
-        parts.push("\n");
+      // pdfjs gives a per-item glyph height; fall back to the vertical scale
+      // in the transform, then to the last height we saw. This is the unit we
+      // judge line gaps against.
+      const height =
+        item.height && item.height > 1
+          ? item.height
+          : Math.abs(item.transform?.[3] ?? 0) || lastHeight;
+      if (lastY !== null && y !== null) {
+        const drop = lastY - y; // > 0 moving down the page (normal reading)
+        const lineUnit = Math.max(lastHeight, height, 6);
+        if (Math.abs(drop) <= 1.5) {
+          // Same visual line — keep the run going (intra-line spaces already
+          // come through as their own text items).
+        } else if (drop > lineUnit * 1.8) {
+          // A vertical jump much larger than one line is a blank line in the
+          // source: a section break or a gap between entries. Preserve it so
+          // Claude can SEE where sections start and end. Without this every
+          // line is single-spaced and section boundaries vanish.
+          parts.push("\n\n");
+        } else {
+          parts.push("\n");
+        }
       }
       parts.push(item.str);
       lastY = y;
+      lastHeight = height;
     }
-    text += parts.join("") + "\n";
+    // A page boundary is itself a hard break.
+    text += parts.join("") + "\n\n";
     if (typeof page.cleanup === "function") page.cleanup();
   }
   if (typeof doc.cleanup === "function") doc.cleanup();
-  return text.replace(/[ \t]+\n/g, "\n");
+  return text
+    .replace(/[ \t]+\n/g, "\n") // trailing spaces before a newline
+    .replace(/\n{3,}/g, "\n\n") // collapse runs of blanks to a single blank
+    .trim();
 }
 
 type PdfJsDoc = {
@@ -380,11 +465,14 @@ async function extractCurrentResumeText(
 }
 
 // Edit-with-Claude. Loads the candidate's current resume, extracts its
-// text, and asks Claude to apply ONLY the requested change (everything
-// else preserved verbatim), returning the full revised resume in the same
-// structured JSON the generator uses. The result is rendered through the
-// SAME @react-pdf template and saved as a NEW version named
-// "Edited - <today>" — the original file is never touched.
+// text, and asks Claude to apply ONLY the requested change (everything else
+// preserved verbatim), returning the full revised resume as an ordered,
+// source-mirroring section model (EditedResume). The result is rendered
+// through the single-column EditedResumeDocument and saved as a NEW version
+// named "Edited - <today>" — the original file is never touched. (The
+// generator uses the rigid ResumeData + two-column template instead, which is
+// right for building a resume from structured DB fields but wrong for
+// mirroring an arbitrary existing document.)
 export async function editResumeWithClaude(
   candidateId: string,
   instruction: string,
@@ -435,43 +523,58 @@ export async function editResumeWithClaude(
       };
     }
 
-    // Same JSON contract as the generator so the @react-pdf template can
-    // render the result. The edit-specific rules pin Claude to the single
-    // requested change and forbid touching anything else. Personal Trainer
-    // rules are appended, matching every other Claude caller in Ace.
+    // The schema MIRRORS the source resume rather than forcing it into fixed
+    // buckets: an ordered list of sections, each with its own heading and
+    // generic entries. That is what lets Edit Resume keep the promise "apply
+    // only the requested change, preserve everything else" — arbitrary
+    // sections (Projects, Publications, Awards, Languages, ...) survive in
+    // their original order instead of being dropped. Personal Trainer rules
+    // are appended, matching every other Claude caller in Ace.
     const systemPrompt =
       [
-        "You are a professional resume editor for a recruiting agency.",
+        "You are a precise resume editor for a recruiting agency.",
         "You are given a candidate's CURRENT resume text and ONE editing instruction.",
-        "Apply ONLY the requested change. Preserve every other piece of content verbatim — same wording, same bullets, same dates, same order. Do not rewrite, embellish, reorder, or drop anything the instruction did not ask you to change.",
-        "Never invent facts. If the instruction asks for something the source can't support, make the smallest faithful change and leave the rest untouched.",
+        "Your job is to reproduce the resume EXACTLY, applying ONLY the requested change.",
+        "Apply ONLY the requested change. Every other character — wording, bullets, dates, numbers, order — must be preserved verbatim. Do not rewrite, embellish, summarize, reorder, rename, merge, split, or drop anything the instruction did not explicitly ask you to change.",
+        "Mirror the source structure 1:1: the SAME sections, in the SAME order, with the SAME headings; within each section the SAME entries in the SAME order; within each entry the SAME number of bullets, each bullet word-for-word.",
+        "Never invent facts. If the instruction asks for something the source cannot support, make the smallest faithful change and leave everything else untouched.",
         "Return the FULL revised resume as STRICT JSON only. No commentary, no markdown, no fences.",
         "Schema:",
         "{",
-        '  "name": string,',
-        '  "title": string,',
-        '  "contact": { "email"?: string, "phone"?: string, "location"?: string, "linkedin"?: string },',
-        '  "summary"?: string,',
-        '  "experience": [{ "title": string, "company": string, "dates": string, "location"?: string, "bullets": string[] }],',
-        '  "education": [{ "degree": string, "school": string, "year"?: string, "details"?: string }],',
-        '  "skills": string[],',
-        '  "certifications": string[]',
+        '  "name": string,                 // the person\'s name as written',
+        '  "title"?: string,               // the role/tagline line under the name, ONLY if the source has one',
+        '  "contact": string[],            // each contact line exactly as written (email, phone, location, links); [] if none',
+        '  "sections": [                   // EVERY section of the source, in source order',
+        '    {',
+        '      "heading": string,          // the section heading exactly as written, e.g. "EXPERIENCE", "PROJECTS", "EDUCATION"',
+        '      "entries": [                // the items under that heading, in source order',
+        '        {',
+        '          "primary"?: string,     // the item\'s bold lead line (job title, degree, project name), if any',
+        '          "secondary"?: string,   // the item\'s second line (employer and location, school, issuer), if any',
+        '          "meta"?: string,        // dates or year shown for the item, if any',
+        '          "description"?: string, // a prose paragraph (e.g. a Summary, or an item overview), if any',
+        '          "bullets"?: string[]    // bullet lines, each preserved word-for-word',
+        '        }',
+        '      ]',
+        '    }',
+        '  ]',
         "}",
+        "Mapping guidance: a Summary/Objective/Profile section is one entry with only a description. A Skills/Languages/Interests list is one entry whose bullets are the listed items (one per bullet), unless the source writes it as prose (then use description). A job or degree is one entry using primary/secondary/meta/bullets. Keep each section's heading text exactly as the source wrote it.",
         "Output ONLY the JSON document.",
       ].join("\n") + (await buildPersonalTrainerBlock(org.id));
 
     const userMessage = [
-      "CURRENT RESUME (source of truth — preserve verbatim except as instructed):",
-      resumeText.slice(0, 24_000),
+      "CURRENT RESUME (source of truth — reproduce verbatim except for the instructed change; blank lines mark section/entry boundaries):",
+      resumeText.slice(0, 40_000),
       "",
       `EDITING INSTRUCTION: ${trimmedInstruction}`,
       "",
-      "Return the full revised resume JSON now.",
+      "Return the full revised resume JSON now, mirroring the source 1:1 with only the instructed change applied.",
     ].join("\n");
 
     const response = await anthropic.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 2048,
+      max_tokens: 8192,
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
     });
@@ -483,18 +586,18 @@ export async function editResumeWithClaude(
       .trim();
     if (!rawText) return { ok: false, error: "Claude returned no resume content." };
 
-    const resumeData = parseResumeJson(rawText, fullName, candidate);
-    if (!resumeData) {
+    const editedResume = parseEditedResumeJson(rawText, fullName);
+    if (!editedResume) {
       return { ok: false, error: "Couldn't parse the revised resume from Claude. Try again." };
     }
 
     const safeName = fullName.replace(/[^A-Za-z0-9_-]+/g, "_") || "resume";
-    const resumeId = await renderResumeDataToVersion({
+    const resumeId = await renderEditedResumeToVersion({
       candidateId: candidate.id,
       candidateRfId: candidate.rfId,
       organizationId: org.id,
       userId: user.id,
-      resumeData,
+      editedResume,
       displayName: `Edited - ${todayLabel()}`,
       filename: `${safeName}_Edited.pdf`,
       blobPath: `resumes/${candidate.id}/edited-${safeName}_Edited.pdf`,
@@ -625,5 +728,70 @@ function parseResumeJson(
       ? asStringArray(obj.skills)
       : candidate.skills,
     certifications: asStringArray(obj.certifications),
+  };
+}
+
+// Parse Claude's source-mirroring JSON into an EditedResume. Deliberately
+// does NOT backfill from the Candidate row (name aside): injecting DB fields
+// the source resume never had would add content the edit was supposed to
+// preserve-only, breaking the "only the instructed change differs" contract.
+// Empty entries and empty sections are dropped; field order/structure is left
+// exactly as the model returned it.
+function parseEditedResumeJson(
+  rawText: string,
+  fullName: string,
+): EditedResume | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripJsonFences(rawText));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const obj = parsed as Record<string, unknown>;
+
+  const asString = (v: unknown): string =>
+    typeof v === "string" ? v.trim() : "";
+  const asStringArray = (v: unknown): string[] =>
+    Array.isArray(v) ? v.map(asString).filter((s) => s.length > 0) : [];
+
+  const sections: EditedResumeSection[] = Array.isArray(obj.sections)
+    ? (obj.sections as unknown[]).flatMap<EditedResumeSection>((row) => {
+        if (!row || typeof row !== "object") return [];
+        const r = row as Record<string, unknown>;
+        const heading = asString(r.heading);
+        const entries: EditedResumeEntry[] = Array.isArray(r.entries)
+          ? (r.entries as unknown[]).flatMap<EditedResumeEntry>((e) => {
+              if (!e || typeof e !== "object") return [];
+              const er = e as Record<string, unknown>;
+              const bullets = asStringArray(er.bullets);
+              const entry: EditedResumeEntry = {
+                primary: asString(er.primary) || undefined,
+                secondary: asString(er.secondary) || undefined,
+                meta: asString(er.meta) || undefined,
+                description: asString(er.description) || undefined,
+                bullets: bullets.length > 0 ? bullets : undefined,
+              };
+              const hasContent =
+                entry.primary ||
+                entry.secondary ||
+                entry.meta ||
+                entry.description ||
+                entry.bullets;
+              return hasContent ? [entry] : [];
+            })
+          : [];
+        if (!heading && entries.length === 0) return [];
+        return [{ heading, entries }];
+      })
+    : [];
+
+  if (sections.length === 0) return null;
+
+  return {
+    name: asString(obj.name) || fullName,
+    title: asString(obj.title) || undefined,
+    contact: asStringArray(obj.contact),
+    sections,
   };
 }
