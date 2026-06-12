@@ -49,3 +49,32 @@ export async function generateAndSaveClientBlurb(params: {
 
   return blurb;
 }
+
+// Resolve the {{client_blurb}} merge value for any SEND path. Prefers the
+// saved Client.candidateBlurb; if it's missing, generates one once (Claude)
+// and caches it on the row; if generation fails, or there's no client in
+// context, falls back to "a confidential client" so a sent email never
+// renders the token blank ("This is with .") or literal. Single source of
+// truth shared by the bulk email queue (bulk-actions) and the trigger /
+// confirmation send path (merge-context → fireTemplatedEmail). The generate
+// step is once-per-client: after the first send the saved column answers
+// every later resolve for free.
+export async function resolveClientBlurb(params: {
+  clientId: string | null | undefined;
+  organizationId: string | null | undefined;
+  savedBlurb: string | null | undefined;
+}): Promise<string> {
+  const saved = (params.savedBlurb ?? "").trim();
+  if (saved) return saved;
+  if (params.clientId && params.organizationId) {
+    try {
+      return await generateAndSaveClientBlurb({
+        clientId: params.clientId,
+        organizationId: params.organizationId,
+      });
+    } catch {
+      return "a confidential client";
+    }
+  }
+  return "a confidential client";
+}

@@ -24,7 +24,7 @@ import {
   looksLikeHtml,
   type MergeFieldValues,
 } from "@/lib/merge-fields";
-import { generateAndSaveClientBlurb } from "@/lib/client-blurb";
+import { resolveClientBlurb } from "@/lib/client-blurb";
 import { extractCityFromLocation } from "@/lib/candidate-compensation";
 
 // Bulk Apply / Add-to-List actions backing the /candidates page's
@@ -870,22 +870,15 @@ export async function getJobMergeValuesForBulk(input: {
     });
   }
 
-  // Resolve the {{client_blurb}} merge value at queue time: use the saved
-  // candidateBlurb; if null, generate one once (Claude) and save it; if
-  // generation fails, fall back to "a confidential client" so an outreach
-  // email never renders "My client, , ...". Only attempt generation when
-  // we actually have a client row.
-  let candidateBlurb = (clientRow?.candidateBlurb ?? "").trim();
-  if (!candidateBlurb && clientRow) {
-    try {
-      candidateBlurb = await generateAndSaveClientBlurb({
-        clientId: clientRow.id,
-        organizationId,
-      });
-    } catch {
-      candidateBlurb = "a confidential client";
-    }
-  }
+  // Resolve the {{client_blurb}} merge value at queue time via the shared
+  // resolver (saved blurb, else generate-once, else "a confidential client")
+  // so the bulk queue and the trigger/confirmation send path stay identical
+  // and an outreach email never renders "My client, , ...".
+  const candidateBlurb = await resolveClientBlurb({
+    clientId: clientRow?.id,
+    organizationId,
+    savedBlurb: clientRow?.candidateBlurb,
+  });
 
   const jobLocation = jobRow?.locations[0] ?? "";
   return {

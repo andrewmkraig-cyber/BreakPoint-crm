@@ -4,6 +4,7 @@ import { extractCandidateFields } from "@/lib/candidate-fields";
 import { getRecruiterPhone } from "@/lib/preferences";
 import { formatLocation } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
+import { resolveClientBlurb } from "@/lib/client-blurb";
 import { extractCityFromLocation, formatExpectedCompensation } from "@/lib/candidate-compensation";
 import {
   type RFJob,
@@ -338,13 +339,22 @@ export async function buildPlacementMergeValues(
     null;
 
   let clientCompanyName = "";
+  let candidateBlurb = "";
   let primaryContact: { fullName: string; firstName: string; email: string } | null = null;
   if (clientCuid) {
     const client = await prisma.client.findUnique({
       where: { id: clientCuid },
-      select: { name: true },
+      select: { name: true, candidateBlurb: true, organizationId: true },
     });
     if (client?.name) clientCompanyName = client.name;
+    // {{client_blurb}} — resolve via the shared resolver (saved blurb, else
+    // generate-once, else "a confidential client") so trigger/confirmation
+    // sends match the bulk path and never render the token blank or literal.
+    candidateBlurb = await resolveClientBlurb({
+      clientId: clientCuid,
+      organizationId: client?.organizationId,
+      savedBlurb: client?.candidateBlurb,
+    });
     // Primary contact: first one alphabetically by first/last name.
     // Existing buildFullMergeValues picked the first match in an
     // unsorted list — same effective behavior.
@@ -378,6 +388,7 @@ export async function buildPlacementMergeValues(
     candidateCity: extractCityFromLocation(candidate?.location ?? ""),
     candidateCompensation: candidate?.compensation ?? "",
     clientCompanyName,
+    candidateBlurb,
     clientContactFullName: primaryContact?.fullName ?? "",
     clientContactFirstName: primaryContact?.firstName ?? "",
     clientContactEmail: primaryContact?.email ?? "",
