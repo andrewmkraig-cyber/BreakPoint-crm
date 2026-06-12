@@ -23,6 +23,7 @@ import {
   type CompanyState,
 } from "@/app/clients/[id]/editable-company";
 import { DeleteClientButton } from "@/app/clients/[id]/delete-client-button";
+import { CandidateBlurbCard } from "@/app/clients/[id]/candidate-blurb-card";
 import { AddClientNote } from "@/app/clients/[id]/add-client-note";
 import { ClientLogo } from "@/components/clients/client-logo";
 import AiWorkspace from "@/components/AiWorkspace";
@@ -474,6 +475,12 @@ export default async function ClientDetailPage({
             agreementFile={agreementFileForCard}
             billingContacts={billingContactOptions}
             createContactHref={`/clients/${clientSlug}?tab=contacts&addContact=1`}
+            canWrite={canWrite}
+          />
+
+          <CandidateBlurbCard
+            clientCuid={client.id}
+            initialBlurb={client.candidateBlurb ?? ""}
             canWrite={canWrite}
           />
 

@@ -325,6 +325,7 @@ const JOB_MERGE_TOKENS = [
   "[Job Title]",
   "[Job Location]",
   "[Client Company Name]",
+  "{{client_blurb}}",
   "[Client Company Website]",
   "[Client Company LinkedIn]",
 ];
@@ -350,6 +351,7 @@ function applyJobTokensOnly(text: string, jobValues: MergeFieldValues): string {
     "[Job Title]": jobValues.jobTitle,
     "[Job Location]": jobValues.jobLocation,
     "[Client Company Name]": jobValues.clientCompanyName,
+    "{{client_blurb}}": jobValues.candidateBlurb,
     "[Client Company Website]": jobValues.clientCompanyWebsite,
     "[Client Company LinkedIn]": jobValues.clientCompanyLinkedIn,
   };

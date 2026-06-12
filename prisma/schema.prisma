@@ -812,6 +812,13 @@ model Client {
   careersPage    String?
   companySize    String?
   overview       String?   @db.Text
+  // Short, anonymous candidate-facing description of the client used in
+  // outreach (the {{client_blurb}} merge field). A lowercase-start noun
+  // phrase that names NO client, e.g. "a growing CPA firm in Northeast
+  // Ohio" — drops into "My client, ____, is looking to add a [title]."
+  // Null until generated; generateClientBlurb (Claude) fills it on demand
+  // from the client page or lazily at email-queue time.
+  candidateBlurb String?   @db.Text
   // Free-form recruiter notes attached to the client. Distinct from
   // `overview` (which is the public-facing about/summary blurb) — this
   // field is the scratchpad for "talked to Linda Tuesday, fee terms TBD"

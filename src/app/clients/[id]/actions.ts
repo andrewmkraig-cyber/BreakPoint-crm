@@ -10,7 +10,9 @@ import { backfillClientGmailThreadTags } from "@/lib/gmail";
 import {
   summarizeAgreementTerms as summarizeAgreementTermsWithClaude,
   summarizeBenefits as summarizeBenefitsWithClaude,
+  normalizeClientBlurb,
 } from "@/lib/claude";
+import { generateAndSaveClientBlurb } from "@/lib/client-blurb";
 
 type ActionResult<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -469,6 +471,73 @@ export async function updateClientCompany(input: UpdateClientInput): Promise<Act
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to update client." };
+  }
+}
+
+// ---- Candidate-facing blurb (the {{client_blurb}} merge field) ----
+
+export type ClientBlurbResult = ActionResult<{ blurb: string }>;
+
+// Generate-with-Claude for the client page. Loads the client (org-scoped),
+// asks Claude for the anonymous blurb, saves it, and returns it so the
+// editable field can fill in-place. Org-scoped via the shared helper.
+export async function generateClientBlurb(clientCuid: string): Promise<ClientBlurbResult> {
+  const user = await requireUserId();
+  if (!user) return { ok: false, error: "Not signed in." };
+  if (!clientCuid) return { ok: false, error: "Missing client id." };
+
+  try {
+    const org = await getCurrentOrg();
+    const existing = await prisma.client.findFirst({
+      where: { id: clientCuid, organizationId: org.id },
+      select: { id: true, legacyRfId: true },
+    });
+    if (!existing) return { ok: false, error: "Client not found." };
+
+    const blurb = await generateAndSaveClientBlurb({
+      clientId: existing.id,
+      organizationId: org.id,
+    });
+
+    const slug = existing.legacyRfId != null ? String(existing.legacyRfId) : existing.id;
+    revalidatePath(`/clients/${slug}`);
+    return { ok: true, value: { blurb } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to generate blurb." };
+  }
+}
+
+// Inline save for a manually-edited blurb. Normalizes the same way the
+// generator does (strips quotes/dashes/trailing period, lowercase start)
+// so a hand-typed value renders identically in the outreach sentence.
+// An empty value clears the column back to null.
+export async function updateClientBlurb(
+  clientCuid: string,
+  blurb: string,
+): Promise<ClientBlurbResult> {
+  const user = await requireUserId();
+  if (!user) return { ok: false, error: "Not signed in." };
+  if (!clientCuid) return { ok: false, error: "Missing client id." };
+
+  try {
+    const org = await getCurrentOrg();
+    const existing = await prisma.client.findFirst({
+      where: { id: clientCuid, organizationId: org.id },
+      select: { id: true, legacyRfId: true },
+    });
+    if (!existing) return { ok: false, error: "Client not found." };
+
+    const cleaned = blurb.trim() ? normalizeClientBlurb(blurb) : "";
+    await prisma.client.update({
+      where: { id: existing.id },
+      data: { candidateBlurb: cleaned || null },
+    });
+
+    const slug = existing.legacyRfId != null ? String(existing.legacyRfId) : existing.id;
+    revalidatePath(`/clients/${slug}`);
+    return { ok: true, value: { blurb: cleaned } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to save blurb." };
   }
 }
 

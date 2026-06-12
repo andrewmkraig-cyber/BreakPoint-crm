@@ -1099,6 +1099,105 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
   return stripTrailingSignOff(text);
 }
 
+// Generates the anonymous candidate-facing client blurb — the
+// {{client_blurb}} merge field. Returns a short lowercase-start noun
+// phrase that describes the client WITHOUT naming it, so it slots into
+// "My client, ____, is looking to add a [title]." e.g. "a growing CPA
+// firm in Northeast Ohio". Plain string, no quotes, no period, no em
+// dashes. `extraSystem` carries the Personal Trainer rules appendix the
+// caller builds per-org (same pattern as the other Claude callers).
+export type ClientBlurbInput = {
+  name: string;
+  overview?: string | null;
+  industry?: string | null;
+  // Titles of the client's currently-open roles, for light context.
+  jobTitles?: string[];
+  // Per-org Personal Trainer rules, appended to the system prompt.
+  extraSystem?: string;
+};
+
+// Tidy whatever Claude returns into a single clean phrase: drop wrapping
+// quotes, strip banned em/en dashes, remove a trailing period, collapse
+// whitespace, lowercase the first letter, and hard-cap the length so a
+// stray sentence can never blow out the outreach line.
+export function normalizeClientBlurb(raw: string): string {
+  let s = (raw ?? "").trim();
+  // Keep only the first line if the model added stray commentary.
+  s = s.split(/\r?\n/)[0].trim();
+  // Strip a single layer of wrapping straight or smart quotes.
+  s = s.replace(/^['"‘’“”]+/, "").replace(/['"‘’“”]+$/, "").trim();
+  s = stripBannedDashes(s);
+  s = s.replace(/\s+/g, " ").trim();
+  // Drop trailing sentence punctuation — the blurb sits inside a sentence.
+  s = s.replace(/[.!?;,]+$/, "").trim();
+  // Lowercase the first character so "My client, a growing..." reads right,
+  // unless it starts with an acronym (two+ consecutive capitals, e.g. "PE-").
+  if (s.length > 0 && !/^[A-Z]{2}/.test(s)) {
+    s = s.charAt(0).toLowerCase() + s.slice(1);
+  }
+  // ~10 words / 90 chars is the design ceiling; trim extra words cleanly.
+  const words = s.split(" ");
+  if (words.length > 12) s = words.slice(0, 12).join(" ");
+  if (s.length > 90) s = s.slice(0, 90).replace(/[\s,]+\S*$/, "").trim();
+  return s;
+}
+
+export async function generateClientBlurb(input: ClientBlurbInput): Promise<string> {
+  const anthropic = getClaude();
+  const name = (input.name ?? "").trim() || "the client";
+  const overview = (input.overview ?? "").trim();
+  const industry = (input.industry ?? "").trim();
+  const jobTitles = (input.jobTitles ?? []).filter(Boolean).slice(0, 5);
+
+  const contextLines = [
+    `Client name (DO NOT use this name in your answer): ${name}`,
+    industry ? `Industry: ${industry}` : "",
+    jobTitles.length ? `Currently hiring for: ${jobTitles.join(", ")}` : "",
+    overview ? `About the client:\n${overview.slice(0, 4000)}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const system =
+    "You write a single anonymous descriptor of a hiring client for a recruiter's candidate outreach email. " +
+    "The descriptor must NEVER name or obviously identify the client. " +
+    "Output ONLY the descriptor itself — no preamble, no quotes, no markdown, no trailing punctuation." +
+    (input.extraSystem ?? "");
+
+  const response = await anthropic.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 100,
+    system,
+    messages: [
+      {
+        role: "user",
+        content:
+          "Write a short, anonymous noun phrase describing this client so it can complete the sentence:\n" +
+          '  "My client, ____, is looking to add a [job title]."\n\n' +
+          "Rules:\n" +
+          "- Start lowercase (e.g. 'a growing CPA firm in Northeast Ohio', 'a PE-backed multi-office accounting firm').\n" +
+          "- Maximum 10 words.\n" +
+          "- Describe industry, size, stage, region, or structure — whatever is most distinctive and true.\n" +
+          "- NEVER name the client or use any wording that identifies them specifically.\n" +
+          "- No quotes, no period at the end, no em dashes. Just the phrase.\n" +
+          "- Never invent facts; if little is known, keep it generic but accurate (e.g. 'a growing accounting firm').\n\n" +
+          "=== Client context ===\n" +
+          contextLines,
+      },
+    ],
+  });
+
+  const text = response.content
+    .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+
+  const blurb = normalizeClientBlurb(text);
+  if (!blurb) throw new Error("Claude returned an empty client blurb. Try again.");
+  return blurb;
+}
+
 // Summarizes benefits material — PDFs and/or pasted text — into a clean,
 // scannable brief for a recruiter sharing benefits with a candidate.
 export async function summarizeBenefits(params: {

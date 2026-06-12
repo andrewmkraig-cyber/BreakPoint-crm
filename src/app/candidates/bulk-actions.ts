@@ -23,6 +23,7 @@ import {
   looksLikeHtml,
   type MergeFieldValues,
 } from "@/lib/merge-fields";
+import { generateAndSaveClientBlurb } from "@/lib/client-blurb";
 
 // Bulk Apply / Add-to-List actions backing the /candidates page's
 // multi-row checkbox toolbar. Single-candidate flows still live in
@@ -825,27 +826,54 @@ export async function getJobMergeValuesForBulk(input: {
     });
   }
 
-  // Client lookup mirrors the same id-pair pattern.
+  // Client lookup mirrors the same id-pair pattern. candidateBlurb is
+  // selected here so the {{client_blurb}} merge field can resolve without
+  // a second round trip; id is carried so we can save a freshly-generated
+  // blurb back onto the row.
   let clientRow:
-    | { name: string; domain: string | null; linkedinPage: string | null }
+    | {
+        id: string;
+        name: string;
+        candidateBlurb: string | null;
+        domain: string | null;
+        linkedinPage: string | null;
+      }
     | null = null;
   if (input.clientCuid) {
     clientRow = await prisma.client.findFirst({
       where: { id: input.clientCuid, organizationId },
-      select: { name: true, domain: true, linkedinPage: true },
+      select: { id: true, name: true, candidateBlurb: true, domain: true, linkedinPage: true },
     });
   }
   if (!clientRow && input.clientRfId != null) {
     clientRow = await prisma.client.findFirst({
       where: { legacyRfId: input.clientRfId, organizationId },
-      select: { name: true, domain: true, linkedinPage: true },
+      select: { id: true, name: true, candidateBlurb: true, domain: true, linkedinPage: true },
     });
+  }
+
+  // Resolve the {{client_blurb}} merge value at queue time: use the saved
+  // candidateBlurb; if null, generate one once (Claude) and save it; if
+  // generation fails, fall back to "a confidential client" so an outreach
+  // email never renders "My client, , ...". Only attempt generation when
+  // we actually have a client row.
+  let candidateBlurb = (clientRow?.candidateBlurb ?? "").trim();
+  if (!candidateBlurb && clientRow) {
+    try {
+      candidateBlurb = await generateAndSaveClientBlurb({
+        clientId: clientRow.id,
+        organizationId,
+      });
+    } catch {
+      candidateBlurb = "a confidential client";
+    }
   }
 
   return {
     jobTitle: jobRow?.title ?? "",
     jobLocation: jobRow?.locations[0] ?? "",
     clientCompanyName: clientRow?.name ?? "",
+    candidateBlurb,
     clientCompanyWebsite: clientRow?.domain ?? "",
     clientCompanyLinkedIn: clientRow?.linkedinPage ?? "",
   };

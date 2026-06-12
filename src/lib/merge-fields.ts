@@ -21,6 +21,11 @@ export const MERGE_FIELDS = [
   { token: "[Greeting]", label: "Greeting (smart, by recipient count)", group: "General" },
   // Client
   { token: "[Client Company Name]", label: "Client Company Name", group: "Client" },
+  // Anonymous descriptor for candidate outreach — resolves to the
+  // client's candidateBlurb (e.g. "a growing CPA firm in Northeast
+  // Ohio"). Uses the {{snake_case}} form to match the Candidate Recruit
+  // template wording "My client, {{client_blurb}}, ...".
+  { token: "{{client_blurb}}", label: "Client Blurb (anonymous)", group: "Client" },
   { token: "[Client Company Website]", label: "Client Company Website", group: "Client" },
   { token: "[Client Company LinkedIn]", label: "Client Company LinkedIn", group: "Client" },
   { token: "[Client Contact First Name]", label: "Client Contact First Name", group: "Client" },
@@ -81,6 +86,8 @@ export type MergeFieldValues = {
   publicAccountingSubmittalBullets?: string;
   // Client
   clientCompanyName?: string;
+  // Anonymous candidate-facing descriptor ({{client_blurb}}).
+  candidateBlurb?: string;
   clientCompanyWebsite?: string;
   clientCompanyLinkedIn?: string;
   clientContactFirstName?: string;
@@ -176,6 +183,7 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
     "[Candidate Current Employer]": values.candidateCurrentEmployer ?? "",
     // Client
     "[Client Company Name]": values.clientCompanyName ?? "",
+    "{{client_blurb}}": values.candidateBlurb ?? "",
     "[Client Company Website]": values.clientCompanyWebsite ?? "",
     "[Client Company LinkedIn]": values.clientCompanyLinkedIn ?? "",
     "[Client Contact First Name]": values.clientContactFirstName ?? "",
