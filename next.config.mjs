@@ -86,7 +86,22 @@ const nextConfig = {
     },
     // mammoth pulls in dynamic requires that Next's bundler mangles; keep it
     // external so `require("mammoth")` resolves at runtime on the server.
-    serverComponentsExternalPackages: ["mammoth", "pdf-parse"],
+    //
+    // pdfjs-dist (legacy Node build) MUST be external too. When bundled, the
+    // legacy build's `createRequire(import.meta.url)` is frozen to the BUILD
+    // machine's absolute path, so at runtime on Vercel its optional
+    // `require("@napi-rs/canvas")` (the only source of a Node DOMMatrix
+    // polyfill) fails — leaving `globalThis.DOMMatrix` undefined and throwing
+    // "DOMMatrix is not defined" the moment pdfjs touches a transform (the
+    // editResumeWithClaude / resume-redactor PDF text extraction path). Keeping
+    // pdfjs-dist + its native @napi-rs/canvas peer external makes them resolve
+    // from real node_modules at runtime, so the polyfill installs correctly.
+    serverComponentsExternalPackages: [
+      "mammoth",
+      "pdf-parse",
+      "pdfjs-dist",
+      "@napi-rs/canvas",
+    ],
   },
   images: {
     // Google profile avatars served via next/image need explicit allow-listing
