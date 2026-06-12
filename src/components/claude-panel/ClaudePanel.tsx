@@ -22,7 +22,7 @@ import {
 import { useFloatingZ } from "@/lib/floating-z";
 import { useComposerManager } from "@/lib/composer-manager";
 import { Button } from "@/components/ui/button";
-import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
+import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import {
   CopyButton,
   EmailThisButton,
@@ -263,6 +263,7 @@ function receiptLine(r: BatchReceipt): string {
 // Sentinel id assigned to the assistant bubble while it's streaming.
 // Replaced with the persisted cuid once the final POST resolves.
 const STREAMING_ID = "__streaming__";
+const COMPOSER_TEXTAREA_MAX_HEIGHT = 144;
 
 // Composer attachment. Lives in component state until the user hits
 // Send, at which point it's forwarded to /api/claude-panel/chat as a
@@ -590,13 +591,16 @@ export function ClaudePanel() {
     };
   }, [entityType, entityId]);
 
-  // Auto-grow the textarea up to ~6 rows. Reset to auto first so
-  // shrinking on backspace works.
+  // Auto-grow the textarea, then switch to an internal scroll so long
+  // pasted drafts stay inside the composer frame.
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    const nextHeight = Math.min(el.scrollHeight, COMPOSER_TEXTAREA_MAX_HEIGHT);
+    el.style.height = `${nextHeight}px`;
+    el.style.overflowY =
+      el.scrollHeight > COMPOSER_TEXTAREA_MAX_HEIGHT ? "auto" : "hidden";
   }, [draft]);
 
   // Window-resize re-clamp. If the viewport shrinks (window resize,
@@ -1566,7 +1570,9 @@ export function ClaudePanel() {
           >
             <Paperclip className="h-4 w-4" />
           </button>
-          <div className={`${INPUT_FRAME_CLASS} flex-1 min-w-0 !bg-white/10`}>
+          <div
+            className={`${INPUT_FRAME_RECT_CLASS} min-h-[52px] max-h-36 flex-1 items-stretch overflow-hidden !rounded-md !bg-white/10`}
+          >
             <textarea
               ref={textareaRef}
               rows={2}
@@ -1601,7 +1607,8 @@ export function ClaudePanel() {
               }}
               placeholder="Message Ace…"
               style={{ touchAction: "manipulation" }}
-              className={`${INPUT_CONTROL_CLASS} min-h-[44px] resize-none text-sm`}
+              wrap="soft"
+              className={`${INPUT_CONTROL_CLASS} min-h-[50px] resize-none whitespace-pre-wrap break-words px-3 py-2 text-sm leading-snug`}
             />
           </div>
           <Button
