@@ -262,11 +262,73 @@ function todayLabel(): string {
   });
 }
 
+// Server-side PDF text extraction. Uses the LEGACY pdfjs-dist build, the
+// same proven Node path src/lib/resume-redactor/redact-pdf.ts already runs
+// on uploaded resumes. We do NOT use pdf-parse here: pdf-parse@2 is a
+// class-based rewrite backed by the non-legacy pdfjs bundle, which needs
+// browser globals (DOMMatrix) that don't exist in the server action
+// runtime — that's the "DOMMatrix is not defined" failure this replaces.
+// The legacy build self-polyfills those globals and runs headless (no
+// worker, no DOM). Text is reassembled line-by-line off each item's
+// baseline y so the result keeps the resume's line breaks for Claude.
+async function extractPdfTextNode(bytes: Buffer): Promise<string> {
+  const pdfjs = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as unknown as {
+    getDocument: (args: {
+      data: Uint8Array;
+      useSystemFonts?: boolean;
+      disableFontFace?: boolean;
+      isEvalSupported?: boolean;
+    }) => { promise: Promise<PdfJsDoc> };
+  };
+  // Copy into a fresh Uint8Array — pdfjs may take ownership of the buffer.
+  const data = new Uint8Array(bytes.byteLength);
+  data.set(bytes);
+  const doc = await pdfjs.getDocument({
+    data,
+    useSystemFonts: true,
+    disableFontFace: true,
+    isEvalSupported: false,
+  }).promise;
+  let text = "";
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent({ includeMarkedContent: false });
+    const parts: string[] = [];
+    let lastY: number | null = null;
+    for (const raw of content.items) {
+      const item = raw as { str?: string; transform?: number[] };
+      if (typeof item.str !== "string") continue;
+      const y = item.transform?.[5] ?? null;
+      // New line whenever the baseline moves vertically by more than a hair.
+      if (lastY !== null && y !== null && Math.abs(y - lastY) > 2) {
+        parts.push("\n");
+      }
+      parts.push(item.str);
+      lastY = y;
+    }
+    text += parts.join("") + "\n";
+    if (typeof page.cleanup === "function") page.cleanup();
+  }
+  if (typeof doc.cleanup === "function") doc.cleanup();
+  return text.replace(/[ \t]+\n/g, "\n");
+}
+
+type PdfJsDoc = {
+  numPages: number;
+  getPage: (n: number) => Promise<{
+    getTextContent: (opts: { includeMarkedContent: boolean }) => Promise<{
+      items: Array<unknown>;
+    }>;
+    cleanup?: () => void;
+  }>;
+  cleanup?: () => void;
+};
+
 // Extracts plain text from a candidate's current (most-recent) resume,
-// reusing the app's existing extraction: pdf-parse for PDFs (already a
-// dependency, used by ai-workspace-context + resume-fallback) and
-// extractDocxText for Word docs. Returns "" when there's no resume or the
-// text can't be read; the caller turns that into a user-facing error.
+// reusing the app's existing extraction: the legacy pdfjs Node build for
+// PDFs (see extractPdfTextNode) and extractDocxText for Word docs. Returns
+// "" when there's no resume or the text can't be read; the caller turns
+// that into a user-facing error.
 async function extractCurrentResumeText(
   candidateId: string,
   organizationId: string,
@@ -284,12 +346,7 @@ async function extractCurrentResumeText(
   const bytes = await getResumeBytes(resume);
 
   if (mime.includes("pdf") || name.endsWith(".pdf")) {
-    const mod = (await import("pdf-parse")) as unknown as
-      | { default: (buf: Buffer) => Promise<{ text: string }> }
-      | ((buf: Buffer) => Promise<{ text: string }>);
-    const parse = typeof mod === "function" ? mod : mod.default;
-    const out = await parse(bytes);
-    return (out.text ?? "").trim();
+    return (await extractPdfTextNode(bytes)).trim();
   }
   if (
     mime.includes("officedocument.wordprocessingml") ||
