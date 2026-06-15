@@ -27,11 +27,18 @@
 // --apply to actually write. Scoped to one organization per the tenant rule;
 // defaults to the BreakPoint Talent org, override with --org=<orgCuid>.
 //
+// BROAD CLEAR (force previously-ENROLLED companies to resurface for a re-run):
+// pass --include-enrolled (alias --all) to drop the enrolledCount=0 filter and
+// null discoveredPayload on EVERY COMPLETE/AWAITING_APPROVAL run in the window.
+// The window defaults to the cron's 30-day dedup horizon; override with --days=N.
+//
 // Usage from repo root:
 //   set -a && source .env.local && set +a
-//   npx tsx scripts/clear-bd-dedup-for-empty-runs.ts            # dry run
-//   npx tsx scripts/clear-bd-dedup-for-empty-runs.ts --apply    # write
-//   npx tsx scripts/clear-bd-dedup-for-empty-runs.ts --org=<cuid> --apply
+//   npx tsx scripts/clear-bd-dedup-for-empty-runs.ts                       # dry run, enrolledCount=0 only
+//   npx tsx scripts/clear-bd-dedup-for-empty-runs.ts --apply               # write, enrolledCount=0 only
+//   npx tsx scripts/clear-bd-dedup-for-empty-runs.ts --include-enrolled    # dry run, ALL runs in window
+//   npx tsx scripts/clear-bd-dedup-for-empty-runs.ts --include-enrolled --apply   # write, ALL runs in window
+//   npx tsx scripts/clear-bd-dedup-for-empty-runs.ts --org=<cuid> --days=30 --include-enrolled --apply
 
 import { Prisma, PrismaClient } from "@prisma/client";
 
@@ -41,14 +48,34 @@ const prisma = new PrismaClient();
 // bare run is still safely scoped, but allow --org=<cuid> for future re-runs.
 const DEFAULT_ORG_ID = "cmobj8dxz00012gliequ53kvc";
 
-function parseArgs(argv: string[]): { orgId: string; apply: boolean } {
+// The cron dedups against every BDRun created in the last 30 days, so a recency
+// window matches the only runs that actually block re-discovery. Default 30.
+const DEFAULT_WINDOW_DAYS = 30;
+
+function parseArgs(argv: string[]): {
+  orgId: string;
+  apply: boolean;
+  // When true, clear runs REGARDLESS of enrolledCount (the broad clear used to
+  // force previously-enrolled companies to resurface for a re-run). Default
+  // false keeps the original safe behavior: only enrolledCount=0 runs.
+  includeEnrolled: boolean;
+  // Only touch runs created within this many days (the dedup window).
+  days: number;
+} {
   let orgId = DEFAULT_ORG_ID;
   let apply = false;
+  let includeEnrolled = false;
+  let days = DEFAULT_WINDOW_DAYS;
   for (const arg of argv.slice(2)) {
     if (arg === "--apply") apply = true;
+    else if (arg === "--include-enrolled" || arg === "--all") includeEnrolled = true;
     else if (arg.startsWith("--org=")) orgId = arg.slice("--org=".length);
+    else if (arg.startsWith("--days=")) {
+      const n = Number(arg.slice("--days=".length));
+      if (Number.isFinite(n) && n > 0) days = n;
+    }
   }
-  return { orgId, apply };
+  return { orgId, apply, includeEnrolled, days };
 }
 
 // Count how many company/job fingerprints a payload currently contributes to
@@ -68,18 +95,22 @@ function fingerprintCount(payload: unknown): number {
 }
 
 async function main(): Promise<void> {
-  const { orgId, apply } = parseArgs(process.argv);
+  const { orgId, apply, includeEnrolled, days } = parseArgs(process.argv);
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  // Runs that finished but enrolled nobody. We filter the "still carries a
-  // payload" condition in JS rather than in the WHERE, because Prisma's
-  // null-filtering on a Json? column needs the DbNull/JsonNull sentinels and
-  // is easy to get subtly wrong — selecting in JS keeps the report and the
-  // write targeting exactly the same rows.
+  // Runs in the dedup window. By default only those that enrolled nobody; with
+  // --include-enrolled, every COMPLETE/AWAITING_APPROVAL run regardless of
+  // enrolledCount (the broad clear). We filter the "still carries a payload"
+  // condition in JS rather than in the WHERE, because Prisma's null-filtering
+  // on a Json? column needs the DbNull/JsonNull sentinels and is easy to get
+  // subtly wrong — selecting in JS keeps the report and the write targeting
+  // exactly the same rows.
   const candidates = await prisma.bDRun.findMany({
     where: {
       organizationId: orgId,
       status: { in: ["COMPLETE", "AWAITING_APPROVAL"] as const },
-      enrolledCount: 0,
+      createdAt: { gte: since },
+      ...(includeEnrolled ? {} : { enrolledCount: 0 }),
     },
     select: {
       id: true,
@@ -97,7 +128,10 @@ async function main(): Promise<void> {
 
   console.log(
     `\n${apply ? "APPLYING" : "DRY RUN"} — org ${orgId}\n` +
-      `Found ${runs.length} COMPLETE/AWAITING_APPROVAL run(s) with enrolledCount=0 and a non-null payload.\n`,
+      `Mode: ${includeEnrolled ? "ALL runs (regardless of enrolledCount)" : "enrolledCount=0 only"}, ` +
+      `window: last ${days} day(s) (since ${since.toISOString()}).\n` +
+      `Found ${runs.length} COMPLETE/AWAITING_APPROVAL run(s) with a non-null payload` +
+      `${includeEnrolled ? "" : " and enrolledCount=0"}.\n`,
   );
 
   let totalFingerprints = 0;
