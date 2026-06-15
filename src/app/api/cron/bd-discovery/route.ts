@@ -14,17 +14,81 @@ export const dynamic = "force-dynamic";
 // the discovery call itself is, and always was, a single TheirStack POST.
 export const maxDuration = 120;
 
-// The role titles sent as job_title_or. The big-4/agency exclusion, the
-// company-name include/exclude, and the employee-count floor now live in
-// the TheirStack request body (theirstack-provider.ts) as proven
-// server-side filters, so the cron no longer post-filters by company name
-// or headcount.
+// FALLBACK role titles sent as job_title_or ONLY when no active saved
+// search / vertical / per-vertical titles resolve (see resolveDiscoveryTitles
+// below). The live path now reads the selected vertical's titles so the
+// Verticals/Saved Search UI drives discovery. The big-4/agency exclusion, the
+// company-name include/exclude, and the employee-count floor live in the
+// TheirStack request body (theirstack-provider.ts) as proven server-side
+// filters, so the cron no longer post-filters by company name or headcount.
 const DISCOVERY_TITLES = [
   "Tax Manager",
   "Senior Tax Accountant",
   "Tax Senior",
   "Tax Supervisor",
 ];
+
+type ResolvedTitles = {
+  titles: string[];
+  verticalId: string | null;
+  savedSearchId: string | null;
+  // "vertical" = drove off the vertical's BdContactTargeting.primaryTitles;
+  // "fallback-no-saved-search" / "fallback-no-titles" = used DISCOVERY_TITLES.
+  source: "vertical" | "fallback-no-saved-search" | "fallback-no-titles";
+};
+
+// Resolve the discovery job_title_or list from the org's active saved search
+// -> its vertical -> that vertical's BdContactTargeting.primaryTitles. This is
+// the single resolution path for BOTH the 6 AM cron and "Run Discovery Now"
+// (the manual trigger just GETs this same route), so the two can't drift.
+// Falls back to the hardcoded DISCOVERY_TITLES when there is no active saved
+// search or the vertical has no titles set, so existing nationwide discovery
+// keeps returning results. Location is intentionally untouched here (still
+// nationwide); the per-saved-search locationOverride remains unwired.
+async function resolveDiscoveryTitles(
+  organizationId: string,
+): Promise<ResolvedTitles> {
+  // The active saved search picks the vertical that drives discovery. Ordered
+  // by createdAt so a single-vertical org is unambiguous and a multi-vertical
+  // org resolves deterministically.
+  const savedSearch = await prisma.savedSearch.findFirst({
+    where: { organizationId, active: true, vertical: { active: true } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, verticalId: true },
+  });
+  if (!savedSearch) {
+    return {
+      titles: DISCOVERY_TITLES,
+      verticalId: null,
+      savedSearchId: null,
+      source: "fallback-no-saved-search",
+    };
+  }
+
+  const targeting = await prisma.bdContactTargeting.findFirst({
+    where: { organizationId, verticalId: savedSearch.verticalId },
+    select: { primaryTitles: true },
+  });
+  const titles = (targeting?.primaryTitles ?? [])
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  if (titles.length === 0) {
+    return {
+      titles: DISCOVERY_TITLES,
+      verticalId: savedSearch.verticalId,
+      savedSearchId: savedSearch.id,
+      source: "fallback-no-titles",
+    };
+  }
+
+  return {
+    titles,
+    verticalId: savedSearch.verticalId,
+    savedSearchId: savedSearch.id,
+    source: "vertical",
+  };
+}
 
 const MAX_RESULTS = 25;
 const DEDUP_WINDOW_DAYS = 30;
@@ -206,6 +270,12 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Read the selected vertical's titles (cron + manual share this one path).
+  // Stamp the resolved vertical/savedSearch onto the run so the enroll path
+  // (which loads BDRun.verticalId for its contact targeting) and the campaign
+  // history stay tied to the same vertical instead of the cron's old null.
+  const resolved = await resolveDiscoveryTitles(organizationId);
+
   const run = await prisma.bDRun.create({
     data: {
       organizationId,
@@ -213,12 +283,18 @@ export async function GET(req: NextRequest) {
       discoveryProvider: "theirstack",
       startedAt: new Date(),
       maxContactsPerCompany,
+      verticalId: resolved.verticalId,
+      savedSearchId: resolved.savedSearchId,
     },
   });
 
+  console.log(
+    `[bd-discovery] runId=${run.id} titlesSource=${resolved.source} titleCount=${resolved.titles.length} verticalId=${resolved.verticalId ?? "none"}`,
+  );
+
   try {
     const raw = await new TheirStackProvider().discoverJobs({
-      verticals: DISCOVERY_TITLES,
+      verticals: resolved.titles,
       locations: [],
       maxResults,
       postedSince,
