@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Pencil, Trash2, ChevronDown, X, Save, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input, Select } from "@/components/ui/input";
+import { Toggle } from "./limits-section";
 import { formatBdDateTime } from "@/app/bd/date-format";
 import { resolveSequenceDisplayName } from "@/lib/bd/apollo-sequences";
 import {
@@ -22,9 +23,26 @@ export type SavedSearchRow = {
   contactCap: number | null;
   criteria: Partial<SavedSearchCriteria>;
   theirstackSavedSearchId: string | null;
+  active: boolean;
+  runFrequencyDays: number;
+  lastDiscoveredIso: string | null;
   version: number;
   lastRunIso: string | null;
 };
+
+// Schedule presets for the saved-search frequency control. A stored value that
+// matches none of these renders as "Every N days" via the custom number input.
+const FREQUENCY_PRESETS = [
+  { label: "Daily", value: 1 },
+  { label: "Weekly", value: 7 },
+  { label: "Every 15 days", value: 15 },
+];
+
+function frequencyLabel(days: number): string {
+  const preset = FREQUENCY_PRESETS.find((p) => p.value === days);
+  if (preset) return preset.label;
+  return `Every ${days} day${days === 1 ? "" : "s"}`;
+}
 
 export type VerticalRow = {
   id: string;
@@ -166,6 +184,8 @@ export function VerticalsSection({
                               initialContactCap={s.contactCap ?? 80}
                               initialCriteria={criteria}
                               initialTheirstackSavedSearchId={s.theirstackSavedSearchId ?? ""}
+                              initialActive={s.active}
+                              initialRunFrequencyDays={s.runFrequencyDays}
                               version={s.version}
                               savedSearchId={s.id}
                               sequences={sequences}
@@ -198,6 +218,8 @@ export function VerticalsSection({
                           initialContactCap={NaN}
                           initialCriteria={{ apolloSequenceId: "", locationOverride: "" }}
                           initialTheirstackSavedSearchId=""
+                          initialActive={true}
+                          initialRunFrequencyDays={1}
                           version={0}
                           verticalId={v.id}
                           sequences={sequences}
@@ -258,12 +280,20 @@ function SavedSearchRowHeader({
   const summaryParts = [
     criteria.apolloSequenceId ? `→ ${criteria.apolloSequenceId}` : null,
     criteria.locationOverride.trim() ? `Location: ${criteria.locationOverride.trim()}` : "Nationwide",
+    row.active ? frequencyLabel(row.runFrequencyDays) : null,
   ].filter(Boolean);
 
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-court-fg">{row.name}</p>
+        <div className="flex items-center gap-2">
+          <p className="truncate text-sm font-medium text-court-fg">{row.name}</p>
+          {!row.active && (
+            <span className="shrink-0 rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-court-fg-muted">
+              Paused
+            </span>
+          )}
+        </div>
         <p className="mt-0.5 truncate text-xs text-court-fg-muted">{summaryParts.join(" · ")}</p>
         <p className="mt-0.5 text-[11px] text-court-fg-dim">
           {row.lastRunIso ? `Last run ${formatBdDateTime(new Date(row.lastRunIso))}` : "Never run"}
@@ -303,6 +333,8 @@ function SavedSearchEditForm({
   initialContactCap,
   initialCriteria,
   initialTheirstackSavedSearchId,
+  initialActive,
+  initialRunFrequencyDays,
   savedSearchId,
   verticalId,
   sequences,
@@ -314,6 +346,8 @@ function SavedSearchEditForm({
   initialContactCap: number;
   initialCriteria: SavedSearchCriteria;
   initialTheirstackSavedSearchId: string;
+  initialActive: boolean;
+  initialRunFrequencyDays: number;
   version: number;
   savedSearchId?: string;
   verticalId?: string;
@@ -328,6 +362,13 @@ function SavedSearchEditForm({
   const [locationOverride, setLocationOverride] = useState(initialCriteria.locationOverride);
   const [theirstackSavedSearchId, setTheirstackSavedSearchId] = useState(
     initialTheirstackSavedSearchId,
+  );
+  const [active, setActive] = useState(initialActive);
+  const [runFrequencyDays, setRunFrequencyDays] = useState<number>(initialRunFrequencyDays);
+  // Custom mode shows a free number input; it starts on when the stored value
+  // isn't one of the presets (Daily / Weekly / Every 15 days).
+  const [customFreq, setCustomFreq] = useState<boolean>(
+    () => !FREQUENCY_PRESETS.some((p) => p.value === initialRunFrequencyDays),
   );
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -355,6 +396,12 @@ function SavedSearchEditForm({
         locationOverride: locationOverride.trim(),
       } satisfies SavedSearchCriteria,
       theirstackSavedSearchId: theirstackSavedSearchId.trim(),
+      active,
+      // Guard against a blank/NaN custom value; the server also clamps to >= 1.
+      runFrequencyDays:
+        Number.isFinite(runFrequencyDays) && runFrequencyDays >= 1
+          ? Math.floor(runFrequencyDays)
+          : 1,
     };
     setError(null);
     startTransition(async () => {
@@ -444,6 +491,58 @@ function SavedSearchEditForm({
           placeholder="e.g. 123456"
         />
       </Field>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field
+          label="Schedule status"
+          hint={active ? "Runs on the schedule below." : "Paused - the morning cron skips this search."}
+        >
+          <div className="mt-1 flex items-center gap-2">
+            <Toggle on={active} onChange={setActive} disabled={pending} />
+            <span className="text-xs font-medium text-court-fg">{active ? "Active" : "Paused"}</span>
+          </div>
+        </Field>
+
+        <Field
+          label="Run frequency"
+          hint="How often the 6 AM cron runs this search. Run Discovery Now ignores this."
+        >
+          <Select
+            value={customFreq ? "custom" : String(runFrequencyDays)}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "custom") {
+                setCustomFreq(true);
+              } else {
+                setCustomFreq(false);
+                setRunFrequencyDays(Number(v));
+              }
+            }}
+          >
+            {FREQUENCY_PRESETS.map((p) => (
+              <option key={p.value} value={String(p.value)}>
+                {p.label}
+              </option>
+            ))}
+            <option value="custom">Every N days…</option>
+          </Select>
+          {customFreq && (
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-xs text-court-fg-muted">Every</span>
+              <Input
+                type="number"
+                min={1}
+                className="w-20"
+                value={Number.isNaN(runFrequencyDays) ? "" : runFrequencyDays}
+                onChange={(e) =>
+                  setRunFrequencyDays(e.target.value === "" ? NaN : Number(e.target.value))
+                }
+              />
+              <span className="text-xs text-court-fg-muted">day(s)</span>
+            </div>
+          )}
+        </Field>
+      </div>
 
       {error && (
         <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">

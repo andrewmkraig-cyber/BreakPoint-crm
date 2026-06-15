@@ -1892,6 +1892,15 @@ model SavedSearch {
   // DISCOVERY_TITLES. Blank = run the default nationwide title search.
   theirstackSavedSearchId String?
   active         Boolean  @default(true)
+  // Per-search schedule for the 6 AM discovery cron. runFrequencyDays:
+  // 1 = daily, 7 = weekly, 15 = every 15 days, etc. lastDiscoveredAt is
+  // stamped each time the cron actually runs this search; the cron only
+  // runs a search when it is active AND (lastDiscoveredAt is null OR
+  // enough ET days have passed). "Run Discovery Now" ignores the schedule
+  // but still respects active=false. Defaults keep today's behavior
+  // (every active search runs daily).
+  runFrequencyDays Int     @default(1)
+  lastDiscoveredAt DateTime?
   contactCap     Int?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

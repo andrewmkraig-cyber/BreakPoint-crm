@@ -31,7 +31,20 @@ export type SavedSearchInput = {
   // discovery on the default title search. A real column on SavedSearch, not
   // part of the versioned criteria JSON.
   theirstackSavedSearchId?: string | null;
+  // Per-search schedule. active=false hard-stops the search (cron skips it,
+  // Run Discovery Now skips it too). runFrequencyDays gates how often the cron
+  // runs it (1=daily). Both optional so older callers default to today's
+  // behavior (active true, daily).
+  active?: boolean;
+  runFrequencyDays?: number;
 };
+
+// Clamp the run frequency to a whole number of days >= 1. Anything missing or
+// nonsensical falls back to 1 (daily) so a search always has a valid cadence.
+function normalizeRunFrequencyDays(value: number | undefined): number {
+  if (value == null || !Number.isFinite(value)) return 1;
+  return Math.max(1, Math.floor(value));
+}
 
 // Trim a pasted TheirStack saved-search id to null when blank so the discovery
 // path's "field is empty -> fall back to DISCOVERY_TITLES" check is a simple
@@ -117,6 +130,8 @@ export async function createSavedSearch(verticalId: string, input: SavedSearchIn
       name: input.name.trim() || "Untitled search",
       criteria: input.criteria as unknown as Prisma.InputJsonValue,
       theirstackSavedSearchId: normalizeTheirstackId(input.theirstackSavedSearchId),
+      active: input.active ?? true,
+      runFrequencyDays: normalizeRunFrequencyDays(input.runFrequencyDays),
       contactCap,
     },
     select: { id: true },
@@ -159,6 +174,8 @@ export async function updateSavedSearch(
         name: input.name.trim() || "Untitled search",
         criteria: input.criteria as unknown as Prisma.InputJsonValue,
         theirstackSavedSearchId: normalizeTheirstackId(input.theirstackSavedSearchId),
+        active: input.active ?? true,
+        runFrequencyDays: normalizeRunFrequencyDays(input.runFrequencyDays),
         contactCap,
       },
     });
