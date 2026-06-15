@@ -111,7 +111,6 @@ export default async function LaunchPage() {
   const [
     verticalRows,
     savedSearchRows,
-    domains,
     orgConfig,
     pendingRuns,
     weeklyRuns,
@@ -127,12 +126,6 @@ export default async function LaunchPage() {
       where: { organizationId: org.id, active: true },
       orderBy: { name: "asc" },
       select: { id: true, verticalId: true, name: true, contactCap: true },
-    }),
-    prisma.sendingDomain.findMany({
-      where: { organizationId: org.id },
-      orderBy: [{ status: "asc" }, { lastUsedAt: "asc" }],
-      take: 5,
-      select: { domain: true, status: true },
     }),
     // /settings/bd writes here. globalDailyCap is the fallback when
     // neither SavedSearch.contactCap nor the legacy
@@ -199,8 +192,6 @@ export default async function LaunchPage() {
       <LaunchView
         verticals={verticals}
         savedSearches={savedSearches}
-        domains={domains.map((d) => ({ domain: d.domain, status: d.status }))}
-        defaultContactCap={orgDailyCap}
         initialRuns={pendingRuns}
         kpis={kpis}
       />

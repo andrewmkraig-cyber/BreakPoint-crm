@@ -5,7 +5,6 @@ import Link from "next/link";
 import { BriefcaseBusiness, Building2, Settings2, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ApprovalQueue } from "@/components/bd/approval-queue";
-import { getDefaultApolloSequence } from "@/lib/bd/apollo-sequences";
 import type { PendingBDRun } from "./bd-run-actions";
 
 export type VerticalOption = { id: string; name: string; slug: string };
@@ -15,7 +14,6 @@ export type SavedSearchOption = {
   name: string;
   contactCap: number;
 };
-export type DomainPreview = { domain: string; status: string };
 
 export type BatchKpis = {
   companiesIdentified: number;
@@ -27,22 +25,13 @@ export type BatchKpis = {
 type Props = {
   verticals: VerticalOption[];
   savedSearches: SavedSearchOption[];
-  domains: DomainPreview[];
-  defaultContactCap: number;
   initialRuns: PendingBDRun[];
   kpis: BatchKpis;
 };
 
-const ESTIMATED_CONTACTS_PER_COMPANY = 4;
-// Pulled from the sequence registry so the BD launch chip + KPI sub-line
-// always show the real sequence name (no hardcoded label to go stale).
-const SEQUENCE_NAME_PLACEHOLDER = getDefaultApolloSequence()?.name ?? "Tax BD Sequence";
-
 export function LaunchView({
   verticals,
   savedSearches,
-  domains,
-  defaultContactCap,
   initialRuns,
   kpis,
 }: Props) {
@@ -58,9 +47,6 @@ export function LaunchView({
   // a vertical switch — the previously-selected id may now be invisible.
   const visibleIds = visibleSearches.map((s) => s.id).join(",");
   useMemoizedReset(visibleIds, () => setSavedSearchId(visibleSearches[0]?.id ?? null));
-
-  const selectedSearch = visibleSearches.find((s) => s.id === savedSearchId) ?? null;
-  const contactCap = selectedSearch?.contactCap ?? defaultContactCap;
 
   const noVerticals = verticals.length === 0;
 
@@ -192,21 +178,10 @@ export function LaunchView({
     </div>
   );
 
-  // Slot 2 - green run-summary line, below the table.
-  const summary = noVerticals ? null : (
-    <PreviewChip
-      contactCap={contactCap}
-      estimatedCompanies={Math.max(1, Math.round(contactCap / ESTIMATED_CONTACTS_PER_COMPANY))}
-      sequenceName={SEQUENCE_NAME_PLACEHOLDER}
-      domains={domains}
-    />
-  );
-
   return (
     <ApprovalQueue
       initialRuns={initialRuns}
       controls={controls}
-      summary={summary}
       cardHeaderRight={cardHeaderRight}
       kpis={kpisNode}
       discoveryBlockedMessage={discoveryBlockedMessage}
@@ -253,50 +228,6 @@ function BatchKpiTile({
           <div className="mt-0.5 truncate text-[11px] text-court-fg-muted">{sub}</div>
         ) : null}
       </div>
-    </div>
-  );
-}
-
-function PreviewChip({
-  contactCap,
-  estimatedCompanies,
-  sequenceName,
-  domains,
-}: {
-  contactCap: number;
-  estimatedCompanies: number;
-  sequenceName: string;
-  domains: DomainPreview[];
-}) {
-  // Always render exactly 5 slots — fill with placeholder dots if the
-  // org has fewer than 5 sending domains configured.
-  const slots: ReadonlyArray<DomainPreview | null> = Array.from({ length: 5 }, (_, i) => domains[i] ?? null);
-  return (
-    <div className="inline-flex w-fit max-w-full flex-wrap items-center gap-x-2 gap-y-1 self-start rounded-lg border border-court-brand/30 bg-court-brand-tint px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand">
-      <span>{estimatedCompanies} companies</span>
-      <span className="text-court-brand/60">→</span>
-      <span>up to {contactCap} contacts</span>
-      <span className="text-court-brand/60">·</span>
-      <span>{sequenceName}</span>
-      <span className="text-court-brand/60">·</span>
-      <span className="inline-flex items-center gap-1" aria-label="Rotating sending domains">
-        {slots.map((slot, i) => (
-          <span
-            key={i}
-            title={slot?.domain ?? "unassigned slot"}
-            className={cn(
-              "inline-block h-2 w-2 rounded-full",
-              slot
-                ? slot.status === "COOLED"
-                  ? "bg-court-fg-dim"
-                  : slot.status === "WARMING"
-                    ? "bg-court-brand/40"
-                    : "bg-court-brand"
-                : "border border-court-brand/40 bg-transparent",
-            )}
-          />
-        ))}
-      </span>
     </div>
   );
 }
