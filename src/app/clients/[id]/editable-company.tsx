@@ -37,6 +37,7 @@ export const INDUSTRY_OPTIONS = [
 ] as const;
 
 export type CompanyState = {
+  name: string;
   website: string;
   linkedin: string;
   phones: string[];
@@ -140,6 +141,12 @@ export function EditableCompany({
       {editing ? (
         <div className="mt-3 space-y-3 text-sm">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <LabeledField
+              label="Company name"
+              value={draft.name}
+              onChange={(v) => setDraft({ ...draft, name: v })}
+              frameClassName={INPUT_FRAME_RECT_CLASS}
+            />
             <LabeledField
               label="Website"
               value={draft.website}
@@ -350,6 +357,9 @@ export function EditableCompany({
       ) : (
         <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
           <dl className="space-y-2.5">
+            <Detail label="Company Name">
+              <span>{draft.name || "—"}</span>
+            </Detail>
             <Detail label="Status" icon={<ShieldCheck className="h-3 w-3" />}>
               <span
                 className={

@@ -388,6 +388,7 @@ export default async function ClientDetailPage({
     false;
 
   const companyInitial: CompanyState = {
+    name: client.name ?? "",
     website: client.domain ?? "",
     linkedin: client.linkedinPage ?? "",
     phones: allPhones(client.phoneNumbers).map((p) => p.number),

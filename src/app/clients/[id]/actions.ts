@@ -468,6 +468,7 @@ export async function summarizeBenefitsWithAI(
 
 export type UpdateClientInput = {
   clientCuid: string;
+  name: string;
   website: string;
   linkedin: string;
   phones: string[];
@@ -487,6 +488,9 @@ export async function updateClientCompany(input: UpdateClientInput): Promise<Act
   const user = await requireUserId();
   if (!user) return { ok: false, error: "Not signed in." };
   if (!input.clientCuid) return { ok: false, error: "Missing client id." };
+
+  const name = input.name.trim();
+  if (!name) return { ok: false, error: "Client name is required." };
 
   const domain = input.website.trim().replace(/^https?:\/\//i, "").replace(/\/$/, "");
 
@@ -518,6 +522,7 @@ export async function updateClientCompany(input: UpdateClientInput): Promise<Act
     await prisma.client.update({
       where: { id: existing.id },
       data: {
+        name,
         domain: domain || null,
         industry: input.industry.trim() || null,
         linkedinPage: linkedinUrlFrom(input.linkedin) || null,
