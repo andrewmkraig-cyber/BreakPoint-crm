@@ -21,6 +21,7 @@ export type SavedSearchRow = {
   name: string;
   contactCap: number | null;
   criteria: Partial<SavedSearchCriteria>;
+  theirstackSavedSearchId: string | null;
   version: number;
   lastRunIso: string | null;
 };
@@ -164,6 +165,7 @@ export function VerticalsSection({
                               initialName={s.name}
                               initialContactCap={s.contactCap ?? 80}
                               initialCriteria={criteria}
+                              initialTheirstackSavedSearchId={s.theirstackSavedSearchId ?? ""}
                               version={s.version}
                               savedSearchId={s.id}
                               sequences={sequences}
@@ -195,6 +197,7 @@ export function VerticalsSection({
                           initialName=""
                           initialContactCap={NaN}
                           initialCriteria={{ apolloSequenceId: "", locationOverride: "" }}
+                          initialTheirstackSavedSearchId=""
                           version={0}
                           verticalId={v.id}
                           sequences={sequences}
@@ -299,6 +302,7 @@ function SavedSearchEditForm({
   initialName,
   initialContactCap,
   initialCriteria,
+  initialTheirstackSavedSearchId,
   savedSearchId,
   verticalId,
   sequences,
@@ -309,6 +313,7 @@ function SavedSearchEditForm({
   initialName: string;
   initialContactCap: number;
   initialCriteria: SavedSearchCriteria;
+  initialTheirstackSavedSearchId: string;
   version: number;
   savedSearchId?: string;
   verticalId?: string;
@@ -321,6 +326,9 @@ function SavedSearchEditForm({
   const [contactCap, setContactCap] = useState<number>(initialContactCap);
   const [sequence, setSequence] = useState(initialCriteria.apolloSequenceId);
   const [locationOverride, setLocationOverride] = useState(initialCriteria.locationOverride);
+  const [theirstackSavedSearchId, setTheirstackSavedSearchId] = useState(
+    initialTheirstackSavedSearchId,
+  );
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -346,6 +354,7 @@ function SavedSearchEditForm({
         apolloSequenceId: sequence,
         locationOverride: locationOverride.trim(),
       } satisfies SavedSearchCriteria,
+      theirstackSavedSearchId: theirstackSavedSearchId.trim(),
     };
     setError(null);
     startTransition(async () => {
@@ -421,6 +430,18 @@ function SavedSearchEditForm({
           type="text"
           value={locationOverride}
           onChange={(e) => setLocationOverride(e.target.value)}
+        />
+      </Field>
+
+      <Field
+        label="TheirStack saved search ID"
+        hint="Optional. Paste a TheirStack saved-search id to run that exact search. Blank runs the default nationwide title search."
+      >
+        <Input
+          type="text"
+          value={theirstackSavedSearchId}
+          onChange={(e) => setTheirstackSavedSearchId(e.target.value)}
+          placeholder="e.g. 123456"
         />
       </Field>
 

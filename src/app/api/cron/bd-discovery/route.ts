@@ -32,19 +32,28 @@ type ResolvedTitles = {
   titles: string[];
   verticalId: string | null;
   savedSearchId: string | null;
+  // The TheirStack saved-search id pasted on the Ace saved search. When set,
+  // the provider replays that exact TheirStack search and ignores `titles`.
+  theirstackSavedSearchId: string | null;
+  // "theirstack-saved-search" = replay the pasted TheirStack saved search;
   // "vertical" = drove off the vertical's BdContactTargeting.primaryTitles;
   // "fallback-no-saved-search" / "fallback-no-titles" = used DISCOVERY_TITLES.
-  source: "vertical" | "fallback-no-saved-search" | "fallback-no-titles";
+  source:
+    | "theirstack-saved-search"
+    | "vertical"
+    | "fallback-no-saved-search"
+    | "fallback-no-titles";
 };
 
-// Resolve the discovery job_title_or list from the org's active saved search
-// -> its vertical -> that vertical's BdContactTargeting.primaryTitles. This is
-// the single resolution path for BOTH the 6 AM cron and "Run Discovery Now"
+// Resolve what discovery should run, from the org's active saved search. This
+// is the single resolution path for BOTH the 6 AM cron and "Run Discovery Now"
 // (the manual trigger just GETs this same route), so the two can't drift.
-// Falls back to the hardcoded DISCOVERY_TITLES when there is no active saved
-// search or the vertical has no titles set, so existing nationwide discovery
-// keeps returning results. Location is intentionally untouched here (still
-// nationwide); the per-saved-search locationOverride remains unwired.
+// Precedence: (1) if the saved search has a TheirStack saved-search id, the
+// provider replays that exact search; (2) else the vertical's
+// BdContactTargeting.primaryTitles drive job_title_or; (3) else the hardcoded
+// DISCOVERY_TITLES, so existing nationwide discovery keeps returning results.
+// Location is untouched here (still nationwide); the saved-search
+// locationOverride remains unwired.
 async function resolveDiscoveryTitles(
   organizationId: string,
 ): Promise<ResolvedTitles> {
@@ -54,39 +63,42 @@ async function resolveDiscoveryTitles(
   const savedSearch = await prisma.savedSearch.findFirst({
     where: { organizationId, active: true, vertical: { active: true } },
     orderBy: { createdAt: "asc" },
-    select: { id: true, verticalId: true },
+    select: { id: true, verticalId: true, theirstackSavedSearchId: true },
   });
   if (!savedSearch) {
     return {
       titles: DISCOVERY_TITLES,
       verticalId: null,
       savedSearchId: null,
+      theirstackSavedSearchId: null,
       source: "fallback-no-saved-search",
     };
   }
+
+  const theirstackSavedSearchId = savedSearch.theirstackSavedSearchId?.trim() || null;
 
   const targeting = await prisma.bdContactTargeting.findFirst({
     where: { organizationId, verticalId: savedSearch.verticalId },
     select: { primaryTitles: true },
   });
-  const titles = (targeting?.primaryTitles ?? [])
+  const verticalTitles = (targeting?.primaryTitles ?? [])
     .map((t) => t.trim())
     .filter(Boolean);
+  // titles are the fallback the provider uses ONLY when there is no TheirStack
+  // saved-search id to replay; compute them either way so that path is covered.
+  const titles = verticalTitles.length > 0 ? verticalTitles : DISCOVERY_TITLES;
 
-  if (titles.length === 0) {
-    return {
-      titles: DISCOVERY_TITLES,
-      verticalId: savedSearch.verticalId,
-      savedSearchId: savedSearch.id,
-      source: "fallback-no-titles",
-    };
-  }
+  let source: ResolvedTitles["source"];
+  if (theirstackSavedSearchId) source = "theirstack-saved-search";
+  else if (verticalTitles.length > 0) source = "vertical";
+  else source = "fallback-no-titles";
 
   return {
     titles,
     verticalId: savedSearch.verticalId,
     savedSearchId: savedSearch.id,
-    source: "vertical",
+    theirstackSavedSearchId,
+    source,
   };
 }
 
@@ -289,7 +301,7 @@ export async function GET(req: NextRequest) {
   });
 
   console.log(
-    `[bd-discovery] runId=${run.id} titlesSource=${resolved.source} titleCount=${resolved.titles.length} verticalId=${resolved.verticalId ?? "none"}`,
+    `[bd-discovery] runId=${run.id} titlesSource=${resolved.source} titleCount=${resolved.titles.length} theirstackSavedSearchId=${resolved.theirstackSavedSearchId ?? "none"} verticalId=${resolved.verticalId ?? "none"}`,
   );
 
   try {
@@ -298,6 +310,7 @@ export async function GET(req: NextRequest) {
       locations: [],
       maxResults,
       postedSince,
+      theirstackSavedSearchId: resolved.theirstackSavedSearchId,
     });
 
     // Big-4/agency exclusion and the employee-count floor are now done

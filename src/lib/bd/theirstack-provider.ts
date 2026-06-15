@@ -5,6 +5,12 @@ import type {
 } from "./job-discovery-provider";
 
 const THEIRSTACK_ENDPOINT = "https://api.theirstack.com/v1/jobs/search";
+// A saved search's stored filters are read from here (GET .../{id}) and then
+// replayed via the jobs-search endpoint above. Confirmed against the live
+// OpenAPI spec: the response carries `type` ("jobs" | "companies") and `body`
+// (the JobSearchFilters when type is "jobs"), which is shape-compatible with
+// the /v1/jobs/search request body.
+const SAVED_SEARCH_ENDPOINT = "https://api.theirstack.com/v0/saved_searches";
 
 // Hard abort ceiling for the single discovery POST. TheirStack has been
 // observed taking 42s+ on one request, which alone blows the cron's
@@ -116,6 +122,73 @@ function companyObjectField(
 }
 
 export class TheirStackProvider implements JobDiscoveryProvider {
+  // Fetch a saved search by id and return a jobs-search body that replays its
+  // stored filters. We force `posted_at_max_age_days` (the mandatory recency
+  // filter, so the replay can never 422) and our own `limit`, and clear
+  // blur/total flags, but otherwise reuse the saved search's filters verbatim.
+  // A non-"jobs" saved search (a companies search) or a missing body is a
+  // recruiter misconfiguration, so we throw a clear error rather than silently
+  // running the wrong thing — the caller marks the run FAILED with this message.
+  private async fetchSavedSearchBody(
+    apiKey: string,
+    savedSearchId: string,
+    postedMaxAgeDays: number,
+    maxResults: number,
+  ): Promise<Record<string, unknown>> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), THEIRSTACK_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(`${SAVED_SEARCH_ENDPOINT}/${encodeURIComponent(savedSearchId)}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new Error(
+          `TheirStackProvider: saved-search fetch timed out after ${THEIRSTACK_TIMEOUT_MS / 1000}s`,
+        );
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(
+        `TheirStackProvider: saved-search ${savedSearchId} fetch failed ${res.status} ${res.statusText}: ${text.slice(0, 300)}`,
+      );
+    }
+
+    const json = (await res.json()) as { type?: string; body?: unknown };
+    if (json.type !== "jobs") {
+      throw new Error(
+        `TheirStackProvider: saved search ${savedSearchId} is type "${json.type ?? "unknown"}", not "jobs". Use a jobs saved search.`,
+      );
+    }
+    if (!json.body || typeof json.body !== "object") {
+      throw new Error(
+        `TheirStackProvider: saved search ${savedSearchId} returned no filter body.`,
+      );
+    }
+
+    return {
+      ...(json.body as Record<string, unknown>),
+      // Force these regardless of what the saved search stored, so the replay
+      // always satisfies the mandatory-filter rule, stays within our result
+      // budget, and returns unblurred company data we can act on.
+      posted_at_max_age_days: postedMaxAgeDays,
+      limit: maxResults,
+      blur_company_data: false,
+      include_total_results: false,
+    };
+  }
+
   async discoverJobs(params: DiscoveryParams): Promise<DiscoveredCompany[]> {
     const apiKey = process.env.THEIRSTACK_API_KEY;
     if (!apiKey) {
@@ -140,27 +213,42 @@ export class TheirStackProvider implements JobDiscoveryProvider {
       }
     }
 
-    const body: Record<string, unknown> = {
-      job_title_or: params.verticals,
-      job_title_not: JOB_TITLE_NOT,
-      job_location_or: JOB_LOCATION_OR,
-      company_name_partial_match_or: COMPANY_NAME_PARTIAL_MATCH_OR,
-      company_name_partial_match_not: COMPANY_NAME_PARTIAL_MATCH_NOT,
-      company_id_not: COMPANY_ID_NOT,
-      min_employee_count: MIN_EMPLOYEE_COUNT,
-      posted_at_max_age_days: postedMaxAgeDays,
-      limit: params.maxResults,
-      blur_company_data: false,
-      include_total_results: false,
-    };
-    // posted_at_gte is intentionally NOT sent. TheirStack's posted_at_gte
-    // is a date-only field; a full ISO timestamp (what postedSince would
-    // serialize to) 422s on every run after the first. The always-present
-    // posted_at_max_age_days above is the mandatory recency filter and is
-    // already widened from postedSince at the top of this method, so the
-    // window is covered without the timestamp param.
-    if (typeof params.minRevenue === "number") {
-      body.company_revenue_usd_gte = params.minRevenue;
+    // Two ways to build the jobs-search body:
+    //  (A) Replay a TheirStack saved search the recruiter pasted: fetch its
+    //      stored filters and reuse them verbatim, only forcing the mandatory
+    //      recency filter + our result limit so it can never 422 or overrun.
+    //  (B) Default: the proven hardcoded public-accounting title filter set.
+    let body: Record<string, unknown>;
+    if (params.theirstackSavedSearchId) {
+      body = await this.fetchSavedSearchBody(
+        apiKey,
+        params.theirstackSavedSearchId,
+        postedMaxAgeDays,
+        params.maxResults,
+      );
+    } else {
+      body = {
+        job_title_or: params.verticals,
+        job_title_not: JOB_TITLE_NOT,
+        job_location_or: JOB_LOCATION_OR,
+        company_name_partial_match_or: COMPANY_NAME_PARTIAL_MATCH_OR,
+        company_name_partial_match_not: COMPANY_NAME_PARTIAL_MATCH_NOT,
+        company_id_not: COMPANY_ID_NOT,
+        min_employee_count: MIN_EMPLOYEE_COUNT,
+        posted_at_max_age_days: postedMaxAgeDays,
+        limit: params.maxResults,
+        blur_company_data: false,
+        include_total_results: false,
+      };
+      // posted_at_gte is intentionally NOT sent. TheirStack's posted_at_gte
+      // is a date-only field; a full ISO timestamp (what postedSince would
+      // serialize to) 422s on every run after the first. The always-present
+      // posted_at_max_age_days above is the mandatory recency filter and is
+      // already widened from postedSince at the top of this method, so the
+      // window is covered without the timestamp param.
+      if (typeof params.minRevenue === "number") {
+        body.company_revenue_usd_gte = params.minRevenue;
+      }
     }
 
     // Abort the single discovery POST at THEIRSTACK_TIMEOUT_MS so one slow

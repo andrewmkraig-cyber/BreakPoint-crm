@@ -115,7 +115,7 @@ async function main(): Promise<void> {
 
   const runCounts = new Map<string, number>();
   for (const r of runsByStatus) runCounts.set(r.status, r._count._all);
-  const totalRuns = [...runCounts.values()].reduce((a, b) => a + b, 0);
+  const totalRuns = Array.from(runCounts.values()).reduce((a, b) => a + b, 0);
   const liveRuns = LIVE_RUN_STATUSES.map((s) => ({ status: s, count: runCounts.get(s) ?? 0 })).filter(
     (x) => x.count > 0,
   );
@@ -138,7 +138,7 @@ async function main(): Promise<void> {
   );
   console.log(`  BDRun rows:              ${totalRuns}`);
   if (totalRuns > 0) {
-    for (const [status, count] of runCounts) console.log(`     - ${status}: ${count}`);
+    for (const [status, count] of Array.from(runCounts)) console.log(`     - ${status}: ${count}`);
   }
   console.log(`  Campaign rows:           ${campaignCount}`);
   console.log(

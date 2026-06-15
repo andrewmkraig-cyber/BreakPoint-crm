@@ -1884,6 +1884,11 @@ model SavedSearch {
   verticalId     String
   name           String
   criteria       Json
+  // Optional TheirStack saved-search id (one-to-one). When set, discovery
+  // fetches that saved search's stored filters (GET /v0/saved_searches/{id})
+  // and replays them via POST /v1/jobs/search, instead of the hardcoded
+  // DISCOVERY_TITLES. Blank = run the default nationwide title search.
+  theirstackSavedSearchId String?
   active         Boolean  @default(true)
   contactCap     Int?
   createdAt      DateTime @default(now())

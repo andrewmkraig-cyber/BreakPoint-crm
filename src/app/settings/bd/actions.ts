@@ -27,7 +27,19 @@ export type SavedSearchInput = {
   name: string;
   contactCap: number;
   criteria: SavedSearchCriteria;
+  // Optional TheirStack saved-search id. Empty/blank stores null, which keeps
+  // discovery on the default title search. A real column on SavedSearch, not
+  // part of the versioned criteria JSON.
+  theirstackSavedSearchId?: string | null;
 };
+
+// Trim a pasted TheirStack saved-search id to null when blank so the discovery
+// path's "field is empty -> fall back to DISCOVERY_TITLES" check is a simple
+// null check.
+function normalizeTheirstackId(value: string | null | undefined): string | null {
+  const trimmed = (value ?? "").trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
 
 // ---- Verticals ----
 
@@ -104,6 +116,7 @@ export async function createSavedSearch(verticalId: string, input: SavedSearchIn
       verticalId: vertical.id,
       name: input.name.trim() || "Untitled search",
       criteria: input.criteria as unknown as Prisma.InputJsonValue,
+      theirstackSavedSearchId: normalizeTheirstackId(input.theirstackSavedSearchId),
       contactCap,
     },
     select: { id: true },
@@ -145,6 +158,7 @@ export async function updateSavedSearch(
       data: {
         name: input.name.trim() || "Untitled search",
         criteria: input.criteria as unknown as Prisma.InputJsonValue,
+        theirstackSavedSearchId: normalizeTheirstackId(input.theirstackSavedSearchId),
         contactCap,
       },
     });
