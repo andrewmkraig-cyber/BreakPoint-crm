@@ -1159,6 +1159,7 @@ model Organization {
   clientSignals        ClientSignal[]
   bdOrgConfig          BdOrgConfig?
   bdContactTargeting   BdContactTargeting[]
+  bdSequences          BdSequence[]
   bdReplyPromptDismissals BdReplyPromptDismissal[]
   calendarEvents       CalendarEvent[]
   aceReminders         AceReminder[]
@@ -1869,6 +1870,7 @@ model Vertical {
   campaigns     Campaign[]
   clientSignals ClientSignal[]
   contactTargeting BdContactTargeting?
+  bdSequences   BdSequence[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -2143,6 +2145,32 @@ model BdContactTargeting {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   vertical     Vertical     @relation(fields: [verticalId], references: [id], onDelete: Cascade)
 
+  @@index([organizationId])
+}
+
+// Recruiter-managed mapping of an Apollo sequence (built in Apollo) to a
+// vertical, so sequences are self-serve in BD Settings instead of hardcoded
+// in apollo-sequences.ts. The saved-search "Mapped Apollo Sequence" dropdown
+// + the Apollo Integration table read from here; apollo-sequences.ts stays as
+// the fallback when this table is empty. verticalId is nullable + SetNull so
+// deleting a vertical unlinks the mapping rather than destroying it. The enroll
+// path is unchanged — it still resolves its default from apollo-sequences.ts.
+model BdSequence {
+  id               String   @id @default(cuid())
+  organizationId   String
+  name             String
+  apolloSequenceId String
+  verticalId       String?
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vertical     Vertical?    @relation(fields: [verticalId], references: [id], onDelete: SetNull)
+
+  // One mapping per Apollo sequence per org, so an upsert seed is idempotent
+  // and the same sequence can't be added twice.
+  @@unique([organizationId, apolloSequenceId])
   @@index([organizationId])
 }
 

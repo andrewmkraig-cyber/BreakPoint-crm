@@ -1,25 +1,23 @@
-import { CheckCircle2, XCircle, ExternalLink, RotateCw } from "lucide-react";
+import { CheckCircle2, XCircle, RotateCw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  ApolloSequencesManager,
+  type BdSequenceRow,
+  type VerticalOption,
+} from "./apollo-sequences-manager";
 
-export type SequencePreview = {
-  name: string;
-  verticalName: string;
-  steps: number;
-  // Real Apollo identifier the enroll step uses as sequence_id. Empty
-  // string means the sequence has no live wiring yet — UI falls back to
-  // "Pending API connection".
-  apolloId: string;
-  status: "ACTIVE" | "PAUSED";
-};
+export type { BdSequenceRow, VerticalOption };
 
 export function ApolloSection({
   isConfigured,
   maskedKey,
   sequences,
+  verticals,
 }: {
   isConfigured: boolean;
   maskedKey: string | null;
-  sequences: SequencePreview[];
+  sequences: BdSequenceRow[];
+  verticals: VerticalOption[];
 }) {
   return (
     <div className="flex flex-col gap-5">
@@ -54,67 +52,11 @@ export function ApolloSection({
         </div>
       </div>
 
-      <div>
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
-          Mapped sequences
-        </p>
-        <div className="overflow-hidden rounded-lg border border-court-border bg-court-surface">
-          <table className="w-full text-sm">
-            <thead className="bg-court-surface-subtle text-[11px] uppercase tracking-wide text-court-fg-muted">
-              <tr>
-                <Th>Sequence name</Th>
-                <Th>Apollo ID</Th>
-                <Th>Vertical</Th>
-                <Th className="text-center">Steps</Th>
-                <Th>Status</Th>
-                <Th />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-court-border">
-              {sequences.map((s) => {
-                const resolved = isConfigured && s.apolloId.length > 0;
-                return (
-                  <tr key={s.name}>
-                    <Td className="font-medium text-court-fg">{s.name}</Td>
-                    <Td className="font-mono text-[11px] text-court-fg">
-                      {resolved ? (
-                        s.apolloId
-                      ) : (
-                        <span className="text-court-fg-muted">Pending API connection</span>
-                      )}
-                    </Td>
-                    <Td>{s.verticalName}</Td>
-                    <Td className="text-center tabular-nums">{s.steps}</Td>
-                    <Td>
-                      {resolved ? (
-                        <span className="inline-flex items-center rounded-full border border-court-brand/30 bg-court-brand-tint px-2 py-0.5 text-[11px] font-semibold text-court-brand-dark">
-                          {s.status === "ACTIVE" ? "Active" : "Paused"}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-medium text-court-fg-muted">
-                          Pending
-                        </span>
-                      )}
-                    </Td>
-                    <Td>
-                      {s.apolloId ? (
-                        <a
-                          href={`https://app.apollo.io/#/emailer/sequences/${s.apolloId}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-court-brand-dark hover:underline"
-                        >
-                          <ExternalLink className="h-3 w-3" /> Open in Apollo
-                        </a>
-                      ) : null}
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <ApolloSequencesManager
+        sequences={sequences}
+        verticals={verticals}
+        isConfigured={isConfigured}
+      />
     </div>
   );
 }
@@ -137,12 +79,4 @@ function ConnectionPill({ isConfigured }: { isConfigured: boolean }) {
       {isConfigured ? "Connected" : "Not connected"}
     </span>
   );
-}
-
-function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
-  return <th className={cn("px-3 py-2 text-left font-medium", className)}>{children}</th>;
-}
-
-function Td({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={cn("px-3 py-2 text-court-fg", className)}>{children}</td>;
 }

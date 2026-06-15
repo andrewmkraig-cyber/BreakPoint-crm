@@ -289,6 +289,76 @@ export async function saveContactTargeting(input: ContactTargetingInput): Promis
   revalidateAll();
 }
 
+// ---- Apollo sequence mappings (self-serve) ----
+
+export type BdSequenceInput = {
+  name: string;
+  apolloSequenceId: string;
+  // Vertical this sequence belongs to. Null = unmapped (selectable, but not
+  // tied to a vertical).
+  verticalId: string | null;
+  active?: boolean;
+};
+
+// Confirm a verticalId (when provided) belongs to the caller's org so a
+// mapping can never point at another tenant's vertical (Rule 8).
+async function assertVerticalOwned(orgId: string, verticalId: string | null): Promise<string | null> {
+  if (!verticalId) return null;
+  const owned = await prisma.vertical.findFirst({
+    where: { id: verticalId, organizationId: orgId },
+    select: { id: true },
+  });
+  if (!owned) throw new Error("Vertical not found");
+  return owned.id;
+}
+
+export async function createBdSequence(input: BdSequenceInput): Promise<void> {
+  const org = await getCurrentOrg();
+  const name = input.name.trim();
+  const apolloSequenceId = input.apolloSequenceId.trim();
+  if (!name) throw new Error("Sequence name is required");
+  if (!apolloSequenceId) throw new Error("Apollo sequence ID is required");
+  const verticalId = await assertVerticalOwned(org.id, input.verticalId);
+  // Upsert on the (org, apolloSequenceId) unique key so adding the same Apollo
+  // sequence again updates the existing mapping instead of erroring.
+  await prisma.bdSequence.upsert({
+    where: { organizationId_apolloSequenceId: { organizationId: org.id, apolloSequenceId } },
+    create: { organizationId: org.id, name, apolloSequenceId, verticalId, active: input.active ?? true },
+    update: { name, verticalId, active: input.active ?? true },
+  });
+  revalidateAll();
+}
+
+export async function updateBdSequence(id: string, input: BdSequenceInput): Promise<void> {
+  const org = await getCurrentOrg();
+  const existing = await prisma.bdSequence.findFirst({
+    where: { id, organizationId: org.id },
+    select: { id: true },
+  });
+  if (!existing) throw new Error("Sequence not found");
+  const name = input.name.trim();
+  const apolloSequenceId = input.apolloSequenceId.trim();
+  if (!name) throw new Error("Sequence name is required");
+  if (!apolloSequenceId) throw new Error("Apollo sequence ID is required");
+  const verticalId = await assertVerticalOwned(org.id, input.verticalId);
+  await prisma.bdSequence.update({
+    where: { id: existing.id },
+    data: { name, apolloSequenceId, verticalId, active: input.active ?? true },
+  });
+  revalidateAll();
+}
+
+export async function deleteBdSequence(id: string): Promise<void> {
+  const org = await getCurrentOrg();
+  const existing = await prisma.bdSequence.findFirst({
+    where: { id, organizationId: org.id },
+    select: { id: true },
+  });
+  if (!existing) throw new Error("Sequence not found");
+  await prisma.bdSequence.delete({ where: { id: existing.id } });
+  revalidateAll();
+}
+
 // ---- BD org config (global cap, pause-all, blackouts, reply routing) ----
 
 export type BdOrgConfigPatch = Partial<{

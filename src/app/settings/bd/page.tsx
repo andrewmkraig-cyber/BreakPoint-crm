@@ -4,7 +4,7 @@ import { CollapsibleSection } from "@/components/settings/collapsible-section";
 import { BdInPageNav } from "./in-page-nav";
 import { BdEngineSection } from "./bd-engine-section";
 import { VerticalsSection, type SavedSearchRow, type VerticalRow } from "./verticals-section";
-import { ApolloSection, type SequencePreview } from "./apollo-section";
+import { ApolloSection, type BdSequenceRow, type VerticalOption } from "./apollo-section";
 import { APOLLO_SEQUENCES } from "@/lib/bd/apollo-sequences";
 import { DomainsSection, type DomainRow } from "./domains-section";
 import { fetchApolloMailboxes } from "@/lib/bd/apollo-email-accounts";
@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
 export default async function BdSettingsPage() {
   const org = await getCurrentOrg();
 
-  const [verticalsRaw, sendingDomainsRaw, config, lastReply, versionCounts, lastRuns, apolloMailboxes] =
+  const [verticalsRaw, sendingDomainsRaw, config, lastReply, versionCounts, lastRuns, apolloMailboxes, bdSequenceRows] =
     await Promise.all([
       prisma.vertical.findMany({
         where: { organizationId: org.id },
@@ -76,6 +76,18 @@ export default async function BdSettingsPage() {
         _max: { createdAt: true },
       }),
       fetchApolloMailboxes(),
+      prisma.bdSequence.findMany({
+        where: { organizationId: org.id },
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          name: true,
+          apolloSequenceId: true,
+          verticalId: true,
+          active: true,
+          vertical: { select: { name: true } },
+        },
+      }),
     ]);
 
   const versionCountBySearchId = new Map(
@@ -101,17 +113,38 @@ export default async function BdSettingsPage() {
     })),
   }));
 
-  // Sequences come from the real Apollo config — see apollo-sequences.ts.
-  // Each entry carries the live Apollo ID so the Section 1 dropdown and
-  // the Apollo Integration table both render against the same source of
-  // truth. Status "ACTIVE" means the sequence is wired and resolving.
-  const sequences: SequencePreview[] = APOLLO_SEQUENCES.map((s) => ({
-    name: s.name,
-    verticalName: s.verticalName,
-    steps: s.steps,
-    apolloId: s.apolloId,
-    status: s.status,
-  }));
+  // Verticals available to map a sequence to (Apollo Integration dropdown).
+  const verticalOptions: VerticalOption[] = verticalsRaw.map((v) => ({ id: v.id, name: v.name }));
+
+  // Sequences are now self-serve in the DB (BdSequence). The Apollo
+  // Integration table + the Section 1 "Mapped Apollo Sequence" dropdown both
+  // read from here, so a sequence added in Settings appears everywhere with no
+  // code change. apollo-sequences.ts is the FALLBACK only when the table is
+  // empty, so a fresh org (or a wiped table) still shows the default sequence
+  // and existing saved searches keep resolving. The enroll path is untouched —
+  // it still resolves its default from apollo-sequences.ts.
+  const sequences: BdSequenceRow[] =
+    bdSequenceRows.length > 0
+      ? bdSequenceRows.map((s) => ({
+          id: s.id,
+          name: s.name,
+          apolloSequenceId: s.apolloSequenceId,
+          verticalId: s.verticalId,
+          verticalName: s.vertical?.name ?? null,
+          active: s.active,
+        }))
+      : APOLLO_SEQUENCES.map((s) => ({
+          id: null,
+          name: s.name,
+          apolloSequenceId: s.apolloId,
+          verticalId: null,
+          verticalName: s.verticalName,
+          active: s.status === "ACTIVE",
+        }));
+
+  // The saved-search dropdown picks a sequence by NAME (criteria.apolloSequenceId
+  // stores the name string), so feed it the names from the same source.
+  const sequenceNames = sequences.map((s) => s.name);
 
   const targetingRows = await prisma.bdContactTargeting.findMany({
     where: { organizationId: org.id },
@@ -207,7 +240,7 @@ export default async function BdSettingsPage() {
       >
         <VerticalsSection
           verticals={verticals}
-          sequences={sequences.map((s) => s.name)}
+          sequences={sequenceNames}
           globalDailyCap={limitsConfig.globalDailyCap}
         />
       </CollapsibleSection>
@@ -221,6 +254,7 @@ export default async function BdSettingsPage() {
           isConfigured={!!apolloKey}
           maskedKey={maskedApolloKey}
           sequences={sequences}
+          verticals={verticalOptions}
         />
       </CollapsibleSection>
 
