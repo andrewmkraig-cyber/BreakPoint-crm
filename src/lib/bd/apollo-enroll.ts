@@ -222,6 +222,21 @@ export async function apolloResolveSendingMailboxIds(apiKey: string): Promise<st
       .filter((m) => m.status === "Connected" && !m.sendingDisabled && m.id)
       .map((m) => m.id);
     if (healthy.length > 0) return healthy;
+    // All mailboxes resolved but NONE are healthy (Connected + sending-enabled
+    // + a real id). Make that explicit — otherwise the fall-through to the
+    // single resolver silently hides the fact that rotation has no healthy
+    // mailbox, which can leave the add_contact_ids call pointing at a mailbox
+    // Apollo refuses to send from (a phantom-success cause above).
+    console.warn(
+      `[Apollo] all ${mailboxes.length} mailbox(es) unhealthy (Connected + sending-enabled + id = 0): ` +
+        mailboxes
+          .map(
+            (m) =>
+              `${m.email}[status=${m.status}${m.sendingDisabled ? ",sendingDisabled" : ""}${m.id ? "" : ",no-id"}]`,
+          )
+          .join(", ") +
+        ` — falling back to single email-account resolver`,
+    );
   }
 
   const single = await apolloResolveEmailAccountId(apiKey);
@@ -326,6 +341,25 @@ export async function apolloEnrollContact(
         `[Apollo] sequence enroll failed (${who}, contactId=${contactId}): ${enrollRes.status} ${enrollRes.statusText} ${enrollRawText.slice(0, 200)}`,
       );
       return false;
+    }
+    // Surface a PHANTOM success: Apollo can return 2xx while adding ZERO
+    // contacts to the sequence (an invalid/Disabled sending mailbox for this
+    // campaign, the contact already terminal in it, etc.). A 200 here is NOT
+    // proof the contact landed — the body is the only signal. When it clearly
+    // shows nothing was added (an empty `contacts` array), log loudly so a
+    // "created the people but the sequence stays empty" run is visible instead
+    // of being counted as a real enroll. Non-behavioral: we still return true
+    // on 2xx (the success body shape varies, so we never downgrade a real
+    // enroll on an unrecognized shape — we only flag the unambiguous zero case).
+    try {
+      const enrollBody = JSON.parse(enrollRawText) as { contacts?: unknown[] };
+      if (Array.isArray(enrollBody.contacts) && enrollBody.contacts.length === 0) {
+        console.warn(
+          `[Apollo] sequence enroll returned 2xx but added ZERO contacts (${who}, contactId=${contactId}) — the sequence is NOT populated. Check the sending mailbox is valid for this campaign and the contact is not already terminal in it. Body=${enrollRawText.slice(0, 400)}`,
+        );
+      }
+    } catch {
+      // Body wasn't JSON we recognize; the full raw body was already logged above.
     }
     console.log(
       `[Apollo] sequence enroll returned ok (${who}, contactId=${contactId})`,
