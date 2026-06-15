@@ -313,13 +313,16 @@ export async function apolloEnrollContact(
     enrollUrl.searchParams.set("emailer_campaign_id", sequenceId);
     // Apollo's add_contact_ids endpoint sets mailbox rotation HERE and only
     // here. One mailbox → pin it with the scalar param (legacy behavior).
-    // Multiple → send the documented array form (send_email_from_email_account_id[])
-    // so Apollo rotates sends across every healthy mailbox we pass.
+    // Multiple → repeat the SAME unbracketed key once per mailbox id
+    // (send_email_from_email_account_id=A&send_email_from_email_account_id=B…).
+    // Apollo expects the mailbox key WITHOUT brackets; the bracketed form
+    // (send_email_from_email_account_id[]) 422s "missing mailbox" and adds
+    // nobody. Note contact_ids[] below IS bracketed — only the mailbox key is not.
     if (emailAccountIds.length === 1) {
       enrollUrl.searchParams.set("send_email_from_email_account_id", emailAccountIds[0]);
     } else {
       for (const id of emailAccountIds) {
-        enrollUrl.searchParams.append("send_email_from_email_account_id[]", id);
+        enrollUrl.searchParams.append("send_email_from_email_account_id", id);
       }
     }
     enrollUrl.searchParams.append("contact_ids[]", contactId);
