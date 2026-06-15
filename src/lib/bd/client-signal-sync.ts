@@ -81,7 +81,12 @@ async function fetchClientPostings(
       },
       body: JSON.stringify({
         company_domain_or: [domain],
-        limit: 25,
+        // Client-monitor only needs a yes/no on whether each client is hiring.
+        // TheirStack bills 1 credit per job returned, so cap at 1 result per
+        // client (a 25-job Sheehan sweep was burning 25 credits for a boolean).
+        // This is the per-client monitor call ONLY; the main discovery run's
+        // limit lives in theirstack-provider.ts and stays at its own cap.
+        limit: 1,
       }),
       signal: controller.signal,
     });
