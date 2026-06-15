@@ -206,6 +206,20 @@ export function FloatingThreadWindow() {
     if ((e.target as HTMLElement).closest("button")) return;
     const node = windowRef.current;
     if (!node) return;
+    // Capture the pointer on the header element. The email body renders in
+    // a sandboxed iframe (email-html-viewer): without capture, the moment
+    // the cursor passes over that iframe it swallows pointermove/pointerup,
+    // the parent window never sees the release, and the popup "sticks" to
+    // the cursor. setPointerCapture reroutes every event for this gesture
+    // to the header (and lets them bubble to window) regardless of any
+    // iframe underneath, so the drag tracks smoothly and always releases.
+    const captureEl = e.currentTarget;
+    const pointerId = e.pointerId;
+    try {
+      captureEl.setPointerCapture(pointerId);
+    } catch {
+      // Older browsers / detached node — fall back to window listeners.
+    }
     const startPx = e.clientX;
     const startPy = e.clientY;
     const startX = pos.x;
@@ -223,9 +237,18 @@ export function FloatingThreadWindow() {
       dy = ev.clientY - startPy;
       if (rafId === 0) rafId = requestAnimationFrame(flush);
     };
-    const onUp = () => {
+    const cleanup = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      try {
+        captureEl.releasePointerCapture(pointerId);
+      } catch {
+        /* already released */
+      }
+    };
+    const onUp = () => {
+      cleanup();
       if (rafId !== 0) cancelAnimationFrame(rafId);
       // Clear the transform and commit the resolved position to state
       // so the next render pins the popup in its new spot via left/top.
@@ -238,6 +261,7 @@ export function FloatingThreadWindow() {
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   };
 
   // Resize fundamentally changes the box dimensions, so transform won't
@@ -250,6 +274,16 @@ export function FloatingThreadWindow() {
     e.stopPropagation();
     const node = windowRef.current;
     if (!node) return;
+    // Same iframe-swallow fix as the drag handler: capture the pointer on
+    // the resize grip so the gesture keeps firing (and always releases)
+    // even while the cursor is dragged across the email body iframe.
+    const captureEl = e.currentTarget;
+    const pointerId = e.pointerId;
+    try {
+      captureEl.setPointerCapture(pointerId);
+    } catch {
+      /* older browsers / detached node — fall back to window listeners */
+    }
     const startPx = e.clientX;
     const startPy = e.clientY;
     const startW = size.w;
@@ -271,12 +305,19 @@ export function FloatingThreadWindow() {
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      try {
+        captureEl.releasePointerCapture(pointerId);
+      } catch {
+        /* already released */
+      }
       if (rafId !== 0) cancelAnimationFrame(rafId);
       node.style.willChange = "";
       setSize({ w: nextW, h: nextH });
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   };
 
   // Local archive: hits the API, surfaces a toast, closes the
