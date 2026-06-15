@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-06-12 · Ace 94.0
+Last updated: 2026-06-15 · Ace 94.0
 
 ## Active Build Sequence
 
@@ -17,6 +17,7 @@ All shipped to main; `npm run build` exits 0. Full detail in ACE_STATE.md ▸ Ac
 **Open follow-ups from this session:**
 - ~~**Agreement backfill - confirm prod status.**~~ CLOSED (superseded `0233cd0`). A separate backfill is no longer needed: per-client Summarize Terms now auto-fills the fee/signed/date server-side (write-if-empty) every time it runs, so re-summarizing any client populates its fields directly. Run Summarize Terms on a client to fill it; no batch script to apply.
 - **Client blurb review pass (recommended).** `{{client_blurb}}` now appears in candidate-facing templates via `resolveClientBlurb`'s generate-once fallback. Recommend a review pass over ACTIVE clients to set/curate each `candidateBlurb` so candidates see an intentional anonymized descriptor rather than an auto-generated one.
+- **RF-blob debt cleanup (backlog, ~1 hr, NOT urgent).** Migrate the legacy RecruiterFlow `raw`-blob reads in `src/lib/candidates.ts` + `src/lib/clients.ts` to the canonical Neon columns, then ratchet `scripts/rf-blob-baseline.json` toward zero (16 reads / 5 files as of Ace 94.0; debt concentrated in those two libs). Not urgent - the `check-rf-blob-reads.mjs` build gate already holds the line, so this is paying down existing debt, not preventing new bugs.
 
 ### UI-consistency audit (inputs + tables) - COMPLETE (Ace 91.0/92.0, 2026-06-11)
 Consolidated the hand-rolled form inputs AND the recruiter-facing list tables onto shared components. **Both halves are DONE; the original UI-consistency audit is CLOSED** (the only separately-tracked survivor is the Action-row button audit under Next Up #1, which is its own 71.0-audit item, not part of the input/table work).
