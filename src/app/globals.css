@@ -546,6 +546,15 @@ html[data-theme='light'] .ace-topbar-mark .ace-brand-disc {
     color: rgb(var(--court-fg-muted));
   }
 
+  html[data-theme='dark'] input[type='date']::-webkit-calendar-picker-indicator,
+  html[data-theme='dark'] input[type='datetime-local']::-webkit-calendar-picker-indicator,
+  html[data-theme='dark'] input[type='month']::-webkit-calendar-picker-indicator,
+  html[data-theme='dark'] input[type='time']::-webkit-calendar-picker-indicator,
+  html[data-theme='dark'] input[type='week']::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(1.15);
+    opacity: 0.78;
+  }
+
   /* Weather widget hourly strip — hides the horizontal scrollbar
      while keeping the strip mouse-wheel / touchpad / drag
      scrollable. The strip overflows beyond the popover's w-72
