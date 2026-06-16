@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { buildSentRecipientDomainSearchQueries } from "@/lib/gmail-search-query";
 import { listGmailThreads } from "@/lib/gmail";
+import { getGmailSentRecipients } from "@/lib/gmail-recipients";
 
 export const dynamic = "force-dynamic";
 
@@ -33,11 +35,28 @@ export async function GET(req: NextRequest) {
     labelIds.length > 0 ? labelIds : q ? [] : undefined;
 
   try {
-    const threads = await listGmailThreads(user.id, {
+    let threads = await listGmailThreads(user.id, {
       maxResults: 50,
       labelIds: labelIdsForCall,
       q,
     });
+    // Gmail's native search does not reliably substring-match recipient
+    // domains: searching "elgin" can miss sent mail addressed to
+    // austin.hall@elginpower.com. If the normal search finds nothing,
+    // fall back to the cached sent-recipient snapshot and retry with the
+    // full matching domain(s).
+    if (threads.length === 0 && q) {
+      const sentRecipients = await getGmailSentRecipients(user.id, { wait: true });
+      const domainQueries = buildSentRecipientDomainSearchQueries(q, sentRecipients);
+      if (domainQueries.length > 0) {
+        threads = await listGmailThreads(user.id, {
+          maxResults: 50,
+          labelIds: labelIdsForCall,
+          q,
+          extraSearchQueries: domainQueries,
+        });
+      }
+    }
     return NextResponse.json({ threads });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load threads";

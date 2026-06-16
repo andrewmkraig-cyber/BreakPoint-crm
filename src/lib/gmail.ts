@@ -519,12 +519,20 @@ function parseAddress(raw: string): { name: string; email: string } {
 
 export async function listGmailThreads(
   userId: string,
-  opts: { maxResults?: number; labelIds?: string[]; q?: string } = {},
+  opts: {
+    maxResults?: number;
+    labelIds?: string[];
+    q?: string;
+    extraSearchQueries?: string[];
+  } = {},
 ): Promise<MailListThread[]> {
   const accessToken = await getFreshAccessToken(userId);
   const maxResults = opts.maxResults ?? 50;
   const labelIds = opts.labelIds ?? ["INBOX"];
-  const searchQueries = expandGmailThreadSearchQueries(opts.q);
+  const searchQueries = expandGmailThreadSearchQueries(
+    opts.q,
+    opts.extraSearchQueries,
+  );
   const listQueries: Array<string | null> = searchQueries.length > 0 ? searchQueries : [null];
 
   const listJsons = await Promise.all(
