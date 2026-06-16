@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { getDefaultApolloSequence } from "@/lib/bd/apollo-sequences";
+import {
+  getDefaultApolloSequence,
+  getApolloSequenceByName,
+  getApolloSequenceById,
+} from "@/lib/bd/apollo-sequences";
 import { dedupeDiscoveredByCompany } from "@/lib/bd/discovered-company";
 import {
   fetchApolloContacts,
@@ -59,6 +63,57 @@ type CuratedContact = {
 // against this before their id is reused.
 function isApolloPersonId(value: string): boolean {
   return /^[a-f0-9]{24}$/i.test(value);
+}
+
+// Apollo sequence (emailer_campaign) ids are 24-char hex, the same shape as
+// person/contact ids. A saved-search "handle" that isn't one of these (e.g.
+// the human name "Great Neck BD" that never mapped to a row) must NEVER be
+// sent as emailer_campaign_id — that is the silent-zero failure.
+function isApolloSequenceId(value: string | null | undefined): value is string {
+  return typeof value === "string" && /^[a-f0-9]{24}$/i.test(value.trim());
+}
+
+// The saved search persists its mapped sequence under criteria.apolloSequenceId
+// as a NAME string (the dropdown stores names), or occasionally a raw id.
+function sequenceHandleFromCriteria(criteria: unknown): string | null {
+  if (!criteria || typeof criteria !== "object") return null;
+  const value = (criteria as Record<string, unknown>).apolloSequenceId;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+// Resolves the real Apollo sequence id (emailer_campaign_id) for a run,
+// preferring the run's saved-search mapping over the env/default so a
+// self-serve, table-only sequence ("Great Neck BD") enrolls into its own
+// Apollo sequence:
+//   1) saved search criteria handle -> self-serve BdSequence table (by name,
+//      then by raw id), scoped to the org + active mappings;
+//   2) -> hardcoded apollo-sequences.ts (by name/alias, then by id);
+//   3) APOLLO_SEQUENCE_ID env override, then the default sequence — the
+//      org-wide cron / no-saved-search path, unchanged from before.
+// The returned value is validated by the caller's guard before use.
+async function resolveRunSequenceId(orgId: string, criteria: unknown): Promise<string> {
+  const handle = sequenceHandleFromCriteria(criteria);
+  if (handle) {
+    // Table first, matched by the mapping name.
+    const byName = await prisma.bdSequence.findFirst({
+      where: { organizationId: orgId, name: handle, active: true },
+      select: { apolloSequenceId: true },
+    });
+    if (byName && isApolloSequenceId(byName.apolloSequenceId)) return byName.apolloSequenceId;
+    // Table, matched when the handle is itself a raw Apollo id.
+    if (isApolloSequenceId(handle)) {
+      const byId = await prisma.bdSequence.findFirst({
+        where: { organizationId: orgId, apolloSequenceId: handle, active: true },
+        select: { apolloSequenceId: true },
+      });
+      if (byId && isApolloSequenceId(byId.apolloSequenceId)) return byId.apolloSequenceId;
+    }
+    // Hardcoded fallback (covers the built-in "Tax BD Sequence" + aliases).
+    const hard = getApolloSequenceByName(handle) ?? getApolloSequenceById(handle);
+    if (hard && isApolloSequenceId(hard.apolloId)) return hard.apolloId;
+  }
+  // No resolvable saved-search mapping: keep the original env -> default path.
+  return process.env.APOLLO_SEQUENCE_ID ?? getDefaultApolloSequence()?.apolloId ?? "";
 }
 
 type DiscoveredItem = {
@@ -489,6 +544,9 @@ export async function enrollCompaniesInApollo(
       discoveredPayload: true,
       status: true,
       maxContactsPerCompany: true,
+      // Drives which Apollo sequence this run enrolls into:
+      // criteria.apolloSequenceId holds the mapped sequence NAME (or a raw id).
+      savedSearch: { select: { criteria: true } },
     },
   });
   if (!run) {
@@ -534,19 +592,22 @@ export async function enrollCompaniesInApollo(
   }
 
   const apiKey = process.env.APOLLO_API_KEY;
-  // Prefer the explicit APOLLO_SEQUENCE_ID env var (set for staging /
-  // one-off overrides); otherwise resolve from apollo-sequences.ts so
-  // prod has a single source of truth for the live BD Outbound sequence.
-  const sequenceId = process.env.APOLLO_SEQUENCE_ID ?? getDefaultApolloSequence()?.apolloId ?? "";
-  if (!apiKey || !sequenceId) {
-    console.warn(
-      `[Apollo] runId=${run.id} cannot enroll: APOLLO_API_KEY or APOLLO_SEQUENCE_ID unset`,
-    );
-    // Echo Andrew's curated list per company so the approval flow is
-    // verifiable end-to-end even without live Apollo credentials.
+  // Resolve the Apollo sequence id for THIS run, preferring the saved
+  // search's own mapping (self-serve BdSequence table -> hardcoded
+  // apollo-sequences.ts) so a table-only sequence like "Great Neck BD"
+  // enrolls into its real Apollo sequence instead of silently falling back to
+  // the env/default ("Tax BD Sequence"). Runs with no resolvable mapping (the
+  // org-wide cron) keep the original APOLLO_SEQUENCE_ID -> default behavior.
+  const sequenceId = await resolveRunSequenceId(orgId, run.savedSearch?.criteria);
+
+  if (!apiKey) {
+    // No Apollo credentials (local / dry run): there is nothing to send, so
+    // echo the curated list and mark the run complete. This is NOT the
+    // silent-zero bug — it's the no-credentials path.
+    console.warn(`[Apollo] runId=${run.id} cannot enroll: APOLLO_API_KEY unset (dry run)`);
     for (const c of companies) {
       console.log(
-        `[Apollo stub] Would enroll ${c.companyName}: ${formatCuratedContacts(c.curatedContacts)}`,
+        `[Apollo stub] Would enroll ${c.companyName} into sequence=${sequenceId || "(unresolved)"}: ${formatCuratedContacts(c.curatedContacts)}`,
       );
     }
     await prisma.bDRun.update({
@@ -555,6 +616,26 @@ export async function enrollCompaniesInApollo(
     });
     return { enrolled: 0, capped: false, skipped: [] };
   }
+
+  // Guard: a missing or non-Apollo-id sequence means add_contact_ids would
+  // fire against an empty/garbage emailer_campaign_id and silently enroll
+  // ZERO. FAIL the run loudly instead of pretending it completed.
+  if (!isApolloSequenceId(sequenceId)) {
+    const msg =
+      `[Apollo] runId=${run.id} ABORT: no valid Apollo sequence id resolved ` +
+      `(got "${sequenceId || "(empty)"}"). The saved-search mapping, BdSequence ` +
+      `table, apollo-sequences.ts, and APOLLO_SEQUENCE_ID all failed to yield a ` +
+      `24-char Apollo id. NOT calling add_contact_ids.`;
+    console.error(msg);
+    await prisma.bDRun.update({
+      where: { id: run.id },
+      data: { status: "FAILED", errorMessage: msg.slice(0, 500), completedAt: new Date() },
+    });
+    return { enrolled: 0, capped: false, skipped: [] };
+  }
+
+  // Verifiable in Vercel: the exact emailer_campaign_id this run enrolls into.
+  console.log(`[Apollo] runId=${run.id} resolved emailer_campaign_id=${sequenceId}`);
 
   // Sequence enrollment needs sending mailbox id(s). Resolve once per run.
   // All healthy connected mailboxes are handed to Apollo so it rotates sends
