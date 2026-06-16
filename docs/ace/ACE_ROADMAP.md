@@ -1,7 +1,24 @@
 # Ace Roadmap
-Last updated: 2026-06-15 · Ace 94.0
+Last updated: 2026-06-16 · Ace 95.0
 
 ## Active Build Sequence
+
+### DONE this session (Ace 95.0, 2026-06-16) - BD self-serve sequences + per-search TheirStack/schedule + enroll routing fix + Active Campaigns honesty
+All shipped to main; `npm run build` exits 0 after each. Additive schema only (`BdSequence`; `SavedSearch.theirstackSavedSearchId`/`runFrequencyDays`/`lastDiscoveredAt`), applied via `db push`. Full detail in ACE_STATE.md ▸ Ace 95.0.
+- ~~**Manufacturing vertical deleted**~~ DONE (`04d6a6c`, applied) - idempotent `scripts/delete-bd-vertical.ts`, live-run hard block, ClientSignal preserved.
+- ~~**TheirStack search-by-ID per saved search + titles-first**~~ DONE (`eb8e7a4`, `e2dd042`) - `SavedSearch.theirstackSavedSearchId` fetch-and-replay (`GET /v0/saved_searches/{id}` -> `POST /v1/jobs/search`); nationwide fallback; titles-first reads the vertical's `primaryTitles` for `job_title_or`. This is the ROADMAP ▸ NEXT (2) titles-first item.
+- ~~**Self-serve Apollo sequences**~~ DONE (`6a40cc6`) - `BdSequence` table + add/edit/remove UI; saved-search dropdown reads names from it; `apollo-sequences.ts` is fallback-only. Seeded Tax BD + Great Neck BD.
+- ~~**Per-saved-search schedule + pause**~~ DONE (`25297f1`) - `runFrequencyDays` + `lastDiscoveredAt` + active toggle; cron honors active + ET-due; Run Discovery Now ignores schedule but respects active.
+- ~~**Discovery date-window fix**~~ DONE (`dda4bf4`) - posted-at window honors saved-search recency; default max-age cap raised to 30d.
+- ~~**Active Campaigns: real Day-of counter + fake stat tiles hidden**~~ DONE (`d6724ef`, `3af1d36`) - real Apollo step count (hidden when unresolved); SENT/OPENED/REPLIED/BOUNCED/UNSUB tiles hidden behind "Open in Apollo" until CampaignEvent ingestion is built (no invented numbers).
+- ~~**Enroll sequence-routing fix**~~ DONE (`8dd7a4c`) - enroll resolves the Apollo sequence id from the run's saved-search/BdSequence mapping (not the hardcoded default); loud-fail guard on no valid id; logs the resolved `emailer_campaign_id`.
+- ~~**Great Neck dedup clear**~~ DONE (`e70caeb`, applied) - idempotent `scripts/clear-great-neck-today-dedup.ts`; cleared 2 runs / 7 companies so they re-discover and re-enroll through the corrected routing.
+- **Supporting BD fixes:** `add_contact_ids` mailbox key UNbracketed (`53eae51`); 2xx-but-zero + unhealthy-mailbox diag (`e1ca2c2`); dedup-clear `--include-enrolled` + recency window (`127c5b4`); client-monitor sweep capped at 1/client (`4ac3cdf`); inert preview chip removed (`59bafba`).
+- **Also shipped (non-BD):** editable client name (`b8030d6`); mail search by sent-recipient domains (`acbd7ff`); popped-out email window drag/resize fix (`5f6193c`); dark-mode date-picker icon brightness (`ee2cbb1`).
+
+**PAUSED - Active Campaigns REAL stats (CampaignEvent ingestion).** Items 1+2 of the original "show real Apollo activity" goal (write `CampaignEvent` from the Apollo webhook; read real per-campaign counts) are PAUSED - they need enroll-path changes. Key findings: no `Campaign` rows are ever created (read side is already correct, gap is upstream), and the Apollo webhook payload field names are unverified with no usable campaign link. Build requires: create Campaign + per-contact CampaignEvent at enroll, store enrolled emails for webhook resolution, and VERIFY Apollo's real webhook schema first. Detail in ACE_STATE.md ▸ Ace 95.0 ▸ PAUSED.
+
+**Known Apollo behavior (record).** `add_contact_ids` skips a contact already active in another sequence (`contacts_active_in_other_campaigns`); a contact can be active in only ONE sequence at a time. So Great Neck contacts wrongly added to the Tax sequence must be stopped/removed from Tax in Apollo before they will take in Great Neck - clearing the discovery dedup alone is not enough.
 
 ### DONE this session (Ace 94.0, 2026-06-12) - merge-field arc + bulk cleanup + Edit Resume + agreement auto-fill + create_contact
 All shipped to main; `npm run build` exits 0. Full detail in ACE_STATE.md ▸ Ace 94.0.
@@ -62,11 +79,10 @@ Done this arc (closed record):
 - ~~**Find-the-person path.**~~ DONE Ace 87.0-88.0 - single domain+BD-Settings-titles people search on `/mixed_people/api_search`; no nameless shells.
 - ~~**Auto-reload / no-saved-search guard.**~~ DONE Ace 88.0 - auto-refresh (in-flight-aware polling, refresh on awaiting-count change) + any vertical with no saved search blocks Run Discovery with an inline message + BD Settings link.
 
-### NEXT (2) - TheirStack dynamic per-vertical discovery query
-Make discovery dynamic per vertical instead of the hardcoded Tax list.
-- **Finding:** `triggerManualDiscovery` currently ignores the selected vertical and fires the hardcoded `DISCOVERY_TITLES` on every run; discovery does NOT read saved searches at all yet. The cron (`src/app/api/cron/bd-discovery/route.ts`) discovers off `DISCOVERY_TITLES` + `locations: []` and never reads the BD Settings verticals / saved searches (diagnosed Ace 83.0).
-- **Titles-first (ships first):** the cron reads the selected saved search -> its vertical -> the vertical's titles, and uses those as the TheirStack `job_title_or` query, making the Verticals/Saved Search UI actually drive discovery. (Note: per-vertical titles live in `BdContactTargeting.primaryTitles`, not on the saved search.)
-- **Location-driven discovery (sub-item, ships AFTER titles):** wire the per-saved-search location override into TheirStack `job_location_or`. Needs the TheirStack geonames-id mapping - the field holds free text but `job_location_or` wants a numeric geonames id - so titles-first lands before location.
+### NEXT (2) - TheirStack dynamic per-vertical discovery query (titles-first + search-by-ID DONE Ace 95.0; only location-driven remains)
+- ~~**Titles-first**~~ DONE Ace 95.0 (`e2dd042`): discovery reads the selected vertical's `BdContactTargeting.primaryTitles` for `job_title_or` instead of the hardcoded Tax list, so the Verticals/Saved Search UI drives discovery.
+- ~~**TheirStack search-by-ID**~~ DONE Ace 95.0 (`eb8e7a4`): `SavedSearch.theirstackSavedSearchId` fetch-and-replay (`GET /v0/saved_searches/{id}` -> `POST /v1/jobs/search`), nationwide fallback when blank.
+- **Location-driven discovery (the only remaining sub-item):** wire the per-saved-search location override into TheirStack `job_location_or`. Needs the TheirStack geonames-id mapping - the field holds free text but `job_location_or` wants a numeric geonames id. (Largely moot when a TheirStack saved-search id is set, since that replays the saved search's own location filters; this is for the title-search path.)
 
 ### DONE this session (Ace 82.0-86.0) - BD webhook safety + Today's Batch redesign
 The prior priority block (queued at Ace 81.0 close) is complete. Retained here as a closed record.
