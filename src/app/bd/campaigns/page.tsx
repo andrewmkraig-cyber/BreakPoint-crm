@@ -88,6 +88,21 @@ export default async function CampaignsPage() {
   });
   const domainStatusByName = new Map(domainRows.map((d) => [d.domain, d.status]));
 
+  // Self-serve sequence mappings, so the "Open in Apollo" link can resolve a
+  // table-only sequence (e.g. "Great Neck BD") to its real Apollo id — the same
+  // chain the enroll path uses. Built once; the per-row resolver reads the map.
+  const bdSequenceRows = await prisma.bdSequence.findMany({
+    where: { organizationId: org.id },
+    select: { name: true, apolloSequenceId: true, active: true },
+  });
+  const apolloSeqIdByName = new Map<string, string>();
+  for (const s of bdSequenceRows) {
+    if (!s.apolloSequenceId) continue;
+    const key = s.name.trim().toLowerCase();
+    // Prefer an active mapping when the same name appears more than once.
+    if (!apolloSeqIdByName.has(key) || s.active) apolloSeqIdByName.set(key, s.apolloSequenceId);
+  }
+
   const rows: CampaignRowProps[] = runs.map((run) => {
     const plan = (run.plan ?? null) as Record<string, unknown> | null;
     const planDomains: string[] = Array.isArray(plan?.domains)
@@ -140,6 +155,16 @@ export default async function CampaignsPage() {
       // discovery time. Prefer the enroll moment, fall back for legacy
       // rows approved before approvedAt was being stamped.
       startedLabel: formatBdDate(run.approvedAt ?? run.createdAt),
+      // Deep link to this run's Apollo sequence for the "Open in Apollo" note
+      // shown until real CampaignEvent stats are wired. Resolves the same way
+      // as the day-of counter; falls back to the Apollo sequences index when
+      // no specific sequence can be identified.
+      apolloSequenceUrl: apolloSequenceUrl({
+        planSequenceName: planSequence,
+        campaignSequenceIds: run.campaigns.map((c) => c.apolloSequenceId),
+        savedSearchSequenceName: sequenceNameFromCriteria(run.savedSearch?.criteria),
+        seqIdByName: apolloSeqIdByName,
+      }),
       // Real sequence length (Apollo step count) for the day-of counter.
       // Null only when no sequence can be resolved at all — the row then
       // hides the counter rather than showing a fabricated length.
@@ -251,4 +276,46 @@ function resolveSequenceSteps(args: {
   }
   const fallback = getDefaultApolloSequence();
   return fallback && fallback.steps > 0 ? fallback.steps : null;
+}
+
+// Apollo sequence (emailer_campaign) ids are 24-char hex.
+function isApolloSequenceId(value: string | null | undefined): value is string {
+  return typeof value === "string" && /^[a-f0-9]{24}$/i.test(value.trim());
+}
+
+// Builds the "Open in Apollo" deep link for a run's sequence. Resolves the real
+// Apollo sequence id the same way the enroll path does — self-serve BdSequence
+// table (by mapped name) first, then the hardcoded apollo-sequences.ts, then any
+// linked Campaign id, then the default sequence. When nothing resolves it points
+// at the Apollo sequences index so the link is never dead. Reuses the URL shape
+// already used in settings/bd/apollo-sequences-manager.tsx.
+function apolloSequenceUrl(args: {
+  planSequenceName: string | null;
+  campaignSequenceIds: string[];
+  savedSearchSequenceName: string | null;
+  seqIdByName: Map<string, string>;
+}): string {
+  const base = "https://app.apollo.io/#/emailer/sequences";
+  const id = resolveApolloSequenceId(args);
+  return id ? `${base}/${id}` : base;
+}
+
+function resolveApolloSequenceId(args: {
+  planSequenceName: string | null;
+  campaignSequenceIds: string[];
+  savedSearchSequenceName: string | null;
+  seqIdByName: Map<string, string>;
+}): string | null {
+  const handle = args.planSequenceName ?? args.savedSearchSequenceName;
+  if (handle) {
+    const fromTable = args.seqIdByName.get(handle.trim().toLowerCase());
+    if (isApolloSequenceId(fromTable)) return fromTable;
+    const hard = getApolloSequenceByName(handle) ?? getApolloSequenceById(handle);
+    if (hard && isApolloSequenceId(hard.apolloId)) return hard.apolloId;
+  }
+  for (const id of args.campaignSequenceIds) {
+    if (isApolloSequenceId(id)) return id;
+  }
+  const def = getDefaultApolloSequence()?.apolloId;
+  return isApolloSequenceId(def) ? def : null;
 }

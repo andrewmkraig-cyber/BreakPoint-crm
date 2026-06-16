@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { ChevronRight, Pause, X } from "lucide-react";
+import { ChevronRight, ExternalLink, Pause, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -36,6 +36,10 @@ export type CampaignRowProps = {
   dayNumber: number | null;
   sequenceDays: number | null;
   totals: EventTotals;
+  // Deep link to this run's Apollo sequence. Shown in the "Live stats available
+  // in Apollo" note that replaces the stat tiles until real CampaignEvent rows
+  // exist (the stats aren't wired yet, so the tiles would only ever read zero).
+  apolloSequenceUrl: string;
   domains: ReadonlyArray<DomainSlot>;
 };
 
@@ -75,6 +79,7 @@ function CampaignRow({
   dayNumber,
   sequenceDays,
   totals,
+  apolloSequenceUrl,
   domains,
   onDismissed,
 }: CampaignRowProps & { onDismissed: (runId: string) => void }) {
@@ -126,29 +131,45 @@ function CampaignRow({
           Enrolled {startedLabel} · Sequence {sequenceName}
         </p>
 
-        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs">
-          <Metric label="Sent" value={totals.sent.toString()} />
-          <Metric
-            label="Opened"
-            value={`${totals.opened.toString()} · ${formatPct(openedPct)}`}
-          />
-          <Metric
-            label="Replied"
-            value={`${totals.replied.toString()} · ${formatPct(repliedPct)}`}
-            accent="brand"
-          />
-          <Metric
-            label="Bounced"
-            value={`${totals.bounced.toString()} · ${formatPct(bouncedPct)}`}
-            accent={bouncedPct > BOUNCE_RED_THRESHOLD ? "red" : undefined}
-          />
-          <Metric label="Unsub" value={totals.unsub.toString()} />
-          {hasActivity ? null : (
-            <span className="text-[11px] italic text-court-fg-dim">
-              awaiting Apollo activity
-            </span>
-          )}
-        </div>
+        {hasActivity ? (
+          // Real CampaignEvent rows exist (when the ingestion is wired): show
+          // the live stat tiles. Until then this branch never runs.
+          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs">
+            <Metric label="Sent" value={totals.sent.toString()} />
+            <Metric
+              label="Opened"
+              value={`${totals.opened.toString()} · ${formatPct(openedPct)}`}
+            />
+            <Metric
+              label="Replied"
+              value={`${totals.replied.toString()} · ${formatPct(repliedPct)}`}
+              accent="brand"
+            />
+            <Metric
+              label="Bounced"
+              value={`${totals.bounced.toString()} · ${formatPct(bouncedPct)}`}
+              accent={bouncedPct > BOUNCE_RED_THRESHOLD ? "red" : undefined}
+            />
+            <Metric label="Unsub" value={totals.unsub.toString()} />
+          </div>
+        ) : (
+          // No real CampaignEvent rows: the SENT/OPENED/REPLIED/BOUNCED/UNSUB
+          // ingestion isn't wired yet, so the tiles would only ever read zero.
+          // Hide them and point to Apollo for real stats — do NOT invent numbers.
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-court-fg-muted">Live stats available in Apollo</span>
+            <a
+              href={apolloSequenceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="pointer-events-auto inline-flex items-center gap-1 font-medium text-court-brand-dark hover:underline"
+            >
+              Open in Apollo
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        )}
       </div>
 
       <div className="relative z-10 flex items-center gap-3">
