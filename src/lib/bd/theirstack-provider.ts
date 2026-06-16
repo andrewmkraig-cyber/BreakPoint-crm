@@ -27,12 +27,17 @@ const THEIRSTACK_TIMEOUT_MS = 25_000;
 // We deliberately do NOT send posted_at_gte: it is a date-only field, so the
 // full ISO timestamp from postedSince 422s on every run after the first.
 const DEFAULT_POSTED_MAX_AGE_DAYS = 7;
-// Hard ceiling on the recency window. The window widens to "days since the
-// last successful run" so a normal cadence never misses a posting, but a
-// long gap between successful runs (sparse runs, an outage) would otherwise
-// pull the window wide open and surface very old postings. Cap it at 14 days
-// so the worst case is still recent.
-const MAX_POSTED_MAX_AGE_DAYS = 14;
+// Hard ceiling on the recency window for the DEFAULT (no saved-search) query.
+// The window widens to "days since the last successful run" so a normal
+// cadence never misses a posting, but a long gap between successful runs
+// (sparse runs, an outage) would otherwise pull the window wide open and
+// surface very old postings. Cap it at 30 days so the worst case is still
+// reasonably recent.
+// NOTE: this cap applies ONLY to the default query's computed window. A
+// TheirStack saved search's OWN stored recency window is honored verbatim
+// (see fetchSavedSearchBody) and is NOT clamped here -- the whole point of
+// search-by-id is that TheirStack defines the search.
+const MAX_POSTED_MAX_AGE_DAYS = 30;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 // Fixed public-accounting filter set, validated live against the
@@ -123,16 +128,20 @@ function companyObjectField(
 
 export class TheirStackProvider implements JobDiscoveryProvider {
   // Fetch a saved search by id and return a jobs-search body that replays its
-  // stored filters. We force `posted_at_max_age_days` (the mandatory recency
-  // filter, so the replay can never 422) and our own `limit`, and clear
-  // blur/total flags, but otherwise reuse the saved search's filters verbatim.
+  // stored filters. We HONOR the saved search's OWN recency window (its stored
+  // posted_at_max_age_days / posted_at_gte / posted_at_lte) verbatim -- the
+  // whole point of search-by-id is that TheirStack defines the search, so a
+  // "last 15 days" saved search really looks back 15 days. Only when the saved
+  // search stores NO recency filter at all do we inject the fallback
+  // posted_at_max_age_days, so the replay can never 422 on the mandatory-filter
+  // rule. We always force our own `limit` and clear blur/total flags.
   // A non-"jobs" saved search (a companies search) or a missing body is a
   // recruiter misconfiguration, so we throw a clear error rather than silently
   // running the wrong thing — the caller marks the run FAILED with this message.
   private async fetchSavedSearchBody(
     apiKey: string,
     savedSearchId: string,
-    postedMaxAgeDays: number,
+    fallbackPostedMaxAgeDays: number,
     maxResults: number,
   ): Promise<Record<string, unknown>> {
     const controller = new AbortController();
@@ -177,16 +186,29 @@ export class TheirStackProvider implements JobDiscoveryProvider {
       );
     }
 
-    return {
-      ...(json.body as Record<string, unknown>),
-      // Force these regardless of what the saved search stored, so the replay
-      // always satisfies the mandatory-filter rule, stays within our result
-      // budget, and returns unblurred company data we can act on.
-      posted_at_max_age_days: postedMaxAgeDays,
+    const stored = json.body as Record<string, unknown>;
+    // The saved search defines its own recency window when it stores any of
+    // these date filters; honor it verbatim (no clamp). Only inject our
+    // fallback window when the saved search has none, so a replay ALWAYS
+    // carries a recency filter and can never 422 on TheirStack's
+    // mandatory-filter rule.
+    const hasOwnRecencyFilter =
+      stored.posted_at_max_age_days != null ||
+      stored.posted_at_gte != null ||
+      stored.posted_at_lte != null;
+
+    const replay: Record<string, unknown> = {
+      ...stored,
+      // Force our own result budget + unblurred company data we can act on,
+      // regardless of what the saved search stored.
       limit: maxResults,
       blur_company_data: false,
       include_total_results: false,
     };
+    if (!hasOwnRecencyFilter) {
+      replay.posted_at_max_age_days = fallbackPostedMaxAgeDays;
+    }
+    return replay;
   }
 
   async discoverJobs(params: DiscoveryParams): Promise<DiscoveredCompany[]> {
@@ -215,9 +237,11 @@ export class TheirStackProvider implements JobDiscoveryProvider {
 
     // Two ways to build the jobs-search body:
     //  (A) Replay a TheirStack saved search the recruiter pasted: fetch its
-    //      stored filters and reuse them verbatim, only forcing the mandatory
-    //      recency filter + our result limit so it can never 422 or overrun.
-    //  (B) Default: the proven hardcoded public-accounting title filter set.
+    //      stored filters and reuse them verbatim -- INCLUDING its own recency
+    //      window -- forcing only our result limit (and a fallback recency
+    //      window if the saved search stored none, so it can never 422).
+    //  (B) Default: the proven hardcoded public-accounting title filter set,
+    //      with the last-run-based recency window capped at MAX_POSTED_MAX_AGE_DAYS.
     let body: Record<string, unknown>;
     if (params.theirstackSavedSearchId) {
       body = await this.fetchSavedSearchBody(
