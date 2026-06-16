@@ -9,7 +9,6 @@ import { cn } from "@/lib/utils";
 import { archiveBDRun } from "./actions";
 
 const BOUNCE_RED_THRESHOLD = 0.08;
-const SEQUENCE_DAYS = 7;
 
 type EventTotals = {
   sent: number;
@@ -32,7 +31,10 @@ export type CampaignRowProps = {
   companyNames: ReadonlyArray<string>;
   sequenceName: string;
   startedLabel: string;
-  dayNumber: number;
+  // Day-of-cycle counter. Both null when the run's Apollo sequence can't be
+  // resolved — the row then hides the counter rather than showing a fake one.
+  dayNumber: number | null;
+  sequenceDays: number | null;
   totals: EventTotals;
   domains: ReadonlyArray<DomainSlot>;
 };
@@ -71,6 +73,7 @@ function CampaignRow({
   sequenceName,
   startedLabel,
   dayNumber,
+  sequenceDays,
   totals,
   domains,
   onDismissed,
@@ -109,9 +112,11 @@ function CampaignRow({
           <span className="inline-flex items-center rounded-md bg-court-surface-subtle px-2 py-0.5 text-[11px] font-medium text-court-fg-muted">
             {verticalName}
           </span>
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-court-fg-dim">
-            Day {dayNumber} of {SEQUENCE_DAYS}
-          </span>
+          {dayNumber !== null && sequenceDays !== null ? (
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-court-fg-dim">
+              Day {dayNumber} of {sequenceDays}
+            </span>
+          ) : null}
         </div>
         <p className="mt-1 truncate text-sm font-semibold text-court-fg">{title}</p>
         {companyLabel ? (
