@@ -124,7 +124,7 @@ export async function getClientsForOrg(): Promise<ClientListRow[]> {
   // never re-syncs on existing ones). One groupBy across the tenant
   // keyed by (clientId, isOpen); tenant-scoped per Rule 8.
   //
-  // Legacy RecruiterFlow-imported jobs (legacyRfId != null) are EXCLUDED
+  // Legacy RF-imported jobs (legacyRfId != null) are EXCLUDED
   // from the count. The card should reflect only what is currently a real
   // Ace-native job for the client - imported RF rows carry a frozen
   // is_open snapshot that drifts from the live Ace lifecycle (an RF job

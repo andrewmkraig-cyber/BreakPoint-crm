@@ -313,12 +313,12 @@ export default async function JobDetailPage({
 
   // Client slug for the "Client profile" button. Prefer the Client row's
   // legacyRfId (back-compat URLs); fall back to cuid for Ace-native.
-  // Also pulls customFields so the Overview tab can derive fee % (no
-  // dedicated column — same parse the /clients list uses).
+  // Also pulls feePct (canonical) + customFields (legacy fallback) so the
+  // Overview tab can show the client's fee % on the job.
   const clientRow = jobRow.clientId
     ? await prisma.client.findUnique({
         where: { id: jobRow.clientId },
-        select: { id: true, legacyRfId: true, customFields: true },
+        select: { id: true, legacyRfId: true, feePct: true, customFields: true },
       })
     : null;
   const clientSlug = clientRow
@@ -326,7 +326,14 @@ export default async function JobDetailPage({
       ? String(clientRow.legacyRfId)
       : clientRow.id
     : null;
-  const clientFeePct = extractFeePctFromCustomFields(clientRow?.customFields ?? null);
+  // Canonical-first: Client.feePct is the column the signed-agreement
+  // auto-fill + the client Overview edit write to. The legacy RF
+  // "Avg Fee %" custom field is fallback-only for unbackfilled imports.
+  // The job inherits the client's fee live, so every current and future
+  // job shows it the moment the client has one (no per-job snapshot to
+  // drift). Mirrors the candidate-profile placement read in local-profile.tsx.
+  const clientFeePct =
+    clientRow?.feePct ?? extractFeePctFromCustomFields(clientRow?.customFields ?? null);
 
   // Tab selection from ?tab=. Default Overview so the recruiter lands
   // on a snapshot + quick actions before drilling into a specific surface.
