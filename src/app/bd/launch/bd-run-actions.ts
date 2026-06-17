@@ -50,8 +50,21 @@ export type SerializedOutreachHistory = {
 
 export async function getPendingBDRuns(): Promise<PendingBDRun[]> {
   const org = await getCurrentOrg();
+  // Surface runs AWAITING_APPROVAL, plus any STUCK in ENROLLING — one whose
+  // enroll was killed before COMPLETE (approvedAt older than the 300s function
+  // ceiling + buffer). A run that is actively enrolling right now (recent
+  // approvedAt) is deliberately excluded so it doesn't flicker back into the
+  // queue mid-run; only genuinely stranded runs reappear, and re-approving one
+  // is safe because enroll is idempotent.
+  const stuckBefore = new Date(Date.now() - 6 * 60 * 1000);
   const rows = await prisma.bDRun.findMany({
-    where: { organizationId: org.id, status: "AWAITING_APPROVAL" },
+    where: {
+      organizationId: org.id,
+      OR: [
+        { status: "AWAITING_APPROVAL" },
+        { status: "ENROLLING", approvedAt: { lt: stuckBefore } },
+      ],
+    },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -197,7 +210,11 @@ export async function approveBDRun(
   if (!existing || existing.organizationId !== org.id) {
     return { success: false, error: "Run not found" };
   }
-  if (existing.status !== "AWAITING_APPROVAL") {
+  // Accept a run AWAITING_APPROVAL (first approve) OR one stuck in ENROLLING
+  // (a prior enroll that timed out before COMPLETE). Re-running an ENROLLING
+  // run is safe because the Apollo enroll is now idempotent — contacts already
+  // in the sequence are skipped, so the retry only finishes the remainder.
+  if (existing.status !== "AWAITING_APPROVAL" && existing.status !== "ENROLLING") {
     return { success: false, error: `Run is ${existing.status}, not awaiting approval` };
   }
 
@@ -210,8 +227,12 @@ export async function approveBDRun(
     }
   }
 
-  const updateData: { status: "APPROVED"; approvedAt: Date; discoveredPayload?: unknown } = {
-    status: "APPROVED",
+  // Mark the run ENROLLING (in-progress) rather than APPROVED, so a run that
+  // gets killed mid-enroll stays distinguishable from a finished one and can
+  // resurface for an idempotent retry. enrollCompaniesInApollo flips it to
+  // COMPLETE when it finishes.
+  const updateData: { status: "ENROLLING"; approvedAt: Date; discoveredPayload?: unknown } = {
+    status: "ENROLLING",
     approvedAt: new Date(),
   };
   if (Object.keys(normalizedCurated).length > 0) {

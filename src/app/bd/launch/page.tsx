@@ -20,11 +20,12 @@ export const dynamic = "force-dynamic";
 // process up to globalDailyCap (~80) contacts, each doing reveal + create +
 // add_contact_ids (3 sequential Apollo round-trips) plus per-company
 // domain-resolve + people-search — potentially hundreds of sequential network
-// calls, far past Vercel's ~10-15s default. Raise to 60s (this plan's max;
-// Vercel Pro permits up to 300). Each contact is enrolled atomically (create
-// and add_contact_ids fire back-to-back in apolloEnrollContact), so even a
-// hard cutoff can strand at most one in-flight contact, never a batch.
-export const maxDuration = 60;
+// calls. At ~2s/contact an 80-contact batch is ~160s, which blew the old 60s
+// limit and got killed mid-run. Raised to 300 (Vercel Pro max) so realistic
+// batches finish. Defense in depth: enrollCompaniesInApollo now records each
+// contact incrementally (a cutoff loses no recorded work) and the Apollo
+// enroll is idempotent (a re-run skips contacts already in the sequence).
+export const maxDuration = 300;
 
 // Default daily contact cap when neither the SavedSearch nor BdOrgConfig
 // overrides it. Mirrors the workflow note in the BD handoff: ~80

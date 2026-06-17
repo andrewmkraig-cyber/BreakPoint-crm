@@ -219,7 +219,38 @@ export function cityOnly(location: string): string {
 }
 
 // Apollo's contact create/update response wraps the record under `contact`.
-type ApolloContactResponse = { contact?: { id?: string } };
+// With run_dedupe:true a RETURNING contact comes back with its existing
+// sequence memberships, which we use for idempotency: `emailer_campaign_ids`
+// (flat id list) and/or `contact_campaign_statuses` (per-campaign status rows).
+type ApolloContactResponse = {
+  contact?: {
+    id?: string;
+    emailer_campaign_ids?: string[];
+    contact_campaign_statuses?: Array<{ emailer_campaign_id?: string; status?: string }>;
+  };
+};
+
+// True when the contact is ALREADY associated with `sequenceId` in Apollo, so
+// re-adding it would double-enroll. Conservative: any presence (in either
+// shape) counts, so a re-run never re-enrolls a contact already in the
+// sequence. This is the idempotency guard for the timeout-retry path.
+function contactAlreadyInSequence(
+  contact: ApolloContactResponse["contact"],
+  sequenceId: string,
+): boolean {
+  if (!contact) return false;
+  const ids = Array.isArray(contact.emailer_campaign_ids) ? contact.emailer_campaign_ids : [];
+  if (ids.includes(sequenceId)) return true;
+  const statuses = Array.isArray(contact.contact_campaign_statuses)
+    ? contact.contact_campaign_statuses
+    : [];
+  return statuses.some((s) => s?.emailer_campaign_id === sequenceId);
+}
+
+// Outcome of one enroll attempt. "enrolled" = a NEW add to the sequence;
+// "already" = the contact was already in the sequence (idempotent skip, not a
+// new enroll, must not count against the cap); "failed" = the call errored.
+export type EnrollOutcome = "enrolled" | "already" | "failed";
 
 // Resolves the sending mailbox id required by the add_contact_ids
 // (sequence enrollment) endpoint. Prefers the APOLLO_EMAIL_ACCOUNT_ID
@@ -321,7 +352,7 @@ export async function apolloEnrollContact(
   // behavior); multiple ids enable Apollo's mailbox rotation across them.
   emailAccountIds: string[],
   payload: EnrollPayload,
-): Promise<boolean> {
+): Promise<EnrollOutcome> {
   const who = `${payload.organization_name}/${payload.first_name ?? "—"} ${payload.last_name ?? ""}`;
   try {
     console.log(`[Apollo] typed_custom_fields →`, JSON.stringify(payload.typed_custom_fields));
@@ -345,7 +376,7 @@ export async function apolloEnrollContact(
       console.warn(
         `[Apollo] create contact failed (${who}): ${createRes.status} ${createRes.statusText} ${createRawText.slice(0, 200)}`,
       );
-      return false;
+      return "failed";
     }
     const created = JSON.parse(createRawText) as ApolloContactResponse;
     const contactId = created.contact?.id;
@@ -354,7 +385,18 @@ export async function apolloEnrollContact(
     );
     if (!contactId) {
       console.warn(`[Apollo] create contact returned no contact id (${who})`);
-      return false;
+      return "failed";
+    }
+
+    // Idempotency: if run_dedupe returned an EXISTING contact already in this
+    // sequence, do NOT call add_contact_ids again — that would double-enroll.
+    // This is what lets a timed-out batch be re-run safely: contacts enrolled
+    // on the first pass are skipped on the retry.
+    if (contactAlreadyInSequence(created.contact, sequenceId)) {
+      console.log(
+        `[Apollo] idempotent skip (${who}, contactId=${contactId}): already in sequence ${sequenceId}`,
+      );
+      return "already";
     }
 
     // 2) Enroll the contact into the sequence. This is the call that
@@ -398,7 +440,7 @@ export async function apolloEnrollContact(
       console.warn(
         `[Apollo] sequence enroll failed (${who}, contactId=${contactId}): ${enrollRes.status} ${enrollRes.statusText} ${enrollRawText.slice(0, 200)}`,
       );
-      return false;
+      return "failed";
     }
     // Surface a PHANTOM success: Apollo can return 2xx while adding ZERO
     // contacts to the sequence (an invalid/Disabled sending mailbox for this
@@ -412,9 +454,15 @@ export async function apolloEnrollContact(
     try {
       const enrollBody = JSON.parse(enrollRawText) as { contacts?: unknown[] };
       if (Array.isArray(enrollBody.contacts) && enrollBody.contacts.length === 0) {
+        // 2xx with an empty `contacts` array = nothing was added. The common
+        // cause is the contact already being terminal/active in the sequence
+        // (which our membership check above usually catches first); a Disabled
+        // sending mailbox can also cause it. Either way it is NOT a new enroll,
+        // so report "already" rather than counting a phantom success.
         console.warn(
-          `[Apollo] sequence enroll returned 2xx but added ZERO contacts (${who}, contactId=${contactId}) — the sequence is NOT populated. Check the sending mailbox is valid for this campaign and the contact is not already terminal in it. Body=${enrollRawText.slice(0, 400)}`,
+          `[Apollo] sequence enroll returned 2xx but added ZERO contacts (${who}, contactId=${contactId}) — treating as already-enrolled / not added. Check the sending mailbox is valid for this campaign. Body=${enrollRawText.slice(0, 400)}`,
         );
+        return "already";
       }
     } catch {
       // Body wasn't JSON we recognize; the full raw body was already logged above.
@@ -422,13 +470,13 @@ export async function apolloEnrollContact(
     console.log(
       `[Apollo] sequence enroll returned ok (${who}, contactId=${contactId})`,
     );
-    return true;
+    return "enrolled";
   } catch (err) {
     console.warn(
       `[Apollo] enroll contact threw (${who}):`,
       err instanceof Error ? err.message : err,
     );
-    return false;
+    return "failed";
   }
 }
 
@@ -656,6 +704,9 @@ export async function enrollCompaniesInApollo(
   );
 
   let enrolledThisRun = 0;
+  // Contacts skipped because they were already in the sequence (idempotency).
+  // Tracked for the activity record; never counted as new enrolls.
+  let alreadyInSequence = 0;
   const skipped: SkippedCompany[] = [];
 
   for (const c of companies) {
@@ -787,7 +838,7 @@ export async function enrollCompaniesInApollo(
       }
       revealsSucceeded += 1;
 
-      const ok = await apolloEnrollContact(apiKey, sequenceId, emailAccountIds, {
+      const outcome = await apolloEnrollContact(apiKey, sequenceId, emailAccountIds, {
         first_name: p.first_name ?? undefined,
         last_name: p.last_name ?? undefined,
         email: revealedEmail,
@@ -795,15 +846,37 @@ export async function enrollCompaniesInApollo(
         organization_name: p.organization_name ?? c.companyName,
         typed_custom_fields: typedCustomFields,
       });
-      if (ok) {
+      const displayName =
+        [p.first_name, p.last_name].filter(Boolean).join(" ") ||
+        p.name ||
+        "(unnamed)";
+      if (outcome === "enrolled") {
         enrolledThisRun += 1;
         remaining -= 1;
-        const displayName =
-          [p.first_name, p.last_name].filter(Boolean).join(" ") ||
-          p.name ||
-          "(unnamed)";
+        // Persist progress INCREMENTALLY so a mid-batch timeout still records
+        // the contacts already pushed to Apollo (the old code only wrote
+        // enrolledCount once at the very end, so a 60s kill lost the count).
+        // Wrapped so a transient DB blip never aborts the enroll loop.
+        try {
+          await prisma.bDRun.update({
+            where: { id: run.id },
+            data: { enrolledCount: { increment: 1 } },
+          });
+        } catch (incErr) {
+          console.warn(
+            `[Apollo] runId=${run.id} incremental enrolledCount update failed:`,
+            incErr instanceof Error ? incErr.message : incErr,
+          );
+        }
         console.log(
           `[Apollo] enrolled ${displayName}: title="${p.title ?? "(none)"}" company="${c.companyName}"`,
+        );
+      } else if (outcome === "already") {
+        // Idempotent skip — already in the sequence. Does NOT count as a new
+        // enroll and does NOT consume the daily cap, so retries converge.
+        alreadyInSequence += 1;
+        console.log(
+          `[Apollo] already-enrolled (skipped) ${displayName}: company="${c.companyName}"`,
         );
       }
     }
@@ -829,19 +902,22 @@ export async function enrollCompaniesInApollo(
     }
   }
 
+  // Only the terminal status + timestamp here. enrolledCount is NOT re-set:
+  // it was incremented per-contact above, so a re-run (which skips already-
+  // enrolled contacts) keeps accumulating onto the prior partial count instead
+  // of an absolute SET clobbering it.
   await prisma.bDRun.update({
     where: { id: run.id },
     data: {
       status: "COMPLETE",
-      enrolledCount: enrolledThisRun,
       completedAt: new Date(),
     },
   });
 
   // Record the run outcome whenever there's anything to report — enrolled
-  // contacts and/or skipped companies (with reasons) — so the skips are
-  // queryable after the fact instead of vanishing.
-  if (enrolledThisRun > 0 || skipped.length > 0) {
+  // contacts, idempotent skips, and/or skipped companies (with reasons) — so
+  // the skips are queryable after the fact instead of vanishing.
+  if (enrolledThisRun > 0 || alreadyInSequence > 0 || skipped.length > 0) {
     await prisma.bDActivity.create({
       data: {
         organizationId: orgId,
@@ -849,6 +925,7 @@ export async function enrollCompaniesInApollo(
         kind: "ENROLL",
         metadata: {
           contacts: enrolledThisRun,
+          alreadyInSequence,
           sequenceId,
           skipped,
         },

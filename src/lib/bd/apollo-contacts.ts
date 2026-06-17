@@ -59,10 +59,23 @@ export async function apolloResolveDomainByName(companyName: string): Promise<st
       return "";
     }
     const data = (await res.json().catch(() => ({}))) as {
-      organizations?: Array<{ primary_domain?: string; website_url?: string }>;
-      accounts?: Array<{ primary_domain?: string; website_url?: string }>;
+      organizations?: Array<{ name?: string; primary_domain?: string; website_url?: string }>;
+      accounts?: Array<{ name?: string; primary_domain?: string; website_url?: string }>;
     };
-    const hit = (data.organizations ?? [])[0] ?? (data.accounts ?? [])[0];
+    // Take the top FIVE candidates (not just top-1) and prefer the org whose
+    // name actually matches the query. "Armanino" fuzzy-matches both Armanino
+    // LLP (the CPA firm, armanino.com) AND Armanino Foods (armaninofoods.com);
+    // blindly trusting Apollo's top hit picked the wrong org and enrolled zero
+    // CPA decision-makers. Exact-name match wins, then a name that starts with
+    // the query, then the top hit as a last resort.
+    const candidates = [...(data.organizations ?? []), ...(data.accounts ?? [])];
+    if (candidates.length === 0) return "";
+    const target = name.toLowerCase().replace(/\s+/g, " ").trim();
+    const norm = (s: string | undefined) => (s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+    const hit =
+      candidates.find((c) => norm(c.name) === target) ??
+      candidates.find((c) => norm(c.name).startsWith(target)) ??
+      candidates[0];
     const raw = hit?.primary_domain || hit?.website_url || "";
     return normalizeDomain(raw);
   } catch (err) {
@@ -71,6 +84,49 @@ export async function apolloResolveDomainByName(companyName: string): Promise<st
       err instanceof Error ? err.message : err,
     );
     return "";
+  }
+}
+
+// Resolve the EXACT Apollo organization for a domain, returning its org id.
+// Apollo's people-search `q_organization_domains_list` filter frequently
+// under-matches large firms (registered-domain / multi-domain mismatches), so
+// a 2,700-person firm can return zero people even though decision-makers exist.
+// Matching the org by domain first and then searching people by that precise
+// `organization_ids` is the reliable path. Best-effort: null when the key is
+// unset, the API rejects, or no org matched. Key in the X-Api-Key header.
+export async function apolloResolveOrgByDomain(
+  domain: string,
+  apiKey: string,
+): Promise<{ id: string; primaryDomain: string } | null> {
+  const norm = normalizeDomain(domain);
+  if (!norm) return null;
+  try {
+    const res = await fetch(
+      `${APOLLO_BASE}/api/v1/organizations/enrich?domain=${encodeURIComponent(norm)}`,
+      {
+        method: "GET",
+        headers: { "X-Api-Key": apiKey, Accept: "application/json" },
+        cache: "no-store",
+      },
+    );
+    if (!res.ok) {
+      console.warn(
+        `[Apollo org] domain→org enrich failed for "${norm}": ${res.status} ${res.statusText}`,
+      );
+      return null;
+    }
+    const data = (await res.json().catch(() => ({}))) as {
+      organization?: { id?: string; primary_domain?: string };
+    };
+    const org = data.organization;
+    if (!org?.id) return null;
+    return { id: org.id, primaryDomain: normalizeDomain(org.primary_domain ?? norm) };
+  } catch (err) {
+    console.warn(
+      `[Apollo org] domain→org enrich threw for "${norm}":`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
   }
 }
 
@@ -208,25 +264,34 @@ export async function fetchApolloContacts(
 
   const targeting = await loadTargeting(orgId, verticalId);
   const cap = maxContacts && maxContacts > 0 ? maxContacts : targeting.maxPerFirm;
+  const personTitles = [
+    ...targeting.primaryTitles,
+    ...targeting.smallFirmFallbackTitles,
+    ...targeting.practiceSpecificTitles,
+  ];
 
-  try {
+  // One people-search call against a given org filter. `orgFilter` is either
+  // { q_organization_domains_list: [domain] } (the domain-string filter, which
+  // can under-match large firms) or { organization_ids: [id] } (the precise
+  // org-id filter we escalate to). Returns the raw people array, or null on a
+  // hard API error so the caller can distinguish "API failed" from "zero".
+  async function searchPeople(
+    orgFilter: Record<string, unknown>,
+    label: string,
+  ): Promise<ApolloPersonRaw[] | null> {
     const res = await fetch(`${APOLLO_BASE}/api/v1/mixed_people/api_search`, {
       method: "POST",
       headers: {
-        "X-Api-Key": apiKey,
+        "X-Api-Key": apiKey as string,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
       body: JSON.stringify({
         // Apollo People Search filters by company domain via
-        // q_organization_domains_list[]. The legacy `organization_domains`
-        // key is rejected with 422 Unprocessable Entity.
-        q_organization_domains_list: [normDomain],
-        person_titles: [
-          ...targeting.primaryTitles,
-          ...targeting.smallFirmFallbackTitles,
-          ...targeting.practiceSpecificTitles,
-        ],
+        // q_organization_domains_list[] OR by precise organization_ids[].
+        // The legacy `organization_domains` key is rejected with 422.
+        ...orgFilter,
+        person_titles: personTitles,
         // Bias the result set toward people whose email Apollo has already
         // verified, so the downstream people/match reveal yields a usable
         // address more often instead of locked/guessed ones.
@@ -237,21 +302,24 @@ export async function fetchApolloContacts(
     });
     if (!res.ok) {
       // Print the full Apollo response body (not just the status) so a 422
-      // surfaces exactly which filter/key it rejected instead of an opaque
-      // "422 Unprocessable Entity".
+      // surfaces exactly which filter/key it rejected.
       const body = await res.text().catch(() => "");
       console.warn(
-        `[Apollo contacts] search failed for domain="${normDomain}" org=${orgId}: ${res.status} ${res.statusText} ${body}`,
+        `[Apollo contacts] ${label} search failed for domain="${normDomain}" org=${orgId}: ${res.status} ${res.statusText} ${body}`,
       );
-      return [];
+      return null;
     }
     const data = (await res.json().catch(() => ({}))) as {
       people?: ApolloPersonRaw[];
       contacts?: ApolloPersonRaw[];
     };
     const raw = data.people ?? data.contacts ?? [];
-    if (!Array.isArray(raw)) return [];
+    return Array.isArray(raw) ? raw : [];
+  }
 
+  // Tier + cap the raw people into the final decision-maker list. Pure;
+  // identical logic for both the domain-string and org-id search results.
+  function composeFromRaw(raw: ApolloPersonRaw[]): ApolloContact[] {
     const primary: ApolloContact[] = [];
     const smallFirm: ApolloContact[] = [];
     const practiceSpecific: ApolloContact[] = [];
@@ -278,7 +346,7 @@ export async function fetchApolloContacts(
     }
 
     // Compose final list under the per-firm cap.
-    // 1. Prefer primary/HR/ops first — take up to targeting.maxPerFirm.
+    // 1. Prefer primary/HR/ops first — take up to the cap.
     // 2. Small-firm fallback ONLY when no primary contact was returned.
     // 3. Practice-specific is capped to MAX_PRACTICE_SPECIFIC_PER_FIRM
     //    and only fills remaining slots after primary/small-firm.
@@ -302,6 +370,41 @@ export async function fetchApolloContacts(
       practiceSpecificAdded += 1;
     }
     return out;
+  }
+
+  try {
+    // 1) Common path: domain-string people search (no extra credits).
+    const rawByDomain = await searchPeople(
+      { q_organization_domains_list: [normDomain] },
+      "domain",
+    );
+    if (rawByDomain === null) return [];
+    const byDomain = composeFromRaw(rawByDomain);
+    if (byDomain.length > 0) return byDomain;
+
+    // 2) Escalate ONLY when the domain-string search produced zero
+    //    decision-makers — the large-firm under-match symptom (e.g. Armanino).
+    //    Resolve the exact Apollo org by domain and re-search by org id, which
+    //    matches the firm precisely instead of relying on the domain filter.
+    const org = await apolloResolveOrgByDomain(normDomain, apiKey);
+    if (!org?.id) {
+      console.log(
+        `[Apollo contacts] domain="${normDomain}" org=${orgId}: domain search returned 0 and no org id resolved — no escalation possible`,
+      );
+      return [];
+    }
+    if (org.primaryDomain && org.primaryDomain !== normDomain) {
+      console.warn(
+        `[Apollo contacts] domain="${normDomain}" resolved to Apollo org id=${org.id} whose primary_domain="${org.primaryDomain}" differs — searching by org id`,
+      );
+    } else {
+      console.log(
+        `[Apollo contacts] domain="${normDomain}" escalating to org-id search (orgId=${org.id})`,
+      );
+    }
+    const rawByOrgId = await searchPeople({ organization_ids: [org.id] }, "org-id");
+    if (rawByOrgId === null) return [];
+    return composeFromRaw(rawByOrgId);
   } catch (err) {
     console.warn(
       `[Apollo contacts] threw for domain="${normDomain}" org=${orgId}:`,

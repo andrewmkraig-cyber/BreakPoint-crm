@@ -38,12 +38,13 @@ export default async function CampaignsPage() {
     where: {
       organizationId: org.id,
       // Active Campaigns shows only runs that became real enrolled
-      // campaigns. APPROVED = user clicked Approve & Enroll; COMPLETE =
+      // campaigns. ENROLLING = user clicked Approve & Enroll and the enroll is
+      // in progress (or was; legacy APPROVED kept for older rows); COMPLETE =
       // enrollment finished. Everything else (QUEUED / RUNNING / FAILED /
       // AWAITING_APPROVAL / DISMISSED) is pre-campaign or junk and is
       // surfaced elsewhere: AWAITING_APPROVAL lives in Today's Batch, and
       // history is read from BDActivity, not BDRun.status.
-      status: { in: ["APPROVED", "COMPLETE"] },
+      status: { in: ["APPROVED", "ENROLLING", "COMPLETE"] },
     },
     orderBy: { createdAt: "desc" },
     take: 100,
