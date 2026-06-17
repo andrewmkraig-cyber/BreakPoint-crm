@@ -679,6 +679,12 @@ function ReadPhone({ phone }: { phone: string | null }) {
   return (
     <a
       href={`tel:${phone}`}
+      // target="_top" so the tel: handoff fires against the top window
+      // instead of navigating the candidates split-view iframe to a
+      // tel: URL it can't render (which left the right pane blank with
+      // a broken-image glyph). The OS still catches the tel: and routes
+      // it to Quo Desktop; the embedded profile pane stays put.
+      target="_top"
       className="inline-flex items-center gap-1 text-court-fg hover:text-brand-dark hover:underline"
     >
       <PhoneIcon className="h-3 w-3" />
