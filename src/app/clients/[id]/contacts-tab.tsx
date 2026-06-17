@@ -8,9 +8,19 @@ import { addContact, updateContact } from "@/app/clients/[id]/actions";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input, Textarea } from "@/components/ui/input";
+import { Input, Select, Textarea } from "@/components/ui/input";
 
-export type ContactPhone = { number: string; extension: string };
+// Phone-type labels offered in the per-row picker. New rows default to the
+// first entry. Legacy phones imported without a type carry "" and render
+// without a tag. Keep this list in sync with the server zip in actions.ts.
+export const PHONE_TYPES = ["Office", "Mobile", "Direct", "Other"] as const;
+export const DEFAULT_PHONE_TYPE = PHONE_TYPES[0];
+
+export type ContactPhone = { number: string; extension: string; type: string };
+
+function emptyPhone(): ContactPhone {
+  return { number: "", extension: "", type: DEFAULT_PHONE_TYPE };
+}
 
 export type ContactRow = {
   id: string;
@@ -64,11 +74,11 @@ export function ContactsTab({
   }, [canWrite, openAddForm]);
   const [editing, setEditing] = useState<ContactRow | null>(null);
   const [addEmails, setAddEmails] = useState<string[]>([""]);
-  const [addPhones, setAddPhones] = useState<ContactPhone[]>([{ number: "", extension: "" }]);
+  const [addPhones, setAddPhones] = useState<ContactPhone[]>([emptyPhone()]);
 
   function resetAddLists() {
     setAddEmails([""]);
-    setAddPhones([{ number: "", extension: "" }]);
+    setAddPhones([emptyPhone()]);
   }
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
@@ -135,6 +145,7 @@ export function ContactsTab({
               onChange={setAddPhones}
               numberName="phone_number"
               extName="phone_extension"
+              typeName="phone_type"
             />
             <Field label="LinkedIn URL" name="linkedin_profile" />
           </div>
@@ -188,7 +199,7 @@ export function ContactsTab({
                 const phoneList = c.phones.length
                   ? c.phones
                   : c.phone
-                    ? [{ number: c.phone, extension: c.extension }]
+                    ? [{ number: c.phone, extension: c.extension, type: "" }]
                     : [];
                 return (
                 <tr
@@ -273,6 +284,11 @@ export function ContactsTab({
                             )}
                           >
                             <PhoneIcon className="h-3 w-3 text-court-fg-muted" />
+                            {p.type && (
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-court-fg-muted">
+                                {p.type}
+                              </span>
+                            )}
                             {formatPhone(p.number)}
                             {p.extension && (
                               <span className="text-court-fg-muted">ext. {p.extension}</span>
@@ -328,8 +344,8 @@ function ContactEditor({
     contact.phones.length
       ? contact.phones
       : contact.phone
-        ? [{ number: contact.phone, extension: contact.extension }]
-        : [{ number: "", extension: "" }],
+        ? [{ number: contact.phone, extension: contact.extension, type: DEFAULT_PHONE_TYPE }]
+        : [emptyPhone()],
   );
   const [linkedin, setLinkedin] = useState(contact.linkedIn ?? "");
   const [notes, setNotes] = useState(contact.notes);
@@ -571,27 +587,48 @@ function EmailListField({
   );
 }
 
-// Repeatable phone + extension rows with a "+ Add phone" control. Same
-// FormData-vs-controlled behavior as EmailListField (numberName / extName).
+// Repeatable phone rows (type + number + extension) with a "+ Add phone"
+// control. Same FormData-vs-controlled behavior as EmailListField
+// (numberName / extName / typeName). Each row leads with a type picker
+// (Office / Mobile / Direct / Other) so callers know which line to dial.
 function PhoneListField({
   values,
   onChange,
   numberName,
   extName,
+  typeName,
 }: {
   values: ContactPhone[];
   onChange: (v: ContactPhone[]) => void;
   numberName?: string;
   extName?: string;
+  typeName?: string;
 }) {
-  const rows = values.length ? values : [{ number: "", extension: "" }];
+  const rows = values.length ? values : [emptyPhone()];
   return (
     <div className="block text-sm">
       <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Phone</span>
       <div className="mt-1 space-y-2">
         {rows.map((p, i) => (
           <div key={i} className="flex items-center gap-2">
-            <div className="grid flex-1 grid-cols-[1fr_auto] gap-2">
+            <div className="grid flex-1 grid-cols-[6.5rem_1fr_4.5rem] gap-2">
+              <Select
+                name={typeName}
+                value={p.type || DEFAULT_PHONE_TYPE}
+                onChange={(e) => {
+                  const next = rows.map((r) => ({ ...r }));
+                  next[i].type = e.target.value;
+                  onChange(next);
+                }}
+                containerClassName="min-w-0"
+                aria-label="Phone type"
+              >
+                {PHONE_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </Select>
               <Input
                 name={numberName}
                 value={p.number}
@@ -611,7 +648,7 @@ function PhoneListField({
                   onChange(next);
                 }}
                 placeholder="Ext."
-                containerClassName="w-20"
+                containerClassName="min-w-0"
               />
             </div>
             {i > 0 && (
@@ -628,7 +665,7 @@ function PhoneListField({
         ))}
         <button
           type="button"
-          onClick={() => onChange([...rows, { number: "", extension: "" }])}
+          onClick={() => onChange([...rows, emptyPhone()])}
           className="inline-flex items-center gap-1 rounded-md text-xs font-medium text-court-fg-muted transition hover:text-brand-dark"
         >
           <Plus className="h-3 w-3" /> Add phone

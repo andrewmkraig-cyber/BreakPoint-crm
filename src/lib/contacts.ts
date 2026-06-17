@@ -15,8 +15,8 @@ export type CreateContactInput = {
   firstName: string;
   lastName?: string | null;
   emails?: string[];
-  // Already-normalized phone entries (E.164 number + optional extension).
-  phones?: Array<{ number: string; extension?: string }>;
+  // Already-normalized phone entries (E.164 number + optional extension/type).
+  phones?: Array<{ number: string; extension?: string; type?: string }>;
   title?: string | null;
   linkedin?: string | null;
 };

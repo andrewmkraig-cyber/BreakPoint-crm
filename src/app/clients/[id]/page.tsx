@@ -851,16 +851,16 @@ function firstExtension(raw: unknown): string {
   return "";
 }
 
-// Maps the phoneNumbers JSON column to the full {number, extension} list,
-// preserving order (index 0 is primary). Tolerates the legacy string entry
-// shape that firstPhone also handles.
-function allPhones(raw: unknown): { number: string; extension: string }[] {
+// Maps the phoneNumbers JSON column to the full {number, extension, type}
+// list, preserving order (index 0 is primary). Tolerates the legacy string
+// entry shape that firstPhone also handles; legacy entries carry no type.
+function allPhones(raw: unknown): { number: string; extension: string; type: string }[] {
   if (!Array.isArray(raw)) return [];
-  const out: { number: string; extension: string }[] = [];
+  const out: { number: string; extension: string; type: string }[] = [];
   for (const entry of raw) {
     if (typeof entry === "string") {
       const number = normalizeToE164(entry);
-      if (number) out.push({ number, extension: "" });
+      if (number) out.push({ number, extension: "", type: "" });
       continue;
     }
     if (entry && typeof entry === "object" && "number" in (entry as object)) {
@@ -869,7 +869,12 @@ function allPhones(raw: unknown): { number: string; extension: string }[] {
         const normalized = normalizeToE164(number);
         if (!normalized) continue;
         const ext = (entry as { extension?: string | null }).extension;
-        out.push({ number: normalized, extension: typeof ext === "string" ? ext : "" });
+        const type = (entry as { type?: string | null }).type;
+        out.push({
+          number: normalized,
+          extension: typeof ext === "string" ? ext : "",
+          type: typeof type === "string" ? type : "",
+        });
       }
     }
   }

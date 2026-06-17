@@ -20,6 +20,19 @@ type ActionResult<T = void> =
   | { ok: false; error: string };
 
 
+// Builds the stored phone JSON entry, dropping an empty extension/type so a
+// blank field never persists as a "" key. `number` is required — callers
+// filter out entries without one before mapping through this.
+function phoneEntry(p: { number: string; extension?: string; type?: string }) {
+  const extension = (p.extension ?? "").trim();
+  const type = (p.type ?? "").trim();
+  return {
+    number: p.number,
+    ...(extension ? { extension } : {}),
+    ...(type ? { type } : {}),
+  };
+}
+
 async function requireUserId(): Promise<{ id: string; email: string } | null> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return null;
@@ -45,15 +58,19 @@ export async function addContact(clientCuid: string, formData: FormData): Promis
     .getAll("email")
     .map((v) => String(v).trim())
     .filter(Boolean);
+  // phone_type / phone_number / phone_extension arrive as parallel arrays,
+  // one entry per row, aligned by index (every row always submits all three).
   const phoneNumbersRaw = formData.getAll("phone_number").map((v) => String(v).trim());
   const phoneExtsRaw = formData.getAll("phone_extension").map((v) => String(v).trim());
+  const phoneTypesRaw = formData.getAll("phone_type").map((v) => String(v).trim());
   const phones = phoneNumbersRaw
     .map((number, i) => ({
       number: normalizeToE164(number) ?? "",
       extension: phoneExtsRaw[i] ?? "",
+      type: phoneTypesRaw[i] ?? "",
     }))
     .filter((p) => p.number)
-    .map((p) => (p.extension ? { number: p.number, extension: p.extension } : { number: p.number }));
+    .map(phoneEntry);
   const title = String(formData.get("current_designation") ?? "").trim();
   const linkedinRaw = String(formData.get("linkedin_profile") ?? "").trim();
   // Persist a fully-qualified LinkedIn URL so the rendered <a href>
@@ -93,7 +110,7 @@ export async function addContact(clientCuid: string, formData: FormData): Promis
   }
 }
 
-export type ContactPhone = { number: string; extension: string };
+export type ContactPhone = { number: string; extension: string; type: string };
 
 export type UpdateContactInput = {
   contactId: string;
@@ -150,9 +167,10 @@ export async function updateContact(input: UpdateContactInput): Promise<UpdateCo
       .map((p) => ({
         number: normalizeToE164(p.number) ?? "",
         extension: p.extension.trim(),
+        type: (p.type ?? "").trim(),
       }))
       .filter((p) => p.number)
-      .map((p) => (p.extension ? { number: p.number, extension: p.extension } : { number: p.number }));
+      .map(phoneEntry);
     const title = input.title.trim();
     const linkedin = linkedinUrlFrom(input.linkedin);
     const notes = input.notes.trim();
@@ -192,10 +210,18 @@ export async function updateContact(input: UpdateContactInput): Promise<UpdateCo
     }
 
     const phonesOut: ContactPhone[] = (() => {
-      const pn = updated.phoneNumbers as Array<{ number?: string | null; extension?: string | null }> | null;
+      const pn = updated.phoneNumbers as Array<{
+        number?: string | null;
+        extension?: string | null;
+        type?: string | null;
+      }> | null;
       if (!Array.isArray(pn)) return [];
       return pn
-        .map((p) => ({ number: (p?.number ?? "").trim(), extension: (p?.extension ?? "").trim() }))
+        .map((p) => ({
+          number: (p?.number ?? "").trim(),
+          extension: (p?.extension ?? "").trim(),
+          type: (p?.type ?? "").trim(),
+        }))
         .filter((p) => p.number);
     })();
     const emailsOut = Array.isArray(updated.emails)
