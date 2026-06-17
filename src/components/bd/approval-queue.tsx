@@ -305,7 +305,25 @@ export function ApprovalQueue({
   async function onApprove(runId: string, selectedIndexes: number[]) {
     setActionError(null);
     markPending(runId, true);
-    const res = await approveBDRun(runId, buildCuratedPayload(runId), selectedIndexes);
+    // The enroll runs synchronously inside this server action and can be heavy
+    // (up to ~80 contacts, each 3 sequential Apollo round-trips). If it times
+    // out / 504s at the function's maxDuration, the action resolves to
+    // `undefined` (or rejects) instead of the normal {success} object, and the
+    // old unguarded `res.success` read crashed the page (Sentry: "Cannot read
+    // properties of undefined (reading 'success')"). Convert a rejection to
+    // undefined and guard it so the UI surfaces a clear message instead.
+    const res = await approveBDRun(
+      runId,
+      buildCuratedPayload(runId),
+      selectedIndexes,
+    ).catch(() => undefined);
+    if (!res) {
+      setActionError(
+        "Enroll did not return a result - it may have timed out. Refresh and check the run's status before re-approving; some contacts may already be enrolled in Apollo.",
+      );
+      markPending(runId, false);
+      return;
+    }
     if (res.success) {
       setViewRunId(null);
       setRuns((prev) => prev.filter((r) => r.id !== runId));
@@ -324,7 +342,12 @@ export function ApprovalQueue({
   async function onDismiss(runId: string) {
     setActionError(null);
     markPending(runId, true);
-    const res = await dismissBDRun(runId);
+    const res = await dismissBDRun(runId).catch(() => undefined);
+    if (!res) {
+      setActionError("Dismiss did not return a result. Refresh and try again.");
+      markPending(runId, false);
+      return;
+    }
     if (res.success) {
       setRuns((prev) => prev.filter((r) => r.id !== runId));
       setCurated((prev) => {
@@ -342,7 +365,16 @@ export function ApprovalQueue({
   function onRunDiscovery(companies: number, maxContactsPerCompany: number) {
     setTriggerError(null);
     startTriggering(async () => {
-      const res = await triggerManualDiscovery({ companies, maxContactsPerCompany });
+      const res = await triggerManualDiscovery({
+        companies,
+        maxContactsPerCompany,
+      }).catch(() => undefined);
+      if (!res) {
+        setTriggerError(
+          "Discovery did not return a result - it may have timed out. Try again.",
+        );
+        return;
+      }
       if (res.success) {
         setDiscoveryOpen(false);
         router.refresh();
