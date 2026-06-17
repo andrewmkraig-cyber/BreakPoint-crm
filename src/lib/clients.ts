@@ -123,11 +123,21 @@ export async function getClientsForOrg(): Promise<ClientListRow[]> {
   // up Ace-native creates (raw is null on every Ace-native client and
   // never re-syncs on existing ones). One groupBy across the tenant
   // keyed by (clientId, isOpen); tenant-scoped per Rule 8.
+  //
+  // Legacy RecruiterFlow-imported jobs (legacyRfId != null) are EXCLUDED
+  // from the count. The card should reflect only what is currently a real
+  // Ace-native job for the client - imported RF rows carry a frozen
+  // is_open snapshot that drifts from the live Ace lifecycle (an RF job
+  // reopened in Ace still showed on this card while the /jobs Active tab
+  // correctly dropped it), so they were producing a phantom Open count.
+  // Ace-native rows only (legacyRfId IS NULL) keeps this card in lockstep
+  // with the live /jobs view.
   const jobCountGroups = await prisma.job.groupBy({
     by: ["clientId", "isOpen"],
     where: {
       organizationId: org.id,
       clientId: { not: null },
+      legacyRfId: null,
     },
     _count: { _all: true },
   });

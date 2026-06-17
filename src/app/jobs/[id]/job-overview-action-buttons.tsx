@@ -2,10 +2,11 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CircleSlash, EyeOff, Loader2, RefreshCw } from "lucide-react";
+import { CircleSlash, Copy, EyeOff, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
+  duplicateJob,
   inactivateJob,
   makeJobPrivate,
   reactivateJob,
@@ -52,6 +53,26 @@ export function JobOverviewActionButtons({
     });
   }
 
+  // Duplicate is its own handler because, unlike the lifecycle toggles, it
+  // navigates to the brand-new copy (so the recruiter can change the city)
+  // instead of refreshing the current job in place.
+  function runDuplicate() {
+    if (pending) return;
+    startTransition(async () => {
+      const res = await duplicateJob({ jobId });
+      if (!res.ok) {
+        toast.error("Couldn't duplicate job", { description: res.error });
+        return;
+      }
+      if (!res.jobCuid) {
+        toast.error("Couldn't duplicate job", { description: "No new job id returned." });
+        return;
+      }
+      toast.success("Job duplicated. Update the location on the copy.");
+      router.push(`/jobs/${res.jobCuid}`);
+    });
+  }
+
   const isActive = lifecycle === "active";
   const isPrivate = lifecycle === "private";
   const isInactive = lifecycle === "inactive";
@@ -61,6 +82,21 @@ export function JobOverviewActionButtons({
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        onClick={runDuplicate}
+        disabled={pending}
+      >
+        {pending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Copy className="h-3.5 w-3.5" />
+        )}
+        Duplicate
+      </Button>
+
       {showReactivate && (
         <Button
           type="button"

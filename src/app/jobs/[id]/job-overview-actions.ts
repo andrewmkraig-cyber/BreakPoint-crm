@@ -6,6 +6,7 @@ import { getServerSession } from "next-auth";
 import { logActivity } from "@/lib/activity";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { ensureMajorBoardsSeeded } from "@/lib/job-boards";
 import { isLikelyZip, validateUsCity, validateUsZip } from "@/lib/location-validation";
 import { prisma } from "@/lib/prisma";
 
@@ -303,6 +304,120 @@ export async function makeJobPrivate(args: { jobId: string }): Promise<Result> {
 
 export async function reactivateJob(args: { jobId: string }): Promise<Result> {
   return transitionLifecycle(args.jobId, "active", "job_reactivated");
+}
+
+// Duplicate an existing job into a brand-new Ace-native row for the SAME
+// client. Built for the common case of one client with the same opening
+// in two cities (e.g. two Tax Managers, different metros): clone, then
+// change the city on the copy. The copy carries over every job-definition
+// field (title, comp, JD, keywords, etc.) but starts fresh as an active,
+// Ace-native job - legacyRfId stays null (a duplicate is never a legacy
+// import) and lifecycle resets to "active" so it lands on the /jobs Active
+// tab regardless of the source's state. Pipeline / interviews / matches /
+// board statuses are NOT copied; they belong to the original. Returns the
+// new job's cuid so the caller can route straight to it for the city edit.
+export async function duplicateJob(args: {
+  jobId: string;
+}): Promise<Result & { jobCuid?: string }> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+
+  try {
+    const org = await getCurrentOrg();
+    // Rule 8: tenant-scope the source lookup so a leaked id from another
+    // org can't be cloned here. Select only the job-definition columns we
+    // carry over - relations and per-row state (placements, matches,
+    // savedSearchFilters, lastOpenedAt, the legacy raw blob) are left out.
+    const source = await prisma.job.findFirst({
+      where: { id: args.jobId, organizationId: org.id },
+      select: {
+        title: true,
+        clientId: true,
+        locations: true,
+        locationCity: true,
+        locationState: true,
+        locationZip: true,
+        jobType: true,
+        employmentType: true,
+        department: true,
+        salaryRangeStart: true,
+        salaryRangeEnd: true,
+        salaryCurrency: true,
+        salaryFrequency: true,
+        expectedFee: true,
+        billRate: true,
+        payRate: true,
+        numberOfOpenings: true,
+        hiringTeam: true,
+        applyLink: true,
+        description: true,
+        sourceJobUrl: true,
+        rawJobDescription: true,
+        descriptionGeneratedAt: true,
+        internalRecruiterNotes: true,
+        searchKeywords: true,
+      },
+    });
+    if (!source) return { ok: false, error: "Job not found." };
+
+    const copy = await prisma.job.create({
+      data: {
+        title: source.title,
+        clientId: source.clientId,
+        locations: source.locations,
+        locationCity: source.locationCity,
+        locationState: source.locationState,
+        locationZip: source.locationZip,
+        // Fresh Ace-native job: never a legacy import, always starts active.
+        isOpen: true,
+        lifecycle: "active",
+        jobType: source.jobType ?? Prisma.DbNull,
+        employmentType: source.employmentType,
+        department: source.department,
+        salaryRangeStart: source.salaryRangeStart,
+        salaryRangeEnd: source.salaryRangeEnd,
+        salaryCurrency: source.salaryCurrency,
+        salaryFrequency: source.salaryFrequency,
+        expectedFee: source.expectedFee ?? Prisma.DbNull,
+        billRate: source.billRate ?? Prisma.DbNull,
+        payRate: source.payRate ?? Prisma.DbNull,
+        numberOfOpenings: source.numberOfOpenings,
+        hiringTeam: source.hiringTeam ?? Prisma.DbNull,
+        applyLink: source.applyLink,
+        description: source.description,
+        sourceJobUrl: source.sourceJobUrl,
+        rawJobDescription: source.rawJobDescription,
+        descriptionGeneratedAt: source.descriptionGeneratedAt,
+        internalRecruiterNotes: source.internalRecruiterNotes,
+        searchKeywords: source.searchKeywords,
+        organizationId: org.id,
+      },
+      select: { id: true },
+    });
+
+    // Seed the 6 major job boards so the Promote tab renders immediately,
+    // matching the create-job path. Idempotent via the unique constraint.
+    await ensureMajorBoardsSeeded({ jobId: copy.id, organizationId: org.id });
+
+    await logActivity({
+      organizationId: org.id,
+      userId,
+      actionType: "job_duplicated",
+      targetType: "job",
+      targetId: copy.id,
+      metadata: { jobTitle: source.title, sourceJobId: args.jobId, clientId: source.clientId },
+    });
+
+    revalidatePath(`/jobs`);
+    revalidatePath(`/jobs/${copy.id}`);
+    if (source.clientId) {
+      revalidatePath(`/clients`);
+      revalidatePath(`/clients/${source.clientId}`);
+    }
+    return { ok: true, jobCuid: copy.id };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Duplicate failed." };
+  }
 }
 
 // Hard-delete a Job. Cascades through the Prisma schema take care of
