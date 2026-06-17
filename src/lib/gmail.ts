@@ -861,18 +861,30 @@ function collectInlineParts(
 
 // Walks the MIME tree and returns every part that looks like a real
 // user-attached file. "Real" = has a non-empty filename, a fetchable
-// body.attachmentId, and is NOT an inline image (those carry a
-// Content-ID header and are inlined into the body via
-// inlineCidImages). Without the Content-ID filter, signature logos
-// would show up as attachment pills on every outbound email.
+// body.attachmentId, and is NOT marked inline via its Content-Disposition.
+//
+// Inline detection is keyed on Content-Disposition: inline (the header that
+// actually means "render this in the body"), NOT on the mere presence of a
+// Content-ID. Outlook and other clients wrap a whole message in
+// multipart/related when the signature carries an inline image and stamp a
+// Content-ID on EVERY part inside - including genuine PDF attachments. Keying
+// the skip on Content-ID dropped those real attachments (Scotty Ross's emails
+// showed zero). A signature logo is Content-Disposition: inline, so it is
+// still skipped; the filename + attachmentId requirements keep junk parts with
+// no real download from becoming attachment pills.
 function collectAttachments(
   payload: GmailMessagePart | undefined,
   out: MailAttachmentRef[] = [],
 ): MailAttachmentRef[] {
   if (!payload) return out;
-  const isInline = payload.headers?.some(
-    (h) => h.name.toLowerCase() === "content-id",
-  );
+  // Disposition value looks like `attachment; filename="x.pdf"` or `inline`;
+  // take the token before any params, lowercased. Absent/empty disposition is
+  // treated as a real attachment as long as filename + attachmentId are set.
+  const disposition = headerValue(payload.headers, "content-disposition")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+  const isInline = disposition === "inline";
   if (
     payload.filename &&
     payload.filename.length > 0 &&
