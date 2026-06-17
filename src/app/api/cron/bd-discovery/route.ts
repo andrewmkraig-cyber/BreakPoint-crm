@@ -230,6 +230,36 @@ async function runOneDiscovery(ctx: DiscoveryCtx, resolved: ResolvedTitles): Pro
       theirstackSavedSearchId: resolved.theirstackSavedSearchId,
     });
 
+    // An empty TheirStack response (HTTP 200 with zero rows) is almost always a
+    // transient provider hiccup, NOT a real "no jobs match" outcome. Treat it as
+    // a retryable non-completion: mark the run FAILED so the schedule clock is
+    // NOT stamped (the stamp loop in GET skips FAILED) and the search stays DUE
+    // for the next cron tick, instead of recording a successful empty batch that
+    // burns the whole day on a transient empty reply. This is distinct from a
+    // genuine "nothing new" run (raw > 0 but everything dedup-filtered to zero),
+    // which still completes + stamps normally below. The log line below is
+    // deliberately distinct ("EMPTY TheirStack response") so an empty-provider
+    // run reads differently from a real zero-new-companies run in the logs.
+    if (raw.length === 0) {
+      const message =
+        "TheirStack returned 0 rows (likely transient); leaving search due for retry on the next tick";
+      console.log(
+        `[bd-discovery] runId=${run.id} EMPTY TheirStack response (raw=0) - NOT stamping lastDiscoveredAt, search stays due. titlesSource=${resolved.source} theirstackSavedSearchId=${resolved.theirstackSavedSearchId ?? "none"} savedSearchId=${resolved.savedSearchId ?? "none"}`,
+      );
+      await prisma.bDRun.update({
+        where: { id: run.id },
+        data: { status: "FAILED", errorMessage: message, completedAt: new Date() },
+      });
+      return {
+        runId: run.id,
+        status: "FAILED",
+        discoveredCount: 0,
+        source: resolved.source,
+        savedSearchId: resolved.savedSearchId,
+        error: message,
+      };
+    }
+
     // Big-4/agency exclusion and the employee-count floor are done server-side
     // in the TheirStack request body, so the only post-filters left here are
     // the 30-day dedup and the client-signal routing below.
