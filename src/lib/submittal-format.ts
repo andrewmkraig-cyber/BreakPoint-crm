@@ -79,9 +79,6 @@ export function submittalEditorHtmlToPlainText(html: string): string {
   return decoded.replace(/\n{3,}/g, "\n\n").trim();
 }
 
-// Wraps raw editor HTML in the same outer font-family / line-height div that
-// submittalToHtml uses, so recipients see identical type styling whether the
-// body came from the markdown or the Tiptap path.
-export function wrapEditorHtmlForGmail(html: string): string {
-  return `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.55; color: #111111;">${html}</div>`;
-}
+// The editor-HTML Gmail wrapper now lives in src/lib/email-html.ts as the
+// single shared wrapEmailHtml (consolidated with merge-fields' old
+// htmlEmailWrap so the container can never drift). Callers import it directly.

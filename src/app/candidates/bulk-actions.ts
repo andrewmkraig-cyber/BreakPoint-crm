@@ -20,10 +20,10 @@ import {
 import { DEFAULT_TIMEZONE } from "@/lib/timezone";
 import {
   applyMergeFields,
-  htmlEmailWrap,
   looksLikeHtml,
   type MergeFieldValues,
 } from "@/lib/merge-fields";
+import { wrapEmailHtml } from "@/lib/email-html";
 import { resolveClientBlurb } from "@/lib/client-blurb";
 import { extractCityFromLocation } from "@/lib/candidate-compensation";
 
@@ -502,7 +502,7 @@ export async function bulkSendEmail(input: {
         // into one run-on line in the recipient's inbox.
         applyMergeFields(input.bodyHtml, values, { html: true })
       : looksLikeHtml(mergedBody)
-        ? htmlEmailWrap(mergedBody)
+        ? wrapEmailHtml(mergedBody)
         : undefined;
     ready.push({
       candidateId: c.id,
@@ -668,7 +668,7 @@ export async function scheduleBulkEmail(input: {
         // into one run-on line in the recipient's inbox.
         applyMergeFields(input.bodyHtml, values, { html: true })
       : looksLikeHtml(mergedBody)
-        ? htmlEmailWrap(mergedBody)
+        ? wrapEmailHtml(mergedBody)
         : undefined;
 
     try {

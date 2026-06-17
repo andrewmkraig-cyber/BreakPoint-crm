@@ -373,13 +373,6 @@ export function templateBodyToEditorHtml(body: string): string {
   return `<p>${plainToHtmlInline(body)}</p>`;
 }
 
-// Wrap already-HTML body content in the same email-safe container
-// plainToHtml() uses, WITHOUT escaping, so <strong>/<u> survive into the
-// recipient's inbox. Server send paths use this for HTML template bodies.
-export function htmlEmailWrap(html: string): string {
-  return `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.55; color: #111111;">${html}</div>`;
-}
-
 // Flatten an HTML body back to readable plain text for surfaces that are
 // still plain-text only (the bulk composer textarea, the submittal
 // composer's text mode, the template-card preview). Block tags and <br>

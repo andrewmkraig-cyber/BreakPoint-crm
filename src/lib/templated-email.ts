@@ -1,10 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import {
   applyMergeFields,
-  htmlEmailWrap,
   looksLikeHtml,
   type MergeFieldValues,
 } from "@/lib/merge-fields";
+import { wrapEmailHtml } from "@/lib/email-html";
 import { createGmailDraft, plainToHtml, sendGmail, type SendEmailResult } from "@/lib/gmail";
 
 export type TriggerLookupResult =
@@ -123,7 +123,7 @@ export async function fireTemplatedEmail(input: FireTemplatedEmailInput): Promis
   const body = applyMergeFields(look.template.body, input.values).replace(/—/g, "-");
   // A rich (HTML) template body keeps its <strong>/<u> markup; a plain
   // body gets the usual plain-text-to-HTML conversion.
-  const html = looksLikeHtml(body) ? htmlEmailWrap(body) : plainToHtml(body);
+  const html = looksLikeHtml(body) ? wrapEmailHtml(body) : plainToHtml(body);
 
   // Debug log: so we can trace blank-token reports in Vercel logs. Shows
   // which template was fired, the raw vs resolved subject, and which merge

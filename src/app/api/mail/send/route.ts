@@ -10,6 +10,7 @@ import {
   tagThreadByAddresses,
   type GmailAttachment,
 } from "@/lib/gmail";
+import { ensureEmailHtmlWrapped } from "@/lib/email-html";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -105,6 +106,13 @@ export async function POST(req: NextRequest) {
     data: Uint8Array.from(Buffer.from(a.dataBase64, "base64")),
   }));
   const bodyText = payload.bodyText ?? htmlToPlainText(payload.bodyHtml);
+  // Wrap the composer's raw editor HTML in the shared email container so New
+  // Email and Reply (both the MailComposer) send with the SAME Arial / 14px /
+  // line-height:1.55 spacing as the submittal path — the three composers'
+  // Tiptap editors already agree, the divergence was that this route shipped
+  // bodyHtml unwrapped. Guarded against double-wrapping. Plain text is derived
+  // above from the unwrapped body, so the container never leaks into it.
+  const wrappedBodyHtml = ensureEmailHtmlWrapped(payload.bodyHtml);
 
   // Per-template "Approve before sending" override. When the picked
   // template has sendAsDraft=true, divert this send to Gmail Drafts
@@ -135,7 +143,7 @@ export async function POST(req: NextRequest) {
         cc: payload.cc,
         bcc: payload.bcc,
         subject: payload.subject,
-        bodyHtml: payload.bodyHtml,
+        bodyHtml: wrappedBodyHtml,
         bodyText,
         threadId: payload.threadId,
         inReplyTo,
@@ -159,7 +167,7 @@ export async function POST(req: NextRequest) {
       cc: payload.cc,
       bcc: payload.bcc,
       subject: payload.subject,
-      bodyHtml: payload.bodyHtml,
+      bodyHtml: wrappedBodyHtml,
       bodyText,
       threadId: payload.threadId,
       inReplyTo,

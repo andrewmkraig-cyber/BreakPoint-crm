@@ -16,8 +16,8 @@ import {
   submittalEditorHtmlToPlainText,
   submittalToHtml,
   submittalToPlainText,
-  wrapEditorHtmlForGmail,
 } from "@/lib/submittal-format";
+import { wrapEmailHtml } from "@/lib/email-html";
 import { applyMergeFields } from "@/lib/merge-fields";
 import { buildFullMergeValues } from "@/lib/merge-context";
 import { getAppPreferences } from "@/lib/preferences";
@@ -2118,7 +2118,7 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
         ? submittalEditorHtmlToPlainText(input.bodyHtml!)
         : submittalToPlainText(input.body),
       bodyHtml: useRichHtml
-        ? wrapEditorHtmlForGmail(input.bodyHtml!)
+        ? wrapEmailHtml(input.bodyHtml!)
         : submittalToHtml(input.body),
       attachments,
     });

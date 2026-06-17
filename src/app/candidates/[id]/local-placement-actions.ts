@@ -25,8 +25,8 @@ import {
   submittalEditorHtmlToPlainText,
   submittalToHtml,
   submittalToPlainText,
-  wrapEditorHtmlForGmail,
 } from "@/lib/submittal-format";
+import { wrapEmailHtml } from "@/lib/email-html";
 import { fireTriggerAndLog } from "@/lib/trigger-fire";
 import {
   CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
@@ -660,7 +660,7 @@ export async function sendLocalSubmittalEmail(
       bcc: input.bcc,
       subject: input.subject,
       bodyText: resolvedBodyText,
-      bodyHtml: useRichHtml ? wrapEditorHtmlForGmail(input.bodyHtml!) : submittalToHtml(input.bodyText),
+      bodyHtml: useRichHtml ? wrapEmailHtml(input.bodyHtml!) : submittalToHtml(input.bodyText),
       attachments: submittalAttachments.length ? submittalAttachments : undefined,
     });
 
