@@ -98,6 +98,13 @@ export type ScheduleInterviewInput = {
   // "ace_scheduled"; the client-scheduled path never mints a link
   // either way.
   meetingType?: MeetingProvider;
+  // "Interviewing with Scotty" no-invite mode. Rides the SAME tracking-only
+  // client_scheduled path (organizer-only event, no guests, no emails, stage
+  // → interviewing, one activity log), but the tracking event must carry a
+  // neutral title with NO client name and the description drops the client
+  // line. Defaults to false/undefined so the "Client will send invite" path
+  // and the normal ace_scheduled path keep their full client-tagged summary.
+  neutralCalendarTitle?: boolean;
 };
 
 export type ScheduleInterviewResult =
@@ -406,6 +413,10 @@ async function mirrorPartyInviteEvent(args: {
 
 function calendarSummary(input: ScheduleInterviewInput): string {
   const who = input.candidateName || "Candidate";
+  // "Interviewing with Scotty" mode: neutral title, never the client name.
+  if (input.neutralCalendarTitle) {
+    return `Interview - ${who}`;
+  }
   const job = input.jobTitle || "role";
   const client = input.clientName ? ` (${input.clientName})` : "";
   const kind =
@@ -417,7 +428,8 @@ function calendarDescription(input: ScheduleInterviewInput): string {
   const lines: string[] = [];
   if (input.candidateName) lines.push(`Candidate: ${input.candidateName}`);
   if (input.jobTitle) lines.push(`Role: ${input.jobTitle}`);
-  if (input.clientName) lines.push(`Client: ${input.clientName}`);
+  // Scotty mode keeps the event neutral — no client name anywhere on it.
+  if (!input.neutralCalendarTitle && input.clientName) lines.push(`Client: ${input.clientName}`);
   if (input.candidatePhone) lines.push(`Candidate phone: ${input.candidatePhone}`);
   if (input.location) lines.push(`Location: ${input.location}`);
   // Interviewers live in Interview.clientAttendees and are added only to
