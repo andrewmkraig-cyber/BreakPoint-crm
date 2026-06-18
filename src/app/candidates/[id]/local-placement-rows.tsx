@@ -2757,18 +2757,6 @@ function ScheduleInterviewScreen({
   // nothing. Same source="client_scheduled" path the old modal used. (New mode
   // only — an existing interview is already logged.)
   const [clientWillSendInvite, setClientWillSendInvite] = useState(false);
-  // "Interviewing with Scotty": sibling no-invite mode. Rides the SAME
-  // tracking-only client_scheduled server path as "Client will send invite"
-  // (one organizer-only event, no guests, no emails, stage → interviewing,
-  // one activity log), but the event gets a neutral title with no client
-  // name (neutralCalendarTitle below). Mutually exclusive with the
-  // client-will-send checkbox — selecting one clears the other.
-  const [scottyInterview, setScottyInterview] = useState(false);
-  // Either no-invite mode skips the composers, the Cc/Bcc picker, the
-  // meeting-provider picker, and the email validation, and routes through the
-  // client_scheduled tracking path. Only the calendar title differs (Scotty =
-  // neutral). Drives every branch that used to key off clientWillSendInvite.
-  const noInviteMode = clientWillSendInvite || scottyInterview;
   // Both editors default ON in every mode (new + edit) so the subject/body
   // editors are open without reopening. In edit mode an ON party that was never
   // invited gets a fresh invite on Save via the same send path new-schedule
@@ -2961,7 +2949,7 @@ function ScheduleInterviewScreen({
     if (type === "in_person" && !location.trim()) {
       return setErr("Address required for in-person interviews.");
     }
-    if (!noInviteMode) {
+    if (!clientWillSendInvite) {
       if (sendClientEmail && interviewerEmails.length === 0) {
         return setErr("Pick an interviewer (client contact) or turn off the client email.");
       }
@@ -2986,17 +2974,13 @@ function ScheduleInterviewScreen({
           type,
           attendees,
           notes: "",
-          source: noInviteMode ? "client_scheduled" : "ace_scheduled",
+          source: clientWillSendInvite ? "client_scheduled" : "ace_scheduled",
           jobTitle: job.jobTitle,
           clientName: job.clientName,
           candidateName,
           location: type === "in_person" ? location.trim() : undefined,
           timeZone,
-          meetingType: noInviteMode ? undefined : type === "video" ? meetingType : undefined,
-          // Scotty mode only: neutral calendar title, no client name on the
-          // tracking event. "Client will send invite" leaves this false so its
-          // event keeps the full client-tagged summary.
-          neutralCalendarTitle: scottyInterview,
+          meetingType: clientWillSendInvite ? undefined : type === "video" ? meetingType : undefined,
         });
         if (!result.ok) {
           setErr(result.error);
@@ -3013,10 +2997,9 @@ function ScheduleInterviewScreen({
       if (!sched) return;
       const interviewId = sched.interviewId;
 
-      // No-invite modes (Client will send invite / Interviewing with Scotty):
-      // no emails. The row + calendar + activity log are already written by
-      // scheduleInterview above (recruiter keeps credit).
-      if (noInviteMode) {
+      // Client-scheduled: no emails. The row + calendar + activity log are
+      // already written by scheduleInterview above (recruiter keeps credit).
+      if (clientWillSendInvite) {
         toast.success("Interview scheduled", { description: "Logged for tracking. No invites were sent." });
         onClose();
         return;
@@ -3224,7 +3207,7 @@ function ScheduleInterviewScreen({
     });
   }
 
-  const emailEditorsDisabled = noInviteMode;
+  const emailEditorsDisabled = clientWillSendInvite;
 
   return (
     <>
@@ -3276,7 +3259,7 @@ function ScheduleInterviewScreen({
               className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
             >
               {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-              {noInviteMode ? "Schedule interview" : "Send"}
+              {clientWillSendInvite ? "Schedule interview" : "Send"}
             </button>
           </>
         )
@@ -3297,7 +3280,7 @@ function ScheduleInterviewScreen({
           typeExtras={
             // Provider (Meet/Teams) is fixed once an interview exists, so the
             // picker is new-mode only; edit keeps the existing Meet.
-            type === "video" && !noInviteMode && !isEdit ? (
+            type === "video" && !clientWillSendInvite && !isEdit ? (
               <MeetingProviderSelect
                 value={meetingType}
                 onChange={setMeetingType}
@@ -3319,7 +3302,7 @@ function ScheduleInterviewScreen({
             </label>
           }
           ccBccSlot={
-            noInviteMode ? null : (
+            clientWillSendInvite ? null : (
               <CcBccPicker
                 clientContacts={job.clientContacts}
                 cc={ccCsv}
@@ -3331,57 +3314,26 @@ function ScheduleInterviewScreen({
           }
         />
 
-        {/* No-invite tracking modes — new-interview-only concepts. The two
-            options are siblings and mutually exclusive: selecting one clears
-            the other. Both ride the same client_scheduled tracking path; only
-            the calendar title differs (Scotty = neutral, no client name). */}
+        {/* "Client will send invite" is a new-interview-only concept. */}
         {!isEdit && (
-          <div className="space-y-2">
-            <label
-              className="flex cursor-pointer items-start gap-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/60 p-3 text-sm"
-              title="Use this when the client is scheduling the interview themselves. We log it on your calendar for tracking + credit and skip the invite emails."
-            >
-              <input
-                type="checkbox"
-                checked={clientWillSendInvite}
-                onChange={(e) => {
-                  const on = e.target.checked;
-                  setClientWillSendInvite(on);
-                  if (on) setScottyInterview(false);
-                }}
-                className="mt-0.5 h-4 w-4 rounded border-court-border accent-brand-dark"
-              />
-              <span>
-                <span className="font-semibold text-court-fg">Client will send invite</span>
-                <span className="block text-xs text-court-fg-muted">
-                  Log the interview on your calendar + activity log for tracking and credit. Skip the
-                  candidate/client invite emails. The client is sending their own.
-                </span>
+          <label
+            className="flex cursor-pointer items-start gap-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/60 p-3 text-sm"
+            title="Use this when the client is scheduling the interview themselves. We log it on your calendar for tracking + credit and skip the invite emails."
+          >
+            <input
+              type="checkbox"
+              checked={clientWillSendInvite}
+              onChange={(e) => setClientWillSendInvite(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-court-border accent-brand-dark"
+            />
+            <span>
+              <span className="font-semibold text-court-fg">Client will send invite</span>
+              <span className="block text-xs text-court-fg-muted">
+                Log the interview on your calendar + activity log for tracking and credit. Skip the
+                candidate/client invite emails. The client is sending their own.
               </span>
-            </label>
-            <label
-              className="flex cursor-pointer items-start gap-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/60 p-3 text-sm"
-              title="Use this for a Scotty interview. We log it on your calendar for tracking + credit with a neutral title (no client name) and skip the invite emails."
-            >
-              <input
-                type="checkbox"
-                checked={scottyInterview}
-                onChange={(e) => {
-                  const on = e.target.checked;
-                  setScottyInterview(on);
-                  if (on) setClientWillSendInvite(false);
-                }}
-                className="mt-0.5 h-4 w-4 rounded border-court-border accent-brand-dark"
-              />
-              <span>
-                <span className="font-semibold text-court-fg">Interviewing with Scotty</span>
-                <span className="block text-xs text-court-fg-muted">
-                  Log the interview on your calendar + activity log for tracking and credit with a
-                  neutral title (no client name). Skip the candidate/client invite emails.
-                </span>
-              </span>
-            </label>
-          </div>
+            </span>
+          </label>
         )}
 
         {/* New mode: toggle sections decide whether to send each party. */}
