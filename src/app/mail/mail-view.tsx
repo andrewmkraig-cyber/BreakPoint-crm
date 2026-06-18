@@ -410,7 +410,10 @@ export function MailView({
     setError(null);
     setDetail(null);
     try {
-      const res = await fetch(`/api/mail/threads/${encodeURIComponent(id)}`, { signal });
+      const res = await fetch(`/api/mail/threads/${encodeURIComponent(id)}`, {
+        cache: "no-store",
+        signal,
+      });
       const body = (await res.json().catch(() => null)) as
         | MailThreadDetail
         | { error: string }
@@ -1429,19 +1432,21 @@ export function MailView({
           <button
             type="button"
             onClick={() => {
-              // Refresh both the visible thread list AND the unread
-              // poll so the badge / topbar count reconcile in the
-              // same click. Without the refreshUnread call the badge
-              // would still wait up to 30s for the polling tick.
+              // Refresh the visible list, unread count, AND the currently
+              // open thread. The list row alone is not enough when Gmail
+              // adds a reply to an existing thread: its id stays the same,
+              // so the selected detail would otherwise remain stale until
+              // a hard page refresh.
               setRefreshTick((n) => n + 1);
+              if (selected) void loadThread(selected);
               void refreshUnread();
             }}
-            disabled={threadsLoading}
+            disabled={threadsLoading || loading}
             aria-label="Refresh thread list"
             className="ml-auto rounded p-1 text-court-fg-muted transition hover:bg-court-fg/5 hover:text-court-fg disabled:opacity-50"
           >
             <RefreshCw
-              className={"h-4 w-4 " + (threadsLoading ? "animate-spin" : "")}
+              className={"h-4 w-4 " + (threadsLoading || loading ? "animate-spin" : "")}
             />
           </button>
         </div>
