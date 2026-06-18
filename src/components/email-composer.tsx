@@ -357,6 +357,26 @@ export function EmailComposer({
     };
   }
 
+  function focusSubject() {
+    setLastFocus("subject");
+    subjectRef.current?.focus();
+  }
+
+  function onSubjectKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Tab" || e.shiftKey) return;
+    if (richTextBody && richTextRef.current) {
+      e.preventDefault();
+      setLastFocus("body");
+      richTextRef.current.focus();
+      return;
+    }
+    if (bodyRef.current) {
+      e.preventDefault();
+      setLastFocus("body");
+      bodyRef.current.focus();
+    }
+  }
+
   // Toggle the given marker around the body's current selection (or around
   // the word at the caret if no selection exists). Used by Cmd/Ctrl+B and
   // Cmd/Ctrl+U when bodyFormattingShortcuts is on. If the selection is
@@ -895,6 +915,7 @@ export function EmailComposer({
                   onChange={setTo}
                   options={toOptions ?? recipientOptions}
                   placeholder="Pick a contact or type an email…"
+                  onForwardTab={focusSubject}
                 />
               </Row>
               {showCcField && (
@@ -929,6 +950,7 @@ export function EmailComposer({
                   onChange={setTo}
                   options={toOptions ?? []}
                   placeholder="Pick a contact or type an email…"
+                  onForwardTab={focusSubject}
                 />
               </Row>
               {showCcBcc ? (
@@ -986,6 +1008,7 @@ export function EmailComposer({
                 rememberCaret(e.currentTarget);
               }}
               onSelect={(e) => rememberCaret(e.currentTarget)}
+              onKeyDown={onSubjectKeyDown}
               onKeyUp={(e) => rememberCaret(e.currentTarget)}
               onClick={(e) => rememberCaret(e.currentTarget)}
             />
@@ -1395,12 +1418,14 @@ function ContactComboMulti({
   options,
   pinned,
   placeholder,
+  onForwardTab,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: ContactOption[];
   pinned?: ContactOption[];
   placeholder?: string;
+  onForwardTab?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
@@ -1510,8 +1535,11 @@ function ContactComboMulti({
               e.preventDefault();
               addTyped();
             } else if (e.key === "Tab") {
-              // Commit on Tab without preventing native focus move.
               addTyped();
+              if (!e.shiftKey && onForwardTab) {
+                e.preventDefault();
+                onForwardTab();
+              }
             }
           }}
           onBlur={addTyped}

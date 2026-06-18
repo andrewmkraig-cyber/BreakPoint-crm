@@ -30,6 +30,9 @@ import { cn } from "@/lib/utils";
 // contentEditable + execCommand is deprecated and buggy across browsers.
 
 export type RichTextBodyEditorHandle = {
+  // Moves keyboard focus directly into the editable body, bypassing the
+  // formatting toolbar. Used by the email composer's Subject → body Tab path.
+  focus: () => void;
   // Inserts plain text at the current selection. Used by the EmailComposer's
   // "Insert Field" dropdown so merge tokens like [CandidateFirstName] land
   // at the caret instead of being appended to the end.
@@ -124,6 +127,9 @@ export const RichTextBodyEditor = forwardRef<RichTextBodyEditorHandle, Props>(
     useImperativeHandle(
       ref,
       () => ({
+        focus() {
+          editor?.chain().focus().run();
+        },
         insertPlainText(text: string) {
           editor?.chain().focus().insertContent(text).run();
         },
@@ -165,6 +171,7 @@ function RichTextToolbar({ editor }: { editor: Editor | null }) {
   const btn = (active: boolean, onClick: () => void, icon: JSX.Element, label: string) => (
     <button
       type="button"
+      tabIndex={-1}
       onClick={onClick}
       aria-label={label}
       className={cn(
