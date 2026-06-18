@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-06-15 · Ace 94.0
+Last updated: 2026-06-18 · Ace 95.1
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -37,7 +37,7 @@ All time estimates calibrated against actual build pace: Game Plan Context Depth
 
 ## Code Prompt Rules
 - Max 3 items per prompt. No exceptions.
-- Step 0 on every prompt touching candidate/job/client/placement/pipeline: grep for relevant files and report exact counts before writing any code. Baseline FILE counts (the `-l | wc -l` commands count files, measured 2026-06-08 · Ace 89.0): `recruiterflow` = 3 files, `RecruiterFlow` = 10 files, `RfId` = 80 files. Compare against these file-count baselines and flag any increase. **Measure Step 0 baselines against COMMITTED history (`git grep` / a clean HEAD), never the raw working tree** - uncommitted files (e.g. concurrent Codex work left in the tree) inflate the counts and caused a false "drift" report this session. If the tree is dirty, note it and baseline against HEAD.
+- Step 0 on every prompt touching candidate/job/client/placement/pipeline: grep for relevant files and report exact counts before writing any code. Baseline FILE counts (the `-l | wc -l` commands count files, measured 2026-06-08 · Ace 89.0, RfId recount 2026-06-18 · Ace 95.1): `recruiterflow` = 3 files, `RecruiterFlow` = 10 files, `RfId` = 79 files. Compare against these file-count baselines and flag any increase. **Measure Step 0 baselines against COMMITTED history (`git grep` / a clean HEAD), never the raw working tree** - uncommitted files (e.g. concurrent Codex work left in the tree) inflate the counts and caused a false "drift" report this session. If the tree is dirty, note it and baseline against HEAD.
 - Always commit and push immediately after the build succeeds (`npm run build` exits 0). Browser verification is Andrew's responsibility after deploy, not a gate before push. Never hold changes waiting for browser verification.
 - Dual-file awareness: always name BOTH files when a feature touches more than one.
 - Single terminal only. Never suggest parallel Claude Code sessions or multiple terminals.
@@ -264,7 +264,7 @@ grep -r "recruiterflow" src/ --include="*.ts" --include="*.tsx" -l | wc -l
 grep -r "RecruiterFlow" src/ --include="*.ts" --include="*.tsx" -l | wc -l
 grep -r "RfId" src/ --include="*.ts" --include="*.tsx" -l | wc -l
 ```
-Baseline FILE counts (the `-l | wc -l` commands above count files, measured 2026-06-08 · Ace 89.0): recruiterflow = 3 files, RecruiterFlow = 10 files, RfId = 80 files. Report counts before writing any code. If counts increased from baseline, flag it.
+Baseline FILE counts (the `-l | wc -l` commands above count files, measured 2026-06-08 · Ace 89.0, RfId recount 2026-06-18 · Ace 95.1): recruiterflow = 3 files, RecruiterFlow = 10 files, RfId = 79 files. Report counts before writing any code. If counts increased from baseline, flag it.
 
 ### Code Prompt Rules
 - Max 3 items per prompt. Never queue more.

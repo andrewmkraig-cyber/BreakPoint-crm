@@ -1,8 +1,18 @@
 # ACE_STATE.md
-Last updated: 2026-06-16 · Ace 95.0
-Current Version: Ace 95.0
-Last Shipped: 2026-06-16
+Last updated: 2026-06-18 · Ace 95.1
+Current Version: Ace 95.1
+Last Shipped: 2026-06-18
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 95.1 (2026-06-18) - New Job client picker grace window + cancel-interview stage revert + Sentry span-budget fix
+
+Three targeted fixes. All pushed to main; `npm run build` exits 0 after each. No schema changes. In shipped order:
+
+- **New Job client picker now includes brand-new jobless clients (`ff92cdd`).** The CLIENT dropdown on `/jobs/new` only listed clients with at least one active job, so a just-created client with zero jobs (e.g. "Ross Talent Group") could not be selected. Root cause: a page-local filter in `src/app/jobs/new/page.tsx` built `activeClientIds` from clients with >=1 active-lifecycle job and filtered the option list to that set. Fix: OR-ed in a 7-day grace clause (`activeClientIds.has(c.id) || c.createdAt >= now-7d`), mirroring the createdAt+7d window `/clients` uses for its Active bucket. Org-scoped. Only `jobs/new/page.tsx` changed; shared helpers `getClientsForOrg` / `isActiveJobLifecycle` untouched, so `/clients` and dashboard counts are unaffected. Intended lifecycle confirmed by Andrew: new client selectable for 7 days without a job, then quiet, then inactive.
+
+- **Cancelling the last interview moves the candidate back to Submitted (`0e6eab1`).** `cancelInterview` never touched `Placement.stage`, so a candidate stayed stuck in Interviewing after their only interview was cancelled (live case: Tyler Engstrom / Mowat Mackie & Anderson). Fix in `src/app/candidates/[id]/interview-actions.ts`: after the interview is marked cancelled, if the placement is in `interviewing` AND zero non-cancelled interviews remain for it, move it back to `submitted`. Only ever moves a row out of `interviewing` (Offer/Pending Start/Hired/Submitted/Rejected/Cancelled never pulled backward). Org-scoped, one `placement_stage_reverted` activity-log entry, wrapped best-effort after all Google logic so it can't fail the cancel or change two-way notify. Caught an Ace-native trap: placements store `jobId` (cuid) but interviews carry a synthetic-negative `jobRfId`; matched via `placement.jobRfId ?? syntheticIdFromCuid(placement.jobId)`. One-off guarded script `scripts/fix-tyler-engstrom-interviewing-stage.ts` (dry-run default, `--apply`) corrected Tyler's stuck Mowat row interviewing->submitted; his other placement with a live interview was correctly left in Interviewing.
+
+- **Sentry trace sampling cut from 100% to env-controlled low defaults + machine-traffic dropped (`7221039`).** Sentry hit 100% of its 5M span budget for the June 7-July 6 period; root cause was `tracesSampleRate: 1` hardcoded on all three runtimes capturing the every-minute `scheduled-send` cron, the 15-min calendar-sync cron, and six client polls (15-60s). Fix across `sentry.server.config.ts`, `sentry.edge.config.ts`, `src/instrumentation-client.ts`: env-controlled rates (`SENTRY_TRACES_SAMPLE_RATE` default 0.05 server/edge, `NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE` default 0.02 client) via a defensive `parseSampleRate` clamped to [0,1]; a server `tracesSampler` returns 0 for the two frequent crons and the six poll endpoints (`/api/mail/unread`, `/api/mail/threads`, `/api/krispcall/recent`, `/api/phone/unread-count`, `/api/reminders/due`, `/api/mail/scheduled/failed`), env rate for everything else. Profiling left absent; Replay, enableLogs, sendDefaultPii untouched. Errors unaffected (trace sampling doesn't gate errors). Expected >95% span cut next period; unset env = baked-in low defaults = desired steady state. To retune live, set the env vars in Vercel.
 
 ## What Shipped in Ace 95.0 (2026-06-16) - BD self-serve sequences + per-search TheirStack/schedule + enroll sequence-routing fix + Active Campaigns honesty
 
@@ -529,6 +539,10 @@ Eleven-item session: scoreboard cancelled-placement accuracy, interview-pill ded
 - **Edit Resume render fix (`bd7c69e`).** Once C1 routed all candidates through the canvas-based Ace-native editor, the Edit Resume tool (`src/app/candidates/[id]/resume-editor.tsx`) surfaced a runtime error — *"Cannot use the same canvas during multiple render() operations"* — and rendered the resume upside-down/mirrored. Root cause: the render effect reused persistent canvas DOM nodes but never cancelled its pdf.js `RenderTask`, so a `ResizeObserver`-driven fit-scale change re-ran the effect mid-render on the same canvas; pdf.js rejected the second `render()` and the interrupted task left the 2D-context transform half-applied (the flip). Fix: track the in-flight `RenderTask` per page, cancel any task still painting a canvas before re-rendering it, cancel all in-flight tasks on effect cleanup, and swallow pdf.js's `RenderingCancelledException` so a deliberate cancel isn't surfaced as an error. The same cancellation resolves the flip — pdf.js unwinds its Y-flip transform before the next pass. Type-only change to `src/lib/pdfjs-loader.ts` to expose `cancel()` (new `PdfJsRenderTask` type). Scope held to those two files; `PdfCanvasViewer` and routing/data untouched.
 
 ## Next Task
+
+**Next Up — new this close (Ace 95.1):**
+- **"Apply to a Scotty company" flow (needs scoping).** Add a candidate Apply-to-Job option for an off-org / split-deal company ("Scotty") that CREATES the placement so the candidate can be moved to Interviewing and scheduled WITHOUT sending client/candidate invites. This replaces the reverted "Interviewing with Scotty" scheduler mode. Scope before building. Note: Andrew has a live "Scotty Splits" placement on Tyler Engstrom from earlier manual setup.
+- **Sentry `sendDefaultPii: true` review (adjacent, not urgent, low priority).** `sendDefaultPii` is true on all three runtimes, so candidate/user data can ride along in Sentry trace/error payloads. Not a quota issue (the 95.1 sampling fix already cut span volume). Decide later whether to disable it for an internal tool handling real candidate data.
 
 **The interview restructure (D1 / D2 / E) is DONE — shipped in Ace 76.0 (see What Shipped in Ace 76.0 above and ACE_ROADMAP.md ▸ Completed - Ace 76.0). The active queue is clear of the restructure.** Two deferred edge items from it are parked in ACE_ROADMAP.md (global `notifyMode`; interviewer/Cc chip merge on reopen) — neither is scheduled.
 
