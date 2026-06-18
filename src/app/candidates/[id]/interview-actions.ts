@@ -6,6 +6,7 @@ import { createActionLog } from "@/lib/action-log";
 import { logActivity } from "@/lib/activity";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { syntheticIdFromCuid } from "@/lib/candidates";
 import {
   createCalendarEvent,
   deleteCalendarEvent,
@@ -659,6 +660,7 @@ export async function cancelInterview(
         googleEventIdCandidate: true,
         candidateRfId: true,
         candidateId: true,
+        jobRfId: true,
       },
     });
     if (!existing) return { ok: false, error: "Interview not found." };
@@ -730,6 +732,89 @@ export async function cancelInterview(
         calendarEventsDeleted: eventDeletions,
       },
     });
+
+    // Stage reversion: cancelling an interview is the mirror image of
+    // upsertInterviewingStage (which bumps a placement UP to "interviewing"
+    // when an interview is scheduled). If this placement is still in the
+    // Interviewing stage AND this was the candidate's only live interview for
+    // that placement, drop it back to "submitted". We ONLY ever move a row
+    // that is currently in "interviewing" — Offer / Pending Start / Hired /
+    // Submitted / Rejected / Cancelled are never touched, so a cancel can't
+    // pull a later-stage row backward. Best-effort: any failure here must not
+    // fail the cancel itself or alter the Google notify behavior above.
+    //
+    // Interviews always store jobRfId (real positive for RF jobs,
+    // synthetic-negative `syntheticIdFromCuid(job.id)` for Ace-native jobs;
+    // Interview.jobId is left null), and the candidate is candidateId for
+    // Ace-native rows, else candidateRfId. The PLACEMENT, however, stores the
+    // canonical jobId (cuid) and leaves jobRfId null for Ace-native jobs — so
+    // we can't match placement.jobRfId === interview.jobRfId directly. Bridge
+    // it the only way the one-way djb2 hash allows: forward-map each candidate
+    // placement's job to its interview-facing rfId
+    // (placement.jobRfId ?? syntheticIdFromCuid(placement.jobId)) and match
+    // that against this interview's jobRfId. The remaining-interview COUNT
+    // keys on jobRfId directly, which is the correct per-job grouping (every
+    // interview for a given job shares one jobRfId).
+    try {
+      const hasCandidate = existing.candidateId != null || existing.candidateRfId != null;
+      if (existing.jobRfId != null && hasCandidate) {
+        const candidateWhere = existing.candidateId != null
+          ? { candidateId: existing.candidateId }
+          : { candidateRfId: existing.candidateRfId };
+
+        // Only ever a downgrade FROM interviewing — fetch just the candidate's
+        // interviewing placements, org-scoped, then pick the one whose job
+        // forward-maps to this interview's jobRfId.
+        const interviewingPlacements = await prisma.placement.findMany({
+          where: { organizationId: org.id, stage: "interviewing", ...candidateWhere },
+          select: { id: true, stage: true, jobRfId: true, jobId: true },
+        });
+        const placement = interviewingPlacements.find((p) => {
+          const rfFacing = p.jobRfId ?? (p.jobId ? syntheticIdFromCuid(p.jobId) : null);
+          return rfFacing === existing.jobRfId;
+        });
+
+        if (placement && placement.stage === "interviewing") {
+          // Any other non-cancelled interview still on the books for this
+          // same placement keeps the candidate in Interviewing. Exclude this
+          // just-cancelled row explicitly (belt-and-suspenders alongside the
+          // status filter) and org-scope the count.
+          const otherActive = await prisma.interview.count({
+            where: {
+              organizationId: org.id,
+              jobRfId: existing.jobRfId,
+              ...candidateWhere,
+              status: { not: "cancelled" },
+              id: { not: interviewId },
+            },
+          });
+
+          if (otherActive === 0) {
+            await prisma.placement.update({
+              where: { id: placement.id },
+              data: { stage: "submitted", syncedToRf: false },
+            });
+            await logActivity({
+              organizationId: org.id,
+              userId: user.id,
+              actionType: "placement_stage_reverted",
+              targetType: "placement",
+              targetId: placement.id,
+              metadata: {
+                fromStage: "interviewing",
+                toStage: "submitted",
+                reason: "interview_cancelled",
+                interviewId,
+                candidateRfId: existing.candidateRfId,
+                candidateId: existing.candidateId,
+              },
+            });
+          }
+        }
+      }
+    } catch {
+      // best-effort — never let stage reversion fail the cancel.
+    }
 
     revalidateForCandidate({ candidateRfId: existing.candidateRfId, candidateId: existing.candidateId });
     return { ok: true };
