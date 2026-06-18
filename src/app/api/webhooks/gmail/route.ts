@@ -7,6 +7,10 @@ import {
 } from "@/lib/gmail";
 import { badgePayloadFields } from "@/lib/badge-math";
 import { checkGmailWebhookSecret } from "@/lib/gmail-webhook-auth";
+import {
+  collectGmailNotificationMessageRefs,
+  type GmailNotificationHistoryEntry,
+} from "@/lib/gmail-notification-candidates";
 import { getUnreadCountsForUser } from "@/lib/unread-counts";
 import { sendPushToUser, type PushPayload } from "@/lib/web-push";
 import { isChannelPushEnabledForUserId } from "@/lib/preferences";
@@ -38,24 +42,8 @@ type GmailNotice = {
   historyId: string;
 };
 
-type GmailHistoryEntry = {
-  messagesAdded?: Array<{
-    message?: {
-      id: string;
-      threadId: string;
-    };
-  }>;
-  labelsAdded?: Array<{
-    message?: {
-      id: string;
-      threadId: string;
-    };
-    labelIds?: string[];
-  }>;
-};
-
 type GmailHistoryResponse = {
-  history?: GmailHistoryEntry[];
+  history?: GmailNotificationHistoryEntry[];
   historyId?: string;
 };
 
@@ -65,11 +53,6 @@ type NewUnreadInboxThread = {
   threadId: string;
   title: string;
   body: string;
-};
-
-type HistoryMessageRef = {
-  messageId: string;
-  threadId: string;
 };
 
 function headerValue(headers: GmailHeader[] | undefined, name: string): string {
@@ -83,34 +66,6 @@ function displaySender(fromHeader: string, addresses: string[]): string {
   const beforeAngle = fromHeader.split("<")[0]?.trim();
   const cleaned = beforeAngle?.replace(/^"+|"+$/g, "").trim();
   return cleaned || addresses[0] || "New mail";
-}
-
-function collectHistoryMessageRefs(entries: GmailHistoryEntry[]): HistoryMessageRef[] {
-  const out: HistoryMessageRef[] = [];
-  const seen = new Set<string>();
-  const add = (message: { id?: string; threadId?: string } | undefined) => {
-    if (!message?.id || !message.threadId) return;
-    const key = `${message.id}:${message.threadId}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push({ messageId: message.id, threadId: message.threadId });
-  };
-
-  for (const entry of entries) {
-    for (const item of entry.messagesAdded ?? []) {
-      add(item.message);
-    }
-    // Gmail can deliver an INBOX watch notice as a labelAdded history record
-    // instead of a messageAdded record. This is common for self-sent mail and
-    // for filter/client flows where the message exists before it lands in the
-    // Inbox. We still fetch current metadata below and require INBOX+UNREAD
-    // before notifying, so broadening this candidate set does not inflate.
-    for (const item of entry.labelsAdded ?? []) {
-      add(item.message);
-    }
-  }
-
-  return out;
 }
 
 async function fetchMessageMeta(
@@ -274,7 +229,7 @@ export async function POST(req: NextRequest) {
       const entries = histJson.history ?? [];
       const seenThreads = new Set<string>();
 
-      for (const ref of collectHistoryMessageRefs(entries)) {
+      for (const ref of collectGmailNotificationMessageRefs(entries)) {
         if (seenThreads.has(ref.threadId)) continue;
         seenThreads.add(ref.threadId);
 

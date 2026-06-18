@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { renderNewMailToast } from "@/components/mail-notification-toast";
+import { isNewMailPollCandidate } from "@/lib/gmail-notification-candidates";
 import { playMailSound } from "@/lib/notification-sound";
 
 // Live-polling source of truth for the Mail Tab's "what's unread right
@@ -67,12 +68,13 @@ export function MailProvider({
   const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
   const [latestThreads, setLatestThreads] = useState<UnreadInboxThread[]>([]);
 
-  // Tracks every unread thread id we've already seen (across all
-  // polls, including the first one). New ids = unread threads that
-  // weren't here last tick → those are the ones that fire a toast.
-  // Initialized empty; seeded on the first successful poll so we
-  // don't toast for everything already in the inbox at app open.
-  const seenIdsRef = useRef<Set<string> | null>(null);
+  // Keep the last-message timestamp for every thread observed during this app
+  // session. Gmail can resurface an old unread thread as a reply nudge, causing
+  // it to rotate out of and later back into the five-thread poll window. A
+  // retained timestamp lets us distinguish that reshuffle from a real reply in
+  // the same thread, whose last-message timestamp advances.
+  const seenThreadTimestampsRef = useRef<Map<string, string | null> | null>(null);
+  const previousPollAtRef = useRef<number | null>(null);
   const inFlightRef = useRef(false);
 
   const fetchSummary = useCallback(async (): Promise<Summary | null> => {
@@ -98,18 +100,30 @@ export function MailProvider({
     if (typeof summary.count !== "number") return;
     setUnreadCount(summary.count);
     setLatestThreads(summary.latest);
-    const incomingIds = new Set(summary.latest.map((t) => t.id));
-    if (seenIdsRef.current === null) {
-      // First poll only — seed the seen-set so existing unread
+    const observedAtMs = Date.now();
+    if (seenThreadTimestampsRef.current === null) {
+      // First poll only — seed the timestamp map so existing unread
       // threads don't all immediately toast.
-      seenIdsRef.current = incomingIds;
+      seenThreadTimestampsRef.current = new Map(
+        summary.latest.map((thread) => [thread.id, thread.timestampIso]),
+      );
+      previousPollAtRef.current = observedAtMs;
       return;
     }
-    const fresh = summary.latest.filter((t) => !seenIdsRef.current!.has(t.id));
-    if (fresh.length === 0) {
-      seenIdsRef.current = incomingIds;
-      return;
+    const seenTimestamps = seenThreadTimestampsRef.current;
+    const previousPollAtMs = previousPollAtRef.current ?? observedAtMs;
+    const fresh = summary.latest.filter((thread) =>
+      isNewMailPollCandidate({
+        timestampIso: thread.timestampIso,
+        previousTimestampIso: seenTimestamps.get(thread.id),
+        previousPollAtMs,
+      }),
+    );
+    for (const thread of summary.latest) {
+      seenTimestamps.set(thread.id, thread.timestampIso);
     }
+    previousPollAtRef.current = observedAtMs;
+    if (fresh.length === 0) return;
     // Honor the per-browser opt-in flag at fire time. Reading from
     // localStorage on each tick (vs. mounting once) means the toggle
     // takes effect without a refresh.
@@ -126,7 +140,6 @@ export function MailProvider({
       // instead of a stream of overlapping tones.
       playMailSound();
     }
-    seenIdsRef.current = incomingIds;
   }, []);
 
   const refreshUnread = useCallback(async () => {
@@ -150,7 +163,9 @@ export function MailProvider({
       }
       return next;
     });
-    if (seenIdsRef.current) seenIdsRef.current.delete(threadId);
+    // Keep the observed timestamp. If the thread is later marked unread or
+    // resurfaced by Gmail, it should stay quiet; a genuine reply still has a
+    // newer last-message timestamp and will notify normally.
   }, []);
 
   useEffect(() => {
