@@ -9,6 +9,7 @@ import {
   File as FileIcon,
   FileText,
   Forward,
+  Paperclip,
   Reply,
   ReplyAll,
 } from "lucide-react";
@@ -239,6 +240,8 @@ export function MessageBlock({
   // (and broken-image hiding moves with it into the iframe).
 
   if (!expanded) {
+    const attachments = msg.attachments ?? [];
+    const firstAttachment = attachments[0];
     return (
       <button
         type="button"
@@ -247,7 +250,11 @@ export function MessageBlock({
           "flex w-full items-baseline gap-3 px-4 py-2 text-left transition hover:bg-court-surface-subtle/60 " +
           (isFirst ? "" : "border-t border-court-border")
         }
-        aria-label="Expand message"
+        aria-label={
+          firstAttachment
+            ? `Expand message with attachment ${firstAttachment.filename}`
+            : "Expand message"
+        }
       >
         <span className="shrink-0 truncate text-sm font-medium text-court-fg">
           {msg.fromName || msg.fromEmail || "(unknown sender)"}
@@ -255,6 +262,18 @@ export function MessageBlock({
         <span className="min-w-0 flex-1 truncate text-xs text-court-fg-muted">
           {snippetFromBody(msg.bodyHtml)}
         </span>
+        {firstAttachment && (
+          <span
+            title={attachments.map((att) => att.filename).join(", ")}
+            className="inline-flex max-w-48 shrink-0 items-center gap-1 rounded-md border border-court-brand/30 bg-court-brand-tint px-2 py-0.5 text-[11px] font-medium text-court-brand-dark"
+          >
+            <Paperclip className="h-3 w-3 shrink-0" />
+            <span className="truncate">{truncateFilename(firstAttachment.filename, 24)}</span>
+            {attachments.length > 1 && (
+              <span className="shrink-0">+{attachments.length - 1}</span>
+            )}
+          </span>
+        )}
         <span className="shrink-0 text-[11px] text-court-fg-muted">
           {shortTimestamp(msg.dateIso)}
         </span>
