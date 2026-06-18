@@ -13,13 +13,19 @@ export default async function NewJobPage({
 }: {
   searchParams: { clientId?: string };
 }) {
-  // The client dropdown is limited to clients that have at least one ACTIVE
+  // The client dropdown includes a client when it has at least one ACTIVE
   // job (the same "active" the /jobs Active tab uses — lifecycle resolves to
-  // "active" via isActiveJobLifecycle, so private/inactive jobs never qualify).
-  // Clients with only private/inactive jobs, or no jobs at all, are omitted.
-  // The form submits `clientId` (cuid) directly. Both queries are org-scoped
-  // (Rule 8): the job query filters by organizationId and getClientsForOrg
-  // scopes via getCurrentOrg.
+  // "active" via isActiveJobLifecycle, so private/inactive jobs never qualify)
+  // OR it was created within the last 7 days. The 7-day grace lets a
+  // brand-new, still-jobless client (e.g. just added from the client
+  // overview) be picked here so the recruiter can create its first job;
+  // after 7 days a client that never got a job drops off this picker again.
+  // This grace window mirrors the createdAt+7d rule /clients already uses for
+  // its Active bucket (see ClientListRow.createdAt in lib/clients). The
+  // filter is local to this picker — the global "active client" definition
+  // used by /clients + dashboards is untouched. The form submits `clientId`
+  // (cuid) directly. Both queries are org-scoped (Rule 8): the job query
+  // filters by organizationId and getClientsForOrg scopes via getCurrentOrg.
   let clients: Array<{ id: string; name: string }> = [];
   let error: string | null = null;
 
@@ -39,9 +45,15 @@ export default async function NewJobPage({
         .filter((id): id is string => Boolean(id)),
     );
 
+    // 7-day grace floor for brand-new clients with no active job yet.
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const newClientFloor = Date.now() - SEVEN_DAYS_MS;
+
     const rows = await getClientsForOrg();
     clients = rows
-      .filter((c) => activeClientIds.has(c.id))
+      .filter(
+        (c) => activeClientIds.has(c.id) || c.createdAt.getTime() >= newClientFloor,
+      )
       .map((c) => ({ id: c.id, name: c.name }))
       .sort((a, b) => a.name.localeCompare(b.name));
   } catch (e) {
