@@ -109,28 +109,37 @@ export async function POST(req: NextRequest): Promise<NextResponse<ParseUrlRespo
     }
   }
 
+  // BambooHR career pages are JavaScript shells. Their public detail
+  // endpoint carries the actual title, location, compensation, and JD.
+  const bambooHrDetailUrl = getBambooHrDetailUrl(url);
+  const fetchUrl = bambooHrDetailUrl ?? url;
+
   // Fetch the page. Many job boards return 403 to bare-metal fetches,
   // so spoof a desktop UA. AbortController bounds the fetch so a hung
   // server doesn't tie up the whole serverless invocation.
-  let html: string;
+  let pageText: string;
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
-    const res = await fetch(url, {
+    const res = await fetch(fetchUrl, {
       method: "GET",
       redirect: "follow",
       signal: controller.signal,
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        Accept: bambooHrDetailUrl
+          ? "application/json"
+          : "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
     }).finally(() => clearTimeout(timer));
     if (!res.ok) {
       const { code, message } = classifyFetchError(url, res.status);
       return NextResponse.json({ ok: false, error: code, message, urlSaved }, { status: 200 });
     }
-    html = await res.text();
+    pageText = bambooHrDetailUrl
+      ? formatBambooHrDetail(await res.json())
+      : stripHtmlForClaude(await res.text());
   } catch (e) {
     const msg =
       e instanceof Error && e.name === "AbortError"
@@ -144,9 +153,8 @@ export async function POST(req: NextRequest): Promise<NextResponse<ParseUrlRespo
     );
   }
 
-  // Strip scripts/styles + collapse tags to give Claude a smaller, cheaper
-  // body. Cap the slice at 80k chars — same budget the resume parser uses.
-  const stripped = stripHtmlForClaude(html).slice(0, 80_000);
+  // Cap the text at 80k chars — same budget the resume parser uses.
+  const stripped = pageText.slice(0, 80_000);
   if (!stripped.trim()) {
     return NextResponse.json(
       { ok: false, error: "fetch_failed", message: "The page returned no readable text.", urlSaved },
@@ -173,6 +181,75 @@ export async function POST(req: NextRequest): Promise<NextResponse<ParseUrlRespo
   }
 
   return NextResponse.json({ ok: true, extracted, fields, urlSaved });
+}
+
+function getBambooHrDetailUrl(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl);
+    if (!/(^|\.)bamboohr\.com$/i.test(parsed.hostname)) return null;
+    const match = parsed.pathname.match(/^\/careers\/(\d+)(?:\/detail)?\/?$/i);
+    if (!match) return null;
+    return `${parsed.origin}/careers/${match[1]}/detail`;
+  } catch {
+    return null;
+  }
+}
+
+type BambooHrDetailPayload = {
+  result?: {
+    jobOpening?: {
+      jobOpeningName?: unknown;
+      departmentLabel?: unknown;
+      employmentStatusLabel?: unknown;
+      location?: {
+        city?: unknown;
+        state?: unknown;
+        postalCode?: unknown;
+        addressCountry?: unknown;
+      } | null;
+      description?: unknown;
+      compensation?: unknown;
+      minimumExperience?: unknown;
+      locationType?: unknown;
+    };
+  };
+};
+
+function bambooText(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function formatBambooHrDetail(payload: unknown): string {
+  const opening = (payload as BambooHrDetailPayload)?.result?.jobOpening;
+  if (!opening) throw new Error("BambooHR returned no open job details.");
+
+  const location = opening.location;
+  const locationText = [
+    bambooText(location?.city),
+    bambooText(location?.state),
+    bambooText(location?.postalCode),
+    bambooText(location?.addressCountry),
+  ].filter((value): value is string => Boolean(value)).join(", ");
+  const locationType = String(opening.locationType ?? "");
+  const workplace = locationType === "1" ? "Remote" : locationType === "2" ? "Hybrid" : "On-site";
+  const description = stripHtmlForClaude(bambooText(opening.description) ?? "");
+  const lines = [
+    bambooText(opening.jobOpeningName) ? `Title: ${bambooText(opening.jobOpeningName)}` : null,
+    locationText ? `Location: ${locationText}` : null,
+    bambooText(opening.departmentLabel) ? `Department: ${bambooText(opening.departmentLabel)}` : null,
+    bambooText(opening.employmentStatusLabel)
+      ? `Employment Type: ${bambooText(opening.employmentStatusLabel)}`
+      : null,
+    `Workplace: ${workplace}`,
+    bambooText(opening.compensation) ? `Compensation: ${bambooText(opening.compensation)}` : null,
+    bambooText(opening.minimumExperience)
+      ? `Minimum Experience: ${bambooText(opening.minimumExperience)}`
+      : null,
+    description ? `Job Description:\n${description}` : null,
+  ].filter((value): value is string => Boolean(value));
+
+  if (lines.length === 0) throw new Error("BambooHR returned no readable job details.");
+  return lines.join("\n");
 }
 
 function classifyFetchError(url: string, status: number): { code: ParseUrlErrorCode; message: string } {
