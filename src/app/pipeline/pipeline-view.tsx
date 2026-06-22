@@ -1561,7 +1561,12 @@ function FollowUpButton({
         <EmailComposer
           title="Follow-up email"
           subtitle={`${candidateName} · submittal follow-up`}
-          draftKey={`submittal-followup-${placementId}`}
+          // No draftKey: the follow-up is recomputed from the live
+          // submittal thread on every open (recipients + greeting are
+          // derived fresh), so restoring a stale autosaved subject/body
+          // would contradict the current recipients. See the andrew@ /
+          // "Hi Andrew" stale-draft report - the recipients were correct
+          // for the real submittal data; the body was a leftover draft.
           initial={{
             to: draft.to,
             cc: draft.cc,
