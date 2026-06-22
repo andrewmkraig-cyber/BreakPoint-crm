@@ -11,6 +11,7 @@ export async function normalizeOwnerJobPriorities(
       organizationId,
       lifecycle: "active",
       isOpen: true,
+      publishToWebsite: true,
       client: { is: { ownerId } },
     },
     select: { id: true, websitePriority: true, updatedAt: true },
@@ -27,20 +28,4 @@ export async function normalizeOwnerJobPriorities(
       prisma.job.update({ where: { id: job.id }, data: { websitePriority: index + 1 } }),
     ),
   );
-}
-
-export async function nextOwnerJobPriority(
-  organizationId: string,
-  ownerId: string | null | undefined,
-): Promise<number | null> {
-  if (!ownerId) return null;
-  const count = await prisma.job.count({
-    where: {
-      organizationId,
-      lifecycle: "active",
-      isOpen: true,
-      client: { is: { ownerId } },
-    },
-  });
-  return count + 1;
 }

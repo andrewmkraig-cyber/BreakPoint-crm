@@ -104,6 +104,7 @@ export async function runJobsBulkAction(args: {
             data: {
               publishToWebsite: true,
               websitePublishedAt: job.publishToWebsite ? undefined : now,
+              websitePriority: job.publishToWebsite ? undefined : null,
             },
           }),
         ),
@@ -111,14 +112,14 @@ export async function runJobsBulkAction(args: {
     } else {
       await prisma.job.updateMany({
         where: { organizationId: org.id, id: { in: jobIds } },
-        data: { publishToWebsite: false },
+        data: { publishToWebsite: false, websitePriority: null },
       });
     }
 
     const ownerIds = Array.from(
       new Set(jobs.map((job) => job.client?.ownerId).filter((id): id is string => Boolean(id))),
     );
-    if (args.action === "activate" || args.action === "inactivate") {
+    if (["activate", "inactivate", "publish", "unpublish"].includes(args.action)) {
       for (const ownerId of ownerIds) await normalizeOwnerJobPriorities(org.id, ownerId);
     }
 
@@ -159,7 +160,13 @@ export async function setJobWebsitePriority(args: {
     const org = await getCurrentOrg();
     const job = await prisma.job.findFirst({
       where: { id: args.jobId, organizationId: org.id },
-      select: { id: true, lifecycle: true, isOpen: true, client: { select: { ownerId: true } } },
+      select: {
+        id: true,
+        lifecycle: true,
+        isOpen: true,
+        publishToWebsite: true,
+        client: { select: { ownerId: true } },
+      },
     });
     if (!job) return { ok: false, error: "Job not found." };
     const ownerId = job.client?.ownerId;
@@ -169,12 +176,16 @@ export async function setJobWebsitePriority(args: {
     if (job.lifecycle !== "active" || !job.isOpen) {
       return { ok: false, error: "Only Active jobs can be prioritized." };
     }
+    if (!job.publishToWebsite) {
+      return { ok: false, error: "Only jobs published on the website can be prioritized." };
+    }
 
     const jobs = await prisma.job.findMany({
       where: {
         organizationId: org.id,
         lifecycle: "active",
         isOpen: true,
+        publishToWebsite: true,
         client: { is: { ownerId } },
       },
       select: { id: true, websitePriority: true, updatedAt: true },

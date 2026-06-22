@@ -7,7 +7,7 @@ import { logActivity } from "@/lib/activity";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { triggerJobsSiteRebuild } from "@/lib/jobs-site-rebuild";
-import { nextOwnerJobPriority, normalizeOwnerJobPriorities } from "@/lib/job-priority";
+import { normalizeOwnerJobPriorities } from "@/lib/job-priority";
 import { isHybridSchedule } from "@/lib/hybrid-schedule";
 import { isLikelyZip, validateUsCity, validateUsZip } from "@/lib/location-validation";
 import { prisma } from "@/lib/prisma";
@@ -403,12 +403,10 @@ export async function duplicateJob(args: {
         descriptionGeneratedAt: true,
         internalRecruiterNotes: true,
         searchKeywords: true,
-        client: { select: { ownerId: true } },
       },
     });
     if (!source) return { ok: false, error: "Job not found." };
 
-    const websitePriority = await nextOwnerJobPriority(org.id, source.client?.ownerId);
     const copy = await prisma.job.create({
       data: {
         title: source.title,
@@ -441,7 +439,6 @@ export async function duplicateJob(args: {
         descriptionGeneratedAt: source.descriptionGeneratedAt,
         internalRecruiterNotes: source.internalRecruiterNotes,
         searchKeywords: source.searchKeywords,
-        websitePriority,
         organizationId: org.id,
       },
       select: { id: true },

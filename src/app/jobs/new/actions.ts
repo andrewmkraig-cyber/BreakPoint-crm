@@ -5,7 +5,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import { nextOwnerJobPriority } from "@/lib/job-priority";
 import { isHybridSchedule } from "@/lib/hybrid-schedule";
 import {
   extractJobFieldsFromGeneratedJd,
@@ -180,15 +179,13 @@ export async function createJob(
     // dropdown is built against the same tenant, but another tab could
     // change state between form load and submit.
     let clientId: string | null = null;
-    let clientOwnerId: string | null = null;
     if (input.clientId) {
       const client = await prisma.client.findFirst({
         where: { id: input.clientId, organizationId: org.id },
-        select: { id: true, ownerId: true },
+        select: { id: true },
       });
       if (!client) return { ok: false, error: "Selected client is not available." };
       clientId = client.id;
-      clientOwnerId = client.ownerId;
     }
 
     let description = input.description.trim();
@@ -291,7 +288,6 @@ export async function createJob(
     const sourceJobUrlForCreate = sourceJobUrl && /^https?:\/\//i.test(sourceJobUrl) ? sourceJobUrl : null;
     const internalRecruiterNotes = input.internalRecruiterNotes?.trim() || null;
 
-    const websitePriority = await nextOwnerJobPriority(org.id, clientOwnerId);
     const job = await prisma.job.create({
       data: {
         title,
@@ -313,7 +309,6 @@ export async function createJob(
         description: description || null,
         sourceJobUrl: sourceJobUrlForCreate,
         internalRecruiterNotes,
-        websitePriority,
         organizationId: org.id,
       },
       select: { id: true, legacyRfId: true },

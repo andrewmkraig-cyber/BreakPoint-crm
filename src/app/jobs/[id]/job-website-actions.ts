@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getCurrentUserId } from "@/lib/auth/getCurrentUserId";
 import { triggerJobsSiteRebuild } from "@/lib/jobs-site-rebuild";
+import { normalizeOwnerJobPriorities } from "@/lib/job-priority";
 import { prisma } from "@/lib/prisma";
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -81,8 +82,14 @@ export async function setJobWebsitePublished(args: {
         publishToWebsite: args.published,
         websitePublishedAt:
           args.published && !job.publishToWebsite ? new Date() : undefined,
+        websitePriority: args.published
+          ? job.publishToWebsite ? undefined : null
+          : null,
       },
     });
+    if (job.client?.ownerId) {
+      await normalizeOwnerJobPriorities(org.id, job.client.ownerId);
+    }
 
     revalidatePath(`/jobs/${job.id}`);
     revalidatePath("/jobs");

@@ -35,7 +35,7 @@ import { TabStrip } from "@/components/ui/tab-strip";
 
 export const dynamic = "force-dynamic";
 
-// 6-tab job detail surface. Overview is the default landing tab so the
+// 5-tab job detail surface. Overview is the default landing tab so the
 // recruiter sees a snapshot + quick actions before drilling into the
 // specific surface. Pipeline is intentionally not its own tab — the
 // cross-tab chip strip rendered above the tabs already surfaces the
@@ -45,7 +45,6 @@ type JobTab =
   | "description"
   | "matches"
   | "game-plan"
-  | "promote"
   | "activity";
 
 const JOB_TABS: { id: JobTab; label: string }[] = [
@@ -53,11 +52,12 @@ const JOB_TABS: { id: JobTab; label: string }[] = [
   { id: "description", label: "Job Description" },
   { id: "matches", label: "Matches" },
   { id: "game-plan", label: "Game Plan" },
-  { id: "promote", label: "Website" },
   { id: "activity", label: "Activity" },
 ];
 
 function parseTab(raw: string | undefined): JobTab {
+  // Old Website-tab links now land on Overview, where those controls live.
+  if (raw === "promote") return "overview";
   const found = JOB_TABS.find((t) => t.id === raw);
   return found ? found.id : "overview";
 }
@@ -550,6 +550,12 @@ export default async function JobDetailPage({
               jobRfId={rfId}
               jobCuid={isAceNative ? jobRow.id : null}
             />
+            <PromoteTab
+              jobId={jobRow.id}
+              published={jobRow.publishToWebsite}
+              websiteUrl={`https://breakpointtalent.com/jobs/${websiteSlug}/`}
+              requirements={websiteRequirements}
+            />
             {/* Delete lives inline at the very end of the Overview
                 surface (not the other tabs) and scrolls away with the
                 page — mirrors DeleteCandidateButton (Profile tab) and
@@ -572,13 +578,6 @@ export default async function JobDetailPage({
               location: overviewSnapshot.locations.join(", "),
               compensation: overviewSnapshot.compensation,
             }}
-          />
-        ) : tab === "promote" ? (
-          <PromoteTab
-            jobId={jobRow.id}
-            published={jobRow.publishToWebsite}
-            websiteUrl={`https://breakpointtalent.com/jobs/${websiteSlug}/`}
-            requirements={websiteRequirements}
           />
         ) : tab === "game-plan" ? (
           <AiWorkspace entityType="job" entityId={jobRow.id} bottomGapRem={30} />

@@ -375,16 +375,26 @@ export function JobsView(props: JobsViewProps) {
                   <td className="px-2 py-1.5 text-center align-top" onClick={(event) => event.stopPropagation()}>
                     {tab === "active" ? (
                       <select
-                        value={r.websitePriority ?? ""}
-                        onChange={(event) => changePriority(r.jobCuid, Number(event.target.value))}
+                        value={r.publishedToWebsite ? r.websitePriority ?? "" : ""}
+                        onChange={(event) => {
+                          if (event.target.value) {
+                            changePriority(r.jobCuid, Number(event.target.value));
+                          }
+                        }}
                         disabled={bulkPending}
                         aria-label={`Priority for ${r.title}`}
                         className="h-7 w-14 rounded-md border border-court-border bg-court-surface px-1 text-center text-xs font-semibold text-court-fg outline-none focus:border-court-brand"
                       >
-                        {r.websitePriority == null && <option value="">—</option>}
-                        {Array.from({ length: priorityCount }, (_, index) => index + 1).map((position) => (
-                          <option key={position} value={position}>{position}</option>
-                        ))}
+                        {!r.publishedToWebsite ? (
+                          <option value="">N/A</option>
+                        ) : (
+                          <>
+                            {r.websitePriority == null && <option value="">N/A</option>}
+                            {Array.from({ length: priorityCount }, (_, index) => index + 1).map((position) => (
+                              <option key={position} value={position}>{position}</option>
+                            ))}
+                          </>
+                        )}
                       </select>
                     ) : (
                       <span className="text-court-fg-muted/60">—</span>

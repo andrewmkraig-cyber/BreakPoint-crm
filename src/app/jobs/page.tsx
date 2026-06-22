@@ -68,7 +68,9 @@ export default async function JobsPage({
   const q = (searchParams?.q ?? "").trim();
   const rawSort = (searchParams?.sort ?? (tab === "active" ? "priority" : "lastEdited")) as SortKey;
   const sort: SortKey = (SORT_KEYS as string[]).includes(rawSort) ? rawSort : "lastEdited";
-  const dir: "asc" | "desc" = searchParams?.dir === "asc" ? "asc" : "desc";
+  const dir: "asc" | "desc" = searchParams?.dir
+    ? searchParams.dir === "asc" ? "asc" : "desc"
+    : sort === "priority" ? "asc" : "desc";
   const pageParam = parseInt(searchParams?.page ?? "1", 10);
   const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
 
@@ -76,6 +78,7 @@ export default async function JobsPage({
   let activeCount = 0;
   let privateCount = 0;
   let inactiveCount = 0;
+  let publishedActiveCount = 0;
   let error: string | null = null;
   let otherUserName: string | null = null;
 
@@ -181,7 +184,10 @@ export default async function JobsPage({
       return currentUserId != null && r.clientOwnerId === currentUserId;
     });
     for (const r of scoped) {
-      if (r.lifecycle === "active") activeCount++;
+      if (r.lifecycle === "active") {
+        activeCount++;
+        if (r.publishedToWebsite) publishedActiveCount++;
+      }
       else if (r.lifecycle === "private") privateCount++;
       else inactiveCount++;
     }
@@ -222,7 +228,7 @@ export default async function JobsPage({
         activeCount={activeCount}
         privateCount={privateCount}
         inactiveCount={inactiveCount}
-        priorityCount={activeCount}
+        priorityCount={publishedActiveCount}
         owner={owner}
         otherUserName={otherUserName}
         error={error}
