@@ -125,6 +125,7 @@ export type NewJobInput = {
   locationZip: string;
   jobType: string;
   employmentType: string;
+  workplaceType: string;
   salaryRangeStart: number | null;
   salaryRangeEnd: number | null;
   salaryCurrency: string;
@@ -188,6 +189,10 @@ export async function createJob(
     let description = input.description.trim();
     const jobType = input.jobType.trim();
     const employmentType = input.employmentType.trim();
+    const workplaceType = input.workplaceType.trim();
+    if (workplaceType && !["On-site", "Hybrid", "Remote"].includes(workplaceType)) {
+      return { ok: false, error: "Workplace must be On-site, Hybrid, or Remote." };
+    }
 
     // Format guarantee: every created job must store its JD in the canonical
     // BreakPoint markdown structure (## A Bit About Us / ## Why Join Us /
@@ -287,6 +292,7 @@ export async function createJob(
         locationZip: locationZip || null,
         isOpen: true,
         employmentType: employmentType || null,
+        workplaceType: workplaceType || null,
         jobType: jobType ? { name: jobType } : undefined,
         salaryRangeStart: lo ?? null,
         salaryRangeEnd: hi ?? null,

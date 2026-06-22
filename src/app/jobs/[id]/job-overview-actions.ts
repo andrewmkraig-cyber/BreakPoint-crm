@@ -63,6 +63,7 @@ export type JobOverviewPatch = {
   numberOfOpenings?: number | null;
   isOpen?: boolean;
   employmentType?: string | null;
+  workplaceType?: string | null;
 };
 
 export async function updateJobOverview(args: {
@@ -223,6 +224,13 @@ export async function updateJobOverview(args: {
     if (patch.employmentType !== undefined) {
       const et = (patch.employmentType ?? "").trim();
       data.employmentType = et || null;
+    }
+    if (patch.workplaceType !== undefined) {
+      const workplace = (patch.workplaceType ?? "").trim();
+      if (workplace && !["On-site", "Hybrid", "Remote"].includes(workplace)) {
+        return { ok: false, error: "Workplace must be On-site, Hybrid, or Remote." };
+      }
+      data.workplaceType = workplace || null;
     }
 
     await prisma.job.update({ where: { id: job.id }, data });

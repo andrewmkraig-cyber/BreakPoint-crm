@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 
 const JOB_TYPES = ["Permanent", "Contract", "Contract to Hire", "Temporary", "Internship"] as const;
 const EMPLOYMENT_TYPES = ["Full time", "Part time", "Contract"] as const;
+const WORKPLACE_TYPES = ["On-site", "Hybrid", "Remote"] as const;
 
 type ParseUrlSuccess = {
   ok: true;
@@ -90,6 +91,7 @@ export function NewJobForm({
   const [locationZip, setLocationZip] = useState("");
   const [jobType, setJobType] = useState<string>(JOB_TYPES[0]);
   const [employmentType, setEmploymentType] = useState<string>(EMPLOYMENT_TYPES[0]);
+  const [workplaceType, setWorkplaceType] = useState<string>(WORKPLACE_TYPES[0]);
   const [salaryFrequency, setSalaryFrequency] = useState<SalaryFrequency>("yearly");
   const [salaryLow, setSalaryLow] = useState("");
   const [salaryHigh, setSalaryHigh] = useState("");
@@ -452,6 +454,7 @@ export function NewJobForm({
         locationZip: locationZip.trim(),
         jobType,
         employmentType,
+        workplaceType,
         salaryRangeStart: loNum,
         salaryRangeEnd: hiNum,
         salaryCurrency: currency.trim().toUpperCase().slice(0, 3) || "USD",
@@ -721,10 +724,17 @@ export function NewJobForm({
             />
           </div>
 
-          {/* Row 3: Employment Type | Job Type */}
+          {/* Row 3: Employment Type | Workplace | Job Type */}
           <div className="flex gap-4">
             <CompactSelect label="Employment Type" value={employmentType} onChange={setEmploymentType} className="flex-1">
               {EMPLOYMENT_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </CompactSelect>
+            <CompactSelect label="Workplace" value={workplaceType} onChange={setWorkplaceType} className="flex-1">
+              {WORKPLACE_TYPES.map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>

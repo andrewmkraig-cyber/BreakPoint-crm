@@ -62,6 +62,7 @@ export async function GET() {
       locationState: true,
       locationZip: true,
       employmentType: true,
+      workplaceType: true,
       salaryRangeStart: true,
       salaryRangeEnd: true,
       salaryCurrency: true,
@@ -87,7 +88,13 @@ export async function GET() {
 
     // A stale publish flag must never leak an incomplete job to Google.
     // The Website tab prevents this state, and this feed enforces it again.
-    if (!description || !row.locationCity || !row.locationState) return [];
+    if (
+      !description ||
+      !row.locationCity ||
+      !row.locationState ||
+      !row.employmentType ||
+      !row.workplaceType
+    ) return [];
 
     return [{
       id: row.id,
@@ -102,6 +109,7 @@ export async function GET() {
         country: "US",
       },
       employmentType: row.employmentType,
+      workplaceType: row.workplaceType,
       salary: {
         minimum: row.salaryRangeStart,
         maximum: row.salaryRangeEnd,

@@ -383,6 +383,7 @@ export default async function JobDetailPage({
           : [],
     numberOfOpenings: jobRow.numberOfOpenings ?? raw.number_of_openings ?? null,
     employmentType: jobRow.employmentType ?? raw.employment_type ?? null,
+    workplaceType: jobRow.workplaceType ?? null,
     lastEditedAt: jobRow.updatedAt.toISOString(),
     applyLink: typeof raw.apply_link === "string" ? raw.apply_link : null,
   };
@@ -447,6 +448,11 @@ export default async function JobDetailPage({
       met: Boolean(overviewFields.employmentType),
       detail: overviewFields.employmentType || "Add an employment type on the Overview tab.",
     },
+    {
+      label: "Workplace type",
+      met: Boolean(overviewFields.workplaceType),
+      detail: overviewFields.workplaceType || "Choose On-site, Hybrid, or Remote on the Overview tab.",
+    },
   ];
 
   const overviewSnapshot: JobOverviewSnapshot = {
@@ -462,6 +468,7 @@ export default async function JobDetailPage({
     locationZip: jobRow.locationZip,
     lifecycle,
     employmentType: overviewFields.employmentType,
+    workplaceType: overviewFields.workplaceType,
     compensation: formatCompSummary(overviewFields),
     feePct: clientFeePct,
     numberOfOpenings: overviewFields.numberOfOpenings,
@@ -637,4 +644,3 @@ function formatCompSummary(state: {
   const only = lo ?? hi!;
   return `${fmt(only)}${suffix}`;
 }
-

@@ -34,6 +34,7 @@ export async function setJobWebsitePublished(args: {
         locationCity: true,
         locationState: true,
         employmentType: true,
+        workplaceType: true,
         publishToWebsite: true,
         client: { select: { ownerId: true } },
         override: { select: { description: true } },
@@ -64,6 +65,9 @@ export async function setJobWebsitePublished(args: {
       }
       if (!job.employmentType) {
         return { ok: false, error: "Add an employment type before publishing." };
+      }
+      if (!job.workplaceType) {
+        return { ok: false, error: "Choose On-site, Hybrid, or Remote before publishing." };
       }
     }
 

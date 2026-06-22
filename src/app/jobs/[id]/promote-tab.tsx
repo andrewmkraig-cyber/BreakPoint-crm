@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, CircleAlert, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -28,8 +28,20 @@ export function PromoteTab({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [localPublished, setLocalPublished] = useState(published);
+  const [building, setBuilding] = useState(false);
   const eligible = requirements.every((requirement) => requirement.met);
-  const live = published && eligible;
+  const live = localPublished && eligible && !building;
+
+  useEffect(() => {
+    setLocalPublished(published);
+  }, [published]);
+
+  useEffect(() => {
+    if (!building) return;
+    const timer = window.setTimeout(() => setBuilding(false), 90_000);
+    return () => window.clearTimeout(timer);
+  }, [building]);
 
   function setPublished(next: boolean) {
     startTransition(async () => {
@@ -40,7 +52,13 @@ export function PromoteTab({
         });
         return;
       }
-      toast.success(next ? "Job sent to the BreakPoint website" : "Job removed from the website");
+      setLocalPublished(next);
+      setBuilding(next);
+      toast.success(next ? "Website rebuild started" : "Job removed from the website", {
+        description: next
+          ? "The public page usually appears in about 1–2 minutes."
+          : "The public page will disappear after the website rebuild finishes.",
+      });
       router.refresh();
     });
   }
@@ -66,12 +84,12 @@ export function PromoteTab({
                 className={
                   live
                     ? "rounded-full border border-brand bg-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand-dark"
-                    : published
+                    : localPublished
                       ? "rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700"
                       : "rounded-full border border-court-border bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted"
                 }
               >
-                {live ? "Live" : published ? "Blocked" : "Not published"}
+                {live ? "Published" : localPublished ? "Building website" : "Not published"}
               </span>
             </div>
             <p className="mt-2 text-sm leading-6 text-court-fg-muted">
@@ -79,6 +97,11 @@ export function PromoteTab({
               dedicated job page, adds it to the Open Roles page and sitemap, and makes it eligible
               for Google Jobs when every requirement below is complete.
             </p>
+            {building && (
+              <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
+                Netlify is creating the job page now. Wait about 1–2 minutes before opening it.
+              </p>
+            )}
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -92,7 +115,7 @@ export function PromoteTab({
                 <ExternalLink className="h-3.5 w-3.5" /> View job page
               </a>
             )}
-            {published ? (
+            {localPublished ? (
               <Button
                 type="button"
                 variant="danger"
@@ -141,7 +164,7 @@ export function PromoteTab({
           ))}
         </div>
 
-        {!eligible && !published && (
+        {!eligible && !localPublished && (
           <p className="mt-4 text-xs font-medium text-amber-700 dark:text-amber-300">
             This job will not be sent to the website or Google until every requirement is complete.
           </p>

@@ -913,6 +913,10 @@ model Job {
   jobStatus        Json?
   jobType          Json?
   employmentType   String?
+  // Where the employee is expected to work. Kept separate from
+  // employmentType so "Full time" and "Hybrid" can both be represented
+  // correctly on the public site and in Google JobPosting markup.
+  workplaceType    String?
   department       String?
   salaryRangeStart Int?
   salaryRangeEnd   Int?

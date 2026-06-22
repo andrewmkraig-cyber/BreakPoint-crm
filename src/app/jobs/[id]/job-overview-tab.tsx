@@ -56,6 +56,7 @@ export type JobOverviewSnapshot = {
   locationZip: string | null;
   lifecycle: JobLifecycle;
   employmentType: string | null;
+  workplaceType: string | null;
   compensation: string;
   feePct: number | null;
   numberOfOpenings: number | null;
@@ -76,6 +77,7 @@ export type JobOverviewSnapshot = {
 type Draft = {
   title: string;
   employmentType: string;
+  workplaceType: string;
   locationCity: string;
   locationState: string;
   locationZip: string;
@@ -90,6 +92,7 @@ function buildDraft(s: JobOverviewSnapshot): Draft {
   return {
     title: s.title,
     employmentType: s.employmentType ?? "",
+    workplaceType: s.workplaceType ?? "On-site",
     locationCity: s.locationCity ?? "",
     locationState: s.locationState ?? "",
     locationZip: s.locationZip ?? "",
@@ -220,6 +223,7 @@ export function JobOverviewTab({
 
     const ccy = draft.salaryCcy.trim().toUpperCase().slice(0, 3) || null;
     const employmentType = draft.employmentType.trim() || null;
+    const workplaceType = draft.workplaceType.trim() || null;
     const stateUpper = stateAbbr.toUpperCase();
 
     setSaving(true);
@@ -254,6 +258,7 @@ export function JobOverviewTab({
     const patch: JobOverviewPatch = {
       title,
       employmentType,
+      workplaceType,
       locationCity: city,
       locationState: stateUpper,
       locationZip: zip,
@@ -289,6 +294,7 @@ export function JobOverviewTab({
       ...s,
       title,
       employmentType,
+      workplaceType,
       locationCity: city,
       locationState: stateUpper,
       locationZip: zip,
@@ -343,6 +349,22 @@ export function JobOverviewTab({
                 onChange={(v) => setDraft({ ...draft, employmentType: v })}
                 placeholder="Full-time" frameClassName={INPUT_FRAME_RECT_CLASS}
               />
+              <label className="flex flex-col">
+                <span className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                  Workplace
+                </span>
+                <div className={`${INPUT_FRAME_RECT_CLASS} w-full`}>
+                  <select
+                    value={draft.workplaceType}
+                    onChange={(event) => setDraft({ ...draft, workplaceType: event.target.value })}
+                    className={`${INPUT_CONTROL_CLASS} text-sm`}
+                  >
+                    <option value="On-site">On-site</option>
+                    <option value="Hybrid">Hybrid</option>
+                    <option value="Remote">Remote</option>
+                  </select>
+                </div>
+              </label>
               <LabeledField
                 label="Openings"
                 type="number"
@@ -470,6 +492,13 @@ export function JobOverviewTab({
               label="Employment"
               value={
                 state.employmentType || <span className="text-court-fg-muted">—</span>
+              }
+            />
+            <ReadOnlyCell
+              icon={<MapPin className="h-3.5 w-3.5" />}
+              label="Workplace"
+              value={
+                state.workplaceType || <span className="text-court-fg-muted">—</span>
               }
             />
             <ReadOnlyCell
