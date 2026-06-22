@@ -19,10 +19,6 @@
     {
       "path": "/api/cron/calendar-sync",
       "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/cron/client-release",
-      "schedule": "0 8 * * *"
     }
   ]
 }

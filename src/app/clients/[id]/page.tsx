@@ -164,8 +164,7 @@ export default async function ClientDetailPage({
   const canWrite = isOwner;
   const ownerFirstName = ownerUser?.name?.trim().split(/\s+/)[0] ?? null;
 
-  // Last-activity readout for the view-only banner (Step 5) so the staleness
-  // that drives the 60-day auto-release is visible. Only queried for the
+  // Last-activity readout for the view-only banner. Only queried for the
   // non-owner view; client activity is logged under the cuid or the
   // stringified legacyRfId, so both targetId forms are considered.
   let lastActivityAt: Date | null = null;
