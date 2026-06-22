@@ -858,6 +858,30 @@ async function resolveSubmittalThreadId(
   return null;
 }
 
+// Client contacts for the placement's client, as { name, email } pairs
+// (only those with a usable email). Used as the follow-up recipient
+// fallback when the original submittal had no external recipient.
+async function loadClientContacts(
+  organizationId: string,
+  clientId: string | null,
+): Promise<Array<{ name: string; email: string }>> {
+  if (!clientId) return [];
+  const contacts = await prisma.contact.findMany({
+    where: { organizationId, clientId },
+    select: { name: true, firstName: true, lastName: true, emails: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const out: Array<{ name: string; email: string }> = [];
+  for (const c of contacts) {
+    const email = (c.emails ?? []).find((e) => typeof e === "string" && e.includes("@"));
+    if (!email) continue;
+    const name =
+      c.name?.trim() || [c.firstName, c.lastName].filter(Boolean).join(" ").trim() || "";
+    out.push({ name, email: email.toLowerCase() });
+  }
+  return out;
+}
+
 function buildFollowupGreeting(firstNames: string[]): string {
   if (firstNames.length === 0) return "Hi there,";
   if (firstNames.length === 1) return `Hi ${firstNames[0]},`;
@@ -892,7 +916,7 @@ export async function getSubmittalFollowup(
 
   const placement = await prisma.placement.findFirst({
     where: { id: placementId, organizationId: org.id },
-    select: { candidateId: true, candidateRfId: true, jobId: true, jobRfId: true },
+    select: { candidateId: true, candidateRfId: true, jobId: true, jobRfId: true, clientId: true },
   });
   if (!placement || !placement.candidateId) return { ok: false, error: "Placement not found." };
 
@@ -923,8 +947,20 @@ export async function getSubmittalFollowup(
     thread.messages[0];
   if (!first) return { ok: false, error: "The original submittal email is empty." };
 
-  const toList = parseAddressList(first.to);
-  const ccList = parseAddressList(first.cc);
+  // Who to address the follow-up to. The original submittal's actual
+  // recipients are the source of truth - but exclude the recruiter's own
+  // address so a submittal that was sent to oneself (a common test, or a
+  // submittal whose client contacts weren't filled in at send time)
+  // doesn't produce a "Hi Andrew," follow-up addressed back to Ace. When
+  // that leaves no external recipient, fall back to the job's client
+  // contacts so the follow-up still reaches the people this candidate was
+  // submitted to (e.g. Tom + Jon on the client).
+  const selfEmails = new Set([user.email.toLowerCase()]);
+  let toList = parseAddressList(first.to).filter((a) => !selfEmails.has(a.email));
+  const ccList = parseAddressList(first.cc).filter((a) => !selfEmails.has(a.email));
+  if (toList.length === 0) {
+    toList = await loadClientContacts(org.id, placement.clientId);
+  }
   const greeting = buildFollowupGreeting(toList.map(firstNameForAddress));
   const body = `${greeting}\n\nChecking in to see if you had a chance to review ${candidateFirst}'s resume and if you'd like to set up an interview this week?`;
 
