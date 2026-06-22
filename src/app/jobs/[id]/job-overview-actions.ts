@@ -7,6 +7,7 @@ import { logActivity } from "@/lib/activity";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { triggerJobsSiteRebuild } from "@/lib/jobs-site-rebuild";
+import { nextOwnerJobPriority, normalizeOwnerJobPriorities } from "@/lib/job-priority";
 import { isLikelyZip, validateUsCity, validateUsZip } from "@/lib/location-validation";
 import { prisma } from "@/lib/prisma";
 
@@ -272,7 +273,14 @@ async function transitionLifecycle(
     const org = await getCurrentOrg();
     const job = await prisma.job.findFirst({
       where: { id: jobId, organizationId: org.id },
-      select: { id: true, legacyRfId: true, title: true, lifecycle: true, isOpen: true },
+      select: {
+        id: true,
+        legacyRfId: true,
+        title: true,
+        lifecycle: true,
+        isOpen: true,
+        client: { select: { ownerId: true } },
+      },
     });
     if (!job) return { ok: false, error: "Job not found." };
 
@@ -286,9 +294,14 @@ async function transitionLifecycle(
       data: {
         lifecycle: next,
         isOpen: next !== "inactive",
-        ...(next === "active" ? {} : { publishToWebsite: false }),
+        ...(next === "active"
+          ? {}
+          : { publishToWebsite: false, websitePriority: null }),
       },
     });
+    if (job.client?.ownerId) {
+      await normalizeOwnerJobPriorities(org.id, job.client.ownerId);
+    }
     await logActivity({
       organizationId: org.id,
       userId,
@@ -354,6 +367,7 @@ export async function duplicateJob(args: {
         locationZip: true,
         jobType: true,
         employmentType: true,
+        workplaceType: true,
         department: true,
         salaryRangeStart: true,
         salaryRangeEnd: true,
@@ -371,10 +385,12 @@ export async function duplicateJob(args: {
         descriptionGeneratedAt: true,
         internalRecruiterNotes: true,
         searchKeywords: true,
+        client: { select: { ownerId: true } },
       },
     });
     if (!source) return { ok: false, error: "Job not found." };
 
+    const websitePriority = await nextOwnerJobPriority(org.id, source.client?.ownerId);
     const copy = await prisma.job.create({
       data: {
         title: source.title,
@@ -388,6 +404,7 @@ export async function duplicateJob(args: {
         lifecycle: "active",
         jobType: source.jobType ?? Prisma.DbNull,
         employmentType: source.employmentType,
+        workplaceType: source.workplaceType,
         department: source.department,
         salaryRangeStart: source.salaryRangeStart,
         salaryRangeEnd: source.salaryRangeEnd,
@@ -405,6 +422,7 @@ export async function duplicateJob(args: {
         descriptionGeneratedAt: source.descriptionGeneratedAt,
         internalRecruiterNotes: source.internalRecruiterNotes,
         searchKeywords: source.searchKeywords,
+        websitePriority,
         organizationId: org.id,
       },
       select: { id: true },

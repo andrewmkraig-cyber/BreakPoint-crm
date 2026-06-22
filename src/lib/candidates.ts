@@ -277,6 +277,8 @@ export type RFJobWithAce = RFJob & {
   // null (legacy rows that haven't been touched since the migration —
   // readers fall back to is_open ? "active" : "inactive").
   _lifecycle?: string | null;
+  _websitePriority?: number | null;
+  _publishToWebsite?: boolean;
 };
 
 // djb2 → 31-bit unsigned → negate so Ace-native synthetic ids land in
@@ -300,6 +302,8 @@ export async function getRfJobsForOrg(): Promise<RFJobWithAce[]> {
       title: true,
       isOpen: true,
       lifecycle: true,
+      websitePriority: true,
+      publishToWebsite: true,
       locations: true,
       description: true,
       clientId: true,
@@ -334,6 +338,8 @@ export async function getRfJobsForOrg(): Promise<RFJobWithAce[]> {
           _aceJobId: r.id,
           _aceClientId: clientCuid,
           _lifecycle: r.lifecycle ?? null,
+          _websitePriority: r.websitePriority,
+          _publishToWebsite: r.publishToWebsite,
         });
       } else {
         out.push({
@@ -343,6 +349,8 @@ export async function getRfJobsForOrg(): Promise<RFJobWithAce[]> {
           _aceJobId: r.id,
           _aceClientId: clientCuid,
           _lifecycle: r.lifecycle ?? null,
+          _websitePriority: r.websitePriority,
+          _publishToWebsite: r.publishToWebsite,
         });
       }
       continue;
@@ -376,6 +384,8 @@ export async function getRfJobsForOrg(): Promise<RFJobWithAce[]> {
       // of whether the Client originated from RF or Ace-native.
       _aceClientId: r.client?.id ?? undefined,
       _lifecycle: r.lifecycle ?? null,
+      _websitePriority: r.websitePriority,
+      _publishToWebsite: r.publishToWebsite,
     });
   }
   return out;

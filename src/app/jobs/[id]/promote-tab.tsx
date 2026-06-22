@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, CircleAlert, ExternalLink, Loader2 } from "lucide-react";
+import { CheckCircle2, CircleAlert, Copy, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { setJobWebsitePublished } from "@/app/jobs/[id]/job-website-actions";
@@ -105,6 +105,23 @@ export function PromoteTab({
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {localPublished && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(websiteUrl);
+                    toast.success("Public job link copied");
+                  } catch {
+                    toast.error("Couldn't copy link");
+                  }
+                }}
+              >
+                <Copy className="h-3.5 w-3.5" /> Copy public link
+              </Button>
+            )}
             {live && (
               <a
                 href={websiteUrl}

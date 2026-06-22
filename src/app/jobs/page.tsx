@@ -27,6 +27,7 @@ type SortKey =
   | "title"
   | "location"
   | "compensation"
+  | "priority"
   | "lastEdited"
   | "submitted"
   | "interviewing"
@@ -37,6 +38,7 @@ const SORT_KEYS: SortKey[] = [
   "title",
   "location",
   "compensation",
+  "priority",
   "lastEdited",
   "submitted",
   "interviewing",
@@ -64,7 +66,7 @@ export default async function JobsPage({
   const owner: OwnerScope =
     rawOwner === "theirs" || rawOwner === "all" ? rawOwner : "mine";
   const q = (searchParams?.q ?? "").trim();
-  const rawSort = (searchParams?.sort ?? "lastEdited") as SortKey;
+  const rawSort = (searchParams?.sort ?? (tab === "active" ? "priority" : "lastEdited")) as SortKey;
   const sort: SortKey = (SORT_KEYS as string[]).includes(rawSort) ? rawSort : "lastEdited";
   const dir: "asc" | "desc" = searchParams?.dir === "asc" ? "asc" : "desc";
   const pageParam = parseInt(searchParams?.page ?? "1", 10);
@@ -153,9 +155,12 @@ export default async function JobsPage({
         : j.lastEditedAt;
       return {
         ...j,
+        jobCuid: aceJobId || "",
         lastEditedAt,
         slug,
         lifecycle,
+        websitePriority: (raw as { _websitePriority?: number | null })._websitePriority ?? null,
+        publishedToWebsite: (raw as { _publishToWebsite?: boolean })._publishToWebsite ?? false,
         submittedCount: c.submitted,
         interviewingCount: c.interviewing,
         hiredCount: c.hired,
@@ -217,6 +222,7 @@ export default async function JobsPage({
         activeCount={activeCount}
         privateCount={privateCount}
         inactiveCount={inactiveCount}
+        priorityCount={activeCount}
         owner={owner}
         otherUserName={otherUserName}
         error={error}
@@ -310,6 +316,8 @@ function compareRow(a: JobRow, b: JobRow, key: SortKey, dir: "asc" | "desc"): nu
         return r.location || "";
       case "compensation":
         return r.compensation || "";
+      case "priority":
+        return r.websitePriority ?? Number.MAX_SAFE_INTEGER;
       case "lastEdited":
         return r.lastEditedAt ? new Date(r.lastEditedAt).getTime() : 0;
       case "submitted":

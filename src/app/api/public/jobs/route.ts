@@ -51,7 +51,11 @@ export async function GET() {
       publishToWebsite: true,
       client: { is: { ownerId: owner.id } },
     },
-    orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
+    orderBy: [
+      { websitePriority: { sort: "asc", nulls: "last" } },
+      { updatedAt: "desc" },
+      { title: "asc" },
+    ],
     select: {
       id: true,
       title: true,
@@ -72,6 +76,7 @@ export async function GET() {
       createdAtRf: true,
       updatedAt: true,
       websitePublishedAt: true,
+      websitePriority: true,
       override: { select: { description: true } },
     },
   });
@@ -119,6 +124,7 @@ export async function GET() {
       applyUrl,
       datePosted: (row.websitePublishedAt ?? row.createdAtRf ?? row.createdAt).toISOString(),
       updatedAt: row.updatedAt.toISOString(),
+      priority: row.websitePriority,
       eligibleForJobPosting: true,
     }];
   });

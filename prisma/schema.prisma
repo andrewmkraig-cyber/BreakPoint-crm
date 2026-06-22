@@ -935,6 +935,9 @@ model Job {
   // a role is exposed to breakpointtalent.com only when this is true.
   publishToWebsite Boolean   @default(false)
   websitePublishedAt DateTime?
+  // Recruiter-controlled order for Active jobs. Public jobs are emitted
+  // in this order, so the Ace Jobs table doubles as the website sorter.
+  websitePriority  Int?
   lastOpenedAt     DateTime?
   createdAtRf      DateTime?
   // Phase 2: Ace-native Jobs store their description here. RF-imported
@@ -991,6 +994,7 @@ model Job {
   @@index([title])
   @@index([organizationId])
   @@index([organizationId, publishToWebsite])
+  @@index([organizationId, websitePriority])
   @@index([locationCity])
   @@index([locationState])
   @@index([locationZip])
