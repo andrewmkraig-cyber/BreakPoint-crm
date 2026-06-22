@@ -11,7 +11,15 @@ import {
   generatePublicAccountingSubmittalBullets,
   generateSubmittalWriteup,
 } from "@/lib/claude";
-import { sendGmail, type GmailAttachment } from "@/lib/gmail";
+import {
+  getGmailThread,
+  getMessageThreadId,
+  getThreadReplyHeaders,
+  parseAddressList,
+  sendGmail,
+  tagThreadByAddresses,
+  type GmailAttachment,
+} from "@/lib/gmail";
 import { getResumeBytes } from "@/lib/resume-bytes";
 import { formatExpectedCompensation } from "@/lib/candidate-compensation";
 import { fanOutPlacementNote } from "@/lib/notes/placement-fanout";
@@ -784,6 +792,273 @@ export async function sendLocalSubmittalEmail(
     }
 
     return { ok: true, value: { placementId: placement.id, gmailMessageId: sendResult.id } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Send failed." };
+  }
+}
+
+// ---- Submittal Follow Up: reply in-thread to the original submittal ----
+//
+// A candidate who has sat in the Submitted stage for more than two days
+// gets a "Follow Up" button on the pipeline. It reopens the ORIGINAL
+// submittal email thread (never a new message) addressed to the same
+// client contacts, with a templated nudge and the latest resume re-
+// attached. The thread is recovered from the submittal ActionLog: RF-path
+// submittals store gmailThreadId directly; Ace-native submittals store
+// gmailMessageId (sendLocalSubmittalEmail above), which we resolve to a
+// threadId via Gmail. Recipient first names come from the original To
+// header so the greeting reads "Hi Jon," / "Hi Jon and Tom,".
+
+type FollowupPlacement = {
+  candidateId: string | null;
+  candidateRfId: number | null;
+  jobId: string | null;
+  jobRfId: number | null;
+};
+
+// Single source of truth for "which Gmail thread is this placement's
+// submittal" - used by both the draft builder and the send path so the
+// reply can never be steered by a client-supplied threadId.
+async function resolveSubmittalThreadId(
+  userId: string,
+  organizationId: string,
+  placement: FollowupPlacement,
+): Promise<string | null> {
+  const subjectIds: string[] = [];
+  if (placement.candidateId) subjectIds.push(placement.candidateId);
+  if (placement.candidateRfId != null) subjectIds.push(String(placement.candidateRfId));
+  if (subjectIds.length === 0) return null;
+
+  const logs = await prisma.actionLog.findMany({
+    where: {
+      organizationId,
+      actionType: "submit",
+      subjectType: "candidate",
+      subjectId: { in: subjectIds },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { metadata: true },
+  });
+
+  for (const log of logs) {
+    const md = (log.metadata ?? {}) as Record<string, unknown>;
+    const matchesJob =
+      (placement.jobId != null && md.jobId === placement.jobId) ||
+      (placement.jobRfId != null && md.jobRfId === placement.jobRfId) ||
+      // Older submittals that stored neither job id: accept the latest
+      // submit for this candidate as a best-effort fallback.
+      (md.jobId == null && md.jobRfId == null);
+    if (!matchesJob) continue;
+    if (typeof md.gmailThreadId === "string" && md.gmailThreadId) return md.gmailThreadId;
+    if (typeof md.gmailMessageId === "string" && md.gmailMessageId) {
+      const tid = await getMessageThreadId(userId, md.gmailMessageId);
+      if (tid) return tid;
+    }
+  }
+  return null;
+}
+
+function buildFollowupGreeting(firstNames: string[]): string {
+  if (firstNames.length === 0) return "Hi there,";
+  if (firstNames.length === 1) return `Hi ${firstNames[0]},`;
+  if (firstNames.length === 2) return `Hi ${firstNames[0]} and ${firstNames[1]},`;
+  return `Hi ${firstNames.slice(0, -1).join(", ")}, and ${firstNames[firstNames.length - 1]},`;
+}
+
+function firstNameForAddress(a: { name: string; email: string }): string {
+  const n = a.name.trim();
+  if (n) return n.split(/\s+/)[0];
+  const local = (a.email.split("@")[0] ?? "").split(/[._-]+/)[0] ?? "";
+  return local ? local.charAt(0).toUpperCase() + local.slice(1) : "there";
+}
+
+export type SubmittalFollowupDraft = {
+  to: string[];
+  cc: string[];
+  recipientOptions: { id: string; name: string; email: string }[];
+  ccOptions: { id: string; name: string; email: string }[];
+  subject: string;
+  body: string;
+  latestResumeName: string | null;
+  candidateName: string;
+};
+
+export async function getSubmittalFollowup(
+  placementId: string,
+): Promise<Result<SubmittalFollowupDraft>> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
+
+  const placement = await prisma.placement.findFirst({
+    where: { id: placementId, organizationId: org.id },
+    select: { candidateId: true, candidateRfId: true, jobId: true, jobRfId: true },
+  });
+  if (!placement || !placement.candidateId) return { ok: false, error: "Placement not found." };
+
+  const candidate = await prisma.candidate.findFirst({
+    where: { id: placement.candidateId, organizationId: org.id },
+    select: { firstName: true, lastName: true },
+  });
+  const candidateName =
+    [candidate?.firstName, candidate?.lastName].filter(Boolean).join(" ").trim() || "the candidate";
+  const candidateFirst = candidate?.firstName?.trim() || candidateName.split(/\s+/)[0] || "the candidate";
+
+  const threadId = await resolveSubmittalThreadId(user.id, org.id, placement);
+  if (!threadId) {
+    return { ok: false, error: "Couldn't find the original submittal email to reply to." };
+  }
+
+  let thread;
+  try {
+    thread = await getGmailThread(user.id, threadId);
+  } catch {
+    return { ok: false, error: "Couldn't open the original submittal email." };
+  }
+  // The submittal is the first message the recruiter sent on the thread.
+  // Prefer the earliest message the current user sent; fall back to the
+  // first message overall.
+  const first =
+    thread.messages.find((m) => m.fromEmail?.toLowerCase() === user.email.toLowerCase()) ??
+    thread.messages[0];
+  if (!first) return { ok: false, error: "The original submittal email is empty." };
+
+  const toList = parseAddressList(first.to);
+  const ccList = parseAddressList(first.cc);
+  const greeting = buildFollowupGreeting(toList.map(firstNameForAddress));
+  const body = `${greeting}\n\nChecking in to see if you had a chance to review ${candidateFirst}'s resume and if you'd like to set up an interview this week?`;
+
+  const baseSubject = (first.subject || thread.subject || `Candidate Submittal - ${candidateName}`).trim();
+  const subject = /^re:/i.test(baseSubject) ? baseSubject : `Re: ${baseSubject}`;
+
+  const latestResume = await prisma.candidateResume.findFirst({
+    where: { candidateId: placement.candidateId, uploadComplete: true },
+    orderBy: { uploadedAt: "desc" },
+    select: { filename: true, displayName: true },
+  });
+  const latestResumeName = latestResume?.displayName || latestResume?.filename || null;
+
+  return {
+    ok: true,
+    value: {
+      to: toList.map((a) => a.email),
+      cc: ccList.map((a) => a.email),
+      recipientOptions: toList.map((a) => ({ id: a.email, name: a.name || a.email, email: a.email })),
+      ccOptions: ccList.map((a) => ({ id: a.email, name: a.name || a.email, email: a.email })),
+      subject,
+      body,
+      latestResumeName,
+      candidateName,
+    },
+  };
+}
+
+export type SendSubmittalFollowupInput = {
+  placementId: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  bodyText: string;
+};
+
+export async function sendSubmittalFollowup(
+  input: SendSubmittalFollowupInput,
+): Promise<Result<{ threadId: string }>> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  if (!input.to.length) return { ok: false, error: "At least one recipient is required." };
+  if (!input.subject.trim()) return { ok: false, error: "Subject is required." };
+  if (!input.bodyText.trim()) return { ok: false, error: "Body is required." };
+  const org = await getCurrentOrg();
+
+  const placement = await prisma.placement.findFirst({
+    where: { id: input.placementId, organizationId: org.id },
+    select: { id: true, candidateId: true, candidateRfId: true, jobId: true, jobRfId: true },
+  });
+  if (!placement || !placement.candidateId) return { ok: false, error: "Placement not found." };
+
+  // Re-resolve the thread server-side; never trust a client threadId.
+  const threadId = await resolveSubmittalThreadId(user.id, org.id, placement);
+  if (!threadId) {
+    return { ok: false, error: "Couldn't find the original submittal email to reply to." };
+  }
+
+  try {
+    // Re-attach the latest resume version on file (same source + ordering
+    // as the original submittal). Best-effort: a missing-bytes / blob
+    // failure logs and still sends the follow-up text.
+    const attachments: GmailAttachment[] = [];
+    try {
+      const latestResume = await prisma.candidateResume.findFirst({
+        where: { candidateId: placement.candidateId, uploadComplete: true },
+        orderBy: { uploadedAt: "desc" },
+        select: { filename: true, mimeType: true, data: true, blobUrl: true },
+      });
+      if (latestResume) {
+        const bytes = await getResumeBytes({
+          blobUrl: latestResume.blobUrl,
+          data: latestResume.data,
+        });
+        attachments.push({
+          filename: latestResume.filename,
+          mimeType: latestResume.mimeType || "application/octet-stream",
+          data: bytes,
+        });
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[submittal-followup] resume attach failed:", err);
+    }
+
+    const { messageId, references } = await getThreadReplyHeaders(user.id, threadId);
+    const bodyText = submittalToPlainText(input.bodyText);
+    const sent = await sendGmail({
+      userId: user.id,
+      from: user.email,
+      fromName: user.name ?? undefined,
+      to: input.to,
+      cc: input.cc,
+      bcc: input.bcc,
+      subject: input.subject,
+      bodyText,
+      bodyHtml: submittalToHtml(input.bodyText),
+      threadId,
+      inReplyTo: messageId ?? undefined,
+      references: references ?? undefined,
+      attachments: attachments.length ? attachments : undefined,
+    });
+
+    // Keep the thread linked to candidate/client by participant address.
+    // Idempotent; a tag hiccup must not fail a sent follow-up.
+    try {
+      await tagThreadByAddresses({
+        threadId: sent.threadId,
+        addresses: [...input.to, ...(input.cc ?? [])],
+        organizationId: org.id,
+      });
+    } catch (tagErr) {
+      // eslint-disable-next-line no-console
+      console.warn("[submittal-followup] auto-tag failed", tagErr);
+    }
+
+    await createActionLog({
+      userId: user.id,
+      actionType: "submittal_followup",
+      subjectType: "candidate",
+      subjectId: placement.candidateId,
+      metadata: {
+        placementId: placement.id,
+        jobId: placement.jobId,
+        jobRfId: placement.jobRfId,
+        gmailMessageId: sent.id,
+        gmailThreadId: sent.threadId,
+        local: true,
+      },
+    });
+
+    revalidatePath("/pipeline");
+    return { ok: true, value: { threadId: sent.threadId } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Send failed." };
   }

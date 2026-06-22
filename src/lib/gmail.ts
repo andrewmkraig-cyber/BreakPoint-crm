@@ -1454,6 +1454,57 @@ export async function getThreadReplyHeaders(
   return { messageId, references };
 }
 
+// Resolves the Gmail threadId a given message belongs to. Used by the
+// submittal Follow Up flow: Ace-native submittals persist only the sent
+// message id (gmailMessageId) in the ActionLog, so we recover the thread
+// from it to reply in-thread. Returns null on any failure so callers can
+// fall back gracefully rather than 500.
+export async function getMessageThreadId(
+  userId: string,
+  messageId: string,
+): Promise<string | null> {
+  try {
+    const accessToken = await getFreshAccessToken(userId);
+    const url = new URL(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}`,
+    );
+    url.searchParams.set("format", "minimal");
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as { threadId?: string };
+    return j.threadId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Parses a raw RFC 5322 To/Cc header into individual { name, email }
+// pairs, preserving any display name. Complements
+// extractEmailsFromHeader (emails only) when a caller also needs the
+// display name - e.g. building a "Hi First," greeting from the people a
+// submittal was originally sent to. Tolerates "Display Name <addr>",
+// bare addresses, and comma-separated lists; dedupes by lowercased email.
+export function parseAddressList(
+  raw: string | null | undefined,
+): Array<{ name: string; email: string }> {
+  if (!raw) return [];
+  const out: Array<{ name: string; email: string }> = [];
+  const seen = new Set<string>();
+  const re =
+    /(?:"?([^"<,]*?)"?\s*)?<([^>]+)>|([\w!#$%&'*+/=?^`{|}~.-]+@[\w.-]+\.[a-zA-Z]{2,})/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw)) !== null) {
+    const email = (m[2] ?? m[3] ?? "").trim().toLowerCase();
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    out.push({ name: (m[1] ?? "").trim(), email });
+  }
+  return out;
+}
+
 // Pulls every email-shaped token out of a raw RFC 5322 To/Cc/Bcc header.
 // Tolerates "Display Name <addr@host>", bare addresses, and comma-
 // separated lists. Returns lowercased, trimmed, deduped strings.

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
-import { Bookmark, CalendarClock, CheckCircle2, ChevronDown, ChevronUp, DollarSign, Edit3, Handshake, Loader2, Search, Send, UserX, X } from "lucide-react";
+import { Bookmark, CalendarClock, CheckCircle2, ChevronDown, ChevronUp, DollarSign, Edit3, Handshake, Loader2, Paperclip, Search, Send, UserX, X } from "lucide-react";
 import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { toast } from "sonner";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
@@ -17,7 +17,13 @@ import {
   DataTableRow,
 } from "@/components/ui/data-table";
 import { TabStrip } from "@/components/ui/tab-strip";
-import { rejectLocalPlacement } from "@/app/candidates/[id]/local-placement-actions";
+import {
+  getSubmittalFollowup,
+  rejectLocalPlacement,
+  sendSubmittalFollowup,
+  type SubmittalFollowupDraft,
+} from "@/app/candidates/[id]/local-placement-actions";
+import { EmailComposer } from "@/components/email-composer";
 import { rejectCandidateJob } from "@/app/candidates/[id]/placement-actions";
 import {
   keepCandidateForJob,
@@ -1067,6 +1073,22 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
                           )}
                           <td className="px-3 py-2 align-top text-center">
                             <StageAgePill value={r.daysInStage} />
+                            {/* Submitted > 2 days: surface a Follow Up
+                                action under the Days-in-Stage pill. It
+                                replies in-thread to the original submittal
+                                with a templated nudge + the resume
+                                re-attached (see FollowUpButton). */}
+                            {r.bucket === "submitted" &&
+                              r.placementId &&
+                              r.daysInStage != null &&
+                              r.daysInStage > 2 && (
+                                <div className="mt-1.5 flex justify-center">
+                                  <FollowUpButton
+                                    placementId={r.placementId}
+                                    candidateName={r.candidateName}
+                                  />
+                                </div>
+                              )}
                           </td>
                           <td className="w-px whitespace-nowrap px-3 py-2 align-top">
                             {/* Schedule (submitted) + Offer (interviewing) sit
@@ -1479,6 +1501,113 @@ function RejectButton({ placementId, candidateName }: { placementId: string; can
             if (!isPending) setOpen(false);
           }}
           onConfirm={onConfirm}
+        />
+      )}
+    </>
+  );
+}
+
+// Follow Up button for Submitted rows older than 2 days. Click loads the
+// original submittal recipients + thread server-side (getSubmittalFollowup),
+// pre-fills the composer with a templated nudge, and on send replies
+// in-thread to the same client contacts with the latest resume re-attached
+// (sendSubmittalFollowup). stopPropagation so the row's navigate-to-profile
+// click doesn't also fire.
+function FollowUpButton({
+  placementId,
+  candidateName,
+}: {
+  placementId: string;
+  candidateName: string;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [draft, setDraft] = useState<SubmittalFollowupDraft | null>(null);
+
+  async function onClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (loading) return;
+    setLoading(true);
+    try {
+      const res = await getSubmittalFollowup(placementId);
+      if (!res.ok) {
+        toast.error("Couldn't start follow-up", { description: res.error });
+        return;
+      }
+      setDraft(res.value);
+      setOpen(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="primary"
+        size="sm"
+        onClick={onClick}
+        disabled={loading}
+        title="Reply to the original submittal email"
+        aria-label="Follow up on this submittal"
+        className="h-6 w-auto whitespace-nowrap px-2 text-[10px]"
+      >
+        {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+        Follow Up
+      </Button>
+      {open && draft && (
+        <EmailComposer
+          title="Follow-up email"
+          subtitle={`${candidateName} · submittal follow-up`}
+          draftKey={`submittal-followup-${placementId}`}
+          initial={{
+            to: draft.to,
+            cc: draft.cc,
+            bcc: [],
+            subject: draft.subject,
+            body: draft.body,
+          }}
+          toOptions={draft.recipientOptions.length > 0 ? draft.recipientOptions : undefined}
+          ccOptions={draft.ccOptions.length > 0 ? draft.ccOptions : undefined}
+          onClose={() => setOpen(false)}
+          sendLabel="Send Follow-up"
+          sendingLabel="Sending…"
+          helperText="Replies to the original submittal email so it stays in the same thread."
+          attachmentsSlot={
+            draft.latestResumeName ? (
+              <div className="flex items-center gap-2 text-xs text-court-fg">
+                <Paperclip className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
+                <span>
+                  Re-attaching latest resume:{" "}
+                  <span className="font-semibold">{draft.latestResumeName}</span>
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-xs text-court-fg-muted">
+                <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                <span>No resume on file - the follow-up will send without an attachment.</span>
+              </div>
+            )
+          }
+          onSend={async (d) => {
+            const res = await sendSubmittalFollowup({
+              placementId,
+              to: d.to,
+              cc: d.cc,
+              bcc: d.bcc,
+              subject: d.subject,
+              bodyText: d.body,
+            });
+            if (!res.ok) {
+              toast.error("Couldn't send follow-up", { description: res.error });
+              throw new Error(res.error);
+            }
+            toast.success("Follow-up sent");
+            setOpen(false);
+            router.refresh();
+          }}
         />
       )}
     </>
