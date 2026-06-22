@@ -1,8 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, CircleAlert, ExternalLink, Globe2, Loader2 } from "lucide-react";
+import { CheckCircle2, CircleAlert, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { setJobWebsitePublished } from "@/app/jobs/[id]/job-website-actions";
@@ -50,7 +51,14 @@ export function PromoteTab({
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-2xl">
             <div className="flex items-center gap-2">
-              <Globe2 className="h-5 w-5 text-court-accent" />
+              <Image
+                src="/brand/breakpoint-mark.png"
+                alt=""
+                width={24}
+                height={24}
+                className="h-6 w-6 rounded-sm"
+                aria-hidden="true"
+              />
               <h2 className="font-serif text-xl font-semibold text-court-fg">
                 BreakPoint Website
               </h2>
