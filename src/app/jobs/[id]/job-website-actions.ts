@@ -35,6 +35,7 @@ export async function setJobWebsitePublished(args: {
         locationState: true,
         employmentType: true,
         workplaceType: true,
+        hybridSchedule: true,
         publishToWebsite: true,
         client: { select: { ownerId: true } },
         override: { select: { description: true } },
@@ -68,6 +69,9 @@ export async function setJobWebsitePublished(args: {
       }
       if (!job.workplaceType) {
         return { ok: false, error: "Choose On-site, Hybrid, or Remote before publishing." };
+      }
+      if (job.workplaceType === "Hybrid" && !job.hybridSchedule) {
+        return { ok: false, error: "Choose the number of Days in office before publishing a Hybrid job." };
       }
     }
 

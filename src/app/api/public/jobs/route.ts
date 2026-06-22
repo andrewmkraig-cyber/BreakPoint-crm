@@ -67,6 +67,7 @@ export async function GET() {
       locationZip: true,
       employmentType: true,
       workplaceType: true,
+      hybridSchedule: true,
       salaryRangeStart: true,
       salaryRangeEnd: true,
       salaryCurrency: true,
@@ -98,7 +99,8 @@ export async function GET() {
       !row.locationCity ||
       !row.locationState ||
       !row.employmentType ||
-      !row.workplaceType
+      !row.workplaceType ||
+      (row.workplaceType === "Hybrid" && !row.hybridSchedule)
     ) return [];
 
     return [{
@@ -115,6 +117,7 @@ export async function GET() {
       },
       employmentType: row.employmentType,
       workplaceType: row.workplaceType,
+      hybridSchedule: row.hybridSchedule,
       salary: {
         minimum: row.salaryRangeStart,
         maximum: row.salaryRangeEnd,

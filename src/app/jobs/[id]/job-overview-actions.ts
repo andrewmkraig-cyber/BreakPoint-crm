@@ -8,6 +8,7 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { triggerJobsSiteRebuild } from "@/lib/jobs-site-rebuild";
 import { nextOwnerJobPriority, normalizeOwnerJobPriorities } from "@/lib/job-priority";
+import { isHybridSchedule } from "@/lib/hybrid-schedule";
 import { isLikelyZip, validateUsCity, validateUsZip } from "@/lib/location-validation";
 import { prisma } from "@/lib/prisma";
 
@@ -65,6 +66,7 @@ export type JobOverviewPatch = {
   isOpen?: boolean;
   employmentType?: string | null;
   workplaceType?: string | null;
+  hybridSchedule?: string | null;
 };
 
 export async function updateJobOverview(args: {
@@ -104,7 +106,14 @@ export async function updateJobOverview(args: {
         ...(jobCuid ? { id: jobCuid } : { legacyRfId: jobRfId! }),
         organizationId: org.id,
       },
-      select: { id: true, legacyRfId: true, lifecycle: true, isOpen: true, clientId: true },
+      select: {
+        id: true,
+        legacyRfId: true,
+        lifecycle: true,
+        isOpen: true,
+        clientId: true,
+        workplaceType: true,
+      },
     });
     if (!job) return { ok: false, error: "Job not found." };
 
@@ -232,6 +241,14 @@ export async function updateJobOverview(args: {
         return { ok: false, error: "Workplace must be On-site, Hybrid, or Remote." };
       }
       data.workplaceType = workplace || null;
+    }
+    if (patch.hybridSchedule !== undefined || patch.workplaceType !== undefined) {
+      const workplace = (patch.workplaceType ?? job.workplaceType ?? "").trim();
+      const schedule = (patch.hybridSchedule ?? "").trim();
+      if (workplace === "Hybrid" && (!schedule || !isHybridSchedule(schedule))) {
+        return { ok: false, error: "Choose a valid Days in office option for Hybrid work." };
+      }
+      data.hybridSchedule = workplace === "Hybrid" ? schedule : null;
     }
 
     await prisma.job.update({ where: { id: job.id }, data });
@@ -368,6 +385,7 @@ export async function duplicateJob(args: {
         jobType: true,
         employmentType: true,
         workplaceType: true,
+        hybridSchedule: true,
         department: true,
         salaryRangeStart: true,
         salaryRangeEnd: true,
@@ -405,6 +423,7 @@ export async function duplicateJob(args: {
         jobType: source.jobType ?? Prisma.DbNull,
         employmentType: source.employmentType,
         workplaceType: source.workplaceType,
+        hybridSchedule: source.hybridSchedule,
         department: source.department,
         salaryRangeStart: source.salaryRangeStart,
         salaryRangeEnd: source.salaryRangeEnd,

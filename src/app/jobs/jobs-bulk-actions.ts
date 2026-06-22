@@ -43,6 +43,7 @@ export async function runJobsBulkAction(args: {
         locationState: true,
         employmentType: true,
         workplaceType: true,
+        hybridSchedule: true,
         publishToWebsite: true,
         client: { select: { ownerId: true } },
         override: { select: { description: true } },
@@ -68,6 +69,7 @@ export async function runJobsBulkAction(args: {
           !job.locationCity || !job.locationState ? "city and state" : null,
           !job.employmentType ? "employment type" : null,
           !job.workplaceType ? "workplace type" : null,
+          job.workplaceType === "Hybrid" && !job.hybridSchedule ? "days in office" : null,
         ].filter(Boolean);
         if (missing.length) {
           return {

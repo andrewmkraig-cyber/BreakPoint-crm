@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { nextOwnerJobPriority } from "@/lib/job-priority";
+import { isHybridSchedule } from "@/lib/hybrid-schedule";
 import {
   extractJobFieldsFromGeneratedJd,
   generateJobDescription,
@@ -127,6 +128,7 @@ export type NewJobInput = {
   jobType: string;
   employmentType: string;
   workplaceType: string;
+  hybridSchedule: string;
   salaryRangeStart: number | null;
   salaryRangeEnd: number | null;
   salaryCurrency: string;
@@ -195,6 +197,10 @@ export async function createJob(
     const workplaceType = input.workplaceType.trim();
     if (workplaceType && !["On-site", "Hybrid", "Remote"].includes(workplaceType)) {
       return { ok: false, error: "Workplace must be On-site, Hybrid, or Remote." };
+    }
+    const hybridSchedule = input.hybridSchedule.trim();
+    if (workplaceType === "Hybrid" && !isHybridSchedule(hybridSchedule)) {
+      return { ok: false, error: "Choose a valid Days in office option for Hybrid work." };
     }
 
     // Format guarantee: every created job must store its JD in the canonical
@@ -297,6 +303,7 @@ export async function createJob(
         isOpen: true,
         employmentType: employmentType || null,
         workplaceType: workplaceType || null,
+        hybridSchedule: workplaceType === "Hybrid" ? hybridSchedule : null,
         jobType: jobType ? { name: jobType } : undefined,
         salaryRangeStart: lo ?? null,
         salaryRangeEnd: hi ?? null,

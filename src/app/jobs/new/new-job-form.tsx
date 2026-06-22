@@ -12,6 +12,7 @@ import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { TabStrip } from "@/components/ui/tab-strip";
 import { cn } from "@/lib/utils";
+import { HYBRID_SCHEDULE_OPTIONS } from "@/lib/hybrid-schedule";
 
 const JOB_TYPES = ["Permanent", "Contract", "Contract to Hire", "Temporary", "Internship"] as const;
 const EMPLOYMENT_TYPES = ["Full time", "Part time", "Contract"] as const;
@@ -92,6 +93,7 @@ export function NewJobForm({
   const [jobType, setJobType] = useState<string>(JOB_TYPES[0]);
   const [employmentType, setEmploymentType] = useState<string>(EMPLOYMENT_TYPES[0]);
   const [workplaceType, setWorkplaceType] = useState<string>(WORKPLACE_TYPES[0]);
+  const [hybridSchedule, setHybridSchedule] = useState("Flexible");
   const [salaryFrequency, setSalaryFrequency] = useState<SalaryFrequency>("yearly");
   const [salaryLow, setSalaryLow] = useState("");
   const [salaryHigh, setSalaryHigh] = useState("");
@@ -455,6 +457,7 @@ export function NewJobForm({
         jobType,
         employmentType,
         workplaceType,
+        hybridSchedule: workplaceType === "Hybrid" ? hybridSchedule : "",
         salaryRangeStart: loNum,
         salaryRangeEnd: hiNum,
         salaryCurrency: currency.trim().toUpperCase().slice(0, 3) || "USD",
@@ -740,6 +743,13 @@ export function NewJobForm({
                 </option>
               ))}
             </CompactSelect>
+            {workplaceType === "Hybrid" && (
+              <CompactSelect label="Days in office" value={hybridSchedule} onChange={setHybridSchedule} className="flex-1">
+                {HYBRID_SCHEDULE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </CompactSelect>
+            )}
             <CompactSelect label="Job Type" value={jobType} onChange={setJobType} className="flex-1">
               {JOB_TYPES.map((t) => (
                 <option key={t} value={t}>

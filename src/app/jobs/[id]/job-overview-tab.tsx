@@ -24,6 +24,7 @@ import {
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
+import { HYBRID_SCHEDULE_OPTIONS } from "@/lib/hybrid-schedule";
 import { LabeledField } from "@/app/candidates/[id]/editable-helpers";
 import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,7 @@ export type JobOverviewSnapshot = {
   lifecycle: JobLifecycle;
   employmentType: string | null;
   workplaceType: string | null;
+  hybridSchedule: string | null;
   compensation: string;
   feePct: number | null;
   numberOfOpenings: number | null;
@@ -78,6 +80,7 @@ type Draft = {
   title: string;
   employmentType: string;
   workplaceType: string;
+  hybridSchedule: string;
   locationCity: string;
   locationState: string;
   locationZip: string;
@@ -93,6 +96,7 @@ function buildDraft(s: JobOverviewSnapshot): Draft {
     title: s.title,
     employmentType: s.employmentType ?? "",
     workplaceType: s.workplaceType ?? "On-site",
+    hybridSchedule: s.hybridSchedule ?? "Flexible",
     locationCity: s.locationCity ?? "",
     locationState: s.locationState ?? "",
     locationZip: s.locationZip ?? "",
@@ -224,6 +228,7 @@ export function JobOverviewTab({
     const ccy = draft.salaryCcy.trim().toUpperCase().slice(0, 3) || null;
     const employmentType = draft.employmentType.trim() || null;
     const workplaceType = draft.workplaceType.trim() || null;
+    const hybridSchedule = workplaceType === "Hybrid" ? draft.hybridSchedule.trim() || null : null;
     const stateUpper = stateAbbr.toUpperCase();
 
     setSaving(true);
@@ -259,6 +264,7 @@ export function JobOverviewTab({
       title,
       employmentType,
       workplaceType,
+      hybridSchedule,
       locationCity: city,
       locationState: stateUpper,
       locationZip: zip,
@@ -295,6 +301,7 @@ export function JobOverviewTab({
       title,
       employmentType,
       workplaceType,
+      hybridSchedule,
       locationCity: city,
       locationState: stateUpper,
       locationZip: zip,
@@ -373,6 +380,24 @@ export function JobOverviewTab({
                 placeholder="1" frameClassName={INPUT_FRAME_RECT_CLASS}
               />
             </div>
+            {draft.workplaceType === "Hybrid" && (
+              <label className="flex max-w-[220px] flex-col">
+                <span className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                  Days in office
+                </span>
+                <div className={`${INPUT_FRAME_RECT_CLASS} w-full`}>
+                  <select
+                    value={draft.hybridSchedule}
+                    onChange={(event) => setDraft({ ...draft, hybridSchedule: event.target.value })}
+                    className={`${INPUT_CONTROL_CLASS} text-sm`}
+                  >
+                    {HYBRID_SCHEDULE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </label>
+            )}
 
             {/* Location is the required City / State (2-letter) / Zip
                 (5-digit) trio — enforced on save, same as the New Job
@@ -501,6 +526,13 @@ export function JobOverviewTab({
                 state.workplaceType || <span className="text-court-fg-muted">—</span>
               }
             />
+            {state.workplaceType === "Hybrid" && (
+              <ReadOnlyCell
+                icon={<MapPin className="h-3.5 w-3.5" />}
+                label="Days in office"
+                value={state.hybridSchedule || <span className="text-court-fg-muted">—</span>}
+              />
+            )}
             <ReadOnlyCell
               icon={<MapPin className="h-3.5 w-3.5" />}
               label="Location"
