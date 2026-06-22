@@ -6,6 +6,7 @@ import { generateJobDescription } from "@/lib/claude";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { logActivity } from "@/lib/activity";
+import { triggerJobsSiteRebuild } from "@/lib/jobs-site-rebuild";
 
 export const dynamic = "force-dynamic";
 // Generate is the heaviest Claude call on this page — match the 60s
@@ -142,6 +143,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<GenerateJdRes
 
   if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
   revalidatePath(`/jobs/${job.id}`);
+  await triggerJobsSiteRebuild("job-description-generated");
 
   return NextResponse.json({
     ok: true,

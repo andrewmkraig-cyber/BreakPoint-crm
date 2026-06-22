@@ -10,6 +10,7 @@ import { deleteCandidate as deleteCandidateAction } from "@/app/candidates/[id]/
 import { createReminder } from "@/app/calendar/reminder-actions";
 import { parseReminderToolInput } from "@/lib/claude-panel/reminders";
 import type { PlacementStage } from "@/lib/placements";
+import { triggerJobsSiteRebuild } from "@/lib/jobs-site-rebuild";
 
 // Executes confirmed Claude Panel proposals. The chat route never
 // runs writes itself — when Claude calls move_candidate_stage /
@@ -481,7 +482,11 @@ export async function POST(req: Request) {
 
     await prisma.job.update({
       where: { id: job.id },
-      data: { lifecycle: target, isOpen: target !== "inactive" },
+      data: {
+        lifecycle: target,
+        isOpen: target !== "inactive",
+        ...(target === "active" ? {} : { publishToWebsite: false }),
+      },
     });
     const actionType =
       target === "inactive"
@@ -506,6 +511,7 @@ export async function POST(req: Request) {
     revalidatePath(`/jobs/${job.id}`);
     if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
     revalidatePath(`/pipeline`);
+    await triggerJobsSiteRebuild(`job-lifecycle-${target}`);
     const verb =
       target === "inactive"
         ? "Inactivated"
@@ -577,6 +583,7 @@ export async function POST(req: Request) {
     if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
     revalidatePath(`/pipeline`);
     if (job.clientId) revalidatePath(`/clients/${job.clientId}`);
+    await triggerJobsSiteRebuild("job-deleted");
 
     return NextResponse.json({
       ok: true,
@@ -1144,7 +1151,11 @@ export async function POST(req: Request) {
             if (target && current !== target) {
               await prisma.job.update({
                 where: { id: job.id },
-                data: { lifecycle: target, isOpen: target !== "inactive" },
+                data: {
+                  lifecycle: target,
+                  isOpen: target !== "inactive",
+                  ...(target === "active" ? {} : { publishToWebsite: false }),
+                },
               });
               await logActivity({
                 organizationId: org.id,
@@ -1176,6 +1187,9 @@ export async function POST(req: Request) {
 
     // ONE revalidation pass after the whole batch — never per item.
     Array.from(paths).forEach((p) => revalidatePath(p));
+    if (!isCandidate && done > 0) {
+      await triggerJobsSiteRebuild(`jobs-bulk-${name}`);
+    }
 
     const total = done + failures.length;
     const verbPast =

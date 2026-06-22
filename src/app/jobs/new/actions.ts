@@ -12,7 +12,7 @@ import {
   REQUIRED_JD_HEADER_COUNT,
   type ExtractedJdFields,
 } from "@/lib/claude";
-import { ensureMajorBoardsSeeded } from "@/lib/job-boards";
+import { triggerJobsSiteRebuild } from "@/lib/jobs-site-rebuild";
 import { validateUsCity, validateUsZip } from "@/lib/location-validation";
 
 type ActionResult<T = void> =
@@ -301,12 +301,6 @@ export async function createJob(
       select: { id: true, legacyRfId: true },
     });
 
-    // Seed the 6 majors so the Promote tab has rows to render the
-    // moment the recruiter opens it. Idempotent — the unique
-    // (jobId, boardName) constraint plus skipDuplicates means a
-    // retried create-call won't stack duplicates.
-    await ensureMajorBoardsSeeded({ jobId: job.id, organizationId: org.id });
-
     // Always redirect to the Job's cuid. legacyRfId is only set on RF-
     // imported rows (and historically a couple of corrupt rows ended up
     // with negative values, yielding /jobs/-309396680 404s). Ace-native
@@ -323,6 +317,7 @@ export async function createJob(
       revalidatePath("/clients");
       revalidatePath(`/clients/${clientId}`);
     }
+    await triggerJobsSiteRebuild("job-created");
     return { ok: true, value: { slug, jobCuid: job.id } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create job." };

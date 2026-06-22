@@ -6,7 +6,7 @@ import { getServerSession } from "next-auth";
 import { logActivity } from "@/lib/activity";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
-import { ensureMajorBoardsSeeded } from "@/lib/job-boards";
+import { triggerJobsSiteRebuild } from "@/lib/jobs-site-rebuild";
 import { isLikelyZip, validateUsCity, validateUsZip } from "@/lib/location-validation";
 import { prisma } from "@/lib/prisma";
 
@@ -208,6 +208,7 @@ export async function updateJobOverview(args: {
     if (patch.numberOfOpenings !== undefined) data.numberOfOpenings = patch.numberOfOpenings;
     if (patch.isOpen !== undefined) {
       data.isOpen = patch.isOpen;
+      if (!patch.isOpen) data.publishToWebsite = false;
       // Keep lifecycle in sync when the right-rail Edit form toggles
       // isOpen. We don't want a stale "private" label sticking around
       // after the recruiter's flipped the status to inactive (or
@@ -235,6 +236,7 @@ export async function updateJobOverview(args: {
       revalidatePath(`/pipeline`);
       if (job.clientId) revalidatePath(`/clients/${job.clientId}`);
     }
+    await triggerJobsSiteRebuild("job-overview-updated");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Save failed." };
@@ -273,7 +275,11 @@ async function transitionLifecycle(
 
     await prisma.job.update({
       where: { id: job.id },
-      data: { lifecycle: next, isOpen: next !== "inactive" },
+      data: {
+        lifecycle: next,
+        isOpen: next !== "inactive",
+        ...(next === "active" ? {} : { publishToWebsite: false }),
+      },
     });
     await logActivity({
       organizationId: org.id,
@@ -288,6 +294,7 @@ async function transitionLifecycle(
     revalidatePath(`/jobs/${job.id}`);
     revalidatePath(`/jobs`);
     revalidatePath(`/pipeline`);
+    await triggerJobsSiteRebuild(`job-lifecycle-${next}`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Save failed." };
@@ -395,10 +402,6 @@ export async function duplicateJob(args: {
       select: { id: true },
     });
 
-    // Seed the 6 major job boards so the Promote tab renders immediately,
-    // matching the create-job path. Idempotent via the unique constraint.
-    await ensureMajorBoardsSeeded({ jobId: copy.id, organizationId: org.id });
-
     await logActivity({
       organizationId: org.id,
       userId,
@@ -414,6 +417,7 @@ export async function duplicateJob(args: {
       revalidatePath(`/clients`);
       revalidatePath(`/clients/${source.clientId}`);
     }
+    await triggerJobsSiteRebuild("job-duplicated");
     return { ok: true, jobCuid: copy.id };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Duplicate failed." };
@@ -458,6 +462,7 @@ export async function deleteJob(args: { jobId: string }): Promise<Result> {
     revalidatePath(`/jobs`);
     revalidatePath(`/pipeline`);
     if (job.clientId) revalidatePath(`/clients/${job.clientId}`);
+    await triggerJobsSiteRebuild("job-deleted");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Delete failed." };
@@ -496,6 +501,7 @@ export async function saveJobGeneratedDescription(args: {
 
     if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
     revalidatePath(`/jobs/${job.id}`);
+    await triggerJobsSiteRebuild("job-description-updated");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Save failed." };

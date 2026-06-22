@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { triggerJobsSiteRebuild } from "@/lib/jobs-site-rebuild";
 import { prisma } from "@/lib/prisma";
 
 // Local-only override layer for RF jobs. RF is the system of record but
@@ -61,6 +62,7 @@ export async function updateJobOverrideDescription(args: {
       });
       revalidatePath(`/jobs/${job.id}`);
       revalidatePath("/candidates", "layout");
+      await triggerJobsSiteRebuild("job-description-updated");
       return { ok: true };
     }
 
@@ -94,6 +96,7 @@ export async function updateJobOverrideDescription(args: {
     });
     revalidatePath(`/jobs/${resolvedRfId}`);
     revalidatePath("/candidates", "layout");
+    await triggerJobsSiteRebuild("job-description-updated");
     return { ok: true };
   } catch (e) {
     // eslint-disable-next-line no-console

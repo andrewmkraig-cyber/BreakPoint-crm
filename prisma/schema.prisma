@@ -926,6 +926,11 @@ model Job {
   hiringTeam       Json?
   customFields     Json?
   applyLink        String?
+  // Explicit public-site gate controlled from the Job's Website tab.
+  // Active/private/inactive remains the internal recruiting lifecycle;
+  // a role is exposed to breakpointtalent.com only when this is true.
+  publishToWebsite Boolean   @default(false)
+  websitePublishedAt DateTime?
   lastOpenedAt     DateTime?
   createdAtRf      DateTime?
   // Phase 2: Ace-native Jobs store their description here. RF-imported
@@ -981,6 +986,7 @@ model Job {
   @@index([isOpen])
   @@index([title])
   @@index([organizationId])
+  @@index([organizationId, publishToWebsite])
   @@index([locationCity])
   @@index([locationState])
   @@index([locationZip])

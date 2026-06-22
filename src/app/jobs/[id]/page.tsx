@@ -12,6 +12,7 @@ import { getJobByIdentifier } from "@/lib/jobs";
 import { extractFeePctFromCustomFields } from "@/lib/clients";
 import { getPlacementsForOrg } from "@/lib/placements";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { getCurrentUserId } from "@/lib/auth/getCurrentUserId";
 import {
   JobPipelineSummary,
   type JobMatchedRow,
@@ -28,7 +29,7 @@ import { MatchesTab } from "@/app/jobs/[id]/matches-tab";
 import AiWorkspace from "@/components/AiWorkspace";
 import { ActivityFeed } from "@/components/activity-feed";
 import { EntityNotesSection } from "@/components/notes/entity-notes-section";
-import { ensureMajorBoardsSeeded, listJobBoardStatuses } from "@/lib/job-boards";
+import { publicJobSlug } from "@/lib/public-job-slug";
 import { prisma } from "@/lib/prisma";
 import { TabStrip } from "@/components/ui/tab-strip";
 
@@ -52,7 +53,7 @@ const JOB_TABS: { id: JobTab; label: string }[] = [
   { id: "description", label: "Job Description" },
   { id: "matches", label: "Matches" },
   { id: "game-plan", label: "Game Plan" },
-  { id: "promote", label: "Promote" },
+  { id: "promote", label: "Website" },
   { id: "activity", label: "Activity" },
 ];
 
@@ -315,12 +316,25 @@ export default async function JobDetailPage({
   // legacyRfId (back-compat URLs); fall back to cuid for Ace-native.
   // Also pulls feePct (canonical) + customFields (legacy fallback) so the
   // Overview tab can show the client's fee % on the job.
-  const clientRow = jobRow.clientId
-    ? await prisma.client.findUnique({
+  const [clientRow, jobOverride, currentUserId] = await Promise.all([
+    jobRow.clientId
+      ? prisma.client.findUnique({
         where: { id: jobRow.clientId },
-        select: { id: true, legacyRfId: true, feePct: true, customFields: true },
+        select: {
+          id: true,
+          legacyRfId: true,
+          feePct: true,
+          customFields: true,
+          ownerId: true,
+        },
       })
-    : null;
+      : Promise.resolve(null),
+    prisma.jobOverride.findUnique({
+      where: { jobId: jobRow.id },
+      select: { description: true },
+    }),
+    getCurrentUserId(),
+  ]);
   const clientSlug = clientRow
     ? clientRow.legacyRfId != null
       ? String(clientRow.legacyRfId)
@@ -338,20 +352,6 @@ export default async function JobDetailPage({
   // Tab selection from ?tab=. Default Overview so the recruiter lands
   // on a snapshot + quick actions before drilling into a specific surface.
   const tab: JobTab = parseTab(searchParams?.tab);
-
-  // Lazy per-tab loads. Keep the eager queries above lean (the same
-  // payload every tab needs) and only fetch tab-specific shapes when
-  // the recruiter is on that tab. Promote also lazy-seeds the 6 majors
-  // for jobs that predate the JobBoardStatus table — first render is
-  // slightly slower for legacy jobs, every subsequent render is cached.
-  let promoteRows: Awaited<ReturnType<typeof listJobBoardStatuses>> = [];
-  if (tab === "promote") {
-    await ensureMajorBoardsSeeded({ jobId: jobRow.id, organizationId: org.id });
-    promoteRows = await listJobBoardStatuses({
-      jobId: jobRow.id,
-      organizationId: org.id,
-    });
-  }
 
   // Overview reads come from the Job table directly so inline-edit
   // saves through updateJobOverview echo on next revalidate without
@@ -408,6 +408,46 @@ export default async function JobDetailPage({
         : jobRow.isOpen
           ? "active"
           : "inactive";
+
+  const effectiveDescription =
+    jobOverride?.description?.trim() ||
+    jobRow.description?.trim() ||
+    (typeof raw.description === "string" ? raw.description.trim() : "");
+  const websiteSlug = publicJobSlug({
+    id: jobRow.id,
+    title: jobRow.title,
+    locationCity: jobRow.locationCity,
+    locationState: jobRow.locationState,
+  });
+  const websiteRequirements = [
+    {
+      label: "Active in My Jobs",
+      met:
+        lifecycle === "active" &&
+        jobRow.isOpen &&
+        Boolean(currentUserId && clientRow?.ownerId === currentUserId),
+      detail: "The role must be Active and belong to your My Jobs list.",
+    },
+    {
+      label: "Complete job description",
+      met: Boolean(effectiveDescription),
+      detail: effectiveDescription
+        ? "A candidate-facing description is ready."
+        : "Add a description on the Job Description tab.",
+    },
+    {
+      label: "Structured location",
+      met: Boolean(jobRow.locationCity && jobRow.locationState),
+      detail: jobRow.locationCity && jobRow.locationState
+        ? `${jobRow.locationCity}, ${jobRow.locationState}`
+        : "Add a city and state on the Overview tab.",
+    },
+    {
+      label: "Employment type",
+      met: Boolean(overviewFields.employmentType),
+      detail: overviewFields.employmentType || "Add an employment type on the Overview tab.",
+    },
+  ];
 
   const overviewSnapshot: JobOverviewSnapshot = {
     jobId: jobRow.id,
@@ -520,8 +560,9 @@ export default async function JobDetailPage({
         ) : tab === "promote" ? (
           <PromoteTab
             jobId={jobRow.id}
-            applyLink={overviewFields.applyLink}
-            rows={promoteRows}
+            published={jobRow.publishToWebsite}
+            websiteUrl={`https://breakpointtalent.com/jobs/${websiteSlug}/`}
+            requirements={websiteRequirements}
           />
         ) : tab === "game-plan" ? (
           <AiWorkspace entityType="job" entityId={jobRow.id} bottomGapRem={30} />
@@ -596,5 +637,4 @@ function formatCompSummary(state: {
   const only = lo ?? hi!;
   return `${fmt(only)}${suffix}`;
 }
-
 
