@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Check, Copy, Loader2, Mail, Send, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
+import { Check, Copy, Image as ImageIcon, Loader2, Mail, Send, Trash2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
@@ -44,13 +44,102 @@ type Message = {
   createdAt: string;
 };
 
+type ScreenshotAttachment = {
+  id: string;
+  kind: "image";
+  name: string;
+  size: number;
+  data: string;
+  mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+  previewUrl: string;
+};
+
 const TEMP_ID_PREFIX = "local-";
+const SCREENSHOT_MAX_BYTES = 10 * 1024 * 1024;
+const SCREENSHOT_TOTAL_MAX_BYTES = 25 * 1024 * 1024;
+const SUPPORTED_SCREENSHOT_MIME = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+]);
+
+function attachmentId(): string {
+  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return `shot-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+}
+
+function imageMime(file: File): ScreenshotAttachment["mediaType"] | null {
+  if (SUPPORTED_SCREENSHOT_MIME.has(file.type)) {
+    return file.type as ScreenshotAttachment["mediaType"];
+  }
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".webp")) return "image/webp";
+  return null;
+}
+
+async function fileToBase64(file: File | Blob): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const out = typeof reader.result === "string" ? reader.result : "";
+      const comma = out.indexOf(",");
+      resolve(comma >= 0 ? out.slice(comma + 1) : out);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function readScreenshotAttachment(file: File): Promise<ScreenshotAttachment | null> {
+  const mediaType = imageMime(file);
+  if (!mediaType) {
+    toast.error(`${file.name || "Attachment"} is not a supported screenshot`, {
+      description: "Drop a PNG, JPEG, GIF, or WebP image.",
+    });
+    return null;
+  }
+  if (file.size > SCREENSHOT_MAX_BYTES) {
+    toast.error(`${file.name || "Screenshot"} is too large`, {
+      description: `Screenshots must be under ${formatFileSize(SCREENSHOT_MAX_BYTES)}.`,
+    });
+    return null;
+  }
+  const data = await fileToBase64(file);
+  return {
+    id: attachmentId(),
+    kind: "image",
+    name: file.name || "screenshot.png",
+    size: file.size,
+    data,
+    mediaType,
+    previewUrl: `data:${mediaType};base64,${data}`,
+  };
+}
+
+function attachmentMarker(attachments: ScreenshotAttachment[]): string {
+  if (attachments.length === 0) return "";
+  return attachments.map((a) => `[Attached screenshot: ${a.name}]`).join("\n");
+}
 
 export function AiWorkspace({ entityType, entityId, title, recipientEmail, bottomGapRem = 22 }: AiWorkspaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [input, setInput] = useState("");
+  const [attachments, setAttachments] = useState<ScreenshotAttachment[]>([]);
+  const [dragging, setDragging] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -84,18 +173,61 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
     void loadHistory();
   }, [loadHistory]);
 
+  const emptyLabel =
+    entityType === "client" ? "client" : entityType === "job" ? "job" : "candidate";
+
+  const addFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return;
+      const screenshots = files.filter((file) => file.type.startsWith("image/") || imageMime(file));
+      if (screenshots.length === 0) {
+        toast.error("Drop screenshots only", {
+          description: "Game Plan can read PNG, JPEG, GIF, or WebP images.",
+        });
+        return;
+      }
+
+      const currentBytes = attachments.reduce((sum, a) => sum + a.size, 0);
+      let nextBytes = currentBytes;
+      const next: ScreenshotAttachment[] = [];
+      for (const file of screenshots) {
+        if (nextBytes + file.size > SCREENSHOT_TOTAL_MAX_BYTES) {
+          toast.error("Too many screenshots", {
+            description: `Keep the total under ${formatFileSize(SCREENSHOT_TOTAL_MAX_BYTES)} per message.`,
+          });
+          break;
+        }
+        const attachment = await readScreenshotAttachment(file);
+        if (attachment) {
+          nextBytes += attachment.size;
+          next.push(attachment);
+        }
+      }
+      if (next.length > 0) setAttachments((prev) => [...prev, ...next]);
+    },
+    [attachments],
+  );
+
   async function onSend() {
     const text = input.trim();
-    if (!text || sending) return;
+    if ((!text && attachments.length === 0) || sending) return;
 
     setErrorText(null);
     setSending(true);
+
+    const outboundAttachments = attachments;
+    const outboundText =
+      text ||
+      `Review the attached screenshot${outboundAttachments.length === 1 ? "" : "s"} in the context of this ${emptyLabel}.`;
+    const renderedUserContent = [outboundText, attachmentMarker(outboundAttachments)]
+      .filter(Boolean)
+      .join("\n\n");
 
     const now = new Date().toISOString();
     const optimisticUser: Message = {
       id: `${TEMP_ID_PREFIX}u-${Date.now()}`,
       role: "user",
-      content: text,
+      content: renderedUserContent,
       createdAt: now,
     };
     const pendingAssistantId = `${TEMP_ID_PREFIX}a-${Date.now()}`;
@@ -110,12 +242,25 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
     // while the POST is in flight.
     setMessages((prev) => [...prev, optimisticUser, pendingAssistant]);
     setInput("");
+    setAttachments([]);
 
     try {
       const res = await fetch("/api/ai-workspace", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entityType, entityId, userMessage: text }),
+        body: JSON.stringify({
+          entityType,
+          entityId,
+          userMessage: outboundText,
+          attachments: outboundAttachments.map((a) => ({
+            id: a.id,
+            kind: a.kind,
+            name: a.name,
+            size: a.size,
+            data: a.data,
+            mediaType: a.mediaType,
+          })),
+        }),
       });
       const payload = (await res.json().catch(() => null)) as
         | { content?: string; error?: string }
@@ -141,6 +286,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
       setMessages((prev) => prev.filter((m) => m.id !== pendingAssistantId));
       const detail = err instanceof Error ? err.message : "unknown error";
       setErrorText(`Failed to send: ${detail}`);
+      setAttachments(outboundAttachments);
     } finally {
       setSending(false);
     }
@@ -172,8 +318,21 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
   // Enter sends, Shift+Enter newline.
   const rows = Math.min(6, Math.max(2, input.split("\n").length));
 
-  const emptyLabel =
-    entityType === "client" ? "client" : entityType === "job" ? "job" : "candidate";
+  const onDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+    if (sending) return;
+    void addFiles(Array.from(e.dataTransfer.files));
+  };
+
+  const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (sending) return;
+    const files = Array.from(e.clipboardData.files).filter((file) => file.type.startsWith("image/"));
+    if (files.length === 0) return;
+    e.preventDefault();
+    void addFiles(files);
+  };
 
   return (
     // Sticky-footer chassis: the card is a fixed-height flex column
@@ -206,7 +365,25 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
     <div
       ref={cardRef}
       style={{ height: `calc(100dvh - ${bottomGapRem}rem)` }}
-      className="sticky top-4 flex min-h-[360px] flex-col overflow-hidden rounded-xl border border-court-border bg-white shadow-sm dark:bg-court-surface"
+      onDragEnter={(e) => {
+        e.preventDefault();
+        if (!sending) setDragging(true);
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (!sending) setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        setDragging(false);
+      }}
+      onDrop={onDrop}
+      className={cn(
+        "sticky top-4 flex min-h-[360px] flex-col overflow-hidden rounded-xl border bg-white shadow-sm dark:bg-court-surface",
+        dragging
+          ? "border-brand ring-2 ring-brand/30"
+          : "border-court-border",
+      )}
     >
       <div className="flex shrink-0 items-center justify-between border-b border-court-border px-5 py-3">
         <h2 className="font-serif text-base font-semibold text-court-fg">
@@ -254,13 +431,50 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
       </div>
 
       <div className="shrink-0 border-t border-court-border bg-white p-4 pb-6 dark:bg-court-surface">
+        {dragging && (
+          <div className="mb-3 rounded-lg border border-dashed border-brand bg-brand/10 px-3 py-2 text-sm font-medium text-court-fg">
+            Drop screenshot here and I’ll read it with this {emptyLabel} context.
+          </div>
+        )}
+        {attachments.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {attachments.map((attachment) => (
+              <div
+                key={attachment.id}
+                className="group flex max-w-full items-center gap-2 rounded-lg border border-court-border bg-court-surface-subtle/60 px-2 py-1.5 text-xs text-court-fg"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={attachment.previewUrl}
+                  alt=""
+                  className="h-8 w-8 rounded border border-court-border object-cover"
+                />
+                <div className="min-w-0">
+                  <div className="max-w-[160px] truncate font-medium">{attachment.name}</div>
+                  <div className="text-[11px] text-court-fg-muted">{formatFileSize(attachment.size)}</div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setAttachments((prev) => prev.filter((a) => a.id !== attachment.id))}
+                  className="h-7 w-7 shrink-0 rounded p-0 text-court-fg-muted hover:bg-court-border/50 hover:text-red-600"
+                  aria-label={`Remove ${attachment.name}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex items-end gap-2">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
+            onPaste={onPaste}
             rows={rows}
-            placeholder={`Ask anything about this ${emptyLabel}…`}
+            placeholder={`Ask anything about this ${emptyLabel}… or drop/paste a screenshot`}
             disabled={sending}
             className={cn(
               "flex-1 resize-none rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
@@ -272,9 +486,15 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
             type="button"
             size="md"
             onClick={() => void onSend()}
-            disabled={!input.trim() || sending}
+            disabled={(!input.trim() && attachments.length === 0) || sending}
           >
-            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            {sending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : attachments.length > 0 && !input.trim() ? (
+              <ImageIcon className="h-4 w-4" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
             Send
           </Button>
         </div>

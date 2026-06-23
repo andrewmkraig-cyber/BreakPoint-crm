@@ -15,6 +15,54 @@ import { buildPersonalTrainerBlock } from '@/lib/personal-trainer'
 
 const anthropic = new Anthropic()
 
+type ScreenshotAttachment = {
+  kind: 'image'
+  name: string
+  size: number
+  data: string
+  mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
+}
+
+const SUPPORTED_SCREENSHOT_MIME = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+])
+
+function sanitizeScreenshotAttachments(raw: unknown): ScreenshotAttachment[] {
+  if (!Array.isArray(raw)) return []
+  const out: ScreenshotAttachment[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const a = item as {
+      kind?: unknown
+      name?: unknown
+      size?: unknown
+      data?: unknown
+      mediaType?: unknown
+    }
+    if (a.kind !== 'image') continue
+    const mediaType = typeof a.mediaType === 'string' ? a.mediaType : ''
+    if (!SUPPORTED_SCREENSHOT_MIME.has(mediaType)) continue
+    const data = typeof a.data === 'string' ? a.data : ''
+    if (!data || data.length > 16_000_000) continue
+    out.push({
+      kind: 'image',
+      name: typeof a.name === 'string' && a.name.trim() ? a.name.trim().slice(0, 180) : 'screenshot.png',
+      size: typeof a.size === 'number' && Number.isFinite(a.size) ? a.size : 0,
+      data,
+      mediaType: mediaType as ScreenshotAttachment['mediaType'],
+    })
+  }
+  return out.slice(0, 8)
+}
+
+function screenshotMarker(attachments: Array<{ name: string }>): string {
+  if (attachments.length === 0) return ''
+  return attachments.map((a) => `[Attached screenshot: ${a.name}]`).join('\n')
+}
+
 export async function GET(req: NextRequest) {
   const entityType = req.nextUrl.searchParams.get('entityType')
   const entityId = req.nextUrl.searchParams.get('entityId')
@@ -35,7 +83,16 @@ export async function GET(req: NextRequest) {
 export const maxDuration = 300
 
 export async function POST(req: NextRequest) {
-  const { entityType, entityId, userMessage } = await req.json()
+  const body = await req.json()
+  const { entityType, entityId } = body
+  const userMessage =
+    typeof body?.userMessage === 'string'
+      ? body.userMessage.trim()
+      : ''
+  const screenshotAttachments = sanitizeScreenshotAttachments(body?.attachments)
+  const persistedUserMessage = [userMessage, screenshotMarker(screenshotAttachments)]
+    .filter(Boolean)
+    .join('\n\n')
 
   // Resolve tenant once up front. Used both for the Gmail-context
   // lookup below and for the Personal Trainer rules block appended at
@@ -146,7 +203,13 @@ export async function POST(req: NextRequest) {
     "FORMATTING RULES:\n" +
     "When returning lists of jobs, companies, or resources, use clean markdown: bold headers for categories, " +
     "hyphen bullets for items, and descriptive link text instead of full URLs. " +
-    "Keep responses scannable and well-organized."
+    "Keep responses scannable and well-organized." +
+    (screenshotAttachments.length > 0
+      ? "\n\nSCREENSHOT RULES:\n" +
+        "- The current user turn includes one or more screenshots. Read the image contents directly and combine what you see with the CRM context above.\n" +
+        "- If the screenshot appears to show an email, job board, resume, spreadsheet, CRM page, or search result, summarize the useful facts and call out anything Andrew should act on.\n" +
+        "- If the image text is too small or unclear, say exactly what you can and cannot read; do not invent missing details.\n"
+      : "")
 
   // Personal Trainer rules — Andrew-curated standing instructions
   // (no em dashes, no emojis, no signoff, freshness phrasing, voice
@@ -158,7 +221,7 @@ export async function POST(req: NextRequest) {
   // Persist the new user message first so the POST is recoverable if
   // something downstream blows up — the recruiter's question is never lost.
   await prisma.aiWorkspaceMessage.create({
-    data: { entityType, entityId, role: 'user', content: userMessage },
+    data: { entityType, entityId, role: 'user', content: persistedUserMessage || '(screenshot attached)' },
   })
 
   // Pre-insert a placeholder assistant row BEFORE the Anthropic call, then
@@ -186,14 +249,38 @@ export async function POST(req: NextRequest) {
   // messages. The DB can still contain orphan user rows from a pre-fix
   // session, so collapse runs of the same role into one (keeping the most
   // recent content) before handing the transcript to the API.
-  const messages: Array<{ role: 'user' | 'assistant'; content: string }> = []
+  const messages: Anthropic.Messages.MessageParam[] = []
   for (const m of history) {
     const role = m.role as 'user' | 'assistant'
     const last = messages[messages.length - 1]
-    if (last && last.role === role) {
+    if (last && last.role === role && typeof last.content === 'string') {
       last.content = m.content
     } else {
       messages.push({ role, content: m.content })
+    }
+  }
+
+  // Screenshots apply only to the newest user turn. We do not persist
+  // image bytes in AiWorkspaceMessage; the saved row keeps a lightweight
+  // "[Attached screenshot: ...]" marker while Claude receives the
+  // actual image for this request.
+  if (screenshotAttachments.length > 0) {
+    const last = messages[messages.length - 1]
+    if (last?.role === 'user') {
+      const userText =
+        typeof last.content === 'string'
+          ? last.content
+          : persistedUserMessage || 'Please review the attached screenshot.'
+      const blocks: Anthropic.Messages.ContentBlockParam[] = screenshotAttachments.map((attachment) => ({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: attachment.mediaType,
+          data: attachment.data,
+        },
+      }))
+      blocks.push({ type: 'text', text: userText })
+      last.content = blocks
     }
   }
 
