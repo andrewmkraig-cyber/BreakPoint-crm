@@ -103,6 +103,7 @@ export function CandidateCompactOverview({
   const [titleSaved, setTitleSaved] = useState(currentDesignation ?? "");
   const [employerSaved, setEmployerSaved] = useState(currentOrganization ?? "");
   const [locationSaved, setLocationSaved] = useState(location ?? "");
+  const [linkedinSaved, setLinkedinSaved] = useState(linkedinProfile ?? "");
   const [sourceSaved, setSourceSaved] = useState(source ?? "");
   const [compSaved, setCompSaved] = useState<CandidateCompactOverviewExpectedSalary | null>(
     expectedSalary,
@@ -124,6 +125,7 @@ export function CandidateCompactOverview({
   const [locationDraft, setLocationDraft] = useState<CandidateLocationParts>(() =>
     splitCandidateLocation(locationSaved),
   );
+  const [linkedinDraft, setLinkedinDraft] = useState(linkedinSaved);
   const [sourceDraft, setSourceDraft] = useState(sourceSaved);
   const [compDraft, setCompDraft] = useState<string>(formatCompForEdit(compSaved));
   const [emailsDraft, setEmailsDraft] = useState<string[]>(emailsSaved);
@@ -135,11 +137,12 @@ export function CandidateCompactOverview({
     setTitleDraft(titleSaved);
     setEmployerDraft(employerSaved);
     setLocationDraft(splitCandidateLocation(locationSaved));
+    setLinkedinDraft(linkedinSaved);
     setSourceDraft(sourceSaved);
     setCompDraft(formatCompForEdit(compSaved));
     setEmailsDraft(emailsSaved);
     setPhonesDraft(phonesSaved);
-  }, [editing, titleSaved, employerSaved, locationSaved, sourceSaved, compSaved, emailsSaved, phonesSaved]);
+  }, [editing, titleSaved, employerSaved, locationSaved, linkedinSaved, sourceSaved, compSaved, emailsSaved, phonesSaved]);
 
   const tokens = useMemo(
     () => (highlightTokens ?? []).filter((t) => t.trim().length > 0),
@@ -151,6 +154,7 @@ export function CandidateCompactOverview({
     setTitleDraft(titleSaved);
     setEmployerDraft(employerSaved);
     setLocationDraft(splitCandidateLocation(locationSaved));
+    setLinkedinDraft(linkedinSaved);
     setSourceDraft(sourceSaved);
     setCompDraft(formatCompForEdit(compSaved));
     // Seed at least one empty row so the recruiter can type straight away.
@@ -168,6 +172,7 @@ export function CandidateCompactOverview({
     const nextTitle = titleDraft.trim();
     const nextEmployer = employerDraft.trim();
     const nextLocation = composeCandidateLocation(locationDraft);
+    const nextLinkedin = linkedinDraft.trim();
     const nextSource = sourceDraft.trim();
     const nextCompNumber = parseCompensation(compDraft.trim());
     const currency = (compSaved?.currency ?? "USD").toUpperCase().slice(0, 3) || "USD";
@@ -186,6 +191,10 @@ export function CandidateCompactOverview({
     }
     if (nextLocation !== locationSaved.trim()) {
       patch.location = { location: nextLocation };
+      dirty = true;
+    }
+    if (nextLinkedin !== linkedinSaved.trim()) {
+      patch.linkedin_profile = nextLinkedin;
       dirty = true;
     }
     if (nextSource !== sourceSaved.trim()) {
@@ -232,6 +241,7 @@ export function CandidateCompactOverview({
       if (patch.current_designation !== undefined) setTitleSaved(nextTitle);
       if (patch.current_organization !== undefined) setEmployerSaved(nextEmployer);
       if (patch.location !== undefined) setLocationSaved(nextLocation);
+      if (patch.linkedin_profile !== undefined) setLinkedinSaved(nextLinkedin);
       if (patch.source !== undefined) setSourceSaved(nextSource);
       if (patch.expected_salary !== undefined) setCompSaved(nextComp);
       if (patch.email !== undefined) setEmailsSaved(nextEmails);
@@ -369,14 +379,16 @@ export function CandidateCompactOverview({
               removeLabel="Remove phone"
             />
           </EditField>
-          <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-            <Field label="LinkedIn">
-              <ReadLinkedIn linkedinProfile={linkedinProfile} />
-            </Field>
-            <Field label="Source">
-              <ReadCandidateSource source={sourceSaved} />
-            </Field>
-          </dl>
+          <EditField label="LinkedIn">
+            <Input
+              type="url"
+              value={linkedinDraft}
+              disabled={isSaving}
+              onChange={(e) => setLinkedinDraft(e.target.value)}
+              placeholder="https://linkedin.com/in/..."
+              className="px-2 py-1"
+            />
+          </EditField>
           <div className="flex items-center justify-end gap-2 border-t border-court-border pt-2">
             <button
               type="button"
@@ -447,7 +459,7 @@ export function CandidateCompactOverview({
             <ReadComp value={compSaved} />
           </Field>
           <Field label="LinkedIn">
-            <ReadLinkedIn linkedinProfile={linkedinProfile} />
+            <ReadLinkedIn linkedinProfile={linkedinSaved} />
           </Field>
           <Field label="Source">
             <ReadCandidateSource source={sourceSaved} />
