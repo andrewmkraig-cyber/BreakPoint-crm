@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Check,
   ChevronDown,
@@ -51,6 +51,7 @@ export type CallLogsProps =
   | { clientId: string; candidateId?: undefined; defaultOpen?: boolean };
 
 const VISIBLE_CALLS_DEFAULT = 3;
+type CallDetailView = "summary" | "transcript";
 
 export function CallLogs(props: CallLogsProps) {
   const { candidateId, clientId, defaultOpen } = props;
@@ -175,12 +176,21 @@ function CallRowView({ row }: { row: CallRow }) {
   // Empty-string transcripts (out-of-order summary-first arrival) read
   // as "not yet available" until the transcript event lands.
   const [expanded, setExpanded] = useState(false);
-  // Tracks which block last copied, so only that button shows the
-  // "Copied" confirmation (transcript and summary copy independently).
-  const [copied, setCopied] = useState<null | "transcript" | "summary">(null);
   const transcriptText = row.transcript?.transcript?.trim() ?? "";
   const summaryText = row.transcript?.summary?.trim() ?? "";
   const hasAnything = Boolean(transcriptText) || Boolean(summaryText);
+  const [activeView, setActiveView] = useState<CallDetailView>(() =>
+    summaryText ? "summary" : "transcript",
+  );
+  // Tracks which block last copied, so only that button shows the
+  // "Copied" confirmation (transcript and summary copy independently).
+  const [copied, setCopied] = useState<null | CallDetailView>(null);
+
+  useEffect(() => {
+    if (activeView === "summary" && !summaryText && transcriptText) {
+      setActiveView("transcript");
+    }
+  }, [activeView, summaryText, transcriptText]);
 
   // Copy a block to the clipboard. Brief "Copied" confirmation via an
   // icon/label swap (no toast dependency in this component).
@@ -235,7 +245,7 @@ function CallRowView({ row }: { row: CallRow }) {
               )}
               {hasAnything && (
                 <span className="rounded-full bg-brand-tint px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-brand-dark dark:bg-emerald-950/40 dark:text-emerald-200">
-                  Transcript
+                  {summaryText ? "AI Summary" : "Transcript"}
                 </span>
               )}
             </div>
@@ -268,74 +278,130 @@ function CallRowView({ row }: { row: CallRow }) {
       </div>
 
       {expanded && (
-        <div className="ml-10 mt-3 space-y-3">
-          {/* Transcript — pre-formatted text from Quo (one line per turn,
-              "0:00 Speaker: text"). whitespace-pre-wrap preserves the
-              line breaks Quo bakes in. */}
-          <div className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-xs text-court-fg">
-            <div className="mb-1 flex items-center justify-between gap-2">
-              <div className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
-                <Phone className="h-2.5 w-2.5" /> Transcript
-              </div>
-              {transcriptText && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void copyText(transcriptText, "transcript");
-                  }}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted transition hover:text-brand-dark"
-                  title="Copy transcript"
-                  aria-label="Copy transcript"
-                >
-                  {copied === "transcript" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                  {copied === "transcript" ? "Copied" : "Copy"}
-                </button>
-              )}
-            </div>
-            {transcriptText ? (
-              <div className="whitespace-pre-wrap">{transcriptText}</div>
-            ) : (
-              <div className="italic text-court-fg-muted">
-                Transcript not yet available.
-              </div>
-            )}
-          </div>
-
-          {/* Summary — Quo's "Powered by AI" callout, brand-tinted to
-              echo the in-app Claude-output styling. */}
-          <div className="rounded-lg border border-brand/20 bg-brand-tint/20 px-3 py-2 text-xs text-court-fg">
-            <div className="mb-1 flex items-center justify-between gap-2">
-              <div className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-brand-dark">
-                <Sparkles className="h-2.5 w-2.5" /> Summary
-              </div>
-              {summaryText && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void copyText(summaryText, "summary");
-                  }}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted transition hover:text-brand-dark"
-                  title="Copy summary"
-                  aria-label="Copy summary"
-                >
-                  {copied === "summary" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                  {copied === "summary" ? "Copied" : "Copy"}
-                </button>
-              )}
-            </div>
-            {summaryText ? (
-              <div className="whitespace-pre-wrap">{summaryText}</div>
-            ) : (
-              <div className="italic text-court-fg-muted">
-                Summary not yet available.
-              </div>
-            )}
-          </div>
-        </div>
+        <CallDetailsPanel
+          activeView={activeView}
+          copied={copied}
+          onCopy={(which) => {
+            void copyText(which === "summary" ? summaryText : transcriptText, which);
+          }}
+          onViewChange={setActiveView}
+          summaryText={summaryText}
+          transcriptText={transcriptText}
+        />
       )}
     </li>
+  );
+}
+
+function CallDetailsPanel({
+  activeView,
+  copied,
+  onCopy,
+  onViewChange,
+  summaryText,
+  transcriptText,
+}: {
+  activeView: CallDetailView;
+  copied: null | CallDetailView;
+  onCopy: (which: CallDetailView) => void;
+  onViewChange: (view: CallDetailView) => void;
+  summaryText: string;
+  transcriptText: string;
+}) {
+  const activeText = activeView === "summary" ? summaryText : transcriptText;
+  const isSummary = activeView === "summary";
+  const Icon = isSummary ? Sparkles : Phone;
+  const title = isSummary ? "AI Summary" : "Transcript";
+  const emptyText = isSummary ? "Summary not yet available." : "Transcript not yet available.";
+
+  return (
+    <div className="ml-10 mt-3 rounded-lg border border-court-border bg-court-surface-subtle/40 p-2 text-xs text-court-fg">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex rounded-md border border-court-border bg-court-surface p-0.5">
+          <CallDetailTab
+            active={activeView === "summary"}
+            icon={<Sparkles className="h-3 w-3" />}
+            label="AI Summary"
+            onClick={() => onViewChange("summary")}
+          />
+          <CallDetailTab
+            active={activeView === "transcript"}
+            icon={<Phone className="h-3 w-3" />}
+            label="Transcript"
+            onClick={() => onViewChange("transcript")}
+          />
+        </div>
+        {activeText && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCopy(activeView);
+            }}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted transition hover:text-brand-dark"
+            title={`Copy ${isSummary ? "summary" : "transcript"}`}
+            aria-label={`Copy ${isSummary ? "summary" : "transcript"}`}
+          >
+            {copied === activeView ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            {copied === activeView ? "Copied" : "Copy"}
+          </button>
+        )}
+      </div>
+      <div
+        className={cn(
+          "rounded-md border px-3 py-2",
+          isSummary
+            ? "border-brand/20 bg-brand-tint/20"
+            : "border-court-border bg-court-surface",
+        )}
+      >
+        <div
+          className={cn(
+            "mb-1 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider",
+            isSummary ? "text-brand-dark" : "text-court-fg-muted",
+          )}
+        >
+          <Icon className="h-2.5 w-2.5" /> {title}
+        </div>
+        {activeText ? (
+          <div className="whitespace-pre-wrap">{activeText}</div>
+        ) : (
+          <div className="italic text-court-fg-muted">{emptyText}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CallDetailTab({
+  active,
+  icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={cn(
+        "inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] font-semibold transition",
+        active
+          ? "bg-brand-tint text-brand-dark shadow-sm"
+          : "text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg",
+      )}
+      aria-pressed={active}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }
 
