@@ -33,9 +33,38 @@ import { getResumeBytes } from "@/lib/resume-bytes";
 // up the prompt. 10k/candidate gives ~3x the old cap and still keeps
 // total payload under the 60s function budget for wide pipelines.
 const CLIENT_LOOP_RESUME_MAX_CHARS = 10_000;
+const RECENT_CALL_CONTEXT_TAKE = 5;
+const CALL_SUMMARY_MAX_CHARS = 1200;
+const CALL_TRANSCRIPT_MAX_CHARS = 3500;
+
+type CallContextRow = Prisma.CallLogGetPayload<{ include: { transcript: true } }>;
+
+export async function buildCandidateCallContextBlock(input: {
+  candidateId: string;
+  organizationId: string;
+  userEmail?: string | null;
+  heading?: string;
+  take?: number;
+}): Promise<string> {
+  const lineDigits = await getQuoLineDigitsForUserEmail(
+    input.organizationId,
+    input.userEmail,
+  );
+  return buildRecentCallContextBlock({
+    organizationId: input.organizationId,
+    lineDigits,
+    where: { candidateId: input.candidateId },
+    heading:
+      input.heading ??
+      "RECENT CALL CONTEXT (AI summaries and transcript excerpts)",
+    take: input.take,
+  });
+}
 
 export async function buildClientContext(clientId: string): Promise<string> {
   const org = await getCurrentOrg();
+  const session = await getServerSession(authOptions);
+  const lineDigits = await getQuoLineDigitsForUserEmail(org.id, session?.user?.email);
 
   const client = await prisma.client.findFirst({
     where: { id: clientId, organizationId: org.id },
@@ -126,6 +155,20 @@ export async function buildClientContext(clientId: string): Promise<string> {
   }
 
   const activeJobs = jobs.filter((j) => j.isOpen !== false);
+  const clientCallContextOr: Prisma.CallLogWhereInput[] = [{ clientId: client.id }];
+  const clientPipelineCandidateIds = Array.from(
+    new Set(placements.map((p) => p.candidate?.id).filter((id): id is string => Boolean(id))),
+  );
+  if (clientPipelineCandidateIds.length > 0) {
+    clientCallContextOr.push({ candidateId: { in: clientPipelineCandidateIds } });
+  }
+  const clientCallContextBlock = await buildRecentCallContextBlock({
+    organizationId: org.id,
+    lineDigits,
+    where: { OR: clientCallContextOr },
+    heading:
+      "RECENT CLIENT/PIPELINE CALL CONTEXT (AI summaries and transcript excerpts)",
+  });
 
   const lines: string[] = [];
   lines.push(
@@ -211,6 +254,11 @@ export async function buildClientContext(clientId: string): Promise<string> {
   }
   if (contacts.length === 0) lines.push("  (none on file)");
   lines.push("");
+
+  if (clientCallContextBlock) {
+    lines.push(clientCallContextBlock);
+    lines.push("");
+  }
 
   // Agreements block.
   lines.push("AGREEMENTS:");
@@ -362,7 +410,7 @@ export async function buildCandidateContext(
     return "You are an AI recruiting assistant for BreakPoint Talent. No candidate was found for the requested record.";
   }
 
-  const [smsMessages, callLogs, transcripts, placements, interviews, recruiterNotes] =
+  const [smsMessages, callLogs, placements, interviews, recruiterNotes] =
     await Promise.all([
       prisma.smsMessage.findMany({
         where: { candidateId: candidate.id, organizationId: org.id, AND: [smsLineWhere(lineDigits)] },
@@ -374,11 +422,6 @@ export async function buildCandidateContext(
         orderBy: { createdAt: "desc" },
         take: 5,
         include: { transcript: true },
-      }),
-      prisma.callTranscript.findMany({
-        where: { callLog: { candidateId: candidate.id, organizationId: org.id, AND: [callLineWhere(lineDigits)] } },
-        orderBy: { createdAt: "desc" },
-        take: 3,
       }),
       prisma.placement.findMany({
         where: { candidateId: candidate.id, organizationId: org.id },
@@ -418,6 +461,13 @@ export async function buildCandidateContext(
       // /notes page.
       getNotesForEntity("candidate", candidate.id),
     ]);
+  const candidateCallContextBlock = await buildRecentCallContextBlock({
+    organizationId: org.id,
+    lineDigits,
+    where: { candidateId: candidate.id },
+    heading:
+      "RECENT CALL CONTEXT (AI summaries and transcript excerpts)",
+  });
 
   // Activity feed: ActivityLog rows targeted at this candidate, plus
   // child rows logged against this candidate's placements or
@@ -649,6 +699,11 @@ export async function buildCandidateContext(
   }
   lines.push("");
 
+  if (candidateCallContextBlock) {
+    lines.push(candidateCallContextBlock);
+    lines.push("");
+  }
+
   lines.push("RECENT SMS:");
   if (smsMessages.length === 0) {
     lines.push("  (none)");
@@ -661,17 +716,79 @@ export async function buildCandidateContext(
     }
   }
 
-  if (transcripts.length > 0) {
-    lines.push("");
-    lines.push("RECENT CALL TRANSCRIPTS:");
-    for (const t of transcripts) {
-      lines.push(
-        `  ${t.createdAt.toLocaleDateString()}: ${t.transcript.slice(0, 500)}${t.transcript.length > 500 ? "…" : ""}`,
-      );
+  return lines.join("\n");
+}
+
+async function buildRecentCallContextBlock(input: {
+  organizationId: string;
+  lineDigits: string[];
+  where: Prisma.CallLogWhereInput;
+  heading: string;
+  take?: number;
+}): Promise<string> {
+  const calls = await prisma.callLog.findMany({
+    where: {
+      organizationId: input.organizationId,
+      AND: [
+        callLineWhere(input.lineDigits),
+        input.where,
+        {
+          OR: [
+            { transcript: { is: { summary: { not: null } } } },
+            { transcript: { is: { transcript: { not: "" } } } },
+          ],
+        },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    take: input.take ?? RECENT_CALL_CONTEXT_TAKE,
+    include: { transcript: true },
+  });
+
+  return renderRecentCallContextBlock(input.heading, calls);
+}
+
+function renderRecentCallContextBlock(
+  heading: string,
+  calls: CallContextRow[],
+): string {
+  const callsWithContext = calls.filter((call) => {
+    const summary = call.transcript?.summary?.trim() ?? "";
+    const transcript = call.transcript?.transcript?.trim() ?? "";
+    return summary.length > 0 || transcript.length > 0;
+  });
+  if (callsWithContext.length === 0) return "";
+
+  const lines: string[] = [`${heading}:`];
+  for (const call of callsWithContext) {
+    const when = call.createdAt.toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+    const duration = call.duration != null ? `${call.duration}s` : "no duration";
+    const status = call.status?.trim() ? ` - ${call.status.trim()}` : "";
+    lines.push(`  ${when} - ${call.direction}${status} - ${duration}`);
+
+    const summary = call.transcript?.summary?.trim() ?? "";
+    if (summary) {
+      lines.push("    AI summary:");
+      pushIndentedLines(lines, truncate(summary, CALL_SUMMARY_MAX_CHARS), "      ");
+    }
+
+    const transcript = call.transcript?.transcript?.trim() ?? "";
+    if (transcript) {
+      lines.push("    Transcript excerpt:");
+      pushIndentedLines(lines, truncate(transcript, CALL_TRANSCRIPT_MAX_CHARS), "      ");
     }
   }
 
   return lines.join("\n");
+}
+
+function pushIndentedLines(lines: string[], text: string, indent: string) {
+  for (const line of text.split("\n")) {
+    lines.push(`${indent}${line}`);
+  }
 }
 
 // --- helpers ---
@@ -909,6 +1026,8 @@ async function extractResumeTextForCandidate(
 // Tenant-scoped via getCurrentOrg + organizationId in WHERE.
 export async function buildJobContext(jobId: string): Promise<string> {
   const org = await getCurrentOrg();
+  const session = await getServerSession(authOptions);
+  const lineDigits = await getQuoLineDigitsForUserEmail(org.id, session?.user?.email);
 
   const job = await prisma.job.findFirst({
     where: { id: jobId, organizationId: org.id },
@@ -950,6 +1069,24 @@ export async function buildJobContext(jobId: string): Promise<string> {
   const stageLine = Array.from(stageCounts.entries())
     .map(([s, n]) => `${s}: ${n}`)
     .join(", ");
+  const candidateIdsInPipeline = Array.from(
+    new Set(placements.map((p) => p.candidateId).filter((id): id is string => Boolean(id))),
+  );
+  const callContextOr: Prisma.CallLogWhereInput[] = [];
+  if (job.clientId) callContextOr.push({ clientId: job.clientId });
+  if (candidateIdsInPipeline.length > 0) {
+    callContextOr.push({ candidateId: { in: candidateIdsInPipeline } });
+  }
+  const jobCallContextBlock =
+    callContextOr.length > 0
+      ? await buildRecentCallContextBlock({
+          organizationId: org.id,
+          lineDigits,
+          where: { OR: callContextOr },
+          heading:
+            "RECENT CALL CONTEXT (client and pipeline candidates - AI summaries and transcript excerpts)",
+        })
+      : "";
 
   const lines: string[] = [];
   lines.push(
@@ -989,6 +1126,10 @@ export async function buildJobContext(jobId: string): Promise<string> {
     if (stageLine) lines.push(`Stages: ${stageLine}`);
   }
   lines.push("");
+  if (jobCallContextBlock) {
+    lines.push(jobCallContextBlock);
+    lines.push("");
+  }
   lines.push(
     "Use this context to answer Andrew's questions about THIS job specifically. When he asks for sourcing ideas, suggest titles, target companies, and search strategies grounded in the JD above. When he asks for interview prep, surface likely competency areas. When he asks for comp benchmarking, ground it in the comp range plus current market data.",
   );

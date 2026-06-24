@@ -902,6 +902,7 @@ export type SubmittalInput = {
     customFields?: Array<{ name: string; value: string }>;
   };
   clientContactFirstName?: string;
+  callContext?: string;
 };
 
 export type PublicAccountingSubmittalBulletsInput = {
@@ -909,6 +910,7 @@ export type PublicAccountingSubmittalBulletsInput = {
     educationSummary?: string;
   };
   job?: Partial<SubmittalInput["job"]>;
+  callContext?: string;
   resume?: {
     filename: string;
     mimeType: string;
@@ -1009,6 +1011,7 @@ export async function generatePublicAccountingSubmittalBullets(
     `Experience summary:\n${input.candidate.experienceSummary || "-"}\n` +
     `Education:\n${input.candidate.educationSummary || "-"}\n` +
     `Recruiter notes:\n${input.candidate.notes || "-"}`;
+  const callContext = input.callContext?.trim();
 
   const content: Anthropic.Messages.ContentBlockParam[] = [
     {
@@ -1025,10 +1028,12 @@ export async function generatePublicAccountingSubmittalBullets(
         "Rules:\n" +
         "- Never invent a license, degree, year count, return type, software, employer, or achievement.\n" +
         "- If a priority fact is not stated, omit it and use another real relevant fact.\n" +
+        "- Use call context only for factual, client-safe details about motivation, compensation, availability, goals, objections, or fit. Do not mention that a fact came from a call transcript.\n" +
         "- Keep each bullet one sentence and client-ready.\n" +
         "- Use regular hyphens only. Never use em dashes.\n\n" +
         `=== Role context ===\n${roleLine}\n\n` +
-        `=== Candidate profile ===\n${candidateBlock}`,
+        `=== Candidate profile ===\n${candidateBlock}` +
+        (callContext ? `\n\n=== Candidate call context ===\n${callContext}` : ""),
     },
     ...(await resumeContentForClaude(input.resume)),
   ];
@@ -1057,6 +1062,7 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
   const fullName = [input.candidate.firstName, input.candidate.lastName].filter(Boolean).join(" ") || "Candidate";
   const firstName = input.candidate.firstName || "this candidate";
   const clientFirst = (input.clientContactFirstName ?? "").trim() || "there";
+  const callContext = input.callContext?.trim();
 
   const customFieldLines = (input.job.customFields ?? [])
     .filter((cf) => cf.name && cf.value)
@@ -1107,6 +1113,7 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
           "Write a targeted submittal email that makes the case for why THIS candidate fits THIS role, not a generic candidate summary. " +
           "Use the role context (title, location, employment type, salary range, experience range, description if present, custom fields) to frame the candidate. " +
           "In 'What [She/He] Brings' and 'Technically', explicitly reference experience and skills from the candidate that align with what the role needs. " +
+          "Use candidate call context when it adds concrete, client-safe facts about motivation, compensation, availability, goals, objections, or fit. Do not mention call transcripts, call summaries, or internal call notes in the email. " +
           "If there's a real mismatch (e.g. candidate's stack doesn't match), stay honest, don't manufacture fit.\n\n" +
           "Output MUST match this EXACT structure, with the `**…**` bold wrappers and the dash bullets preserved verbatim:\n\n" +
           `Hi ${clientFirst},\n\n` +
@@ -1133,7 +1140,8 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
           "=== Role context ===\n" +
           roleBlock +
           "\n=== Candidate profile ===\n" +
-          candidateBlock,
+          candidateBlock +
+          (callContext ? `\n\n=== Candidate call context ===\n${callContext}` : ""),
       },
     ],
   });

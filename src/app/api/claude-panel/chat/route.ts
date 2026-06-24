@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { buildPersonalTrainerBlock } from "@/lib/personal-trainer";
 import {
   buildCandidateContext,
+  buildCandidateCallContextBlock,
   buildClientContext,
   buildJobContext,
 } from "@/lib/ai-workspace-context";
@@ -68,6 +69,7 @@ const SYSTEM_PROMPT =
   "- General pipeline questions without a stage → get_pipeline({ clientName? }).\n" +
   "- 'what jobs are open' / 'show open roles' / 'active jobs' → search_jobs with the literal phrase as the query (the tool detects this intent and lists every open job).\n" +
   "- Specific candidate / role / client lookups (skills, titles, locations, industries) → search_candidates / search_jobs / search_clients with the user's natural phrasing.\n" +
+  "- Questions about what was said on a call, call transcripts, AI call summaries, candidate motivation, compensation expectations from a call, or call next steps → first resolve the candidate with search_candidates if needed, then call get_candidate_call_context with the candidate id from the result.\n" +
   "- 'Recently added candidates' / 'candidates I just imported' / 'newest candidates' → call search_candidates with sortBy='createdAt' (and an empty query string when no keyword filter applies). Use limit to honor counts the recruiter mentions ('the 25 candidates I just imported' → limit 25).\n" +
   "Pass the user's wording through; the tools handle stop-word stripping, plural collapsing, and ranking on their side.\n" +
   "Tool results may include markdown links like [Name](/candidates/abc) and [Title](/jobs/xyz). Quote those links as-is in your answer so the recruiter can click straight to the record. Never strip the link, never paraphrase the URL.\n" +
@@ -168,6 +170,22 @@ const DATA_TOOLS: Anthropic.Tool[] = [
             "True for past-tense / 'all-time' pipeline questions. Returns merged Placement + Interview history with no date filter. Optional, defaults to false.",
         },
       },
+    },
+  },
+  {
+    name: "get_candidate_call_context",
+    description:
+      "Read recent logged call AI summaries and transcript excerpts for one candidate. Use this after resolving a candidate when the recruiter asks what was discussed on a call, asks for call summaries/transcripts, or asks for candidate motivation, compensation, availability, objections, next steps, or fit that may come from calls.",
+    input_schema: {
+      type: "object",
+      properties: {
+        candidateId: {
+          type: "string",
+          description:
+            "Candidate id from search_candidates or the current page. Accepts a cuid or numeric RF id.",
+        },
+      },
+      required: ["candidateId"],
     },
   },
   // create_reminder — a DIRECT-execute action tool (it is NOT in
@@ -1346,6 +1364,32 @@ async function runGetPipeline(
   return `Pipeline${clientName ? ` for "${clientName}"` : ""}${stage ? ` (stage=${stage})` : ""}: ${rows.length} row${rows.length === 1 ? "" : "s"}:\n${lines.join("\n")}`;
 }
 
+async function runGetCandidateCallContext(
+  candidateId: string,
+  orgId: string,
+  userEmail: string | null | undefined,
+): Promise<string> {
+  const candidate = await resolveCandidate(candidateId, orgId);
+  if (!candidate) {
+    log("get_candidate_call_context", { candidateId }, 0, "candidate-not-found");
+    return `No candidate found for "${candidateId}".`;
+  }
+
+  const candidateName = joinName(candidate.firstName, candidate.lastName);
+  const block = await buildCandidateCallContextBlock({
+    candidateId: candidate.id,
+    organizationId: orgId,
+    userEmail,
+    heading: `CALL CONTEXT FOR ${candidateName} (AI summaries and transcript excerpts)`,
+  });
+  log(
+    "get_candidate_call_context",
+    { candidateId: candidateSlug(candidate), candidateName },
+    block ? 1 : 0,
+  );
+  return block || `No call transcripts or AI summaries found for ${candidateName}.`;
+}
+
 // Single point of tool-call telemetry. One line per call so the Vercel
 // function logs read like a routing decision audit trail. We log the
 // tool name, sanitized inputs, normalized tokens (when relevant), and
@@ -2135,6 +2179,7 @@ async function executeTool(
   name: string,
   rawInput: unknown,
   orgId: string,
+  userEmail?: string | null,
 ): Promise<string> {
   const input = (rawInput && typeof rawInput === "object" ? rawInput : {}) as Record<
     string,
@@ -2169,6 +2214,10 @@ async function executeTool(
       const stage = typeof input.stage === "string" ? input.stage : undefined;
       const historical = input.historical === true;
       return await runGetPipeline({ clientName, stage, historical }, orgId);
+    }
+    if (name === "get_candidate_call_context") {
+      const candidateId = typeof input.candidateId === "string" ? input.candidateId.trim() : "";
+      return await runGetCandidateCallContext(candidateId, orgId, userEmail);
     }
     return "No results found";
   } catch (err) {
@@ -2878,7 +2927,7 @@ export async function POST(req: NextRequest) {
           conversation.push({ role: "assistant", content: finalMsg.content });
           const results = await Promise.all(
             toolUses.map(async (tu) => {
-              const text = await executeTool(tu.name, tu.input, org.id);
+              const text = await executeTool(tu.name, tu.input, org.id, session.user.email);
               return {
                 type: "tool_result" as const,
                 tool_use_id: tu.id,

@@ -7,6 +7,7 @@ import { createActionLog } from "@/lib/action-log";
 import { logActivity } from "@/lib/activity";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { buildCandidateCallContextBlock } from "@/lib/ai-workspace-context";
 import { generateSubmittalWriteup, type SubmittalInput } from "@/lib/claude";
 import { createGmailDraft, plainToHtml, sendGmail, type GmailAttachment } from "@/lib/gmail";
 import { prisma } from "@/lib/prisma";
@@ -72,6 +73,23 @@ async function requireUserId(): Promise<string | null> {
   if (s.user.id) return s.user.id;
   const u = await prisma.user.findUnique({ where: { email }, select: { id: true } });
   return u?.id ?? null;
+}
+
+async function buildRfCandidateCallContextBlock(candidateRfId: number): Promise<string> {
+  const [org, session] = await Promise.all([
+    getCurrentOrg(),
+    getServerSession(authOptions),
+  ]);
+  const row = await prisma.candidate.findFirst({
+    where: { rfId: candidateRfId, organizationId: org.id },
+    select: { id: true },
+  });
+  if (!row) return "";
+  return buildCandidateCallContextBlock({
+    candidateId: row.id,
+    organizationId: org.id,
+    userEmail: session?.user?.email,
+  });
 }
 
 // General rule: always attempt RF sync for stage changes; fall back to
@@ -1493,6 +1511,7 @@ export async function generateSubmittal(input: GenerateSubmittalInput): Promise<
     const experienceSummary = summarizeExperienceForSubmittal(c.experience);
     const notes = summarizeNotesForSubmittal(c.notes);
     const locationLabel = formatLocation(c.location);
+    const callContext = await buildRfCandidateCallContextBlock(input.candidateRfId);
 
     // Pull the full RFJob so Claude sees role context (location, comp range,
     // employment type, department, description, custom fields). /job/{id} 404s
@@ -1531,6 +1550,7 @@ export async function generateSubmittal(input: GenerateSubmittalInput): Promise<
       },
       job: jobCtx,
       clientContactFirstName: input.clientContactFirstName,
+      callContext,
     };
 
     // Claude now produces the full email body including the greeting and
@@ -1817,6 +1837,7 @@ export async function generateSubmittalEmailBody(args: {
     const experienceSummary = summarizeExperience(c.experience);
     const notes = summarizeNotes(c.notes);
     const locationLabel = formatLocation(c.location);
+    const callContext = await buildRfCandidateCallContextBlock(args.candidateRfId);
 
     const input: SubmittalInput = {
       candidate: {
@@ -1837,6 +1858,7 @@ export async function generateSubmittalEmailBody(args: {
         title: args.jobTitle,
         clientName: args.clientName,
       },
+      callContext,
     };
 
     // Claude now emits the full body including greeting + closing line.

@@ -11,6 +11,7 @@ import {
   generatePublicAccountingSubmittalBullets,
   generateSubmittalWriteup,
 } from "@/lib/claude";
+import { buildCandidateCallContextBlock } from "@/lib/ai-workspace-context";
 import {
   getGmailThread,
   getMessageThreadId,
@@ -392,6 +393,7 @@ export async function generateLocalSubmittal(
   if (!user) return { ok: false, error: "Not signed in." };
 
   try {
+    const org = await getCurrentOrg();
     const c = await loadLocalCandidate(input.candidateId);
     if (!c) return { ok: false, error: "Candidate not found." };
 
@@ -439,6 +441,11 @@ export async function generateLocalSubmittal(
       })
       .filter(Boolean)
       .join("\n");
+    const callContext = await buildCandidateCallContextBlock({
+      candidateId: c.id,
+      organizationId: org.id,
+      userEmail: user.email,
+    });
 
     const writeup = await generateSubmittalWriteup({
       candidate: {
@@ -467,6 +474,7 @@ export async function generateLocalSubmittal(
           (typeof rawJob?.description === "string" ? rawJob.description : undefined),
         customFields: [],
       },
+      callContext,
     });
 
     return { ok: true, value: { writeup } };
@@ -488,6 +496,7 @@ export async function generateLocalPublicAccountingSubmittalBullets(
   if (!user) return { ok: false, error: "Not signed in." };
 
   try {
+    const org = await getCurrentOrg();
     const c = await loadLocalCandidate(input.candidateId);
     if (!c) return { ok: false, error: "Candidate not found." };
 
@@ -531,6 +540,11 @@ export async function generateLocalPublicAccountingSubmittalBullets(
 
     const experienceRows = (c.experience as unknown as ExpRow[] | null) ?? [];
     const educationRows = (c.education as unknown as EduRow[] | null) ?? [];
+    const callContext = await buildCandidateCallContextBlock({
+      candidateId: c.id,
+      organizationId: org.id,
+      userEmail: user.email,
+    });
     const bullets = await generatePublicAccountingSubmittalBullets({
       candidate: {
         firstName: c.firstName,
@@ -549,6 +563,7 @@ export async function generateLocalPublicAccountingSubmittalBullets(
         title: jobRow?.title ?? undefined,
         clientName: jobRow?.client?.name ?? undefined,
       },
+      callContext,
       resume,
     });
 
