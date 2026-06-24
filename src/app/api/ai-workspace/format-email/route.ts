@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getClaude } from "@/lib/claude";
+import { MARKDOWN_OUTPUT_FORMAT_RULES } from "@/lib/ai-output-formatting";
 
 // Haiku 4.5 instead of the project-wide Sonnet model. Format-email is a
 // pure rewrite — strip recruiter-internal copy, preserve the two
@@ -69,6 +70,8 @@ export async function POST(req: NextRequest) {
     "- Never use emojis anywhere in your response. Never.\n" +
     "- Never use em dashes. Use a hyphen (-) instead. Always.\n" +
     "- Preserve the two-section structure if the source has one. Specific role postings (Section 1) and broader job-board search pointers (Section 2: LinkedIn / Indeed / ZipRecruiter etc.) MUST stay visually separated in the email. Use clear bold section headers like `**Open Roles:**` and `**Broader job-board searches to watch:**`. Section 1 stays numbered; Section 2 stays bulleted. Never merge them into one numbered list. The candidate needs to see at a glance which links are pre-vetted specific roles vs. which are 'pages to browse on your own'.\n" +
+    MARKDOWN_OUTPUT_FORMAT_RULES +
+    "\n" +
     "- Keep markdown formatting in the body (bold, bullets, [text](url) links). The downstream renderer converts it to HTML for Gmail.\n" +
     "- If the source already has a `Subject:` line, use it (cleaned up) instead of inventing one.\n" +
     "- Never invent facts. Use only what's in the source message.";

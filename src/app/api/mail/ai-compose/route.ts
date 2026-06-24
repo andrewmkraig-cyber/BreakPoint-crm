@@ -7,6 +7,11 @@ import { prisma } from "@/lib/prisma";
 import { getGmailThread } from "@/lib/gmail";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { buildPersonalTrainerBlock } from "@/lib/personal-trainer";
+import {
+  HTML_EMAIL_OUTPUT_FORMAT_RULES,
+  convertInlineMarkdownToHtml,
+  markdownishTextToEmailHtml,
+} from "@/lib/ai-output-formatting";
 
 export const dynamic = "force-dynamic";
 // Claude Opus on a moderate context can take 5–15s. 60s leaves room
@@ -131,6 +136,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<AiComposeResp
         "Return STRICT JSON only - no prose, no preamble, no markdown fences. Shape: {\"subject\":\"...\",\"bodyHtml\":\"...\"}.",
         "Subject: under 80 characters, no quotation marks, no trailing period.",
         "Body: plain HTML with <p> paragraphs. No <html>/<body> wrapper, no inline styles.",
+        HTML_EMAIL_OUTPUT_FORMAT_RULES,
         "Do NOT include any greeting line like 'Hi [Name],' UNLESS the user's prompt explicitly addresses a specific person by name; even then, keep it short.",
         senderName ? `The sender is ${senderName}${senderTitle ? `, ${senderTitle}` : ""}.` : "",
       ]
@@ -142,8 +148,8 @@ export async function POST(req: NextRequest): Promise<NextResponse<AiComposeResp
         "The recipient and subject are being supplied separately - write ONLY the body text, nothing else.",
         "Do NOT include any greeting line like 'Hi [Name],' UNLESS the user's prompt explicitly addresses a specific person by name; even then, keep it short.",
         "Do NOT include 'Subject:' - the user sets the subject in a separate field.",
-        "Write in plain prose with short paragraphs. Use one blank line between paragraphs.",
         "Return the body formatted as plain HTML with <p> paragraphs. No <html>/<body> wrapper, no inline styles.",
+        HTML_EMAIL_OUTPUT_FORMAT_RULES,
         senderName ? `The sender is ${senderName}${senderTitle ? `, ${senderTitle}` : ""}.` : "",
       ]
         .filter(Boolean)
@@ -309,10 +315,7 @@ function toSafeHtml(raw: string): string {
   s = s.replace(/^```(?:html)?\s*/i, "").replace(/\s*```$/i, "");
   // If Claude returned plain text (no <p>), wrap paragraphs ourselves.
   if (!/<\w+[^>]*>/.test(s)) {
-    s = s
-      .split(/\n{2,}/)
-      .map((p) => `<p>${escapeHtml(p.trim()).replace(/\n/g, "<br/>")}</p>`)
-      .join("");
+    s = markdownishTextToEmailHtml(s);
   }
   // Claude is asked for HTML but routinely leaves inline markdown in the
   // body - **text** for bold headers, [text](url) for links. Those
@@ -322,34 +325,7 @@ function toSafeHtml(raw: string): string {
   // Scoped to bold + links on purpose: a body with no markdown syntax
   // is returned byte-for-byte unchanged, so plain-prose generations
   // render exactly as they did before.
-  return convertInlineMarkdown(s);
-}
-
-// Minimal, deliberately narrow markdown-to-HTML pass. We avoid a full
-// markdown parse (marked is available) because full parsing would
-// autolink bare URLs and reflow paragraph whitespace, changing
-// non-markdown output. This only touches the two constructs Claude
-// actually leaks, and is a no-op when neither pattern is present.
-function convertInlineMarkdown(html: string): string {
-  return (
-    html
-      // **bold** -> <strong>bold</strong> (non-greedy, single line)
-      .replace(/\*\*([^*\n]+?)\*\*/g, "<strong>$1</strong>")
-      // [text](url) -> <a href="url">text</a>. Restrict to http(s) and
-      // mailto so a stray javascript:/data: URL can't ride through into
-      // the composer or the outbound message.
-      .replace(
-        /\[([^\]\n]+?)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,
-        '<a href="$2">$1</a>',
-      )
-  );
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return convertInlineMarkdownToHtml(s);
 }
 
 function stripHtmlTags(html: string): string {

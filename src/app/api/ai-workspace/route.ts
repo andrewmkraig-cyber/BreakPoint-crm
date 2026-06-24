@@ -12,6 +12,7 @@ import { authOptions } from '@/lib/auth'
 import { getCurrentOrg } from '@/lib/auth/getCurrentOrg'
 import { getFreshAccessToken, getRecentTaggedEmails } from '@/lib/gmail'
 import { buildPersonalTrainerBlock } from '@/lib/personal-trainer'
+import { MARKDOWN_OUTPUT_FORMAT_RULES } from '@/lib/ai-output-formatting'
 
 const anthropic = new Anthropic()
 
@@ -200,10 +201,8 @@ export async function POST(req: NextRequest) {
     "Section headers (the bolded `**Open Roles:**` / `**Broader job-board searches to watch:**` lines) MUST end with a trailing colon. Always. The colon is a hard rule, every future header for these sections lands with one.\n\n" +
     "If a Section-1 posting closes, drop it. Never demote it into Section 2. Section 2 is for aggregator pages, not stale specific roles.\n\n" +
     emailContextBlock +
-    "FORMATTING RULES:\n" +
-    "When returning lists of jobs, companies, or resources, use clean markdown: bold headers for categories, " +
-    "hyphen bullets for items, and descriptive link text instead of full URLs. " +
-    "Keep responses scannable and well-organized." +
+    MARKDOWN_OUTPUT_FORMAT_RULES +
+    "\nKeep responses scannable and well-organized. Use descriptive link text instead of full URLs." +
     (screenshotAttachments.length > 0
       ? "\n\nSCREENSHOT RULES:\n" +
         "- The current user turn includes one or more screenshots. Read the image contents directly and combine what you see with the CRM context above.\n" +

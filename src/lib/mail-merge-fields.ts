@@ -6,6 +6,10 @@
 
 import { stripMarkdownToPlain } from "@/lib/markdown-to-plain";
 import { extractCityFromLocation } from "@/lib/candidate-compensation";
+import {
+  escapeHtml,
+  markdownishTextToEmailHtml,
+} from "@/lib/ai-output-formatting";
 
 export type MailMergeContext = {
   candidate?: {
@@ -150,10 +154,9 @@ function resolveOne(tag: string, ctx: MailMergeContext): string | undefined {
     case "{{job.state}}":
       return trimOr(ctx.job?.state);
     case "{{job.description}}":
-      // JD is stored as markdown for the rich JD preview render — strip
-      // back to plain text here so the token pastes cleanly into email
-      // body copy without literal `##` characters.
-      return trimOr(ctx.job?.description ? stripMarkdownToPlain(ctx.job.description) : "");
+      // Keep the raw markdown here. renderResolvedValue decides whether to
+      // convert it to rich email HTML or strip it to plain text.
+      return trimOr(ctx.job?.description);
     case "{{client.name}}":
       return trimOr(ctx.client?.name);
     case "{{client.primary_contact_first_name}}":
@@ -192,6 +195,7 @@ export function applyMailMergeFields(
 ): { output: string; unresolved: string[] } {
   // Step 1: rewrite bracket tokens to canonical {{}} form.
   const canonical = normalizeBrackets(input);
+  const targetIsHtml = looksLikeHtml(canonical);
   // Step 2: resolve all tags against context.
   const tags = extractMailMergeTags(canonical);
   const unresolved: string[] = [];
@@ -207,7 +211,8 @@ export function applyMailMergeFields(
     // resolved even though the registry lists only the tight form.
     const inner = tag.slice(2, -2); // strip {{ }}
     const pattern = `\\{\\{\\s*${escapeForRegex(inner)}\\s*\\}\\}`;
-    out = out.replace(new RegExp(pattern, "g"), escapeForHtml(value));
+    const replacement = renderResolvedValue(tag, value, targetIsHtml);
+    out = out.replace(new RegExp(pattern, "g"), () => replacement);
   }
   return { output: out, unresolved };
 }
@@ -216,9 +221,20 @@ function escapeForRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function escapeForHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+function renderResolvedValue(tag: string, value: string, targetIsHtml: boolean): string {
+  if (tag === "{{job.description}}" || looksStructuredMarkdown(value)) {
+    return targetIsHtml
+      ? markdownishTextToEmailHtml(value)
+      : escapeHtml(stripMarkdownToPlain(value));
+  }
+  if (!targetIsHtml) return escapeHtml(value);
+  return escapeHtml(value).replace(/\r\n|\r|\n/g, "<br/>");
+}
+
+function looksLikeHtml(s: string): boolean {
+  return /<[a-z][\s\S]*>/i.test(s);
+}
+
+function looksStructuredMarkdown(s: string): boolean {
+  return /(^|\n)\s*(?:#{1,6}\s+|[-*+\u2022]\s+|\d+[.)]\s+|\*\*[^*\n]+:\*\*)/.test(s);
 }

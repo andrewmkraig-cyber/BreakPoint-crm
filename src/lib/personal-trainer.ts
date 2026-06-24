@@ -15,6 +15,18 @@ export async function buildPersonalTrainerBlock(orgId: string): Promise<string> 
     select: { text: true },
   });
   if (rules.length === 0) return "";
-  const numbered = rules.map((r, i) => `${i + 1}. ${r.text}`).join("\n");
+  const numbered = rules
+    .map((r, i) => `${i + 1}. ${normalizeLegacyStyleRule(r.text)}`)
+    .join("\n");
   return `\n\nPERSONAL TRAINER RULES (apply to every response without exception):\n${numbered}`;
+}
+
+function normalizeLegacyStyleRule(text: string): string {
+  if (text === "No bold text in outreach copy.") {
+    return "Do not bold ordinary outreach body copy. Structured drafts may use bold section headers and labels when the format rules call for them.";
+  }
+  if (text === "Bullet points only when format calls for it. Never bullet a conversational response.") {
+    return "Use bullets when the content is list-like or the requested format calls for them. Never bullet a simple conversational response.";
+  }
+  return text;
 }

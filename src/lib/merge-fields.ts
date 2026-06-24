@@ -4,6 +4,7 @@
 
 import { stripMarkdownToPlain } from "@/lib/markdown-to-plain";
 import { extractCityFromLocation } from "@/lib/candidate-compensation";
+import { markdownishTextToEmailHtml } from "@/lib/ai-output-formatting";
 
 export const MERGE_FIELDS = [
   // Candidate
@@ -173,9 +174,18 @@ export function applyMergeFields(
 ): string {
   // Splice values with a replacement FUNCTION (not a string) so any "$" the
   // value carries — e.g. a "$120,000" comp — is treated literally instead of
-  // as a $-pattern reference. In html mode the value is escaped + <br/>'d.
-  const renderValue = (v: string): string =>
-    opts?.html ? plainToHtmlInline(v) : v;
+  // as a $-pattern reference. In html mode the value is escaped + <br/>'d,
+  // unless it is structured markdown that should become rich email HTML.
+  const renderValue = (token: string, v: string): string => {
+    if (token === "[Job Description]" || token === "{{job_description}}") {
+      return opts?.html ? markdownishTextToEmailHtml(v) : stripMarkdownToPlain(v);
+    }
+    if (!opts?.html) return v;
+    if (looksStructuredMarkdown(v)) {
+      return markdownishTextToEmailHtml(v);
+    }
+    return plainToHtmlInline(v);
+  };
   const fullName = nonEmpty(
     values.candidateFullName,
     [values.candidateFirstName, values.candidateLastName].filter(Boolean).join(" "),
@@ -190,9 +200,9 @@ export function applyMergeFields(
   // extractCityFromLocation (everything before the first comma) rather
   // than a second parser. Falls back to an explicit jobCity if provided.
   const jobCity = nonEmpty(values.jobCity, extractCityFromLocation(values.jobLocation));
-  // JD as clean plain text — computed once, shared by [Job Description]
-  // and {{job_description}}.
-  const jobDescriptionPlain = values.jobDescription ? stripMarkdownToPlain(values.jobDescription) : "";
+  // JD is stored as markdown. renderValue decides whether to convert it
+  // to rich email HTML or strip it to plain text.
+  const jobDescriptionRaw = values.jobDescription ?? "";
   const greeting = nonEmpty(
     values.greeting,
     values.clientContactFirstName
@@ -226,11 +236,10 @@ export function applyMergeFields(
     "[Job Title]": values.jobTitle ?? "",
     "[Job Location]": values.jobLocation ?? "",
     "{{job_city}}": jobCity,
-    // JD is stored as markdown for the rich JD preview render — convert
-    // back to plain text here so the token pastes cleanly into email body
-    // copy without literal `##` characters.
-    "[Job Description]": jobDescriptionPlain,
-    "{{job_description}}": jobDescriptionPlain,
+    // JD is stored as markdown for the rich JD preview render. renderValue
+    // converts it to rich email HTML or clean plain text depending on caller.
+    "[Job Description]": jobDescriptionRaw,
+    "{{job_description}}": jobDescriptionRaw,
     "[Job Salary Range]": values.jobSalaryRange ?? "",
     // Interview
     "[Interview Date]": values.interviewDate ?? "",
@@ -261,7 +270,7 @@ export function applyMergeFields(
   };
   let out = text;
   for (const field of MERGE_FIELDS) {
-    const replacement = renderValue(map[field.token]);
+    const replacement = renderValue(field.token, map[field.token]);
     out = out.replace(new RegExp(escapeForRegex(field.token), "g"), () => replacement);
   }
   const aliases: Array<readonly [string, string]> = [
@@ -289,7 +298,7 @@ export function applyMergeFields(
     ["{{public_accounting_submittal_bullets}}", values.publicAccountingSubmittalBullets ?? ""],
   ];
   for (const [alias, value] of aliases) {
-    const replacement = renderValue(value);
+    const replacement = renderValue(alias, value);
     out = out.replace(new RegExp(escapeForRegex(alias), "g"), () => replacement);
   }
   return out;
@@ -360,6 +369,10 @@ function escapeHtmlEntities(s: string): string {
 // blank lines and a multi-line merge value get IDENTICAL break handling.
 function plainToHtmlInline(s: string): string {
   return escapeHtmlEntities(s).replace(/\r\n|\r|\n/g, "<br/>");
+}
+
+function looksStructuredMarkdown(s: string): boolean {
+  return /(^|\n)\s*(?:#{1,6}\s+|[-*+\u2022]\s+|\d+[.)]\s+|\*\*[^*\n]+:\*\*)/.test(s);
 }
 
 // Convert a stored template body to the HTML the TipTap editor seeds

@@ -21,6 +21,7 @@ import { createReminder } from "@/app/calendar/reminder-actions";
 import { parseReminderToolInput, claimsReminderSaved } from "@/lib/claude-panel/reminders";
 import { createContact } from "@/lib/contacts";
 import { normalizeToE164 } from "@/lib/rf-payload-shapes";
+import { MARKDOWN_OUTPUT_FORMAT_RULES } from "@/lib/ai-output-formatting";
 
 // Live Claude call for the global Claude Panel (Sparkles topbar
 // toggle). Streams text deltas as NDJSON events back to the client so
@@ -57,11 +58,13 @@ const SYSTEM_PROMPT =
   "You help Andrew Kraig with recruiting tasks: candidate evaluation, submittals, BD messages, " +
   "interview prep, market research, and anything else recruiting-related. " +
   "Rules: be concise and direct, no filler, no hedging, no fake enthusiasm. " +
-  "Never use asterisks or markdown bold in your responses. " +
-  "Use plain hyphens for bullet points. " +
+  "Use **bold** section headers when giving structured output. " +
+  "Use plain hyphen bullets for list-like content. Do not collapse list items into paragraphs. " +
   "Write like a sharp recruiter, not an AI. " +
   "Never end a response with a signoff or signature. " +
   "For any external facts, job market data, salaries, companies, people, or URLs - verify with web_search during this turn. Never hedge with 'data may be outdated.' If you cannot verify something, omit it. " +
+  MARKDOWN_OUTPUT_FORMAT_RULES +
+  "\n" +
   "Tool routing for CRM data - call these tools, never invent records:\n" +
   "- 'who is interviewing at <client>' or 'upcoming interviews for <client>' → get_pipeline({ clientName: '<client>', stage: 'interviewing' }).\n" +
   "- 'who has interviewed at <client>' / 'history with <client>' / 'past placements at <client>' / any past-tense or all-time pipeline question → get_pipeline({ clientName: '<client>', historical: true }).\n" +

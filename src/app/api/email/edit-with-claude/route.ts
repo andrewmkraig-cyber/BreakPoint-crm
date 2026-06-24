@@ -4,6 +4,10 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { buildPersonalTrainerBlock } from "@/lib/personal-trainer";
+import {
+  HTML_EMAIL_OUTPUT_FORMAT_RULES,
+  MARKDOWN_OUTPUT_FORMAT_RULES,
+} from "@/lib/ai-output-formatting";
 
 export const dynamic = "force-dynamic";
 // Sonnet on a moderate-size body usually completes in 2–8s; 60s is the
@@ -80,6 +84,8 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse>>
     format === "html"
       ? "The input is HTML. Return valid HTML using the same structural tags found in the input (<p>, <br>, <strong>, <em>, <u>, <ul>, <ol>, <li>, <a>, <blockquote>). Do not wrap in <html> or <body>. Do not add inline styles."
       : "The input is plain text. Return plain text with paragraph breaks. Preserve any **bold** or __underline__ markers exactly.";
+  const structureRule =
+    format === "html" ? HTML_EMAIL_OUTPUT_FORMAT_RULES : MARKDOWN_OUTPUT_FORMAT_RULES;
 
   const org = await getCurrentOrg();
   const trainerBlock = await buildPersonalTrainerBlock(org.id);
@@ -99,6 +105,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse>>
       "- If a signature block already exists at the bottom of the input (multi-line block with a name + title + contact info), leave those signature lines exactly as-is. Do not edit them.",
       "- Do NOT add a 'Subject:' line.",
       formatRule,
+      structureRule,
     ].join("\n") + trainerBlock;
 
   try {

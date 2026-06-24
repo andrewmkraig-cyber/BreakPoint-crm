@@ -9,26 +9,17 @@
 // every existing code path (localStorage autosave, applyMergeFields, template
 // resolution) stays identical — only the on-the-wire conversion changes.
 
+import { markdownishTextToEmailHtml } from "@/lib/ai-output-formatting";
+
 const BOLD_RE = /\*\*([\s\S]+?)\*\*/g;
 const UNDERLINE_RE = /__([\s\S]+?)__/g;
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
 // Converts the composer's body into the HTML we send as the Gmail text/html
-// alternative. Order matters: escape first (so inline HTML never leaks), then
-// apply the bold/underline transforms on the escaped output. Line breaks map
-// to <br/> so recipients see the same paragraph shape as the plain text
-// version (the white-space:pre-wrap wrapper keeps indentation too).
+// alternative. Section headers become <strong> and dash bullets become real
+// lists, so generated writeups render like edited Gmail copy.
 export function submittalToHtml(body: string): string {
-  const escaped = escapeHtml(body);
-  const bolded = escaped.replace(BOLD_RE, "<strong>$1</strong>");
-  const underlined = bolded.replace(UNDERLINE_RE, "<u>$1</u>");
-  return `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.55; color: #111111; white-space: pre-wrap;">${underlined}</div>`;
+  const rendered = markdownishTextToEmailHtml(body).replace(UNDERLINE_RE, "<u>$1</u>");
+  return `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.55; color: #111111;">${rendered}</div>`;
 }
 
 // Strips the bold / underline markers for the text/plain alternative so clients
@@ -40,21 +31,9 @@ export function submittalToPlainText(body: string): string {
 }
 
 // Converts Claude's marker-style submittal writeup into Tiptap-digestible
-// HTML. Paragraph breaks in the source (blank lines) become <p> blocks; single
-// newlines inside a paragraph become <br/> — that matches how the recruiter
-// sees it in Gmail. Bold / underline markers are escaped first, then replaced,
-// so a raw `<script>` in the AI's output can never become real markup.
+// HTML with real list nodes for bullet sections.
 export function submittalMarkdownToEditorHtml(body: string): string {
-  const escaped = escapeHtml(body);
-  const paragraphs = escaped
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter(Boolean)
-    .map((block) => block.replace(/\n/g, "<br/>"))
-    .map((block) => `<p>${block}</p>`)
-    .join("");
-  const bolded = paragraphs.replace(BOLD_RE, "<strong>$1</strong>");
-  const underlined = bolded.replace(UNDERLINE_RE, "<u>$1</u>");
+  const underlined = markdownishTextToEmailHtml(body).replace(UNDERLINE_RE, "<u>$1</u>");
   return underlined || "<p></p>";
 }
 
@@ -65,6 +44,8 @@ export function submittalMarkdownToEditorHtml(body: string): string {
 export function submittalEditorHtmlToPlainText(html: string): string {
   const withBreaks = html
     .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "- ")
+    .replace(/<\/li>/gi, "\n")
     .replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")
     .replace(/<\/?p[^>]*>/gi, "")
     .replace(/<\/?(?:strong|b|u|em|i|span)[^>]*>/gi, "");
