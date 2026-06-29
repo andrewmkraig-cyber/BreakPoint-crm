@@ -54,6 +54,7 @@ export function ResumeEditor({
   sourceResumeId,
   baseResumeUrl,
   baseResumeFilename,
+  alreadyBranded,
   onClose,
   onSaved,
 }: {
@@ -61,6 +62,7 @@ export function ResumeEditor({
   sourceResumeId: string;
   baseResumeUrl: string;
   baseResumeFilename: string;
+  alreadyBranded?: boolean;
   onClose: () => void;
   // Saving creates a new CandidateResume row; we pass its id back so
   // the parent dropdown can auto-select the freshly saved version
@@ -196,6 +198,10 @@ export function ResumeEditor({
   // position (or explicit Remove) wins.
   useEffect(() => {
     if (defaultLogoPlacedRef.current) return;
+    if (alreadyBranded) {
+      defaultLogoPlacedRef.current = true;
+      return;
+    }
     if (pages.length === 0) return;
     defaultLogoPlacedRef.current = true;
     const first = pages[0];
@@ -211,7 +217,7 @@ export function ResumeEditor({
       yNorm: DEFAULT_LOGO_MARGIN,
       widthPx: DEFAULT_LOGO_WIDTH,
     });
-  }, [pages]);
+  }, [alreadyBranded, pages]);
 
   // Render each page into its canvas after React has committed the page
   // wrappers (so canvasRefs is populated). Re-runs whenever pages change

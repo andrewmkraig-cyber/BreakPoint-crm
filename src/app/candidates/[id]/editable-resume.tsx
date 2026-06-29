@@ -732,6 +732,7 @@ export function EditableResume({
           sourceResumeId={selected.resumeId}
           baseResumeUrl={previewUrl}
           baseResumeFilename={selected.filename}
+          alreadyBranded={selected.kind === "branded"}
           onClose={() => setEditorOpen(false)}
           onSaved={(newResumeId) => {
             setEditorOpen(false);
@@ -743,4 +744,3 @@ export function EditableResume({
     </div>
   );
 }
-

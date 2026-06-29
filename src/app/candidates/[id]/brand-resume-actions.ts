@@ -149,19 +149,25 @@ export async function brandCandidateResume(
 
     const outputBytes = await pdf.save();
 
+    const sourceAlreadyBranded =
+      source.variant === "branded" || source.variant === "branded-redacted";
+    const hasVisibleBrand = sourceAlreadyBranded || input.placements.length > 0;
     const variant =
-      input.placements.length > 0 && input.redactions.length > 0
+      hasVisibleBrand && input.redactions.length > 0
         ? "branded-redacted"
-        : input.placements.length > 0
+        : hasVisibleBrand
           ? "branded"
           : "redacted";
 
     const baseName =
       (source.displayName?.trim() || source.filename).replace(/\.(pdf|docx?|txt)$/i, "");
+    const brandedBaseName = /\s-\s*BreakPoint(?:\s+Talent)?$/i.test(baseName)
+      ? baseName
+      : `${baseName} - BreakPoint`;
     const filename =
       variant === "redacted"
         ? `${baseName} - redacted.pdf`
-        : `${baseName} - BreakPoint.pdf`;
+        : `${brandedBaseName}.pdf`;
 
     // candidateId is nullable on CandidateResume; fall back to the
     // source row id so the blob path is always unique.
