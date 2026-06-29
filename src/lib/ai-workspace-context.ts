@@ -8,6 +8,8 @@ import { prisma } from "@/lib/prisma";
 import { callLineWhere, getQuoLineDigitsForUserEmail, smsLineWhere } from "@/lib/quo-line-owner";
 import { canonicalStage } from "@/lib/rf-payload-shapes";
 import { getResumeBytes } from "@/lib/resume-bytes";
+import { formatInterviewWhen } from "@/lib/interview-format";
+import { DEFAULT_INTERVIEW_TIMEZONE } from "@/lib/timezones";
 
 // Builds the system prompt for the per-entity AI workspace and Claude
 // Panel chats. Every read is Neon-cuid-keyed: RecruiterFlow was retired
@@ -612,15 +614,12 @@ export async function buildCandidateContext(
     }
   }
 
-  lines.push("INTERVIEWS:");
+  lines.push("INTERVIEWS (times shown in Eastern Time / ET; do not convert them):");
   if (interviews.length === 0) {
     lines.push("  (none on file)");
   } else {
     for (const iv of interviews) {
-      const when = iv.scheduledAt.toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      });
+      const when = formatInterviewWhen(iv.scheduledAt, DEFAULT_INTERVIEW_TIMEZONE);
       const jobTitle = iv.job?.title ?? "(unknown role)";
       const clientName = iv.client?.name ?? "(unknown client)";
       const loc = iv.location?.trim() ? ` @ ${iv.location.trim()}` : "";
