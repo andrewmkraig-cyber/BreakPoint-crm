@@ -915,7 +915,7 @@ export async function LocalCandidateProfile({
             )}
           </div>
           {/* Right rail. CompactOverview as a single tight summary box,
-              then skills, then the call/email/text activity card. */}
+              then the call/email/text activity card, then skills. */}
           <aside className="flex w-[280px] shrink-0 flex-col gap-4 overflow-y-auto">
             <CandidateCompactOverview
               candidateRef={candidate.id}
@@ -934,13 +934,13 @@ export async function LocalCandidateProfile({
               expectedSalary={toExpectedSalary(candidate.expectedSalary)}
               highlightTokens={highlightTokens}
             />
-            <LocalEditableSkills
-              candidateId={candidate.id}
-              initial={candidate.skills ?? []}
-            />
             <CandidateActivityCard
               candidateId={candidate.id}
               toNumber={candidate.phone || null}
+            />
+            <LocalEditableSkills
+              candidateId={candidate.id}
+              initial={candidate.skills ?? []}
             />
           </aside>
         </div>
@@ -978,7 +978,7 @@ export async function LocalCandidateProfile({
           single sticky bundle (pipeline + tab strip + action row),
           then the tab content (Resume on Profile, AiWorkspace on
           Game Plan, notes editor on Notes). The right column is a
-          tight reference rail (compact overview + skills + activity).
+          tight reference rail (compact overview + activity + skills).
           Pipeline section moved INTO the left column so it shares
           a sticky wrapper with the tabs + action row — job pill
           headers now stay visible alongside Submit/Apply/Keep/Add
@@ -1079,13 +1079,13 @@ export async function LocalCandidateProfile({
             source={candidate.source}
             expectedSalary={toExpectedSalary(candidate.expectedSalary)}
           />
-          <LocalEditableSkills
-            candidateId={candidate.id}
-            initial={candidate.skills ?? []}
-          />
           <CandidateActivityCard
             candidateId={candidate.id}
             toNumber={candidate.phone || null}
+          />
+          <LocalEditableSkills
+            candidateId={candidate.id}
+            initial={candidate.skills ?? []}
           />
         </div>
       </div>
