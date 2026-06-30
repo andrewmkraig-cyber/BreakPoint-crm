@@ -32,6 +32,9 @@ export function PromoteTab({
   const [building, setBuilding] = useState(false);
   const eligible = requirements.every((requirement) => requirement.met);
   const live = localPublished && eligible && !building;
+  const websiteActionButtonClass = "h-9 w-44 justify-center";
+  const websiteActionLinkClass =
+    "inline-flex h-9 w-44 items-center justify-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg";
 
   useEffect(() => {
     setLocalPublished(published);
@@ -110,6 +113,7 @@ export function PromoteTab({
                 type="button"
                 variant="secondary"
                 size="sm"
+                className={websiteActionButtonClass}
                 onClick={async () => {
                   try {
                     await navigator.clipboard.writeText(websiteUrl);
@@ -127,7 +131,7 @@ export function PromoteTab({
                 href={websiteUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg"
+                className={websiteActionLinkClass}
               >
                 <ExternalLink className="h-3.5 w-3.5" /> View job page
               </a>
@@ -136,20 +140,24 @@ export function PromoteTab({
               <Button
                 type="button"
                 variant="danger"
+                size="sm"
+                className={websiteActionButtonClass}
                 onClick={() => setPublished(false)}
                 disabled={pending}
               >
-                {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+                {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 Remove from website
               </Button>
             ) : (
               <Button
                 type="button"
+                size="sm"
+                className={websiteActionButtonClass}
                 onClick={() => setPublished(true)}
                 disabled={pending || !eligible}
                 title={!eligible ? "Complete every requirement before publishing." : undefined}
               >
-                {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+                {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 Publish to website
               </Button>
             )}
