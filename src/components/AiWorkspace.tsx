@@ -64,6 +64,22 @@ const SUPPORTED_SCREENSHOT_MIME = new Set([
   "image/webp",
 ]);
 
+// Drag-to-resize: the card's height is the default
+// `calc(100dvh - bottomGapRem)` PLUS a user-dragged pixel delta. The
+// delta is persisted globally (one preference, not per-entity) so once
+// Andrew stretches the workspace taller it stays that way across
+// candidates and reloads. Clamped so the card can shrink a little or
+// grow well past the viewport (the page scrolls to reveal the rest),
+// while the `min-h-[360px]` floor on the card keeps it usable at the
+// negative end.
+const HEIGHT_DELTA_KEY = "ace.aiWorkspace.heightDelta";
+const HEIGHT_DELTA_MIN = -240;
+const HEIGHT_DELTA_MAX = 1600;
+function clampHeightDelta(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(HEIGHT_DELTA_MIN, Math.min(HEIGHT_DELTA_MAX, n));
+}
+
 function attachmentId(): string {
   if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID();
@@ -144,6 +160,57 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
+
+  // Drag-to-resize state. heightDelta is the px added to the card's
+  // default viewport-based height; resizeStart holds the pointer anchor
+  // while a drag is in flight.
+  const [heightDelta, setHeightDelta] = useState(0);
+  const resizeStart = useRef<{ startY: number; startDelta: number } | null>(null);
+
+  // Restore the saved height delta once on mount (client-only — guarded
+  // against SSR by running inside an effect).
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(HEIGHT_DELTA_KEY);
+      if (saved != null) setHeightDelta(clampHeightDelta(Number(saved)));
+    } catch {
+      // localStorage can be unavailable (private mode); default height is fine.
+    }
+  }, []);
+
+  const onResizePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    resizeStart.current = { startY: e.clientY, startDelta: heightDelta };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onResizePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const start = resizeStart.current;
+    if (!start) return;
+    setHeightDelta(clampHeightDelta(start.startDelta + (e.clientY - start.startY)));
+  };
+  const onResizePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizeStart.current) return;
+    resizeStart.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // Pointer may already be released; ignore.
+    }
+    try {
+      window.localStorage.setItem(HEIGHT_DELTA_KEY, String(heightDelta));
+    } catch {
+      // Non-persistent fallback: the size still holds for this session.
+    }
+  };
+  // Double-click the handle to snap back to the default height.
+  const onResizeReset = () => {
+    setHeightDelta(0);
+    try {
+      window.localStorage.setItem(HEIGHT_DELTA_KEY, "0");
+    } catch {
+      // ignore
+    }
+  };
 
   // Auto-scroll to the bottom on every message-count change (and on load).
   useEffect(() => {
@@ -364,7 +431,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
     // the flex math deterministic.
     <div
       ref={cardRef}
-      style={{ height: `calc(100dvh - ${bottomGapRem}rem)` }}
+      style={{ height: `calc(100dvh - ${bottomGapRem}rem + ${heightDelta}px)` }}
       onDragEnter={(e) => {
         e.preventDefault();
         if (!sending) setDragging(true);
@@ -501,6 +568,26 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
         {errorText && (
           <div className="mt-2 text-xs text-red-600">{errorText}</div>
         )}
+      </div>
+
+      {/* Drag-to-resize handle. Pointer-captured so the drag keeps
+          tracking even when the cursor leaves the thin strip; grows the
+          card height as the recruiter drags down. Double-click resets to
+          the default height. touch-none stops the page from scrolling
+          mid-drag on touch devices. */}
+      <div
+        onPointerDown={onResizePointerDown}
+        onPointerMove={onResizePointerMove}
+        onPointerUp={onResizePointerUp}
+        onPointerCancel={onResizePointerUp}
+        onDoubleClick={onResizeReset}
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Drag to resize the workspace. Double-click to reset."
+        title="Drag to resize · double-click to reset"
+        className="group flex shrink-0 cursor-ns-resize touch-none select-none items-center justify-center border-t border-court-border bg-court-surface py-1.5 transition hover:bg-court-surface-subtle"
+      >
+        <span className="h-1 w-10 rounded-full bg-court-border transition group-hover:bg-court-fg-muted/60" />
       </div>
     </div>
   );
