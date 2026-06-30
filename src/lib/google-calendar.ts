@@ -542,6 +542,89 @@ export async function addAttendeeToEvent(input: AddAttendeeInput): Promise<void>
   }
 }
 
+export type InviteResponse = "accepted" | "declined" | "tentative";
+
+// Respond (RSVP) to an incoming calendar invite the same way Gmail's
+// Yes / No / Maybe buttons do. When an invite email lands, Google Calendar
+// auto-adds the event to the recipient's primary calendar keyed by the
+// iCalendar UID. We look that event up by UID, flip the signed-in user's
+// own attendee responseStatus, and PATCH with sendUpdates=all so the
+// organizer is notified of the reply. Throws a plain-English error when
+// the event isn't on the calendar or the user isn't a listed guest.
+export async function respondToCalendarInvite(params: {
+  userId: string;
+  iCalUID: string;
+  response: InviteResponse;
+}): Promise<{ summary: string | null }> {
+  const accessToken = await getFreshAccessToken(params.userId);
+
+  const listUrl = new URL(
+    "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+  );
+  listUrl.searchParams.set("iCalUID", params.iCalUID);
+  listUrl.searchParams.set("maxResults", "5");
+  const listRes = await calendarFetch(listUrl.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  if (!listRes.ok) {
+    const text = await listRes.text().catch(() => "");
+    throw new Error(`Calendar lookup failed (${listRes.status}): ${text || "no body"}`);
+  }
+  const listJson = (await listRes.json()) as {
+    items?: Array<{
+      id: string;
+      summary?: string;
+      attendees?: Array<{
+        email?: string;
+        displayName?: string;
+        self?: boolean;
+        responseStatus?: string;
+      }>;
+    }>;
+  };
+  const event = (listJson.items ?? [])[0];
+  if (!event) {
+    throw new Error(
+      "This invite isn't on your Google Calendar yet, so there's nothing to RSVP to. Open it in Google Calendar to respond.",
+    );
+  }
+  const attendees = event.attendees ?? [];
+  if (!attendees.some((a) => a.self)) {
+    throw new Error(
+      "You're not listed as a guest on this invite, so it can't be answered from here.",
+    );
+  }
+  // Google's PATCH replaces the attendees array wholesale, so rebuild it
+  // and flip only the self attendee. Carry email + displayName; drop the
+  // output-only self/organizer flags (Google recomputes them).
+  const next = attendees.map((a) => {
+    const out: Record<string, unknown> = { email: a.email };
+    if (a.displayName) out.displayName = a.displayName;
+    out.responseStatus = a.self ? params.response : a.responseStatus;
+    return out;
+  });
+
+  const patchUrl = new URL(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(event.id)}`,
+  );
+  patchUrl.searchParams.set("sendUpdates", "all");
+  const patchRes = await calendarFetch(patchUrl.toString(), {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ attendees: next }),
+    cache: "no-store",
+  });
+  if (!patchRes.ok) {
+    const text = await patchRes.text().catch(() => "");
+    throw new Error(`Calendar RSVP failed (${patchRes.status}): ${text || "no body"}`);
+  }
+  return { summary: event.summary ?? null };
+}
+
 export async function deleteCalendarEvent(params: {
   userId: string;
   eventId: string;

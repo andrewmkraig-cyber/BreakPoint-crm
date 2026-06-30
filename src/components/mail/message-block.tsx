@@ -4,17 +4,27 @@ import Link from "next/link";
 import { useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import {
   Building2,
+  CalendarDays,
   Check,
+  Clock,
   Download,
   File as FileIcon,
   FileText,
   Forward,
+  MapPin,
   Paperclip,
   Reply,
   ReplyAll,
+  User as UserIcon,
+  X,
 } from "lucide-react";
-import type { MailAttachmentRef, MailThreadMessage } from "@/lib/gmail";
+import type {
+  MailAttachmentRef,
+  MailCalendarInvite,
+  MailThreadMessage,
+} from "@/lib/gmail";
 import { EmailHtmlViewer } from "@/components/mail/email-html-viewer";
+import { Button } from "@/components/ui/button";
 
 function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return "";
@@ -97,6 +107,141 @@ function AttachmentPill({
 }
 
 export type MessageBlockAction = "reply" | "replyAll" | "forward";
+
+type InviteResponse = "accepted" | "declined" | "tentative";
+
+const RESPONSE_LABEL: Record<InviteResponse, string> = {
+  accepted: "Yes, going",
+  declined: "No, not going",
+  tentative: "Maybe",
+};
+
+// Native RSVP card for calendar invites, rendered above the email body
+// when a message carries a parsed text/calendar part. Mirrors Gmail's
+// Yes / No / Maybe affordance: the buttons POST to /api/mail/calendar-rsvp,
+// which flips the user's attendee status on the auto-added Google Calendar
+// event and notifies the organizer. A CANCEL-method invite renders a
+// read-only "cancelled" note instead of buttons.
+function CalendarInviteCard({
+  invite,
+}: {
+  invite: MailCalendarInvite;
+}) {
+  const [chosen, setChosen] = useState<InviteResponse | null>(null);
+  const [busy, setBusy] = useState<InviteResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const cancelled = invite.method === "CANCEL";
+
+  async function respond(response: InviteResponse) {
+    if (busy) return;
+    setBusy(response);
+    setError(null);
+    try {
+      const res = await fetch("/api/mail/calendar-rsvp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ iCalUID: invite.uid, response }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+      if (!res.ok || !data.ok) {
+        setError(data.error || "Could not send your response. Please try again.");
+        return;
+      }
+      setChosen(response);
+    } catch {
+      setError("Could not reach the server. Please try again.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="mb-3 rounded-lg border border-court-border bg-court-surface p-4 shadow-sm">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
+          <CalendarDays className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-court-fg">
+            {invite.summary}
+          </p>
+          {invite.startDisplay && (
+            <p className="mt-0.5 flex items-center gap-1.5 text-xs text-court-fg-muted">
+              <Clock className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 truncate">
+                {invite.startDisplay}
+                {invite.endDisplay ? ` - ${invite.endDisplay}` : ""}
+              </span>
+            </p>
+          )}
+          {invite.organizer && (
+            <p className="mt-0.5 flex items-center gap-1.5 text-xs text-court-fg-muted">
+              <UserIcon className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 truncate">{invite.organizer}</span>
+            </p>
+          )}
+          {invite.location && (
+            <p className="mt-0.5 flex items-center gap-1.5 text-xs text-court-fg-muted">
+              <MapPin className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 truncate">{invite.location}</span>
+            </p>
+          )}
+        </div>
+      </div>
+
+      {cancelled ? (
+        <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-300">
+          <X className="h-4 w-4 shrink-0" /> This event was cancelled by the
+          organizer.
+        </p>
+      ) : chosen ? (
+        <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-court-brand-dark">
+          <Check className="h-4 w-4 shrink-0" /> You responded:{" "}
+          {RESPONSE_LABEL[chosen]}. The organizer has been notified.
+        </p>
+      ) : (
+        <>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-court-fg-muted">Going?</span>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={busy !== null}
+              onClick={() => respond("accepted")}
+            >
+              {busy === "accepted" ? "Saving…" : "Yes"}
+            </Button>
+            <Button
+              variant="reject"
+              size="sm"
+              disabled={busy !== null}
+              onClick={() => respond("declined")}
+            >
+              {busy === "declined" ? "Saving…" : "No"}
+            </Button>
+            <Button
+              variant="schedule"
+              size="sm"
+              disabled={busy !== null}
+              onClick={() => respond("tentative")}
+            >
+              {busy === "tentative" ? "Saving…" : "Maybe"}
+            </Button>
+          </div>
+          {error && (
+            <p className="mt-2 text-xs font-medium text-red-600 dark:text-red-300">
+              {error}
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 // Initials avatar for the message header card. Pulls from fromName when
 // present (first letter of first + last token), otherwise the first
@@ -443,6 +588,13 @@ export function MessageBlock({
           </div>
         )}
       </div>
+      {/* Calendar invite RSVP card. Renders above the body when the
+          message carries a parsed text/calendar part so the recruiter can
+          answer Yes / No / Maybe without leaving Ace - the part Gmail shows
+          as its invite card but Ace previously dropped entirely. */}
+      {msg.calendarInvite && (
+        <CalendarInviteCard invite={msg.calendarInvite} />
+      )}
       {/* Iframe-isolated email body. The previous inline render layered
           Ace's typography rules over the email's own design which
           collapsed dark-themed marketing emails into a flattened

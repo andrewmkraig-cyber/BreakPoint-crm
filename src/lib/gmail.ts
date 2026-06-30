@@ -623,6 +623,25 @@ export type MailAttachmentRef = {
   size: number;
 };
 
+// Parsed iCalendar (.ics / text/calendar) invite metadata, extracted from
+// a message's calendar part so the Mail Tab can render a native RSVP card
+// (Yes / No / Maybe) the way Gmail does. Null on messages that carry no
+// calendar invite. `uid` is the iCalendar UID Google Calendar keys the
+// auto-added event by — the RSVP route looks the event up by it.
+export type MailCalendarInvite = {
+  uid: string;
+  // REQUEST = new/updated invite, CANCEL = organizer cancelled,
+  // REPLY = an attendee's RSVP, PUBLISH = a non-invite feed event.
+  method: string;
+  summary: string;
+  // Human-readable start/end strings (already localized for display).
+  // Null when the invite omits the field or it can't be parsed.
+  startDisplay: string | null;
+  endDisplay: string | null;
+  organizer: string | null;
+  location: string | null;
+};
+
 export type MailThreadMessage = {
   id: string;
   fromName: string;
@@ -645,6 +664,9 @@ export type MailThreadMessage = {
   // excluded — they live in the body via inlineCidImages. Empty array
   // when the message has no real attachments.
   attachments: MailAttachmentRef[];
+  // Set when this message is (or carries) a calendar invite, so the
+  // Mail Tab can render an RSVP card. Null for ordinary email.
+  calendarInvite?: MailCalendarInvite | null;
 };
 
 export type MailThreadDetail = {
@@ -747,6 +769,7 @@ export async function getGmailThread(userId: string, threadId: string): Promise<
       if (body?.mimeType === "text/html") {
         bodyHtml = await inlineCidImages(accessToken, m.id, bodyHtml, m.payload);
       }
+      const calendarInvite = await extractCalendarInvite(accessToken, m.id, m.payload);
       return {
         id: m.id,
         fromName: from.name || from.email,
@@ -757,6 +780,7 @@ export async function getGmailThread(userId: string, threadId: string): Promise<
         subject: headerValue(headers, "Subject"),
         bodyHtml,
         attachments: collectAttachments(m.payload),
+        calendarInvite,
       };
     }),
   );
@@ -900,6 +924,187 @@ function collectAttachments(
   }
   if (payload.parts) for (const p of payload.parts) collectAttachments(p, out);
   return out;
+}
+
+// ---- calendar invite (text/calendar / .ics) extraction ----
+// A calendar invite rides inside the message MIME tree as a part with
+// mimeType "text/calendar" (Google, Outlook) or, for some senders, an
+// attachment named "invite.ics" / "meeting.ics". We pull the iCalendar
+// body, parse the handful of fields the RSVP card needs, and hand back a
+// MailCalendarInvite. Returns null when the message has no calendar part
+// or the part can't be parsed.
+
+// Finds the first part that looks like an iCalendar payload and returns
+// its inline base64url data and/or its attachmentId (for the fetch path).
+function findCalendarPart(
+  payload: GmailMessagePart | undefined,
+): { data?: string; attachmentId?: string } | null {
+  if (!payload) return null;
+  const mt = (payload.mimeType ?? "").toLowerCase();
+  const fn = (payload.filename ?? "").toLowerCase();
+  const looksCalendar =
+    mt.startsWith("text/calendar") ||
+    mt === "application/ics" ||
+    fn.endsWith(".ics");
+  if (looksCalendar && payload.body) {
+    return {
+      data: payload.body.data ?? undefined,
+      attachmentId: payload.body.attachmentId ?? undefined,
+    };
+  }
+  if (payload.parts) {
+    for (const child of payload.parts) {
+      const found = findCalendarPart(child);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+// Unfold RFC 5545 line continuations (a CRLF followed by a space/tab is a
+// fold, not a new line) and split into logical lines.
+function unfoldIcsLines(raw: string): string[] {
+  const normalized = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines: string[] = [];
+  for (const line of normalized.split("\n")) {
+    if ((line.startsWith(" ") || line.startsWith("\t")) && lines.length > 0) {
+      lines[lines.length - 1] += line.slice(1);
+    } else {
+      lines.push(line);
+    }
+  }
+  return lines;
+}
+
+// Unescape the RFC 5545 text escapes used in SUMMARY / LOCATION values.
+function unescapeIcsText(s: string): string {
+  return s
+    .replace(/\\n/gi, " ")
+    .replace(/\\,/g, ",")
+    .replace(/\\;/g, ";")
+    .replace(/\\\\/g, "\\")
+    .trim();
+}
+
+// Turn an iCalendar date-time value into a readable display string.
+// Handles three shapes: UTC ("...Z", converted to Eastern), a TZID/floating
+// wall-clock (shown as-is), and an all-day date ("YYYYMMDD"). Returns null
+// when the value can't be parsed.
+function formatIcsDateTime(value: string, tzid: string | null): string | null {
+  const m = value.match(
+    /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/,
+  );
+  if (!m) return null;
+  const [, y, mo, d, hh, mm, , z] = m;
+  const year = Number(y);
+  const month = Number(mo);
+  const day = Number(d);
+  // All-day (no time component).
+  if (hh === undefined) {
+    const dt = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+    return dt.toLocaleDateString("en-US", {
+      timeZone: "America/New_York",
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
+  const hour = Number(hh);
+  const minute = Number(mm);
+  // UTC instant: convert to the recruiter's Eastern wall-clock via Intl.
+  if (z === "Z") {
+    const dt = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+    return dt.toLocaleString("en-US", {
+      timeZone: "America/New_York",
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    });
+  }
+  // Floating or TZID-local wall-clock: display the components verbatim
+  // (converting a named-zone wall time to an absolute instant needs a tz
+  // database we don't ship). Label the zone when one was given.
+  const dt = new Date(year, month - 1, day, hour, minute, 0);
+  const base = dt.toLocaleString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  if (tzid && !/new_york|eastern/i.test(tzid)) {
+    return `${base} (${tzid.replace(/_/g, " ")})`;
+  }
+  return base;
+}
+
+// Pull one property line's raw value + its TZID param (if any). iCal
+// property lines look like `DTSTART;TZID=America/New_York:20260709T120000`
+// or `SUMMARY:Ozzy + Andrew Catch-up`.
+function readIcsProp(
+  lines: string[],
+  name: string,
+): { value: string; tzid: string | null } | null {
+  const prefix = name.toUpperCase();
+  for (const line of lines) {
+    const colon = line.indexOf(":");
+    if (colon < 0) continue;
+    const head = line.slice(0, colon).toUpperCase();
+    if (head !== prefix && !head.startsWith(prefix + ";")) continue;
+    const tzMatch = head.match(/TZID=([^;:]+)/);
+    return { value: line.slice(colon + 1).trim(), tzid: tzMatch?.[1] ?? null };
+  }
+  return null;
+}
+
+function parseIcsInvite(ics: string): MailCalendarInvite | null {
+  const lines = unfoldIcsLines(ics);
+  const uid = readIcsProp(lines, "UID")?.value;
+  if (!uid) return null;
+  const method = (readIcsProp(lines, "METHOD")?.value || "REQUEST").toUpperCase();
+  const summaryRaw = readIcsProp(lines, "SUMMARY")?.value ?? "(no title)";
+  const locationRaw = readIcsProp(lines, "LOCATION")?.value ?? "";
+  const start = readIcsProp(lines, "DTSTART");
+  const end = readIcsProp(lines, "DTEND");
+  const organizerLine = readIcsProp(lines, "ORGANIZER")?.value ?? "";
+  const organizer =
+    organizerLine.replace(/^mailto:/i, "").trim() || null;
+  return {
+    uid,
+    method,
+    summary: unescapeIcsText(summaryRaw),
+    startDisplay: start ? formatIcsDateTime(start.value, start.tzid) : null,
+    endDisplay: end ? formatIcsDateTime(end.value, end.tzid) : null,
+    organizer,
+    location: locationRaw ? unescapeIcsText(locationRaw) : null,
+  };
+}
+
+// Walks the MIME tree for a calendar part, resolves its bytes (inline or
+// via the attachments endpoint), and parses it. Fail-soft: any error
+// returns null so a malformed invite never breaks the thread read.
+async function extractCalendarInvite(
+  accessToken: string,
+  messageId: string,
+  payload: GmailMessagePart | undefined,
+): Promise<MailCalendarInvite | null> {
+  try {
+    const part = findCalendarPart(payload);
+    if (!part) return null;
+    let b64 = part.data;
+    if (!b64 && part.attachmentId) {
+      b64 = (await fetchAttachmentBase64(accessToken, messageId, part.attachmentId)) ?? undefined;
+    }
+    if (!b64) return null;
+    return parseIcsInvite(decodeB64Url(b64));
+  } catch {
+    return null;
+  }
 }
 
 // Authenticated attachment fetcher used by the download route. Returns
