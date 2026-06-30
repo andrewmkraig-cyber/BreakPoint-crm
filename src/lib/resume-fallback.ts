@@ -2,6 +2,7 @@
 // regexes for email / phone. Everything here is conservative — we'd rather
 // leave a field blank than populate it with garbage.
 import type { ParsedCandidate } from "@/lib/claude";
+import { fetchLinkedInProfileMetadata } from "@/lib/linkedin-profile-metadata";
 import { normalizeToE164 } from "@/lib/rf-payload-shapes";
 
 const EMPTY: ParsedCandidate = {
@@ -56,10 +57,21 @@ export async function fallbackParseCandidate(params: {
   const linkedIn = linkedinUrl || findLinkedIn(text);
   if (linkedIn) result.linkedin_profile = linkedIn;
 
+  const linkedInMetadata = linkedIn ? await fetchLinkedInProfileMetadata(linkedIn) : null;
+  if (linkedInMetadata) {
+    result.first_name = result.first_name ?? linkedInMetadata.firstName;
+    result.last_name = result.last_name ?? linkedInMetadata.lastName;
+    result.current_organization = result.current_organization ?? linkedInMetadata.currentOrganization;
+    result.location = result.location ?? linkedInMetadata.location;
+    result.skills = mergeSkillLists(result.skills, linkedInMetadata.skills).slice(0, 10);
+  }
+
   // Stash extracted text as notes so the user can see what we pulled.
   if (text.trim()) {
     const preview = text.trim().slice(0, 2000);
     result.notes = `Auto-extracted from resume (Claude unavailable). Review before saving.\n\n${preview}`;
+  } else if (linkedInMetadata?.summary) {
+    result.notes = `Public LinkedIn metadata: ${linkedInMetadata.summary}.`;
   } else if (linkedinUrl && !resume) {
     result.notes = "LinkedIn URL saved. Paste profile text and re-parse when Claude is back online.";
   }
@@ -125,4 +137,20 @@ function findPhone(text: string): string | null {
 function findLinkedIn(text: string): string | null {
   const m = text.match(/https?:\/\/(?:[a-z]+\.)?linkedin\.com\/in\/[A-Za-z0-9_\-%]+\/?/i);
   return m ? m[0] : null;
+}
+
+function mergeSkillLists(...lists: string[][]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const list of lists) {
+    for (const raw of list) {
+      const skill = raw.trim();
+      if (!skill) continue;
+      const key = skill.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(skill);
+    }
+  }
+  return out;
 }

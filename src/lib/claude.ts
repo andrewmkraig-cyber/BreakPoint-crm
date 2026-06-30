@@ -4,6 +4,10 @@ import {
   stripMarkdownToPlain as stripMarkdownToPlainImpl,
   stripBannedDashes,
 } from "@/lib/markdown-to-plain";
+import {
+  fetchLinkedInProfileMetadata,
+  formatLinkedInMetadataForPrompt,
+} from "@/lib/linkedin-profile-metadata";
 
 // DOCX mime types and filename suffixes we can extract text from via mammoth.
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -184,8 +188,10 @@ const EMPTY_CANDIDATE: ParsedCandidate = {
 
 // Parses a resume PDF and/or a pasted chunk of text (LinkedIn profile text,
 // recruiter notes) into structured candidate fields for editing in the UI.
-// LinkedIn URL is passed through so we can echo it into the final record —
-// LinkedIn blocks automated URL fetches, so we don't attempt to scrape here.
+// LinkedIn URL is passed through so we can echo it into the final record. When
+// LinkedIn exposes public profile metadata to an anonymous server fetch, we add
+// that metadata as a parse source; pasted profile text / resumes still carry
+// the richer fields LinkedIn hides from the public page.
 export async function parseCandidateFields(params: {
   resume?: { filename: string; mimeType: string; data: Buffer };
   pastedText?: string;
@@ -194,6 +200,7 @@ export async function parseCandidateFields(params: {
   const resume = params.resume;
   const pasted = (params.pastedText ?? "").trim();
   const linkedinUrl = (params.linkedinUrl ?? "").trim();
+  const linkedinMetadata = linkedinUrl ? await fetchLinkedInProfileMetadata(linkedinUrl) : null;
 
   if (!resume && !pasted && !linkedinUrl) {
     throw new Error("Upload a resume, paste profile text, or enter a LinkedIn URL first.");
@@ -241,10 +248,19 @@ export async function parseCandidateFields(params: {
     });
   }
 
+  if (linkedinMetadata) {
+    content.push({
+      type: "text",
+      text: formatLinkedInMetadataForPrompt(linkedinMetadata),
+    });
+  }
+
   if (linkedinUrl) {
     content.push({
       type: "text",
-      text: `--- LinkedIn URL (store, do not fabricate fields from this) ---\n${linkedinUrl}`,
+      text:
+        `--- LinkedIn URL ---\n${linkedinUrl}\n` +
+        "Store this URL. If no fetched LinkedIn metadata block is present, do not infer employer, title, or location from the URL slug alone.",
     });
   }
 
@@ -270,8 +286,11 @@ export async function parseCandidateFields(params: {
       "- Use null (not empty string) for any field not present in the source.\n" +
       "- 'current_designation' is the candidate's present job title; 'current_organization' is their present employer. A role is 'current' if its end date is 'Current', 'Present', 'Now', or blank - those all mean the candidate is still there. Prefer the most recent role explicitly marked 'Current'/'Present'/blank end date. If no role is explicitly current, use the most recent dated role. These MUST be non-empty whenever the resume lists any work history at all - never return '' here, use null only if the resume has zero work experience.\n" +
       "- 'location' should be 'City, ST' if US, otherwise 'City, Country'.\n" +
+      "- If a LinkedIn public metadata block is present, use its visible employer and location exactly as shown. Do not invent a current title when LinkedIn masks or omits the title.\n" +
       "- 'phone' keep the digits and country code as given; don't reformat.\n" +
       "- 'skills' is a deduplicated array of 4 to 10 hard skills directly relevant to the candidate's current role, industry, and recent experience. Use the resume's current_designation, current_organization, and most recent roles to judge relevance. INCLUDE: tools, software, certifications, technical methods, regulations, and domain expertise that match the candidate's profession (e.g. for an accountant: 'GAAP', 'QuickBooks', 'Tax Preparation', 'Financial Modeling', 'Audit', 'CPA'). EXCLUDE soft skills, hobbies, volunteer activities, generic interests, and anything unrelated to the candidate's professional field (e.g. NEVER include 'Swim', 'Jewelry Making', 'Lifeguard', 'Shopping Experience', 'Customer Service' for an accounting candidate). Hard cap: return no more than 10. If the resume lists 40, you filter down to the 10 most role-relevant before returning. If fewer than 4 truly relevant skills exist, return what you have (never pad with junk).\n" +
+      "- If the only source is LinkedIn public metadata, skills must come only from visible certifications / skills in that metadata. Do not infer extra domain skills from employer or certification.\n" +
+      "- Credentials/certifications visible in a LinkedIn display name, such as CPA, belong in skills, not in first_name or last_name.\n" +
       "- 'linkedin_profile' is the full URL if one is present in the source. If only a LinkedIn URL was provided as input, echo it here.\n" +
       "- 'notes' is a short (2–4 sentence) summary of the candidate's experience highlights. Null if nothing notable.\n" +
       "- 'experience' is every work/job role found on the resume, most-recent-first. 'from_year' and 'to_year' are 4-digit years; if the role is still current set 'to_year' to null (do NOT write 'Current'/'Present'/'Now'). 'description' is a 1–3 sentence summary of that role (bullet-flattened). Return [] if no experience found.\n" +
@@ -341,7 +360,27 @@ export async function parseCandidateFields(params: {
   const rawDesignation = toStringOrNull(parsed.current_designation);
   const rawOrganization = toStringOrNull(parsed.current_organization);
   const finalDesignation = rawDesignation ?? currentRole?.designation ?? null;
-  const finalOrganization = rawOrganization ?? currentRole?.organization ?? null;
+  const finalOrganization =
+    rawOrganization ?? currentRole?.organization ?? linkedinMetadata?.currentOrganization ?? null;
+  const parsedSkills = Array.isArray(parsed.skills)
+    ? parsed.skills.filter((s: unknown): s is string => typeof s === "string" && s.trim().length > 0)
+    : [];
+  const isLinkedInMetadataOnly = Boolean(linkedinMetadata && !resume && !pasted);
+  const finalSkills = (
+    isLinkedInMetadataOnly
+      ? linkedinMetadata?.skills ?? []
+      : mergeSkillLists(parsedSkills, linkedinMetadata?.skills ?? [])
+  ).slice(0, 10);
+  const metadataNote =
+    linkedinMetadata?.summary ? `Public LinkedIn metadata: ${linkedinMetadata.summary}.` : null;
+  const finalLocation =
+    isLinkedInMetadataOnly
+      ? linkedinMetadata?.location ?? toStringOrNull(parsed.location)
+      : toStringOrNull(parsed.location) ?? linkedinMetadata?.location ?? null;
+  const finalNotes =
+    isLinkedInMetadataOnly
+      ? metadataNote ?? toStringOrNull(parsed.notes)
+      : toStringOrNull(parsed.notes) ?? metadataNote;
   // eslint-disable-next-line no-console
   console.log("[parseCandidateFields] backfill result:", {
     rawDesignation,
@@ -350,22 +389,24 @@ export async function parseCandidateFields(params: {
     currentRoleOrganization: currentRole?.organization ?? null,
     finalDesignation,
     finalOrganization,
+    linkedinMetadataOrganization: linkedinMetadata?.currentOrganization ?? null,
+    linkedinMetadataLocation: linkedinMetadata?.location ?? null,
   });
   return {
     ...EMPTY_CANDIDATE,
     ...parsed,
+    first_name: toStringOrNull(parsed.first_name) ?? linkedinMetadata?.firstName ?? null,
+    last_name: cleanNameCredentialSuffix(toStringOrNull(parsed.last_name)) ?? linkedinMetadata?.lastName ?? null,
     phone: normalizeToE164(parsed.phone),
     current_designation: finalDesignation,
     current_organization: finalOrganization,
+    location: finalLocation ?? null,
     // Belt-and-suspenders cap at 10 in case Claude ignores the prompt's hard
     // cap. Skills like "Swim" / "Jewelry Making" on an accountant's resume
     // get filtered upstream by the role-relevance prompt rule; this slice
     // guarantees we never write more than 10 skills to the DB regardless.
-    skills: Array.isArray(parsed.skills)
-      ? parsed.skills
-          .filter((s: unknown): s is string => typeof s === "string" && s.trim().length > 0)
-          .slice(0, 10)
-      : [],
+    skills: finalSkills,
+    notes: finalNotes ?? null,
     linkedin_profile: parsed.linkedin_profile ?? linkedinUrl ?? null,
     experience,
     education: normalizeEducation(parsed.education),
@@ -387,6 +428,31 @@ function toYearOrNull(v: unknown): number | null {
 function toStringOrNull(v: unknown): string | null {
   if (typeof v === "string" && v.trim()) return v.trim();
   return null;
+}
+
+function mergeSkillLists(...lists: string[][]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const list of lists) {
+    for (const raw of list) {
+      const skill = raw.trim();
+      if (!skill) continue;
+      const key = skill.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(skill);
+    }
+  }
+  return out;
+}
+
+function cleanNameCredentialSuffix(value: string | null): string | null {
+  if (!value) return null;
+  const cleaned = value
+    .replace(/,?\s+(CPA|CFA|MBA|EA|CMA|CIA|CISA|PMP|PHR|SPHR|SHRM-CP|SHRM-SCP|JD|ESQ\.?)\.?\s*$/i, "")
+    .replace(/,\s*$/, "")
+    .trim();
+  return cleaned || null;
 }
 
 function normalizeExperience(raw: unknown): ParsedExperience[] {

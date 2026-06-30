@@ -443,7 +443,7 @@ export function NewCandidateForm({
           <div className="border-b border-court-border px-5 py-3">
             <h2 className="font-serif text-base font-semibold text-court-fg">LinkedIn</h2>
             <p className="text-xs text-court-fg-muted">
-              URL is saved on the record. For full enrichment, paste the profile text below and re-parse from the resume dropzone (LinkedIn blocks automated URL fetches).
+              URL is saved on the record. Public profile metadata is pulled when LinkedIn exposes it; paste profile text for richer details LinkedIn hides from the public page.
             </p>
           </div>
           <div className="flex flex-1 flex-col gap-3 p-5">
