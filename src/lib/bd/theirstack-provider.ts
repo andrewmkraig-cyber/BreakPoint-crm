@@ -12,12 +12,11 @@ const THEIRSTACK_ENDPOINT = "https://api.theirstack.com/v1/jobs/search";
 // the /v1/jobs/search request body.
 const SAVED_SEARCH_ENDPOINT = "https://api.theirstack.com/v0/saved_searches";
 
-// Hard abort ceiling for the single discovery POST. TheirStack has been
-// observed taking 42s+ on one request, which alone blows the cron's
-// function budget. Abort at 25s so one slow response fails the run
-// cleanly (caught by the route, marked FAILED with a clear message)
-// instead of hanging until the platform 504s.
-const THEIRSTACK_TIMEOUT_MS = 25_000;
+// Hard abort ceiling for the saved-search lookup and single discovery POST.
+// TheirStack has repeatedly exceeded 25s during the 6 AM cron window but later
+// returned good batches when run manually, so give the provider enough room to
+// finish while still failing before the route's platform ceiling.
+const THEIRSTACK_TIMEOUT_MS = 90_000;
 
 // TheirStack now rejects any /jobs/search request that lacks at least one
 // "mandatory" filter (posted_at_max_age_days / posted_at_gte / posted_at_lte /

@@ -8,11 +8,10 @@ import { recoverDomain } from "@/lib/bd/discovered-company";
 import { apolloResolveDomainByName, normalizeDomain } from "@/lib/bd/apollo-contacts";
 
 export const dynamic = "force-dynamic";
-// Safety margin only. The real fix for the 504 is the abort timeouts on the
-// TheirStack/JSearch fetches and the wall-clock budget on the client-monitor
-// sweep (theirstack-provider.ts, jsearch-provider.ts, client-signal-sync.ts);
-// the discovery call itself is, and always was, a single TheirStack POST.
-export const maxDuration = 120;
+// Safety margin around provider latency. TheirStack can exceed a short 25s
+// window during the 6 AM cron, so the provider now gets 90s to finish and this
+// route gets enough budget for discovery plus post-processing.
+export const maxDuration = 300;
 
 // FALLBACK role titles sent as job_title_or ONLY when no active saved
 // search / vertical / per-vertical titles resolve (see resolveDiscoveryTitles
