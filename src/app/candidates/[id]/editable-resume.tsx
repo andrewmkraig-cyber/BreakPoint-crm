@@ -264,7 +264,7 @@ export function EditableResume({
     setIsEditingWithClaude(true);
     const toastId = toast.loading("Editing resume with Claude…");
     try {
-      const result = await editResumeWithClaude(candidateId, instruction);
+      const result = await editResumeWithClaude(candidateId, instruction, selected?.resumeId);
       if (!result.ok) {
         toast.error("Couldn't edit resume", { id: toastId, description: result.error });
         return;

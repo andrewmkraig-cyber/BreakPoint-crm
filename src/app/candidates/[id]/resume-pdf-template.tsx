@@ -17,6 +17,7 @@ import {
   View,
   StyleSheet,
   Font,
+  Link,
 } from "@react-pdf/renderer";
 
 // Brand green from ACE_DESIGN.md — used for the role title under the
@@ -102,14 +103,14 @@ const styles = StyleSheet.create({
   // Body grid — left sidebar + right main column.
   body: {
     flexDirection: "row",
-    gap: 24,
+    gap: 20,
   },
   sidebar: {
-    width: "35%",
+    width: "32%",
     paddingRight: 8,
   },
   main: {
-    width: "65%",
+    width: "68%",
   },
   // Section header — uppercase, tight tracking, green underline.
   sectionHeader: {
@@ -134,6 +135,14 @@ const styles = StyleSheet.create({
     marginBottom: 3,
     fontSize: 9,
     color: NEUTRAL_700,
+    lineHeight: 1.25,
+  },
+  contactLink: {
+    marginBottom: 3,
+    fontSize: 9,
+    color: BRAND_GREEN_DARK,
+    lineHeight: 1.25,
+    textDecoration: "none",
   },
   // Skills / certifications list — one per line with a bullet.
   listItem: {
@@ -192,11 +201,14 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: BRAND_GREEN_DARK,
     fontFamily: "Helvetica-Bold",
+    flex: 1,
+    paddingRight: 8,
   },
   experienceDates: {
     fontSize: 9,
     color: NEUTRAL_500,
     fontStyle: "italic",
+    textAlign: "right",
   },
   experienceBullet: {
     flexDirection: "row",
@@ -216,12 +228,7 @@ const styles = StyleSheet.create({
 
 export function ResumeDocument({ data }: { data: ResumeData }) {
   // Filter out empty contact lines so the sidebar doesn't render blanks.
-  const contactRows: string[] = [
-    data.contact.email ?? "",
-    data.contact.phone ?? "",
-    data.contact.location ?? "",
-    data.contact.linkedin ?? "",
-  ].filter((v) => v.trim().length > 0);
+  const contactRows = buildContactRows(data.contact);
 
   const hasSkills = data.skills.length > 0;
   const hasEducation = data.education.length > 0;
@@ -245,11 +252,17 @@ export function ResumeDocument({ data }: { data: ResumeData }) {
                 <Text style={[styles.sectionHeader, styles.firstSectionHeader]}>
                   Contact
                 </Text>
-                {contactRows.map((row, i) => (
-                  <Text key={i} style={styles.contactRow}>
-                    {row}
-                  </Text>
-                ))}
+                {contactRows.map((row, i) =>
+                  row.href ? (
+                    <Link key={i} src={row.href} style={styles.contactLink}>
+                      {row.label}
+                    </Link>
+                  ) : (
+                    <Text key={i} style={styles.contactRow}>
+                      {row.label}
+                    </Text>
+                  ),
+                )}
               </>
             )}
 
@@ -355,4 +368,27 @@ export function ResumeDocument({ data }: { data: ResumeData }) {
       </Page>
     </Document>
   );
+}
+
+function buildContactRows(contact: ResumeData["contact"]): Array<{ label: string; href?: string }> {
+  const rows: Array<{ label: string; href?: string }> = [];
+  const email = contact.email?.trim();
+  const phone = contact.phone?.trim();
+  const location = contact.location?.trim();
+  const linkedin = normalizeLinkedInUrl(contact.linkedin);
+
+  if (email) rows.push({ label: email });
+  if (phone) rows.push({ label: phone });
+  if (location) rows.push({ label: location });
+  if (linkedin) rows.push({ label: "LinkedIn Profile", href: linkedin });
+
+  return rows;
+}
+
+function normalizeLinkedInUrl(raw: string | null | undefined): string | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  if (!/linkedin\.com/i.test(value)) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  return `https://${value.replace(/^\/+/, "")}`;
 }

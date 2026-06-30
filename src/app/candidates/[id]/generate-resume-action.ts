@@ -28,6 +28,16 @@ type ActionResult<T = void> =
 
 const anthropic = new Anthropic();
 
+type ResumeForEdit = {
+  id: string;
+  filename: string;
+  displayName: string | null;
+  variant: string | null;
+  mimeType: string;
+  data: Uint8Array | null;
+  blobUrl: string | null;
+};
+
 // Generate a fresh resume for a candidate from their Neon profile fields.
 // Used by the empty-state "Generate Resume" button on the candidate
 // profile when no resume is on file. Pulls the candidate's name, title,
@@ -126,15 +136,19 @@ export async function generateAiResume(input: {
       '  "summary"?: string,                    // 2-4 sentence professional summary',
       '  "experience": [{',
       '    "title": string, "company": string, "dates": string, "location"?: string,',
-      '    "bullets": string[]                  // 2-4 bullets, each one impact-focused sentence',
+      '    "bullets": string[]                  // 2-3 bullets, each one concise impact-focused sentence',
       "  }],",
       '  "education": [{ "degree": string, "school": string, "year"?: string, "details"?: string }],',
-      '  "skills": string[],                    // 8-15 short skill phrases',
+      '  "skills": string[],                    // 8-10 short skill phrases',
       '  "certifications": string[]             // omit / empty if none in source data',
       "}",
       "Hard rules:",
       "- Do NOT invent facts. If a field is missing in the source, omit it from the output.",
       "- Output ONLY the JSON document. No explanation, no fences, no extra text.",
+      "- Keep the resume compact and recruiter-ready. Target one page for typical candidates.",
+      "- Summary is 2 concise sentences maximum.",
+      "- Return no more than 4 experience roles and no more than 3 bullets per role.",
+      "- Return no more than 10 skills. Prefer the strongest role-relevant skills over a long list.",
       "- Bullets are concise and start with a strong verb. Never include the candidate's name in a bullet.",
       "- If the candidate has no work experience in the source data, return an empty experience array.",
     ].join("\n");
@@ -181,6 +195,7 @@ export async function generateAiResume(input: {
       userId: user.id,
       resumeData,
       displayName: "AI Generated",
+      variant: "ai-generated",
       filename: `${safeName}_AI_Generated.pdf`,
       blobPath: `resumes/${candidate.id}/generated-${safeName}_AI_Generated.pdf`,
     });
@@ -208,6 +223,7 @@ async function renderResumeDataToVersion(params: {
   userId: string;
   resumeData: ResumeData;
   displayName: string;
+  variant?: string;
   filename: string;
   blobPath: string;
 }): Promise<string> {
@@ -242,6 +258,7 @@ async function renderResumeDataToVersion(params: {
       filename: params.filename,
       // displayName drives the version dropdown label via dropdownLabelFor().
       displayName: params.displayName,
+      variant: params.variant,
       mimeType: "application/pdf",
       size: outputBytes.byteLength,
       data: Buffer.alloc(0),
@@ -269,6 +286,7 @@ async function renderEditedResumeToVersion(params: {
   userId: string;
   editedResume: EditedResume;
   displayName: string;
+  variant?: string;
   filename: string;
   blobPath: string;
 }): Promise<string> {
@@ -297,6 +315,7 @@ async function renderEditedResumeToVersion(params: {
       organizationId: params.organizationId,
       filename: params.filename,
       displayName: params.displayName,
+      variant: params.variant,
       mimeType: "application/pdf",
       size: outputBytes.byteLength,
       data: Buffer.alloc(0),
@@ -431,16 +450,36 @@ type PdfJsDoc = {
 // PDFs (see extractPdfTextNode) and extractDocxText for Word docs. Returns
 // "" when there's no resume or the text can't be read; the caller turns
 // that into a user-facing error.
-async function extractCurrentResumeText(
+async function loadResumeForEdit(
   candidateId: string,
   organizationId: string,
-): Promise<string> {
-  const resume = await prisma.candidateResume.findFirst({
+  resumeId?: string,
+): Promise<ResumeForEdit | null> {
+  const select = {
+    id: true,
+    filename: true,
+    displayName: true,
+    variant: true,
+    data: true,
+    blobUrl: true,
+    mimeType: true,
+  } as const;
+
+  if (resumeId) {
+    return prisma.candidateResume.findFirst({
+      where: { id: resumeId, candidateId, organizationId, uploadComplete: true },
+      select,
+    });
+  }
+
+  return prisma.candidateResume.findFirst({
     where: { candidateId, organizationId, uploadComplete: true },
     orderBy: { uploadedAt: "desc" },
-    select: { data: true, blobUrl: true, mimeType: true, filename: true },
+    select,
   });
-  if (!resume) return "";
+}
+
+async function extractResumeText(resume: ResumeForEdit): Promise<string> {
   if (!resume.blobUrl && (!resume.data || resume.data.byteLength === 0)) return "";
 
   const mime = (resume.mimeType ?? "").toLowerCase();
@@ -464,18 +503,98 @@ async function extractCurrentResumeText(
   return "";
 }
 
-// Edit-with-Claude. Loads the candidate's current resume, extracts its
-// text, and asks Claude to apply ONLY the requested change (everything else
-// preserved verbatim), returning the full revised resume as an ordered,
-// source-mirroring section model (EditedResume). The result is rendered
-// through the single-column EditedResumeDocument and saved as a NEW version
-// named "Edited - <today>" — the original file is never touched. (The
-// generator uses the rigid ResumeData + two-column template instead, which is
-// right for building a resume from structured DB fields but wrong for
-// mirroring an arbitrary existing document.)
+function isAiGeneratedResume(resume: ResumeForEdit): boolean {
+  const label = `${resume.displayName ?? ""} ${resume.filename} ${resume.variant ?? ""}`.toLowerCase();
+  return (
+    label.includes("ai generated") ||
+    label.includes("ai edited") ||
+    label.includes("_ai_generated") ||
+    label.includes("_ai_edited") ||
+    resume.variant === "ai-generated" ||
+    resume.variant === "ai-edited"
+  );
+}
+
+function instructionRemovesLinkedIn(instruction: string): boolean {
+  return /\b(remove|delete|omit|hide|take\s+out)\b[\s\S]*\blinked\s*in\b/i.test(instruction);
+}
+
+async function editGeneratedResumeDataWithClaude(params: {
+  resumeText: string;
+  instruction: string;
+  fullName: string;
+  orgId: string;
+  candidate: {
+    currentDesignation: string | null;
+    email: string | null;
+    phone: string | null;
+    location: string | null;
+    linkedinProfile: string | null;
+    skills: string[];
+  };
+}): Promise<ResumeData | null> {
+  const systemPrompt =
+    [
+      "You are a precise resume editor for an Ace-generated recruiting resume.",
+      "The source resume was rendered from structured JSON using a fixed two-column PDF template.",
+      "Apply ONLY the user's requested edit, then return the same structured resume JSON schema. Do not switch layouts.",
+      "Preserve the resume's existing wording, section content, role order, education order, skill list, dates, numbers, and bullets unless the instruction explicitly changes them.",
+      "Do not rewrite, expand, summarize, embellish, reorder, or add content. Do not make the resume longer unless the user explicitly asks for added content.",
+      "If the instruction removes a contact item such as LinkedIn, remove only that field from contact and leave every other field unchanged.",
+      "Keep the result compact and recruiter-ready. Target one page for typical candidates.",
+      "Schema:",
+      "{",
+      '  "name": string,',
+      '  "title": string,',
+      '  "contact": { "email"?: string, "phone"?: string, "location"?: string, "linkedin"?: string },',
+      '  "summary"?: string,',
+      '  "experience": [{ "title": string, "company": string, "dates": string, "location"?: string, "bullets": string[] }],',
+      '  "education": [{ "degree": string, "school": string, "year"?: string, "details"?: string }],',
+      '  "skills": string[],',
+      '  "certifications": string[]',
+      "}",
+      "Output ONLY the JSON document. No commentary, no markdown, no fences.",
+    ].join("\n") + (await buildPersonalTrainerBlock(params.orgId));
+
+  const userMessage = [
+    "CURRENT ACE-GENERATED RESUME TEXT (source of truth):",
+    params.resumeText.slice(0, 40_000),
+    "",
+    `EDITING INSTRUCTION: ${params.instruction}`,
+    "",
+    "Return the full revised structured resume JSON now. Apply only the requested edit.",
+  ].join("\n");
+
+  const response = await anthropic.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 4096,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userMessage }],
+  });
+
+  const rawText = response.content
+    .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")
+    .map((b) => b.text)
+    .join("\n\n")
+    .trim();
+  if (!rawText) return null;
+
+  const parsed = parseResumeJson(rawText, params.fullName, params.candidate);
+  if (!parsed) return null;
+  if (instructionRemovesLinkedIn(params.instruction)) {
+    parsed.contact.linkedin = undefined;
+  }
+  return parsed;
+}
+
+// Edit-with-Claude. Loads the selected resume version, extracts its text, and
+// applies ONLY the requested change. AI-generated resumes stay on the generated
+// two-column template after editing; arbitrary uploaded resumes use the
+// source-mirroring single-column editor.
 export async function editResumeWithClaude(
   candidateId: string,
   instruction: string,
+  sourceResumeId?: string,
 ): Promise<ActionResult<{ resumeId: string }>> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return { ok: false, error: "Not signed in." };
@@ -514,13 +633,51 @@ export async function editResumeWithClaude(
       [candidate.firstName, candidate.lastName].filter(Boolean).join(" ").trim() ||
       "(no name on file)";
 
-    const resumeText = await extractCurrentResumeText(candidate.id, org.id);
+    const sourceResume = await loadResumeForEdit(candidate.id, org.id, sourceResumeId);
+    if (!sourceResume) {
+      return {
+        ok: false,
+        error: sourceResumeId
+          ? "Selected resume version not found."
+          : "No resume version found for this candidate.",
+      };
+    }
+
+    const resumeText = await extractResumeText(sourceResume);
     if (!resumeText) {
       return {
         ok: false,
         error:
           "Couldn't read the current resume's text to edit. Make sure a PDF, Word, or text resume is on file.",
       };
+    }
+
+    if (isAiGeneratedResume(sourceResume)) {
+      const editedGeneratedResume = await editGeneratedResumeDataWithClaude({
+        resumeText,
+        instruction: trimmedInstruction,
+        fullName,
+        orgId: org.id,
+        candidate,
+      });
+      if (!editedGeneratedResume) {
+        return { ok: false, error: "Couldn't parse the revised resume from Claude. Try again." };
+      }
+
+      const safeName = fullName.replace(/[^A-Za-z0-9_-]+/g, "_") || "resume";
+      const resumeId = await renderResumeDataToVersion({
+        candidateId: candidate.id,
+        candidateRfId: candidate.rfId,
+        organizationId: org.id,
+        userId: user.id,
+        resumeData: editedGeneratedResume,
+        displayName: `AI Edited - ${todayLabel()}`,
+        variant: "ai-edited",
+        filename: `${safeName}_AI_Edited.pdf`,
+        blobPath: `resumes/${candidate.id}/edited-${safeName}_AI_Edited.pdf`,
+      });
+
+      return { ok: true, value: { resumeId } };
     }
 
     // The schema MIRRORS the source resume rather than forcing it into fixed
@@ -693,10 +850,10 @@ function parseResumeJson(
             company: company || "(company)",
             dates: asString(r.dates),
             location: asString(r.location) || undefined,
-            bullets: asStringArray(r.bullets),
+            bullets: asStringArray(r.bullets).slice(0, 3),
           },
         ];
-      })
+      }).slice(0, 4)
     : [];
 
   const education: ResumeEducationEntry[] = Array.isArray(obj.education)
@@ -721,14 +878,23 @@ function parseResumeJson(
     name: asString(obj.name) || fullName,
     title: asString(obj.title) || candidate.currentDesignation || "",
     contact,
-    summary: asString(obj.summary) || undefined,
+    summary: compactSummary(asString(obj.summary)) || undefined,
     experience,
     education,
     skills: asStringArray(obj.skills).length > 0
-      ? asStringArray(obj.skills)
-      : candidate.skills,
-    certifications: asStringArray(obj.certifications),
+      ? asStringArray(obj.skills).slice(0, 10)
+      : candidate.skills.slice(0, 10),
+    certifications: asStringArray(obj.certifications).slice(0, 6),
   };
+}
+
+function compactSummary(summary: string): string {
+  if (!summary) return "";
+  const sentences = summary
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .filter(Boolean);
+  return sentences.slice(0, 2).join(" ").slice(0, 550).trim();
 }
 
 // Parse Claude's source-mirroring JSON into an EditedResume. Deliberately

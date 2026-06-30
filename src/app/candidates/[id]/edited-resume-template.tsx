@@ -28,6 +28,7 @@ import {
   View,
   StyleSheet,
   Font,
+  Link,
 } from "@react-pdf/renderer";
 
 const BRAND_GREEN = "#5A9642";
@@ -97,9 +98,23 @@ const styles = StyleSheet.create({
   },
   contactRow: {
     marginTop: 5,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+  },
+  contactItem: {
+    flexDirection: "row",
+  },
+  contactText: {
     fontSize: 9,
     color: NEUTRAL_700,
     lineHeight: 1.3,
+  },
+  contactLink: {
+    fontSize: 9,
+    color: BRAND_GREEN_DARK,
+    lineHeight: 1.3,
+    textDecoration: "none",
   },
   section: {
     marginTop: 14,
@@ -206,7 +221,7 @@ function Entry({ entry }: { entry: EditedResumeEntry }) {
 }
 
 export function EditedResumeDocument({ data }: { data: EditedResume }) {
-  const contact = (data.contact ?? []).filter((c) => c.trim().length > 0);
+  const contact = buildContactItems(data.contact ?? []);
   const sections = (data.sections ?? []).filter(
     (s) => s.heading?.trim() || (s.entries ?? []).length > 0,
   );
@@ -220,7 +235,20 @@ export function EditedResumeDocument({ data }: { data: EditedResume }) {
             <Text style={styles.title}>{data.title}</Text>
           ) : null}
           {contact.length > 0 ? (
-            <Text style={styles.contactRow}>{contact.join("  |  ")}</Text>
+            <View style={styles.contactRow}>
+              {contact.map((item, i) => (
+                <View key={i} style={styles.contactItem}>
+                  {i > 0 ? <Text style={styles.contactText}>  |  </Text> : null}
+                  {item.href ? (
+                    <Link src={item.href} style={styles.contactLink}>
+                      {item.label}
+                    </Link>
+                  ) : (
+                    <Text style={styles.contactText}>{item.label}</Text>
+                  )}
+                </View>
+              ))}
+            </View>
           ) : null}
         </View>
 
@@ -237,4 +265,22 @@ export function EditedResumeDocument({ data }: { data: EditedResume }) {
       </Page>
     </Document>
   );
+}
+
+function buildContactItems(lines: string[]): Array<{ label: string; href?: string }> {
+  return lines.flatMap((line) => {
+    const cleaned = line.trim();
+    if (!cleaned) return [];
+    const linkedIn = normalizeLinkedInUrl(cleaned);
+    if (linkedIn) return [{ label: "LinkedIn Profile", href: linkedIn }];
+    return [{ label: cleaned }];
+  });
+}
+
+function normalizeLinkedInUrl(raw: string): string | null {
+  const match = raw.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[A-Za-z0-9_\-%]+\/?/i);
+  if (!match) return null;
+  const value = match[0];
+  if (/^https?:\/\//i.test(value)) return value;
+  return `https://${value.replace(/^\/+/, "")}`;
 }
