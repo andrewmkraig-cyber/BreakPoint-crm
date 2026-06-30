@@ -13,6 +13,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import { isOutboundDirection } from "@/lib/phone-direction";
 import { cn } from "@/lib/utils";
 
 type TranscriptShape = {
@@ -165,7 +166,7 @@ export function CallLogs(props: CallLogsProps) {
 }
 
 function CallRowView({ row }: { row: CallRow }) {
-  const outbound = row.direction === "outbound";
+  const outbound = isOutboundDirection(row.direction);
   const Icon = outbound ? PhoneOutgoing : PhoneIncoming;
   const directionLabel = outbound ? "Outbound" : "Inbound";
   const counterpartNumber = outbound ? row.toNumber : row.fromNumber;

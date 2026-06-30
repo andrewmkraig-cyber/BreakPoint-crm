@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { callLineWhere, getQuoLineDigitsForUserEmail, smsLineWhere } from "@/lib/quo-line-owner";
+import { isOutboundDirection } from "@/lib/phone-direction";
 
 export const dynamic = "force-dynamic";
 
@@ -155,7 +156,7 @@ export async function GET(
     );
     const sample = all[0];
     const phoneNumber = sample
-      ? sample.direction === "outbound"
+      ? isOutboundDirection(sample.direction)
         ? sample.toNumber
         : sample.fromNumber
       : digits;

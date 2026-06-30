@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getCurrentOrg } from '@/lib/auth/getCurrentOrg'
 import { authOptions } from '@/lib/auth'
 import { callLineWhere, getQuoLineDigitsForUserEmail } from '@/lib/quo-line-owner'
+import { normalizePhoneDirection } from '@/lib/phone-direction'
 
 export async function POST(req: NextRequest) {
   const { candidateId, direction, fromNumber, toNumber, status, duration, recordingUrl, krispcallId } = await req.json()
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
     }
   }
   const log = await prisma.callLog.create({
-    data: { candidateId, organizationId, direction, fromNumber, toNumber, status: status ?? 'initiated', duration, recordingUrl, krispcallId },
+    data: { candidateId, organizationId, direction: normalizePhoneDirection(direction), fromNumber, toNumber, status: status ?? 'initiated', duration, recordingUrl, krispcallId },
   })
   return NextResponse.json(log)
 }

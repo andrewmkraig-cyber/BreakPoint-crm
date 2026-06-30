@@ -8,6 +8,7 @@ import { badgePayloadFields } from '@/lib/badge-math'
 import { pickPhone, redactPhone } from '@/lib/quo-phone'
 import { resolveQuoLineOwnerUserId } from '@/lib/quo-line-owner'
 import { isChannelPushEnabledForUserId } from '@/lib/preferences'
+import { normalizePhoneDirection } from '@/lib/phone-direction'
 
 // Quo (formerly KrispCall / OpenPhone) inbound webhook.
 //
@@ -400,9 +401,10 @@ export async function POST(req: NextRequest) {
     const duration = durationStr ? parseInt(durationStr) : null
     const recordingUrl = pickStr(body, ['data.object.recordingUrl', 'recording_url'])
     const quoId = pickStr(body, ['data.object.id', 'id', 'call_id'])
-    const direction = pickStr(body, ['data.object.direction', 'direction']) || 'inbound'
-    const phoneToMatch =
-      ((direction === 'inbound' ? fromNumber : toNumber) || '').replace(/\D/g, '').slice(-10)
+    const rawDirection = pickStr(body, ['data.object.direction', 'direction'])
+    const direction = normalizePhoneDirection(rawDirection)
+    const otherPartyNumber = direction === 'inbound' ? fromNumber : toNumber
+    const phoneToMatch = (otherPartyNumber || '').replace(/\D/g, '').slice(-10)
     if (phoneToMatch) {
       const candidate = await prisma.candidate.findFirst({
         where: { phone: { contains: phoneToMatch } },
@@ -411,7 +413,7 @@ export async function POST(req: NextRequest) {
       // belong to a client contact. Match against Contact.phoneNumbers
       // so CallLog.clientId lands on the row at write-time, surfacing
       // the call under <CallLogs clientId={...}/> on the client profile.
-      const phoneRaw = (direction === 'inbound' ? fromNumber : toNumber) || ''
+      const phoneRaw = otherPartyNumber || ''
       const clientMatch = candidate ? null : await matchClientByPhone(phoneRaw)
       // Persist the call log even when the other-party number doesn't
       // match a known Candidate. The Phone tab surfaces those rows as

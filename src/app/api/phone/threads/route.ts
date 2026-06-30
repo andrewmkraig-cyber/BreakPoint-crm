@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { callLineWhere, getQuoLineDigitsForUserEmail, smsLineWhere } from "@/lib/quo-line-owner";
+import { isOutboundDirection } from "@/lib/phone-direction";
 
 export const dynamic = "force-dynamic";
 
@@ -193,7 +194,7 @@ export async function GET(req: NextRequest) {
   for (const s of smsRows) {
     const t = s.candidateId
       ? ensureCandidateThread(s.candidateId)
-      : ensureUnknownThread(s.direction === "outbound" ? s.toNumber : s.fromNumber);
+      : ensureUnknownThread(isOutboundDirection(s.direction) ? s.toNumber : s.fromNumber);
     if (!t) continue;
     t.counts.sms += 1;
     if (!t.lastActivity || s.createdAt > new Date(t.lastActivity.at)) {
@@ -215,7 +216,7 @@ export async function GET(req: NextRequest) {
   for (const c of callRows) {
     const t = c.candidateId
       ? ensureCandidateThread(c.candidateId)
-      : ensureUnknownThread(c.direction === "outbound" ? c.toNumber : c.fromNumber);
+      : ensureUnknownThread(isOutboundDirection(c.direction) ? c.toNumber : c.fromNumber);
     if (!t) continue;
     t.counts.calls += 1;
     const isMissed = c.status === "missed" || c.status === "no-answer";
