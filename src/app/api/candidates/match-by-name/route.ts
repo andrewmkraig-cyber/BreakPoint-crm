@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
+import { normalizeCandidateNameForMatching } from "@/lib/resume-filename";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,7 +37,7 @@ type MatchResult = {
 };
 
 function splitName(raw: string): { first: string; last: string } | null {
-  const trimmed = raw.trim().replace(/\s+/g, " ");
+  const trimmed = normalizeCandidateNameForMatching(raw).replace(/\s+/g, " ");
   if (!trimmed) return null;
   const idx = trimmed.indexOf(" ");
   if (idx < 0) return null;

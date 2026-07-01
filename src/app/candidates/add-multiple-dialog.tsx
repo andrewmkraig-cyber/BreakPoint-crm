@@ -11,6 +11,7 @@ import { Loader2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
+import { normalizeCandidateNameForMatching } from "@/lib/resume-filename";
 
 // Bulk candidate import modal, opened from the Candidates topbar "Add
 // Multiple" chip. Extracted out of the former candidates-view.tsx (the
@@ -20,6 +21,8 @@ import { uploadFileInChunks } from "@/lib/chunked-upload";
 // are unchanged.
 
 function parseNameFromFilename(filename: string): string {
+  const normalized = normalizeCandidateNameForMatching(filename);
+  if (normalized) return normalized;
   const base = filename.replace(/\.(pdf|docx?)$/i, "");
   const lastUnderscore = base.lastIndexOf("_");
   return (lastUnderscore >= 0 ? base.slice(0, lastUnderscore) : base).trim();
