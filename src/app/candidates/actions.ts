@@ -60,6 +60,25 @@ export async function quickSearchCandidates(query: string): Promise<QuickSearchR
   }
 }
 
+// Total candidate headcount for the current org. Powers the small
+// "N candidates in your database" tally on the /candidates header so
+// the recruiter can see roster size at a glance. Org-scoped through the
+// same organizationId guard every other candidate query uses, so it
+// only ever counts this tenant's records. Re-called by the client after
+// a bulk import so the number ticks up as candidates are added.
+export async function getCandidateTotal(): Promise<number> {
+  try {
+    const org = await getCurrentOrg();
+    return await prisma.candidate.count({
+      where: { organizationId: org.id },
+    });
+  } catch {
+    // Fail soft — the tally is decorative; a bad count shouldn't blank
+    // the whole page. Caller renders nothing when this returns null-ish.
+    return 0;
+  }
+}
+
 export type QuickClientRow = {
   // Slug used by /clients/[id] — legacyRfId-as-string for RF-imported
   // clients (keeps back-compat URLs) or the cuid for Ace-native.

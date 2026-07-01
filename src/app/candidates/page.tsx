@@ -30,6 +30,7 @@ import {
   getOpenJobsForBulkPicker,
   type BulkPickerJob,
 } from "@/app/candidates/bulk-actions";
+import { getCandidateTotal } from "@/app/candidates/actions";
 import {
   listCandidateLists,
   type CandidateListSummary,
@@ -686,6 +687,24 @@ export default function CandidatesPage() {
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   useEffect(() => {
     setSavedSearches(loadSavedSearches());
+  }, []);
+
+  // Total candidates in the org roster — the discrete tally in the
+  // results header. Distinct from `total` (which is the count of the
+  // current filtered result set). Fetched once on mount and refreshed
+  // by refreshDbTotal() after a bulk import so the number ticks up as
+  // candidates are added. null until the first fetch resolves so the
+  // tally renders nothing rather than a flash of "0".
+  const [dbTotal, setDbTotal] = useState<number | null>(null);
+  async function refreshDbTotal() {
+    try {
+      setDbTotal(await getCandidateTotal());
+    } catch {
+      // Decorative tally — swallow and leave the prior value in place.
+    }
+  }
+  useEffect(() => {
+    void refreshDbTotal();
   }, []);
 
   // Subscribe to the TopBar "Add Multiple" chip. The chip dispatches a
@@ -1661,17 +1680,30 @@ export default function CandidatesPage() {
                 </span>
               </div>
             </div>
-            <Link
-              href="/candidates/lists"
-              className="group inline-flex shrink-0 items-center gap-1.5 rounded-md border border-court-border bg-court-bg px-3 py-1.5 transition hover:border-court-accent/40 hover:bg-court-accent-tint"
-            >
-              <ClipboardList className="h-3.5 w-3.5 text-court-accent-dark" strokeWidth={1.8} />
-              <span className="text-xs font-semibold text-court-fg">Saved Lists</span>
-              <ChevronRight
-                className="h-3.5 w-3.5 text-court-fg-muted transition group-hover:text-court-accent-dark"
-                strokeWidth={2}
-              />
-            </Link>
+            <div className="flex shrink-0 items-center gap-3">
+              {/* Roster tally — small, always-visible total of every
+                  candidate in the org database. Separate from the big
+                  match count so it reads at a glance regardless of the
+                  active filters; refreshDbTotal() ticks it up after an
+                  import. Hidden until the first fetch resolves so it
+                  never flashes a stale "0". */}
+              {dbTotal !== null ? (
+                <span className="hidden text-xs text-court-fg-muted tabular-nums sm:inline">
+                  {dbTotal.toLocaleString()} {dbTotal === 1 ? "candidate" : "candidates"} in your database
+                </span>
+              ) : null}
+              <Link
+                href="/candidates/lists"
+                className="group inline-flex shrink-0 items-center gap-1.5 rounded-md border border-court-border bg-court-bg px-3 py-1.5 transition hover:border-court-accent/40 hover:bg-court-accent-tint"
+              >
+                <ClipboardList className="h-3.5 w-3.5 text-court-accent-dark" strokeWidth={1.8} />
+                <span className="text-xs font-semibold text-court-fg">Saved Lists</span>
+                <ChevronRight
+                  className="h-3.5 w-3.5 text-court-fg-muted transition group-hover:text-court-accent-dark"
+                  strokeWidth={2}
+                />
+              </Link>
+            </div>
           </div>
 
           {!hasFilters ? (
@@ -1979,6 +2011,9 @@ export default function CandidatesPage() {
             // no filter is active (empty start state). The dialog decides
             // whether to also close (clean import) or stay open (skips).
             if (hasFilters) void runFetch(filters);
+            // Bump the roster tally so the header total reflects the
+            // just-imported candidates without a page reload.
+            void refreshDbTotal();
           }}
         />
       )}
