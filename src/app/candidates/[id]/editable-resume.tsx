@@ -8,7 +8,6 @@ import {
   Check,
   Download,
   Edit3,
-  FileOutput,
   FileText,
   Loader2,
   Pencil,
@@ -157,6 +156,8 @@ export function EditableResume({
   const [claudeEditOpen, setClaudeEditOpen] = useState(false);
   const [claudeInstruction, setClaudeInstruction] = useState("");
   const [isEditingWithClaude, setIsEditingWithClaude] = useState(false);
+  const [isPreparingEditor, setIsPreparingEditor] = useState(false);
+  const [openEditorForResumeId, setOpenEditorForResumeId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Selected version key. Re-syncs to the new default whenever the
@@ -188,6 +189,18 @@ export function EditableResume({
       setSelectedKey(defaultKey);
     }
   }, [versions, selectedKey, defaultKey, pendingSelectId]);
+  useEffect(() => {
+    if (!openEditorForResumeId) return;
+    const match = versions.find((v) => (
+      v.resumeId === openEditorForResumeId &&
+      v.mimeType === "application/pdf" &&
+      !isDocxResume(v)
+    ));
+    if (!match) return;
+    setSelectedKey(match.key);
+    setOpenEditorForResumeId(null);
+    setEditorOpen(true);
+  }, [versions, openEditorForResumeId]);
 
   const selected = versions.find((v) => v.key === selectedKey) ?? null;
   // 200/70 bg variants for the in-PDF mark overlay. HighlightTokenChips
@@ -302,19 +315,32 @@ export function EditableResume({
     });
   }
 
-  function onConvertDocx() {
+  async function onEditResume() {
     if (!selected) return;
-    const toastId = toast.loading("Converting to PDF…");
-    startTransition(async () => {
+    if (!docx && selected.mimeType === "application/pdf") {
+      setEditorOpen(true);
+      return;
+    }
+    if (!docx) {
+      toast.error("Editing only supports PDF or DOCX resumes today.");
+      return;
+    }
+
+    setIsPreparingEditor(true);
+    const toastId = toast.loading("Converting DOCX to PDF…");
+    try {
       const result = await convertDocxResumeToPdf({ resumeId: selected.resumeId });
       if (!result.ok) {
         toast.error("Couldn't convert to PDF", { id: toastId, description: result.error });
         return;
       }
-      toast.success("Converted to PDF. You can now brand this version", { id: toastId });
+      toast.success("Converted to PDF. Opening editor", { id: toastId });
       setPendingSelectId(result.value.resumeId);
+      setOpenEditorForResumeId(result.value.resumeId);
       router.refresh();
-    });
+    } finally {
+      setIsPreparingEditor(false);
+    }
   }
 
   // Inline rename of the selected version. Replaces the version
@@ -562,27 +588,18 @@ export function EditableResume({
             )}
             Edit with Claude
           </Button>
-          {canEdit && (
-            <button
-              type="button"
-              onClick={() => setEditorOpen(true)}
-              disabled={isUploading || isPending}
-              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg disabled:opacity-60"
-            >
-              <Edit3 className="h-3 w-3" /> Edit Resume
-            </button>
-          )}
-          {docx && (
-            <button
-              type="button"
-              onClick={onConvertDocx}
-              disabled={isUploading || isPending}
-              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg disabled:opacity-60"
-            >
-              {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileOutput className="h-3 w-3" />}
-              Convert to PDF
-            </button>
-          )}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => void onEditResume()}
+            disabled={isUploading || isPending || isPreparingEditor}
+            className="border-court-fg-muted/50"
+            title={docx ? "Convert DOCX to PDF, then open editor" : "Edit Resume"}
+          >
+            {isPreparingEditor ? <Loader2 className="h-3 w-3 animate-spin" /> : <Edit3 className="h-3 w-3" />}
+            Edit Resume
+          </Button>
           <Link
             href={downloadUrl}
             className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"

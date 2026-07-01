@@ -13,7 +13,7 @@
   "src/app/candidates/[id]/editable-experience.tsx": 5,
   "src/app/candidates/[id]/editable-identity.tsx": 7,
   "src/app/candidates/[id]/editable-notes.tsx": 5,
-  "src/app/candidates/[id]/editable-resume.tsx": 7,
+  "src/app/candidates/[id]/editable-resume.tsx": 5,
   "src/app/candidates/[id]/editable-skills.tsx": 2,
   "src/app/candidates/[id]/local-candidate-actions.tsx": 3,
   "src/app/candidates/[id]/local-editable-identity.tsx": 3,
