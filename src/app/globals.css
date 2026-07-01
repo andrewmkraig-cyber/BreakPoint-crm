@@ -546,6 +546,130 @@ html[data-theme='light'] .ace-topbar-mark .ace-brand-disc {
     color: rgb(var(--court-fg-muted));
   }
 
+  /* DOCX resume previews are document canvases, not app prose. Mammoth
+     returns semantic HTML from the uploaded Word file, but Tailwind's
+     reset removes native heading/list defaults. Rebuild the basic page
+     model here so uploaded resumes read like paper inside every Court
+     Mode instead of inheriting the dark app surface. */
+  .docx-preview-shell {
+    background: rgb(var(--court-surface-subtle) / 0.55);
+    padding: 1.5rem;
+  }
+
+  .docx-resume-paper {
+    width: min(100%, 8.5in);
+    min-height: 11in;
+    margin: 0 auto;
+    padding: 0.72in 0.68in;
+    background: rgb(255 255 255);
+    color: rgb(17 17 17);
+    font-family: "Times New Roman", Times, serif;
+    font-size: 12pt;
+    line-height: 1.16;
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.10),
+      0 18px 48px rgb(0 0 0 / 0.18);
+  }
+
+  .docx-resume-paper :where(p, h1, h2, ul, ol) {
+    margin: 0;
+  }
+
+  .docx-resume-paper p {
+    margin: 0 0 0.08in;
+  }
+
+  .docx-resume-paper .resume-contact {
+    margin: 0;
+    font-size: 10pt;
+    line-height: 1.08;
+  }
+
+  .docx-resume-paper .resume-title {
+    margin: 0.32in 0 0.28in;
+    font-size: 28pt;
+    font-weight: 700;
+    line-height: 1.03;
+    letter-spacing: 0;
+  }
+
+  .docx-resume-paper .resume-title img {
+    display: block;
+    width: 100%;
+    max-width: 7.35in;
+    height: 4px;
+    margin-top: 0.08in;
+    object-fit: fill;
+  }
+
+  .docx-resume-paper h1:not(.resume-title) {
+    margin: 0.15in 0 0.12in;
+    font-size: 13.5pt;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .docx-resume-paper h2 {
+    margin: 0.16in 0 0.08in;
+    font-size: 12pt;
+    font-weight: 700;
+    line-height: 1.14;
+    letter-spacing: 0;
+  }
+
+  .docx-resume-paper strong {
+    font-weight: 700;
+  }
+
+  .docx-resume-paper em {
+    font-style: italic;
+  }
+
+  .docx-resume-paper ul,
+  .docx-resume-paper ol {
+    margin: 0.04in 0 0.16in 0.36in;
+    padding-left: 0.2in;
+  }
+
+  .docx-resume-paper ul {
+    list-style: disc;
+  }
+
+  .docx-resume-paper ol {
+    list-style: decimal;
+  }
+
+  .docx-resume-paper li {
+    margin: 0.02in 0;
+    padding-left: 0.02in;
+  }
+
+  .docx-resume-paper a[id] {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .docx-resume-paper img {
+    max-width: 100%;
+  }
+
+  @media (max-width: 768px) {
+    .docx-preview-shell {
+      padding: 0.75rem;
+    }
+
+    .docx-resume-paper {
+      padding: 0.45in 0.38in;
+      font-size: 11pt;
+    }
+
+    .docx-resume-paper .resume-title {
+      font-size: 22pt;
+    }
+  }
+
   html[data-theme='dark'] input[type='date']::-webkit-calendar-picker-indicator,
   html[data-theme='dark'] input[type='datetime-local']::-webkit-calendar-picker-indicator,
   html[data-theme='dark'] input[type='month']::-webkit-calendar-picker-indicator,

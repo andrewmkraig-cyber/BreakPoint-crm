@@ -67,9 +67,9 @@ export function DocxPreview({
   }
 
   return (
-    <div className={className}>
+    <div className={["docx-preview-shell", className].filter(Boolean).join(" ")}>
       <div
-        className="prose prose-sm max-w-none bg-court-surface px-6 py-5 text-court-fg prose-headings:text-court-fg prose-strong:text-court-fg prose-a:text-brand-dark"
+        className="docx-resume-paper"
         // mammoth produces sanitized HTML from the docx content — no
         // embedded scripts or style attributes. Safe to inject.
         dangerouslySetInnerHTML={{ __html: html ?? "" }}

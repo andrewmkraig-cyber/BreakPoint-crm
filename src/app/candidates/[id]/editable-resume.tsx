@@ -652,7 +652,7 @@ export function EditableResume({
             // canvas glyphs.
             <div id="resume-document-content">
               <DocxPreview
-                idOrRfId={candidateRfId ?? candidateId}
+                idOrRfId={selected.resumeId}
                 className="min-h-[900px] w-full overflow-auto rounded-b-xl"
               />
             </div>

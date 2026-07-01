@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { getResumeBytes } from "@/lib/resume-bytes";
 
@@ -33,35 +34,57 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const raw = params.id;
-  const candidate = /^\d+$/.test(raw)
-    ? await prisma.candidate.findFirst({ where: { rfId: Number(raw) }, select: { id: true } })
-    : await prisma.candidate.findFirst({ where: { id: raw }, select: { id: true } });
-  if (!candidate) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const org = await getCurrentOrg();
 
-  // Prefer CandidateResume (RF-imported path); fall back to inline
-  // Candidate.resumeData (Ace-native upload path). Phase 5A.5.a:
-  // candidateId is no longer @unique — pick the most-recent uploaded
-  // version for the docx-html preview.
-  const cr = await prisma.candidateResume.findFirst({
-    where: { candidateId: candidate.id, uploadComplete: true },
-    orderBy: { uploadedAt: "desc" },
-  });
+  const raw = params.id;
+  const resumeById = /^\d+$/.test(raw)
+    ? null
+    : await prisma.candidateResume.findFirst({
+        where: { id: raw, organizationId: org.id, uploadComplete: true },
+      });
 
   let bytes: Buffer | null = null;
   let filename: string | null = null;
   let mimeType: string | null = null;
-  if (cr && cr.uploadComplete && (cr.blobUrl || cr.data)) {
-    bytes = await getResumeBytes(cr);
-    filename = cr.filename;
-    mimeType = cr.mimeType;
+  if (resumeById && (resumeById.blobUrl || resumeById.data)) {
+    bytes = await getResumeBytes(resumeById);
+    filename = resumeById.filename;
+    mimeType = resumeById.mimeType;
   } else {
-    const local = await prisma.candidate.findUnique({
-      where: { id: candidate.id },
-      select: { resumeData: true, resumeFilename: true, resumeMimeType: true },
+    const candidate = /^\d+$/.test(raw)
+      ? await prisma.candidate.findFirst({
+          where: { rfId: Number(raw), organizationId: org.id },
+          select: { id: true },
+        })
+      : await prisma.candidate.findFirst({
+          where: { id: raw, organizationId: org.id },
+          select: { id: true },
+        });
+    if (!candidate) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    // Prefer CandidateResume (RF-imported path); fall back to inline
+    // Candidate.resumeData (Ace-native upload path). Phase 5A.5.a:
+    // candidateId is no longer @unique — pick the most-recent uploaded
+    // version when the caller passes a candidate id instead of a resume id.
+    const cr = await prisma.candidateResume.findFirst({
+      where: { candidateId: candidate.id, organizationId: org.id, uploadComplete: true },
+      orderBy: { uploadedAt: "desc" },
     });
+
+    if (cr && cr.uploadComplete && (cr.blobUrl || cr.data)) {
+      bytes = await getResumeBytes(cr);
+      filename = cr.filename;
+      mimeType = cr.mimeType;
+    }
+
+    const local = bytes
+      ? null
+      : await prisma.candidate.findFirst({
+          where: { id: candidate.id, organizationId: org.id },
+          select: { resumeData: true, resumeFilename: true, resumeMimeType: true },
+        });
     if (local?.resumeData) {
       bytes = Buffer.from(local.resumeData);
       filename = local.resumeFilename;
@@ -82,7 +105,16 @@ export async function GET(
     if (typeof convert !== "function") {
       return NextResponse.json({ error: "Converter unavailable" }, { status: 500 });
     }
-    const result = await convert({ buffer: bytes });
+    const result = await convert(
+      { buffer: bytes },
+      {
+        includeDefaultStyleMap: true,
+        styleMap: [
+          "p[style-name='Title'] => h1.resume-title:fresh",
+          "p[style-name='Subtitle'] => p.resume-contact:fresh",
+        ],
+      },
+    );
     const html = result.value ?? "";
     return NextResponse.json({ html });
   } catch (e) {
