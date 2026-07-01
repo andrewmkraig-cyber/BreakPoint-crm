@@ -180,6 +180,7 @@ export async function updateCandidate(patch: CandidatePatch): Promise<ActionResu
     // Revalidate both URL shapes so cached renders refresh.
     revalidatePath(`/candidates/${candidate.id}`);
     if (candidate.rfId != null) revalidatePath(`/candidates/${candidate.rfId}`);
+    revalidatePath("/pipeline");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to update candidate." };

@@ -108,6 +108,7 @@ export async function updateLocalCandidate(patch: LocalCandidatePatch): Promise<
     });
     if (result.count === 0) return { ok: false, error: "Candidate not found." };
     revalidatePath(`/candidates/${patch.id}`);
+    revalidatePath("/pipeline");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Update failed." };
