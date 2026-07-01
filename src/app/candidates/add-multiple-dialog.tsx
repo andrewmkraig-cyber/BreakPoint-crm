@@ -16,16 +16,16 @@ import { uploadFileInChunks } from "@/lib/chunked-upload";
 // Multiple" chip. Extracted out of the former candidates-view.tsx (the
 // pre-search-rail Candidates page, deleted in the same change) so the only
 // surviving, in-use piece lives in its own file instead of hiding inside
-// dead code. The CSV import route and PDF match/upload pipeline it calls
+// dead code. The CSV import route and resume match/upload pipeline it calls
 // are unchanged.
 
 function parseNameFromFilename(filename: string): string {
-  const base = filename.replace(/\.pdf$/i, "");
+  const base = filename.replace(/\.(pdf|docx?)$/i, "");
   const lastUnderscore = base.lastIndexOf("_");
   return (lastUnderscore >= 0 ? base.slice(0, lastUnderscore) : base).trim();
 }
 
-// Combined cap across CSV + PDF queue. The toolbar's old split (50 PDFs +
+// Combined cap across CSV + resume queue. The toolbar's old split (50 resumes +
 // 1 CSV) collapses into a single 50-file dropzone; CSVs are still
 // effectively unlimited in practice because recruiters drop one Pin
 // export at a time.
@@ -39,7 +39,7 @@ type CsvQueueItem = {
   parseError: string | null;
 };
 
-type PdfQueueItem = {
+type ResumeQueueItem = {
   key: string;
   file: File;
   parsedName: string;
@@ -66,14 +66,19 @@ type ResumeUploadOutcome =
 function isCsvFile(f: File): boolean {
   return /\.csv$/i.test(f.name) || f.type === "text/csv";
 }
-function isPdfFile(f: File): boolean {
-  return /\.pdf$/i.test(f.name) || f.type === "application/pdf";
+function isResumeFile(f: File): boolean {
+  return (
+    /\.(pdf|docx?)$/i.test(f.name) ||
+    f.type === "application/pdf" ||
+    f.type === "application/msword" ||
+    f.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  );
 }
 
-// One modal, mixed CSV + PDF queue. Replaces the old split "CSV Import"
+// One modal, mixed CSV + resume queue. Replaces the old split "CSV Import"
 // and "Upload Resumes" toolbar buttons. CSVs run through the existing
 // /api/candidates/import-csv route (one fetch per file, in parallel) and
-// PDFs run through the existing match-by-name → resume-upload pipeline
+// resumes run through the existing match-by-name → resume-upload pipeline
 // (single match call + N=5 worker pool). Both paths fire concurrently
 // from a single Import click and produce one combined toast.
 // Friendly label for the format the server detected from the header row.
@@ -95,11 +100,11 @@ type ImportReport = {
   csvSkippedError: number;
   csvFormats: string[];
   csvFileErrors: { filename: string; error: string }[];
-  pdfFiles: number;
-  pdfAttached: number;
-  pdfCreated: number;
-  pdfUnmatched: string[];
-  pdfFailed: { filename: string; error: string }[];
+  resumeFiles: number;
+  resumeAttached: number;
+  resumeCreated: number;
+  resumeUnmatched: string[];
+  resumeFailed: { filename: string; error: string }[];
 };
 
 export function AddMultipleDialog({
@@ -114,7 +119,7 @@ export function AddMultipleDialog({
   onImported?: () => void;
 }) {
   const [csvFiles, setCsvFiles] = useState<CsvQueueItem[]>([]);
-  const [pdfFiles, setPdfFiles] = useState<PdfQueueItem[]>([]);
+  const [resumeFiles, setResumeFiles] = useState<ResumeQueueItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -125,7 +130,7 @@ export function AddMultipleDialog({
   const dragDepth = useRef(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const totalCount = csvFiles.length + pdfFiles.length;
+  const totalCount = csvFiles.length + resumeFiles.length;
 
   function parseCsvRowCount(file: File, key: string) {
     // Async row-count probe. Updates the queue item in place as soon as
@@ -166,27 +171,27 @@ export function AddMultipleDialog({
   function addFiles(incoming: FileList | File[]) {
     const list = Array.from(incoming);
     const csvs = list.filter(isCsvFile);
-    const pdfs = list.filter(isPdfFile);
-    const skipped = list.length - csvs.length - pdfs.length;
+    const resumes = list.filter(isResumeFile);
+    const skipped = list.length - csvs.length - resumes.length;
     setError(null);
 
     // Pre-compute the next queue state from the current snapshot. The
-    // 50-file cap spans CSVs + PDFs combined, so we decide which files
+    // 50-file cap spans CSVs + resumes combined, so we decide which files
     // fit here and apply both setStates with concrete arrays — no
     // nested updaters, no stale closures.
     const seen = new Set([
       ...csvFiles.map((p) => `${p.file.name}|${p.file.size}`),
-      ...pdfFiles.map((p) => `${p.file.name}|${p.file.size}`),
+      ...resumeFiles.map((p) => `${p.file.name}|${p.file.size}`),
     ]);
     const newCsvItems: CsvQueueItem[] = [];
-    const newPdfItems: PdfQueueItem[] = [];
+    const newResumeItems: ResumeQueueItem[] = [];
     let droppedForCap = false;
 
     const fits = () =>
       csvFiles.length +
-        pdfFiles.length +
+        resumeFiles.length +
         newCsvItems.length +
-        newPdfItems.length <
+        newResumeItems.length <
       MAX_QUEUE_FILES;
 
     for (const f of csvs) {
@@ -201,7 +206,7 @@ export function AddMultipleDialog({
       newCsvItems.push({ key: rowKey, file: f, rowCount: null, parseError: null });
       parseCsvRowCount(f, rowKey);
     }
-    for (const f of pdfs) {
+    for (const f of resumes) {
       if (!fits()) {
         droppedForCap = true;
         break;
@@ -209,7 +214,7 @@ export function AddMultipleDialog({
       const dedupeKey = `${f.name}|${f.size}`;
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
-      newPdfItems.push({
+      newResumeItems.push({
         key: `${dedupeKey}|${Math.random().toString(36).slice(2, 8)}`,
         file: f,
         parsedName: parseNameFromFilename(f.name),
@@ -219,15 +224,15 @@ export function AddMultipleDialog({
     if (newCsvItems.length > 0) {
       setCsvFiles((prev) => [...prev, ...newCsvItems]);
     }
-    if (newPdfItems.length > 0) {
-      setPdfFiles((prev) => [...prev, ...newPdfItems]);
+    if (newResumeItems.length > 0) {
+      setResumeFiles((prev) => [...prev, ...newResumeItems]);
     }
 
     if (droppedForCap) {
       setError(`Capped at ${MAX_QUEUE_FILES} files. Extra files were dropped.`);
     } else if (skipped > 0) {
       setError(
-        `Skipped ${skipped} unsupported file${skipped === 1 ? "" : "s"} (only .csv and .pdf are accepted).`,
+        `Skipped ${skipped} unsupported file${skipped === 1 ? "" : "s"} (only .csv, .pdf, .doc, and .docx are accepted).`,
       );
     }
   }
@@ -262,8 +267,8 @@ export function AddMultipleDialog({
   function removeCsv(key: string) {
     setCsvFiles((prev) => prev.filter((p) => p.key !== key));
   }
-  function removePdf(key: string) {
-    setPdfFiles((prev) => prev.filter((p) => p.key !== key));
+  function removeResume(key: string) {
+    setResumeFiles((prev) => prev.filter((p) => p.key !== key));
   }
 
   // Clear the report and the queue so the recruiter can run another
@@ -271,7 +276,7 @@ export function AddMultipleDialog({
   function resetForAnother() {
     setReport(null);
     setCsvFiles([]);
-    setPdfFiles([]);
+    setResumeFiles([]);
     setError(null);
     setProgress(null);
   }
@@ -338,11 +343,11 @@ export function AddMultipleDialog({
     }
   }
 
-  // Run the existing PDF match + upload pipeline against the queued PDFs.
+  // Run the existing resume match + upload pipeline against the queued files.
   // Returns aggregate counts for the toast; the worker pool size and
   // match-by-name semantics are unchanged from the standalone dialog.
-  async function processPdfBatch(
-    pdfs: PdfQueueItem[],
+  async function processResumeBatch(
+    resumes: ResumeQueueItem[],
     bumpProgress: () => void,
   ): Promise<{
     attached: number;
@@ -350,14 +355,14 @@ export function AddMultipleDialog({
     unmatched: Array<{ filename: string }>;
     failed: Array<{ filename: string; error: string }>;
   }> {
-    if (pdfs.length === 0) {
+    if (resumes.length === 0) {
       return { attached: 0, created: 0, unmatched: [], failed: [] };
     }
     const matchRes = await fetch("/api/candidates/match-by-name", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        names: pdfs.map((f) => ({ name: f.parsedName })),
+        names: resumes.map((f) => ({ name: f.parsedName })),
         createIfMissing: true,
       }),
     });
@@ -370,14 +375,14 @@ export function AddMultipleDialog({
       throw new Error(matchJson.error ?? `Match failed (HTTP ${matchRes.status})`);
     }
     const matchByIndex = matchJson.matches;
-    const outcomes: ResumeUploadOutcome[] = new Array(pdfs.length);
+    const outcomes: ResumeUploadOutcome[] = new Array(resumes.length);
 
     let cursor = 0;
     const worker = async () => {
       while (true) {
         const i = cursor++;
-        if (i >= pdfs.length) return;
-        const f = pdfs[i];
+        if (i >= resumes.length) return;
+        const f = resumes[i];
         const matchRow = matchByIndex[i];
         const matched = matchRow?.candidateId ?? null;
         const wasCreated = matchRow?.created === true;
@@ -413,7 +418,7 @@ export function AddMultipleDialog({
       }
     };
     const workers = Array.from(
-      { length: Math.min(RESUME_UPLOAD_BATCH_SIZE, pdfs.length) },
+      { length: Math.min(RESUME_UPLOAD_BATCH_SIZE, resumes.length) },
       () => worker(),
     );
     await Promise.all(workers);
@@ -445,9 +450,9 @@ export function AddMultipleDialog({
     setBusy(true);
     setError(null);
     // Progress total = each CSV counts as one unit of work plus each
-    // PDF upload. CSVs run as one fetch per file; PDFs report N upload
+    // resume upload. CSVs run as one fetch per file; resumes report N upload
     // completions. Match-by-name itself isn't tracked separately.
-    const totalUnits = csvFiles.length + pdfFiles.length;
+    const totalUnits = csvFiles.length + resumeFiles.length;
     let done = 0;
     setProgress({ done: 0, total: totalUnits });
     const bumpProgress = () => {
@@ -457,20 +462,20 @@ export function AddMultipleDialog({
 
     try {
       const csvSnapshot = csvFiles.map((c) => c.file);
-      const pdfSnapshot = [...pdfFiles];
+      const resumeSnapshot = [...resumeFiles];
 
-      // CSVs and PDFs fan out concurrently. Each CSV resolves to a
-      // CsvImportResult; the PDF batch resolves to aggregate counts.
+      // CSVs and resumes fan out concurrently. Each CSV resolves to a
+      // CsvImportResult; the resume batch resolves to aggregate counts.
       const csvJobs = csvSnapshot.map(async (file) => {
         const result = await importCsvOne(file);
         bumpProgress();
         return result;
       });
-      const pdfJob = processPdfBatch(pdfSnapshot, bumpProgress);
+      const resumeJob = processResumeBatch(resumeSnapshot, bumpProgress);
 
-      const [csvResults, pdfResults] = await Promise.all([
+      const [csvResults, resumeResults] = await Promise.all([
         Promise.all(csvJobs),
-        pdfJob,
+        resumeJob,
       ]);
 
       const csvImported = csvResults.reduce((a, r) => a + r.imported, 0);
@@ -496,24 +501,24 @@ export function AddMultipleDialog({
         csvSkippedError,
         csvFormats,
         csvFileErrors,
-        pdfFiles: pdfSnapshot.length,
-        pdfAttached: pdfResults.attached,
-        pdfCreated: pdfResults.created,
-        pdfUnmatched: pdfResults.unmatched.map((u) => u.filename),
-        pdfFailed: pdfResults.failed.map((u) => ({
+        resumeFiles: resumeSnapshot.length,
+        resumeAttached: resumeResults.attached,
+        resumeCreated: resumeResults.created,
+        resumeUnmatched: resumeResults.unmatched.map((u) => u.filename),
+        resumeFailed: resumeResults.failed.map((u) => ({
           filename: u.filename,
           error: u.error,
         })),
       };
 
-      const importedTotal = csvImported + pdfResults.attached + pdfResults.created;
+      const importedTotal = csvImported + resumeResults.attached + resumeResults.created;
       const problems =
         csvSkippedNoName +
         csvSkippedError +
         csvDuplicates +
         csvFileErrors.length +
-        pdfResults.unmatched.length +
-        pdfResults.failed.length;
+        resumeResults.unmatched.length +
+        resumeResults.failed.length;
 
       // Anything imported means the list behind the modal changed.
       if (importedTotal > 0) onImported?.();
@@ -559,8 +564,8 @@ export function AddMultipleDialog({
       ) : (
       <>
       <p className="mb-3 text-xs text-court-fg-muted">
-        Drop a Pin or ZoomInfo CSV export and/or resume PDFs in any
-        combination. CSV rows import as new candidates; PDFs match existing
+        Drop a Pin or ZoomInfo CSV export and/or resume files in any
+        combination. CSV rows import as new candidates; resumes match existing
         candidates by first + last name and create a record on miss. Up to {MAX_QUEUE_FILES} files at a time.
       </p>
       <div
@@ -577,15 +582,15 @@ export function AddMultipleDialog({
       >
         <p className="mb-2 text-center text-xs text-court-fg-muted">
           {dragOver
-            ? "Drop CSV or PDFs to queue"
+            ? "Drop CSV or resumes to queue"
             : totalCount === 0
-              ? "Drop CSV or PDF resumes here, or click to browse"
+              ? "Drop CSV, PDF, DOC, or DOCX resumes here, or click to browse"
               : `${totalCount} queued · ${remaining} more allowed`}
         </p>
         <input
           ref={inputRef}
           type="file"
-          accept=".csv,text/csv,.pdf,application/pdf"
+          accept=".csv,text/csv,.pdf,application/pdf,.doc,application/msword,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           multiple
           onChange={onPick}
           disabled={busy || remaining <= 0}
@@ -647,10 +652,10 @@ export function AddMultipleDialog({
         </div>
       )}
 
-      {pdfFiles.length > 0 && (
+      {resumeFiles.length > 0 && (
         <div className="mt-3">
           <div className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
-            PDF resumes ({pdfFiles.length})
+            Resume files ({resumeFiles.length})
           </div>
           <div className="max-h-48 overflow-y-auto rounded-md border border-court-border">
             <table className="w-full text-left text-[11px]">
@@ -662,7 +667,7 @@ export function AddMultipleDialog({
                 </tr>
               </thead>
               <tbody className="divide-y divide-court-border-soft">
-                {pdfFiles.map((f) => (
+                {resumeFiles.map((f) => (
                   <tr key={f.key}>
                     <td className="truncate px-2 py-1 font-mono text-court-fg">{f.file.name}</td>
                     <td className="px-2 py-1 text-court-fg">
@@ -673,7 +678,7 @@ export function AddMultipleDialog({
                     <td className="px-2 py-1 text-right">
                       <button
                         type="button"
-                        onClick={() => removePdf(f.key)}
+                        onClick={() => removeResume(f.key)}
                         disabled={busy}
                         aria-label={`Remove ${f.file.name}`}
                         className="rounded p-0.5 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-40"
@@ -735,7 +740,7 @@ function ImportReportView({
   onClose: () => void;
 }) {
   const importedTotal =
-    report.csvImported + report.pdfAttached + report.pdfCreated;
+    report.csvImported + report.resumeAttached + report.resumeCreated;
   const zero = importedTotal === 0;
   const formatLabel = report.csvFormats
     .map((f) => FORMAT_LABEL[f] ?? f)
@@ -760,16 +765,16 @@ function ImportReportView({
           : ""),
     });
   }
-  if (report.pdfAttached > 0) {
+  if (report.resumeAttached > 0) {
     lines.push({
       tone: "good",
-      text: `${report.pdfAttached} resume${report.pdfAttached === 1 ? "" : "s"} attached`,
+      text: `${report.resumeAttached} resume${report.resumeAttached === 1 ? "" : "s"} attached`,
     });
   }
-  if (report.pdfCreated > 0) {
+  if (report.resumeCreated > 0) {
     lines.push({
       tone: "good",
-      text: `${report.pdfCreated} new candidate${report.pdfCreated === 1 ? "" : "s"} created from PDF`,
+      text: `${report.resumeCreated} new candidate${report.resumeCreated === 1 ? "" : "s"} created from resume`,
     });
   }
   if (report.csvDuplicates > 0) {
@@ -795,14 +800,14 @@ function ImportReportView({
   for (const fe of report.csvFileErrors) {
     lines.push({ tone: "bad", text: `CSV ${fe.filename}: ${fe.error}` });
   }
-  if (report.pdfUnmatched.length > 0) {
+  if (report.resumeUnmatched.length > 0) {
     lines.push({
       tone: "warn",
-      text: `${report.pdfUnmatched.length} PDF${report.pdfUnmatched.length === 1 ? "" : "s"} could not be matched`,
+      text: `${report.resumeUnmatched.length} resume${report.resumeUnmatched.length === 1 ? "" : "s"} could not be matched`,
     });
   }
-  for (const pf of report.pdfFailed) {
-    lines.push({ tone: "bad", text: `PDF ${pf.filename}: ${pf.error}` });
+  for (const pf of report.resumeFailed) {
+    lines.push({ tone: "bad", text: `Resume ${pf.filename}: ${pf.error}` });
   }
 
   const toneClass: Record<Line["tone"], string> = {

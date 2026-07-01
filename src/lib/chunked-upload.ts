@@ -17,6 +17,18 @@ export type ChunkUploadResult = {
   totalBytesStored?: number;
 };
 
+function inferMimeType(filename: string): string | null {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".docx")) {
+    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  }
+  if (lower.endsWith(".doc")) return "application/msword";
+  if (lower.endsWith(".txt")) return "text/plain";
+  if (lower.endsWith(".csv")) return "text/csv";
+  return null;
+}
+
 export async function uploadFileInChunks(
   file: File,
   endpoint: string,
@@ -46,7 +58,11 @@ export async function uploadFileInChunks(
     const payload = {
       ...extra,
       ...(isFirst
-        ? { filename: file.name, mimeType: file.type || "application/octet-stream", size: file.size }
+        ? {
+            filename: file.name,
+            mimeType: file.type || inferMimeType(file.name) || "application/octet-stream",
+            size: file.size,
+          }
         : { id: recordId }),
       chunkIndex: i,
       totalChunks,
