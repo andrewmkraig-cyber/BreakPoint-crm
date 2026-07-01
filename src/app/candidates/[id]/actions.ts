@@ -8,6 +8,7 @@ import { linkedinUrlFrom, normalizeToE164 } from "@/lib/rf-payload-shapes";
 import { del } from "@vercel/blob";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { coordinatePatchForCandidateLocationUpdate } from "@/lib/candidate-location-geocode";
 import { prisma } from "@/lib/prisma";
 import { getResumeBytes } from "@/lib/resume-bytes";
 
@@ -88,23 +89,22 @@ function rfNotesToText(notes: CandidatePatch["notes"]): string | null {
   return chunks.length ? chunks.join("\n\n---\n\n") : null;
 }
 
-async function resolveCandidate(rawId: number | string) {
-  const org = await getCurrentOrg();
+async function resolveCandidate(rawId: number | string, organizationId: string) {
   if (typeof rawId === "number") {
     return prisma.candidate.findFirst({
-      where: { rfId: rawId, organizationId: org.id },
-      select: { id: true, rfId: true, raw: true },
+      where: { rfId: rawId, organizationId },
+      select: { id: true, rfId: true, raw: true, location: true, lat: true, lng: true },
     });
   }
   if (/^\d+$/.test(rawId)) {
     return prisma.candidate.findFirst({
-      where: { rfId: Number(rawId), organizationId: org.id },
-      select: { id: true, rfId: true, raw: true },
+      where: { rfId: Number(rawId), organizationId },
+      select: { id: true, rfId: true, raw: true, location: true, lat: true, lng: true },
     });
   }
   return prisma.candidate.findFirst({
-    where: { id: rawId, organizationId: org.id },
-    select: { id: true, rfId: true, raw: true },
+    where: { id: rawId, organizationId },
+    select: { id: true, rfId: true, raw: true, location: true, lat: true, lng: true },
   });
 }
 
@@ -113,7 +113,8 @@ export async function updateCandidate(patch: CandidatePatch): Promise<ActionResu
   if (patch.id == null) return { ok: false, error: "Missing candidate id." };
 
   try {
-    const candidate = await resolveCandidate(patch.id);
+    const org = await getCurrentOrg();
+    const candidate = await resolveCandidate(patch.id, org.id);
     if (!candidate) return { ok: false, error: "Candidate not found." };
 
     // Build the Neon-column update. Only fields actually present in the
@@ -136,7 +137,19 @@ export async function updateCandidate(patch: CandidatePatch): Promise<ActionResu
     if (patch.linkedin_profile !== undefined)
       data.linkedinProfile = linkedinUrlFrom(patch.linkedin_profile) || null;
     if (patch.source !== undefined) data.source = patch.source?.trim() || null;
-    if (patch.location !== undefined) data.location = locationToString(patch.location);
+    if (patch.location !== undefined) {
+      const nextLocation = locationToString(patch.location);
+      data.location = nextLocation;
+      Object.assign(
+        data,
+        await coordinatePatchForCandidateLocationUpdate({
+          nextLocation,
+          previousLocation: candidate.location,
+          previousLat: candidate.lat,
+          previousLng: candidate.lng,
+        }),
+      );
+    }
     if (patch.skills !== undefined) data.skills = patch.skills ?? [];
     if (patch.tags !== undefined) data.tags = patch.tags ?? [];
     if (patch.expected_salary !== undefined) {
@@ -162,7 +175,7 @@ export async function updateCandidate(patch: CandidatePatch): Promise<ActionResu
     }
     data.raw = nextRaw as Prisma.InputJsonValue;
 
-    await prisma.candidate.update({ where: { id: candidate.id }, data });
+    await prisma.candidate.update({ where: { id: candidate.id, organizationId: org.id }, data });
 
     // Revalidate both URL shapes so cached renders refresh.
     revalidatePath(`/candidates/${candidate.id}`);

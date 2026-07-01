@@ -2,7 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
+import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { coordinatePatchForCandidateLocationUpdate } from "@/lib/candidate-location-geocode";
 import { prisma } from "@/lib/prisma";
 import { normalizeToE164 } from "@/lib/rf-payload-shapes";
 
@@ -43,7 +46,7 @@ export async function updateLocalCandidate(patch: LocalCandidatePatch): Promise<
   // Skills is a Postgres String[] column so it lives in the same data
   // object but typed as string[] - prisma rejects mixing scalar + array
   // shapes if we narrow the type, so the data record stays loose.
-  const data: Record<string, string | null | string[]> = {};
+  const data: Prisma.CandidateUpdateManyMutationInput = {};
   if ("firstName" in patch) {
     data.firstName = patch.firstName?.trim() || "";
     // firstName is required on the schema; refuse a clear that would
@@ -80,10 +83,30 @@ export async function updateLocalCandidate(patch: LocalCandidatePatch): Promise<
   if (Object.keys(data).length === 0) return { ok: true };
 
   try {
-    await prisma.candidate.update({
-      where: { id: patch.id },
+    const org = await getCurrentOrg();
+
+    if ("location" in patch) {
+      const existing = await prisma.candidate.findFirst({
+        where: { id: patch.id, organizationId: org.id },
+        select: { location: true, lat: true, lng: true },
+      });
+      if (!existing) return { ok: false, error: "Candidate not found." };
+      Object.assign(
+        data,
+        await coordinatePatchForCandidateLocationUpdate({
+          nextLocation: data.location as string | null,
+          previousLocation: existing.location,
+          previousLat: existing.lat,
+          previousLng: existing.lng,
+        }),
+      );
+    }
+
+    const result = await prisma.candidate.updateMany({
+      where: { id: patch.id, organizationId: org.id },
       data,
     });
+    if (result.count === 0) return { ok: false, error: "Candidate not found." };
     revalidatePath(`/candidates/${patch.id}`);
     return { ok: true };
   } catch (e) {
