@@ -164,6 +164,7 @@ export type ParsedCandidate = {
   current_designation: string | null;
   current_organization: string | null;
   location: string | null;
+  zip: string | null;
   linkedin_profile: string | null;
   skills: string[];
   notes: string | null;
@@ -179,6 +180,7 @@ const EMPTY_CANDIDATE: ParsedCandidate = {
   current_designation: null,
   current_organization: null,
   location: null,
+  zip: null,
   linkedin_profile: null,
   skills: [],
   notes: null,
@@ -276,6 +278,7 @@ export async function parseCandidateFields(params: {
       '  "current_designation": string|null,\n' +
       '  "current_organization": string|null,\n' +
       '  "location": string|null,\n' +
+      '  "zip": string|null,\n' +
       '  "linkedin_profile": string|null,\n' +
       '  "skills": string[],\n' +
       '  "notes": string|null,\n' +
@@ -285,7 +288,8 @@ export async function parseCandidateFields(params: {
       "Rules:\n" +
       "- Use null (not empty string) for any field not present in the source.\n" +
       "- 'current_designation' is the candidate's present job title; 'current_organization' is their present employer. A role is 'current' if its end date is 'Current', 'Present', 'Now', or blank - those all mean the candidate is still there. Prefer the most recent role explicitly marked 'Current'/'Present'/blank end date. If no role is explicitly current, use the most recent dated role. These MUST be non-empty whenever the resume lists any work history at all - never return '' here, use null only if the resume has zero work experience.\n" +
-      "- 'location' should be 'City, ST' if US, otherwise 'City, Country'.\n" +
+      "- 'location' should be 'City, ST ZIP' if US and a ZIP is present, 'City, ST' if no ZIP is present, otherwise 'City, Country'.\n" +
+      "- 'zip' is the 5-digit US ZIP code if one is explicitly present in the source. If a ZIP+4 is present, return only the first 5 digits. Return null when no ZIP is present.\n" +
       "- If a LinkedIn public metadata block is present, use its visible employer and location exactly as shown. Do not invent a current title when LinkedIn masks or omits the title.\n" +
       "- 'phone' keep the digits and country code as given; don't reformat.\n" +
       "- 'skills' is a deduplicated array of 4 to 10 hard skills directly relevant to the candidate's current role, industry, and recent experience. Use the resume's current_designation, current_organization, and most recent roles to judge relevance. INCLUDE: tools, software, certifications, technical methods, regulations, and domain expertise that match the candidate's profession (e.g. for an accountant: 'GAAP', 'QuickBooks', 'Tax Preparation', 'Financial Modeling', 'Audit', 'CPA'). EXCLUDE soft skills, hobbies, volunteer activities, generic interests, and anything unrelated to the candidate's professional field (e.g. NEVER include 'Swim', 'Jewelry Making', 'Lifeguard', 'Shopping Experience', 'Customer Service' for an accounting candidate). Hard cap: return no more than 10. If the resume lists 40, you filter down to the 10 most role-relevant before returning. If fewer than 4 truly relevant skills exist, return what you have (never pad with junk).\n" +
@@ -337,6 +341,8 @@ export async function parseCandidateFields(params: {
     email: parsed.email ?? null,
     current_designation: parsed.current_designation ?? null,
     current_organization: parsed.current_organization ?? null,
+    location: parsed.location ?? null,
+    zip: parsed.zip ?? null,
     experienceCount: Array.isArray(parsed.experience) ? parsed.experience.length : 0,
     educationCount: Array.isArray(parsed.education) ? parsed.education.length : 0,
     skillsCount: Array.isArray(parsed.skills) ? parsed.skills.length : 0,
@@ -377,6 +383,7 @@ export async function parseCandidateFields(params: {
     isLinkedInMetadataOnly
       ? linkedinMetadata?.location ?? toStringOrNull(parsed.location)
       : toStringOrNull(parsed.location) ?? linkedinMetadata?.location ?? null;
+  const finalZip = normalizeUsZip(parsed.zip);
   const finalNotes =
     isLinkedInMetadataOnly
       ? metadataNote ?? toStringOrNull(parsed.notes)
@@ -401,6 +408,7 @@ export async function parseCandidateFields(params: {
     current_designation: finalDesignation,
     current_organization: finalOrganization,
     location: finalLocation ?? null,
+    zip: finalZip,
     // Belt-and-suspenders cap at 10 in case Claude ignores the prompt's hard
     // cap. Skills like "Swim" / "Jewelry Making" on an accountant's resume
     // get filtered upstream by the role-relevance prompt rule; this slice
@@ -428,6 +436,13 @@ function toYearOrNull(v: unknown): number | null {
 function toStringOrNull(v: unknown): string | null {
   if (typeof v === "string" && v.trim()) return v.trim();
   return null;
+}
+
+function normalizeUsZip(v: unknown): string | null {
+  const raw = toStringOrNull(v);
+  if (!raw) return null;
+  const match = raw.match(/\b(\d{5})(?:-\d{4})?\b/);
+  return match?.[1] ?? null;
 }
 
 function mergeSkillLists(...lists: string[][]): string[] {

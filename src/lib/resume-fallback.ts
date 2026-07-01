@@ -13,6 +13,7 @@ const EMPTY: ParsedCandidate = {
   current_designation: null,
   current_organization: null,
   location: null,
+  zip: null,
   linkedin_profile: null,
   skills: [],
   notes: null,
@@ -52,6 +53,9 @@ export async function fallbackParseCandidate(params: {
 
   const phone = findPhone(text);
   if (phone) result.phone = normalizeToE164(phone);
+
+  const zip = findZip(text);
+  if (zip) result.zip = zip;
 
   // LinkedIn URL explicit input or match in text.
   const linkedIn = linkedinUrl || findLinkedIn(text);
@@ -132,6 +136,14 @@ function findPhone(text: string): string | null {
     if (m) return m[0];
   }
   return null;
+}
+
+function findZip(text: string): string | null {
+  const labeled = text.match(/\b(?:zip|postal(?:\s+code)?)\D{0,12}(\d{5})(?:-\d{4})?\b/i);
+  if (labeled) return labeled[1];
+
+  const stateZip = text.match(/\b[A-Z]{2}\s+(\d{5})(?:-\d{4})?\b/);
+  return stateZip?.[1] ?? null;
 }
 
 function findLinkedIn(text: string): string | null {

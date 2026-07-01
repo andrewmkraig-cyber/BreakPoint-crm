@@ -55,6 +55,11 @@ const EMPTY: FormState = {
   education: [],
 };
 
+function normalizeParsedZip(raw: string | null | undefined): string {
+  const match = raw?.match(/\b(\d{5})(?:-\d{4})?\b/);
+  return match?.[1] ?? "";
+}
+
 export function NewCandidateForm({
   // Prefilled from the New Candidate page's `?phone=` param when the
   // recruiter taps "Add as candidate" on an unknown phone thread. Lazy
@@ -161,6 +166,7 @@ export function NewCandidateForm({
             p.current_designation,
             p.current_organization,
             p.location,
+            p.zip,
             p.linkedin_profile,
           ].filter((v) => typeof v === "string" && v.trim().length > 0).length +
           (p.skills?.length ?? 0) +
@@ -196,6 +202,15 @@ export function NewCandidateForm({
           currentExp?.organization,
         );
         const parsedLocation = p.location ? splitCandidateLocation(p.location) : null;
+        const parsedZip = normalizeParsedZip(p.zip);
+        const mergedLocation =
+          parsedLocation || parsedZip
+            ? {
+                city: parsedLocation?.city ?? "",
+                state: parsedLocation?.state ?? "",
+                zip: parsedLocation?.zip || parsedZip || "",
+              }
+            : null;
         const expRows: ParsedExperienceRow[] = (p.experience ?? []).map((r) => ({
           designation: r.designation ?? "",
           organization: r.organization ?? "",
@@ -218,12 +233,12 @@ export function NewCandidateForm({
           phone: p.phone ?? prev.phone,
           current_designation: backfillDesignation || prev.current_designation,
           current_organization: backfillOrganization || prev.current_organization,
-          location: parsedLocation
-            ? composeCandidateLocation(parsedLocation)
+          location: mergedLocation
+            ? composeCandidateLocation(mergedLocation)
             : prev.location,
-          locationCity: parsedLocation?.city ?? prev.locationCity,
-          locationState: parsedLocation?.state ?? prev.locationState,
-          locationZip: parsedLocation?.zip ?? prev.locationZip,
+          locationCity: mergedLocation?.city ?? prev.locationCity,
+          locationState: mergedLocation?.state ?? prev.locationState,
+          locationZip: mergedLocation?.zip ?? prev.locationZip,
           linkedin_profile: p.linkedin_profile ?? nextUrl.trim() ?? prev.linkedin_profile,
           skills: p.skills.length ? p.skills : prev.skills,
           skillsText: p.skills.length ? p.skills.join(", ") : prev.skillsText,
