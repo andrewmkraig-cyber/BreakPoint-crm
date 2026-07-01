@@ -88,7 +88,7 @@ function joinCityState(city: string, state: string): string {
   return city || abbr || "";
 }
 
-function abbreviateState(raw: string): string {
+export function abbreviateState(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return "";
   // Already a 2-letter code? Pass through uppercased.

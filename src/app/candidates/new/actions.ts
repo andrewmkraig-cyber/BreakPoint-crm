@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { fallbackParseCandidate } from "@/lib/resume-fallback";
 import { geocodePill } from "@/lib/geocode";
 import { normalizeToE164 } from "@/lib/rf-payload-shapes";
+import { enrichCandidateZipFromCity } from "@/lib/candidate-zip-enrichment";
 
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -82,7 +83,9 @@ export async function parseCandidate(args: {
   }
 
   try {
-    const parsed = await parseCandidateFields({ resume, pastedText, linkedinUrl });
+    const parsed = await enrichCandidateZipFromCity(
+      await parseCandidateFields({ resume, pastedText, linkedinUrl }),
+    );
     return {
       ok: true,
       value: { parsed, filename, mimeType, sizeBytes, source: "claude", claudeError: null },
@@ -90,7 +93,9 @@ export async function parseCandidate(args: {
   } catch (claudeErr) {
     const claudeError = claudeErr instanceof Error ? claudeErr.message : "Claude parsing failed.";
     try {
-      const parsed = await fallbackParseCandidate({ resume, pastedText, linkedinUrl });
+      const parsed = await enrichCandidateZipFromCity(
+        await fallbackParseCandidate({ resume, pastedText, linkedinUrl }),
+      );
       return {
         ok: true,
         value: { parsed, filename, mimeType, sizeBytes, source: "fallback", claudeError },

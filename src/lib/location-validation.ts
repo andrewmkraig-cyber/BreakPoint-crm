@@ -16,6 +16,7 @@
 //
 // Validation is "only when something is entered" — blank inputs pass
 // through unchecked. The form layer is responsible for that decision.
+import { abbreviateState } from "@/lib/utils";
 
 const ZIP_RE = /^\d{5}(?:-\d{4})?$/;
 
@@ -29,6 +30,7 @@ const ZIPPOPOTAM_TIMEOUT_MS = 5_000;
 // iteration order — good enough for an internal CRM.
 const CITY_CACHE = new Map<string, boolean>();
 const ZIP_CACHE = new Map<string, boolean>();
+const CITY_ZIP_CACHE = new Map<string, string | null>();
 const CACHE_MAX = 500;
 
 function rememberCity(key: string, ok: boolean): void {
@@ -45,6 +47,14 @@ function rememberZip(key: string, ok: boolean): void {
     if (first !== undefined) ZIP_CACHE.delete(first);
   }
   ZIP_CACHE.set(key, ok);
+}
+
+function rememberCityZip(key: string, zip: string | null): void {
+  if (CITY_ZIP_CACHE.size >= CACHE_MAX) {
+    const first = CITY_ZIP_CACHE.keys().next().value;
+    if (first !== undefined) CITY_ZIP_CACHE.delete(first);
+  }
+  CITY_ZIP_CACHE.set(key, zip);
 }
 
 export type LocationValidationResult = { ok: true } | { ok: false; message: string };
@@ -103,6 +113,62 @@ export async function validateUsZip(raw: string): Promise<LocationValidationResu
   } catch {
     // Network failure / timeout / abort — fail open. See note above.
     return { ok: true };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+type ZippopotamPlace = {
+  "post code"?: unknown;
+  "place name"?: unknown;
+  "state abbreviation"?: unknown;
+};
+
+type ZippopotamCityResponse = {
+  places?: unknown;
+};
+
+export async function lookupUsZipForCityState(
+  cityRaw: string,
+  stateRaw: string,
+): Promise<string | null> {
+  const city = cityRaw.trim();
+  const state = abbreviateState(stateRaw).trim().toLowerCase();
+  if (!city || !/^[a-z]{2}$/.test(state)) return null;
+
+  const key = `${city.toLowerCase()}|${state}`;
+  if (CITY_ZIP_CACHE.has(key)) return CITY_ZIP_CACHE.get(key) ?? null;
+
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), ZIPPOPOTAM_TIMEOUT_MS);
+  try {
+    const res = await fetch(
+      `https://api.zippopotam.us/us/${encodeURIComponent(state)}/${encodeURIComponent(city)}`,
+      {
+        signal: controller.signal,
+        cache: "force-cache",
+      },
+    );
+    if (!res.ok) {
+      rememberCityZip(key, null);
+      return null;
+    }
+    const body = (await res.json()) as ZippopotamCityResponse;
+    const places = Array.isArray(body.places) ? (body.places as ZippopotamPlace[]) : [];
+    const exactCity = city.toLowerCase();
+    const exact = places.find(
+      (place) =>
+        typeof place["post code"] === "string" &&
+        typeof place["place name"] === "string" &&
+        place["place name"].trim().toLowerCase() === exactCity,
+    );
+    const fallback = places.find((place) => typeof place["post code"] === "string");
+    const zip = (exact ?? fallback)?.["post code"];
+    const normalized = typeof zip === "string" ? zip.match(/^\d{5}/)?.[0] ?? null : null;
+    rememberCityZip(key, normalized);
+    return normalized;
+  } catch {
+    return null;
   } finally {
     clearTimeout(t);
   }
