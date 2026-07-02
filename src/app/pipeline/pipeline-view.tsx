@@ -34,6 +34,7 @@ import {
 } from "@/app/pipeline/applicants-actions";
 import { setCandidateNavList } from "@/lib/candidate-nav";
 import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
+import { BulkSubmitDialog } from "@/app/candidates/bulk-dialogs";
 import {
   PlacementEditDrawer,
   type PlacementDrawerContext,
@@ -1775,6 +1776,12 @@ function IntakeTable({
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
   const [bulkRejectOpen, setBulkRejectOpen] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
+  // Bulk submit: resolved once the recruiter clicks Submit N and the
+  // selection passes the same-job + Ace-native checks. null = closed.
+  const [bulkSubmit, setBulkSubmit] = useState<{
+    job: { jobId: string | null; jobRfId: number | null };
+    candidateIds: string[];
+  } | null>(null);
 
   const visibleRows: Array<AppliedRow | KeptRow> =
     kind === "applied" ? sortedApplied : sortedKept;
@@ -1849,6 +1856,33 @@ function IntakeTable({
     router.refresh();
   }
 
+  // Submit the current selection together. Requires every selected applicant
+  // to be an Ace-native candidate AND to share one job — a single combined
+  // submittal email goes to one client/role, so a mixed-job selection can't
+  // resolve one recipient set. Blocks with a clear message either way.
+  function onBulkSubmitClick() {
+    const targets = visibleRows.filter((r) => selectedKeys.has(rowKey(r)));
+    if (targets.length === 0) return;
+    if (targets.some((r) => typeof r.candidateId !== "string")) {
+      toast.error("Bulk submit is only available for Ace-native candidates.");
+      return;
+    }
+    const first = targets[0];
+    const sameJob = targets.every((r) => r.jobId === first.jobId);
+    if (!sameJob) {
+      toast.error("Select applicants for the same job to submit them together.");
+      return;
+    }
+    const isAceJob = typeof first.jobId === "string";
+    setBulkSubmit({
+      job: {
+        jobId: isAceJob ? (first.jobId as string) : null,
+        jobRfId: isAceJob ? null : (first.jobId as number),
+      },
+      candidateIds: targets.map((r) => r.candidateId as string),
+    });
+  }
+
   function toggleSort(k: IntakeSortKey) {
     if (sortKey === k) {
       setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -1881,6 +1915,19 @@ function IntakeTable({
             </button>
           </div>
           <div className="flex items-center gap-2">
+            {kind === "applied" && (
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={onBulkSubmitClick}
+                disabled={bulkBusy}
+                className="h-7 px-3 text-[11px]"
+              >
+                <Send className="h-3 w-3" />
+                Submit {selectedKeys.size}
+              </Button>
+            )}
             <Button
               type="button"
               variant="reject"
@@ -1982,6 +2029,18 @@ function IntakeTable({
             if (!bulkBusy) setBulkRejectOpen(false);
           }}
           onConfirm={onBulkRejectConfirm}
+        />
+      )}
+      {bulkSubmit && (
+        <BulkSubmitDialog
+          candidateIds={bulkSubmit.candidateIds}
+          fixedJob={bulkSubmit.job}
+          onClose={() => setBulkSubmit(null)}
+          onDone={() => {
+            setBulkSubmit(null);
+            setSelectedKeys(new Set());
+            router.refresh();
+          }}
         />
       )}
     </div>

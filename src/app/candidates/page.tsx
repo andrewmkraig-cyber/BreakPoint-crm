@@ -24,6 +24,7 @@ import {
   BulkApplyDialog,
   BulkAddToListDialog,
   BulkEmailDialog,
+  BulkSubmitDialog,
 } from "@/app/candidates/bulk-dialogs";
 import { AddMultipleDialog } from "@/app/candidates/add-multiple-dialog";
 import {
@@ -723,7 +724,7 @@ export default function CandidatesPage() {
   const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const [bulkDialog, setBulkDialog] = useState<null | "apply" | "list" | "email">(null);
+  const [bulkDialog, setBulkDialog] = useState<null | "apply" | "list" | "email" | "submit">(null);
   // Bulk CSV/PDF import modal. Opened from the TopBar "Add Multiple"
   // chip via a window event (the TopBar lives above this page in
   // AppShell and can't reach this state directly).
@@ -764,6 +765,25 @@ export default function CandidatesPage() {
       setBulkDialog("list");
     } catch {
       toast.error("Couldn't load lists");
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  // Submit multiple candidates to a client/role. Reuses the same open-jobs
+  // picker payload as Apply; the recruiter picks the job in the dialog, then
+  // composes one combined submittal email.
+  async function openBulkSubmit() {
+    if (bulkSelectedIds.size === 0) return;
+    setBulkLoading(true);
+    try {
+      if (bulkJobs === null) {
+        const jobs = await getOpenJobsForBulkPicker();
+        setBulkJobs(jobs);
+      }
+      setBulkDialog("submit");
+    } catch {
+      toast.error("Couldn't load jobs");
     } finally {
       setBulkLoading(false);
     }
@@ -1689,7 +1709,7 @@ export default function CandidatesPage() {
                   never flashes a stale "0". */}
               {dbTotal !== null ? (
                 <span className="hidden text-xs text-court-fg-muted tabular-nums sm:inline">
-                  {dbTotal.toLocaleString()} {dbTotal === 1 ? "candidate" : "candidates"} in your database
+                  {dbTotal.toLocaleString()} {dbTotal === 1 ? "candidate" : "candidates"} in Ace
                 </span>
               ) : null}
               <Link
@@ -1781,6 +1801,17 @@ export default function CandidatesPage() {
                         <Send className="h-3.5 w-3.5" />
                       )}
                       Apply to Job
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="primary"
+                      onClick={() => void openBulkSubmit()}
+                      disabled={bulkLoading}
+                      className="px-2.5 py-1 text-sm"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      Submit to Client
                     </Button>
                     <button
                       type="button"
@@ -1965,6 +1996,18 @@ export default function CandidatesPage() {
 
       {bulkDialog === "apply" && bulkJobs !== null && (
         <BulkApplyDialog
+          candidateIds={Array.from(bulkSelectedIds)}
+          jobs={bulkJobs}
+          onClose={() => setBulkDialog(null)}
+          onDone={() => {
+            setBulkDialog(null);
+            setBulkSelectedIds(new Set());
+          }}
+        />
+      )}
+
+      {bulkDialog === "submit" && bulkJobs !== null && (
+        <BulkSubmitDialog
           candidateIds={Array.from(bulkSelectedIds)}
           jobs={bulkJobs}
           onClose={() => setBulkDialog(null)}

@@ -1778,3 +1778,436 @@ export async function recordLocalPlacement(
     return { ok: false, error: e instanceof Error ? e.message : "Failed to record placement." };
   }
 }
+
+// ============================================================================
+// Bulk Submittal — submit MULTIPLE candidates to one client/role in a single
+// combined submittal email. Both the pipeline Applicants tab (job already
+// known, all selected must share one job) and the candidate-search page (job
+// picked first) route through these three actions. The email carries every
+// selected candidate's latest resume as its own attachment, and each candidate
+// upserts to a `submitted` Placement on send — the multi-candidate mirror of
+// sendLocalSubmittalEmail above. Ace-native only: candidate ids are cuids.
+// ============================================================================
+
+export type BulkSubmittalCandidate = {
+  id: string;
+  name: string;
+  // Latest resume filename on file (null = none — the candidate ships in the
+  // combined email without an attachment, surfaced in the composer).
+  resumeName: string | null;
+};
+
+export type BulkSubmittalContext = {
+  jobTitle: string;
+  clientName: string;
+  // Client identity resolved FROM the job so callers only pass the job id.
+  clientId: string | null;
+  clientRfId: number | null;
+  // To/Cc options for the composer, same shape the single submittal uses.
+  clientContacts: { id: string; name: string; title: string; email: string }[];
+  candidates: BulkSubmittalCandidate[];
+};
+
+// Resolve the job's client (cuid + legacy id + name) from either id. Shared by
+// all three bulk actions so client identity is derived once, server-side.
+async function resolveBulkSubmittalJob(
+  organizationId: string,
+  jobId: string | null,
+  jobRfId: number | null,
+) {
+  const select = {
+    id: true,
+    title: true,
+    locations: true,
+    description: true,
+    raw: true,
+    client: { select: { id: true, name: true, legacyRfId: true } },
+  } as const;
+  if (jobId) {
+    return prisma.job.findFirst({ where: { id: jobId, organizationId }, select });
+  }
+  if (jobRfId != null) {
+    return prisma.job.findFirst({ where: { legacyRfId: jobRfId, organizationId }, select });
+  }
+  return null;
+}
+
+export type GetBulkSubmittalContextResult =
+  | { ok: true; value: BulkSubmittalContext }
+  | { ok: false; error: string };
+
+export async function getBulkSubmittalContext(input: {
+  candidateIds: string[];
+  jobRfId?: number | null;
+  jobId?: string | null;
+}): Promise<GetBulkSubmittalContextResult> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const jobId = input.jobId ?? null;
+  const jobRfId = input.jobRfId ?? null;
+  if (jobId == null && jobRfId == null) return { ok: false, error: "Missing job reference." };
+  if (input.candidateIds.length === 0) return { ok: false, error: "No candidates selected." };
+
+  try {
+    const org = await getCurrentOrg();
+    const jobRow = await resolveBulkSubmittalJob(org.id, jobId, jobRfId);
+    if (!jobRow) return { ok: false, error: "Job not found." };
+
+    const clientId = jobRow.client?.id ?? null;
+    const clientContacts = clientId
+      ? (
+          await prisma.contact.findMany({
+            where: { clientId, organizationId: org.id },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              name: true,
+              emails: true,
+              currentDesignation: true,
+            },
+            orderBy: { name: "asc" },
+          })
+        ).map((ct) => ({
+          id: ct.id,
+          name:
+            [ct.firstName, ct.lastName].filter(Boolean).join(" ") ||
+            ct.name ||
+            "(unnamed)",
+          title: ct.currentDesignation ?? "",
+          email: Array.isArray(ct.emails) ? ct.emails[0] ?? "" : "",
+        }))
+      : [];
+
+    // Org-scope the candidate set — forged ids from another tenant silently
+    // drop out (same defense the bulk-apply path uses).
+    const rows = await prisma.candidate.findMany({
+      where: { id: { in: input.candidateIds }, organizationId: org.id },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    // Latest resume filename per candidate (uploadedAt desc — the same
+    // "most recent version wins" ordering the send path attaches).
+    const resumes = await prisma.candidateResume.findMany({
+      where: {
+        candidateId: { in: rows.map((r) => r.id) },
+        uploadComplete: true,
+      },
+      orderBy: { uploadedAt: "desc" },
+      select: { candidateId: true, filename: true, displayName: true },
+    });
+    const latestResumeByCandidate = new Map<string, string>();
+    for (const r of resumes) {
+      if (!r.candidateId) continue;
+      if (!latestResumeByCandidate.has(r.candidateId)) {
+        latestResumeByCandidate.set(r.candidateId, r.displayName || r.filename);
+      }
+    }
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    // Preserve the caller's selection order.
+    const candidates: BulkSubmittalCandidate[] = input.candidateIds.flatMap((id) => {
+      const c = byId.get(id);
+      if (!c) return [];
+      const name =
+        [c.firstName, c.lastName].filter(Boolean).join(" ").trim() || "(no name)";
+      return [{ id: c.id, name, resumeName: latestResumeByCandidate.get(c.id) ?? null }];
+    });
+
+    return {
+      ok: true,
+      value: {
+        jobTitle: jobRow.title ?? "",
+        clientName: jobRow.client?.name ?? "",
+        clientId,
+        clientRfId: jobRow.client?.legacyRfId ?? null,
+        clientContacts,
+        candidates,
+      },
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to load submittal context." };
+  }
+}
+
+// Combined writeup for the bulk composer's Generate with Claude. Loops the
+// same per-candidate generateSubmittalWriteup used by the single flow and
+// stitches the results under a per-candidate heading, so the recruiter gets
+// one editable draft covering everyone. Capped at 8 candidates to bound the
+// number of model calls (bulk submittals are typically 2-3).
+export async function generateBulkLocalSubmittal(input: {
+  candidateIds: string[];
+  jobRfId?: number | null;
+  jobId?: string | null;
+}): Promise<GenerateLocalSubmittalResult> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const jobId = input.jobId ?? null;
+  const jobRfId = input.jobRfId ?? null;
+  if (jobId == null && jobRfId == null) return { ok: false, error: "Missing job reference." };
+
+  try {
+    const org = await getCurrentOrg();
+    const jobRow = await resolveBulkSubmittalJob(org.id, jobId, jobRfId);
+    if (!jobRow) return { ok: false, error: "Job not found." };
+    const rawJob = (jobRow.raw ?? null) as { description?: unknown; title?: string } | null;
+    const clientName = jobRow.client?.name ?? "";
+    const jobPayload = {
+      title: jobRow.title ?? rawJob?.title ?? "(job)",
+      clientName,
+      locations: Array.isArray(jobRow.locations) ? jobRow.locations : [],
+      salaryRange: undefined,
+      employmentType: undefined,
+      jobType: undefined,
+      department: undefined,
+      experienceRange: undefined,
+      description:
+        jobRow.description ??
+        (typeof rawJob?.description === "string" ? rawJob.description : undefined),
+      customFields: [] as { name: string; value: string }[],
+    };
+
+    const ids = input.candidateIds.slice(0, 8);
+    const sections: string[] = [];
+    for (const candidateId of ids) {
+      const c = await loadLocalCandidate(candidateId);
+      // Org-scope: skip any candidate that isn't in this tenant.
+      if (!c) continue;
+      const inOrg = await prisma.candidate.findFirst({
+        where: { id: candidateId, organizationId: org.id },
+        select: { id: true },
+      });
+      if (!inOrg) continue;
+      const experienceRows = (c.experience as unknown as ExpRow[] | null) ?? [];
+      const experienceSummary = experienceRows
+        .slice(0, 6)
+        .map((r) => {
+          const role = [r.designation, r.organization].filter(Boolean).join(" at ");
+          const years = [r.from_year, r.to_year ?? "present"].filter(Boolean).join("-");
+          const line = [role, years].filter(Boolean).join(" (") + (years ? ")" : "");
+          return r.description ? `${line}: ${r.description}` : line;
+        })
+        .filter(Boolean)
+        .join("\n");
+      const callContext = await buildCandidateCallContextBlock({
+        candidateId: c.id,
+        organizationId: org.id,
+        userEmail: user.email,
+      });
+      const writeup = await generateSubmittalWriteup({
+        candidate: {
+          firstName: c.firstName,
+          lastName: c.lastName ?? "",
+          title: c.currentDesignation ?? "",
+          employer: c.currentOrganization ?? "",
+          location: c.location ?? "",
+          skills: Array.isArray(c.skills) ? c.skills : [],
+          experienceSummary,
+          notes: c.notes ?? "",
+          expectedSalary: formatExpectedCompensation(c.expectedSalary),
+          linkedin: c.linkedinProfile ?? "",
+        },
+        job: jobPayload,
+        callContext,
+      });
+      const name = [c.firstName, c.lastName].filter(Boolean).join(" ").trim() || "Candidate";
+      sections.push(`## ${name}\n\n${writeup.trim()}`);
+    }
+    if (sections.length === 0) return { ok: false, error: "No candidates to write up." };
+    return { ok: true, value: { writeup: sections.join("\n\n") } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to generate submittal." };
+  }
+}
+
+export type SendBulkLocalSubmittalInput = {
+  candidateIds: string[];
+  jobRfId?: number | null;
+  jobId?: string | null;
+  clientRfId?: number | null;
+  clientId?: string | null;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  bodyText: string;
+  bodyHtml?: string;
+  sendCandidateConfirmation?: boolean;
+};
+
+export type SendBulkLocalSubmittalResult =
+  | { ok: true; value: { submitted: number; skipped: number; gmailMessageId: string } }
+  | { ok: false; error: string };
+
+export async function sendBulkLocalSubmittalEmail(
+  input: SendBulkLocalSubmittalInput,
+): Promise<SendBulkLocalSubmittalResult> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  if (!input.to.length) return { ok: false, error: "At least one recipient is required." };
+  if (!input.subject.trim()) return { ok: false, error: "Subject is required." };
+  const jobId = input.jobId ?? null;
+  const jobRfId = input.jobRfId ?? null;
+  if (jobId == null && jobRfId == null) return { ok: false, error: "Missing job reference." };
+  if (input.candidateIds.length === 0) return { ok: false, error: "No candidates selected." };
+
+  const useRichHtml = typeof input.bodyHtml === "string" && input.bodyHtml.trim().length > 0;
+  const resolvedBodyText = useRichHtml
+    ? submittalEditorHtmlToPlainText(input.bodyHtml!)
+    : submittalToPlainText(input.bodyText);
+  if (!resolvedBodyText.trim()) return { ok: false, error: "Body is required." };
+
+  try {
+    const org = await getCurrentOrg();
+
+    // Client identity: prefer what the caller passed (the search picker has
+    // it), else resolve it from the job so the pipeline path can pass only a
+    // job id. Also used to stamp each placement row.
+    let clientId = input.clientId ?? null;
+    let clientRfId = input.clientRfId ?? null;
+    if (clientId == null && clientRfId == null) {
+      const jobRow = await resolveBulkSubmittalJob(org.id, jobId, jobRfId);
+      clientId = jobRow?.client?.id ?? null;
+      clientRfId = jobRow?.client?.legacyRfId ?? null;
+    }
+
+    // Org-scope the candidate set. Forged/foreign ids drop out silently and
+    // count toward `skipped` so the toast is honest.
+    const allowed = await prisma.candidate.findMany({
+      where: { id: { in: input.candidateIds }, organizationId: org.id },
+      select: { id: true },
+    });
+    const allowedIds = input.candidateIds.filter((id) =>
+      new Set(allowed.map((c) => c.id)).has(id),
+    );
+    if (allowedIds.length === 0) return { ok: false, error: "No matching candidates." };
+
+    // Attach every candidate's latest resume as its own file. Best-effort
+    // per candidate: a missing-bytes/blob failure logs and that candidate
+    // ships without an attachment rather than sinking the whole send.
+    const attachments: GmailAttachment[] = [];
+    for (const candidateId of allowedIds) {
+      try {
+        const latestResume = await prisma.candidateResume.findFirst({
+          where: { candidateId, uploadComplete: true },
+          orderBy: { uploadedAt: "desc" },
+          select: { filename: true, mimeType: true, data: true, blobUrl: true },
+        });
+        if (latestResume) {
+          const bytes = await getResumeBytes({
+            blobUrl: latestResume.blobUrl,
+            data: latestResume.data,
+          });
+          attachments.push({
+            filename: latestResume.filename,
+            mimeType: latestResume.mimeType || "application/octet-stream",
+            data: bytes,
+          });
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[bulk-submittal] resume attach failed:", candidateId, err);
+      }
+    }
+
+    const sendResult = await sendGmail({
+      userId: user.id,
+      from: user.email,
+      fromName: user.name ?? undefined,
+      to: input.to,
+      cc: input.cc,
+      bcc: input.bcc,
+      subject: input.subject,
+      bodyText: resolvedBodyText,
+      bodyHtml: useRichHtml ? wrapEmailHtml(input.bodyHtml!) : submittalToHtml(input.bodyText),
+      attachments: attachments.length ? attachments : undefined,
+    });
+
+    // One combined email, but each candidate gets its own submitted
+    // Placement + audit trail + candidate confirmation — the same
+    // per-candidate bookkeeping the single submittal does.
+    let submitted = 0;
+    for (const candidateId of allowedIds) {
+      try {
+        const placement = jobId
+          ? await prisma.placement.upsert({
+              where: { candidateId_jobId: { candidateId, jobId } },
+              create: {
+                candidateId,
+                candidateRfId: null,
+                jobRfId,
+                jobId,
+                clientRfId,
+                clientId,
+                stage: "submitted",
+                source: "recruiter_applied",
+                createdById: user.id,
+                organizationId: org.id,
+                syncedToRf: false,
+              },
+              update: { stage: "submitted", syncedToRf: false },
+              select: { id: true },
+            })
+          : await prisma.placement.upsert({
+              where: { candidateId_jobRfId: { candidateId, jobRfId: jobRfId! } },
+              create: {
+                candidateId,
+                candidateRfId: null,
+                jobRfId,
+                jobId,
+                clientRfId,
+                clientId,
+                stage: "submitted",
+                source: "recruiter_applied",
+                createdById: user.id,
+                organizationId: org.id,
+                syncedToRf: false,
+              },
+              update: { stage: "submitted", syncedToRf: false },
+              select: { id: true },
+            });
+
+        await createActionLog({
+          userId: user.id,
+          actionType: "submit",
+          subjectType: "candidate",
+          subjectId: candidateId,
+          metadata: { jobRfId, jobId, clientRfId, clientId, gmailMessageId: sendResult.id, local: true, bulk: true },
+        });
+        await logActivity({
+          organizationId: org.id,
+          userId: user.id,
+          actionType: "submittal_sent",
+          targetType: "placement",
+          targetId: placement.id,
+          metadata: { jobId, jobRfId, candidateId, clientId, clientRfId, local: true, bulk: true },
+        });
+        if (input.sendCandidateConfirmation !== false) {
+          await fireTriggerAndLog({
+            trigger: CANDIDATE_CONFIRMATION_TRIGGER,
+            ref: { candidateId, jobRfId, jobId, clientRfId, clientId },
+            actionType: "candidate_submission_confirmation_email",
+            organizationId: org.id,
+            metadata: { placementId: placement.id, submittalGmailMessageId: sendResult.id, local: true, bulk: true },
+          });
+        }
+        submitted += 1;
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[bulk-submittal] placement upsert failed:", candidateId, err);
+      }
+    }
+
+    revalidatePath("/candidates");
+    revalidatePath("/pipeline");
+
+    return {
+      ok: true,
+      value: {
+        submitted,
+        skipped: input.candidateIds.length - submitted,
+        gmailMessageId: sendResult.id,
+      },
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Send failed." };
+  }
+}

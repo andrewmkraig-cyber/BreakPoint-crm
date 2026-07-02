@@ -3,11 +3,13 @@
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import {
+  AlertTriangle,
   CheckCircle2,
   ChevronDown,
   Clock,
   FileText,
   Loader2,
+  Paperclip,
   Send,
   ListPlus,
   Sparkles,
@@ -31,7 +33,14 @@ import {
   type BulkQueueStatus,
 } from "@/app/candidates/bulk-actions";
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
-import type { EmailDraft } from "@/components/email-composer";
+import { EmailComposer, type EmailDraft } from "@/components/email-composer";
+import {
+  getBulkSubmittalContext,
+  generateBulkLocalSubmittal,
+  sendBulkLocalSubmittalEmail,
+  type BulkSubmittalContext,
+} from "@/app/candidates/[id]/local-placement-actions";
+import { submittalMarkdownToEditorHtml } from "@/lib/submittal-format";
 import type { RichTextBodyEditorHandle } from "@/components/rich-text-body-editor";
 import { EditWithClaudeMenu, EditWithClaudeCustomPanel, type EditType } from "@/components/edit-with-claude-menu";
 import { Button } from "@/components/ui/button";
@@ -163,6 +172,250 @@ export function BulkApplyDialog({
         </button>
       </div>
     </BulkModal>
+  );
+}
+
+// Bulk Submit — one combined submittal email to the client carrying every
+// selected candidate's latest resume; each candidate upserts to a `submitted`
+// Placement on send. Used by BOTH the candidate-search page (pass `jobs` so
+// the recruiter picks a role first) and the pipeline Applicants tab (pass
+// `fixedJob` — the role is already known and every selected applicant shares
+// it). Mirrors the single-candidate SubmitModal's EmailComposer chrome so the
+// two read identically in light + dark mode.
+export function BulkSubmitDialog({
+  candidateIds,
+  jobs,
+  fixedJob,
+  onClose,
+  onDone,
+}: {
+  candidateIds: string[];
+  // Candidate-search mode: the picker list. Omit when `fixedJob` is set.
+  jobs?: BulkPickerJob[];
+  // Pipeline mode: the shared job is already known.
+  fixedJob?: { jobId: string | null; jobRfId: number | null };
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const n = candidateIds.length;
+  const [pickKey, setPickKey] = useState("");
+  const [filter, setFilter] = useState("");
+  const [picked, setPicked] = useState<{ jobId: string | null; jobRfId: number | null } | null>(
+    fixedJob ?? null,
+  );
+  const [ctx, setCtx] = useState<BulkSubmittalContext | null>(null);
+  const [loadingCtx, setLoadingCtx] = useState(false);
+  const [ctxError, setCtxError] = useState<string | null>(null);
+
+  const filtered = filter.trim()
+    ? (jobs ?? []).filter((j) => j.label.toLowerCase().includes(filter.trim().toLowerCase()))
+    : jobs ?? [];
+
+  // Load the composer context (client contacts + per-candidate resume names)
+  // once a job is known — immediately in pipeline mode, or after the recruiter
+  // picks a role in search mode.
+  useEffect(() => {
+    if (!picked) return;
+    let cancelled = false;
+    setLoadingCtx(true);
+    setCtxError(null);
+    getBulkSubmittalContext({
+      candidateIds,
+      jobId: picked.jobId,
+      jobRfId: picked.jobRfId,
+    })
+      .then((res) => {
+        if (cancelled) return;
+        if (!res.ok) {
+          setCtxError(res.error);
+          return;
+        }
+        setCtx(res.value);
+      })
+      .catch((e) => {
+        if (!cancelled) setCtxError(e instanceof Error ? e.message : "Couldn't load submittal.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCtx(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [picked, candidateIds]);
+
+  function onPickJob() {
+    const job = (jobs ?? []).find((j) => j.key === pickKey);
+    if (!job) return;
+    setPicked({ jobId: job.jobCuid, jobRfId: job.jobRfId });
+  }
+
+  // Step 1 (search mode only): pick the role to submit this batch to.
+  if (!picked) {
+    const job = (jobs ?? []).find((j) => j.key === pickKey) ?? null;
+    return (
+      <BulkModal title={`Submit ${n} candidate${n === 1 ? "" : "s"} to a role`} onClose={onClose}>
+        <p className="mb-2 text-xs text-court-fg-muted">
+          Pick the job to submit these candidates to. The next step composes one
+          submittal email to the client with every resume attached.
+        </p>
+        <Input
+          type="text"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filter jobs…"
+          containerClassName="mb-2"
+        />
+        {/* Bespoke multi-row list box, same treatment as BulkApplyDialog. */}
+        <select
+          value={pickKey}
+          onChange={(e) => setPickKey(e.target.value)}
+          size={Math.min(8, Math.max(3, filtered.length))}
+          className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        >
+          {filtered.length === 0 && (
+            <option value="" disabled>
+              No matching jobs
+            </option>
+          )}
+          {filtered.map((j) => (
+            <option key={j.key} value={j.key}>
+              {j.label}
+            </option>
+          ))}
+        </select>
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" variant="primary" size="sm" onClick={onPickJob} disabled={!job}>
+            <Send className="h-3 w-3" /> Continue
+          </Button>
+        </div>
+      </BulkModal>
+    );
+  }
+
+  // Step 2: loading / error states before the composer mounts.
+  if (loadingCtx || !ctx) {
+    return (
+      <BulkModal title={`Submit ${n} candidate${n === 1 ? "" : "s"}`} onClose={onClose}>
+        {ctxError ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+            {ctxError}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 py-6 text-sm text-court-fg-muted">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading submittal…
+          </div>
+        )}
+        <div className="mt-4 flex items-center justify-end">
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            {ctxError ? "Close" : "Cancel"}
+          </Button>
+        </div>
+      </BulkModal>
+    );
+  }
+
+  // Step 3: the combined submittal composer.
+  const { jobTitle, clientName, clientContacts, candidates } = ctx;
+  const contactOptions = clientContacts
+    .filter((c) => c.email)
+    .map((c) => ({ id: c.id, name: c.name, email: c.email }));
+  const namesShort =
+    candidates.length <= 2
+      ? candidates.map((c) => c.name).join(" & ")
+      : `${candidates.length} candidates`;
+  const fallbackSubject = `Candidate Submittals - ${namesShort} | ${jobTitle}`;
+  const generateSubject = `${namesShort} - ${jobTitle}${clientName ? ` for ${clientName}` : ""}`;
+  const primaryContact = clientContacts.find((c) => c.email) ?? null;
+  const primaryContactFirst = primaryContact?.name?.trim().split(/\s+/)[0] ?? "";
+  const mergeValues: MergeFieldValues = {
+    clientCompanyName: clientName,
+    clientContactFullName: primaryContact?.name ?? "",
+    clientContactFirstName: primaryContactFirst,
+    jobTitle,
+  };
+
+  return (
+    <EmailComposer
+      title="Submittal email"
+      subtitle={`${n} candidate${n === 1 ? "" : "s"} → ${jobTitle}${clientName ? ` · ${clientName}` : ""}`}
+      draftKey={`bulk-submittal-${picked.jobId ?? picked.jobRfId}-${candidateIds.join("-")}`}
+      initial={{ to: [], cc: [], bcc: [], subject: "", body: "" }}
+      recipientOptions={contactOptions.length > 0 ? contactOptions : undefined}
+      toOptions={contactOptions.length > 0 ? contactOptions : undefined}
+      onClose={onClose}
+      sendLabel="Send Submittal"
+      sendingLabel="Sending…"
+      helperText="Pick a client contact, then Generate with Claude or write the submittal yourself. Every selected candidate's latest resume attaches on send."
+      mergeValues={mergeValues}
+      richTextBody
+      toEditorHtml={submittalMarkdownToEditorHtml}
+      showCandidateConfirmationToggle
+      // Show exactly which resumes ship, per candidate — a green check when a
+      // resume is on file, an amber note when none is (that candidate goes out
+      // without an attachment but still moves to Submitted).
+      attachmentsSlot={
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-xs text-court-fg">
+            <Paperclip className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
+            <span>
+              Attaching {candidates.filter((c) => c.resumeName).length} resume
+              {candidates.filter((c) => c.resumeName).length === 1 ? "" : "s"}:
+            </span>
+          </div>
+          <ul className="ml-5 space-y-0.5">
+            {candidates.map((c) =>
+              c.resumeName ? (
+                <li key={c.id} className="flex items-center gap-1.5 text-xs text-court-fg-muted">
+                  <CheckCircle2 className="h-3 w-3 shrink-0 text-court-brand-dark" />
+                  <span className="font-medium text-court-fg">{c.name}</span>
+                  <span className="truncate">· {c.resumeName}</span>
+                </li>
+              ) : (
+                <li key={c.id} className="flex items-center gap-1.5 text-xs text-amber-700">
+                  <AlertTriangle className="h-3 w-3 shrink-0" />
+                  <span className="font-medium">{c.name}</span>
+                  <span>· no resume on file</span>
+                </li>
+              ),
+            )}
+          </ul>
+        </div>
+      }
+      generateFallbackSubject={generateSubject}
+      onGenerate={async () => {
+        const res = await generateBulkLocalSubmittal({
+          candidateIds,
+          jobId: picked.jobId,
+          jobRfId: picked.jobRfId,
+        });
+        if (!res.ok) throw new Error(res.error);
+        return res.value.writeup;
+      }}
+      onSend={async (draft: EmailDraft) => {
+        const res = await sendBulkLocalSubmittalEmail({
+          candidateIds,
+          jobId: picked.jobId,
+          jobRfId: picked.jobRfId,
+          clientId: ctx.clientId,
+          clientRfId: ctx.clientRfId,
+          to: draft.to,
+          cc: draft.cc,
+          bcc: draft.bcc,
+          subject: draft.subject.trim() || fallbackSubject,
+          bodyText: draft.body,
+          bodyHtml: draft.bodyHtml,
+          sendCandidateConfirmation: draft.sendCandidateConfirmation ?? true,
+        });
+        if (!res.ok) throw new Error(res.error);
+        toast.success(
+          `Submitted ${res.value.submitted} candidate${res.value.submitted === 1 ? "" : "s"} to ${jobTitle}`,
+        );
+        onDone();
+      }}
+    />
   );
 }
 
