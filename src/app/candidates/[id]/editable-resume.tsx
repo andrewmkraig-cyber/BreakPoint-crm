@@ -19,7 +19,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { DocumentDropzone } from "@/components/document-dropzone";
-import { DocxPreview } from "@/components/docx-preview";
+// DocxPreview kept as named import in case other surfaces need the HTML path;
+// the candidate profile now uses PdfCanvasViewer via the /as-pdf route.
 import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import {
@@ -100,6 +101,13 @@ function previewUrlFor(v: ResumeVersion): string {
   // variant query param. Only "redacted" lives on the original row's
   // redactedData column and needs the variant flag.
   return v.kind === "redacted" ? `${base}?variant=redacted` : base;
+}
+
+// Returns a URL that always delivers PDF bytes for PdfCanvasViewer,
+// converting DOCX on-the-fly via CloudConvert (fallback: mammoth reflow).
+// Used for display only; does not create a new CandidateResume row.
+function asPdfUrlFor(v: ResumeVersion): string {
+  return `/api/candidate-resumes/by-id/${v.resumeId}/as-pdf`;
 }
 
 function downloadUrlFor(v: ResumeVersion): string {
@@ -659,20 +667,17 @@ export function EditableResume({
               highlightClassMap={tokenMarkMap}
             />
           ) : docx ? (
-            // id="resume-document-content" scopes TextHighlighter's DOM
-            // walker to the rendered DOCX body only — without it the
-            // walker would mark text in the right-rail overview, skill
-            // chips, activity feed, and even the highlight chips above
-            // the viewer. PDF mode skips this wrapper because
-            // PdfCanvasViewer paints its own colored marks on a canvas
-            // overlay; the DOM walker can't (and shouldn't) reach the
-            // canvas glyphs.
-            <div id="resume-document-content">
-              <DocxPreview
-                idOrRfId={selected.resumeId}
-                className="min-h-[900px] w-full overflow-auto rounded-b-xl"
-              />
-            </div>
+            // DOCX display: PdfCanvasViewer fetches /as-pdf which converts
+            // via CloudConvert (faithful) or mammoth+pdf-lib reflow (fallback).
+            // PdfCanvasViewer paints its own canvas-level highlight marks, so
+            // no id="resume-document-content" wrapper is needed here.
+            <PdfCanvasViewer
+              key={asPdfUrlFor(selected)}
+              src={asPdfUrlFor(selected)}
+              className="min-h-[900px] w-full rounded-b-xl"
+              highlightTokens={tokens}
+              highlightClassMap={tokenMarkMap}
+            />
           ) : (
             <div className="flex h-64 flex-col items-center justify-center gap-2 border-t border-dashed border-court-border bg-court-surface-subtle/40 text-sm text-court-fg-muted">
               <FileText className="h-6 w-6 text-court-fg-muted" />

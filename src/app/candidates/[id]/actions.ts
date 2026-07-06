@@ -329,16 +329,98 @@ export async function deleteCandidateResume(resumeId: string): Promise<ActionRes
 }
 
 // Phase 5A.5.b (Ace 20.0): convert a DOCX CandidateResume row into a
-// new PDF row. mammoth pulls the raw text out of the .docx; pdf-lib
-// lays it onto Letter-size pages with word-wrap and pagination. The
-// result is a plain-text PDF (no formatting carry-over) but it's a
-// valid PDF the recruiter can then run through the unified Edit
-// Resume flow. Saved as variant="converted" with a fresh row.
+// new PDF row and save it as variant="converted" so the Edit Resume
+// editor + branded export both receive a faithful PDF.
+//
+// Conversion order:
+//   1. CloudConvert HTTPS API (CLOUDCONVERT_API_KEY env) - faithful,
+//      formatting-preserving. Preferred when the key is set.
+//   2. mammoth.extractRawText + pdf-lib reflow - plain text fallback
+//      used when the key is absent or CloudConvert returns an error.
 //
 // Tenant scope: source row + write target both filter by org via
 // getCurrentOrg(). A forged resumeId from another tenant errors out.
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const LEGACY_DOC_MIME = "application/msword";
+
+// Reflow fallback: extract raw text via mammoth and lay it onto a
+// Letter-size PDF with pdf-lib. No formatting carry-over; used only
+// when CloudConvert is unavailable.
+async function docxToPlainTextPdf(sourceBuffer: Buffer): Promise<Uint8Array> {
+  const mammoth = await import("mammoth");
+  const extract = mammoth.extractRawText ?? mammoth.default?.extractRawText;
+  if (!extract) throw new Error("DOCX extractor unavailable.");
+  const { value: rawText } = await extract({ buffer: sourceBuffer });
+  const text = (rawText ?? "").replace(/\r\n/g, "\n");
+
+  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const fontSize = 11;
+  const lineHeight = fontSize * 1.4;
+  const margin = 54;
+  const pageWidth = 612;
+  const pageHeight = 792;
+  const usableWidth = pageWidth - margin * 2;
+  const black = rgb(0, 0, 0);
+
+  let page = pdf.addPage([pageWidth, pageHeight]);
+  let y = pageHeight - margin - fontSize;
+
+  const ensureSpace = () => {
+    if (y < margin) {
+      page = pdf.addPage([pageWidth, pageHeight]);
+      y = pageHeight - margin - fontSize;
+    }
+  };
+
+  const drawLine = (line: string) => {
+    ensureSpace();
+    // pdf-lib chokes on characters outside WinAnsi; replace anything
+    // the standard font can't measure with a placeholder so a stray
+    // emoji or smart-quote doesn't 500 the whole conversion.
+    const safe = line.replace(/[^\x00-\x7F]/g, (c) => {
+      try {
+        font.widthOfTextAtSize(c, fontSize);
+        return c;
+      } catch {
+        return "?";
+      }
+    });
+    page.drawText(safe, { x: margin, y, size: fontSize, font, color: black });
+    y -= lineHeight;
+  };
+
+  const paragraphs = text.split(/\n+/);
+  for (const paragraph of paragraphs) {
+    const trimmed = paragraph.trim();
+    if (!trimmed) {
+      y -= lineHeight;
+      continue;
+    }
+    const words = trimmed.split(/\s+/);
+    let line = "";
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      let width: number;
+      try {
+        width = font.widthOfTextAtSize(candidate, fontSize);
+      } catch {
+        width = candidate.length * fontSize * 0.6;
+      }
+      if (width > usableWidth && line) {
+        drawLine(line);
+        line = word;
+      } else {
+        line = candidate;
+      }
+    }
+    if (line) drawLine(line);
+    y -= lineHeight * 0.3;
+  }
+
+  return pdf.save();
+}
 
 export async function convertDocxResumeToPdf(input: {
   resumeId: string;
@@ -363,80 +445,28 @@ export async function convertDocxResumeToPdf(input: {
       return { ok: false, error: "Convert is only available for .doc / .docx resumes." };
     }
 
-    const mammoth = await import("mammoth");
-    const extract = mammoth.extractRawText ?? mammoth.default?.extractRawText;
-    if (!extract) return { ok: false, error: "DOCX extractor unavailable." };
     const sourceBuffer = await getResumeBytes(source);
-    const { value: rawText } = await extract({ buffer: sourceBuffer });
-    const text = (rawText ?? "").replace(/\r\n/g, "\n");
 
-    const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
-    const pdf = await PDFDocument.create();
-    const font = await pdf.embedFont(StandardFonts.Helvetica);
-    const fontSize = 11;
-    const lineHeight = fontSize * 1.4;
-    const margin = 54; // 0.75 inch
-    const pageWidth = 612;
-    const pageHeight = 792;
-    const usableWidth = pageWidth - margin * 2;
-    const black = rgb(0, 0, 0);
-
-    let page = pdf.addPage([pageWidth, pageHeight]);
-    let y = pageHeight - margin - fontSize;
-
-    const ensureSpace = () => {
-      if (y < margin) {
-        page = pdf.addPage([pageWidth, pageHeight]);
-        y = pageHeight - margin - fontSize;
-      }
-    };
-
-    const drawLine = (line: string) => {
-      ensureSpace();
-      // pdf-lib chokes on characters outside WinAnsi; replace anything
-      // the standard font can't measure with a placeholder so a stray
-      // emoji or smart-quote doesn't 500 the whole conversion.
-      const safe = line.replace(/[^\x00-\x7F]/g, (c) => {
-        try {
-          font.widthOfTextAtSize(c, fontSize);
-          return c;
-        } catch {
-          return "?";
-        }
-      });
-      page.drawText(safe, { x: margin, y, size: fontSize, font, color: black });
-      y -= lineHeight;
-    };
-
-    const paragraphs = text.split(/\n+/);
-    for (const paragraph of paragraphs) {
-      const trimmed = paragraph.trim();
-      if (!trimmed) {
-        y -= lineHeight;
-        continue;
-      }
-      const words = trimmed.split(/\s+/);
-      let line = "";
-      for (const word of words) {
-        const candidate = line ? `${line} ${word}` : word;
-        let width: number;
-        try {
-          width = font.widthOfTextAtSize(candidate, fontSize);
-        } catch {
-          width = candidate.length * fontSize * 0.6;
-        }
-        if (width > usableWidth && line) {
-          drawLine(line);
-          line = word;
-        } else {
-          line = candidate;
-        }
-      }
-      if (line) drawLine(line);
-      y -= lineHeight * 0.3;
+    // Try CloudConvert for a formatting-faithful PDF first.
+    let outputBytes: Uint8Array | null = null;
+    try {
+      const { convertDocxToPdfViaCloudConvert } = await import(
+        "@/lib/cloudconvert-docx-pdf"
+      );
+      const buf = await convertDocxToPdfViaCloudConvert(sourceBuffer, source.filename);
+      if (buf) outputBytes = new Uint8Array(buf);
+    } catch (err) {
+      console.warn(
+        "[convertDocxResumeToPdf] CloudConvert failed, falling back to reflow",
+        err instanceof Error ? err.message : String(err),
+      );
     }
 
-    const outputBytes = await pdf.save();
+    // Fallback: mammoth text reflow.
+    if (!outputBytes) {
+      outputBytes = await docxToPlainTextPdf(sourceBuffer);
+    }
+
     const baseName =
       (source.displayName?.trim() || source.filename).replace(/\.(pdf|docx?|txt)$/i, "");
     const filename = `${baseName}.pdf`;
