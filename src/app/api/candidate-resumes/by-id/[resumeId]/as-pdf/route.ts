@@ -117,9 +117,22 @@ export async function GET(
   if (!resume) return new NextResponse("Not found", { status: 404 });
 
   const sourceBytes = await getResumeBytes(resume);
+  const docxFlag = isDocx(resume.mimeType, resume.filename);
 
-  if (!isDocx(resume.mimeType, resume.filename)) {
+  // eslint-disable-next-line no-console
+  console.log(
+    "[docx-convert-diag] as-pdf route hit | resumeId:", params.resumeId,
+    "| mimeType:", resume.mimeType,
+    "| filename:", resume.filename,
+    "| variant:", resume.variant,
+    "| isDocx:", docxFlag,
+    "| key present:", !!process.env.CLOUDCONVERT_API_KEY,
+  );
+
+  if (!docxFlag) {
     // Already a PDF or other type - pass through.
+    // eslint-disable-next-line no-console
+    console.log("[docx-convert-diag] not a docx, serving bytes directly, mimeType:", resume.mimeType);
     return new NextResponse(new Uint8Array(sourceBytes), {
       headers: {
         "Content-Type": resume.mimeType ?? "application/pdf",
@@ -134,19 +147,25 @@ export async function GET(
   try {
     pdfBytes = await convertDocxToPdfViaCloudConvert(sourceBytes, resume.filename);
   } catch (err) {
-    console.warn(
-      "[as-pdf] CloudConvert failed, falling back to reflow",
+    // eslint-disable-next-line no-console
+    console.log(
+      "[docx-convert-diag] CloudConvert threw, falling back to reflow |",
       err instanceof Error ? err.message : String(err),
     );
   }
 
   if (!pdfBytes) {
+    // eslint-disable-next-line no-console
+    console.log("[docx-convert-diag] using mammoth reflow fallback (CloudConvert returned null or threw)");
     try {
       pdfBytes = await docxToPlainTextPdf(sourceBytes);
     } catch (err) {
       console.error("[as-pdf] mammoth reflow failed", err);
       return new NextResponse("PDF conversion failed", { status: 500 });
     }
+  } else {
+    // eslint-disable-next-line no-console
+    console.log("[docx-convert-diag] CloudConvert succeeded, serving faithful PDF");
   }
 
   return new NextResponse(new Uint8Array(pdfBytes), {

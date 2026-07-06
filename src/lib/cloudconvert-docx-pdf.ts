@@ -11,6 +11,8 @@ export async function convertDocxToPdfViaCloudConvert(
   filename: string,
 ): Promise<Buffer | null> {
   const apiKey = process.env.CLOUDCONVERT_API_KEY;
+  // eslint-disable-next-line no-console
+  console.log("[docx-convert-diag] key present:", !!apiKey, "| filename:", filename, "| bytes:", docxBytes.byteLength);
   if (!apiKey) return null;
 
   const base64 = docxBytes.toString("base64");
@@ -40,6 +42,8 @@ export async function convertDocxToPdfViaCloudConvert(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 60_000);
 
+  // eslint-disable-next-line no-console
+  console.log("[docx-convert-diag] calling CloudConvert jobs API");
   let jobRes: Response;
   try {
     jobRes = await fetch("https://api.cloudconvert.com/v2/jobs?sync=true", {
@@ -55,8 +59,12 @@ export async function convertDocxToPdfViaCloudConvert(
     clearTimeout(timer);
   }
 
+  // eslint-disable-next-line no-console
+  console.log("[docx-convert-diag] CloudConvert HTTP status:", jobRes.status);
   if (!jobRes.ok) {
     const errText = await jobRes.text().catch(() => "(no body)");
+    // eslint-disable-next-line no-console
+    console.log("[docx-convert-diag] CloudConvert error body:", errText.slice(0, 400));
     throw new Error(
       `CloudConvert job failed (${jobRes.status}): ${errText.slice(0, 300)}`,
     );
@@ -80,6 +88,8 @@ export async function convertDocxToPdfViaCloudConvert(
   );
 
   const fileUrl = exportTask?.result?.files?.[0]?.url;
+  // eslint-disable-next-line no-console
+  console.log("[docx-convert-diag] export task found:", !!exportTask, "| file URL present:", !!fileUrl);
   if (!fileUrl) {
     throw new Error(
       "CloudConvert: no output file URL in finished export task",
@@ -99,5 +109,8 @@ export async function convertDocxToPdfViaCloudConvert(
     throw new Error(`CloudConvert: PDF download failed (${pdfRes.status})`);
   }
 
-  return Buffer.from(await pdfRes.arrayBuffer());
+  const pdfBuf = Buffer.from(await pdfRes.arrayBuffer());
+  // eslint-disable-next-line no-console
+  console.log("[docx-convert-diag] CloudConvert success, pdf bytes:", pdfBuf.byteLength);
+  return pdfBuf;
 }
