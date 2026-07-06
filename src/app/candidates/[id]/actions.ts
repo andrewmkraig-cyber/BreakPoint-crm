@@ -463,6 +463,7 @@ export async function convertDocxResumeToPdf(input: {
     }
 
     // Fallback: mammoth text reflow.
+    const usedCloudConvert = outputBytes !== null;
     if (!outputBytes) {
       outputBytes = await docxToPlainTextPdf(sourceBuffer);
     }
@@ -470,6 +471,7 @@ export async function convertDocxResumeToPdf(input: {
     const baseName =
       (source.displayName?.trim() || source.filename).replace(/\.(pdf|docx?|txt)$/i, "");
     const filename = `${baseName}.pdf`;
+    const displayName = usedCloudConvert ? "Converted (CloudConvert)" : "Converted (fallback)";
 
     const ab = new ArrayBuffer(outputBytes.byteLength);
     const data = new Uint8Array(ab);
@@ -493,6 +495,7 @@ export async function convertDocxResumeToPdf(input: {
         candidateRfId: source.candidateRfId,
         organizationId: org.id,
         filename,
+        displayName,
         mimeType: "application/pdf",
         size: data.byteLength,
         data,

@@ -33,11 +33,11 @@ async function _convert(
   filename: string,
 ): Promise<Buffer | null> {
   // --- ENTRY ------------------------------------------------------------------
-  const apiKey = process.env.CLOUDCONVERT_API_KEY;
+  const apiKey = process.env.CLOUDCONVERT_API_KEY?.trim();
   // eslint-disable-next-line no-console
   console.log(
     "[docx-convert-diag] helper entry | key present:", !!apiKey,
-    "| key length:", apiKey?.length ?? 0,
+    "| key length (trimmed):", apiKey?.length ?? 0,
     "| filename:", filename,
     "| source bytes:", docxBytes.byteLength,
   );
