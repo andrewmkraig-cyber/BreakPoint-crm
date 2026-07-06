@@ -4,22 +4,25 @@
 //
 // The sync endpoint (?sync=true) blocks until the job finishes, so this is
 // one round-trip: POST job → wait → fetch output URL → return bytes.
-// Timeout is 60s; a typical resume converts in 3-8s.
+// CloudConvert abort timeout is 55s; Vercel maxDuration is 60s. The 5s gap
+// ensures the AbortError catch runs and its logs flush BEFORE Vercel SIGKILL.
 
 export async function convertDocxToPdfViaCloudConvert(
   docxBytes: Buffer,
   filename: string,
 ): Promise<Buffer | null> {
-  // Outer catch: any unhandled throw is logged here before propagating to
-  // the route's own catch block. Guarantees prod logs always see the error
-  // even if Vercel flushes stdout just before killing the invocation.
   try {
     return await _convert(docxBytes, filename);
   } catch (err) {
+    const name = err instanceof Error ? err.name : "unknown";
+    const msg = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error && err.stack
+      ? err.stack.split("\n")[1]?.trim() ?? "(no stack line)"
+      : "(no stack)";
     // eslint-disable-next-line no-console
     console.log(
-      "[docx-convert-diag] OUTER CATCH:",
-      err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+      "[docx-convert-diag] helper THREW:",
+      name, "|", msg, "|", stack,
     );
     throw err;
   }
@@ -29,21 +32,29 @@ async function _convert(
   docxBytes: Buffer,
   filename: string,
 ): Promise<Buffer | null> {
+  // --- ENTRY ------------------------------------------------------------------
   const apiKey = process.env.CLOUDCONVERT_API_KEY;
   // eslint-disable-next-line no-console
   console.log(
     "[docx-convert-diag] helper entry | key present:", !!apiKey,
+    "| key length:", apiKey?.length ?? 0,
     "| filename:", filename,
     "| source bytes:", docxBytes.byteLength,
   );
-  if (!apiKey) return null;
 
+  if (!apiKey) {
+    // eslint-disable-next-line no-console
+    console.log("[docx-convert-diag] key absent — returning null (mammoth fallback will run)");
+    return null;
+  }
+
+  // --- BASE64 ENCODE ---------------------------------------------------------
   // eslint-disable-next-line no-console
-  console.log("[docx-convert-diag] encoding docx as base64...");
+  console.log("[docx-convert-diag] PRE-BASE64: about to encode", docxBytes.byteLength, "bytes");
   const base64 = docxBytes.toString("base64");
   // eslint-disable-next-line no-console
   console.log(
-    "[docx-convert-diag] base64 length:", base64.length,
+    "[docx-convert-diag] POST-BASE64: encoded length:", base64.length,
     "chars (~", Math.round(base64.length / 1024), "KB)",
   );
 
@@ -67,17 +78,21 @@ async function _convert(
         input: "convert-file",
       },
     },
-    // NOTE: redirect:false is NOT a valid CloudConvert v2 field; omitted.
   };
 
+  // --- CLOUDCONVERT FETCH ----------------------------------------------------
+  // 55s timeout leaves a 5s window for the catch/log to flush before
+  // Vercel's 60s maxDuration SIGKILL. Without this gap the abort fires
+  // simultaneously with the process kill and its logs are lost.
+  const CLOUDCONVERT_URL = "https://api.cloudconvert.com/v2/jobs?sync=true";
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60_000);
+  const timer = setTimeout(() => controller.abort(), 55_000);
 
   // eslint-disable-next-line no-console
-  console.log("[docx-convert-diag] calling CloudConvert POST /v2/jobs?sync=true");
+  console.log("[docx-convert-diag] fetch START | url:", CLOUDCONVERT_URL);
   let jobRes: Response;
   try {
-    jobRes = await fetch("https://api.cloudconvert.com/v2/jobs?sync=true", {
+    jobRes = await fetch(CLOUDCONVERT_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -90,11 +105,12 @@ async function _convert(
     clearTimeout(timer);
     const name = fetchErr instanceof Error ? fetchErr.name : "unknown";
     const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
-    // eslint-disable-next-line no-console
-    console.log("[docx-convert-diag] fetch THREW:", name, "|", msg);
     if (name === "AbortError") {
       // eslint-disable-next-line no-console
-      console.log("[docx-convert-diag] AbortError = 60s timeout hit waiting for CloudConvert ?sync=true");
+      console.log("[docx-convert-diag] CloudConvert fetch ABORTED (55s timeout) — job took too long");
+    } else {
+      // eslint-disable-next-line no-console
+      console.log("[docx-convert-diag] CloudConvert fetch THREW (network error):", name, "|", msg);
     }
     throw fetchErr;
   }
@@ -107,24 +123,20 @@ async function _convert(
     const errText = await jobRes.text().catch(() => "(no body)");
     // eslint-disable-next-line no-console
     console.log(
-      `[docx-convert-diag] ${jobRes.status} from CloudConvert — check API key scopes (needs task.read + task.write). Body:`,
+      `[docx-convert-diag] ${jobRes.status} — check API key scopes (needs task.read + task.write). Body:`,
       errText.slice(0, 400),
     );
     throw new Error(`CloudConvert auth failed (${jobRes.status}) — check key scopes`);
   }
 
-  // Read body text once; reuse for both error logging and JSON parsing.
   const rawBody = await jobRes.text().catch(() => "(body read failed)");
 
   if (!jobRes.ok) {
     // eslint-disable-next-line no-console
     console.log("[docx-convert-diag] CloudConvert non-2xx body:", rawBody.slice(0, 500));
-    throw new Error(
-      `CloudConvert job failed (${jobRes.status}): ${rawBody.slice(0, 300)}`,
-    );
+    throw new Error(`CloudConvert job failed (${jobRes.status}): ${rawBody.slice(0, 300)}`);
   }
 
-  // Log response even on 200 so we can see the exact shape in prod.
   // eslint-disable-next-line no-console
   console.log(
     "[docx-convert-diag] CloudConvert 200 response (first 600 chars):",
@@ -140,7 +152,6 @@ async function _convert(
     throw new Error("CloudConvert: could not parse response JSON");
   }
 
-  // tasks may be an object keyed by name or an array — normalize.
   const tasksRaw = jobData?.data?.tasks;
   const tasks: unknown[] = Array.isArray(tasksRaw)
     ? (tasksRaw as unknown[])
@@ -182,10 +193,11 @@ async function _convert(
     throw new Error("CloudConvert: no output file URL in finished export task");
   }
 
+  // --- PDF DOWNLOAD ----------------------------------------------------------
   const downloadController = new AbortController();
   const downloadTimer = setTimeout(() => downloadController.abort(), 30_000);
   // eslint-disable-next-line no-console
-  console.log("[docx-convert-diag] downloading converted PDF from CloudConvert CDN...");
+  console.log("[docx-convert-diag] PDF download START");
   let pdfRes: Response;
   try {
     pdfRes = await fetch(fileUrl, { signal: downloadController.signal });
@@ -193,8 +205,13 @@ async function _convert(
     clearTimeout(downloadTimer);
     const name = dlErr instanceof Error ? dlErr.name : "unknown";
     const msg = dlErr instanceof Error ? dlErr.message : String(dlErr);
-    // eslint-disable-next-line no-console
-    console.log("[docx-convert-diag] PDF download THREW:", name, "|", msg);
+    if (name === "AbortError") {
+      // eslint-disable-next-line no-console
+      console.log("[docx-convert-diag] PDF download ABORTED (30s timeout)");
+    } else {
+      // eslint-disable-next-line no-console
+      console.log("[docx-convert-diag] PDF download THREW (network error):", name, "|", msg);
+    }
     throw dlErr;
   }
   clearTimeout(downloadTimer);

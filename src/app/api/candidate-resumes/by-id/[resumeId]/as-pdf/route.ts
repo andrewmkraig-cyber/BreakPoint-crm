@@ -172,7 +172,7 @@ export async function GET(
   } catch (err) {
     // eslint-disable-next-line no-console
     console.log(
-      "[docx-convert-diag] CloudConvert threw, falling back to reflow |",
+      "[docx-convert-diag] route caught helper error:",
       err instanceof Error ? `${err.name}: ${err.message}` : String(err),
     );
   }
