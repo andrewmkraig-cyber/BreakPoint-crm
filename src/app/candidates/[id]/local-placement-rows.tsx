@@ -56,7 +56,13 @@ import {
   parseEmailCsv,
 } from "@/components/placements/placement-shared";
 import { triggerCalendarSync } from "@/lib/calendar/trigger-sync";
-import { applyMergeFields as applyMergeFieldsClient, htmlToReadableText, MERGE_FIELDS, type MergeFieldValues } from "@/lib/merge-fields";
+import {
+  applyMergeFields as applyMergeFieldsClient,
+  buildSmartGreeting,
+  htmlToReadableText,
+  MERGE_FIELDS,
+  type MergeFieldValues,
+} from "@/lib/merge-fields";
 // Canonical Lead Source options — shared with the RF PlacementDialog,
 // the /pipeline placement-edit-drawer, and the Financial Performance
 // By Source widget so all four surfaces agree on the bucket set. Added
@@ -2551,6 +2557,15 @@ function defaultClientBody(type: InterviewType, location: string): string {
     `Reply to this email if anything needs to change.`
   );
 }
+function defaultInPersonClientBody(interviewerLabel: string): string {
+  return (
+    `[Greeting]\n\n` +
+    `[Candidate Full Name] is confirmed for an in-person interview with ${interviewerLabel} for the [Job Title] role.\n\n` +
+    `Date/Time: [Interview Date Time]\n` +
+    `Address: [Interview Location]\n\n` +
+    `Reply here if anything changes.`
+  );
+}
 function defaultCandidateSubject(type: InterviewType): string {
   return `${formatType(type)} Interview - BreakPoint Talent`;
 }
@@ -2563,6 +2578,28 @@ function defaultCandidateBody(type: InterviewType, location: string): string {
     `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]${addrLine}${meetLine}\n\n` +
     `Good luck!`
   );
+}
+function defaultInPersonCandidateBody(interviewerLabel: string): string {
+  return (
+    `Hi [Candidate First Name],\n\n` +
+    `You are confirmed for an in-person interview with ${interviewerLabel} at [Client Company Name] for the [Job Title] role.\n\n` +
+    `Date/Time: [Interview Date Time]\n` +
+    `Address: [Interview Location]\n\n` +
+    `Good luck!`
+  );
+}
+
+function formatHumanList(items: string[]): string {
+  const unique = Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)));
+  if (unique.length === 0) return "";
+  if (unique.length === 1) return unique[0];
+  if (unique.length === 2) return `${unique[0]} and ${unique[1]}`;
+  return `${unique.slice(0, -1).join(", ")}, and ${unique[unique.length - 1]}`;
+}
+
+function formatRecipientHint(emails: string[], fallback: string): string {
+  const recipients = formatHumanList(emails);
+  return recipients ? `To: ${recipients}` : fallback;
 }
 
 // Per-party subject/body draft. The source copy is always the saved
@@ -2805,6 +2842,11 @@ function ScheduleInterviewScreen({
   const primaryInterviewer = interviewerList[0] ?? null;
   const interviewerName = primaryInterviewer?.name ?? "";
   const interviewerEmail = primaryInterviewer?.email ?? "";
+  const interviewerLabel = formatHumanList(
+    interviewerList.map((interviewer) => interviewer.name || interviewer.email),
+  ) || "the client team";
+  const clientGreeting = buildSmartGreeting(interviewerList);
+  const clientRecipientHint = formatRecipientHint(interviewerEmails, "Pick an interviewer above");
 
   useEffect(() => {
     let cancelled = false;
@@ -2823,8 +2865,9 @@ function ScheduleInterviewScreen({
     };
   }, []);
 
-  // Seed the per-party defaults from the active scheduling templates, exactly
-  // as the retired composers did. Falls back to the hardcoded copy per side.
+  // Seed the per-party defaults from the active scheduling templates. In-person
+  // interviews use a tighter body so the invite does not read like a video/phone
+  // confirmation.
   useEffect(() => {
     let cancelled = false;
     void getInterviewSchedulingTemplates()
@@ -2872,6 +2915,7 @@ function ScheduleInterviewScreen({
     };
     return {
       ...buildValues({ invite: syntheticInvite, candidate, recruiter }),
+      greeting: clientGreeting,
       // Keep the Meet token unresolved in the editor; resolve at send.
       interviewMeetLink: MEET_LINK_TOKEN,
     };
@@ -2883,6 +2927,7 @@ function ScheduleInterviewScreen({
     location,
     interviewerName,
     interviewerEmail,
+    clientGreeting,
     ccCsv,
     bccCsv,
     job,
@@ -2898,7 +2943,8 @@ function ScheduleInterviewScreen({
   // Gmail copy alike — matching what Google Calendar already renders.
   // Edit mode seeds each party editor from the STORED sent copy (what the
   // recipient actually saw), cleaned through htmlToReadableText. New mode seeds
-  // from the saved scheduling template (2b-i behavior, unchanged).
+  // from the saved scheduling template, except in-person interviews use the
+  // address-forward body above.
   const clientDefaultSubject = useMemo(
     () =>
       existingInterview?.sentClientSubject
@@ -2912,10 +2958,12 @@ function ScheduleInterviewScreen({
     () =>
       existingInterview?.sentClientBody
         ? htmlToReadableText(existingInterview.sentClientBody)
+        : type === "in_person"
+          ? defaultInPersonClientBody(interviewerLabel)
         : schedTemplates.client?.body
           ? htmlToReadableText(schedTemplates.client.body)
           : defaultClientBody(type, location),
-    [existingInterview, schedTemplates, type, location],
+    [existingInterview, schedTemplates, type, location, interviewerLabel],
   );
   const candidateDefaultSubject = useMemo(
     () =>
@@ -2930,10 +2978,12 @@ function ScheduleInterviewScreen({
     () =>
       existingInterview?.sentCandidateBody
         ? htmlToReadableText(existingInterview.sentCandidateBody)
+        : type === "in_person"
+          ? defaultInPersonCandidateBody(interviewerLabel)
         : schedTemplates.candidate?.body
           ? htmlToReadableText(schedTemplates.candidate.body)
           : defaultCandidateBody(type, location),
-    [existingInterview, schedTemplates, type, location],
+    [existingInterview, schedTemplates, type, location, interviewerLabel],
   );
 
   const clientDraft = useInviteDraft(clientDefaultSubject, clientDefaultBody, values);
@@ -3341,7 +3391,7 @@ function ScheduleInterviewScreen({
           <>
             <InviteToggleSection
               label="Send Client Email"
-              hint={interviewerEmail.trim() ? `To: ${interviewerEmail.trim()}` : "Pick an interviewer above"}
+              hint={clientRecipientHint}
               enabled={sendClientEmail}
               onToggle={setSendClientEmail}
             >
@@ -3381,7 +3431,7 @@ function ScheduleInterviewScreen({
           <>
             <InviteToggleSection
               label="Send Client Email"
-              hint={interviewerEmail.trim() ? `To: ${interviewerEmail.trim()}` : "Pick an interviewer above"}
+              hint={clientRecipientHint}
               enabled={sendClientEmail}
               onToggle={setSendClientEmail}
             >
@@ -3591,7 +3641,7 @@ function InviteToggleSection({
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[13px] font-semibold text-court-fg">{label}</div>
-          <div className="truncate text-[11.5px] text-court-fg-muted">{hint}</div>
+          <div className="break-words text-[11.5px] text-court-fg-muted">{hint}</div>
         </div>
         <button
           type="button"
