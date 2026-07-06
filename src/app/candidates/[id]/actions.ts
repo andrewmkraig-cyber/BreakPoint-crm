@@ -475,6 +475,18 @@ export async function convertDocxResumeToPdf(input: {
     const data = new Uint8Array(ab);
     data.set(outputBytes);
 
+    // Replace any previously saved converted rows for this candidate so stale
+    // mammoth plain-text PDFs don't accumulate or get shown in the editor.
+    if (source.candidateId) {
+      await prisma.candidateResume.deleteMany({
+        where: { organizationId: org.id, variant: "converted", candidateId: source.candidateId },
+      });
+    } else if (source.candidateRfId != null && source.candidateRfId > 0) {
+      await prisma.candidateResume.deleteMany({
+        where: { organizationId: org.id, variant: "converted", candidateRfId: source.candidateRfId },
+      });
+    }
+
     const created = await prisma.candidateResume.create({
       data: {
         candidateId: source.candidateId,
