@@ -445,24 +445,57 @@ export async function convertDocxResumeToPdf(input: {
       return { ok: false, error: "Convert is only available for .doc / .docx resumes." };
     }
 
-    const sourceBuffer = await getResumeBytes(source);
-
-    // Try CloudConvert for a formatting-faithful PDF first.
-    let outputBytes: Uint8Array | null = null;
-    try {
-      const { convertDocxToPdfViaCloudConvert } = await import(
-        "@/lib/cloudconvert-docx-pdf"
-      );
-      const buf = await convertDocxToPdfViaCloudConvert(sourceBuffer, source.filename);
-      if (buf) outputBytes = new Uint8Array(buf);
-    } catch (err) {
-      console.warn(
-        "[convertDocxResumeToPdf] CloudConvert failed, falling back to reflow",
-        err instanceof Error ? err.message : String(err),
-      );
+    // Reuse an existing CloudConvert-produced PDF for this exact source resume.
+    // Variant encodes the source ID so a newly uploaded DOCX (new ID) always
+    // converts fresh while the same upload is never sent to CloudConvert twice.
+    const cachedVariant = `converted:${source.id}`;
+    const existing = await prisma.candidateResume.findFirst({
+      where: {
+        organizationId: org.id,
+        variant: cachedVariant,
+        displayName: "Converted (CloudConvert)",
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      if (source.candidateId) revalidatePath(`/candidates/${source.candidateId}`);
+      if (source.candidateRfId != null && source.candidateRfId > 0) {
+        revalidatePath(`/candidates/${source.candidateRfId}`);
+      }
+      return { ok: true, value: { resumeId: existing.id } };
     }
 
-    // Fallback: mammoth text reflow.
+    // Delete stale fallback rows and legacy plain "converted" rows so they
+    // never show up as the cached result on the next reuse check.
+    const candidateScope = source.candidateId
+      ? { candidateId: source.candidateId }
+      : source.candidateRfId != null && source.candidateRfId > 0
+        ? { candidateRfId: source.candidateRfId }
+        : null;
+    if (candidateScope) {
+      await prisma.candidateResume.deleteMany({
+        where: {
+          organizationId: org.id,
+          ...candidateScope,
+          OR: [
+            { variant: "converted" },
+            { variant: { startsWith: "converted:" }, displayName: "Converted (fallback)" },
+          ],
+        },
+      });
+    }
+
+    const sourceBuffer = await getResumeBytes(source);
+
+    let outputBytes: Uint8Array | null = null;
+    try {
+      const { convertDocxToPdfViaCloudConvert } = await import("@/lib/cloudconvert-docx-pdf");
+      const buf = await convertDocxToPdfViaCloudConvert(sourceBuffer, source.filename);
+      if (buf) outputBytes = new Uint8Array(buf);
+    } catch {
+      // fall through to mammoth reflow
+    }
+
     const usedCloudConvert = outputBytes !== null;
     if (!outputBytes) {
       outputBytes = await docxToPlainTextPdf(sourceBuffer);
@@ -477,18 +510,6 @@ export async function convertDocxResumeToPdf(input: {
     const data = new Uint8Array(ab);
     data.set(outputBytes);
 
-    // Replace any previously saved converted rows for this candidate so stale
-    // mammoth plain-text PDFs don't accumulate or get shown in the editor.
-    if (source.candidateId) {
-      await prisma.candidateResume.deleteMany({
-        where: { organizationId: org.id, variant: "converted", candidateId: source.candidateId },
-      });
-    } else if (source.candidateRfId != null && source.candidateRfId > 0) {
-      await prisma.candidateResume.deleteMany({
-        where: { organizationId: org.id, variant: "converted", candidateRfId: source.candidateRfId },
-      });
-    }
-
     const created = await prisma.candidateResume.create({
       data: {
         candidateId: source.candidateId,
@@ -499,7 +520,7 @@ export async function convertDocxResumeToPdf(input: {
         mimeType: "application/pdf",
         size: data.byteLength,
         data,
-        variant: "converted",
+        variant: cachedVariant,
         uploadComplete: true,
         uploadedById: user.id,
       },

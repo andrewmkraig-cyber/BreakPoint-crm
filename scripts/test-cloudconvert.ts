@@ -15,17 +15,12 @@ async function main() {
   }
 
   const resolved = path.resolve(docxPath);
-  console.log("[test-cloudconvert] file:", resolved);
-  console.log("[test-cloudconvert] CLOUDCONVERT_API_KEY present:", !!process.env.CLOUDCONVERT_API_KEY);
-  console.log("[test-cloudconvert] key length:", process.env.CLOUDCONVERT_API_KEY?.length ?? 0);
-
   if (!fs.existsSync(resolved)) {
     console.error("[test-cloudconvert] file not found:", resolved);
     process.exit(1);
   }
 
   const docxBytes = fs.readFileSync(resolved);
-  console.log("[test-cloudconvert] read", docxBytes.byteLength, "bytes from disk");
 
   let pdfBytes: Buffer | null = null;
   try {

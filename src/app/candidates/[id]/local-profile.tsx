@@ -263,7 +263,7 @@ export async function LocalCandidateProfile({
     // Phase 5A.5.b (Ace 20.0): DOCX → PDF conversions land as their
     // own row. Surface as kind="converted" so the dropdown labels them
     // distinctly from raw originals.
-    if (r.variant === "converted") {
+    if (r.variant === "converted" || r.variant?.startsWith("converted:")) {
       resumeVersions.push({
         key: r.id,
         resumeId: r.id,
