@@ -122,9 +122,13 @@ export async function GET(
   });
   if (!resume) return new NextResponse("Not found", { status: 404 });
 
-  const sourceBytes = await getResumeBytes(resume);
   const docxFlag = isDocx(resume.mimeType, resume.filename);
 
+  // Log BEFORE getResumeBytes so this fires at ~0.5s (after auth+DB) not
+  // ~9.5s (after blob download). In 96.1 the log was after getResumeBytes;
+  // if the blob download consumed most of the function's budget the log and
+  // everything that followed fired too late for Vercel's log collector to
+  // flush before the SIGKILL, making all subsequent logs silently disappear.
   // eslint-disable-next-line no-console
   console.log(
     "[docx-convert-diag] as-pdf route hit | resumeId:", params.resumeId,
@@ -138,7 +142,8 @@ export async function GET(
   if (!docxFlag) {
     // Already a PDF or other type - pass through.
     // eslint-disable-next-line no-console
-    console.log("[docx-convert-diag] not a docx, serving bytes directly, mimeType:", resume.mimeType);
+    console.log("[docx-convert-diag] not a docx, serving bytes directly | mimeType:", resume.mimeType);
+    const sourceBytes = await getResumeBytes(resume);
     return new NextResponse(new Uint8Array(sourceBytes), {
       headers: {
         "Content-Type": resume.mimeType ?? "application/pdf",
@@ -147,14 +152,16 @@ export async function GET(
     });
   }
 
+  // DOCX path: log the CloudConvert intention BEFORE the blob download so
+  // this line is always visible in Vercel logs even if getResumeBytes hangs.
+  // eslint-disable-next-line no-console
+  console.log("[docx-convert-diag] docx confirmed, fetching bytes then calling CloudConvert");
+  const sourceBytes = await getResumeBytes(resume);
+  // eslint-disable-next-line no-console
+  console.log("[docx-convert-diag] bytes ready | byteLength:", sourceBytes.byteLength);
+
   // Convert DOCX to PDF.
   let pdfBytes: Buffer | null = null;
-
-  // This log pins execution: if it appears but "helper entry" does not, the
-  // Vercel function was killed between these two lines (OOM or process error).
-  // If it does NOT appear, the function timed out before reaching this point.
-  // eslint-disable-next-line no-console
-  console.log("[docx-convert-diag] pre-call: about to invoke CloudConvert helper");
   try {
     pdfBytes = await convertDocxToPdfViaCloudConvert(sourceBytes, resume.filename);
     // eslint-disable-next-line no-console

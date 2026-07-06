@@ -125,13 +125,22 @@ function dropdownLabelFor(v: ResumeVersion): string {
   return `${stripped} (${date})`;
 }
 
-// Default selection: most recent redacted if any version is redacted,
-// else the most recent original. Matches the prior single-resume
-// behavior of defaulting to the redacted view when one existed.
+// Default selection priority:
+//   1. Most-recent redacted (if one exists)
+//   2. Most-recent non-converted version (original or branded)
+//   3. Most-recent converted (last resort — may be a stale mammoth PDF)
+//
+// Skipping kind="converted" as the default prevents a pre-CloudConvert
+// mammoth fallback row from blocking the live CloudConvert path: when
+// "converted" is the default, selected.mimeType === "application/pdf"
+// triggers the previewUrl (raw-bytes) branch in the viewer, bypassing
+// /as-pdf entirely and showing the old plain-text PDF forever.
 function pickDefault(versions: ResumeVersion[]): string | null {
   if (versions.length === 0) return null;
   const firstRedacted = versions.find((v) => v.kind === "redacted");
-  return (firstRedacted ?? versions[0]).key;
+  if (firstRedacted) return firstRedacted.key;
+  const firstNonConverted = versions.find((v) => v.kind !== "converted");
+  return (firstNonConverted ?? versions[0]).key;
 }
 
 export function EditableResume({
