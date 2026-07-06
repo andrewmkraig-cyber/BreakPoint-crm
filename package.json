@@ -13,7 +13,8 @@
     "lint": "next lint",
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "test:cloudconvert": "npx tsx scripts/test-cloudconvert.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
