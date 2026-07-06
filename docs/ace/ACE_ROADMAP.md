@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-06-16 · Ace 95.0
+Last updated: 2026-07-06 · Ace 96.0
 
 ## Active Build Sequence
 

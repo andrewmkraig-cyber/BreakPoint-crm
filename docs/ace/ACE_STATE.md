@@ -1,8 +1,20 @@
 # ACE_STATE.md
-Last updated: 2026-06-18 · Ace 95.1
-Current Version: Ace 95.1
-Last Shipped: 2026-06-18
+Last updated: 2026-07-06 · Ace 96.0
+Current Version: Ace 96.0
+Last Shipped: 2026-07-06
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 96.0 (2026-07-06) - DOCX display revert + CloudConvert caching + diag log cleanup
+
+DOCX resume display and Edit Resume conversion flow overhauled across five sequential prompts. No schema changes; `npm run build` exits 0. All pushed to main.
+
+- **DOCX display reverted to DocxPreview/mammoth HTML (`528b6d1`).** Ace 96 had replaced the mammoth HTML viewer with a PdfCanvasViewer+/as-pdf path for DOCX resumes. Reverted: `editable-resume.tsx` now uses `<DocxPreview idOrRfId={selected.resumeId} />` for DOCX (calls `/api/candidate-resume-html/[id]`). PDF display unchanged. `asPdfUrlFor` function removed. Added `scripts/test-cloudconvert.ts` (standalone diagnostic script) + `npm run test:cloudconvert`.
+
+- **CloudConvert API key validated + stale mammoth rows purged (`415505a`).** Test script confirmed 401 on sandbox key; new production CloudConvert key set. `convertDocxResumeToPdf` purges all existing `variant="converted"` rows for the candidate before creating a fresh one - no stale plain-text mammoth PDFs accumulate. `scripts/purge-stale-converted-resumes.ts` (dry-run default, `--apply` to execute) deleted 9 stale mammoth rows from prod.
+
+- **Key trim + outcome stamp (`885419d`).** `CLOUDCONVERT_API_KEY?.trim()` before use so stray whitespace from Vercel paste can't corrupt the Authorization header. Converted row `displayName` set to `"Converted (CloudConvert)"` or `"Converted (fallback)"` - visible in the version dropdown.
+
+- **CloudConvert conversion cached per source resume (`5a610e3`).** `variant` now encodes the source resume ID: `"converted:<sourceResumeId>"`. `convertDocxResumeToPdf` reuses the cached row if one exists for the exact source (no API call). The `/as-pdf` display route follows the same pattern: cache hit → serve stored bytes; miss → convert via CloudConvert → save row → serve. Subsequent views and Edit Resume share one conversion per source DOCX. Stale fallback rows (`displayName="Converted (fallback)"`) and legacy plain `variant="converted"` rows are deleted on any fresh conversion. `local-profile.tsx` `kind` mapping updated to recognize both `"converted"` and `"converted:*"` as `kind="converted"`. All `[docx-convert-diag]` logs removed from helper and as-pdf route; noisy intermediate logs stripped from test script.
 
 ## What Shipped in Ace 95.1 (2026-06-18) - New Job client picker grace window + cancel-interview stage revert + Sentry span-budget fix
 
