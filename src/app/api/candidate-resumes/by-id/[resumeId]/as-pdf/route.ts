@@ -7,6 +7,12 @@ import { getResumeBytes } from "@/lib/resume-bytes";
 import { convertDocxToPdfViaCloudConvert } from "@/lib/cloudconvert-docx-pdf";
 
 export const dynamic = "force-dynamic";
+// CloudConvert ?sync=true blocks until the job finishes (typically 10-30s).
+// Without maxDuration Vercel kills the function at the platform default (10s
+// on Hobby, 60s on Pro) and stdout may not be flushed — that is why logs
+// stopped after "route hit". Setting 60 explicitly keeps Pro routes alive
+// long enough for conversion and flushes all pending log lines before exit.
+export const maxDuration = 60;
 
 // Serves any resume as PDF bytes for the in-browser canvas viewer.
 // PDFs are passed through unchanged. DOCX resumes are converted on-the-fly:
@@ -144,13 +150,23 @@ export async function GET(
   // Convert DOCX to PDF.
   let pdfBytes: Buffer | null = null;
 
+  // This log pins execution: if it appears but "helper entry" does not, the
+  // Vercel function was killed between these two lines (OOM or process error).
+  // If it does NOT appear, the function timed out before reaching this point.
+  // eslint-disable-next-line no-console
+  console.log("[docx-convert-diag] pre-call: about to invoke CloudConvert helper");
   try {
     pdfBytes = await convertDocxToPdfViaCloudConvert(sourceBytes, resume.filename);
+    // eslint-disable-next-line no-console
+    console.log(
+      "[docx-convert-diag] helper returned:",
+      pdfBytes ? `${pdfBytes.byteLength} bytes (CloudConvert)` : "null (will use fallback)",
+    );
   } catch (err) {
     // eslint-disable-next-line no-console
     console.log(
       "[docx-convert-diag] CloudConvert threw, falling back to reflow |",
-      err instanceof Error ? err.message : String(err),
+      err instanceof Error ? `${err.name}: ${err.message}` : String(err),
     );
   }
 
