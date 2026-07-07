@@ -21,10 +21,6 @@ async function main() {
       OR: [
         { variant: "converted" },
         { displayName: "Converted (fallback)" },
-        {
-          variant: { startsWith: "converted:" },
-          NOT: { displayName: "Converted (CloudConvert)" },
-        },
       ],
     },
     select: {

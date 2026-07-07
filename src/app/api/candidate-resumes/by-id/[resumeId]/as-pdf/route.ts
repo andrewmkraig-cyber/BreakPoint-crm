@@ -5,6 +5,7 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { getResumeBytes } from "@/lib/resume-bytes";
 import { convertDocxToPdfViaCloudConvert } from "@/lib/cloudconvert-docx-pdf";
+import { convertDocxToPdfViaFreeRenderer } from "@/lib/free-docx-pdf";
 
 export const dynamic = "force-dynamic";
 // CloudConvert ?sync=true blocks up to 55s; keep the function alive.
@@ -12,17 +13,18 @@ export const maxDuration = 60;
 
 // Serves any resume as PDF bytes for the in-browser canvas viewer.
 // PDFs pass through unchanged. DOCX resumes are converted:
-//   1. Serve a cached CloudConvert row if one exists for this exact source.
-//   2. Call CloudConvert, save the result as variant="converted:<sourceId>",
-//      and serve it — subsequent views hit the cache, not the API.
-//   3. If CloudConvert fails, return an error instead of serving the old
-//      mammoth+pdf-lib reflow fallback that flattened resume formatting.
+//   1. Serve a cached conversion row if one exists for this exact source,
+//      preferring CloudConvert over the free preview-style renderer.
+//   2. Try CloudConvert, then fall back to the free Mammoth HTML -> PDF
+//      renderer. Both save as variant="converted:<sourceId>".
 //
 // Tenant scope: reads filter by organizationId via getCurrentOrg().
 
 const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const LEGACY_DOC_MIME = "application/msword";
+const CLOUDCONVERT_DISPLAY_NAME = "Converted (CloudConvert)";
+const FREE_CONVERT_DISPLAY_NAME = "Converted (Free)";
 
 function isDocx(mimeType: string | null | undefined, filename: string): boolean {
   if (mimeType === DOCX_MIME || mimeType === LEGACY_DOC_MIME) return true;
@@ -54,17 +56,26 @@ export async function GET(
     });
   }
 
-  // DOCX: serve cached CloudConvert PDF if one exists for this exact source.
+  // DOCX: serve cached conversion if one exists for this exact source.
   const cachedVariant = `converted:${resume.id}`;
-  const cached = await prisma.candidateResume.findFirst({
+  const cachedCloudConvert = await prisma.candidateResume.findFirst({
     where: {
       organizationId: org.id,
       variant: cachedVariant,
-      displayName: "Converted (CloudConvert)",
+      displayName: CLOUDCONVERT_DISPLAY_NAME,
     },
   });
+  const cached =
+    cachedCloudConvert ??
+    (await prisma.candidateResume.findFirst({
+      where: {
+        organizationId: org.id,
+        variant: cachedVariant,
+        displayName: FREE_CONVERT_DISPLAY_NAME,
+      },
+    }));
   if (cached) {
-    console.info("[as-pdf] using cached CloudConvert PDF", {
+    console.info("[as-pdf] using cached DOCX conversion", {
       sourceResumeId: resume.id,
       cachedResumeId: cached.id,
     });
@@ -77,32 +88,33 @@ export async function GET(
   const sourceBytes = await getResumeBytes(resume);
 
   let pdfBytes: Buffer | null = null;
+  let displayName = FREE_CONVERT_DISPLAY_NAME;
   try {
     console.info("[as-pdf] converting DOCX via CloudConvert", {
       sourceResumeId: resume.id,
       filename: resume.filename,
     });
     pdfBytes = await convertDocxToPdfViaCloudConvert(sourceBytes, resume.filename);
+    if (pdfBytes) displayName = CLOUDCONVERT_DISPLAY_NAME;
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
-    console.warn("[as-pdf] CloudConvert failed; refusing fallback PDF", {
+    console.warn("[as-pdf] CloudConvert failed; using free converter", {
       sourceResumeId: resume.id,
       error: detail,
     });
-    return new NextResponse(
-      `Formatting-safe DOCX conversion failed. No flattened PDF was created. ${detail}`,
-      { status: 502 },
-    );
   }
 
   if (!pdfBytes) {
-    console.warn("[as-pdf] CloudConvert key missing; refusing fallback PDF", {
+    console.info("[as-pdf] converting DOCX via free renderer", {
       sourceResumeId: resume.id,
+      filename: resume.filename,
     });
-    return new NextResponse(
-      "Formatting-safe DOCX conversion is not configured. No flattened PDF was created.",
-      { status: 503 },
-    );
+    try {
+      pdfBytes = await convertDocxToPdfViaFreeRenderer(sourceBytes);
+    } catch (err) {
+      console.error("[as-pdf] free DOCX conversion failed", err);
+      return new NextResponse("PDF conversion failed", { status: 500 });
+    }
   }
 
   // Save so subsequent views and Edit Resume both hit the cached row.
@@ -140,7 +152,7 @@ export async function GET(
           candidateRfId: resume.candidateRfId,
           organizationId: org.id,
           filename: `${baseName}.pdf`,
-          displayName: "Converted (CloudConvert)",
+          displayName,
           mimeType: "application/pdf",
           size: pdfBytes.byteLength,
           data: dataArr,
