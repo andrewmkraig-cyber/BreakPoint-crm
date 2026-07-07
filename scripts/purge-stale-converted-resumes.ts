@@ -1,5 +1,6 @@
-// Delete all variant="converted" CandidateResume rows that were created by
-// the mammoth plain-text reflow fallback (before CloudConvert was configured).
+// Delete CandidateResume rows created by the old DOCX plain-text reflow
+// fallback. These rows are lossy PDFs and must not be reused as the
+// formatting-preserving CloudConvert cache.
 //
 // Dry-run by default — prints what would be deleted without touching the DB.
 // Pass --apply to execute the deletes.
@@ -16,13 +17,24 @@ async function main() {
   console.log(`[purge-converted] mode: ${apply ? "APPLY (deleting rows)" : "DRY RUN (no changes)"}`);
 
   const rows = await prisma.candidateResume.findMany({
-    where: { variant: "converted" },
+    where: {
+      OR: [
+        { variant: "converted" },
+        { displayName: "Converted (fallback)" },
+        {
+          variant: { startsWith: "converted:" },
+          NOT: { displayName: "Converted (CloudConvert)" },
+        },
+      ],
+    },
     select: {
       id: true,
       organizationId: true,
       candidateId: true,
       candidateRfId: true,
       filename: true,
+      displayName: true,
+      variant: true,
       size: true,
       uploadedAt: true,
     },
@@ -38,7 +50,9 @@ async function main() {
   for (const r of rows) {
     console.log(
       `  id=${r.id}  org=${r.organizationId}  candidateId=${r.candidateId ?? "—"}` +
-        `  rfId=${r.candidateRfId ?? "—"}  file=${r.filename}  size=${r.size}  uploaded=${r.uploadedAt.toISOString()}`,
+        `  rfId=${r.candidateRfId ?? "—"}  variant=${r.variant ?? "—"}` +
+        `  display=${r.displayName ?? "—"}  file=${r.filename}` +
+        `  size=${r.size}  uploaded=${r.uploadedAt.toISOString()}`,
     );
   }
 

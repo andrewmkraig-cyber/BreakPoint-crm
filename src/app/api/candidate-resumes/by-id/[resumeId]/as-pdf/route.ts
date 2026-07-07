@@ -15,7 +15,8 @@ export const maxDuration = 60;
 //   1. Serve a cached CloudConvert row if one exists for this exact source.
 //   2. Call CloudConvert, save the result as variant="converted:<sourceId>",
 //      and serve it — subsequent views hit the cache, not the API.
-//   3. Fallback: mammoth+pdf-lib reflow (ephemeral, not saved).
+//   3. If CloudConvert fails, return an error instead of serving the old
+//      mammoth+pdf-lib reflow fallback that flattened resume formatting.
 //
 // Tenant scope: reads filter by organizationId via getCurrentOrg().
 
@@ -26,78 +27,6 @@ const LEGACY_DOC_MIME = "application/msword";
 function isDocx(mimeType: string | null | undefined, filename: string): boolean {
   if (mimeType === DOCX_MIME || mimeType === LEGACY_DOC_MIME) return true;
   return /\.docx?$/i.test(filename);
-}
-
-async function docxToPlainTextPdf(sourceBytes: Buffer): Promise<Buffer> {
-  const mammoth = await import("mammoth");
-  const extract = mammoth.extractRawText ?? mammoth.default?.extractRawText;
-  if (!extract) throw new Error("DOCX extractor unavailable");
-  const { value: rawText } = await extract({ buffer: sourceBytes });
-  const text = (rawText ?? "").replace(/\r\n/g, "\n");
-
-  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
-  const pdf = await PDFDocument.create();
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
-  const fontSize = 11;
-  const lineHeight = fontSize * 1.4;
-  const margin = 54;
-  const pageWidth = 612;
-  const pageHeight = 792;
-  const usableWidth = pageWidth - margin * 2;
-  const black = rgb(0, 0, 0);
-
-  let page = pdf.addPage([pageWidth, pageHeight]);
-  let y = pageHeight - margin - fontSize;
-
-  const ensureSpace = () => {
-    if (y < margin) {
-      page = pdf.addPage([pageWidth, pageHeight]);
-      y = pageHeight - margin - fontSize;
-    }
-  };
-
-  const drawLine = (line: string) => {
-    ensureSpace();
-    const safe = line.replace(/[^\x00-\x7F]/g, (c) => {
-      try {
-        font.widthOfTextAtSize(c, fontSize);
-        return c;
-      } catch {
-        return "?";
-      }
-    });
-    page.drawText(safe, { x: margin, y, size: fontSize, font, color: black });
-    y -= lineHeight;
-  };
-
-  for (const paragraph of text.split(/\n+/)) {
-    const trimmed = paragraph.trim();
-    if (!trimmed) {
-      y -= lineHeight;
-      continue;
-    }
-    const words = trimmed.split(/\s+/);
-    let line = "";
-    for (const word of words) {
-      const candidate = line ? `${line} ${word}` : word;
-      let width: number;
-      try {
-        width = font.widthOfTextAtSize(candidate, fontSize);
-      } catch {
-        width = candidate.length * fontSize * 0.6;
-      }
-      if (width > usableWidth && line) {
-        drawLine(line);
-        line = word;
-      } else {
-        line = candidate;
-      }
-    }
-    if (line) drawLine(line);
-    y -= lineHeight * 0.3;
-  }
-
-  return Buffer.from(await pdf.save());
 }
 
 export async function GET(
@@ -135,6 +64,10 @@ export async function GET(
     },
   });
   if (cached) {
+    console.info("[as-pdf] using cached CloudConvert PDF", {
+      sourceResumeId: resume.id,
+      cachedResumeId: cached.id,
+    });
     const cachedBytes = await getResumeBytes(cached);
     return new NextResponse(new Uint8Array(cachedBytes), {
       headers: { "Content-Type": "application/pdf", "Cache-Control": "private, no-store" },
@@ -145,66 +78,83 @@ export async function GET(
 
   let pdfBytes: Buffer | null = null;
   try {
+    console.info("[as-pdf] converting DOCX via CloudConvert", {
+      sourceResumeId: resume.id,
+      filename: resume.filename,
+    });
     pdfBytes = await convertDocxToPdfViaCloudConvert(sourceBytes, resume.filename);
-  } catch {
-    // fall through to mammoth reflow
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.warn("[as-pdf] CloudConvert failed; refusing fallback PDF", {
+      sourceResumeId: resume.id,
+      error: detail,
+    });
+    return new NextResponse(
+      `Formatting-safe DOCX conversion failed. No flattened PDF was created. ${detail}`,
+      { status: 502 },
+    );
   }
 
-  if (pdfBytes) {
-    // Save so subsequent views and Edit Resume both hit the cached row.
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true },
+  if (!pdfBytes) {
+    console.warn("[as-pdf] CloudConvert key missing; refusing fallback PDF", {
+      sourceResumeId: resume.id,
     });
-    if (user) {
-      // Clean up stale fallback and legacy converted rows first.
-      const candidateScope = resume.candidateId
-        ? { candidateId: resume.candidateId }
-        : resume.candidateRfId != null && resume.candidateRfId > 0
-          ? { candidateRfId: resume.candidateRfId }
-          : null;
-      if (candidateScope) {
-        await prisma.candidateResume.deleteMany({
-          where: {
-            organizationId: org.id,
-            ...candidateScope,
-            OR: [
-              { variant: "converted" },
-              { variant: { startsWith: "converted:" }, displayName: "Converted (fallback)" },
-            ],
-          },
-        });
-      }
-      try {
-        const baseName = resume.filename.replace(/\.docx?$/i, "");
-        const ab = new ArrayBuffer(pdfBytes.byteLength);
-        const dataArr = new Uint8Array(ab);
-        dataArr.set(pdfBytes);
-        await prisma.candidateResume.create({
-          data: {
-            candidateId: resume.candidateId,
-            candidateRfId: resume.candidateRfId,
-            organizationId: org.id,
-            filename: `${baseName}.pdf`,
-            displayName: "Converted (CloudConvert)",
-            mimeType: "application/pdf",
-            size: pdfBytes.byteLength,
-            data: dataArr,
-            variant: cachedVariant,
-            uploadComplete: true,
-            uploadedById: user.id,
-          },
-        });
-      } catch {
-        // Non-fatal: bytes are still served even if caching fails.
-      }
+    return new NextResponse(
+      "Formatting-safe DOCX conversion is not configured. No flattened PDF was created.",
+      { status: 503 },
+    );
+  }
+
+  // Save so subsequent views and Edit Resume both hit the cached row.
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email },
+    select: { id: true },
+  });
+  if (user) {
+    // Clean up stale fallback and legacy converted rows first.
+    const candidateScope = resume.candidateId
+      ? { candidateId: resume.candidateId }
+      : resume.candidateRfId != null && resume.candidateRfId > 0
+        ? { candidateRfId: resume.candidateRfId }
+        : null;
+    if (candidateScope) {
+      await prisma.candidateResume.deleteMany({
+        where: {
+          organizationId: org.id,
+          ...candidateScope,
+          OR: [
+            { variant: "converted" },
+            { variant: { startsWith: "converted:" }, displayName: "Converted (fallback)" },
+          ],
+        },
+      });
     }
-  } else {
     try {
-      pdfBytes = await docxToPlainTextPdf(sourceBytes);
+      const baseName = resume.filename.replace(/\.docx?$/i, "");
+      const ab = new ArrayBuffer(pdfBytes.byteLength);
+      const dataArr = new Uint8Array(ab);
+      dataArr.set(pdfBytes);
+      await prisma.candidateResume.create({
+        data: {
+          candidateId: resume.candidateId,
+          candidateRfId: resume.candidateRfId,
+          organizationId: org.id,
+          filename: `${baseName}.pdf`,
+          displayName: "Converted (CloudConvert)",
+          mimeType: "application/pdf",
+          size: pdfBytes.byteLength,
+          data: dataArr,
+          variant: cachedVariant,
+          uploadComplete: true,
+          uploadedById: user.id,
+        },
+      });
     } catch (err) {
-      console.error("[as-pdf] mammoth reflow failed", err);
-      return new NextResponse("PDF conversion failed", { status: 500 });
+      console.warn("[as-pdf] failed to cache CloudConvert PDF", {
+        sourceResumeId: resume.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      // Non-fatal: bytes are still served even if caching fails.
     }
   }
 
