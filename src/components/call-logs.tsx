@@ -225,56 +225,54 @@ function CallRowView({ row }: { row: CallRow }) {
           }
         }}
         aria-expanded={expanded}
-        className="-mx-2 flex w-full cursor-pointer items-start justify-between gap-3 rounded-lg px-2 py-1 text-left transition hover:bg-court-surface-subtle/50"
+        className="-mx-2 flex w-full cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 text-left transition hover:bg-court-surface-subtle/50"
       >
-        <div className="flex min-w-0 flex-1 items-start gap-3">
-          <div
-            className={cn(
-              "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
-              outbound ? "bg-emerald-50 text-emerald-700" : "bg-court-surface-subtle text-court-fg-muted",
-            )}
-            title={directionLabel}
-            aria-label={directionLabel}
-          >
-            <Icon className="h-3.5 w-3.5" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="font-semibold text-court-fg">{directionLabel}</span>
-              {counterpartNumber && (
-                <span className="text-xs text-court-fg-muted">· {counterpartNumber}</span>
-              )}
-              {hasAnything && (
-                <span className="rounded-full bg-brand-tint px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-brand-dark dark:bg-emerald-950/40 dark:text-emerald-200">
-                  {summaryText ? "AI Summary" : "Transcript"}
-                </span>
-              )}
-            </div>
-            <div className="mt-0.5 text-[11px] text-court-fg-muted">
-              {formatTs(row.createdAt)}
-              {row.duration != null && <span className="ml-2">· {formatDuration(row.duration)}</span>}
-            </div>
-            {row.recordingUrl && (
-              <a
-                href={row.recordingUrl}
-                target="_blank"
-                rel="noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="mt-1 inline-flex items-center gap-1 text-[11px] text-brand-dark hover:underline"
-              >
-                Recording <ExternalLink className="h-3 w-3" />
-              </a>
-            )}
-          </div>
+        <div
+          className={cn(
+            "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+            outbound ? "bg-emerald-50 text-emerald-700" : "bg-court-surface-subtle text-court-fg-muted",
+          )}
+          title={directionLabel}
+          aria-label={directionLabel}
+        >
+          <Icon className="h-3.5 w-3.5" />
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <StatusPill status={row.status} />
-          <ChevronDown
-            className={cn(
-              "h-4 w-4 text-court-fg-muted transition-transform",
-              expanded && "rotate-180",
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="font-semibold text-court-fg">{directionLabel}</span>
+            {hasAnything && (
+              <span className="rounded-full bg-brand-tint px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-brand-dark dark:bg-emerald-950/40 dark:text-emerald-200">
+                {summaryText ? "AI" : "Transcript"}
+              </span>
             )}
-          />
+            <div className="ml-auto flex shrink-0 items-center gap-1.5">
+              <StatusPill status={row.status} />
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 text-court-fg-muted transition-transform",
+                  expanded && "rotate-180",
+                )}
+              />
+            </div>
+          </div>
+          {counterpartNumber && (
+            <div className="mt-0.5 text-xs text-court-fg-muted">{counterpartNumber}</div>
+          )}
+          <div className="mt-0.5 whitespace-nowrap text-[11px] text-court-fg-muted">
+            {formatTs(row.createdAt)}
+            {row.duration != null && <span className="ml-1.5">· {formatDuration(row.duration)}</span>}
+          </div>
+          {row.recordingUrl && (
+            <a
+              href={row.recordingUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="mt-1 inline-flex items-center gap-1 text-[11px] text-brand-dark hover:underline"
+            >
+              Recording <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
         </div>
       </div>
 
@@ -316,7 +314,7 @@ function CallDetailsPanel({
   const emptyText = isSummary ? "Summary not yet available." : "Transcript not yet available.";
 
   return (
-    <div className="ml-10 mt-3 rounded-lg border border-court-border bg-court-surface-subtle/40 p-2 text-xs text-court-fg">
+    <div className="ml-7 mt-3 overflow-hidden rounded-lg border border-court-border bg-court-surface-subtle/40 p-2 text-xs text-court-fg">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex rounded-md border border-court-border bg-court-surface p-0.5">
           <CallDetailTab
@@ -350,7 +348,7 @@ function CallDetailsPanel({
       </div>
       <div
         className={cn(
-          "rounded-md border px-3 py-2",
+          "overflow-hidden rounded-md border px-3 py-2",
           isSummary
             ? "border-brand/20 bg-brand-tint/20"
             : "border-court-border bg-court-surface",
@@ -358,19 +356,49 @@ function CallDetailsPanel({
       >
         <div
           className={cn(
-            "mb-1 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider",
+            "mb-2 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider",
             isSummary ? "text-brand-dark" : "text-court-fg-muted",
           )}
         >
           <Icon className="h-2.5 w-2.5" /> {title}
         </div>
         {activeText ? (
-          <div className="whitespace-pre-wrap">{activeText}</div>
+          isSummary ? (
+            <SummaryBullets text={activeText} />
+          ) : (
+            <div className="max-h-56 overflow-y-auto whitespace-pre-wrap break-words leading-relaxed">
+              {activeText}
+            </div>
+          )
         ) : (
           <div className="italic text-court-fg-muted">{emptyText}</div>
         )}
       </div>
     </div>
+  );
+}
+
+function SummaryBullets({ text }: { text: string }) {
+  const sentences = text
+    .trim()
+    .split(/\.\s+(?=[A-Z])/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 4);
+  if (sentences.length <= 1) {
+    return <div className="whitespace-pre-wrap break-words leading-relaxed">{text}</div>;
+  }
+  return (
+    <ul className="space-y-1.5">
+      {sentences.map((sentence, i) => {
+        const hasEndPunct = /[.!?]$/.test(sentence);
+        return (
+          <li key={i} className="flex gap-2 leading-relaxed">
+            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-brand-dark/50" />
+            <span className="break-words">{sentence}{hasEndPunct ? "" : "."}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
