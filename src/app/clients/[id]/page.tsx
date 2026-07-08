@@ -49,6 +49,72 @@ type LocationJson = {
   country?: string | null;
 } | null;
 
+type ClientNoteEntry = {
+  timestamp: string | null;
+  body: string;
+};
+
+const CLIENT_NOTE_STAMP_RE = /\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]\s*/g;
+
+function cleanClientNoteBody(value: string): string {
+  return value
+    .replace(/(^|\n)\s*-{3,}\s*(?=\n|$)/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function splitClientNotes(notes: string | null | undefined): ClientNoteEntry[] {
+  const raw = notes?.trim();
+  if (!raw) return [];
+
+  const matches = Array.from(raw.matchAll(CLIENT_NOTE_STAMP_RE));
+  if (matches.length === 0) return [{ timestamp: null, body: raw }];
+
+  const entries: ClientNoteEntry[] = [];
+  const leading = cleanClientNoteBody(raw.slice(0, matches[0].index ?? 0));
+  if (leading) entries.push({ timestamp: null, body: leading });
+
+  for (let i = 0; i < matches.length; i += 1) {
+    const match = matches[i];
+    const next = matches[i + 1];
+    const start = (match.index ?? 0) + match[0].length;
+    const end = next?.index ?? raw.length;
+    const body = cleanClientNoteBody(raw.slice(start, end));
+    if (body) entries.push({ timestamp: match[1] ?? null, body });
+  }
+
+  return entries;
+}
+
+function ClientNotesList({ notes }: { notes: string | null | undefined }) {
+  const entries = splitClientNotes(notes);
+  if (entries.length === 0) {
+    return (
+      <p className="text-sm text-court-fg-muted">
+        No notes yet for this client.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {entries.map((entry, index) => (
+        <article
+          key={`${entry.timestamp ?? "legacy"}-${index}`}
+          className="rounded-lg border border-court-border bg-court-surface-subtle/50 px-4 py-3 shadow-sm"
+        >
+          <div className="mb-2 border-b border-court-border/70 pb-2 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+            {entry.timestamp ?? "Note"}
+          </div>
+          <div className="whitespace-pre-wrap text-sm leading-relaxed text-court-fg">
+            {entry.body}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 export default async function ClientDetailPage({
   params,
   searchParams,
@@ -680,15 +746,7 @@ export default async function ClientDetailPage({
           </header>
           <div className="space-y-4 p-5">
             {canWrite && <AddClientNote clientId={client.id} />}
-            {client.notes ? (
-              <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-court-fg">
-                {client.notes}
-              </pre>
-            ) : (
-              <p className="text-sm text-court-fg-muted">
-                No notes yet for this client.
-              </p>
-            )}
+            <ClientNotesList notes={client.notes} />
           </div>
         </section>
       ) : tab === "activity" ? (

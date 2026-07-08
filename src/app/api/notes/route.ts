@@ -22,7 +22,8 @@ export const dynamic = "force-dynamic";
 //     stays consistent.
 //   - Client: the Notes tab renders Client.notes as a <pre> block,
 //     so we keep the original "[YYYY-MM-DD HH:MM] body" line-prefix
-//     append against the text column.
+//     append against the text column, with a visible separator between
+//     entries for older raw-text readers.
 
 type Body = {
   entityType?: "candidate" | "client";
@@ -113,7 +114,7 @@ export async function POST(req: NextRequest) {
   if (!target) {
     return NextResponse.json({ error: "Client not found" }, { status: 404 });
   }
-  const next = target.notes ? `${stamped}\n${target.notes}` : stamped;
+  const next = target.notes ? `${stamped}\n\n---\n\n${target.notes}` : stamped;
   await prisma.client.update({
     where: { id: target.id },
     data: { notes: next },
