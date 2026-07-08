@@ -55,6 +55,20 @@ type ClientNoteEntry = {
 };
 
 const CLIENT_NOTE_STAMP_RE = /\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]\s*/g;
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 
 function cleanClientNoteBody(value: string): string {
   return value
@@ -86,6 +100,40 @@ function splitClientNotes(notes: string | null | undefined): ClientNoteEntry[] {
   return entries;
 }
 
+function ordinalSuffix(day: number): string {
+  const mod100 = day % 100;
+  if (mod100 >= 11 && mod100 <= 13) return "th";
+  switch (day % 10) {
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
+  }
+}
+
+function formatClientNoteTimestamp(timestamp: string | null): string {
+  if (!timestamp) return "Note";
+  const match = timestamp.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
+  if (!match) return timestamp;
+
+  const [, yearRaw, monthRaw, dayRaw, hourRaw, minuteRaw] = match;
+  const monthIndex = Number(monthRaw) - 1;
+  const day = Number(dayRaw);
+  const hour24 = Number(hourRaw);
+  const monthName = MONTH_NAMES[monthIndex];
+  if (!monthName || day < 1 || day > 31 || hour24 < 0 || hour24 > 23) {
+    return timestamp;
+  }
+
+  const hour12 = hour24 % 12 || 12;
+  const meridiem = hour24 < 12 ? "AM" : "PM";
+  return `${monthName} ${day}${ordinalSuffix(day)}, ${yearRaw} at ${hour12}:${minuteRaw} ${meridiem}`;
+}
+
 function ClientNotesList({ notes }: { notes: string | null | undefined }) {
   const entries = splitClientNotes(notes);
   if (entries.length === 0) {
@@ -103,8 +151,8 @@ function ClientNotesList({ notes }: { notes: string | null | undefined }) {
           key={`${entry.timestamp ?? "legacy"}-${index}`}
           className="rounded-lg border border-court-border bg-court-surface-subtle/50 px-4 py-3 shadow-sm"
         >
-          <div className="mb-2 border-b border-court-border/70 pb-2 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
-            {entry.timestamp ?? "Note"}
+          <div className="mb-2 border-b border-court-border/70 pb-2 text-[12px] font-semibold text-court-fg-muted">
+            {formatClientNoteTimestamp(entry.timestamp)}
           </div>
           <div className="whitespace-pre-wrap text-sm leading-relaxed text-court-fg">
             {entry.body}
