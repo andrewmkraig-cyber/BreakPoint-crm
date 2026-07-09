@@ -777,6 +777,17 @@ export function MailComposer({
     immediatelyRender: false,
   });
 
+  const handleSubjectKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== "Tab" || event.shiftKey || event.defaultPrevented) return;
+      if (!editor) return;
+      event.preventDefault();
+      lastFocused.current = "body";
+      editor.commands.focus("end");
+    },
+    [editor],
+  );
+
   useEffect(() => {
     return () => {
       editor?.destroy();
@@ -1613,6 +1624,7 @@ export function MailComposer({
             ref={subjectRef}
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
+            onKeyDown={handleSubjectKeyDown}
             onFocus={() => (lastFocused.current = "subject")}
             containerClassName="min-w-0 flex-1"
           />
