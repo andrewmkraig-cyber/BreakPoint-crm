@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import Anthropic from '@anthropic-ai/sdk'
 import { buildClientContext, buildCandidateContext, buildJobContext } from '@/lib/ai-workspace-context'
+import { buildAceWideContextBlock } from '@/lib/ai-workspace-ace-context'
 import { getClientByIdentifier } from '@/lib/clients'
 import { getCandidateByIdentifier } from '@/lib/candidates'
 import { getJobByIdentifier } from '@/lib/jobs'
@@ -100,6 +101,20 @@ export async function POST(req: NextRequest) {
   // the end of the system prompt.
   const org = await getCurrentOrg()
 
+  // Give every Game Plan surface a query-aware Ace-wide lookup. The
+  // base context below is record-specific; this block lets candidate,
+  // client, and job workspaces answer follow-ups about other clients,
+  // jobs, candidates, contacts, pipeline rows, and recent activity that
+  // live elsewhere in Ace. Include the recent thread text so vague
+  // follow-ups like "the client I'm talking about" can resolve a name
+  // mentioned in the previous turn.
+  const recentMessagesForAceContext = await prisma.aiWorkspaceMessage.findMany({
+    where: { entityType, entityId },
+    orderBy: { createdAt: 'desc' },
+    take: 8,
+    select: { role: true, content: true },
+  })
+
   // Pre-resolve to a cuid since slugFor still emits legacyRfId for
   // RF-imported clients (and the existing client page even posts
   // String(legacyRfId) directly). The build*Context fns are cuid-only;
@@ -117,6 +132,14 @@ export async function POST(req: NextRequest) {
         ? await buildJobContext(resolvedCuid)
         : await buildCandidateContext(resolvedCuid)
     : `You are an AI recruiting assistant for BreakPoint Talent. The ${entityType} referenced was not found.`
+  const aceWideContextBlock = await buildAceWideContextBlock({
+    organizationId: org.id,
+    entityType,
+    entityId,
+    resolvedEntityId: resolvedCuid,
+    userMessage,
+    recentMessages: recentMessagesForAceContext.reverse(),
+  })
 
   // Phase 3: pull the last 5 tagged Gmail threads for this entity and
   // surface their last-message subject/from/snippet to Claude. Wrapped
@@ -184,7 +207,7 @@ export async function POST(req: NextRequest) {
   // forbid the hedge phrasing.
   const today = new Date().toISOString().slice(0, 10);
   const systemPrompt =
-    baseSystemPrompt +
+    [baseSystemPrompt, aceWideContextBlock].filter(Boolean).join("\n\n") +
     "\n\n" +
     `TODAY: ${today}.\n\n` +
     "FRESHNESS RULES (mandatory):\n" +
