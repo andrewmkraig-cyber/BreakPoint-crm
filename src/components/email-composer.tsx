@@ -108,10 +108,9 @@ export type EmailComposerProps = {
   showTemplatePicker?: boolean;
   resolveTemplate?: ResolveTemplateFn;
   templateFilter?: (t: ActiveTemplateSummary) => boolean;
-  // When provided, the To / Cc text inputs are swapped for contact pickers:
-  // To is a single-select dropdown, Cc is a multi-select chip list. Useful
-  // for scoped flows (submittal) where recipients must come from a curated
-  // client contact list.
+  // When provided, the To / Cc / Bcc rows use the shared chip typeahead,
+  // seeded from a curated contact list. Useful for scoped flows
+  // (submittal) while still allowing free-typed addresses.
   recipientOptions?: ContactOption[];
   // When provided, the To field becomes a multi-recipient pick-or-type chip
   // input (the same ContactComboMulti used for Cc/Bcc) seeded from these
@@ -920,21 +919,24 @@ export function EmailComposer({
               </Row>
               {showCcField && (
                 <Row label="Cc">
-                  <ContactMultiPicker value={cc} onChange={setCc} options={recipientOptions} />
+                  <ContactComboMulti
+                    value={cc}
+                    onChange={setCc}
+                    options={effectiveCcOptions ?? recipientOptions}
+                    pinned={ccBccPinned}
+                    placeholder="Pick a contact or type an email…"
+                  />
                 </Row>
               )}
               {showBccField && (
                 <Row label="Bcc">
-                  {effectiveBccOptions && effectiveBccOptions.length > 0 ? (
-                    <ContactComboMulti
-                      value={bcc}
-                      onChange={setBcc}
-                      options={effectiveBccOptions}
-                      pinned={ccBccPinned}
-                    />
-                  ) : (
-                    <Input value={bcc} onChange={setBcc} />
-                  )}
+                  <ContactComboMulti
+                    value={bcc}
+                    onChange={setBcc}
+                    options={effectiveBccOptions}
+                    pinned={ccBccPinned}
+                    placeholder="Pick a contact or type an email…"
+                  />
                 </Row>
               )}
             </>
@@ -957,30 +959,24 @@ export function EmailComposer({
                 <>
                   {showCcField && (
                     <Row label="Cc">
-                      {effectiveCcOptions && effectiveCcOptions.length > 0 ? (
-                        <ContactComboMulti
-                          value={cc}
-                          onChange={setCc}
-                          options={effectiveCcOptions}
-                          pinned={ccBccPinned}
-                        />
-                      ) : (
-                        <Input value={cc} onChange={setCc} />
-                      )}
+                      <ContactComboMulti
+                        value={cc}
+                        onChange={setCc}
+                        options={effectiveCcOptions ?? []}
+                        pinned={ccBccPinned}
+                        placeholder="Pick a contact or type an email…"
+                      />
                     </Row>
                   )}
                   {showBccField && (
                     <Row label="Bcc">
-                      {effectiveBccOptions && effectiveBccOptions.length > 0 ? (
-                        <ContactComboMulti
-                          value={bcc}
-                          onChange={setBcc}
-                          options={effectiveBccOptions}
-                          pinned={ccBccPinned}
-                        />
-                      ) : (
-                        <Input value={bcc} onChange={setBcc} />
-                      )}
+                      <ContactComboMulti
+                        value={bcc}
+                        onChange={setBcc}
+                        options={effectiveBccOptions}
+                        pinned={ccBccPinned}
+                        placeholder="Pick a contact or type an email…"
+                      />
                     </Row>
                   )}
                 </>
@@ -1300,112 +1296,11 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Input({
-  value,
-  onChange,
-  placeholder,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className="w-full rounded-md border border-transparent bg-transparent px-0 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-brand focus:outline-none"
-    />
-  );
-}
-
 function confirmReplace(current: string, incoming: string): boolean {
   if (typeof window === "undefined") return true;
   if (!current.trim()) return true;
   if (current.trim() === incoming.trim()) return false;
   return window.confirm("Replace the current text with the template?");
-}
-
-function ContactMultiPicker({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: ContactOption[];
-}) {
-  const [open, setOpen] = useState(false);
-  const selected = new Set(
-    value
-      .split(/[,;\n]+/)
-      .map((s) => s.trim())
-      .filter(Boolean),
-  );
-
-  function toggle(email: string) {
-    if (!email) return;
-    const next = new Set(selected);
-    if (next.has(email)) next.delete(email);
-    else next.add(email);
-    onChange(Array.from(next).join(", "));
-  }
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-2 rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-left text-sm text-court-fg hover:border-brand/40"
-      >
-        <span className="truncate">
-          {selected.size === 0 ? (
-            <span className="text-court-fg-muted">Pick contacts…</span>
-          ) : (
-            Array.from(selected).join(", ")
-          )}
-        </span>
-        <ChevronDown className="h-3.5 w-3.5 text-court-fg-muted" />
-      </button>
-      {open && (
-        <>
-          {/* z-[60]/z-[70] sits ABOVE the modal backdrop's z-50 so a
-              click outside the dropdown closes only the dropdown — its
-              click never reaches the modal backdrop's onClose handler.
-              Bubbling still goes up the React tree, where the modal
-              panel's onClick={stopPropagation} prevents the modal
-              from closing on the same click. */}
-          <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full z-[70] mt-1 w-full overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
-            <ul className="max-h-64 overflow-y-auto py-1">
-              {options.length === 0 && (
-                <li className="px-3 py-2 text-xs text-court-fg-muted">No contacts on file.</li>
-              )}
-              {options.map((c) => (
-                <li key={c.id}>
-                  <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-court-fg hover:bg-court-brand-tint">
-                    <input
-                      type="checkbox"
-                      checked={c.email ? selected.has(c.email) : false}
-                      onChange={() => toggle(c.email)}
-                      disabled={!c.email}
-                      className="h-3.5 w-3.5 rounded border-court-border text-brand focus:ring-brand/30"
-                    />
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate">{c.name}</span>
-                      <span className="truncate text-[11px] text-court-fg-muted">
-                        {c.email || "No email on file"}
-                      </span>
-                    </span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </>
-      )}
-    </div>
-  );
 }
 
 // Cc/Bcc picker that shows a known-contact dropdown, a pinned always-on-top
