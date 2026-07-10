@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 
+import { formatExpectedCompensation } from "@/lib/candidate-compensation";
 import { prisma } from "@/lib/prisma";
 import { formatLocation } from "@/lib/utils";
 
@@ -1084,12 +1085,7 @@ function formatCompAmount(amount: number, type: string | null): string {
 }
 
 function formatExpectedSalary(value: Prisma.JsonValue | null): string {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
-  const raw = value as Record<string, unknown>;
-  const n = typeof raw.number === "number" ? raw.number : null;
-  if (n == null || !Number.isFinite(n)) return "";
-  const currency = typeof raw.currency === "string" && raw.currency.trim() ? raw.currency.trim() : "USD";
-  return `${currency} ${n.toLocaleString()}`;
+  return formatExpectedCompensation(value);
 }
 
 function resolveJobDescription(job: {

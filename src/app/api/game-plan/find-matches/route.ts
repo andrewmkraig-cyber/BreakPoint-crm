@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { CLAUDE_MODEL } from "@/lib/claude";
+import { formatExpectedCompensation } from "@/lib/candidate-compensation";
 
 // Game Plan Phase 2 — Find Matches.
 //
@@ -677,16 +678,7 @@ function tokenize(s: string): string[] {
 }
 
 function formatComp(expectedSalary: unknown): string {
-  if (expectedSalary && typeof expectedSalary === "object") {
-    const e = expectedSalary as Record<string, unknown>;
-    const n = typeof e.number === "number" ? e.number : null;
-    const cur = typeof e.currency === "string" ? e.currency : "USD";
-    if (n !== null) {
-      const formatted = n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${n}`;
-      return `${formatted} ${cur === "USD" ? "" : cur}`.trim();
-    }
-  }
-  return "";
+  return formatExpectedCompensation(expectedSalary);
 }
 
 // Build the streaming prompt. Critical instruction: emit one JSON

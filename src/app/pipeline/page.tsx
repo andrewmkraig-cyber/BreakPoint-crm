@@ -31,16 +31,13 @@ import { resolveJobTitle } from "@/lib/job-title";
 import { formatLocation } from "@/lib/utils";
 import { geocodePill } from "@/lib/geocode";
 import { haversineMiles, formatMiles, isPreciseGeocodeQuery } from "@/lib/distance";
+import { formatExpectedCompensationFull } from "@/lib/candidate-compensation";
 
-// Local helper for parsing the Json shape Prisma stores for
-// `Candidate.expectedSalary` (`{ number, currency }`). Returns null when
-// the blob is missing/zero so the Salary cell renders fully blank per
-// Item 2 of the column-standardization spec.
-function extractExpectedSalaryNumber(raw: unknown): number | null {
-  if (!raw || typeof raw !== "object") return null;
-  const n = (raw as { number?: unknown }).number;
-  if (typeof n !== "number" || !Number.isFinite(n) || n <= 0) return null;
-  return n;
+// Local wrapper for the Json shape Prisma stores for Candidate.expectedSalary.
+// Returns a blank string when missing/zero so the Salary cell renders fully
+// blank per Item 2 of the column-standardization spec.
+function formatExpectedSalaryDisplay(raw: unknown): string {
+  return formatExpectedCompensationFull(raw);
 }
 
 // Attaches the "(X.X mi)" Location-cell sub-line to a row set in place.
@@ -560,8 +557,8 @@ export default async function PipelinePage({
         ? rfEntry?.candidateLocation ?? ""
         : formatLocation(aceCandidate?.location ?? null);
       const candidateExpectedSalary = isRfCandidate
-        ? rfEntry?.candidateExpectedSalary ?? null
-        : extractExpectedSalaryNumber(aceCandidate?.expectedSalary ?? null);
+        ? rfEntry?.candidateExpectedSalary ?? ""
+        : formatExpectedSalaryDisplay(aceCandidate?.expectedSalary ?? null);
       const jobTitle = isRfJob ? rfEntry?.jobTitle ?? "" : aceJob?.title ?? "";
       const clientName = isRfJob ? rfEntry?.clientName ?? "" : aceJob?.client?.name ?? "";
       // Owner of this row's client: prefer the Placement.clientId cuid
@@ -840,7 +837,7 @@ export default async function PipelinePage({
           candidateTitle: c.current_designation ?? "",
           candidateEmployer: c.current_organization ?? "",
           candidateLocation: formatLocation(c.location ?? null),
-          candidateExpectedSalary: extractExpectedSalaryNumber(c.expected_salary),
+          candidateExpectedSalary: formatExpectedSalaryDisplay(c.expected_salary),
           jobId: j.job_id,
           jobTitle: desc.title,
           jobLocation: desc.location,
@@ -881,7 +878,7 @@ export default async function PipelinePage({
           candidateTitle: cand?.current_designation ?? "",
           candidateEmployer: cand?.current_organization ?? "",
           candidateLocation: formatLocation(cand?.location ?? null),
-          candidateExpectedSalary: extractExpectedSalaryNumber(cand?.expected_salary),
+          candidateExpectedSalary: formatExpectedSalaryDisplay(cand?.expected_salary),
           jobId: rowJobId,
           jobTitle: desc.title,
           jobLocation: desc.location,
@@ -913,7 +910,7 @@ export default async function PipelinePage({
           candidateTitle: ace?.currentDesignation ?? "",
           candidateEmployer: ace?.currentOrganization ?? "",
           candidateLocation: formatLocation(ace?.location ?? null),
-          candidateExpectedSalary: extractExpectedSalaryNumber(ace?.expectedSalary ?? null),
+          candidateExpectedSalary: formatExpectedSalaryDisplay(ace?.expectedSalary ?? null),
           jobId: rowJobId,
           jobTitle: desc.title,
           jobLocation: desc.location,
@@ -961,7 +958,7 @@ export default async function PipelinePage({
           candidateTitle: cand?.current_designation ?? "",
           candidateEmployer: cand?.current_organization ?? "",
           candidateLocation: formatLocation(cand?.location ?? null),
-          candidateExpectedSalary: extractExpectedSalaryNumber(cand?.expected_salary),
+          candidateExpectedSalary: formatExpectedSalaryDisplay(cand?.expected_salary),
           jobId: rowJobId,
           jobTitle: desc.title,
           jobLocation: desc.location,
@@ -989,7 +986,7 @@ export default async function PipelinePage({
           candidateTitle: ace?.currentDesignation ?? "",
           candidateEmployer: ace?.currentOrganization ?? "",
           candidateLocation: formatLocation(ace?.location ?? null),
-          candidateExpectedSalary: extractExpectedSalaryNumber(ace?.expectedSalary ?? null),
+          candidateExpectedSalary: formatExpectedSalaryDisplay(ace?.expectedSalary ?? null),
           jobId: rowJobId,
           jobTitle: desc.title,
           jobLocation: desc.location,

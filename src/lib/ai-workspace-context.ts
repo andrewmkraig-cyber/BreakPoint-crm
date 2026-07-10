@@ -10,6 +10,7 @@ import { canonicalStage } from "@/lib/rf-payload-shapes";
 import { getResumeBytes } from "@/lib/resume-bytes";
 import { formatInterviewWhen } from "@/lib/interview-format";
 import { DEFAULT_INTERVIEW_TIMEZONE } from "@/lib/timezones";
+import { formatExpectedCompensation } from "@/lib/candidate-compensation";
 
 // Builds the system prompt for the per-entity AI workspace and Claude
 // Panel chats. Every read is Neon-cuid-keyed: RecruiterFlow was retired
@@ -514,14 +515,7 @@ export async function buildCandidateContext(
   const skills = candidate.skills ?? [];
   const notes = candidate.notes ?? "";
 
-  let compTarget = "";
-  const expectedSalary = candidate.expectedSalary as {
-    number?: number | null;
-    currency?: string | null;
-  } | null;
-  if (expectedSalary?.number != null) {
-    compTarget = `${expectedSalary.currency ?? "USD"} ${expectedSalary.number.toLocaleString()}`;
-  }
+  const compTarget = formatExpectedCompensation(candidate.expectedSalary);
 
   const resumeText = assembleResumeFromAce(candidate);
   const uploadedResumeText = await extractResumeTextForCandidate(

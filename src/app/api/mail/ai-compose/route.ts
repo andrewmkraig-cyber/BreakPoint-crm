@@ -12,6 +12,7 @@ import {
   convertInlineMarkdownToHtml,
   markdownishTextToEmailHtml,
 } from "@/lib/ai-output-formatting";
+import { formatExpectedCompensation } from "@/lib/candidate-compensation";
 
 export const dynamic = "force-dynamic";
 // Claude Opus on a moderate context can take 5–15s. 60s leaves room
@@ -472,12 +473,7 @@ function truncate(s: string, max: number): string {
 }
 
 function formatExpectedSalary(value: unknown): string {
-  if (!value || typeof value !== "object") return "";
-  const v = value as { number?: unknown; currency?: unknown };
-  const n = typeof v.number === "number" ? v.number : null;
-  const currency = typeof v.currency === "string" && v.currency.trim() ? v.currency.trim() : "USD";
-  if (n == null || !Number.isFinite(n) || n <= 0) return "";
-  return `${currency} ${n.toLocaleString("en-US")}`;
+  return formatExpectedCompensation(value);
 }
 
 function formatSalaryBand(

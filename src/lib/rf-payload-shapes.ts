@@ -7,6 +7,7 @@
 // `raw` JSON columns that Phase 0 stashed in Neon. Those types and
 // helpers aren't "RF integration code" any more — they're Neon
 // payload shapes. Filename reflects that.
+import { formatExpectedCompensationFull } from "@/lib/candidate-compensation";
 import { formatLocation } from "@/lib/utils";
 
 export type RFLocation = {
@@ -419,11 +420,10 @@ export type PipelineRow = {
   // "Current Title/Employer" column).
   candidateEmployer: string;
   candidateLocation: string;
-  // Candidate's expected salary as a plain number (USD assumed for the
-  // pipeline display). Pulled from RFCandidate.expected_salary.number;
-  // null when the blob is missing/zero so the Salary cell can render
-  // fully blank per Item 2 of the column-standardization spec.
-  candidateExpectedSalary: number | null;
+  // Candidate's expected comp as a display string. Blank when the blob is
+  // missing/zero so the Salary cell can render fully blank per Item 2 of the
+  // column-standardization spec.
+  candidateExpectedSalary: string;
 };
 
 function candidateTagSet(c: RFCandidate): Set<string> {
@@ -469,20 +469,13 @@ export function flattenPipeline(candidates: RFCandidate[]): PipelineRow[] {
         candidateEmployer: c.current_organization ?? "",
         candidateLocation: locationLabel ?? "",
         // RFCandidate doesn't declare expected_salary in its TS interface
-        // (the [key: string]: unknown index signature is the escape hatch),
-        // but RF returns it as `{ number, currency }`. Read defensively.
-        candidateExpectedSalary: extractExpectedSalaryNumber(c.expected_salary),
+        // (the [key: string]: unknown index signature is the escape hatch).
+        // Read defensively and keep hourly targets labeled for the pipeline.
+        candidateExpectedSalary: formatExpectedCompensationFull(c.expected_salary),
       });
     }
   }
   return rows;
-}
-
-function extractExpectedSalaryNumber(raw: unknown): number | null {
-  if (!raw || typeof raw !== "object") return null;
-  const n = (raw as { number?: unknown }).number;
-  if (typeof n !== "number" || !Number.isFinite(n) || n <= 0) return null;
-  return n;
 }
 
 function getCustomField(fields: RFClient["custom_fields"] | RFJob["custom_fields"], match: (name: string) => boolean): unknown {

@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { formatLocation } from "@/lib/utils";
 import { parseBooleanQuery, flattenBooleanQuery } from "@/lib/search/boolean-query";
 import { geocodePill, type GeoHit } from "@/lib/geocode";
+import { formatExpectedCompensationFull } from "@/lib/candidate-compensation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,12 +34,7 @@ function composeName(first: string | null, last: string | null): string {
 }
 
 function formatSalary(raw: unknown): string {
-  if (!raw || typeof raw !== "object") return "—";
-  const n = (raw as { number?: unknown }).number;
-  if (typeof n !== "number" || !Number.isFinite(n) || n <= 0) return "—";
-  const ccy = (raw as { currency?: unknown }).currency;
-  const symbol = ccy === "USD" || !ccy ? "$" : `${String(ccy)} `;
-  return `${symbol}${n.toLocaleString()}`;
+  return formatExpectedCompensationFull(raw) || "—";
 }
 
 function relativeTime(d: Date): string {

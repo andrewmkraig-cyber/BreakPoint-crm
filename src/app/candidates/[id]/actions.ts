@@ -48,7 +48,11 @@ export type CandidatePatch = {
   source?: string | null;
   candidate_summary?: string;
   location?: { location?: string; city?: string; state?: string; country?: string } | string;
-  expected_salary?: { number?: number | null; currency?: string | null } | null;
+  expected_salary?: {
+    number?: number | null;
+    currency?: string | null;
+    type?: "salary" | "hourly" | null;
+  } | null;
   skills?: string[];
   notes?: Array<{ id?: number; note: string; added_time?: string; added_by?: { name?: string } | null }>;
   experience?: Array<Record<string, unknown>>;

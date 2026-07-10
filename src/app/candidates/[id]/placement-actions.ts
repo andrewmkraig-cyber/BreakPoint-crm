@@ -26,6 +26,7 @@ import { fireTemplatedEmail, type FireResult } from "@/lib/templated-email";
 import { fireTriggerAndLog } from "@/lib/trigger-fire";
 import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
 import { extractCandidateFields } from "@/lib/candidate-fields";
+import { formatExpectedCompensation } from "@/lib/candidate-compensation";
 import { formatLocation } from "@/lib/utils";
 import { formatCompensation, type RFJob } from "@/lib/rf-payload-shapes";
 import { createInvoiceForPlacement, resolvePlacementInvoiceContacts } from "@/lib/invoices";
@@ -1501,12 +1502,7 @@ export async function generateSubmittal(input: GenerateSubmittalInput): Promise<
     if (!c) return { ok: false, error: "Candidate not found." };
     const { firstName, lastName } = extractCandidateFields(c);
 
-    const expectedSalary = (c.expected_salary ?? null) as
-      | { number?: number | null; currency?: string | null }
-      | null;
-    const salaryStr = expectedSalary?.number
-      ? `${expectedSalary.currency ?? "USD"} ${expectedSalary.number.toLocaleString()}`
-      : "";
+    const salaryStr = formatExpectedCompensation(c.expected_salary ?? null);
 
     const experienceSummary = summarizeExperienceForSubmittal(c.experience);
     const notes = summarizeNotesForSubmittal(c.notes);
@@ -1828,12 +1824,7 @@ export async function generateSubmittalEmailBody(args: {
     const c = await getRfCandidateByRfId(args.candidateRfId);
     if (!c) return { ok: false, error: "Candidate not found." };
     const { firstName, lastName } = extractCandidateFields(c);
-    const expectedSalary = (c.expected_salary ?? null) as
-      | { number?: number | null; currency?: string | null }
-      | null;
-    const salaryStr = expectedSalary?.number
-      ? `${expectedSalary.currency ?? "USD"} ${expectedSalary.number.toLocaleString()}`
-      : "";
+    const salaryStr = formatExpectedCompensation(c.expected_salary ?? null);
     const experienceSummary = summarizeExperience(c.experience);
     const notes = summarizeNotes(c.notes);
     const locationLabel = formatLocation(c.location);

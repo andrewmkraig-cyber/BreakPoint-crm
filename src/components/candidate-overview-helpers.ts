@@ -5,9 +5,15 @@
 // a client reference, which threw a 500 when page.tsx invoked
 // toExpectedSalary during SSR.
 
+import {
+  getExpectedCompensationType,
+  type ExpectedCompensationType,
+} from "@/lib/candidate-compensation";
+
 export type CandidateCompactOverviewExpectedSalary = {
   number: number | null;
   currency: string | null;
+  type: ExpectedCompensationType;
 };
 
 // Coerce the loose JsonValue / RFCandidate.expected_salary blob shape
@@ -30,5 +36,9 @@ export function toExpectedSalary(
       ? obj.currency.trim()
       : null;
   if (num == null && !currency) return null;
-  return { number: num != null && Number.isFinite(num) ? num : null, currency };
+  return {
+    number: num != null && Number.isFinite(num) ? num : null,
+    currency,
+    type: getExpectedCompensationType(obj),
+  };
 }

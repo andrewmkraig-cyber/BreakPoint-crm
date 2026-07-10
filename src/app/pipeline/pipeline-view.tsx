@@ -153,13 +153,13 @@ export type PipelineRow = {
   // standardization pass. Employer is the candidate's CURRENT employer
   // (not the job they applied to). Location is "City, ST" via the shared
   // formatLocation helper. ExpectedSalary is the candidate's expectation
-  // ({ number, currency }.number); null = blank cell per Item 2 of the
+  // as a display string; "" = blank cell per Item 2 of the
   // spec ("if unknown, render the cell fully blank"). Verified mirrors
   // the /clients + /jobs `isVerified` signal so the badge shows next to
   // the Client cell when the client has a signed agreement on file.
   candidateEmployer: string;
   candidateLocation: string;
-  candidateExpectedSalary: number | null;
+  candidateExpectedSalary: string;
   jobId: number | string;
   jobTitle: string;
   clientName: string;
@@ -201,7 +201,7 @@ export type AppliedRow = {
   candidateTitle: string;
   candidateEmployer: string;
   candidateLocation: string;
-  candidateExpectedSalary: number | null;
+  candidateExpectedSalary: string;
   jobId: number | string;
   jobTitle: string;
   jobLocation: string;
@@ -234,7 +234,7 @@ export type KeptRow = {
   candidateTitle: string;
   candidateEmployer: string;
   candidateLocation: string;
-  candidateExpectedSalary: number | null;
+  candidateExpectedSalary: string;
   jobId: number | string;
   jobTitle: string;
   jobLocation: string;
@@ -312,7 +312,7 @@ type UniformLeftRowShape = {
   candidateTitle: string;
   candidateEmployer: string;
   candidateLocation: string;
-  candidateExpectedSalary: number | null;
+  candidateExpectedSalary: string;
   jobId: number | string;
   jobTitle: string;
   clientName: string;
@@ -351,13 +351,10 @@ function VerifiedShield() {
 // Candidate expected salary formatter. Returns the empty string when
 // the value is missing so the Salary cell renders fully blank per
 // Item 2 of the column-standardization spec ("if unknown, render the
-// cell fully blank. No dash, no placeholder."). USD assumed — every
-// pipeline candidate today carries USD; non-USD currencies fall through
-// to the same "$" prefix because the pipeline display does not
-// distinguish currencies (the placement-side cells do, via formatMoney).
-function formatExpectedSalary(n: number | null): string {
-  if (!n || !Number.isFinite(n) || n <= 0) return "";
-  return `$${n.toLocaleString()}`;
+// cell fully blank. No dash, no placeholder."). Values arrive already
+// formatted server-side so hourly targets can keep their /hr suffix.
+function formatExpectedSalary(value: string | null | undefined): string {
+  return value?.trim() ?? "";
 }
 
 // Six uniform LEFT header cells for the main pipeline table. When sort

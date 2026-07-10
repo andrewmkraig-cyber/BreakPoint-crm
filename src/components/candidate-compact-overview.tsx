@@ -27,8 +27,12 @@ import {
   INPUT_FRAME_RECT_CLASS,
   INPUT_CONTROL_CLASS,
 } from "@/components/ui/input";
-import { MaskedCurrencyInput } from "@/components/ui/masked-currency-input";
 import { LEAD_SOURCES } from "@/lib/lead-sources";
+import {
+  formatExpectedCompensation,
+  getExpectedCompensationType,
+  type ExpectedCompensationType,
+} from "@/lib/candidate-compensation";
 import { cn, formatLocation } from "@/lib/utils";
 import {
   composeCandidateLocation,
@@ -128,6 +132,9 @@ export function CandidateCompactOverview({
   const [linkedinDraft, setLinkedinDraft] = useState(linkedinSaved);
   const [sourceDraft, setSourceDraft] = useState(sourceSaved);
   const [compDraft, setCompDraft] = useState<string>(formatCompForEdit(compSaved));
+  const [compTypeDraft, setCompTypeDraft] = useState<ExpectedCompensationType>(
+    getExpectedCompensationType(compSaved),
+  );
   const [emailsDraft, setEmailsDraft] = useState<string[]>(emailsSaved);
   const [phonesDraft, setPhonesDraft] = useState<string[]>(phonesSaved);
   const [isSaving, startSave] = useTransition();
@@ -140,6 +147,7 @@ export function CandidateCompactOverview({
     setLinkedinDraft(linkedinSaved);
     setSourceDraft(sourceSaved);
     setCompDraft(formatCompForEdit(compSaved));
+    setCompTypeDraft(getExpectedCompensationType(compSaved));
     setEmailsDraft(emailsSaved);
     setPhonesDraft(phonesSaved);
   }, [editing, titleSaved, employerSaved, locationSaved, linkedinSaved, sourceSaved, compSaved, emailsSaved, phonesSaved]);
@@ -157,6 +165,7 @@ export function CandidateCompactOverview({
     setLinkedinDraft(linkedinSaved);
     setSourceDraft(sourceSaved);
     setCompDraft(formatCompForEdit(compSaved));
+    setCompTypeDraft(getExpectedCompensationType(compSaved));
     // Seed at least one empty row so the recruiter can type straight away.
     setEmailsDraft(emailsSaved.length ? emailsSaved : [""]);
     setPhonesDraft(phonesSaved.length ? phonesSaved : [""]);
@@ -174,10 +183,10 @@ export function CandidateCompactOverview({
     const nextLocation = composeCandidateLocation(locationDraft);
     const nextLinkedin = linkedinDraft.trim();
     const nextSource = sourceDraft.trim();
-    const nextCompNumber = parseCompensation(compDraft.trim());
+    const nextCompNumber = parseCompensation(compDraft.trim(), compTypeDraft);
     const currency = (compSaved?.currency ?? "USD").toUpperCase().slice(0, 3) || "USD";
     const nextComp: CandidateCompactOverviewExpectedSalary | null =
-      nextCompNumber == null ? null : { number: nextCompNumber, currency };
+      nextCompNumber == null ? null : { number: nextCompNumber, currency, type: compTypeDraft };
 
     const patch: Parameters<typeof updateCandidate>[0] = { id: candidateRef };
     let dirty = false;
@@ -203,10 +212,13 @@ export function CandidateCompactOverview({
     }
     const compSavedNumber = compSaved?.number ?? null;
     const compSavedCurrency = compSaved?.currency ?? null;
+    const compSavedType = compSaved ? getExpectedCompensationType(compSaved) : "salary";
     const compNextCurrency = nextComp?.currency ?? null;
+    const compNextType = nextComp ? getExpectedCompensationType(nextComp) : "salary";
     if (
       (nextComp?.number ?? null) !== compSavedNumber ||
-      compNextCurrency !== compSavedCurrency
+      compNextCurrency !== compSavedCurrency ||
+      compNextType !== compSavedType
     ) {
       patch.expected_salary = nextComp;
       dirty = true;
@@ -347,17 +359,16 @@ export function CandidateCompactOverview({
             </Select>
           </EditField>
           <EditField label="Comp">
-            {/* MaskedCurrencyInput wrapped in the shared rect frame +
-                INPUT_CONTROL_CLASS (the editable-helpers currency pattern) so
-                it matches the migrated sibling fields. */}
-            <div className={cn(INPUT_FRAME_RECT_CLASS, "w-full", isSaving && "opacity-60")}>
-              <MaskedCurrencyInput
-                value={compDraft}
-                disabled={isSaving}
-                onChange={setCompDraft}
-                className={cn(INPUT_CONTROL_CLASS, "px-2 py-1 text-sm")}
-              />
-            </div>
+            <CandidateCompEditor
+              value={compDraft}
+              type={compTypeDraft}
+              disabled={isSaving}
+              onValueChange={setCompDraft}
+              onTypeChange={(nextType) => {
+                setCompTypeDraft(nextType);
+                setCompDraft((prev) => sanitizeCompDraft(prev, nextType));
+              }}
+            />
           </EditField>
           <EditField label="Email">
             <StringListField
@@ -649,6 +660,54 @@ function ReadComp({ value }: { value: CandidateCompactOverviewExpectedSalary | n
   return <>{display}</>;
 }
 
+function CandidateCompEditor({
+  value,
+  type,
+  disabled,
+  onValueChange,
+  onTypeChange,
+}: {
+  value: string;
+  type: ExpectedCompensationType;
+  disabled: boolean;
+  onValueChange: (nextValue: string) => void;
+  onTypeChange: (nextType: ExpectedCompensationType) => void;
+}) {
+  return (
+    <div className="grid w-full grid-cols-[minmax(0,1fr)_7.25rem] gap-2">
+      <div className={cn(INPUT_FRAME_RECT_CLASS, "min-w-0 px-2", disabled && "opacity-60")}>
+        <span aria-hidden="true" className="shrink-0 text-sm text-court-fg-muted">
+          $
+        </span>
+        <input
+          type="text"
+          inputMode={type === "hourly" ? "decimal" : "numeric"}
+          value={formatCompDraftForInput(value, type)}
+          disabled={disabled}
+          onChange={(e) => onValueChange(sanitizeCompDraft(e.target.value, type))}
+          placeholder={type === "hourly" ? "25.00" : "120,000"}
+          className={cn(INPUT_CONTROL_CLASS, "min-w-0 px-1 py-1 text-sm")}
+        />
+        {type === "hourly" ? (
+          <span className="ml-1 shrink-0 text-xs font-medium text-court-fg-muted">
+            /hr
+          </span>
+        ) : null}
+      </div>
+      <Select
+        value={type}
+        disabled={disabled}
+        onChange={(e) => onTypeChange(e.target.value === "hourly" ? "hourly" : "salary")}
+        containerClassName="min-w-0"
+        className="px-2 py-1 text-sm font-medium"
+      >
+        <option value="salary">Salary</option>
+        <option value="hourly">Hourly</option>
+      </Select>
+    </div>
+  );
+}
+
 function ReadEmail({
   email,
   candidateRef,
@@ -774,6 +833,9 @@ function formatCompForDisplay(
   value: CandidateCompactOverviewExpectedSalary | null,
 ): string {
   if (!value) return "";
+  if (getExpectedCompensationType(value) === "hourly") {
+    return formatExpectedCompensation(value);
+  }
   const num =
     typeof value.number === "number" && Number.isFinite(value.number)
       ? value.number
@@ -787,24 +849,57 @@ function formatCompForDisplay(
   return currency ? `${formatted} ${currency}` : formatted;
 }
 
-// Seed for the inline Comp input. Returns clean digits only ("120000"),
-// which MaskedCurrencyInput re-formats to "$120,000" for display — so an
-// existing saved comp loads already formatted. parseCompensation strips
-// "$"/commas on save, so the round-trip stays a plain number.
+// Seed for the inline Comp input. Salary drafts stay clean digits
+// ("120000") and render with commas; hourly drafts can carry one decimal.
+// parseCompensation strips "$"/commas on save so persisted comp stays numeric.
 function formatCompForEdit(
   value: CandidateCompactOverviewExpectedSalary | null,
 ): string {
   if (!value?.number || !Number.isFinite(value.number)) return "";
+  if (getExpectedCompensationType(value) === "hourly") {
+    return trimTrailingZeros(value.number);
+  }
   return String(Math.round(value.number));
 }
 
-function parseCompensation(raw: string): number | null {
+function parseCompensation(raw: string, type: ExpectedCompensationType): number | null {
   const trimmed = raw.trim().toLowerCase().replace(/[\s,$]/g, "");
   if (!trimmed) return null;
   const m = trimmed.match(/^(\d+(?:\.\d+)?)([km])?$/);
   if (!m) return null;
   let n = parseFloat(m[1]);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  if (type === "hourly") return Math.round(n * 100) / 100;
   if (m[2] === "k") n *= 1000;
   if (m[2] === "m") n *= 1_000_000;
   return Math.round(n);
+}
+
+function sanitizeCompDraft(raw: string, type: ExpectedCompensationType): string {
+  const cleaned = raw.replace(/[$,\s]/g, "").replace(/-/g, "");
+  if (type === "salary") {
+    return cleaned.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+  }
+  let out = "";
+  let sawDecimal = false;
+  for (const ch of cleaned) {
+    if (/\d/.test(ch)) {
+      out += ch;
+    } else if (ch === "." && !sawDecimal) {
+      out += ch;
+      sawDecimal = true;
+    }
+  }
+  return out.startsWith(".") ? `0${out}` : out;
+}
+
+function formatCompDraftForInput(raw: string, type: ExpectedCompensationType): string {
+  const clean = sanitizeCompDraft(raw, type);
+  if (type === "hourly") return clean;
+  if (!clean) return "";
+  return clean.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function trimTrailingZeros(value: number): string {
+  return value.toFixed(2).replace(/\.?0+$/, "");
 }

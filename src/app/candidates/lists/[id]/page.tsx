@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { formatLocation } from "@/lib/utils";
+import { formatExpectedCompensationFull } from "@/lib/candidate-compensation";
 import { CandidateListDetailView, type ListRow } from "./list-detail-view";
 
 export const dynamic = "force-dynamic";
@@ -14,12 +15,7 @@ function composeName(first: string | null, last: string | null): string {
 }
 
 function formatSalary(raw: unknown): string {
-  if (!raw || typeof raw !== "object") return "—";
-  const n = (raw as { number?: unknown }).number;
-  if (typeof n !== "number" || !Number.isFinite(n) || n <= 0) return "—";
-  const ccy = (raw as { currency?: unknown }).currency;
-  const symbol = ccy === "USD" || !ccy ? "$" : `${String(ccy)} `;
-  return `${symbol}${n.toLocaleString()}`;
+  return formatExpectedCompensationFull(raw) || "—";
 }
 
 function relativeTime(d: Date): string {
