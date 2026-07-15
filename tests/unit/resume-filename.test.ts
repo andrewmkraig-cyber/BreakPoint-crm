@@ -26,4 +26,9 @@ assert.equal(
   "Jennifer Smith",
 );
 
+assert.equal(
+  normalizeCandidateNameForMatching("Louise_Tao_Resume_JGR_Updated.docx"),
+  "Louise Tao",
+);
+
 console.log("resume-filename tests passed");

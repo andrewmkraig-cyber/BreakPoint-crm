@@ -8,104 +8,13 @@ import {
   fetchLinkedInProfileMetadata,
   formatLinkedInMetadataForPrompt,
 } from "@/lib/linkedin-profile-metadata";
+import {
+  extractDocxText,
+  LEGACY_DOC_MIME,
+  looksLikeDocx,
+} from "@/lib/resume-text";
 
-// DOCX mime types and filename suffixes we can extract text from via mammoth.
-const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-const LEGACY_DOC_MIME = "application/msword";
-
-function looksLikeDocx(filename: string, mimeType: string): boolean {
-  if (mimeType === DOCX_MIME) return true;
-  return filename.toLowerCase().endsWith(".docx");
-}
-
-// Marker prefix so callers can distinguish "this .docx has no readable
-// text at all" from other parse failures and surface a targeted UX.
-export const DOCX_UNPARSEABLE_PREFIX = "DOCX_UNPARSEABLE";
-
-// Dynamic imports so mammoth / jszip stay out of the edge bundle and
-// Next's loader doesn't try to inline their runtime-require-based zip
-// plumbing.
-//
-// Complex templates (text boxes, nested tables, drawing-canvas layouts)
-// sometimes produce empty or near-empty output from mammoth. When that
-// happens we fall back to reading the raw XML parts directly and
-// harvesting every <w:t> text node. Only if both paths come up empty do
-// we give up and throw DOCX_UNPARSEABLE.
-export async function extractDocxText(data: Buffer): Promise<string> {
-  const fromMammoth = await tryMammothExtract(data);
-  if (fromMammoth.trim().length >= 50) return fromMammoth;
-
-  const fromRawXml = await tryRawXmlExtract(data);
-  if (fromRawXml.trim().length >= 50) return fromRawXml;
-
-  // Prefer whichever path yielded *any* text over giving up entirely —
-  // Claude can still use a short excerpt if that's all we have.
-  const longer = fromRawXml.length >= fromMammoth.length ? fromRawXml : fromMammoth;
-  if (longer.trim().length > 0) return longer;
-
-  throw new Error(`${DOCX_UNPARSEABLE_PREFIX}: no readable text found in the document.`);
-}
-
-async function tryMammothExtract(data: Buffer): Promise<string> {
-  try {
-    const mammoth = await import("mammoth");
-    const extract = mammoth.extractRawText ?? mammoth.default?.extractRawText;
-    if (typeof extract !== "function") return "";
-    const result = await extract({ buffer: data });
-    return result.value ?? "";
-  } catch {
-    return "";
-  }
-}
-
-async function tryRawXmlExtract(data: Buffer): Promise<string> {
-  try {
-    const JSZipMod = await import("jszip");
-    const JSZip = (JSZipMod.default ?? JSZipMod) as typeof import("jszip");
-    const zip = await JSZip.loadAsync(data);
-    const paths = Object.keys(zip.files).filter((p) => {
-      if (!p.startsWith("word/")) return false;
-      if (!p.endsWith(".xml")) return false;
-      if (p.endsWith(".rels")) return false;
-      if (p === "word/theme/theme1.xml") return false;
-      if (p === "word/styles.xml") return false;
-      if (p === "word/settings.xml") return false;
-      if (p === "word/fontTable.xml") return false;
-      if (p === "word/webSettings.xml") return false;
-      return true;
-    });
-    const parts: string[] = [];
-    for (const path of paths) {
-      const entry = zip.files[path];
-      if (!entry || entry.dir) continue;
-      const xml = await entry.async("string");
-      // Grab every <w:t ...>text</w:t>. Inline fields can break text across
-      // siblings; this still catches each chunk.
-      const re = /<w:t\b[^>]*>([^<]*)<\/w:t>/g;
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(xml)) !== null) {
-        const t = decodeXmlEntities(m[1]);
-        if (t) parts.push(t);
-      }
-      // Paragraph breaks so Claude can see line boundaries.
-      if (xml.includes("</w:p>")) parts.push("\n");
-    }
-    return parts.join(" ").replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").trim();
-  } catch {
-    return "";
-  }
-}
-
-function decodeXmlEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => String.fromCodePoint(parseInt(n, 16)));
-}
+export { DOCX_UNPARSEABLE_PREFIX, extractDocxText } from "@/lib/resume-text";
 
 // Strip any residual markdown Claude may emit even when instructed not to.
 // Implementation lives in @/lib/markdown-to-plain so client-side modules
@@ -304,7 +213,7 @@ export async function parseCandidateFields(params: {
 
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 1500,
+    max_tokens: 4000,
     system:
       "You extract candidate fields from resumes and profiles for a recruiting CRM. " +
       "You return strict JSON matching the schema the user provides. You never fabricate fields. " +

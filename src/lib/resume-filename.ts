@@ -24,6 +24,8 @@ export function normalizeCandidateNameForMatching(raw: string): string {
     .replace(/[_]+/g, " ")
     .trim();
 
+  name = name.replace(/(?:^|[\s_.-]+)(resume|cv|curriculum vitae|profile|applicant|candidate)\b.*$/i, "").trim();
+
   for (let i = 0; i < 3; i++) {
     const next = name.replace(TRAILING_RESUME_LABEL_RE, "").trim();
     if (next === name) break;

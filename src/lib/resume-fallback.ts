@@ -3,6 +3,8 @@
 // leave a field blank than populate it with garbage.
 import type { ParsedCandidate } from "@/lib/claude";
 import { fetchLinkedInProfileMetadata } from "@/lib/linkedin-profile-metadata";
+import { normalizeCandidateNameForMatching } from "@/lib/resume-filename";
+import { extractDocxText, looksLikeDocx } from "@/lib/resume-text";
 import { normalizeToE164 } from "@/lib/rf-payload-shapes";
 
 const EMPTY: ParsedCandidate = {
@@ -32,6 +34,8 @@ export async function fallbackParseCandidate(params: {
   if (resume) {
     if (resume.mimeType === "application/pdf") {
       text = await extractPdfText(resume.data);
+    } else if (looksLikeDocx(resume.filename, resume.mimeType)) {
+      text = await extractDocxText(resume.data);
     } else if (resume.mimeType.startsWith("text/")) {
       text = resume.data.toString("utf-8");
     }
@@ -40,11 +44,11 @@ export async function fallbackParseCandidate(params: {
 
   const result: ParsedCandidate = { ...EMPTY };
 
-  // Name — try pasted text first, then filename.
-  const nameFromFile = resume ? nameFromFilename(resume.filename) : null;
-  if (nameFromFile) {
-    result.first_name = nameFromFile.first;
-    result.last_name = nameFromFile.last;
+  // Name - prefer the resume/header text, then fall back to the filename.
+  const parsedName = nameFromText(text) ?? (resume ? nameFromFilename(resume.filename) : null);
+  if (parsedName) {
+    result.first_name = parsedName.first;
+    result.last_name = parsedName.last;
   }
 
   // Email / phone via regex.
@@ -56,6 +60,9 @@ export async function fallbackParseCandidate(params: {
 
   const zip = findZip(text);
   if (zip) result.zip = zip;
+
+  const location = findLocation(text);
+  if (location) result.location = location;
 
   // LinkedIn URL explicit input or match in text.
   const linkedIn = linkedinUrl || findLinkedIn(text);
@@ -99,24 +106,49 @@ async function extractPdfText(data: Buffer): Promise<string> {
 }
 
 function nameFromFilename(filename: string): { first: string; last: string | null } | null {
-  const bare = filename
-    .replace(/\.[a-z0-9]+$/i, "")
-    .replace(/[_\-]+/g, " ")
-    .replace(/\b(resume|cv|curriculum vitae|profile|applicant|candidate|final|v\d+|\d{4,})\b/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!bare) return null;
-  const parts = bare.split(" ").filter(Boolean);
-  if (parts.length === 0) return null;
-  // Title-case each part. Skip if all caps or extremely short garbage.
-  const cleaned = parts.map(titleCase);
+  const normalized = normalizeCandidateNameForMatching(filename);
+  if (!normalized) return null;
+  const cleaned = normalized.split(" ").filter(Boolean);
   if (cleaned.length === 1) return { first: cleaned[0], last: null };
   return { first: cleaned[0], last: cleaned.slice(1).join(" ") };
 }
 
-function titleCase(s: string): string {
-  if (!s) return s;
-  return s[0].toUpperCase() + s.slice(1).toLowerCase();
+function nameFromText(text: string): { first: string; last: string | null } | null {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+
+  for (const line of lines) {
+    if (findEmail(line) || findPhone(line) || /linkedin\.com/i.test(line)) continue;
+    const beforeCredential = line.split(",")[0] ?? "";
+    const candidate = beforeCredential
+      .replace(/[^A-Za-z .'-]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!candidate || candidate.length > 80) continue;
+    if (/\b(resume|curriculum|professional|specialist|manager|director|engineer|accountant|summary)\b/i.test(candidate)) {
+      continue;
+    }
+    const parts = candidate.split(" ").filter(Boolean);
+    if (parts.length < 2 || parts.length > 4) continue;
+    const cleaned = parts.map(titleCaseNameToken);
+    return { first: cleaned[0], last: cleaned.slice(1).join(" ") };
+  }
+
+  return null;
+}
+
+function titleCaseNameToken(token: string): string {
+  return token
+    .split(/([-'])/)
+    .map((part) => {
+      if (part === "-" || part === "'") return part;
+      if (!part) return part;
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    })
+    .join("");
 }
 
 function findEmail(text: string): string | null {
@@ -146,9 +178,20 @@ function findZip(text: string): string | null {
   return stateZip?.[1] ?? null;
 }
 
+function findLocation(text: string): string | null {
+  const cityStateZip = text.match(/\b([A-Z][A-Za-z .'-]{1,48}),\s*([A-Z]{2})(?:\s+(\d{5})(?:-\d{4})?)?\b/);
+  if (!cityStateZip) return null;
+  const city = cityStateZip[1].replace(/\s+/g, " ").trim();
+  const state = cityStateZip[2];
+  const zip = cityStateZip[3];
+  if (!city || /\b(email|phone|linkedin|resume)\b/i.test(city)) return null;
+  return zip ? `${city}, ${state} ${zip}` : `${city}, ${state}`;
+}
+
 function findLinkedIn(text: string): string | null {
-  const m = text.match(/https?:\/\/(?:[a-z]+\.)?linkedin\.com\/in\/[A-Za-z0-9_\-%]+\/?/i);
-  return m ? m[0] : null;
+  const m = text.match(/(?:https?:\/\/)?(?:[a-z]+\.)?linkedin\.com\/in\/[A-Za-z0-9_\-%]+\/?/i);
+  if (!m) return null;
+  return /^https?:\/\//i.test(m[0]) ? m[0] : `https://${m[0]}`;
 }
 
 function mergeSkillLists(...lists: string[][]): string[] {
