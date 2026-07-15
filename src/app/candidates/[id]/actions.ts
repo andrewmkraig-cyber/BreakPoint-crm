@@ -384,6 +384,7 @@ export async function convertDocxResumeToPdf(input: {
     // Variant encodes the source ID so a newly uploaded DOCX (new ID) always
     // converts fresh while the same upload is never sent to CloudConvert twice.
     const cachedVariant = `converted:${source.id}`;
+    const cloudConvertConfigured = Boolean(process.env.CLOUDCONVERT_API_KEY?.trim());
     const existingCloudConvert = await prisma.candidateResume.findFirst({
       where: {
         organizationId: org.id,
@@ -402,7 +403,7 @@ export async function convertDocxResumeToPdf(input: {
         },
         select: { id: true },
       }));
-    if (existing) {
+    if (existing && (existing.id === existingCloudConvert?.id || !cloudConvertConfigured)) {
       console.info("[docx-convert] using cached DOCX conversion", {
         sourceResumeId: source.id,
         cachedResumeId: existing.id,
@@ -462,6 +463,17 @@ export async function convertDocxResumeToPdf(input: {
     }
 
     if (!outputBytes) {
+      if (existing && existing.id !== existingCloudConvert?.id) {
+        console.info("[docx-convert] using cached free DOCX conversion after CloudConvert miss", {
+          sourceResumeId: source.id,
+          cachedResumeId: existing.id,
+        });
+        if (source.candidateId) revalidatePath(`/candidates/${source.candidateId}`);
+        if (source.candidateRfId != null && source.candidateRfId > 0) {
+          revalidatePath(`/candidates/${source.candidateRfId}`);
+        }
+        return { ok: true, value: { resumeId: existing.id } };
+      }
       try {
         const { convertDocxToPdfViaFreeRenderer } = await import("@/lib/free-docx-pdf");
         console.info("[docx-convert] converting DOCX via free renderer", {

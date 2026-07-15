@@ -58,6 +58,7 @@ export async function GET(
 
   // DOCX: serve cached conversion if one exists for this exact source.
   const cachedVariant = `converted:${resume.id}`;
+  const cloudConvertConfigured = Boolean(process.env.CLOUDCONVERT_API_KEY?.trim());
   const cachedCloudConvert = await prisma.candidateResume.findFirst({
     where: {
       organizationId: org.id,
@@ -74,7 +75,7 @@ export async function GET(
         displayName: FREE_CONVERT_DISPLAY_NAME,
       },
     }));
-  if (cached) {
+  if (cached && (cached.displayName !== FREE_CONVERT_DISPLAY_NAME || !cloudConvertConfigured)) {
     console.info("[as-pdf] using cached DOCX conversion", {
       sourceResumeId: resume.id,
       cachedResumeId: cached.id,
@@ -105,6 +106,16 @@ export async function GET(
   }
 
   if (!pdfBytes) {
+    if (cached?.displayName === FREE_CONVERT_DISPLAY_NAME) {
+      console.info("[as-pdf] using cached free DOCX conversion after CloudConvert miss", {
+        sourceResumeId: resume.id,
+        cachedResumeId: cached.id,
+      });
+      const cachedBytes = await getResumeBytes(cached);
+      return new NextResponse(new Uint8Array(cachedBytes), {
+        headers: { "Content-Type": "application/pdf", "Cache-Control": "private, no-store" },
+      });
+    }
     console.info("[as-pdf] converting DOCX via free renderer", {
       sourceResumeId: resume.id,
       filename: resume.filename,

@@ -19,7 +19,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { DocumentDropzone } from "@/components/document-dropzone";
-import { DocxPreview } from "@/components/docx-preview";
 import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import {
@@ -100,6 +99,13 @@ function previewUrlFor(v: ResumeVersion): string {
   // variant query param. Only "redacted" lives on the original row's
   // redactedData column and needs the variant flag.
   return v.kind === "redacted" ? `${base}?variant=redacted` : base;
+}
+
+// Returns a URL that always delivers PDF bytes for PdfCanvasViewer,
+// converting DOCX on the fly via CloudConvert when possible and caching
+// the result for later display/Edit Resume use.
+function asPdfUrlFor(v: ResumeVersion): string {
+  return `/api/candidate-resumes/by-id/${v.resumeId}/as-pdf`;
 }
 
 
@@ -669,9 +675,12 @@ export function EditableResume({
               highlightClassMap={tokenMarkMap}
             />
           ) : docx ? (
-            <DocxPreview
-              idOrRfId={selected.resumeId}
+            <PdfCanvasViewer
+              key={asPdfUrlFor(selected)}
+              src={asPdfUrlFor(selected)}
               className="min-h-[900px] w-full rounded-b-xl"
+              highlightTokens={tokens}
+              highlightClassMap={tokenMarkMap}
             />
           ) : (
             <div className="flex h-64 flex-col items-center justify-center gap-2 border-t border-dashed border-court-border bg-court-surface-subtle/40 text-sm text-court-fg-muted">
