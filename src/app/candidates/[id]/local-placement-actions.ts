@@ -11,7 +11,10 @@ import {
   generatePublicAccountingSubmittalBullets,
   generateSubmittalWriteup,
 } from "@/lib/claude";
-import { buildCandidateCallContextBlock } from "@/lib/ai-workspace-context";
+import {
+  buildCandidateCallContextBlock,
+  buildCandidateSubmittalContextBlock,
+} from "@/lib/ai-workspace-context";
 import {
   getGmailThread,
   getMessageThreadId,
@@ -364,6 +367,7 @@ export type GenerateLocalSubmittalInput = {
   // whichever is present.
   jobRfId?: number | null;
   jobId?: string | null;
+  instructions?: string | null;
 };
 
 export type GenerateLocalSubmittalResult =
@@ -405,24 +409,46 @@ export async function generateLocalSubmittal(
     // jobs look up via legacyRfId; Ace-native via cuid. Either path
     // returns the columns + client join we need for the writeup.
     const jobRow = await (jobId
-      ? prisma.job.findUnique({
-          where: { id: jobId },
+      ? prisma.job.findFirst({
+          where: { id: jobId, organizationId: org.id },
           select: {
             title: true,
             locations: true,
             description: true,
+            rawJobDescription: true,
             raw: true,
+            override: { select: { description: true } },
+            employmentType: true,
+            jobType: true,
+            department: true,
+            salaryRangeStart: true,
+            salaryRangeEnd: true,
+            salaryCurrency: true,
+            salaryFrequency: true,
+            customFields: true,
+            internalRecruiterNotes: true,
             client: { select: { name: true } },
           },
         })
       : jobRfId != null
         ? prisma.job.findFirst({
-            where: { legacyRfId: jobRfId },
+            where: { legacyRfId: jobRfId, organizationId: org.id },
             select: {
               title: true,
               locations: true,
               description: true,
+              rawJobDescription: true,
               raw: true,
+              override: { select: { description: true } },
+              employmentType: true,
+              jobType: true,
+              department: true,
+              salaryRangeStart: true,
+              salaryRangeEnd: true,
+              salaryCurrency: true,
+              salaryFrequency: true,
+              customFields: true,
+              internalRecruiterNotes: true,
               client: { select: { name: true } },
             },
           })
@@ -441,7 +467,7 @@ export async function generateLocalSubmittal(
       })
       .filter(Boolean)
       .join("\n");
-    const callContext = await buildCandidateCallContextBlock({
+    const candidateContext = await buildCandidateSubmittalContextBlock({
       candidateId: c.id,
       organizationId: org.id,
       userEmail: user.email,
@@ -464,17 +490,21 @@ export async function generateLocalSubmittal(
         title: jobRow?.title ?? rawJob?.title ?? "(job)",
         clientName,
         locations: Array.isArray(jobRow?.locations) ? jobRow!.locations : [],
-        salaryRange: undefined,
-        employmentType: undefined,
-        jobType: undefined,
-        department: undefined,
+        salaryRange: formatLocalJobSalary(jobRow),
+        employmentType: jobRow?.employmentType ?? undefined,
+        jobType: stringifyJobValue(jobRow?.jobType),
+        department: jobRow?.department ?? undefined,
         experienceRange: undefined,
         description:
+          jobRow?.override?.description ??
           jobRow?.description ??
+          jobRow?.rawJobDescription ??
           (typeof rawJob?.description === "string" ? rawJob.description : undefined),
-        customFields: [],
+        customFields: formatLocalCustomFields(jobRow?.customFields),
+        internalNotes: jobRow?.internalRecruiterNotes ?? undefined,
       },
-      callContext,
+      candidateContext,
+      recruiterInstructions: input.instructions ?? "",
     });
 
     return { ok: true, value: { writeup } };
@@ -600,6 +630,73 @@ function summarizeEducationRows(rows: EduRow[]): string {
     })
     .filter(Boolean)
     .join("\n");
+}
+
+function formatLocalJobSalary(job: {
+  salaryRangeStart?: number | null;
+  salaryRangeEnd?: number | null;
+  salaryCurrency?: string | null;
+  salaryFrequency?: string | null;
+} | null | undefined): string | undefined {
+  if (!job) return undefined;
+  const currency = job.salaryCurrency || "USD";
+  const start = job.salaryRangeStart;
+  const end = job.salaryRangeEnd;
+  if (start == null && end == null) return undefined;
+  const frequency = job.salaryFrequency ? ` ${job.salaryFrequency}` : "";
+  if (start != null && end != null) {
+    return `${formatSalaryAmount(start, currency)} - ${formatSalaryAmount(end, currency)}${frequency}`;
+  }
+  if (start != null) return `${formatSalaryAmount(start, currency)}+${frequency}`;
+  return `Up to ${formatSalaryAmount(end!, currency)}${frequency}`;
+}
+
+function formatSalaryAmount(value: number, currency: string): string {
+  const prefix = currency.toUpperCase() === "USD" ? "$" : `${currency.toUpperCase()} `;
+  return `${prefix}${value.toLocaleString()}`;
+}
+
+function stringifyJobValue(value: unknown): string | undefined {
+  if (typeof value === "string") return value.trim() || undefined;
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const maybeName =
+      (value as { name?: unknown; label?: unknown; value?: unknown }).name ??
+      (value as { label?: unknown }).label ??
+      (value as { value?: unknown }).value;
+    if (typeof maybeName === "string" && maybeName.trim()) return maybeName.trim();
+  }
+  if (value == null) return undefined;
+  try {
+    const asJson = JSON.stringify(value);
+    return asJson === "{}" || asJson === "[]" ? undefined : asJson;
+  } catch {
+    return undefined;
+  }
+}
+
+function formatLocalCustomFields(value: unknown): Array<{ name: string; value: string }> {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((field) => {
+      if (!field || typeof field !== "object") return null;
+      const obj = field as { name?: unknown; label?: unknown; value?: unknown };
+      const name = typeof obj.name === "string"
+        ? obj.name
+        : typeof obj.label === "string"
+          ? obj.label
+          : "";
+      const rawValue = obj.value;
+      const stringValue =
+        typeof rawValue === "string"
+          ? rawValue
+          : rawValue == null
+            ? ""
+            : JSON.stringify(rawValue);
+      return name.trim() && stringValue.trim()
+        ? { name: name.trim(), value: stringValue.trim() }
+        : null;
+    })
+    .filter((field): field is { name: string; value: string } => field !== null);
 }
 
 // ---- Submit: send email + create Placement ----
@@ -1820,7 +1917,18 @@ async function resolveBulkSubmittalJob(
     title: true,
     locations: true,
     description: true,
+    rawJobDescription: true,
     raw: true,
+    override: { select: { description: true } },
+    employmentType: true,
+    jobType: true,
+    department: true,
+    salaryRangeStart: true,
+    salaryRangeEnd: true,
+    salaryCurrency: true,
+    salaryFrequency: true,
+    customFields: true,
+    internalRecruiterNotes: true,
     client: { select: { id: true, name: true, legacyRfId: true } },
   } as const;
   if (jobId) {
@@ -1937,6 +2045,7 @@ export async function generateBulkLocalSubmittal(input: {
   candidateIds: string[];
   jobRfId?: number | null;
   jobId?: string | null;
+  instructions?: string | null;
 }): Promise<GenerateLocalSubmittalResult> {
   const user = await requireUser();
   if (!user) return { ok: false, error: "Not signed in." };
@@ -1954,15 +2063,18 @@ export async function generateBulkLocalSubmittal(input: {
       title: jobRow.title ?? rawJob?.title ?? "(job)",
       clientName,
       locations: Array.isArray(jobRow.locations) ? jobRow.locations : [],
-      salaryRange: undefined,
-      employmentType: undefined,
-      jobType: undefined,
-      department: undefined,
+      salaryRange: formatLocalJobSalary(jobRow),
+      employmentType: jobRow.employmentType ?? undefined,
+      jobType: stringifyJobValue(jobRow.jobType),
+      department: jobRow.department ?? undefined,
       experienceRange: undefined,
       description:
+        jobRow.override?.description ??
         jobRow.description ??
+        jobRow.rawJobDescription ??
         (typeof rawJob?.description === "string" ? rawJob.description : undefined),
-      customFields: [] as { name: string; value: string }[],
+      customFields: formatLocalCustomFields(jobRow.customFields),
+      internalNotes: jobRow.internalRecruiterNotes ?? undefined,
     };
 
     const ids = input.candidateIds.slice(0, 8);
@@ -1987,7 +2099,7 @@ export async function generateBulkLocalSubmittal(input: {
         })
         .filter(Boolean)
         .join("\n");
-      const callContext = await buildCandidateCallContextBlock({
+      const candidateContext = await buildCandidateSubmittalContextBlock({
         candidateId: c.id,
         organizationId: org.id,
         userEmail: user.email,
@@ -2006,7 +2118,8 @@ export async function generateBulkLocalSubmittal(input: {
           linkedin: c.linkedinProfile ?? "",
         },
         job: jobPayload,
-        callContext,
+        candidateContext,
+        recruiterInstructions: input.instructions ?? "",
       });
       const name = [c.firstName, c.lastName].filter(Boolean).join(" ").trim() || "Candidate";
       sections.push(`## ${name}\n\n${writeup.trim()}`);

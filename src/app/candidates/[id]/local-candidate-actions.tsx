@@ -23,6 +23,7 @@ import { formatOpenJobOption } from "@/components/placements/placement-shared";
 import { extractCityFromLocation } from "@/lib/candidate-compensation";
 import { applyMergeFields as applyMergeFieldsClient, type MergeFieldValues } from "@/lib/merge-fields";
 import { submittalMarkdownToEditorHtml } from "@/lib/submittal-format";
+import { TEAM_BCC_OPTIONS } from "@/lib/team-contacts";
 import {
   LOCAL_PLACEMENT_APPLIED_EVENT,
   type LocalPlacementAppliedDetail,
@@ -65,6 +66,11 @@ export type LocalOpenJob = {
   // still compile.
   clientContacts?: LocalClientContact[];
 };
+
+const DEFAULT_SUBMITTAL_BCC = [
+  TEAM_BCC_OPTIONS.find((contact) => contact.id === "teammate-andrew")?.email ??
+    "andrew@breakpointtalent.com",
+];
 
 export function LocalCandidateActions(props: {
   candidateId: string;
@@ -378,7 +384,7 @@ function SubmitModal(props: {
       // EmailComposer's empty-field auto-apply (no "replace?" prompt). The
       // fallback subject lands in onSend below if the recruiter ships
       // without picking a template.
-      initial={{ to: [], cc: [], bcc: [], subject: "", body: "" }}
+      initial={{ to: [], cc: [], bcc: DEFAULT_SUBMITTAL_BCC, subject: "", body: "" }}
       recipientOptions={contactOptions.length > 0 ? contactOptions : undefined}
       // Multi-recipient To: pick from the client contacts or type any
       // address as chips (same as Cc), so a submittal can go to more than
@@ -388,6 +394,9 @@ function SubmitModal(props: {
       sendLabel="Send Submittal"
       sendingLabel="Sending…"
       helperText="Pick a client contact, then Generate with Claude or write the submittal yourself."
+      showGenerateInstructions
+      generateInstructionsLabel="Submittal guidance for Claude"
+      generateInstructionsPlaceholder="Example: focus on Game Plan notes about motivation, recent call notes, and why their tax background fits this role."
       showTemplatePicker
       templateFilter={(t) => t.audience !== "candidate"}
       mergeValues={baseMergeValues}
@@ -444,11 +453,12 @@ function SubmitModal(props: {
       // so a picked template's subject or a hand-typed subject is never
       // clobbered.
       generateFallbackSubject={generateSubject}
-      onGenerate={async () => {
+      onGenerate={async (_draft, { instructions }) => {
         const res = await generateLocalSubmittal({
           candidateId: props.candidateId,
           jobRfId: job.jobCuid ? null : job.jobRfId,
           jobId: job.jobCuid ?? null,
+          instructions,
         });
         if (!res.ok) throw new Error(res.error);
         return res.value.writeup;

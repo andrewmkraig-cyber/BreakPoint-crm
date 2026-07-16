@@ -50,6 +50,7 @@ import { formatScheduledTime } from "@/lib/timezone";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 import { MERGE_FIELDS, htmlToReadableText, templateBodyToEditorHtml, type MergeFieldValues } from "@/lib/merge-fields";
 import { cn } from "@/lib/utils";
+import { TEAM_BCC_OPTIONS } from "@/lib/team-contacts";
 
 // Lazy-load the Tiptap rich-text body editor — same component the main
 // MailComposer uses (showToolbar gives Bold/Italic/Underline/lists/link).
@@ -59,6 +60,11 @@ const RichTextBodyEditor = dynamic(
   () => import("@/components/rich-text-body-editor").then((m) => m.RichTextBodyEditor),
   { ssr: false },
 );
+
+const DEFAULT_SUBMITTAL_BCC = [
+  TEAM_BCC_OPTIONS.find((contact) => contact.id === "teammate-andrew")?.email ??
+    "andrew@breakpointtalent.com",
+];
 
 // Shared bulk-action modals used by both the /candidates global page
 // and the job Matches tab. Extracted out of candidates-view.tsx so the
@@ -342,13 +348,16 @@ export function BulkSubmitDialog({
       title="Submittal email"
       subtitle={`${n} candidate${n === 1 ? "" : "s"} → ${jobTitle}${clientName ? ` · ${clientName}` : ""}`}
       draftKey={`bulk-submittal-${picked.jobId ?? picked.jobRfId}-${candidateIds.join("-")}`}
-      initial={{ to: [], cc: [], bcc: [], subject: "", body: "" }}
+      initial={{ to: [], cc: [], bcc: DEFAULT_SUBMITTAL_BCC, subject: "", body: "" }}
       recipientOptions={contactOptions.length > 0 ? contactOptions : undefined}
       toOptions={contactOptions.length > 0 ? contactOptions : undefined}
       onClose={onClose}
       sendLabel="Send Submittal"
       sendingLabel="Sending…"
       helperText="Pick a client contact, then Generate with Claude or write the submittal yourself. Every selected candidate's latest resume attaches on send."
+      showGenerateInstructions
+      generateInstructionsLabel="Submittal guidance for Claude"
+      generateInstructionsPlaceholder="Example: tailor each candidate to the role, lean on Game Plan notes, and include only client-safe call or text details."
       mergeValues={mergeValues}
       richTextBody
       toEditorHtml={submittalMarkdownToEditorHtml}
@@ -385,11 +394,12 @@ export function BulkSubmitDialog({
         </div>
       }
       generateFallbackSubject={generateSubject}
-      onGenerate={async () => {
+      onGenerate={async (_draft, { instructions }) => {
         const res = await generateBulkLocalSubmittal({
           candidateIds,
           jobId: picked.jobId,
           jobRfId: picked.jobRfId,
+          instructions,
         });
         if (!res.ok) throw new Error(res.error);
         return res.value.writeup;

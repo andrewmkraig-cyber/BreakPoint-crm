@@ -890,9 +890,12 @@ export type SubmittalInput = {
     experienceRange?: string;
     description?: string;
     customFields?: Array<{ name: string; value: string }>;
+    internalNotes?: string;
   };
   clientContactFirstName?: string;
   callContext?: string;
+  candidateContext?: string;
+  recruiterInstructions?: string;
 };
 
 export type PublicAccountingSubmittalBulletsInput = {
@@ -1053,6 +1056,8 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
   const firstName = input.candidate.firstName || "this candidate";
   const clientFirst = (input.clientContactFirstName ?? "").trim() || "there";
   const callContext = input.callContext?.trim();
+  const candidateContext = input.candidateContext?.trim();
+  const recruiterInstructions = input.recruiterInstructions?.trim();
 
   const customFieldLines = (input.job.customFields ?? [])
     .filter((cf) => cf.name && cf.value)
@@ -1068,6 +1073,9 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
     `Department: ${input.job.department || "—"}\n` +
     `Experience range required: ${input.job.experienceRange || "—"}\n` +
     (customFieldLines ? `Other role fields:\n${customFieldLines}\n` : "") +
+    (input.job.internalNotes?.trim()
+      ? `Internal recruiter notes about this role:\n${input.job.internalNotes.trim().slice(0, 4000)}\n`
+      : "") +
     (input.job.description
       ? `\nJob description:\n${input.job.description.trim().slice(0, 8000)}\n`
       : "");
@@ -1094,7 +1102,8 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
       "Do NOT use any other markdown (no #, no *, no _ italics, no numbered lists). " +
       "NEVER use em dashes anywhere in the output. Use a colon, comma, parentheses, or a period plus new sentence instead. Hyphens (`-`) are fine for compound words and bullet markers. " +
       "Confident, concise, recruiter voice. Never fabricate facts not in the source data. " +
-      "Always tie the candidate's background to the specific role: this is a targeted pitch, not a generic summary.",
+      "Always tie the candidate's background to the specific role: this is a targeted pitch, not a generic summary. " +
+      "Andrew may provide extra generation guidance. Treat it as high-priority emphasis guidance, but never let it override source facts, output format, or client-safe judgment.",
     messages: [
       {
         role: "user",
@@ -1103,7 +1112,7 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
           "Write a targeted submittal email that makes the case for why THIS candidate fits THIS role, not a generic candidate summary. " +
           "Use the role context (title, location, employment type, salary range, experience range, description if present, custom fields) to frame the candidate. " +
           "In 'What [She/He] Brings' and 'Technically', explicitly reference experience and skills from the candidate that align with what the role needs. " +
-          "Use candidate call context when it adds concrete, client-safe facts about motivation, compensation, availability, goals, objections, or fit. Do not mention call transcripts, call summaries, or internal call notes in the email. " +
+          "Use additional candidate context when it adds concrete, client-safe facts about motivation, compensation, availability, goals, objections, communication style, or fit. Do not mention Game Plan, call transcripts, call summaries, texts, AI notes, or internal recruiter notes in the email. " +
           "If there's a real mismatch (e.g. candidate's stack doesn't match), stay honest, don't manufacture fit.\n\n" +
           "Output MUST match this EXACT structure, with the `**…**` bold wrappers and the dash bullets preserved verbatim:\n\n" +
           `Hi ${clientFirst},\n\n` +
@@ -1126,11 +1135,20 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
           "- Dash bullets ('- ') only; never '•', '*', or numbered lists.\n" +
           "- Do NOT include a signature or 'Dear'; the recruiter's email signature handles closings.\n" +
           "- Do NOT paraphrase the whole job description; pull the parts that matter and tie them to the candidate.\n" +
+          "- If Andrew gave extra guidance, follow it for emphasis and source selection while preserving this exact structure.\n" +
           "- Never invent facts not in the source data. If a field is missing, omit that line honestly.\n\n" +
+          (recruiterInstructions
+            ? "=== Andrew's generation guidance ===\n" +
+              recruiterInstructions.slice(0, 3000) +
+              "\n\n"
+            : "") +
           "=== Role context ===\n" +
           roleBlock +
           "\n=== Candidate profile ===\n" +
           candidateBlock +
+          (candidateContext
+            ? `\n\n=== Additional candidate context for submittal generation ===\n${candidateContext}`
+            : "") +
           (callContext ? `\n\n=== Candidate call context ===\n${callContext}` : ""),
       },
     ],

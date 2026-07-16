@@ -39,6 +39,9 @@ const CLIENT_LOOP_RESUME_MAX_CHARS = 10_000;
 const RECENT_CALL_CONTEXT_TAKE = 5;
 const CALL_SUMMARY_MAX_CHARS = 1200;
 const CALL_TRANSCRIPT_MAX_CHARS = 3500;
+const SUBMITTAL_GAME_PLAN_TAKE = 12;
+const SUBMITTAL_SMS_TAKE = 12;
+const SUBMITTAL_NOTES_TAKE = 8;
 const COPY_READY_RESPONSE_STYLE =
   "Respond with copy-ready text. For structured outputs, use clean markdown: bold section headers like **Header:** and hyphen bullets for list-like content. Do not use markdown tables or code fences.";
 
@@ -64,6 +67,97 @@ export async function buildCandidateCallContextBlock(input: {
       "RECENT CALL CONTEXT (AI summaries and transcript excerpts)",
     take: input.take,
   });
+}
+
+export async function buildCandidateSubmittalContextBlock(input: {
+  candidateId: string;
+  organizationId: string;
+  userEmail?: string | null;
+}): Promise<string> {
+  const lineDigits = await getQuoLineDigitsForUserEmail(
+    input.organizationId,
+    input.userEmail,
+  );
+
+  const [gamePlanMessagesDesc, recruiterNotes, smsMessagesDesc, callContext] =
+    await Promise.all([
+      prisma.aiWorkspaceMessage.findMany({
+        where: { entityType: "candidate", entityId: input.candidateId },
+        orderBy: { createdAt: "desc" },
+        take: SUBMITTAL_GAME_PLAN_TAKE,
+        select: { role: true, content: true, createdAt: true },
+      }),
+      getNotesForEntity("candidate", input.candidateId),
+      prisma.smsMessage.findMany({
+        where: {
+          candidateId: input.candidateId,
+          organizationId: input.organizationId,
+          AND: [smsLineWhere(lineDigits)],
+        },
+        orderBy: { createdAt: "desc" },
+        take: SUBMITTAL_SMS_TAKE,
+      }),
+      buildRecentCallContextBlock({
+        organizationId: input.organizationId,
+        lineDigits,
+        where: { candidateId: input.candidateId },
+        heading:
+          "RECENT CALL CONTEXT (AI summaries and transcript excerpts)",
+        take: RECENT_CALL_CONTEXT_TAKE,
+      }),
+    ]);
+
+  const lines: string[] = [];
+  const recruiterNotesLimited = recruiterNotes.slice(0, SUBMITTAL_NOTES_TAKE);
+  if (recruiterNotesLimited.length > 0) {
+    lines.push("RECRUITER NOTES ATTACHED TO THIS CANDIDATE:");
+    for (const note of recruiterNotesLimited) {
+      const when = note.updatedAt.toLocaleDateString();
+      const title = note.title?.trim() ? ` - ${note.title.trim()}` : "";
+      lines.push(`  [${when}]${title}`);
+      for (const line of truncate(note.body.trim(), 1800).split("\n")) {
+        lines.push(`    ${line}`);
+      }
+    }
+    lines.push("");
+  }
+
+  const gamePlanMessages = [...gamePlanMessagesDesc].reverse();
+  if (gamePlanMessages.length > 0) {
+    lines.push("RECENT CANDIDATE GAME PLAN DISCUSSION:");
+    for (const message of gamePlanMessages) {
+      const when = message.createdAt.toLocaleDateString();
+      const role =
+        message.role === "user"
+          ? "Andrew"
+          : message.role === "assistant"
+            ? "Claude"
+            : message.role;
+      lines.push(`  [${when}] ${role}:`);
+      for (const line of truncate(message.content.trim(), 1200).split("\n")) {
+        lines.push(`    ${line}`);
+      }
+    }
+    lines.push("");
+  }
+
+  const smsMessages = [...smsMessagesDesc].reverse();
+  if (smsMessages.length > 0) {
+    lines.push("RECENT TEXT MESSAGES:");
+    for (const message of smsMessages) {
+      const when = message.createdAt.toLocaleDateString();
+      lines.push(
+        `  [${when}] ${message.direction}: ${truncate(message.body.trim(), 500)}`,
+      );
+    }
+    lines.push("");
+  }
+
+  if (callContext) {
+    lines.push(callContext);
+  }
+
+  return lines.join("\n").trim();
 }
 
 export async function buildClientContext(clientId: string): Promise<string> {

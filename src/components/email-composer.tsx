@@ -43,6 +43,8 @@ export type EmailDraft = {
   sendCandidateConfirmation?: boolean;
 };
 
+export type GenerateOptions = { instructions: string };
+
 export type ResolveTemplateFn = (template: ActiveTemplateSummary) => Promise<{ subject: string; body: string }> | { subject: string; body: string };
 
 export type ContactOption = { id: string; name: string; email: string };
@@ -84,7 +86,11 @@ export type EmailComposerProps = {
   backLabel?: string;
   helperText?: string;
   generateLabel?: string;
-  onGenerate?: (current: EmailDraft) => Promise<string>;
+  onGenerate?: (current: EmailDraft, options: GenerateOptions) => Promise<string>;
+  showGenerateInstructions?: boolean;
+  generateInstructionsLabel?: string;
+  generateInstructionsPlaceholder?: string;
+  generateInstructionsHint?: string;
   // When true, the toolbar shows an "Edit with Claude" dropdown next to
   // Generate. Disabled until the body has content. The dropdown's 5
   // options POST the current body + editType to /api/email/edit-with-
@@ -226,6 +232,10 @@ export function EmailComposer({
   helperText,
   generateLabel = "Generate with Claude",
   onGenerate,
+  showGenerateInstructions = false,
+  generateInstructionsLabel = "Claude guidance",
+  generateInstructionsPlaceholder = "Tell Claude what to emphasize or reference.",
+  generateInstructionsHint,
   enableEditWithClaude = false,
   generateFallbackSubject,
   footerExtras,
@@ -298,6 +308,7 @@ export function EmailComposer({
   const [isSending, startSend] = useTransition();
   const [isGenerating, startGenerate] = useTransition();
   const [isEditing, startEdit] = useTransition();
+  const [generateInstructions, setGenerateInstructions] = useState("");
   // Custom edit-with-Claude inline panel. Opens when the recruiter picks
   // "Custom…" from the Edit-with-Claude dropdown; the instruction is
   // POSTed alongside the current body so Claude rewrites in place.
@@ -680,7 +691,9 @@ export function EmailComposer({
     setErr(null);
     startGenerate(async () => {
       try {
-        const text = await onGenerate(draftValue());
+        const text = await onGenerate(draftValue(), {
+          instructions: generateInstructions.trim(),
+        });
         // Defensive — reject anything that isn't a clean string. If a server
         // action got middleware-redirected to a sign-in/error HTML response,
         // it can reach us as HTML-ish content that should not land in the body.
@@ -1063,6 +1076,27 @@ export function EmailComposer({
                 {i < perRecipientTokens.length - 1 ? " " : ""}
               </span>
             ))}
+          </div>
+        )}
+        {showGenerateInstructions && onGenerate && (
+          <div className="border-t border-court-border px-5 py-3">
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                {generateInstructionsLabel}
+              </span>
+              <Textarea
+                value={generateInstructions}
+                onChange={(e) => setGenerateInstructions(e.target.value)}
+                rows={2}
+                placeholder={generateInstructionsPlaceholder}
+                className="mt-1 resize-none text-sm"
+              />
+              {generateInstructionsHint && (
+                <span className="mt-1 block text-[11px] text-court-fg-muted">
+                  {generateInstructionsHint}
+                </span>
+              )}
+            </label>
           </div>
         )}
         {helperText && <div className="px-5 pb-2 text-[11px] text-court-fg-muted">{helperText}</div>}
