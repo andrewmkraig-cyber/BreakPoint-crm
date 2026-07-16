@@ -16,12 +16,14 @@ export const DOCX_UNPARSEABLE_PREFIX = "DOCX_UNPARSEABLE";
 // <w:t> text node before giving up.
 export async function extractDocxText(data: Buffer): Promise<string> {
   const fromMammoth = await tryMammothExtract(data);
-  if (fromMammoth.trim().length >= 50) return fromMammoth;
+  const fromHeaderFooter = await tryRawXmlExtract(data, isHeaderFooterXmlPart);
+  const merged = mergeDocxText(fromHeaderFooter, fromMammoth);
+  if (merged.trim().length >= 50) return merged;
 
   const fromRawXml = await tryRawXmlExtract(data);
   if (fromRawXml.trim().length >= 50) return fromRawXml;
 
-  const longer = fromRawXml.length >= fromMammoth.length ? fromRawXml : fromMammoth;
+  const longer = fromRawXml.length >= merged.length ? fromRawXml : merged;
   if (longer.trim().length > 0) return longer;
 
   throw new Error(`${DOCX_UNPARSEABLE_PREFIX}: no readable text found in the document.`);
@@ -39,39 +41,77 @@ async function tryMammothExtract(data: Buffer): Promise<string> {
   }
 }
 
-async function tryRawXmlExtract(data: Buffer): Promise<string> {
+type XmlPartFilter = (path: string) => boolean;
+
+function isHeaderFooterXmlPart(path: string): boolean {
+  return /^word\/(?:header|footer)\d+\.xml$/i.test(path);
+}
+
+function isSearchableXmlPart(path: string): boolean {
+  if (!path.startsWith("word/")) return false;
+  if (!path.endsWith(".xml")) return false;
+  if (path.endsWith(".rels")) return false;
+  if (path === "word/theme/theme1.xml") return false;
+  if (path === "word/styles.xml") return false;
+  if (path === "word/settings.xml") return false;
+  if (path === "word/fontTable.xml") return false;
+  if (path === "word/webSettings.xml") return false;
+  return true;
+}
+
+async function tryRawXmlExtract(
+  data: Buffer,
+  includePath: XmlPartFilter = isSearchableXmlPart,
+): Promise<string> {
   try {
     const JSZipMod = await import("jszip");
     const JSZip = (JSZipMod.default ?? JSZipMod) as typeof import("jszip");
     const zip = await JSZip.loadAsync(data);
-    const paths = Object.keys(zip.files).filter((p) => {
-      if (!p.startsWith("word/")) return false;
-      if (!p.endsWith(".xml")) return false;
-      if (p.endsWith(".rels")) return false;
-      if (p === "word/theme/theme1.xml") return false;
-      if (p === "word/styles.xml") return false;
-      if (p === "word/settings.xml") return false;
-      if (p === "word/fontTable.xml") return false;
-      if (p === "word/webSettings.xml") return false;
-      return true;
-    });
+    const paths = Object.keys(zip.files).filter(includePath).sort();
     const parts: string[] = [];
     for (const path of paths) {
       const entry = zip.files[path];
       if (!entry || entry.dir) continue;
       const xml = await entry.async("string");
-      const re = /<w:t\b[^>]*>([^<]*)<\/w:t>/g;
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(xml)) !== null) {
-        const t = decodeXmlEntities(m[1]);
-        if (t) parts.push(t);
-      }
-      if (xml.includes("</w:p>")) parts.push("\n");
+      parts.push(...extractTextLinesFromXml(xml));
     }
-    return parts.join(" ").replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").trim();
+    return parts.join("\n").replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").trim();
   } catch {
     return "";
   }
+}
+
+function extractTextLinesFromXml(xml: string): string[] {
+  const paragraphMatches = xml.match(/<w:p\b[\s\S]*?<\/w:p>/g) ?? [];
+  const source = paragraphMatches.length > 0 ? paragraphMatches : [xml];
+  const lines: string[] = [];
+  for (const block of source) {
+    const runs: string[] = [];
+    const re = /<w:t\b[^>]*>([^<]*)<\/w:t>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(block)) !== null) {
+      runs.push(decodeXmlEntities(m[1]));
+    }
+    const line = runs.join("").replace(/[ \t]+/g, " ").trim();
+    if (line) lines.push(line);
+  }
+  return lines;
+}
+
+function mergeDocxText(...texts: string[]): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const text of texts) {
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line) continue;
+      const key = line.replace(/\s+/g, " ").toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(line);
+    }
+  }
+  return out.join("\n");
 }
 
 function decodeXmlEntities(s: string): string {

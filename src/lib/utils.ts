@@ -15,7 +15,7 @@ export function formatDate(value: string | Date | null | undefined): string {
 // US state name → USPS abbreviation. Kept small on purpose — maps the full
 // state names RecruiterFlow returns ("Ohio", "New York", etc.) to the 2-letter
 // code most recruiters prefer for display.
-const US_STATE_ABBR: Record<string, string> = {
+export const US_STATE_ABBR: Record<string, string> = {
   Alabama: "AL", Alaska: "AK", Arizona: "AZ", Arkansas: "AR", California: "CA",
   Colorado: "CO", Connecticut: "CT", Delaware: "DE", Florida: "FL", Georgia: "GA",
   Hawaii: "HI", Idaho: "ID", Illinois: "IL", Indiana: "IN", Iowa: "IA",
@@ -28,6 +28,10 @@ const US_STATE_ABBR: Record<string, string> = {
   Virginia: "VA", Washington: "WA", "West Virginia": "WV", Wisconsin: "WI", Wyoming: "WY",
   "District of Columbia": "DC",
 };
+
+const US_STATE_NAME_BY_ABBR = Object.fromEntries(
+  Object.entries(US_STATE_ABBR).map(([name, abbr]) => [abbr, name]),
+) as Record<string, string>;
 
 const COUNTRY_SUFFIXES = new Set([
   "united states",
@@ -96,4 +100,19 @@ export function abbreviateState(raw: string): string {
   // Title-case lookup: "ohio" → "Ohio" → "OH".
   const title = trimmed.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\s+/g, " ");
   return US_STATE_ABBR[title] ?? trimmed;
+}
+
+export function normalizeUsState(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (/^[A-Za-z]{2}$/.test(trimmed)) {
+    const abbr = trimmed.toUpperCase();
+    return US_STATE_NAME_BY_ABBR[abbr] ? abbr : null;
+  }
+  const title = trimmed.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\s+/g, " ");
+  return US_STATE_ABBR[title] ?? null;
+}
+
+export function usStateNameForAbbr(raw: string): string | null {
+  return US_STATE_NAME_BY_ABBR[raw.trim().toUpperCase()] ?? null;
 }

@@ -62,7 +62,7 @@ const LEFT_WIDTH_DEFAULT = 256;
 const LEFT_WIDTH_MIN = 200;
 const LEFT_WIDTH_MAX = 480;
 
-const DISTANCE_OPTIONS = [10, 25, 50, 100];
+const DISTANCE_OPTIONS = [10, 25, 50, 100, 150, 200, 300];
 const DATE_OPTIONS = [
   { value: "any", label: "Any time" },
   { value: "30d", label: "Past 30 days" },

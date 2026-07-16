@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import { formatLocation } from "@/lib/utils";
+import { formatLocation, normalizeUsState, usStateNameForAbbr } from "@/lib/utils";
 import { parseBooleanQuery, flattenBooleanQuery } from "@/lib/search/boolean-query";
 import { geocodePill, type GeoHit } from "@/lib/geocode";
 import { formatExpectedCompensationFull } from "@/lib/candidate-compensation";
@@ -341,6 +341,19 @@ function milesToBox(center: GeoHit, miles: number): {
   };
 }
 
+function stateLocationClause(stateAbbr: string): Prisma.CandidateWhereInput {
+  const name = usStateNameForAbbr(stateAbbr);
+  const mode = "insensitive" as const;
+  const clauses: Prisma.CandidateWhereInput[] = [
+    { location: { equals: stateAbbr, mode } },
+    { location: { startsWith: `${stateAbbr} `, mode } },
+    { location: { endsWith: ` ${stateAbbr}`, mode } },
+    { location: { contains: `, ${stateAbbr}`, mode } },
+  ];
+  if (name) clauses.push({ location: { contains: name, mode } });
+  return { OR: clauses };
+}
+
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) {
@@ -378,7 +391,7 @@ export async function GET(req: Request) {
     const single = (sp.get("location") ?? "").trim();
     return single ? [single] : [];
   })();
-  // Distance pill in miles. UI options are 10/25/50/100; we accept any
+  // Distance pill in miles. UI options top out at 300; we accept any
   // positive integer but clamp the resolved bounding box at 500 miles
   // so a stray "10000" can't paint the whole continent.
   const distanceMi = (() => {
@@ -554,14 +567,20 @@ export async function GET(req: Request) {
       // text-contains match on the literal pill value rather than
       // silently dropping out of the union.
       const pillHits = await Promise.all(
-        locations.map(async (loc) => ({
-          loc,
-          hit: await geocodePill(loc),
-        })),
+        locations.map(async (loc) => {
+          const state = normalizeUsState(loc);
+          return {
+            loc,
+            state,
+            hit: state ? null : await geocodePill(loc),
+          };
+        }),
       );
       const orClauses: Prisma.CandidateWhereInput[] = [];
-      for (const { loc, hit } of pillHits) {
-        if (hit) {
+      for (const { loc, state, hit } of pillHits) {
+        if (state) {
+          orClauses.push(stateLocationClause(state));
+        } else if (hit) {
           const box = milesToBox(hit, distanceMi);
           orClauses.push({
             lat: { gte: box.latMin, lte: box.latMax },
