@@ -1372,6 +1372,11 @@ function ContactComboMulti({
     setTyped("");
   }
 
+  function pickOption(email: string) {
+    add(email);
+    setTyped("");
+  }
+
   function removeChip(email: string) {
     const next = new Set(parseCsv(latestValueRef.current));
     next.delete(email);
@@ -1456,7 +1461,7 @@ function ContactComboMulti({
                     key={`pinned-${c.id}`}
                     c={c}
                     checked={Boolean(c.email && selected.has(c.email))}
-                    onAdd={() => add(c.email)}
+                    onAdd={() => pickOption(c.email)}
                   />
                 ))}
                 <li className="mx-2 my-1 border-t border-court-border" />
@@ -1472,7 +1477,7 @@ function ContactComboMulti({
                 key={c.id}
                 c={c}
                 checked={Boolean(c.email && selected.has(c.email))}
-                onAdd={() => add(c.email)}
+                onAdd={() => pickOption(c.email)}
               />
             ))}
           </ul>

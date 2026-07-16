@@ -706,6 +706,10 @@ export function InlineContactMultiInput({
     commit(next);
     setTyped("");
   }
+  function pickOption(email: string) {
+    add(email);
+    setTyped("");
+  }
   function remove(email: string) {
     const next = new Set(parseEmailCsv(latestValueRef.current));
     next.delete(email);
@@ -806,7 +810,7 @@ export function InlineContactMultiInput({
                       name={c.name}
                       email={c.email}
                       checked={selected.has(c.email)}
-                      onAdd={() => add(c.email)}
+                      onAdd={() => pickOption(c.email)}
                     />
                   ))}
                   <li className="mx-2 my-1 border-t border-court-border" />
@@ -823,7 +827,7 @@ export function InlineContactMultiInput({
                   name={c.name}
                   email={c.email}
                   checked={selected.has(c.email)}
-                  onAdd={() => add(c.email)}
+                  onAdd={() => pickOption(c.email)}
                 />
               ))}
             </ul>
