@@ -87,6 +87,7 @@ type Row = {
   title: string;
   employer: string;
   location: string;
+  distanceMi: number | null;
   salary: string;
   lastApply: string;
   // Raw ISO timestamp riding alongside the formatted relative string so
@@ -1943,8 +1944,17 @@ export default function CandidatesPage() {
                         )}
                       </td>
                       <td className="px-3 text-court-fg-muted">
-                        {c.location ? (
-                          <Highlight text={c.location} tokens={matchTokens} />
+                        {c.location || c.distanceMi != null ? (
+                          <span className="inline-flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                            {c.distanceMi != null ? (
+                              <span className="shrink-0 tabular-nums text-court-fg-muted/75">
+                                ({c.distanceMi.toFixed(1)} mi)
+                              </span>
+                            ) : null}
+                            {c.location ? (
+                              <Highlight text={c.location} tokens={matchTokens} />
+                            ) : null}
+                          </span>
                         ) : (
                           "—"
                         )}

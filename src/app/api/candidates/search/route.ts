@@ -9,6 +9,7 @@ import { formatLocation, normalizeUsState, usStateNameForAbbr } from "@/lib/util
 import { parseBooleanQuery, flattenBooleanQuery } from "@/lib/search/boolean-query";
 import { geocodePill, type GeoHit } from "@/lib/geocode";
 import { formatExpectedCompensationFull } from "@/lib/candidate-compensation";
+import { haversineMiles } from "@/lib/distance";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,21 @@ const TENURE_RANGES: Record<string, [number, number | null]> = {
 type ExperienceEntry = {
   from?: [number | null, number | null] | null;
   // other fields ignored for tenure
+};
+
+type CandidateSearchRow = {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  currentDesignation: string | null;
+  currentOrganization: string | null;
+  location: string | null;
+  lat: number | null;
+  lng: number | null;
+  expectedSalary: unknown;
+  experience: unknown;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 function composeName(first: string | null, last: string | null): string {
@@ -341,6 +357,31 @@ function milesToBox(center: GeoHit, miles: number): {
   };
 }
 
+function distanceToNearestCenterMiles(
+  c: { lat: number | null; lng: number | null },
+  centers: GeoHit[],
+): number | null {
+  if (centers.length === 0) return null;
+  if (c.lat == null || c.lng == null) return null;
+  if (!Number.isFinite(c.lat) || !Number.isFinite(c.lng)) return null;
+
+  let nearest = Infinity;
+  for (const center of centers) {
+    const miles = haversineMiles(c.lat, c.lng, center.lat, center.lng);
+    if (miles < nearest) nearest = miles;
+  }
+  return Number.isFinite(nearest) ? nearest : null;
+}
+
+function withinNearestCenterRadius(
+  c: { lat: number | null; lng: number | null },
+  centers: GeoHit[],
+  radiusMi: number,
+): boolean {
+  const miles = distanceToNearestCenterMiles(c, centers);
+  return miles != null && miles <= radiusMi;
+}
+
 function stateLocationClause(stateAbbr: string): Prisma.CandidateWhereInput {
   const name = usStateNameForAbbr(stateAbbr);
   const mode = "insensitive" as const;
@@ -445,6 +486,8 @@ export async function GET(req: Request) {
 
     const where: Prisma.CandidateWhereInput = { organizationId: org.id };
     const andClauses: Prisma.CandidateWhereInput[] = [];
+    let distanceCenters: GeoHit[] = [];
+    let exactDistanceFilter = false;
 
     if (q) {
       const groups = parseBooleanQuery(q);
@@ -576,6 +619,11 @@ export async function GET(req: Request) {
           };
         }),
       );
+      distanceCenters = pillHits
+        .map((p) => p.hit)
+        .filter((hit): hit is GeoHit => hit != null);
+      exactDistanceFilter =
+        pillHits.length > 0 && pillHits.every((p) => p.hit != null);
       const orClauses: Prisma.CandidateWhereInput[] = [];
       for (const { loc, state, hit } of pillHits) {
         if (state) {
@@ -659,6 +707,8 @@ export async function GET(req: Request) {
       currentDesignation: true,
       currentOrganization: true,
       location: true,
+      lat: true,
+      lng: true,
       expectedSalary: true,
       experience: true,
       createdAt: true,
@@ -676,6 +726,33 @@ export async function GET(req: Request) {
     const snippetTokens = q ? flattenBooleanQuery(q) : [];
 
     if (!tenureRange) {
+      if (exactDistanceFilter) {
+        const candidates = await prisma.candidate.findMany({
+          where,
+          select,
+          orderBy: { updatedAt: "desc" },
+        });
+        const filtered = candidates.filter((c) =>
+          withinNearestCenterRadius(c, distanceCenters, distanceMi),
+        );
+        const total = filtered.length;
+        const slice = filtered.slice(
+          (page - 1) * PAGE_SIZE,
+          page * PAGE_SIZE,
+        );
+        const snippetMap = await snippetsForCandidates(
+          org.id,
+          slice,
+          snippetTokens,
+        );
+        return NextResponse.json({
+          candidates: slice.map((c) =>
+            toRow(c, distanceCenters, snippetMap.get(c.id)),
+          ),
+          total,
+        });
+      }
+
       // No tenure filter — paginate at the DB level.
       const [rows, total] = await Promise.all([
         prisma.candidate.findMany({
@@ -693,7 +770,9 @@ export async function GET(req: Request) {
         snippetTokens,
       );
       return NextResponse.json({
-        candidates: rows.map((c) => toRow(c, snippetMap.get(c.id))),
+        candidates: rows.map((c) =>
+          toRow(c, distanceCenters, snippetMap.get(c.id)),
+        ),
         total,
       });
     }
@@ -709,7 +788,12 @@ export async function GET(req: Request) {
       orderBy: { updatedAt: "desc" },
       take: 2000,
     });
-    const filtered = candidates.filter((c) => {
+    const distanceFiltered = exactDistanceFilter
+      ? candidates.filter((c) =>
+          withinNearestCenterRadius(c, distanceCenters, distanceMi),
+        )
+      : candidates;
+    const filtered = distanceFiltered.filter((c) => {
       const recent = mostRecentExperience(c.experience);
       const months = tenureMonthsFrom(recent?.from ?? null);
       if (months == null) return false;
@@ -725,7 +809,9 @@ export async function GET(req: Request) {
       snippetTokens,
     );
     return NextResponse.json({
-      candidates: slice.map((c) => toRow(c, snippetMap.get(c.id))),
+      candidates: slice.map((c) =>
+        toRow(c, distanceCenters, snippetMap.get(c.id)),
+      ),
       total,
     });
   } catch (e) {
@@ -739,23 +825,19 @@ export async function GET(req: Request) {
   }
 }
 
-function toRow(c: {
-  id: string;
-  firstName: string | null;
-  lastName: string | null;
-  currentDesignation: string | null;
-  currentOrganization: string | null;
-  location: string | null;
-  expectedSalary: unknown;
-  createdAt: Date;
-  updatedAt: Date;
-}, resumeSnippet?: string) {
+function toRow(
+  c: CandidateSearchRow,
+  distanceCenters: GeoHit[],
+  resumeSnippet?: string,
+) {
+  const distance = distanceToNearestCenterMiles(c, distanceCenters);
   return {
     id: c.id,
     name: composeName(c.firstName, c.lastName),
     title: c.currentDesignation ?? "",
     employer: c.currentOrganization ?? "",
     location: formatLocation(c.location) || "",
+    distanceMi: distance == null ? null : Number(distance.toFixed(1)),
     salary: formatSalary(c.expectedSalary),
     lastApply: relativeTime(c.createdAt),
     // Raw ISO timestamps ride alongside the formatted relative strings
