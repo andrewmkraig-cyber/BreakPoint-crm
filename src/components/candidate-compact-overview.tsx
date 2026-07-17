@@ -56,9 +56,9 @@ export type { CandidateCompactOverviewExpectedSalary };
 // and the candidates split-view embed.
 //
 // Edit model: a single Edit button (matching the client overview card
-// style) flips all editable fields — Title, Employer, Location, Source, Comp,
-// Email(s), Phone(s) — into edit mode at once. Save commits every field
-// together, Cancel discards. Email and Phone are multi-value: the first
+// style) flips all editable fields — Name, Title, Employer, Location,
+// Source, Comp, Email(s), Phone(s) — into edit mode at once. Save commits
+// every field together, Cancel discards. Email and Phone are multi-value: the first
 // row is the primary (the unique Candidate.email / Candidate.phone), and
 // any additional rows persist to Candidate.altEmails / altPhones. LinkedIn
 // stays read-only; it has a dedicated surface elsewhere on the profile.
@@ -104,6 +104,8 @@ export function CandidateCompactOverview({
 }) {
   const router = useRouter();
 
+  const [firstNameSaved, setFirstNameSaved] = useState(firstName ?? "");
+  const [lastNameSaved, setLastNameSaved] = useState(lastName ?? "");
   const [titleSaved, setTitleSaved] = useState(currentDesignation ?? "");
   const [employerSaved, setEmployerSaved] = useState(currentOrganization ?? "");
   const [locationSaved, setLocationSaved] = useState(location ?? "");
@@ -120,10 +122,12 @@ export function CandidateCompactOverview({
     [phone ?? "", ...(altPhones ?? [])].map((p) => p.trim()).filter(Boolean),
   );
 
-  // Edit mode flips all four fields at once. Drafts seed from the saved
+  // Edit mode flips the full compact identity card at once. Drafts seed from the saved
   // values whenever editing flips off (matches the client overview card
   // model, so canceling restores the exact persisted shape).
   const [editing, setEditing] = useState(false);
+  const [firstNameDraft, setFirstNameDraft] = useState(firstNameSaved);
+  const [lastNameDraft, setLastNameDraft] = useState(lastNameSaved);
   const [titleDraft, setTitleDraft] = useState(titleSaved);
   const [employerDraft, setEmployerDraft] = useState(employerSaved);
   const [locationDraft, setLocationDraft] = useState<CandidateLocationParts>(() =>
@@ -138,9 +142,15 @@ export function CandidateCompactOverview({
   const [emailsDraft, setEmailsDraft] = useState<string[]>(emailsSaved);
   const [phonesDraft, setPhonesDraft] = useState<string[]>(phonesSaved);
   const [isSaving, startSave] = useTransition();
+  const displayName =
+    [firstNameSaved, lastNameSaved].filter(Boolean).join(" ").trim() ||
+    fullName ||
+    "(unnamed)";
 
   useEffect(() => {
     if (editing) return;
+    setFirstNameDraft(firstNameSaved);
+    setLastNameDraft(lastNameSaved);
     setTitleDraft(titleSaved);
     setEmployerDraft(employerSaved);
     setLocationDraft(splitCandidateLocation(locationSaved));
@@ -150,7 +160,19 @@ export function CandidateCompactOverview({
     setCompTypeDraft(getExpectedCompensationType(compSaved));
     setEmailsDraft(emailsSaved);
     setPhonesDraft(phonesSaved);
-  }, [editing, titleSaved, employerSaved, locationSaved, linkedinSaved, sourceSaved, compSaved, emailsSaved, phonesSaved]);
+  }, [
+    editing,
+    firstNameSaved,
+    lastNameSaved,
+    titleSaved,
+    employerSaved,
+    locationSaved,
+    linkedinSaved,
+    sourceSaved,
+    compSaved,
+    emailsSaved,
+    phonesSaved,
+  ]);
 
   const tokens = useMemo(
     () => (highlightTokens ?? []).filter((t) => t.trim().length > 0),
@@ -159,6 +181,8 @@ export function CandidateCompactOverview({
   const colorMap = useMemo(() => buildTokenColorMap(tokens), [tokens]);
 
   function beginEdit() {
+    setFirstNameDraft(firstNameSaved);
+    setLastNameDraft(lastNameSaved);
     setTitleDraft(titleSaved);
     setEmployerDraft(employerSaved);
     setLocationDraft(splitCandidateLocation(locationSaved));
@@ -178,6 +202,8 @@ export function CandidateCompactOverview({
   }
 
   function commitEdit() {
+    const nextFirstName = firstNameDraft.trim();
+    const nextLastName = lastNameDraft.trim();
     const nextTitle = titleDraft.trim();
     const nextEmployer = employerDraft.trim();
     const nextLocation = composeCandidateLocation(locationDraft);
@@ -190,6 +216,18 @@ export function CandidateCompactOverview({
 
     const patch: Parameters<typeof updateCandidate>[0] = { id: candidateRef };
     let dirty = false;
+    if (!nextFirstName) {
+      toast.error("First name is required");
+      return;
+    }
+    if (nextFirstName !== firstNameSaved.trim()) {
+      patch.first_name = nextFirstName;
+      dirty = true;
+    }
+    if (nextLastName !== lastNameSaved.trim()) {
+      patch.last_name = nextLastName;
+      dirty = true;
+    }
     if (nextTitle !== titleSaved.trim()) {
       patch.current_designation = nextTitle;
       dirty = true;
@@ -250,6 +288,8 @@ export function CandidateCompactOverview({
         toast.error("Save failed", { description: res.error });
         return;
       }
+      if (patch.first_name !== undefined) setFirstNameSaved(nextFirstName);
+      if (patch.last_name !== undefined) setLastNameSaved(nextLastName);
       if (patch.current_designation !== undefined) setTitleSaved(nextTitle);
       if (patch.current_organization !== undefined) setEmployerSaved(nextEmployer);
       if (patch.location !== undefined) setLocationSaved(nextLocation);
@@ -271,7 +311,7 @@ export function CandidateCompactOverview({
     <section className="relative isolate rounded-xl border border-court-border bg-court-surface px-4 py-3 shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <h1 className="min-w-0 break-words font-serif text-lg font-bold leading-tight text-court-fg">
-          <HighlightedText text={fullName} tokens={tokens} colorMap={colorMap} />
+          <HighlightedText text={displayName} tokens={tokens} colorMap={colorMap} />
         </h1>
         {!editing && (
           <button
@@ -286,6 +326,26 @@ export function CandidateCompactOverview({
 
       {editing ? (
         <div className="mt-3 space-y-2 text-xs">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <EditField label="First name">
+              <Input
+                type="text"
+                value={firstNameDraft}
+                disabled={isSaving}
+                onChange={(e) => setFirstNameDraft(e.target.value)}
+                className="px-2 py-1"
+              />
+            </EditField>
+            <EditField label="Last name">
+              <Input
+                type="text"
+                value={lastNameDraft}
+                disabled={isSaving}
+                onChange={(e) => setLastNameDraft(e.target.value)}
+                className="px-2 py-1"
+              />
+            </EditField>
+          </div>
           <EditField label="Title">
             <Input
               type="text"
@@ -448,8 +508,8 @@ export function CandidateCompactOverview({
             <ReadEmailList
               emails={emailsSaved}
               candidateRef={candidateRef}
-              firstName={firstName}
-              lastName={lastName}
+              firstName={firstNameSaved}
+              lastName={lastNameSaved}
               title={titleSaved}
               employer={employerSaved}
             />

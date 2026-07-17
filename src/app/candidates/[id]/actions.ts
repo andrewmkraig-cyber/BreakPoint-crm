@@ -124,8 +124,12 @@ export async function updateCandidate(patch: CandidatePatch): Promise<ActionResu
     // Build the Neon-column update. Only fields actually present in the
     // patch are written so omitted fields keep their prior value.
     const data: Prisma.CandidateUpdateInput = {};
-    if (patch.first_name !== undefined) data.firstName = patch.first_name;
-    if (patch.last_name !== undefined) data.lastName = patch.last_name ?? null;
+    if (patch.first_name !== undefined) {
+      const nextFirstName = patch.first_name.trim();
+      if (!nextFirstName) return { ok: false, error: "First name is required." };
+      data.firstName = nextFirstName;
+    }
+    if (patch.last_name !== undefined) data.lastName = patch.last_name.trim() || null;
     if (patch.email !== undefined) data.email = pickFirstString(patch.email);
     if (patch.phone_number !== undefined) data.phone = normalizeToE164(pickFirstString(patch.phone_number));
     if (patch.alt_emails !== undefined)

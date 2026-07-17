@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { normalizePublicJobDescription } from "@/lib/public-job-description";
 import { publicJobSlug } from "@/lib/public-job-slug";
 
 const DEFAULT_PUBLIC_JOBS_OWNER_EMAIL = "andrew@breakpointtalent.com";
@@ -135,7 +136,7 @@ export async function getPublishedWebsiteJobs(): Promise<PublicJobsResult> {
       id: row.id,
       slug: publicJobSlug(row),
       title: row.title,
-      description,
+      description: normalizePublicJobDescription(description),
       company: row.client.name,
       locations: row.locations,
       location: {
