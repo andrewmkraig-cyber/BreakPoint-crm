@@ -60,6 +60,22 @@ export type BrandResumeInput = {
   redactions: RedactionRect[];
 };
 
+function candidateResumeLabel(candidate: { firstName: string; lastName: string | null } | null): string {
+  const fullName = candidate
+    ? [candidate.firstName, candidate.lastName].filter(Boolean).join(" ").trim()
+    : "";
+  return fullName ? `${fullName} - BreakPoint Resume` : "BreakPoint Resume";
+}
+
+function filenameFromDisplayName(displayName: string): string {
+  const safeBase =
+    displayName
+      .replace(/[^A-Za-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 120) || "BreakPoint_Resume";
+  return `${safeBase}.pdf`;
+}
+
 async function requireUserId(): Promise<string | null> {
   const s = await getServerSession(authOptions);
   if (!s?.user?.email) return null;
@@ -159,15 +175,21 @@ export async function brandCandidateResume(
           ? "branded"
           : "redacted";
 
-    const baseName =
-      (source.displayName?.trim() || source.filename).replace(/\.(pdf|docx?|txt)$/i, "");
-    const brandedBaseName = /\s-\s*BreakPoint(?:\s+Talent)?$/i.test(baseName)
-      ? baseName
-      : `${baseName} - BreakPoint`;
-    const filename =
-      variant === "redacted"
-        ? `${baseName} - redacted.pdf`
-        : `${brandedBaseName}.pdf`;
+    const candidate =
+      source.candidateId || source.candidateRfId != null
+        ? await prisma.candidate.findFirst({
+            where: {
+              organizationId: org.id,
+              OR: [
+                ...(source.candidateId ? [{ id: source.candidateId }] : []),
+                ...(source.candidateRfId != null ? [{ rfId: source.candidateRfId }] : []),
+              ],
+            },
+            select: { firstName: true, lastName: true },
+          })
+        : null;
+    const displayName = candidateResumeLabel(candidate);
+    const filename = filenameFromDisplayName(displayName);
 
     // candidateId is nullable on CandidateResume; fall back to the
     // source row id so the blob path is always unique.
@@ -184,6 +206,7 @@ export async function brandCandidateResume(
         candidateRfId: source.candidateRfId,
         organizationId: org.id,
         filename,
+        displayName,
         mimeType: "application/pdf",
         size: outputBytes.byteLength,
         data: Buffer.alloc(0),
