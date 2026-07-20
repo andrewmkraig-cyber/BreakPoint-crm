@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { callLineWhere, getQuoLineDigitsForUserEmail, smsLineWhere } from "@/lib/quo-line-owner";
 import { canonicalStage } from "@/lib/rf-payload-shapes";
 import { getResumeBytes } from "@/lib/resume-bytes";
+import { extractDocxText, looksLikeDocx } from "@/lib/resume-text";
 import { formatInterviewWhen } from "@/lib/interview-format";
 import { DEFAULT_INTERVIEW_TIMEZONE } from "@/lib/timezones";
 import { formatExpectedCompensation } from "@/lib/candidate-compensation";
@@ -22,12 +23,11 @@ import { formatExpectedCompensation } from "@/lib/candidate-compensation";
 // / getJobByIdentifier / getCandidateByIdentifier in the per-entity
 // lib files).
 //
-// Resume text: the schema doesn't store parsed PDF text, so this
-// module pdf-parses the most-recent CandidateResume blob on demand
-// (extractResumeTextForCandidate). The structured "RESUME:" block
-// stays in candidate context as a fallback for candidates with no
-// uploaded PDF — together they give Claude either the actual resume
-// narrative or the structured profile, never neither.
+// Resume text: CandidateResume.extractedText is the preferred cache.
+// When it is missing, this module extracts text from the most-recent
+// CandidateResume blob on demand, supporting both PDF and DOCX. The
+// structured "RESUME:" block stays in candidate context as a fallback
+// for candidates without parseable upload text.
 
 // Candidate-context Game Plan sends the full resume + full JDs so
 // Claude gets the whole story, not a 3k-char summary. Client-context
@@ -474,8 +474,8 @@ export async function buildClientContext(clientId: string): Promise<string> {
         org.id,
         3000,
       );
-      if (!text) return null;
-      return { name, stage: p.stage, text };
+      if (!text.text) return null;
+      return { name, stage: p.stage, text: text.text };
     }),
   );
   const pipelineResumesFiltered = pipelineResumes.filter(
@@ -612,7 +612,7 @@ export async function buildCandidateContext(
   const compTarget = formatExpectedCompensation(candidate.expectedSalary);
 
   const resumeText = assembleResumeFromAce(candidate);
-  const uploadedResumeText = await extractResumeTextForCandidate(
+  const uploadedResume = await extractResumeTextForCandidate(
     candidate.id,
     org.id,
     6000,
@@ -629,6 +629,16 @@ export async function buildCandidateContext(
   lines.push(`LOCATION: ${location || "(unknown)"}`);
   lines.push(`COMP TARGET: ${compTarget || "(not set)"}`);
   lines.push(`CONTACT: ${email || "(no email)"} | ${phone || "(no phone)"}`);
+  if (uploadedResume.hasResume) {
+    lines.push(
+      `RESUME FILE ON RECORD: YES${uploadedResume.filename ? ` - ${uploadedResume.filename}` : ""}`,
+    );
+    lines.push(
+      `RESUME FACT RULE: This candidate has a resume on file. Never say or imply there is no resume on file. If an older chat message says "no resume on file", treat that older statement as incorrect and rely on this CRM context.`,
+    );
+  } else {
+    lines.push("RESUME FILE ON RECORD: NO");
+  }
   if (skills.length > 0) lines.push(`SKILLS: ${skills.join(", ")}`);
   // PROFILE NOTES — the legacy `candidate.notes` single-string column
   // (typically an RF-imported bio / intake paragraph). Distinct from
@@ -668,10 +678,14 @@ export async function buildCandidateContext(
   // — kept so candidates without a PDF upload still surface a
   // near-resume narrative. Both can be present.
   lines.push("UPLOADED RESUME:");
-  if (uploadedResumeText.trim()) {
-    for (const rLine of uploadedResumeText.split("\n")) lines.push(`  ${rLine}`);
+  if (uploadedResume.text.trim()) {
+    for (const rLine of uploadedResume.text.split("\n")) lines.push(`  ${rLine}`);
+  } else if (uploadedResume.hasResume) {
+    lines.push(
+      `  Resume file exists${uploadedResume.filename ? ` (${uploadedResume.filename})` : ""}, but uploaded text extraction is unavailable in this prompt. Do not describe this as no resume on file; use the structured resume/profile fields below.`,
+    );
   } else {
-    lines.push("  No resume on file");
+    lines.push("  No uploaded resume file on record");
   }
   lines.push("");
 
@@ -1077,35 +1091,157 @@ function truncate(s: string, max: number): string {
   return `${s.slice(0, max)}…`;
 }
 
-// Pulls the most-recent CandidateResume blob for a candidate, runs
-// pdf-parse on it, and returns up to `maxChars` of plain text. Silent
-// on every failure path (no upload, non-PDF mime, parse error, empty
-// text) so the caller can drop the result into the prompt without a
-// guard. Tenant-scoped via organizationId.
+type ResumeTextForAi = {
+  hasResume: boolean;
+  filename: string | null;
+  text: string;
+};
+
+function sanitizeExtractedText(text: string): string {
+  return text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, " ").trim();
+}
+
+async function extractPdfText(data: Buffer): Promise<string> {
+  const { PDFParse } = await import("pdf-parse");
+  const parser = new PDFParse({
+    data: new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
+  });
+  try {
+    const result = await parser.getText();
+    return sanitizeExtractedText(result.text ?? "");
+  } finally {
+    try {
+      await parser.destroy();
+    } catch {
+      // Best-effort cleanup.
+    }
+  }
+}
+
+async function extractTextFromResumeFile(input: {
+  filename: string;
+  mimeType: string;
+  data: Buffer;
+}): Promise<string> {
+  const mime = input.mimeType.toLowerCase();
+  const filename = input.filename.toLowerCase();
+  if (mime.includes("pdf") || filename.endsWith(".pdf")) {
+    return extractPdfText(input.data);
+  }
+  if (looksLikeDocx(input.filename, input.mimeType)) {
+    return sanitizeExtractedText(await extractDocxText(input.data));
+  }
+  if (mime.startsWith("text/") || filename.endsWith(".txt")) {
+    return sanitizeExtractedText(input.data.toString("utf-8"));
+  }
+  return "";
+}
+
+// Pulls the most-recent CandidateResume rows for a candidate and returns up
+// to `maxChars` of plain text. Prefers CandidateResume.extractedText, then
+// lazily extracts from stored PDF/DOCX/text bytes. It also returns hasResume
+// separately so a parse miss is never mislabeled as "no resume on file."
+// Tenant-scoped via organizationId.
 async function extractResumeTextForCandidate(
   candidateId: string,
   organizationId: string,
   maxChars: number,
-): Promise<string> {
+): Promise<ResumeTextForAi> {
+  const empty: ResumeTextForAi = { hasResume: false, filename: null, text: "" };
   try {
-    const resume = await prisma.candidateResume.findFirst({
+    const resumes = await prisma.candidateResume.findMany({
       where: { candidateId, organizationId, uploadComplete: true },
       orderBy: { uploadedAt: "desc" },
-      select: { data: true, blobUrl: true, mimeType: true },
+      take: 5,
+      select: {
+        id: true,
+        filename: true,
+        displayName: true,
+        data: true,
+        blobUrl: true,
+        mimeType: true,
+        extractedText: true,
+      },
     });
-    if (!resume) return "";
-    if (!resume.blobUrl && !resume.data) return "";
-    if (!resume.mimeType?.toLowerCase().includes("pdf")) return "";
-    const mod = (await import("pdf-parse")) as unknown as
-      | { default: (buf: Buffer) => Promise<{ text: string }> }
-      | ((buf: Buffer) => Promise<{ text: string }>);
-    const parse = typeof mod === "function" ? mod : mod.default;
-    const out = await parse(await getResumeBytes(resume));
-    const text = (out.text ?? "").trim();
-    if (!text) return "";
-    return truncate(text, maxChars);
+    const firstResume = resumes[0] ?? null;
+    for (const resume of resumes) {
+      const cached = sanitizeExtractedText(resume.extractedText ?? "");
+      if (cached) {
+        return {
+          hasResume: true,
+          filename: resume.displayName || resume.filename,
+          text: truncate(cached, maxChars),
+        };
+      }
+    }
+
+    for (const resume of resumes) {
+      if (!resume.blobUrl && !resume.data) continue;
+      try {
+        const text = await extractTextFromResumeFile({
+          filename: resume.filename,
+          mimeType: resume.mimeType,
+          data: await getResumeBytes(resume),
+        });
+        if (text) {
+          const capped = truncate(text, maxChars);
+          await prisma.candidateResume
+            .update({
+              where: { id: resume.id },
+              data: { extractedText: truncate(text, 50_000) },
+            })
+            .catch(() => {});
+          return {
+            hasResume: true,
+            filename: resume.displayName || resume.filename,
+            text: capped,
+          };
+        }
+      } catch {
+        // Try the next resume version before giving up.
+      }
+    }
+
+    const inline = await prisma.candidate.findFirst({
+      where: { id: candidateId, organizationId },
+      select: {
+        resumeFilename: true,
+        resumeMimeType: true,
+        resumeData: true,
+      },
+    });
+    if (inline?.resumeFilename && inline.resumeMimeType && inline.resumeData) {
+      try {
+        const text = await extractTextFromResumeFile({
+          filename: inline.resumeFilename,
+          mimeType: inline.resumeMimeType,
+          data: Buffer.from(inline.resumeData),
+        });
+        if (text) {
+          return {
+            hasResume: true,
+            filename: inline.resumeFilename,
+            text: truncate(text, maxChars),
+          };
+        }
+      } catch {
+        // Fall through to "resume exists, text unavailable".
+      }
+    }
+
+    if (firstResume) {
+      return {
+        hasResume: true,
+        filename: firstResume.displayName || firstResume.filename,
+        text: "",
+      };
+    }
+    if (inline?.resumeFilename) {
+      return { hasResume: true, filename: inline.resumeFilename, text: "" };
+    }
+    return empty;
   } catch {
-    return "";
+    return empty;
   }
 }
 
