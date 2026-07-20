@@ -26,13 +26,21 @@ export type CalendarDrawerPrefill = {
   minute?: number;
 };
 
+export type CalendarDrawerCandidatePrefill = {
+  id: string;
+  name: string;
+  email: string;
+};
+
 type Ctx = {
   isOpen: boolean;
   prefill: CalendarDrawerPrefill | null;
   prefillType: CalendarEventType | null;
+  prefillCandidate: CalendarDrawerCandidatePrefill | null;
   open: (opts?: {
     prefill?: CalendarDrawerPrefill;
     type?: CalendarEventType;
+    candidate?: CalendarDrawerCandidatePrefill | null;
   }) => void;
   close: () => void;
 };
@@ -45,14 +53,18 @@ export function CalendarDrawerProvider({ children }: { children: ReactNode }) {
   const [prefillType, setPrefillType] = useState<CalendarEventType | null>(
     null,
   );
+  const [prefillCandidate, setPrefillCandidate] =
+    useState<CalendarDrawerCandidatePrefill | null>(null);
 
   const open = useCallback(
     (opts?: {
       prefill?: CalendarDrawerPrefill;
       type?: CalendarEventType;
+      candidate?: CalendarDrawerCandidatePrefill | null;
     }) => {
       setPrefill(opts?.prefill ?? null);
       setPrefillType(opts?.type ?? null);
+      setPrefillCandidate(opts?.candidate ?? null);
       setIsOpen(true);
     },
     [],
@@ -61,7 +73,9 @@ export function CalendarDrawerProvider({ children }: { children: ReactNode }) {
   const close = useCallback(() => setIsOpen(false), []);
 
   return (
-    <Context.Provider value={{ isOpen, prefill, prefillType, open, close }}>
+    <Context.Provider
+      value={{ isOpen, prefill, prefillType, prefillCandidate, open, close }}
+    >
       {children}
     </Context.Provider>
   );

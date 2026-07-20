@@ -183,14 +183,15 @@ export function ComposeFAB() {
   const phonePanels = usePhonePanels();
   const calendarDrawer = useCalendarDrawer();
 
-  // Mail-only context: when on /candidates/[id], pre-fill the To field
-  // and pass the candidate ref through to the composer so smart
-  // context (active jobs / merge tags) lights up. When on /clients/[id],
-  // fetch that client's contacts so the composer's To input gets a
-  // typeahead dropdown of names instead of forcing the recruiter to
-  // remember addresses.
+  // Route context: when on /candidates/[id], pre-fill mail/calendar
+  // actions with the candidate and pass the candidate ref through to
+  // the composer so smart context (active jobs / merge tags) lights up.
+  // When on /clients/[id], fetch that client's contacts so the mail
+  // composer's To input gets a typeahead dropdown of names instead of
+  // forcing the recruiter to remember addresses.
   const [contextEmail, setContextEmail] = useState("");
   const [contextRef, setContextRef] = useState("");
+  const [contextName, setContextName] = useState("");
   const [clientContactSuggestions, setClientContactSuggestions] = useState<
     Array<{ name: string; email: string }>
   >([]);
@@ -198,6 +199,7 @@ export function ComposeFAB() {
     if (!pathname) {
       setContextEmail("");
       setContextRef("");
+      setContextName("");
       setClientContactSuggestions([]);
       return;
     }
@@ -206,6 +208,7 @@ export function ComposeFAB() {
     if (!candidateMatch && !clientMatch) {
       setContextEmail("");
       setContextRef("");
+      setContextName("");
       setClientContactSuggestions([]);
       return;
     }
@@ -213,6 +216,8 @@ export function ComposeFAB() {
     if (candidateMatch) {
       const ref = decodeURIComponent(candidateMatch[1]);
       setContextRef(ref);
+      setContextEmail("");
+      setContextName("");
       setClientContactSuggestions([]);
       void (async () => {
         try {
@@ -222,10 +227,24 @@ export function ComposeFAB() {
           );
           if (!res.ok) return;
           const body = (await res.json().catch(() => null)) as
-            | { candidate?: { email?: string } }
+            | {
+                candidate?: {
+                  firstName?: string;
+                  lastName?: string;
+                  email?: string;
+                };
+              }
             | null;
-          if (!cancelled && body?.candidate?.email) {
-            setContextEmail(body.candidate.email);
+          if (!cancelled && body?.candidate) {
+            const candidateName = [
+              body.candidate.firstName,
+              body.candidate.lastName,
+            ]
+              .map((part) => part?.trim() ?? "")
+              .filter(Boolean)
+              .join(" ");
+            setContextEmail(body.candidate.email ?? "");
+            setContextName(candidateName);
           }
         } catch {
           // Silent: composer still opens, just without the prefill.
@@ -235,6 +254,7 @@ export function ComposeFAB() {
       const slug = decodeURIComponent(clientMatch[1]);
       setContextEmail("");
       setContextRef("");
+      setContextName("");
       void (async () => {
         try {
           const res = await fetch(
@@ -546,13 +566,55 @@ export function ComposeFAB() {
     setView("notes");
   }
 
-  function pickCalendarEvent() {
+  async function pickCalendarEvent() {
     closeAll();
+    let candidate =
+      contextRef && contextEmail
+        ? {
+            id: contextRef,
+            name: contextName || contextEmail,
+            email: contextEmail,
+          }
+        : null;
+    if (!candidate && contextRef) {
+      try {
+        const res = await fetch(
+          `/api/mail/candidate-context/${encodeURIComponent(contextRef)}`,
+          { cache: "no-store" },
+        );
+        if (res.ok) {
+          const body = (await res.json().catch(() => null)) as
+            | {
+                candidate?: {
+                  firstName?: string;
+                  lastName?: string;
+                  email?: string;
+                };
+              }
+            | null;
+          const email = body?.candidate?.email?.trim() ?? "";
+          if (email) {
+            const name = [
+              body?.candidate?.firstName,
+              body?.candidate?.lastName,
+            ]
+              .map((part) => part?.trim() ?? "")
+              .filter(Boolean)
+              .join(" ");
+            candidate = { id: contextRef, name: name || email, email };
+            setContextEmail(email);
+            setContextName(name);
+          }
+        }
+      } catch {
+        // Silent: the drawer can still open without a prefilled guest.
+      }
+    }
     // Drawer is mounted globally in providers, so opening it from
     // /mail or /candidates or anywhere else renders as an overlay
     // without navigation — same UX as the email composer popping
     // over the current page.
-    calendarDrawer.open();
+    calendarDrawer.open({ candidate });
   }
 
   function pickCalendarReminder() {

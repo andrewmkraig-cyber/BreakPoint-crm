@@ -31,6 +31,7 @@ import { LeadTimePicker } from "@/components/calendar/lead-time-picker";
 import { GoogleGlyph } from "@/components/calendar/left-rail";
 import { TimeSelect } from "@/components/calendar/time-select";
 import { Button } from "@/components/ui/button";
+import type { CalendarDrawerCandidatePrefill } from "@/lib/calendar-drawer-context";
 import { triggerCalendarSync } from "@/lib/calendar/trigger-sync";
 import type { CalendarEvent, CalendarEventType } from "@/lib/calendar/types";
 import { eventTypeMeta } from "@/lib/calendar/utils";
@@ -49,6 +50,10 @@ type Props = {
   // the right pill highlighted and a reminder-friendly meeting-type
   // default ("none"). null falls back to "interview".
   prefillType?: CalendarEventType | null;
+  // Candidate profile "New Event" launches seed this so the candidate
+  // lands in Guests automatically and the mirrored event links back to
+  // the candidate row.
+  prefillCandidate?: CalendarDrawerCandidatePrefill | null;
   onClose: () => void;
 };
 
@@ -273,7 +278,15 @@ const TYPE_OPTS: Array<{ id: CalendarEventType; label: string; sub: string }> = 
   { id: "other", label: "Other", sub: "Anything else" },
 ];
 
-export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, onClose }: Props) {
+export function CalendarEventDrawer({
+  open,
+  mode,
+  event,
+  prefill,
+  prefillType,
+  prefillCandidate,
+  onClose,
+}: Props) {
   const router = useRouter();
   const [type, setType] = useState<CalendarEventType>(event?.type ?? "interview");
   const [title, setTitle] = useState(event?.title ?? "");
@@ -337,6 +350,11 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
       : interviewParty === "client"
         ? "Showing exactly what the client was emailed."
         : "No invite emailed yet — the client is sending their own invites.";
+  const prefillCandidateId = prefillCandidate?.id ?? null;
+  const prefillCandidateName = prefillCandidate?.name ?? "";
+  const prefillCandidateEmail = prefillCandidate?.email ?? "";
+  const hasPrefillCandidate =
+    prefillCandidateId != null && prefillCandidateEmail.trim().length > 0;
 
   // The title control is a <textarea> so a long event title wraps
   // instead of clipping. Snap its height to scrollHeight on every
@@ -351,6 +369,14 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
   }, [title, open]);
 
   useEffect(() => {
+    const prefilledGuests: GuestSuggestion[] = prefillCandidateEmail.trim()
+      ? [
+          {
+            name: prefillCandidateName.trim(),
+            email: prefillCandidateEmail.trim(),
+          },
+        ]
+      : [];
     if (event) {
       setType(event.type);
       setTitle(event.title);
@@ -388,7 +414,8 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
       setCancelChoiceOpen(false);
       setSaveChoiceOpen(false);
     } else {
-      const initialType: CalendarEventType = prefillType ?? "interview";
+      const initialType: CalendarEventType =
+        prefillType ?? (hasPrefillCandidate ? "candidate" : "interview");
       setType(initialType);
       setTitle("");
       setTimeZone(DEFAULT_TIMEZONE);
@@ -445,9 +472,17 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
       // Reminders open with the standard single 15-min lead.
       setLeads([15]);
     }
-    setNewGuests([]);
+    setNewGuests(event ? [] : prefilledGuests);
     setError(null);
-  }, [event?.id, open, prefill, prefillType]);
+  }, [
+    event,
+    open,
+    prefill,
+    prefillType,
+    hasPrefillCandidate,
+    prefillCandidateName,
+    prefillCandidateEmail,
+  ]);
 
   const meta = eventTypeMeta(type);
   const isReminder = type === "reminder";
@@ -639,7 +674,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, prefillType, o
         // when meetingType is in_person, so guard here too.
         location: meetingType === "in_person" ? location.trim() || null : null,
         notes: notes.trim() || null,
-        candidateId: null,
+        candidateId: hasPrefillCandidate ? prefillCandidateId : null,
         clientId: null,
         // GuestTypeahead-picked rows go in TO; cc/bcc stay empty
         // per the unified design (one Guests bucket, not three).

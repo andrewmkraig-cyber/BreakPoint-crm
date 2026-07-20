@@ -13,10 +13,10 @@ import {
   type PhoneSmsSentEventDetail,
 } from "@/components/text-notification-toast";
 
-// Single-line SMS composer that hangs off the candidate sidebar, right under
-// the phone number. POSTs to /api/sms which upserts the outbound row and
-// best-effort fires Krispcall; a failed Krispcall call still writes a row
-// with status="failed" so the thread stays honest about what the recruiter
+// SMS composer that hangs off the candidate sidebar, right under the phone
+// number. POSTs to /api/sms which upserts the outbound row and best-effort
+// fires Krispcall; a failed Krispcall call still writes a row with
+// status="failed" so the thread stays honest about what the recruiter
 // actually tried to send.
 export function SmsComposer({
   candidateId,
@@ -29,9 +29,20 @@ export function SmsComposer({
   const [sending, setSending] = useState(false);
   const [openingQuo, setOpeningQuo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const disabled = !body.trim() || !toNumber || sending;
   const openInQuoDisabled = !toNumber || openingQuo;
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const maxHeight = 160;
+    const nextHeight = Math.min(el.scrollHeight, maxHeight);
+    el.style.height = `${nextHeight}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [body, toNumber]);
 
   async function onOpenInQuo() {
     if (openInQuoDisabled || !toNumber) return;
@@ -104,9 +115,10 @@ export function SmsComposer({
             because input flex-1 + Send + Quo can't all fit in <300px
             of sidebar. Stacking guarantees Send stays visible at any
             viewport. */}
-        <div className={`${INPUT_FRAME_CLASS} w-full`}>
-          <input
-            type="text"
+        <div className={`${INPUT_FRAME_CLASS} w-full !items-stretch !rounded-2xl`}>
+          <textarea
+            ref={textareaRef}
+            rows={1}
             value={body}
             onChange={(e) => setBody(e.target.value)}
             onKeyDown={(e) => {
@@ -117,7 +129,7 @@ export function SmsComposer({
             }}
             placeholder={toNumber ? "Type a text…" : "No phone on file"}
             disabled={!toNumber || sending}
-            className={`${INPUT_CONTROL_CLASS} text-sm`}
+            className={`${INPUT_CONTROL_CLASS} min-h-[44px] resize-none py-3 text-sm leading-5`}
           />
         </div>
         <div className="flex items-center justify-end gap-2">
