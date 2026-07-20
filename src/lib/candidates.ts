@@ -37,6 +37,7 @@ function buildCandidateWhere(
   query: string | undefined,
   listId: string | undefined,
   phoneTokenIds?: Map<string, string[]>,
+  fuzzyNameTokenIds?: Map<string, string[]>,
 ): Prisma.CandidateWhereInput {
   const q = query?.trim() ?? "";
   const where: Prisma.CandidateWhereInput = { organizationId: orgId };
@@ -61,6 +62,10 @@ function buildCandidateWhere(
       if (ids && ids.length > 0) {
         orClauses.push({ id: { in: ids } });
       }
+      const fuzzyNameIds = fuzzyNameTokenIds?.get(t);
+      if (fuzzyNameIds && fuzzyNameIds.length > 0) {
+        orClauses.push({ id: { in: fuzzyNameIds } });
+      }
       return { OR: orClauses };
     });
   }
@@ -70,6 +75,66 @@ function buildCandidateWhere(
     };
   }
   return where;
+}
+
+function normalizeNameToken(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+}
+
+function editDistanceWithin(a: string, b: string, maxDistance: number): boolean {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > maxDistance) return false;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const curr = [i];
+    let rowMin = curr[0];
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const value = Math.min(
+        prev[j] + 1,
+        curr[j - 1] + 1,
+        prev[j - 1] + cost,
+      );
+      curr[j] = value;
+      rowMin = Math.min(rowMin, value);
+    }
+    if (rowMin > maxDistance) return false;
+    prev = curr;
+  }
+  return prev[b.length] <= maxDistance;
+}
+
+async function resolveFuzzyNameTokenIds(orgId: string, tokens: string[]): Promise<Map<string, string[]>> {
+  const normalizedTokens = tokens
+    .map((raw) => ({ raw, normalized: normalizeNameToken(raw) }))
+    .filter(({ normalized }) => normalized.length >= 5);
+  if (normalizedTokens.length === 0) return new Map();
+
+  const rows = await prisma.candidate.findMany({
+    where: { organizationId: orgId },
+    select: { id: true, firstName: true, lastName: true },
+  });
+
+  const out = new Map<string, string[]>();
+  for (const { raw, normalized } of normalizedTokens) {
+    const maxDistance = normalized.length >= 6 ? 2 : 1;
+    const ids: string[] = [];
+    for (const row of rows) {
+      const parts = [row.firstName, row.lastName]
+        .flatMap((part) => (part ?? "").split(/\s+/))
+        .map(normalizeNameToken)
+        .filter(Boolean);
+      if (parts.some((part) => editDistanceWithin(normalized, part, maxDistance))) {
+        ids.push(row.id);
+      }
+    }
+    if (ids.length > 0) out.set(raw, ids);
+  }
+  return out;
 }
 
 // Pre-resolves the candidate ids whose stored phone (digits-only)
@@ -131,8 +196,14 @@ function rowFromDb(r: {
 export async function getCandidatesForOrg(params: { query?: string; listId?: string } = {}): Promise<CandidateListRow[]> {
   const org = await getCurrentOrg();
   const tokens = (params.query?.trim() ?? "").split(/\s+/).filter(Boolean);
-  const phoneTokenIds = tokens.length > 0 ? await resolvePhoneTokenIds(org.id, tokens) : undefined;
-  const where = buildCandidateWhere(org.id, params.query, params.listId, phoneTokenIds);
+  const [phoneTokenIds, fuzzyNameTokenIds] =
+    tokens.length > 0
+      ? await Promise.all([
+          resolvePhoneTokenIds(org.id, tokens),
+          resolveFuzzyNameTokenIds(org.id, tokens),
+        ])
+      : [undefined, undefined];
+  const where = buildCandidateWhere(org.id, params.query, params.listId, phoneTokenIds, fuzzyNameTokenIds);
   const rows = await prisma.candidate.findMany({
     where,
     select: CANDIDATE_LIST_SELECT,
@@ -158,8 +229,14 @@ export async function getCandidatesPageForOrg(params: {
 }): Promise<CandidatesPageResult> {
   const org = await getCurrentOrg();
   const tokens = (params.query?.trim() ?? "").split(/\s+/).filter(Boolean);
-  const phoneTokenIds = tokens.length > 0 ? await resolvePhoneTokenIds(org.id, tokens) : undefined;
-  const where = buildCandidateWhere(org.id, params.query, params.listId, phoneTokenIds);
+  const [phoneTokenIds, fuzzyNameTokenIds] =
+    tokens.length > 0
+      ? await Promise.all([
+          resolvePhoneTokenIds(org.id, tokens),
+          resolveFuzzyNameTokenIds(org.id, tokens),
+        ])
+      : [undefined, undefined];
+  const where = buildCandidateWhere(org.id, params.query, params.listId, phoneTokenIds, fuzzyNameTokenIds);
   // Clamp page to >= 1; the caller already validated input but be
   // defensive — Prisma's skip can't go negative.
   const safePage = Math.max(1, Math.floor(params.page));
