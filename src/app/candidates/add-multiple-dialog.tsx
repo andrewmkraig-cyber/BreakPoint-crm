@@ -11,14 +11,25 @@ import { Loader2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
+import {
+  composeCandidateLocation,
+  splitCandidateLocation,
+} from "@/lib/candidate-location-parts";
 import { normalizeCandidateNameForMatching } from "@/lib/resume-filename";
+import {
+  createCandidate,
+  discardResumeUpload,
+  parseCandidate,
+  type CreateCandidatePayload,
+  type ParsedEducationRow,
+  type ParsedExperienceRow,
+} from "@/app/candidates/new/actions";
 
 // Bulk candidate import modal, opened from the Candidates topbar "Add
 // Multiple" chip. Extracted out of the former candidates-view.tsx (the
 // pre-search-rail Candidates page, deleted in the same change) so the only
 // surviving, in-use piece lives in its own file instead of hiding inside
-// dead code. The CSV import route and resume match/upload pipeline it calls
-// are unchanged.
+// dead code.
 
 function parseNameFromFilename(filename: string): string {
   const normalized = normalizeCandidateNameForMatching(filename);
@@ -66,6 +77,20 @@ type ResumeUploadOutcome =
   | { status: "unmatched"; filename: string; parsedName: string }
   | { status: "failed"; filename: string; parsedName: string; error: string };
 
+function normalizeParsedZip(raw: string | null | undefined): string {
+  const match = raw?.match(/\b(\d{5})(?:-\d{4})?\b/);
+  return match?.[1] ?? "";
+}
+
+function splitParsedName(raw: string): { first: string; last: string } {
+  const name = normalizeCandidateNameForMatching(raw).replace(/\s+/g, " ").trim();
+  const parts = name.split(" ").filter(Boolean);
+  return {
+    first: parts[0] ?? "Candidate",
+    last: parts.slice(1).join(" "),
+  };
+}
+
 function isCsvFile(f: File): boolean {
   return /\.csv$/i.test(f.name) || f.type === "text/csv";
 }
@@ -80,9 +105,10 @@ function isResumeFile(f: File): boolean {
 
 // One modal, mixed CSV + resume queue. Replaces the old split "CSV Import"
 // and "Upload Resumes" toolbar buttons. CSVs run through the existing
-// /api/candidates/import-csv route (one fetch per file, in parallel) and
-// resumes run through the existing match-by-name → resume-upload pipeline
-// (single match call + N=5 worker pool). Both paths fire concurrently
+// /api/candidates/import-csv route (one fetch per file, in parallel). Resumes
+// first match existing candidates by filename-parsed name; matched rows get the
+// resume attached, while no-match rows go through the same stage, parse, and
+// create flow as the single New Candidate form. Both paths fire concurrently
 // from a single Import click and produce one combined toast.
 // Friendly label for the format the server detected from the header row.
 const FORMAT_LABEL: Record<string, string> = {
@@ -346,9 +372,170 @@ export function AddMultipleDialog({
     }
   }
 
-  // Run the existing resume match + upload pipeline against the queued files.
-  // Returns aggregate counts for the toast; the worker pool size and
-  // match-by-name semantics are unchanged from the standalone dialog.
+  async function createCandidateFromResume(
+    f: ResumeQueueItem,
+  ): Promise<ResumeUploadOutcome> {
+    let uploadId: string | null = null;
+    try {
+      const staged = await uploadFileInChunks(f.file, "/api/uploads/resume");
+      uploadId = staged.id;
+
+      const parsedResult = await parseCandidate({ resumeUploadId: uploadId });
+      if (!parsedResult.ok) {
+        await discardResumeUpload(uploadId);
+        uploadId = null;
+        return {
+          status: "failed",
+          filename: f.file.name,
+          parsedName: f.parsedName,
+          error: parsedResult.error,
+        };
+      }
+
+      const parsed = parsedResult.value.parsed;
+      const populatedFieldCount =
+        [
+          parsed.first_name,
+          parsed.last_name,
+          parsed.email,
+          parsed.phone,
+          parsed.current_designation,
+          parsed.current_organization,
+          parsed.location,
+          parsed.zip,
+          parsed.linkedin_profile,
+        ].filter((value) => typeof value === "string" && value.trim().length > 0)
+          .length +
+        (parsed.skills?.length ?? 0) +
+        (parsed.experience?.length ?? 0) +
+        (parsed.education?.length ?? 0);
+      if (populatedFieldCount === 0) {
+        await discardResumeUpload(uploadId);
+        uploadId = null;
+        return {
+          status: "failed",
+          filename: f.file.name,
+          parsedName: f.parsedName,
+          error:
+            "No fields could be extracted from this resume. Try uploading it as a PDF.",
+        };
+      }
+
+      const fallbackName = splitParsedName(f.parsedName);
+      const firstNonEmpty = (
+        ...values: Array<string | null | undefined>
+      ): string =>
+        values.find((value) => value?.trim())?.trim() ?? "";
+      const currentExp =
+        (parsed.experience ?? []).find(
+          (row) =>
+            row.to_year == null &&
+            ((row.designation ?? "").trim() || (row.organization ?? "").trim()),
+        ) ??
+        (parsed.experience && parsed.experience.length > 0
+          ? parsed.experience[0]
+          : null);
+      const parsedLocation = parsed.location
+        ? splitCandidateLocation(parsed.location)
+        : null;
+      const parsedZip = normalizeParsedZip(parsed.zip);
+      const location =
+        parsedLocation || parsedZip
+          ? composeCandidateLocation({
+              city: parsedLocation?.city ?? "",
+              state: parsedLocation?.state ?? "",
+              zip: parsedLocation?.zip || parsedZip || "",
+            })
+          : "";
+      const experience: ParsedExperienceRow[] = (parsed.experience ?? []).map(
+        (row) => ({
+          designation: row.designation ?? "",
+          organization: row.organization ?? "",
+          from_year: row.from_year ?? null,
+          to_year: row.to_year ?? null,
+          description: row.description ?? "",
+        }),
+      );
+      const education: ParsedEducationRow[] = (parsed.education ?? []).map(
+        (row) => ({
+          school: row.school ?? "",
+          degree: row.degree ?? "",
+          from_year: row.from_year ?? null,
+          to_year: row.to_year ?? null,
+          description: row.description ?? "",
+        }),
+      );
+      const payload: CreateCandidatePayload = {
+        first_name: firstNonEmpty(parsed.first_name, fallbackName.first),
+        last_name: firstNonEmpty(parsed.last_name, fallbackName.last),
+        email: parsed.email ?? "",
+        phone: parsed.phone ?? "",
+        current_designation: firstNonEmpty(
+          parsed.current_designation,
+          currentExp?.designation,
+        ),
+        current_organization: firstNonEmpty(
+          parsed.current_organization,
+          currentExp?.organization,
+        ),
+        location,
+        linkedin_profile: parsed.linkedin_profile ?? "",
+        source: "",
+        skills: parsed.skills ?? [],
+        notes: parsed.notes ?? "",
+        experience,
+        education,
+      };
+
+      const created = await createCandidate({
+        ...payload,
+        resumeUploadId: uploadId,
+      });
+      if (created.ok) {
+        uploadId = null;
+        return {
+          status: "uploaded",
+          filename: f.file.name,
+          parsedName: f.parsedName,
+          created: true,
+        };
+      }
+
+      if (created.duplicate?.id) {
+        await uploadFileInChunks(f.file, "/api/uploads/candidate-resume", {
+          candidateId: created.duplicate.id,
+        });
+        await discardResumeUpload(uploadId);
+        uploadId = null;
+        return {
+          status: "uploaded",
+          filename: f.file.name,
+          parsedName: f.parsedName,
+          created: false,
+        };
+      }
+
+      await discardResumeUpload(uploadId);
+      uploadId = null;
+      return {
+        status: "failed",
+        filename: f.file.name,
+        parsedName: f.parsedName,
+        error: created.error,
+      };
+    } catch (err) {
+      await discardResumeUpload(uploadId);
+      return {
+        status: "failed",
+        filename: f.file.name,
+        parsedName: f.parsedName,
+        error: err instanceof Error ? err.message : "Resume parse failed.",
+      };
+    }
+  }
+
+  // Run queued resumes through match + attach for existing candidates, and
+  // through the full staged parse + create flow for brand-new candidates.
   async function processResumeBatch(
     resumes: ResumeQueueItem[],
     bumpProgress: () => void,
@@ -366,7 +553,6 @@ export function AddMultipleDialog({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         names: resumes.map((f) => ({ name: f.parsedName })),
-        createIfMissing: true,
       }),
     });
     const matchJson = (await matchRes.json().catch(() => ({}))) as {
@@ -388,13 +574,8 @@ export function AddMultipleDialog({
         const f = resumes[i];
         const matchRow = matchByIndex[i];
         const matched = matchRow?.candidateId ?? null;
-        const wasCreated = matchRow?.created === true;
         if (!matched) {
-          outcomes[i] = {
-            status: "unmatched",
-            filename: f.file.name,
-            parsedName: f.parsedName,
-          };
+          outcomes[i] = await createCandidateFromResume(f);
         } else {
           try {
             await uploadFileInChunks(
@@ -406,7 +587,7 @@ export function AddMultipleDialog({
               status: "uploaded",
               filename: f.file.name,
               parsedName: f.parsedName,
-              created: wasCreated,
+              created: false,
             };
           } catch (err) {
             outcomes[i] = {
