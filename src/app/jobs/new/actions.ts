@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { getCurrentUserId } from "@/lib/auth/getCurrentUserId";
+import { logActivity } from "@/lib/activity";
 import { prisma } from "@/lib/prisma";
 import { isHybridSchedule } from "@/lib/hybrid-schedule";
 import {
@@ -174,15 +176,18 @@ export async function createJob(
 
   try {
     const org = await getCurrentOrg();
+    const userId = await getCurrentUserId();
+    if (!userId) return { ok: false, error: "Not signed in." };
 
     // Validate the clientId (if any) belongs to the caller's tenant — the
     // dropdown is built against the same tenant, but another tab could
     // change state between form load and submit.
+    let client: { id: string; legacyRfId: number | null; name: string } | null = null;
     let clientId: string | null = null;
     if (input.clientId) {
-      const client = await prisma.client.findFirst({
+      client = await prisma.client.findFirst({
         where: { id: input.clientId, organizationId: org.id },
-        select: { id: true },
+        select: { id: true, legacyRfId: true, name: true },
       });
       if (!client) return { ok: false, error: "Selected client is not available." };
       clientId = client.id;
@@ -314,6 +319,23 @@ export async function createJob(
       select: { id: true, legacyRfId: true },
     });
 
+    if (client) {
+      await logActivity({
+        organizationId: org.id,
+        userId,
+        actionType: "client_job_created",
+        targetType: "client",
+        targetId: client.id,
+        metadata: {
+          clientId: client.id,
+          clientLegacyRfId: client.legacyRfId,
+          clientName: client.name,
+          jobId: job.id,
+          jobTitle: title,
+        },
+      });
+    }
+
     // Always redirect to the Job's cuid. legacyRfId is only set on RF-
     // imported rows (and historically a couple of corrupt rows ended up
     // with negative values, yielding /jobs/-309396680 404s). Ace-native
@@ -329,6 +351,7 @@ export async function createJob(
     if (clientId) {
       revalidatePath("/clients");
       revalidatePath(`/clients/${clientId}`);
+      if (client?.legacyRfId != null) revalidatePath(`/clients/${client.legacyRfId}`);
     }
     await triggerJobsSiteRebuild("job-created");
     return { ok: true, value: { slug, jobCuid: job.id } };

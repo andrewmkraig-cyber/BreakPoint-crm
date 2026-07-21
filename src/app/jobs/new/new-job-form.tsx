@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition, type ChangeEvent, type DragEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type ChangeEvent, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Check, FileText, Loader2, Save, Sparkles, UploadCloud, X } from "lucide-react";
 import { toast } from "sonner";
@@ -122,6 +122,10 @@ export function NewJobForm({
   const jdInputRef = useRef<HTMLInputElement>(null);
   const [jdFile, setJdFile] = useState<File | null>(null);
   const [isGenerating, startGenerate] = useTransition();
+
+  useEffect(() => {
+    if (defaultClientId) setClientId(defaultClientId);
+  }, [defaultClientId]);
 
   const [sourceUrl, setSourceUrl] = useState("");
   // Which source the "Add Job Description" card is showing — paste a URL or
