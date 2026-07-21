@@ -23,6 +23,7 @@ import {
   JobOverviewTab,
   type JobOverviewSnapshot,
 } from "@/app/jobs/[id]/job-overview-tab";
+import { JobTitleInlineEditor } from "@/app/jobs/[id]/job-title-inline-editor";
 import { JobDescriptionTab } from "@/app/jobs/[id]/job-description-tab";
 import { PromoteTab } from "@/app/jobs/[id]/promote-tab";
 import { MatchesTab } from "@/app/jobs/[id]/matches-tab";
@@ -517,7 +518,11 @@ export default async function JobDetailPage({
             {job.company || "Client"}
           </div>
         )}
-        <h1 className="font-serif text-2xl font-bold text-court-fg">{job.title}</h1>
+        <JobTitleInlineEditor
+          initialTitle={job.title}
+          jobRfId={rfId}
+          jobCuid={isAceNative ? jobRow.id : null}
+        />
       </div>
 
       {/* Compact pipeline strip — single chip row sitting directly above
