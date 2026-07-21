@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { updateJobOverview } from "@/app/jobs/[id]/job-overview-actions";
 
 export function JobTitleInlineEditor({
@@ -101,26 +102,30 @@ export function JobTitleInlineEditor({
             aria-label="Job title"
             disabled={isPending}
           />
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={saveTitle}
             disabled={isPending}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-60"
+            className="h-8 w-8 gap-0 p-0"
             aria-label="Save job title"
             title="Save job title"
           >
             {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={cancelEdit}
             disabled={isPending}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-60"
+            className="h-8 w-8 gap-0 p-0"
             aria-label="Cancel title edit"
             title="Cancel"
           >
             <X className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
         {error && <div className="mt-1 text-xs font-medium text-red-700">{error}</div>}
       </div>
@@ -130,15 +135,17 @@ export function JobTitleInlineEditor({
   return (
     <div className="group flex min-w-0 items-center gap-2">
       <h1 className="min-w-0 break-words font-serif text-2xl font-bold text-court-fg">{title}</h1>
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         onClick={startEdit}
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-court-fg-muted opacity-80 transition hover:bg-court-surface hover:text-court-fg group-hover:opacity-100"
+        className="h-7 w-7 shrink-0 gap-0 p-0 opacity-80 group-hover:opacity-100"
         aria-label="Edit job title"
         title="Edit job title"
       >
         <Pencil className="h-3.5 w-3.5" />
-      </button>
+      </Button>
     </div>
   );
 }
