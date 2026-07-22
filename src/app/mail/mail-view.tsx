@@ -44,6 +44,7 @@ import type { MailListThread, MailThreadDetail, MailThreadMessage } from "@/lib/
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import { MailComposer, type ComposerStateSnapshot } from "@/app/mail/mail-composer";
 import { BdReplyPromptBanner } from "@/app/mail/bd-reply-prompt-banner";
+import { normalizeCopiedEmail } from "@/lib/email-address";
 
 const MAIL_THREAD_DRAG_MIME = "application/x-mail-thread-ids";
 
@@ -2906,7 +2907,7 @@ function splitAddrHeader(header: string): Array<{ email: string; original: strin
     .filter(Boolean)
     .map((token) => {
       const m = token.match(/<([^>]+)>/);
-      const email = (m ? m[1] : token).trim();
+      const email = normalizeCopiedEmail(m ? m[1] : token);
       return { email, original: token };
     });
 }

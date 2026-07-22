@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useState, type ClipboardEvent, type MouseEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { sendEmailAction, scheduleEmailAction } from "@/app/email/actions";
+import { normalizeCopiedEmail } from "@/lib/email-address";
 import { cn } from "@/lib/utils";
 
 type ComposerSeed = {
@@ -14,10 +15,11 @@ type ComposerSeed = {
 
 // Wraps a rendered email address so clicking opens the Ace composer instead
 // of falling through to mailto:. Keeps the visual parity of an anchor but
-// hijacks navigation. The composer opens with To pre-filled and the user
-// can pick a saved template from the dropdown. Callers pass `mergeValues`
-// so template tokens like [Candidate First Name] resolve against the
-// actual entity context (candidate, client contact, placement, etc.).
+// hijacks navigation, and normalizes normal copy/select-copy to the bare
+// email address. The composer opens with To pre-filled and the user can
+// pick a saved template from the dropdown. Callers pass `mergeValues` so
+// template tokens like [Candidate First Name] resolve against the actual
+// entity context (candidate, client contact, placement, etc.).
 export function EmailLink({
   email,
   children,
@@ -38,27 +40,45 @@ export function EmailLink({
   function onClick(e: MouseEvent<HTMLAnchorElement>) {
     e.preventDefault();
     e.stopPropagation();
-    if (!email) return;
+    if (!copyEmail) return;
     setOpen(true);
   }
 
   const trimmedEmail = email.trim();
+  const copyEmail = normalizeCopiedEmail(trimmedEmail);
+
+  function onCopy(e: ClipboardEvent<HTMLAnchorElement>) {
+    if (!copyEmail) return;
+    e.clipboardData.setData("text/plain", copyEmail);
+    e.clipboardData.setData("text/html", copyEmail);
+    e.preventDefault();
+  }
+
+  function onContextMenu(e: MouseEvent<HTMLAnchorElement>) {
+    if (!copyEmail || typeof navigator === "undefined" || !navigator.clipboard) return;
+    e.preventDefault();
+    void navigator.clipboard.writeText(copyEmail).then(() => {
+      toast.success("Email copied", { description: copyEmail });
+    });
+  }
 
   return (
     <>
       <a
-        href={trimmedEmail ? `mailto:${trimmedEmail}` : "#"}
+        href={copyEmail ? `mailto:${copyEmail}` : "#"}
         onClick={onClick}
+        onCopy={onCopy}
+        onContextMenu={onContextMenu}
         className={cn("cursor-pointer", className)}
       >
-        {children ?? trimmedEmail}
+        {children ?? copyEmail}
       </a>
       {open && (
         <EmailComposer
           title="New email"
-          subtitle={trimmedEmail}
+          subtitle={copyEmail}
           initial={{
-            to: trimmedEmail ? [trimmedEmail] : [],
+            to: copyEmail ? [copyEmail] : [],
             cc: [],
             bcc: [],
             subject: seed?.subject ?? subjectHint ?? "",

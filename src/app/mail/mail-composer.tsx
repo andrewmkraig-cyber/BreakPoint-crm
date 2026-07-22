@@ -60,6 +60,7 @@ import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { useSendLater } from "@/components/mail/send-later-popover";
 import { formatScheduledTime } from "@/lib/timezone";
+import { normalizeCopiedEmail } from "@/lib/email-address";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import { EditWithClaudeMenu, EditWithClaudeCustomPanel, type EditType } from "@/components/edit-with-claude-menu";
 import {
@@ -2671,7 +2672,7 @@ function extractFirstEmail(raw: string): string | null {
     const token = part.trim();
     if (!token) continue;
     const m = token.match(/<([^>]+)>/);
-    const candidate = (m ? m[1] : token).trim();
+    const candidate = normalizeCopiedEmail(m ? m[1] : token);
     if (candidate.includes("@")) return candidate;
   }
   return null;
@@ -2680,7 +2681,7 @@ function extractFirstEmail(raw: string): string | null {
 function splitAddresses(raw: string): string[] {
   return raw
     .split(/[,;]/)
-    .map((s) => s.trim())
+    .map(normalizeCopiedEmail)
     .filter(Boolean);
 }
 

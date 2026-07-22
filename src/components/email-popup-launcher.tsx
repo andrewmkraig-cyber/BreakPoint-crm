@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useState, type ClipboardEvent, type MouseEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import type { MailMergeContext } from "@/lib/mail-merge-fields";
 import { useComposerManager } from "@/lib/composer-manager";
+import { normalizeCopiedEmail } from "@/lib/email-address";
 import { cn } from "@/lib/utils";
 
 // Click-to-email popup launcher. Defers to the global ComposerManager
@@ -75,16 +76,17 @@ export function EmailPopupLauncher({
   const composer = useComposerManager();
   const [opening, setOpening] = useState(false);
   const trimmed = (email ?? "").trim();
+  const copyEmail = normalizeCopiedEmail(trimmed);
 
   async function handleClick(e: MouseEvent<HTMLAnchorElement>) {
     e.preventDefault();
     e.stopPropagation();
-    if (!trimmed || opening) return;
+    if (!copyEmail || opening) return;
     setOpening(true);
     try {
       const init = await fetchInit();
       composer.open({
-        defaultTo: trimmed,
+        defaultTo: copyEmail,
         defaultSubject,
         defaultBody,
         templates: init.templates,
@@ -108,16 +110,33 @@ export function EmailPopupLauncher({
     }
   }
 
+  function handleCopy(e: ClipboardEvent<HTMLAnchorElement>) {
+    if (!copyEmail) return;
+    e.clipboardData.setData("text/plain", copyEmail);
+    e.clipboardData.setData("text/html", copyEmail);
+    e.preventDefault();
+  }
+
+  function handleContextMenu(e: MouseEvent<HTMLAnchorElement>) {
+    if (!copyEmail || typeof navigator === "undefined" || !navigator.clipboard) return;
+    e.preventDefault();
+    void navigator.clipboard.writeText(copyEmail).then(() => {
+      toast.success("Email copied", { description: copyEmail });
+    });
+  }
+
   return (
     <a
-      // Kept href so middle-click / right-click "Copy link" still
-      // produces something useful; the onClick prevents actual
-      // navigation so no external mail client opens.
-      href={trimmed ? `mailto:${trimmed}` : "#"}
+      // Kept as an anchor for expected link semantics; onClick keeps the
+      // recruiter in Ace, while copy handlers normalize to the bare email
+      // address instead of the browser's mailto: href.
+      href={copyEmail ? `mailto:${copyEmail}` : "#"}
       onClick={handleClick}
+      onCopy={handleCopy}
+      onContextMenu={handleContextMenu}
       className={cn("cursor-pointer", className)}
     >
-      {children ?? trimmed}
+      {children ?? copyEmail}
     </a>
   );
 }

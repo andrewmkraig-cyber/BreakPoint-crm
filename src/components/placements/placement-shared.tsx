@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { Edit3, Loader2, RotateCcw, Save, UploadCloud, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { normalizeCopiedEmail } from "@/lib/email-address";
 import { TEAM_BCC_OPTIONS } from "@/lib/team-contacts";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
@@ -519,7 +520,7 @@ export function DurationSelect({
 export function parseEmailCsv(raw: string): string[] {
   return raw
     .split(/[,;\n]+/)
-    .map((s) => s.trim())
+    .map(normalizeCopiedEmail)
     .filter(Boolean);
 }
 

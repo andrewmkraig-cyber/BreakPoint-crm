@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { normalizeCopiedEmail } from "@/lib/email-address";
 
 // Renders email bodies inside a sandboxed iframe so the email's own CSS
 // can render without Ace's page styles leaking in or out. Required for
@@ -210,6 +212,7 @@ function buildLinkFragment(text: string, doc: Document): DocumentFragment | null
         ? `https://${token}`
         : token;
     a.setAttribute("href", href);
+    if (isEmail) a.setAttribute("data-copy-email", token);
     a.setAttribute("target", "_blank");
     a.setAttribute("rel", "noopener noreferrer");
     a.textContent = token;
@@ -264,6 +267,9 @@ export function EmailHtmlViewer({ html }: { html: string }) {
     const imgListeners: Array<{ img: HTMLImageElement; fn: () => void }> = [];
     const timers: number[] = [];
     let frame = 0;
+    let copyDoc: Document | null = null;
+    let copyHandler: ((event: ClipboardEvent) => void) | null = null;
+    let contextMenuHandler: ((event: MouseEvent) => void) | null = null;
 
     const updateHeight = () => {
       const doc = iframe.contentDocument;
@@ -274,6 +280,34 @@ export function EmailHtmlViewer({ html }: { html: string }) {
           Math.abs(current - next) > 1 ? Math.ceil(next) : current,
         );
       }
+    };
+
+    const findMailtoAnchor = (node: Node | null): HTMLAnchorElement | null => {
+      let current: Node | null = node;
+      while (current) {
+        const el = current.nodeType === 1 ? (current as Element) : null;
+        if (
+          el?.tagName === "A" &&
+          el.getAttribute("href")?.toLowerCase().startsWith("mailto:")
+        ) {
+          return el as HTMLAnchorElement;
+        }
+        current = current.parentNode;
+      }
+      return null;
+    };
+
+    const findMailtoAnchorInRange = (doc: Document, range: Range): HTMLAnchorElement | null => {
+      const direct = findMailtoAnchor(range.commonAncestorContainer);
+      if (direct) return direct;
+      const wrapper = doc.createElement("div");
+      wrapper.appendChild(range.cloneContents());
+      for (const anchor of Array.from(wrapper.querySelectorAll("a"))) {
+        if (anchor.getAttribute("href")?.toLowerCase().startsWith("mailto:")) {
+          return anchor as HTMLAnchorElement;
+        }
+      }
+      return null;
     };
 
     const scheduleUpdate = () => {
@@ -292,9 +326,49 @@ export function EmailHtmlViewer({ html }: { html: string }) {
       imgListeners.length = 0;
     };
 
+    const clearCopyListener = () => {
+      if (copyDoc && copyHandler) {
+        copyDoc.removeEventListener("copy", copyHandler);
+      }
+      if (copyDoc && contextMenuHandler) {
+        copyDoc.removeEventListener("contextmenu", contextMenuHandler);
+      }
+      copyDoc = null;
+      copyHandler = null;
+      contextMenuHandler = null;
+    };
+
     const wireDocument = () => {
       const doc = iframe.contentDocument;
       if (!doc?.body) return;
+      clearCopyListener();
+      copyHandler = (event: ClipboardEvent) => {
+        const selection = doc.getSelection();
+        if (!selection || selection.isCollapsed || !event.clipboardData) return;
+        const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+        const anchor = range ? findMailtoAnchorInRange(doc, range) : null;
+        if (!anchor) return;
+        const raw = anchor.dataset.copyEmail || anchor.getAttribute("href") || selection.toString();
+        const email = normalizeCopiedEmail(raw);
+        if (!email || !email.includes("@")) return;
+        event.clipboardData.setData("text/plain", email);
+        event.clipboardData.setData("text/html", email);
+        event.preventDefault();
+      };
+      contextMenuHandler = (event: MouseEvent) => {
+        const anchor = findMailtoAnchor(event.target as Node | null);
+        if (!anchor || typeof navigator === "undefined" || !navigator.clipboard) return;
+        const raw = anchor.dataset.copyEmail || anchor.getAttribute("href") || anchor.textContent || "";
+        const email = normalizeCopiedEmail(raw);
+        if (!email || !email.includes("@")) return;
+        event.preventDefault();
+        void navigator.clipboard.writeText(email).then(() => {
+          toast.success("Email copied", { description: email });
+        });
+      };
+      copyDoc = doc;
+      doc.addEventListener("copy", copyHandler);
+      doc.addEventListener("contextmenu", contextMenuHandler);
       // Watch for late layout shifts (web fonts loading, lazy images,
       // reflow as remote CSS resolves). Disconnects on unmount or when
       // the html prop changes (effect re-runs).
@@ -334,6 +408,7 @@ export function EmailHtmlViewer({ html }: { html: string }) {
       if (frame) cancelAnimationFrame(frame);
       for (const timer of timers) window.clearTimeout(timer);
       if (resizeObserver) resizeObserver.disconnect();
+      clearCopyListener();
       clearImageListeners();
     };
   }, [srcDoc, loadTick]);
