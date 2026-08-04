@@ -6,6 +6,7 @@ import {
   getBillingTowerData,
   type BillingTowerData,
 } from "@/app/dashboard/billing-tower-actions";
+import { BillingDetailDialog } from "@/app/dashboard/billing-detail-dialog";
 import { TimeRangeDropdown } from "@/components/ui/time-range-selector";
 import type { TimeRangeSelection } from "@/lib/time-range";
 import { cn } from "@/lib/utils";
@@ -57,6 +58,11 @@ export function FinancialStrip({
   });
   const [data, setData] = useState<BillingTowerData>(initial);
   const [pending, startTransition] = useTransition();
+  // Which tower number is drilled into, if any. Mirrors the KPI-tile
+  // pattern in clubhouse-kpi-grid.tsx — click the number, get the rows
+  // behind it. Goal Progress is not drillable: it is a ratio of Revenue
+  // against a fixed target, so its rows ARE the Revenue rows.
+  const [drilldown, setDrilldown] = useState<"revenue" | "outstanding" | null>(null);
 
   const clampedPct = Math.max(0, Math.min(100, data.goalPct));
   const revenueMeta =
@@ -105,6 +111,7 @@ export function FinancialStrip({
           label="Revenue"
           value={formatCompactUsd(data.revenueUsd)}
           meta={revenueMeta}
+          onDrill={() => setDrilldown("revenue")}
         />
         <Stat
           label="Outstanding"
@@ -112,6 +119,7 @@ export function FinancialStrip({
           meta={outstandingMeta}
           dim={data.outstandingUsd === 0}
           divider
+          onDrill={() => setDrilldown("outstanding")}
         />
         <GoalStat
           goalUsd={data.goalUsd}
@@ -119,6 +127,17 @@ export function FinancialStrip({
           remainingUsd={remainingUsd}
         />
       </div>
+
+      {drilldown && (
+        <BillingDetailDialog
+          kind={drilldown}
+          title={drilldown === "revenue" ? "Revenue" : "Outstanding"}
+          // Opens on the window the tower is currently showing, so the
+          // popup total reconciles to the number that was clicked.
+          defaultSelection={selection}
+          onClose={() => setDrilldown(null)}
+        />
+      )}
     </section>
   );
 }
@@ -129,18 +148,44 @@ function Stat({
   meta,
   dim,
   divider,
+  onDrill,
 }: {
   label: string;
   value: string;
   meta: string;
   dim?: boolean;
   divider?: boolean;
+  // When set the whole stat becomes a drill-down trigger. role="button" on
+  // a div rather than a real button element: same pattern the KPI tiles use
+  // in clubhouse-kpi-grid.tsx, and it keeps the 32px serif number from
+  // inheriting button typography.
+  onDrill?: () => void;
 }) {
   return (
     <div
+      {...(onDrill
+        ? {
+            role: "button" as const,
+            tabIndex: 0,
+            "aria-label": `${label} details`,
+            onClick: onDrill,
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onDrill();
+              }
+            },
+          }
+        : {})}
       className={cn(
         "flex min-w-0 flex-col",
         divider && "sm:border-l-2 sm:border-court-border-soft sm:pl-5",
+        // Affordance is a color shift on the number, not a padded hover
+        // block: the stats sit in a fixed grid with a left-edge divider on
+        // Outstanding, so any margin/padding change would slide that rule
+        // and the number out of their designed positions.
+        onDrill &&
+          "group cursor-pointer rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40",
       )}
     >
       <div className="text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">
@@ -148,13 +193,21 @@ function Stat({
       </div>
       <div
         className={cn(
-          "mt-0.5 font-serif text-[32px] font-bold leading-none tracking-[-0.02em] tabular-nums",
+          "mt-0.5 font-serif text-[32px] font-bold leading-none tracking-[-0.02em] tabular-nums transition-colors",
           dim ? "text-court-fg-dim" : "text-court-fg",
+          onDrill && "group-hover:text-court-brand-dark",
         )}
       >
         {value}
       </div>
-      <div className="mt-1 text-[11px] text-court-fg-dim">{meta}</div>
+      <div
+        className={cn(
+          "mt-1 text-[11px] text-court-fg-dim transition-colors",
+          onDrill && "group-hover:text-court-fg-muted",
+        )}
+      >
+        {meta}
+      </div>
     </div>
   );
 }

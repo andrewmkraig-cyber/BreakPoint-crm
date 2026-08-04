@@ -324,17 +324,48 @@ export type BillingSummary = {
   bookedCents: number;
 };
 
-// Generalized period-bounded variant. Pulls every placement that COULD
-// have an event landing in [start, end) — same 12-month lookback the
-// quarter-specific helper used, kept wide so installments anchored to
-// a placement that started up to a year before the window can still
-// be picked up. Per-event bucketing below does the precise filtering.
-export async function getBillingSummaryForRange(
+// Who the money belongs to. Carried on each event so the Billing Tower
+// drill-downs can name the placement behind a dollar amount without a
+// second query.
+export type BillingPlacementRef = {
+  id: string;
+  candidateRfId: number | null;
+  candidate: { id: string; firstName: string; lastName: string | null } | null;
+  client: { id: string; name: string } | null;
+  job: { title: string } | null;
+};
+
+export type BillingEventWithPlacement = BillingEvent & {
+  placement: BillingPlacementRef;
+};
+
+// BILLING_EVENT_PLACEMENT_SELECT plus the identity columns the drill-down
+// rows render. The extra relations are three small joins on a handful of
+// rows, so the Billing Tower totals carry them too rather than maintaining
+// a second query shape that could drift from the first.
+const BILLING_PLACEMENT_SELECT = {
+  ...BILLING_EVENT_PLACEMENT_SELECT,
+  candidateRfId: true,
+  candidate: { select: { id: true, firstName: true, lastName: true } },
+  client: { select: { id: true, name: true } },
+  job: { select: { title: true } },
+} as const;
+
+// ONE loader behind both the Billing Tower totals and the Revenue /
+// Outstanding drill-downs. Same placement set, same window predicate, so
+// a popup's row list can never disagree with the number that opened it —
+// if this filter changes, both surfaces change together.
+//
+// Pulls every placement that COULD have an event landing in [start, end) —
+// a 12-month lookback, kept wide so installments anchored to a placement
+// that started up to a year before the window are still picked up.
+// Per-event bucketing below does the precise filtering.
+async function loadBillingEventsInWindow(
   organizationId: string,
   start: Date,
   endExclusive: Date,
   prisma: PrismaLike,
-): Promise<BillingSummary> {
+): Promise<BillingEventWithPlacement[]> {
   const aYearBeforeStart = new Date(start.getTime() - 365 * MS_PER_DAY);
   const placements = await prisma.placement.findMany({
     where: {
@@ -346,27 +377,67 @@ export async function getBillingSummaryForRange(
         { startConfirmedAt: { gte: aYearBeforeStart, lt: endExclusive } },
       ],
     },
-    select: BILLING_EVENT_PLACEMENT_SELECT,
+    select: BILLING_PLACEMENT_SELECT,
   });
+
+  const events: BillingEventWithPlacement[] = [];
+  for (const p of placements) {
+    const ref: BillingPlacementRef = {
+      id: p.id,
+      candidateRfId: p.candidateRfId,
+      candidate: p.candidate,
+      client: p.client,
+      job: p.job,
+    };
+    for (const e of expandPlacementBillingEvents(p as PlacementForBilling)) {
+      if (e.scheduledAt < start || e.scheduledAt >= endExclusive) continue;
+      events.push({ ...e, placement: ref });
+    }
+  }
+  return events;
+}
+
+// Every billing event landing in [start, end), with its placement attached.
+// Backs the Billing Tower Revenue / Outstanding drill-downs: Revenue is
+// this whole list, Outstanding is the `status !== "paid"` subset — exactly
+// the split getBillingSummaryForRange totals below.
+export async function getBillingEventsForRange(
+  organizationId: string,
+  start: Date,
+  endExclusive: Date,
+  prisma: PrismaLike,
+): Promise<BillingEventWithPlacement[]> {
+  return loadBillingEventsInWindow(organizationId, start, endExclusive, prisma);
+}
+
+// Generalized period-bounded totals.
+export async function getBillingSummaryForRange(
+  organizationId: string,
+  start: Date,
+  endExclusive: Date,
+  prisma: PrismaLike,
+): Promise<BillingSummary> {
+  const events = await loadBillingEventsInWindow(
+    organizationId,
+    start,
+    endExclusive,
+    prisma,
+  );
 
   let revenueCents = 0;
   let revenueCount = 0;
   let outstandingCents = 0;
   let outstandingCount = 0;
 
-  for (const p of placements) {
-    for (const e of expandPlacementBillingEvents(p as PlacementForBilling)) {
-      const inWindow = e.scheduledAt >= start && e.scheduledAt < endExclusive;
-      if (!inWindow) continue;
-      // Revenue — booked, period-bucketed by scheduledAt. Counts every
-      // event regardless of payment status.
-      revenueCents += e.amountCents;
-      revenueCount += 1;
-      // Outstanding — the unpaid subset of Revenue.
-      if (e.status !== "paid") {
-        outstandingCents += e.amountCents;
-        outstandingCount += 1;
-      }
+  for (const e of events) {
+    // Revenue — booked, period-bucketed by scheduledAt. Counts every
+    // event regardless of payment status.
+    revenueCents += e.amountCents;
+    revenueCount += 1;
+    // Outstanding — the unpaid subset of Revenue.
+    if (e.status !== "paid") {
+      outstandingCents += e.amountCents;
+      outstandingCount += 1;
     }
   }
 
