@@ -11,8 +11,13 @@ const DAY_MS = 1000 * 60 * 60 * 24;
 // Active → Quiet after 7 days of no activity; Quiet → Inactive 30
 // days after that (37 days total). Buckets are mutually exclusive (a
 // card is Active OR Quiet OR Inactive). The 7/37-day window applies
-// unless a recent placement holds the client open — see
-// PLACEMENT_ACTIVE_DAYS below.
+// unless one of the three Active OVERRIDES holds the client open:
+//   1. a placement within the last 180 days (PLACEMENT_ACTIVE_DAYS)
+//   2. a candidate in a live client-side stage — Interviewing, Offer,
+//      or Pending Start (livePipelineOverride)
+//   3. an interview on the calendar inside the live window
+//      (LIVE_INTERVIEW_WINDOW_DAYS)
+// 2 + 3 are the "actively interviewing is never quiet" rule.
 const QUIET_AFTER_DAYS = 7;
 const INACTIVE_AFTER_DAYS = 37;
 // A placement (offer accepted = Placement.placedAt is set) keeps the
@@ -21,6 +26,13 @@ const INACTIVE_AFTER_DAYS = 37;
 // client is, by definition, "warm" through the guarantee period even
 // when no further submittals / interviews / jobs land.
 const PLACEMENT_ACTIVE_DAYS = 180;
+// An interview whose DATE lands inside this window (upcoming, or held
+// within the last 7 days) means the client is actively interviewing right
+// now. This is deliberately keyed off Interview.scheduledAt, not
+// Interview.createdAt — an interview booked three weeks in advance would
+// otherwise let the client drift to Quiet while the interview is still on
+// the books.
+const LIVE_INTERVIEW_WINDOW_DAYS = 7;
 // "Activity" that resets the inactivity clock:
 //   - Job created or reactivated for the client
 //   - Any submittal (Placement row touched — stage moves bump updatedAt)
@@ -153,6 +165,7 @@ export default async function ClientsPage({
       placementGroupsForActivity,
       interviewCreatedGroups,
       placementPlacedAtGroups,
+      liveInterviewGroups,
     ] = await Promise.all([
       targetIdNeedles.length > 0
         ? prisma.activityLog.groupBy({
@@ -226,6 +239,22 @@ export default async function ClientsPage({
             _max: { placedAt: true },
           })
         : Promise.resolve([] as Array<{ clientId: string | null; _max: { placedAt: Date | null } }>),
+      // "Actively interviewing" override, calendar side — any live (non
+      // cancelled) interview dated inside LIVE_INTERVIEW_WINDOW_DAYS or in
+      // the future. Keyed on scheduledAt so an interview booked well in
+      // advance keeps the client Active right through the interview date.
+      clientCuids.length > 0
+        ? prisma.interview.groupBy({
+            by: ["clientId"],
+            where: {
+              organizationId: org.id,
+              clientId: { in: clientCuids },
+              status: { not: "cancelled" },
+              scheduledAt: { gte: new Date(Date.now() - LIVE_INTERVIEW_WINDOW_DAYS * DAY_MS) },
+            },
+            _count: { _all: true },
+          })
+        : Promise.resolve([] as Array<{ clientId: string | null; _count: { _all: number } }>),
     ]);
 
     const lastActivityLogByTargetId = new Map<string, Date>();
@@ -264,6 +293,10 @@ export default async function ClientsPage({
     const lastPlacedAtByClientId = new Map<string, Date>();
     for (const g of placementPlacedAtGroups) {
       if (g.clientId && g._max.placedAt) lastPlacedAtByClientId.set(g.clientId, g._max.placedAt);
+    }
+    const clientsWithLiveInterview = new Set<string>();
+    for (const g of liveInterviewGroups) {
+      if (g.clientId && g._count._all > 0) clientsWithLiveInterview.add(g.clientId);
     }
 
     const pickNewer = (a: Date | null | undefined, b: Date | null | undefined): Date | null => {
@@ -317,7 +350,26 @@ export default async function ClientsPage({
       const placementActiveOverride =
         daysSincePlacement != null && daysSincePlacement < PLACEMENT_ACTIVE_DAYS;
 
-      const bucket: "active" | "quiet" | "inactive" = placementActiveOverride
+      // "Actively interviewing" Active override, pipeline side. A client
+      // holding a candidate in a live CLIENT-SIDE stage — Interviewing,
+      // Offer, or Pending Start — is by definition not quiet: the loop is
+      // open on their end and there is nothing to nudge them about. This
+      // is stage-based rather than clock-based on purpose; the recruiter
+      // reported Mowat Mackie & Anderson sitting in Quiet at exactly the
+      // 7-day mark while a candidate was mid-interview-process there.
+      //
+      // `submitted` is deliberately EXCLUDED. A submittal the client never
+      // responded to is precisely the case Quiet exists to surface — that
+      // one still needs a nudge.
+      const livePipelineOverride = pc.interviewing > 0 || pc.offer > 0 || pc.pendingStart > 0;
+      // Calendar side of the same rule — an interview on the books (see
+      // LIVE_INTERVIEW_WINDOW_DAYS) even when the placement stage has not
+      // been moved to Interviewing yet.
+      const liveInterviewOverride = clientsWithLiveInterview.has(c.id);
+
+      const bucket: "active" | "quiet" | "inactive" = placementActiveOverride ||
+        livePipelineOverride ||
+        liveInterviewOverride
         ? "active"
         : daysSinceLastActivity < QUIET_AFTER_DAYS
           ? "active"
@@ -373,11 +425,13 @@ export default async function ClientsPage({
   };
 
   // Mutually exclusive buckets under the revised spec:
-  //   Active   = days since last activity < 7 (or a placement was
-  //              made within the last 180 days — see the placement
-  //              override in the per-client bucket computation above)
-  //   Quiet    = 7-36 days
-  //   Inactive = 37+ days
+  //   Active   = days since last activity < 7, OR any of the three
+  //              Active overrides fires (placement within 180 days,
+  //              a candidate at Interviewing / Offer / Pending Start,
+  //              or an interview on the calendar inside the live
+  //              window) — see the per-client bucket computation above
+  //   Quiet    = 7-36 days and no override
+  //   Inactive = 37+ days and no override
   // A card is in exactly one bucket — Quiet is not a decorated subset
   // of Active.
   const activeCards = all.filter((c) => c.bucket === "active").sort(sortFn);
