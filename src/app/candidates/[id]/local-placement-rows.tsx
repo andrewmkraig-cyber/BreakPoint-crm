@@ -2102,7 +2102,7 @@ function ScheduleFields(props: {
   typeExtras?: React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-3">
+    <div className="grid grid-cols-1 gap-2.5 sm:gap-3">
       {/* Single-row layout — date+time | timezone | duration | type — so
           all four scheduling controls live on one line. Duration's
           previous w-full layout on a 3-col grid produced ~50%
@@ -2111,8 +2111,8 @@ function ScheduleFields(props: {
           on its own full-width line below); w-36 fits the longest
           option ("Phone Screen") with the dropdown arrow and a touch
           of right whitespace, without the prior w-full padding bloat. */}
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="block min-w-[16rem] flex-1 text-sm">
+      <div className="flex flex-wrap items-end gap-2 sm:gap-3">
+        <label className="block min-w-[13rem] flex-1 text-sm sm:min-w-[16rem]">
           <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
           {/* blockPast keeps past dates out of the picker — past
               interviews are scheduled via Reschedule from the activity
@@ -2124,12 +2124,12 @@ function ScheduleFields(props: {
             blockPast
           />
         </label>
-        <label className="block w-32 text-sm">
+        <label className="block w-24 text-sm sm:w-32">
           <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Time zone</span>
           <select
             value={props.timeZone}
             onChange={(e) => props.setTimeZone(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 sm:px-3 sm:py-2"
           >
             {INTERVIEW_TIMEZONES.map((z) => (
               <option key={z.iana} value={z.iana}>
@@ -2139,12 +2139,12 @@ function ScheduleFields(props: {
           </select>
         </label>
         <DurationSelect value={props.durationMin} onChange={props.setDurationMin} compact />
-        <label className="block w-36 text-sm">
+        <label className="block w-32 text-sm sm:w-36">
           <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Type</span>
           <select
             value={props.type}
             onChange={(e) => props.setType(e.target.value as InterviewType)}
-            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 sm:px-3 sm:py-2"
           >
             <option value="phone_screen">Phone Screen</option>
             <option value="video">Video</option>
@@ -2160,9 +2160,9 @@ function ScheduleFields(props: {
             type="text"
             value={props.location}
             onChange={(e) => props.setLocation(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 sm:px-3 sm:py-2"
           />
-          <span className="mt-1 block text-[11px] text-court-fg-muted">
+          <span className="mt-0.5 block text-[11px] text-court-fg-muted">
             Appears in the calendar invite with a Map link.
           </span>
         </label>
@@ -2171,6 +2171,26 @@ function ScheduleFields(props: {
       {props.ccBccSlot}
     </div>
   );
+}
+
+// Narrow-viewport flag for the mobile compaction pass. matchMedia rather than
+// a Tailwind-only fix because ModalShell's drag/resize sizing is written as an
+// INLINE style — an `sm:` class can never override an inline width/height, and
+// that inline sizing (512px initial width + a 90dvh max) is what pinned the
+// scheduler to nearly the whole phone screen. Starts false so SSR and the
+// first client paint agree on the desktop layout, then flips on mount.
+// 639px = one below Tailwind's `sm` breakpoint, so JS and classes switch
+// together.
+function useIsNarrowViewport(): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const sync = () => setNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  return narrow;
 }
 
 function ModalShell({
@@ -2217,15 +2237,24 @@ function ModalShell({
     return () => window.removeEventListener("keydown", block, { capture: true });
   }, [dismissOnOverlay]);
 
+  // Drag + resize are pointer-precision DESKTOP gestures. On a phone they do
+  // nothing useful, and their inline sizing (512px initial width, 90dvh max
+  // height, MODAL_MIN_W/H floors of 480x400) forced the panel to swallow
+  // almost the whole screen. Below `sm` we drop both and fall back to the
+  // plain content-sized panel with a capped height.
+  const narrow = useIsNarrowViewport();
+  const canDrag = draggable && !narrow;
+  const canResize = resizable && !narrow;
+
   // Drag + resize (Ace 67.11). Same hook the RF <Modal> uses so both
   // OfferDialog implementations get the same gesture behavior. Initial
   // width matches the prior max-w-lg cap (32rem = 512px) so the first
   // paint is visually identical to pre-67.11. State resets on unmount.
   const { position, size, isDragging, isResizing, headerHandlers, resizeHandlers } =
     useDraggableResizable({
-      enableDrag: draggable,
-      enableResize: resizable,
-      initialWidth: resizable ? 512 : null,
+      enableDrag: canDrag,
+      enableResize: canResize,
+      initialWidth: canResize ? 512 : null,
     });
 
   // Portal to document.body. ModalShell is mounted inside LocalProfile's
@@ -2266,24 +2295,27 @@ function ModalShell({
         <div
           className={cn(
             "flex w-full flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl",
-            !resizable && "max-w-lg max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-3rem)]",
-            (draggable || resizable) && "relative",
+            // 85dvh on phones (was effectively 100dvh-2rem / an inline 90dvh)
+            // so the sheet reads as a panel with visible page behind it
+            // instead of a full-screen takeover. Content still scrolls inside.
+            !canResize && "max-w-lg max-h-[85dvh] sm:max-h-[calc(100dvh-3rem)]",
+            (canDrag || canResize) && "relative",
             (isDragging || isResizing) && "select-none",
           )}
           style={
-            draggable || resizable
+            canDrag || canResize
               ? {
                   width: size.w ?? undefined,
                   height: size.h ?? undefined,
-                  minWidth: resizable ? MODAL_MIN_W : undefined,
-                  minHeight: resizable ? MODAL_MIN_H : undefined,
-                  maxWidth: resizable ? "90vw" : undefined,
+                  minWidth: canResize ? MODAL_MIN_W : undefined,
+                  minHeight: canResize ? MODAL_MIN_H : undefined,
+                  maxWidth: canResize ? "90vw" : undefined,
                   // dvh (dynamic viewport) not vh: on mobile/iOS a static
                   // 90vh exceeds the visible area under the browser chrome,
                   // pushing the pinned footer (Send/Save) below the fold.
-                  maxHeight: resizable ? "90dvh" : undefined,
+                  maxHeight: canResize ? "90dvh" : undefined,
                   transform:
-                    draggable && (position.x !== 0 || position.y !== 0)
+                    canDrag && (position.x !== 0 || position.y !== 0)
                       ? `translate3d(${position.x}px, ${position.y}px, 0)`
                       : undefined,
                 }
@@ -2293,26 +2325,26 @@ function ModalShell({
         >
           <div
             className={cn(
-              "flex flex-none items-start justify-between border-b border-court-border px-5 py-3",
-              draggable && "cursor-move touch-none",
+              "flex flex-none items-start justify-between border-b border-court-border px-4 py-2.5 sm:px-5 sm:py-3",
+              canDrag && "cursor-move touch-none",
             )}
             {...headerHandlers}
           >
-            <div>
-              <h2 className="font-serif text-lg font-semibold text-court-fg">{title}</h2>
-              {subtitle && <p className="mt-0.5 text-xs text-court-fg-muted">{subtitle}</p>}
+            <div className="min-w-0">
+              <h2 className="font-serif text-base font-semibold text-court-fg sm:text-lg">{title}</h2>
+              {subtitle && <p className="mt-0.5 text-[11px] text-court-fg-muted sm:text-xs">{subtitle}</p>}
             </div>
             <button type="button" onClick={onClose} className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle">
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">{children}</div>
           {footer && (
-            <div className="flex flex-none items-center justify-end gap-2 border-t border-court-border bg-court-surface px-5 py-3">
+            <div className="flex flex-none items-center justify-end gap-2 border-t border-court-border bg-court-surface px-4 py-2.5 sm:px-5 sm:py-3">
               {footer}
             </div>
           )}
-          {resizable && (
+          {canResize && (
             // Corner resize handle (Ace 67.11). cursor-nwse-resize gives
             // the OS-standard SE-corner cursor; touch-none disables the
             // browser's default touch-scroll on this hit area so the
@@ -2677,7 +2709,7 @@ function InlineInviteEditor({
   }
 
   return (
-    <div className="space-y-2 rounded-lg border border-court-border/60 bg-court-surface-subtle/40 p-3">
+    <div className="space-y-2 rounded-lg border border-court-border/60 bg-court-surface-subtle/40 p-2.5 sm:p-3">
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1.5 text-[11px] text-court-fg-muted">
           <span className="uppercase tracking-wider">Insert field</span>
@@ -2706,18 +2738,22 @@ function InlineInviteEditor({
           value={subject}
           onFocus={() => (lastField.current = "subject")}
           onChange={(e) => onSubjectChange(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 sm:px-3 sm:py-2"
         />
       </label>
       <label className="block text-sm">
         <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Body</span>
+        {/* h-28 wins over rows={8} on phones (a fixed height beats the rows
+            attribute) so the body box is ~112px instead of ~200px; sm:h-auto
+            hands height back to rows={8} on desktop, unchanged. Still
+            resize-vertical, so a longer edit can be dragged open. */}
         <textarea
           ref={bodyRef}
           value={body}
           onFocus={() => (lastField.current = "body")}
           onChange={(e) => onBodyChange(e.target.value)}
           rows={8}
-          className="mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm leading-relaxed text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className="mt-1 h-28 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-2.5 py-1.5 text-sm leading-relaxed text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 sm:h-auto sm:px-3 sm:py-2"
         />
       </label>
     </div>
@@ -3274,48 +3310,56 @@ function ScheduleInterviewScreen({
           // modal (NotifyChoiceModal) which owns its own Back/dismiss; the old
           // footer Save->Back swap is gone.
           <>
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
               onClick={onClose}
               disabled={isPending}
-              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+              className="gap-1 bg-court-surface py-2 font-medium text-court-fg-muted hover:text-court-fg"
             >
               <X className="h-3 w-3" /> Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="primary"
+              size="sm"
               onClick={onSaveEdit}
               disabled={isPending}
-              className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+              className="gap-1 px-4 py-2"
             >
               {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CalendarClock className="h-3 w-3" />}
               Save
-            </button>
+            </Button>
           </>
         ) : (
           <>
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
               onClick={onClose}
               disabled={isPending}
-              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+              className="gap-1 bg-court-surface py-2 font-medium text-court-fg-muted hover:text-court-fg"
             >
               <X className="h-3 w-3" /> Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="primary"
+              size="sm"
               onClick={onSend}
               disabled={isPending}
-              className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+              className="gap-1 px-4 py-2"
             >
               {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
               {clientWillSendInvite ? "Schedule interview" : "Send"}
-            </button>
+            </Button>
           </>
         )
       }
     >
-      <div className="space-y-4">
+      <div className="space-y-3 sm:space-y-4">
         <ScheduleFields
           scheduledAt={scheduledAt}
           setScheduledAt={setScheduledAt}
@@ -3367,7 +3411,7 @@ function ScheduleInterviewScreen({
         {/* "Client will send invite" is a new-interview-only concept. */}
         {!isEdit && (
           <label
-            className="flex cursor-pointer items-start gap-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/60 p-3 text-sm"
+            className="flex cursor-pointer items-start gap-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/60 p-2.5 text-sm sm:p-3"
             title="Use this when the client is scheduling the interview themselves. We log it on your calendar for tracking + credit and skip the invite emails."
           >
             <input
@@ -3636,8 +3680,18 @@ function InviteToggleSection({
   onToggle: (v: boolean) => void;
   children: ReactNode;
 }) {
+  // Phones only: the subject + body editor starts collapsed behind an
+  // "Edit email copy" disclosure. Both editors expanded were roughly half the
+  // scheduler's height on mobile, and the default template copy is what gets
+  // sent the large majority of the time — the toggle still controls whether
+  // the email goes out at all, this only hides the editing surface until it's
+  // wanted. Desktop is unchanged: always expanded when the toggle is on.
+  const narrow = useIsNarrowViewport();
+  const [editorOpen, setEditorOpen] = useState(false);
+  const showEditor = enabled && (!narrow || editorOpen);
+
   return (
-    <div className="rounded-xl border border-court-border bg-court-surface p-3">
+    <div className="rounded-xl border border-court-border bg-court-surface p-2.5 sm:p-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[13px] font-semibold text-court-fg">{label}</div>
@@ -3662,7 +3716,18 @@ function InviteToggleSection({
           />
         </button>
       </div>
-      {enabled && <div className="mt-3">{children}</div>}
+      {enabled && narrow && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setEditorOpen((v) => !v)}
+          className="-ml-1 mt-1.5 px-1 text-[11px] shadow-none"
+        >
+          {editorOpen ? "Hide email copy" : "Edit email copy"}
+        </Button>
+      )}
+      {showEditor && <div className="mt-2 sm:mt-3">{children}</div>}
     </div>
   );
 }
