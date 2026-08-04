@@ -1813,13 +1813,15 @@ function ContactPickerCard({
         <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
           {title}
         </div>
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={add}
-          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-0.5 text-[11px] font-semibold text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
+          className="gap-1 bg-court-surface px-2 py-0.5 text-[11px] text-court-fg-muted hover:border-brand/40 hover:text-court-fg"
         >
           <Plus className="h-3 w-3" /> Add
-        </button>
+        </Button>
       </div>
       <p className="mt-0.5 text-[11px] text-court-fg-muted">{helper}</p>
       <div className="mt-1.5 flex flex-col gap-1.5">
@@ -1828,21 +1830,32 @@ function ContactPickerCard({
             key={row.key}
             className="rounded-md border border-court-border/40 bg-court-surface/60 p-1.5"
           >
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-              <OfferField
-                label="Name"
-                value={row.name}
-                onChange={(v) => update(row.key, "name", v)}
-              />
-              <OfferField
-                label="Email"
-                value={row.email}
-                onChange={(v) => update(row.key, "email", v)}
-              />
+            {/* Name STACKED over Email, never side-by-side. The two picker
+                cards sit in a 2-up grid inside the placement modal, so the
+                old 1fr/1fr split left each field roughly 90px wide and
+                truncated the email to "scotty(" — and the email is the one
+                value that has to be readable, since it's the To: on the
+                auto-drafted invoice. Stacked, each field gets the card's
+                full width. mt-6 on the remove button clears the Name
+                label (20px line + 4px mt-1) so the X sits level with the
+                Name input. */}
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1 space-y-2">
+                <OfferField
+                  label="Name"
+                  value={row.name}
+                  onChange={(v) => update(row.key, "name", v)}
+                />
+                <OfferField
+                  label="Email"
+                  value={row.email}
+                  onChange={(v) => update(row.key, "email", v)}
+                />
+              </div>
               <button
                 type="button"
                 onClick={() => remove(row.key)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted transition hover:border-red-300 hover:text-red-600"
+                className="mt-6 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted transition hover:border-red-300 hover:text-red-600"
                 title="Remove this contact"
                 aria-label="Remove contact"
               >
