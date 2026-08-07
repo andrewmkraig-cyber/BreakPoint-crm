@@ -1035,31 +1035,21 @@ function splitCityState(raw: string | null | undefined): { city: string; state: 
   return { city: norm.trim(), state: "" };
 }
 
-// The candidate's location as the CLIENT should read it.
+// The candidate's location as the CLIENT should read it: the city, always,
+// with no state and no ZIP.
 //
-// Recruiters submit into the client's own market constantly, and
-// "Springfield, OH" to a client sitting in Springfield is filler the client
-// does not need. Rule: city only when the candidate is in the same state as
-// the role, or when the role's state is unknown. Keep the state only when
-// it genuinely differs from the role's, because then it is a real
-// relocation / commute signal rather than noise.
+// This used to keep the state when it differed from the role's state, on the
+// theory that out-of-state is a relocation signal worth surfacing. Andrew's
+// call on 2026-08-07: it isn't, and the conditional kept finding new ways to
+// leak "TX 77001" into client copy. Submittal write-ups say "Houston". The
+// relocation conversation happens on the call, not in the write-up.
 //
 // Computed here rather than described to the model: the model gets one
 // exact string to reuse, so it can't reintroduce the state on a whim.
 export function clientFacingCandidateLocation(
   candidateLocation: string | null | undefined,
-  roleLocations: ReadonlyArray<string> | null | undefined,
 ): string {
-  const cand = splitCityState(candidateLocation);
-  if (!cand.city) return "";
-  const roleStates = new Set(
-    (roleLocations ?? [])
-      .map((l) => splitCityState(l).state)
-      .filter((s): s is string => Boolean(s)),
-  );
-  const differentState =
-    cand.state !== "" && roleStates.size > 0 && !roleStates.has(cand.state);
-  return differentState ? `${cand.city}, ${cand.state}` : cand.city;
+  return splitCityState(candidateLocation).city;
 }
 
 // Timing phrase for the submittal's closing line. Submittals go out every
@@ -1107,10 +1097,8 @@ export async function generatePublicAccountingSubmittalBullets(
   const roleLine = input.job?.title
     ? `Target role: ${input.job.title}${input.job.clientName ? ` at ${input.job.clientName}` : ""}`
     : "Target role: public accounting opportunity";
-  // Same city-only rule the full submittal uses. This generator has no
-  // role-location field on its input, so the state is dropped whenever the
-  // candidate's city is known — matching the recruiter's default ask.
-  const clientLocation = clientFacingCandidateLocation(input.candidate.location, null);
+  // Same city-only rule the full submittal uses.
+  const clientLocation = clientFacingCandidateLocation(input.candidate.location);
   const candidateBlock =
     `Candidate: ${fullName}\n` +
     `Current title: ${input.candidate.title || "-"}\n` +
@@ -1180,12 +1168,9 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
   const callContext = input.callContext?.trim();
   const candidateContext = input.candidateContext?.trim();
   const recruiterInstructions = input.recruiterInstructions?.trim();
-  // City-only unless the candidate is genuinely out of the role's state,
-  // and a closing timing phrase that respects what day it actually is.
-  const clientLocation = clientFacingCandidateLocation(
-    input.candidate.location,
-    input.job.locations,
-  );
+  // City only, always. Plus a closing timing phrase that respects what day
+  // it actually is.
+  const clientLocation = clientFacingCandidateLocation(input.candidate.location);
   const timingPhrase = schedulingWindowPhrase();
 
   const customFieldLines = (input.job.customFields ?? [])
