@@ -13,7 +13,7 @@ import {
   LEGACY_DOC_MIME,
   looksLikeDocx,
 } from "@/lib/resume-text";
-import { formatLocation } from "@/lib/utils";
+import { formatLocation, normalizeUsState } from "@/lib/utils";
 
 export { DOCX_UNPARSEABLE_PREFIX, extractDocxText } from "@/lib/resume-text";
 
@@ -989,18 +989,50 @@ async function resumeContentForClaude(
 
 const ET_ZONE = "America/New_York";
 
+const ZIP_RE = /\b\d{5}(?:-\d{4})?\b/g;
+
 // Split a free-form location into city + 2-letter state. formatLocation
-// does the heavy lifting first (drops trailing "United States", abbreviates
-// "Ohio" to "OH"), so this only has to break the normalized "City, ST".
+// does most of the work (drops trailing "United States", abbreviates
+// "Ohio" to "OH"), but it does NOT understand ZIP codes or a missing
+// comma, and both of those broke the same-state comparison:
+//
+//   "Dayton, OH 45410" -> state slot held "OH 45410", which failed the
+//   2-letter lookup AND failed to match the role's "OH", so the location
+//   was treated as out-of-state and the whole string (ZIP included) went
+//   into a client email. That was the 2026-08-07 report.
+//
+// So: strip ZIPs first, then fall back to peeling a trailing state token
+// when there is no comma ("Dayton OH").
 function splitCityState(raw: string | null | undefined): { city: string; state: string } {
-  const norm = formatLocation(raw ?? "");
+  const deZipped = (raw ?? "")
+    .replace(ZIP_RE, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\s*,\s*/g, ", ")
+    .replace(/(?:,\s*)+$/, "")
+    .trim();
+  const norm = formatLocation(deZipped);
   if (!norm) return { city: "", state: "" };
+
   const idx = norm.lastIndexOf(",");
-  if (idx === -1) return { city: norm.trim(), state: "" };
-  return {
-    city: norm.slice(0, idx).trim(),
-    state: norm.slice(idx + 1).trim().toUpperCase(),
-  };
+  if (idx !== -1) {
+    return {
+      city: norm.slice(0, idx).trim(),
+      state: norm.slice(idx + 1).trim().toUpperCase(),
+    };
+  }
+
+  // No comma. Peel a trailing state token: "Dayton OH", "Dayton Ohio",
+  // "Kansas City Missouri". Two words first so multi-word state names
+  // ("New York", "North Carolina") win over a bare last word.
+  const words = norm.split(" ").filter(Boolean);
+  for (const take of [2, 1]) {
+    if (words.length <= take) continue;
+    const abbr = normalizeUsState(words.slice(-take).join(" "));
+    if (abbr) {
+      return { city: words.slice(0, -take).join(" ").trim(), state: abbr };
+    }
+  }
+  return { city: norm.trim(), state: "" };
 }
 
 // The candidate's location as the CLIENT should read it.
@@ -1083,8 +1115,9 @@ export async function generatePublicAccountingSubmittalBullets(
     `Candidate: ${fullName}\n` +
     `Current title: ${input.candidate.title || "-"}\n` +
     `Current employer: ${input.candidate.employer || "-"}\n` +
-    `Location: ${input.candidate.location || "-"}\n` +
-    `Location as the CLIENT should read it (use this EXACT string if you mention where they are based): ${clientLocation || "-"}\n` +
+    // Raw location withheld on purpose - see the same note in
+    // generateSubmittalWriteup's candidateBlock.
+    `Location (this is the ONLY location string you may use for the candidate, verbatim): ${clientLocation || "-"}\n` +
     `Expected compensation: ${input.candidate.expectedSalary || "-"}\n` +
     `LinkedIn: ${input.candidate.linkedin || "-"}\n` +
     `Skills: ${(input.candidate.skills || []).slice(0, 25).join(", ") || "-"}\n` +
@@ -1110,7 +1143,7 @@ export async function generatePublicAccountingSubmittalBullets(
         "- If a priority fact is not stated, omit it and use another real relevant fact.\n" +
         "- Use call context only for factual, client-safe details about motivation, compensation, availability, goals, objections, or fit. Do not mention that a fact came from a call transcript.\n" +
         "- Keep each bullet one sentence and client-ready.\n" +
-        "- If you mention where the candidate is based, use the 'Location as the CLIENT should read it' string verbatim. Do not append a state, country, or metro area to it.\n" +
+        "- If you mention where the candidate is based, use the Location string from the candidate profile verbatim. NEVER append a state, ZIP code, country, or metro area to it, and never pull a fuller address out of the resume or notes. If the Location string says 'Dayton', the email says 'Dayton'.\n" +
         NO_EDITORIALIZING_RULES +
         "- Use regular hyphens only. Never use em dashes.\n\n" +
         `=== Role context ===\n${roleLine}\n\n` +
@@ -1180,8 +1213,10 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
     `Candidate: ${fullName}\n` +
     `Current title: ${input.candidate.title || "—"}\n` +
     `Current employer: ${input.candidate.employer || "—"}\n` +
-    `Location: ${input.candidate.location || "—"}\n` +
-    `Location as the CLIENT should read it (use this EXACT string anywhere you mention where they are based): ${clientLocation || "—"}\n` +
+    // The RAW candidate location is deliberately NOT in this block. When it
+    // was, the model copied it verbatim ("Dayton, OH 45410") no matter what
+    // the rules said. It cannot emit a state or ZIP it was never shown.
+    `Location (this is the ONLY location string you may use for the candidate, verbatim): ${clientLocation || "—"}\n` +
     `Expected salary: ${input.candidate.expectedSalary || "—"}\n` +
     `LinkedIn: ${input.candidate.linkedin || "—"}\n` +
     `Skills: ${(input.candidate.skills || []).slice(0, 20).join(", ") || "—"}\n` +
@@ -1225,12 +1260,12 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
           "**Technically:**\n" +
           "- <Honest assessment of their technical toolkit: concrete tools / stacks / certifications that match the role>\n\n" +
           "**Comp Target:** <the number or range on its own; if unknown, say 'Open / to be discussed'. Never compare it to the client's posted range.>\n\n" +
-          "**Location:** <the 'Location as the CLIENT should read it' value, verbatim; note remote/hybrid/on-site posture if relevant>\n\n" +
+          "**Location:** <the candidate profile's Location string, verbatim and nothing added; note remote/hybrid/on-site posture if relevant>\n\n" +
           `Let me know if you'd like to set up an interview with [her/him] ${timingPhrase}.\n\n` +
           "Rules:\n" +
           "- Replace [She/He] and [her/him] with the correct pronouns; infer from the candidate's name if possible, otherwise use 'them/they'.\n" +
           `- The closing line's timing phrase is '${timingPhrase}'. Use it exactly. Do not substitute 'this week' or any other timing wording.\n` +
-          "- Anywhere you mention where the candidate is based, including the About paragraph, use the 'Location as the CLIENT should read it' string verbatim. Do not append a state, country, or metro area to it.\n" +
+          "- Anywhere you mention where the candidate is based, including the About paragraph, use the Location string from the candidate profile verbatim. NEVER append a state, ZIP code, country, or metro area to it, and never pull a fuller address out of the resume or notes. If the Location string says 'Dayton', the email says 'Dayton'.\n" +
           NO_EDITORIALIZING_RULES +
           "- Keep the `**…**` bold wrappers on the section headers, the `**Comp Target:**` and `**Location:**` labels, and the `**About [Name]:**` header. Do not bold body copy.\n" +
           "- Dash bullets ('- ') only; never '•', '*', or numbered lists.\n" +
