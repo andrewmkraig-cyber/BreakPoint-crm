@@ -13,6 +13,7 @@ import {
   LEGACY_DOC_MIME,
   looksLikeDocx,
 } from "@/lib/resume-text";
+import { formatLocation } from "@/lib/utils";
 
 export { DOCX_UNPARSEABLE_PREFIX, extractDocxText } from "@/lib/resume-text";
 
@@ -983,6 +984,87 @@ async function resumeContentForClaude(
   return [];
 }
 
+// ---- Client-facing submittal copy rules (shared by both submittal
+// generators) ------------------------------------------------------------
+
+const ET_ZONE = "America/New_York";
+
+// Split a free-form location into city + 2-letter state. formatLocation
+// does the heavy lifting first (drops trailing "United States", abbreviates
+// "Ohio" to "OH"), so this only has to break the normalized "City, ST".
+function splitCityState(raw: string | null | undefined): { city: string; state: string } {
+  const norm = formatLocation(raw ?? "");
+  if (!norm) return { city: "", state: "" };
+  const idx = norm.lastIndexOf(",");
+  if (idx === -1) return { city: norm.trim(), state: "" };
+  return {
+    city: norm.slice(0, idx).trim(),
+    state: norm.slice(idx + 1).trim().toUpperCase(),
+  };
+}
+
+// The candidate's location as the CLIENT should read it.
+//
+// Recruiters submit into the client's own market constantly, and
+// "Springfield, OH" to a client sitting in Springfield is filler the client
+// does not need. Rule: city only when the candidate is in the same state as
+// the role, or when the role's state is unknown. Keep the state only when
+// it genuinely differs from the role's, because then it is a real
+// relocation / commute signal rather than noise.
+//
+// Computed here rather than described to the model: the model gets one
+// exact string to reuse, so it can't reintroduce the state on a whim.
+export function clientFacingCandidateLocation(
+  candidateLocation: string | null | undefined,
+  roleLocations: ReadonlyArray<string> | null | undefined,
+): string {
+  const cand = splitCityState(candidateLocation);
+  if (!cand.city) return "";
+  const roleStates = new Set(
+    (roleLocations ?? [])
+      .map((l) => splitCityState(l).state)
+      .filter((s): s is string => Boolean(s)),
+  );
+  const differentState =
+    cand.state !== "" && roleStates.size > 0 && !roleStates.has(cand.state);
+  return differentState ? `${cand.city}, ${cand.state}` : cand.city;
+}
+
+// Timing phrase for the submittal's closing line. Submittals go out every
+// day of the week, so a hardcoded "this week" reads wrong from Thursday on
+// ("interview him this week" sent Friday afternoon). Resolved against
+// Eastern (the desk's timezone) and handed to the model as the exact words
+// to use, rather than asking it to reason about today's date.
+export function schedulingWindowPhrase(now: Date = new Date()): string {
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: ET_ZONE,
+    weekday: "short",
+  }).format(now);
+  switch (weekday) {
+    // Thursday: tomorrow is still live, but most of the ask lands next week.
+    case "Thu":
+      return "tomorrow or next week";
+    // Friday and the weekend: "this week" is already gone.
+    case "Fri":
+    case "Sat":
+    case "Sun":
+      return "next week";
+    // Mon / Tue / Wed
+    default:
+      return "this week";
+  }
+}
+
+// Anti-editorializing rules. The recruiter's complaint: the generator kept
+// narrating how well a fact matched the client's own job posting ("$20/hr,
+// which lines up with the posted range", "which is exactly what you're
+// looking for"). The client wrote the posting; restating it back to them
+// reads as padding and costs credibility. State the fact, stop.
+const NO_EDITORIALIZING_RULES =
+  "- State facts plainly and stop. Never add commentary about how well a fact matches what the client wants.\n" +
+  "- Banned phrasing, in any variation: 'which lines up with', 'which matches the posted range', 'exactly what you're looking for', 'right in line with what you need', 'as you requested', 'perfect fit for', 'checks the box on'. If you catch yourself explaining why a fact is good news, delete the explanation and keep the fact.\n" +
+  "- Never quote the client's own job posting back to them: not the posted salary range, not the posted requirements, not the years of experience they asked for. They wrote it and they know it.\n";
+
 export async function generatePublicAccountingSubmittalBullets(
   input: PublicAccountingSubmittalBulletsInput,
 ): Promise<string> {
@@ -993,11 +1075,16 @@ export async function generatePublicAccountingSubmittalBullets(
   const roleLine = input.job?.title
     ? `Target role: ${input.job.title}${input.job.clientName ? ` at ${input.job.clientName}` : ""}`
     : "Target role: public accounting opportunity";
+  // Same city-only rule the full submittal uses. This generator has no
+  // role-location field on its input, so the state is dropped whenever the
+  // candidate's city is known — matching the recruiter's default ask.
+  const clientLocation = clientFacingCandidateLocation(input.candidate.location, null);
   const candidateBlock =
     `Candidate: ${fullName}\n` +
     `Current title: ${input.candidate.title || "-"}\n` +
     `Current employer: ${input.candidate.employer || "-"}\n` +
     `Location: ${input.candidate.location || "-"}\n` +
+    `Location as the CLIENT should read it (use this EXACT string if you mention where they are based): ${clientLocation || "-"}\n` +
     `Expected compensation: ${input.candidate.expectedSalary || "-"}\n` +
     `LinkedIn: ${input.candidate.linkedin || "-"}\n` +
     `Skills: ${(input.candidate.skills || []).slice(0, 25).join(", ") || "-"}\n` +
@@ -1023,6 +1110,8 @@ export async function generatePublicAccountingSubmittalBullets(
         "- If a priority fact is not stated, omit it and use another real relevant fact.\n" +
         "- Use call context only for factual, client-safe details about motivation, compensation, availability, goals, objections, or fit. Do not mention that a fact came from a call transcript.\n" +
         "- Keep each bullet one sentence and client-ready.\n" +
+        "- If you mention where the candidate is based, use the 'Location as the CLIENT should read it' string verbatim. Do not append a state, country, or metro area to it.\n" +
+        NO_EDITORIALIZING_RULES +
         "- Use regular hyphens only. Never use em dashes.\n\n" +
         `=== Role context ===\n${roleLine}\n\n` +
         `=== Candidate profile ===\n${candidateBlock}` +
@@ -1058,6 +1147,13 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
   const callContext = input.callContext?.trim();
   const candidateContext = input.candidateContext?.trim();
   const recruiterInstructions = input.recruiterInstructions?.trim();
+  // City-only unless the candidate is genuinely out of the role's state,
+  // and a closing timing phrase that respects what day it actually is.
+  const clientLocation = clientFacingCandidateLocation(
+    input.candidate.location,
+    input.job.locations,
+  );
+  const timingPhrase = schedulingWindowPhrase();
 
   const customFieldLines = (input.job.customFields ?? [])
     .filter((cf) => cf.name && cf.value)
@@ -1085,6 +1181,7 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
     `Current title: ${input.candidate.title || "—"}\n` +
     `Current employer: ${input.candidate.employer || "—"}\n` +
     `Location: ${input.candidate.location || "—"}\n` +
+    `Location as the CLIENT should read it (use this EXACT string anywhere you mention where they are based): ${clientLocation || "—"}\n` +
     `Expected salary: ${input.candidate.expectedSalary || "—"}\n` +
     `LinkedIn: ${input.candidate.linkedin || "—"}\n` +
     `Skills: ${(input.candidate.skills || []).slice(0, 20).join(", ") || "—"}\n` +
@@ -1103,6 +1200,7 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
       "NEVER use em dashes anywhere in the output. Use a colon, comma, parentheses, or a period plus new sentence instead. Hyphens (`-`) are fine for compound words and bullet markers. " +
       "Confident, concise, recruiter voice. Never fabricate facts not in the source data. " +
       "Always tie the candidate's background to the specific role: this is a targeted pitch, not a generic summary. " +
+      "Tie it by CHOOSING which facts to show, never by narrating the match. The client wrote the job posting, so never tell them a fact lines up with what they asked for. " +
       "Andrew may provide extra generation guidance. Treat it as high-priority emphasis guidance, but never let it override source facts, output format, or client-safe judgment.",
     messages: [
       {
@@ -1126,11 +1224,14 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
           "- <Bullet 4>\n\n" +
           "**Technically:**\n" +
           "- <Honest assessment of their technical toolkit: concrete tools / stacks / certifications that match the role>\n\n" +
-          "**Comp Target:** <range; if unknown, say 'Open / to be discussed'. If the role posts a range and the candidate's target falls inside it, say so.>\n\n" +
-          "**Location:** <city, state; note remote/hybrid/on-site posture if relevant>\n\n" +
-          "Let me know if you'd like to set up an interview with [her/him] this week.\n\n" +
+          "**Comp Target:** <the number or range on its own; if unknown, say 'Open / to be discussed'. Never compare it to the client's posted range.>\n\n" +
+          "**Location:** <the 'Location as the CLIENT should read it' value, verbatim; note remote/hybrid/on-site posture if relevant>\n\n" +
+          `Let me know if you'd like to set up an interview with [her/him] ${timingPhrase}.\n\n` +
           "Rules:\n" +
           "- Replace [She/He] and [her/him] with the correct pronouns; infer from the candidate's name if possible, otherwise use 'them/they'.\n" +
+          `- The closing line's timing phrase is '${timingPhrase}'. Use it exactly. Do not substitute 'this week' or any other timing wording.\n` +
+          "- Anywhere you mention where the candidate is based, including the About paragraph, use the 'Location as the CLIENT should read it' string verbatim. Do not append a state, country, or metro area to it.\n" +
+          NO_EDITORIALIZING_RULES +
           "- Keep the `**…**` bold wrappers on the section headers, the `**Comp Target:**` and `**Location:**` labels, and the `**About [Name]:**` header. Do not bold body copy.\n" +
           "- Dash bullets ('- ') only; never '•', '*', or numbered lists.\n" +
           "- Do NOT include a signature or 'Dear'; the recruiter's email signature handles closings.\n" +
