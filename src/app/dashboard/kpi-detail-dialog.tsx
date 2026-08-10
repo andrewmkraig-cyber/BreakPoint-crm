@@ -12,7 +12,10 @@ import {
   type TimeGrain,
   type TimeRangeSelection,
 } from "@/lib/time-range";
-import type { KpiDetailResponse } from "@/app/api/dashboard/kpi-detail/route";
+import type {
+  KpiDetailResponse,
+  KpiDetailRow,
+} from "@/app/api/dashboard/kpi-detail/route";
 
 // Clubhouse KPI drill-down popup. Opened from a clickable KPI tile,
 // fetches the underlying rows for the chosen category + period on demand
@@ -146,30 +149,59 @@ export function KpiDetailDialog({
           )}
           {!loading && !error && data && data.rows.length > 0 && (
             <ul className="flex flex-col gap-1">
-              {data.rows.map((r) =>
-                r.href ? (
-                  <li key={r.key}>
-                    <Link
-                      href={r.href}
-                      onClick={onClose}
-                      className="block rounded-lg border border-court-border-soft bg-court-surface px-3 py-2 text-[13px] text-court-fg transition hover:border-court-brand/40 hover:bg-court-brand-tint/30"
-                    >
-                      {r.text}
-                    </Link>
-                  </li>
-                ) : (
-                  <li
-                    key={r.key}
-                    className="rounded-lg border border-court-border-soft bg-court-surface px-3 py-2 text-[13px] text-court-fg-muted"
-                  >
-                    {r.text}
-                  </li>
-                ),
-              )}
+              {data.rows.map((r) => (
+                <KpiDetailRowItem key={r.key} row={r} onNavigate={onClose} />
+              ))}
             </ul>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+function KpiDetailRowItem({
+  row,
+  onNavigate,
+}: {
+  row: KpiDetailRow;
+  onNavigate: () => void;
+}) {
+  const body = (
+    <>
+      <span className="block break-words text-[13px] font-medium text-court-fg">
+        {row.primary ?? row.text}
+      </span>
+      {row.detail && (
+        <span className="mt-0.5 block break-words text-[12px] text-court-fg-muted">
+          {row.detail}
+        </span>
+      )}
+      {row.meta && (
+        <span className="mt-0.5 block text-[11px] text-court-fg-muted/80">
+          {row.meta}
+        </span>
+      )}
+    </>
+  );
+
+  if (row.href) {
+    return (
+      <li>
+        <Link
+          href={row.href}
+          onClick={onNavigate}
+          className="block rounded-lg border border-court-border-soft bg-court-surface px-3 py-2.5 transition hover:border-court-brand/40 hover:bg-court-brand-tint/30"
+        >
+          {body}
+        </Link>
+      </li>
+    );
+  }
+
+  return (
+    <li className="rounded-lg border border-court-border-soft bg-court-surface px-3 py-2.5 text-court-fg-muted">
+      {body}
+    </li>
   );
 }

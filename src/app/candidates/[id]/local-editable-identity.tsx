@@ -20,6 +20,7 @@ import { INPUT_FRAME_RECT_CLASS } from "@/components/ui/input";
 import { updateLocalCandidate } from "@/app/candidates/[id]/local-candidate-update";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { formatLocation } from "@/lib/utils";
+import { formatPhone, telHref } from "@/lib/rf-payload-shapes";
 
 // Ace-native mirror of EditableIdentity. Same consolidated card shape
 // (name + contact + employment in one Edit/Save flow) but writes to
@@ -202,11 +203,11 @@ export function LocalEditableIdentity({
             <Row label="Phone" icon={<PhoneIcon className="h-3 w-3" />}>
               {saved.phone ? (
                 <a
-                  href={`tel:${saved.phone}`}
+                  href={telHref(saved.phone)}
                   className="text-court-fg underline-offset-2 hover:text-brand-dark hover:underline"
                   title="Call"
                 >
-                  {saved.phone}
+                  {formatPhone(saved.phone)}
                 </a>
               ) : (
                 <span className="text-court-fg-muted">—</span>

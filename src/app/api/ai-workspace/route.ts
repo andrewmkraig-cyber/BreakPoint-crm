@@ -14,6 +14,10 @@ import { getCurrentOrg } from '@/lib/auth/getCurrentOrg'
 import { getFreshAccessToken, getRecentTaggedEmails } from '@/lib/gmail'
 import { buildPersonalTrainerBlock } from '@/lib/personal-trainer'
 import { MARKDOWN_OUTPUT_FORMAT_RULES } from '@/lib/ai-output-formatting'
+import {
+  GAME_PLAN_HISTORY_MAX_CHARS,
+  GAME_PLAN_USER_MESSAGE_MAX_CHARS,
+} from '@/lib/game-plan-limits'
 
 const anthropic = new Anthropic()
 
@@ -65,6 +69,36 @@ function screenshotMarker(attachments: Array<{ name: string }>): string {
   return attachments.map((a) => `[Attached screenshot: ${a.name}]`).join('\n')
 }
 
+function contentCharLength(content: Anthropic.Messages.MessageParam['content']): number {
+  if (typeof content === 'string') return content.length
+  if (!Array.isArray(content)) return 0
+  return content.reduce((sum, block) => {
+    if (block.type === 'text') return sum + block.text.length
+    return sum
+  }, 0)
+}
+
+function trimMessagesToRecentCharBudget(
+  input: Anthropic.Messages.MessageParam[],
+  maxChars: number,
+): Anthropic.Messages.MessageParam[] {
+  const out: Anthropic.Messages.MessageParam[] = []
+  let chars = 0
+  for (let i = input.length - 1; i >= 0; i -= 1) {
+    const msg = input[i]
+    const len = contentCharLength(msg.content)
+    if (out.length === 0 || chars + len <= maxChars) {
+      out.push(msg)
+      chars += len
+      continue
+    }
+    break
+  }
+  out.reverse()
+  while (out.length > 1 && out[0]?.role !== 'user') out.shift()
+  return out
+}
+
 export async function GET(req: NextRequest) {
   const entityType = req.nextUrl.searchParams.get('entityType')
   const entityId = req.nextUrl.searchParams.get('entityId')
@@ -95,6 +129,14 @@ export async function POST(req: NextRequest) {
   const persistedUserMessage = [userMessage, screenshotMarker(screenshotAttachments)]
     .filter(Boolean)
     .join('\n\n')
+  if (userMessage.length > GAME_PLAN_USER_MESSAGE_MAX_CHARS) {
+    return NextResponse.json(
+      {
+        error: `Game Plan messages can be up to ${GAME_PLAN_USER_MESSAGE_MAX_CHARS.toLocaleString()} characters.`,
+      },
+      { status: 413 },
+    )
+  }
 
   // Resolve tenant once up front. Used both for the Gmail-context
   // lookup below and for the Personal Trainer rules block appended at
@@ -271,16 +313,17 @@ export async function POST(req: NextRequest) {
   // messages. The DB can still contain orphan user rows from a pre-fix
   // session, so collapse runs of the same role into one (keeping the most
   // recent content) before handing the transcript to the API.
-  const messages: Anthropic.Messages.MessageParam[] = []
+  const compactMessages: Anthropic.Messages.MessageParam[] = []
   for (const m of history) {
     const role = m.role as 'user' | 'assistant'
-    const last = messages[messages.length - 1]
+    const last = compactMessages[compactMessages.length - 1]
     if (last && last.role === role && typeof last.content === 'string') {
       last.content = m.content
     } else {
-      messages.push({ role, content: m.content })
+      compactMessages.push({ role, content: m.content })
     }
   }
+  const messages = trimMessagesToRecentCharBudget(compactMessages, GAME_PLAN_HISTORY_MAX_CHARS)
 
   // Screenshots apply only to the newest user turn. We do not persist
   // image bytes in AiWorkspaceMessage; the saved row keeps a lightweight

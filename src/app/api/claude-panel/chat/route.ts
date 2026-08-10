@@ -178,7 +178,7 @@ const DATA_TOOLS: Anthropic.Tool[] = [
   {
     name: "get_candidate_call_context",
     description:
-      "Read recent logged call AI summaries and transcript excerpts for one candidate. Use this after resolving a candidate when the recruiter asks what was discussed on a call, asks for call summaries/transcripts, or asks for candidate motivation, compensation, availability, objections, next steps, or fit that may come from calls.",
+      "Read recent logged call AI summaries and transcripts for one candidate. Use this after resolving a candidate when the recruiter asks what was discussed on a call, asks for call summaries/transcripts, or asks for candidate motivation, compensation, availability, objections, next steps, or fit that may come from calls.",
     input_schema: {
       type: "object",
       properties: {
@@ -1383,7 +1383,7 @@ async function runGetCandidateCallContext(
     candidateId: candidate.id,
     organizationId: orgId,
     userEmail,
-    heading: `CALL CONTEXT FOR ${candidateName} (AI summaries and transcript excerpts)`,
+    heading: `CALL CONTEXT FOR ${candidateName} (AI summaries and transcripts)`,
   });
   log(
     "get_candidate_call_context",

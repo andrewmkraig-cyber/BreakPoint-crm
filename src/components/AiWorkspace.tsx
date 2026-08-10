@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useComposerManager } from "@/lib/composer-manager";
+import { GAME_PLAN_USER_MESSAGE_MAX_CHARS } from "@/lib/game-plan-limits";
 
 // Per-entity AI chat surface. Drops onto a client or candidate detail page
 // as a standalone card: loads its own history from /api/ai-workspace,
@@ -242,6 +243,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
 
   const emptyLabel =
     entityType === "client" ? "client" : entityType === "job" ? "job" : "candidate";
+  const inputNearLimit = input.length >= GAME_PLAN_USER_MESSAGE_MAX_CHARS * 0.8;
 
   const addFiles = useCallback(
     async (files: File[]) => {
@@ -396,9 +398,23 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
   const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     if (sending) return;
     const files = Array.from(e.clipboardData.files).filter((file) => file.type.startsWith("image/"));
-    if (files.length === 0) return;
-    e.preventDefault();
-    void addFiles(files);
+    if (files.length > 0) {
+      e.preventDefault();
+      void addFiles(files);
+      return;
+    }
+    const pastedText = e.clipboardData.getData("text");
+    if (!pastedText) return;
+    const selectionLength = Math.max(
+      0,
+      e.currentTarget.selectionEnd - e.currentTarget.selectionStart,
+    );
+    const nextLength = input.length - selectionLength + pastedText.length;
+    if (nextLength > GAME_PLAN_USER_MESSAGE_MAX_CHARS) {
+      toast.warning("Game Plan paste limit reached", {
+        description: `Only the first ${GAME_PLAN_USER_MESSAGE_MAX_CHARS.toLocaleString()} characters will be kept.`,
+      });
+    }
   };
 
   return (
@@ -540,6 +556,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
+            maxLength={GAME_PLAN_USER_MESSAGE_MAX_CHARS}
             rows={rows}
             placeholder={`Ask anything about this ${emptyLabel}… or drop/paste a screenshot`}
             disabled={sending}
@@ -567,6 +584,11 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
         </div>
         {errorText && (
           <div className="mt-2 text-xs text-red-600">{errorText}</div>
+        )}
+        {inputNearLimit && (
+          <div className="mt-1 text-right text-[11px] text-court-fg-muted">
+            {input.length.toLocaleString()} / {GAME_PLAN_USER_MESSAGE_MAX_CHARS.toLocaleString()}
+          </div>
         )}
       </div>
 

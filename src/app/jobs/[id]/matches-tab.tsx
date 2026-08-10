@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowUp,
@@ -41,6 +42,10 @@ import { Input, Select } from "@/components/ui/input";
 import { TabStrip } from "@/components/ui/tab-strip";
 import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
 import type { MatchTarget } from "@/lib/find-matches-context";
+import {
+  setCandidateNavList,
+  shouldUseDirectCandidateProfileNavigation,
+} from "@/lib/candidate-nav";
 import { cn } from "@/lib/utils";
 
 // Per-job sourcing surface. Structurally a clone of /candidates' rail +
@@ -625,6 +630,7 @@ export function MatchesTab({
   matchTarget: MatchTarget;
 }) {
   void jobRfId;
+  const router = useRouter();
 
   // Initial state. A saved search snapshot (Job.savedSearchFilters), when
   // it carries any real filter, owns the opening view untouched. Otherwise
@@ -854,6 +860,19 @@ export function MatchesTab({
     });
     return withKey.map((x) => x.row);
   }, [rows, sort]);
+
+  function openCandidate(id: string) {
+    if (shouldUseDirectCandidateProfileNavigation()) {
+      setCandidateNavList({
+        source: "job",
+        backHref: `/jobs/${jobCuid}?tab=matches`,
+        ids: sortedRows.map((r) => r.id),
+      });
+      router.push(`/candidates/${id}`);
+      return;
+    }
+    setSelectedId(id);
+  }
 
   function toggleSort(column: SortColumn) {
     setSort((prev) => {
@@ -1972,7 +1991,7 @@ export function MatchesTab({
                     return (
                       <tr
                         key={c.id}
-                        onClick={() => setSelectedId(c.id)}
+                        onClick={() => openCandidate(c.id)}
                         className="h-12 cursor-pointer transition hover:bg-court-accent-tint/40"
                       >
                         <td

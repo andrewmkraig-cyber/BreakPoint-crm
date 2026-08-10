@@ -50,6 +50,13 @@ export function getCandidateNavSnapshot(): CandidateNavSnapshot | null {
   }
 }
 
+export function shouldUseDirectCandidateProfileNavigation(): boolean {
+  if (typeof window === "undefined") return false;
+  // Mobile/PWA Safari is much more reliable when the resume canvas viewer
+  // owns the top-level page instead of running inside a split-view iframe.
+  return window.matchMedia("(max-width: 767px)").matches;
+}
+
 export function clearCandidateNavList(): void {
   if (typeof window === "undefined") return;
   try {

@@ -38,7 +38,7 @@ import { formatExpectedCompensation } from "@/lib/candidate-compensation";
 const CLIENT_LOOP_RESUME_MAX_CHARS = 10_000;
 const RECENT_CALL_CONTEXT_TAKE = 5;
 const CALL_SUMMARY_MAX_CHARS = 1200;
-const CALL_TRANSCRIPT_MAX_CHARS = 3500;
+const CALL_TRANSCRIPT_MAX_CHARS = 30_000;
 const SUBMITTAL_GAME_PLAN_TAKE = 12;
 const SUBMITTAL_SMS_TAKE = 12;
 const SUBMITTAL_NOTES_TAKE = 8;
@@ -64,7 +64,7 @@ export async function buildCandidateCallContextBlock(input: {
     where: { candidateId: input.candidateId },
     heading:
       input.heading ??
-      "RECENT CALL CONTEXT (AI summaries and transcript excerpts)",
+      "RECENT CALL CONTEXT (AI summaries and transcripts)",
     take: input.take,
   });
 }
@@ -102,7 +102,7 @@ export async function buildCandidateSubmittalContextBlock(input: {
         lineDigits,
         where: { candidateId: input.candidateId },
         heading:
-          "RECENT CALL CONTEXT (AI summaries and transcript excerpts)",
+          "RECENT CALL CONTEXT (AI summaries and transcripts)",
         take: RECENT_CALL_CONTEXT_TAKE,
       }),
     ]);
@@ -266,7 +266,7 @@ export async function buildClientContext(clientId: string): Promise<string> {
     lineDigits,
     where: { OR: clientCallContextOr },
     heading:
-      "RECENT CLIENT/PIPELINE CALL CONTEXT (AI summaries and transcript excerpts)",
+      "RECENT CLIENT/PIPELINE CALL CONTEXT (AI summaries and transcripts)",
   });
 
   const lines: string[] = [];
@@ -565,7 +565,7 @@ export async function buildCandidateContext(
     lineDigits,
     where: { candidateId: candidate.id },
     heading:
-      "RECENT CALL CONTEXT (AI summaries and transcript excerpts)",
+      "RECENT CALL CONTEXT (AI summaries and transcripts)",
   });
 
   // Activity feed: ActivityLog rows targeted at this candidate, plus
@@ -880,12 +880,35 @@ function renderRecentCallContextBlock(
 
     const transcript = call.transcript?.transcript?.trim() ?? "";
     if (transcript) {
-      lines.push("    Transcript excerpt:");
-      pushIndentedLines(lines, truncate(transcript, CALL_TRANSCRIPT_MAX_CHARS), "      ");
+      const transcriptBlock = transcriptForPrompt(transcript, CALL_TRANSCRIPT_MAX_CHARS);
+      lines.push(`    ${transcriptBlock.label}:`);
+      pushIndentedLines(lines, transcriptBlock.text, "      ");
     }
   }
 
   return lines.join("\n");
+}
+
+function transcriptForPrompt(
+  transcript: string,
+  maxChars: number,
+): { label: string; text: string } {
+  if (transcript.length <= maxChars) {
+    return { label: "Transcript", text: transcript };
+  }
+
+  const marker =
+    "\n\n[Middle of transcript omitted to keep context bounded. Beginning and end are included.]\n\n";
+  const budget = Math.max(0, maxChars - marker.length);
+  const headChars = Math.floor(budget * 0.45);
+  const tailChars = budget - headChars;
+  return {
+    label: "Transcript excerpt (beginning and end)",
+    text:
+      transcript.slice(0, headChars).trimEnd() +
+      marker +
+      transcript.slice(-tailChars).trimStart(),
+  };
 }
 
 function pushIndentedLines(lines: string[], text: string, indent: string) {
@@ -1309,7 +1332,7 @@ export async function buildJobContext(jobId: string): Promise<string> {
           lineDigits,
           where: { OR: callContextOr },
           heading:
-            "RECENT CALL CONTEXT (client and pipeline candidates - AI summaries and transcript excerpts)",
+            "RECENT CALL CONTEXT (client and pipeline candidates - AI summaries and transcripts)",
         })
       : "";
 

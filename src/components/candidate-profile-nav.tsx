@@ -122,6 +122,8 @@ function labelFor(source: string): string {
       return "Back to applicants";
     case "list":
       return "Back to list";
+    case "job":
+      return "Back to job";
     default:
       return "Back to all candidates";
   }
@@ -136,6 +138,8 @@ function defaultBackHref(source: string): string {
       // merged into Pipeline. Route to the new Applicants stage tab
       // so old sessionStorage entries still land somewhere sensible.
       return "/pipeline?stage=applied";
+    case "job":
+      return "/jobs";
     default:
       return "/candidates";
   }

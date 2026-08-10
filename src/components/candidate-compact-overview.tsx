@@ -39,6 +39,7 @@ import {
   splitCandidateLocation,
   type CandidateLocationParts,
 } from "@/lib/candidate-location-parts";
+import { formatPhone, telHref } from "@/lib/rf-payload-shapes";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 import { buildTokenColorMap } from "@/app/candidates/[id]/resume-matches-rail";
 import type { CandidateCompactOverviewExpectedSalary } from "@/components/candidate-overview-helpers";
@@ -809,7 +810,7 @@ function ReadPhone({ phone }: { phone: string | null }) {
   if (!phone) return <span className="text-court-fg-muted">—</span>;
   return (
     <a
-      href={`tel:${phone}`}
+      href={telHref(phone)}
       // target="_top" so the tel: handoff fires against the top window
       // instead of navigating the candidates split-view iframe to a
       // tel: URL it can't render (which left the right pane blank with
@@ -819,7 +820,7 @@ function ReadPhone({ phone }: { phone: string | null }) {
       className="inline-flex items-center gap-1 text-court-fg hover:text-brand-dark hover:underline"
     >
       <PhoneIcon className="h-3 w-3" />
-      {phone}
+      {formatPhone(phone)}
     </a>
   );
 }

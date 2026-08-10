@@ -315,11 +315,12 @@ function buildLookupText(
   userMessage: string,
   recentMessages: RecentWorkspaceMessage[],
 ): string {
+  const current = truncateText(userMessage, 6000);
   const recent = recentMessages
     .slice(-8)
     .map((m) => `${m.role}: ${truncateText(m.content, 1200)}`)
     .join("\n");
-  return [userMessage, recent].filter(Boolean).join("\n");
+  return [current, recent].filter(Boolean).join("\n");
 }
 
 function detectIntent(userMessage: string, queryText: string, tokens: string[]) {

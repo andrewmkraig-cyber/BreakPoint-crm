@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowDown,
   ArrowLeft,
@@ -51,6 +52,10 @@ import { Button, ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { flattenBooleanQuery } from "@/lib/search/boolean-query";
+import {
+  setCandidateNavList,
+  shouldUseDirectCandidateProfileNavigation,
+} from "@/lib/candidate-nav";
 
 // Split-view left-panel resize. The name list used to be locked to
 // w-64 (256px) — that was the Ace 53.0 column-width fix. Now the
@@ -663,6 +668,7 @@ function generateSearchLabel(f: Filters): string {
 }
 
 export default function CandidatesPage() {
+  const router = useRouter();
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
   const [skillsBuffer, setSkillsBuffer] = useState("");
   const [jobTitlesBuffer, setJobTitlesBuffer] = useState("");
@@ -1086,6 +1092,19 @@ export default function CandidatesPage() {
     });
     return withKey.map((x) => x.row);
   }, [rows, sort]);
+
+  function openCandidate(id: string) {
+    if (shouldUseDirectCandidateProfileNavigation()) {
+      setCandidateNavList({
+        source: "candidates",
+        backHref: "/candidates",
+        ids: sortedRows.map((r) => r.id),
+      });
+      router.push(`/candidates/${id}`);
+      return;
+    }
+    setSelectedId(id);
+  }
 
   function toggleSort(column: SortColumn) {
     setSort((prev) => {
@@ -1904,7 +1923,7 @@ export default function CandidatesPage() {
                   {sortedRows.map((c) => (
                     <Fragment key={c.id}>
                     <tr
-                      onClick={() => setSelectedId(c.id)}
+                      onClick={() => openCandidate(c.id)}
                       className="h-14 cursor-pointer py-1 transition hover:bg-court-accent-tint/40"
                     >
                       <td
@@ -1976,7 +1995,7 @@ export default function CandidatesPage() {
                       // only appears between candidates (set by
                       // divide-y on the next candidate's data row).
                       <tr
-                        onClick={() => setSelectedId(c.id)}
+                        onClick={() => openCandidate(c.id)}
                         className="!border-t-0 cursor-pointer transition hover:bg-court-accent-tint/40"
                       >
                         <td className="px-3" />
