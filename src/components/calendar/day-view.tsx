@@ -3,6 +3,7 @@
 import { MapPin, Plus, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import type { CalendarEvent, CalendarTeamMember } from "@/lib/calendar/types";
 import { googleEventColorStyle } from "@/lib/calendar/google-colors";
 import {
@@ -31,6 +32,10 @@ const START_HOUR = 0;
 // of midnight slots.
 const DEFAULT_SCROLL_HOUR = 7;
 const MAX_AVATARS = 2;
+const MIN_TIMED_EVENT_HEIGHT = 52;
+const RICH_EVENT_HEIGHT = 72;
+const META_DETAIL_HEIGHT = 112;
+const FOOTER_DETAIL_HEIGHT = 82;
 
 type Props = {
   events: CalendarEvent[];
@@ -132,21 +137,23 @@ export function CalendarDayView({
               const meta = eventTypeMeta(ev.type);
               const colorStyle = googleEventColorStyle(ev.calendarColor);
               return (
-                <button
+                <Button
                   key={ev.id}
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={(e) => {
                     e.stopPropagation();
                     onEventClick(ev);
                   }}
                   className={cn(
-                    "flex h-7 items-center overflow-hidden rounded-md border px-3 text-[12.5px] font-semibold leading-none transition hover:-translate-y-px hover:shadow-sm",
+                    "flex h-7 items-center justify-start overflow-hidden rounded-md border px-3 text-[12.5px] font-semibold leading-none transition hover:-translate-y-px hover:shadow-sm",
                     colorStyle ? "shadow-sm" : meta.pillClass,
                   )}
                   style={colorStyle ?? undefined}
                 >
                   <span className="truncate">{ev.title}</span>
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -200,9 +207,9 @@ export function CalendarDayView({
             const end = decimalHour(ev.endTime);
             const top = (start - START_HOUR) * SLOT;
             const rawHeight = (end - start) * SLOT - 4;
-            // Floor reminder height so a 15-min reminder stays readable.
-            const height =
-              ev.type === "reminder" ? Math.max(rawHeight, 30) : rawHeight;
+            // Floor every timed block so a 15- or 30-minute call still shows
+            // the title, not just a colored sliver with a type label.
+            const height = Math.max(rawHeight, MIN_TIMED_EVENT_HEIGHT);
             const allOwners = teamMode
               ? ev.ownerKeys
                   .map((k) => teamMembers.find((m) => m.id === k))
@@ -226,38 +233,116 @@ export function CalendarDayView({
                   width: `calc((100% - 38px) / ${col.count} - 4px)`,
                 }
               : { left: 14, right: 24 };
-            // Narrow column tiles can't fit the rich header + title +
-            // detail rows without wrapping and clipping, so a packed
-            // tile renders a compact label + title pair instead.
+            const isRich = height >= RICH_EVENT_HEIGHT;
+            const showMeta = height >= META_DETAIL_HEIGHT;
+            const showFooter = height >= FOOTER_DETAIL_HEIGHT;
+            // Narrow column tiles can't fit the rich title + detail rows
+            // without wrapping and clipping, so packed tiles stay compact
+            // but still lead with the event title.
             if (multi) {
               return (
-                <button
+                <Button
                   key={ev.id}
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={(e) => {
                     e.stopPropagation();
                     onEventClick(ev);
                   }}
                   className={cn(
-                    "absolute cursor-pointer overflow-hidden rounded-lg border px-3 py-1.5 text-left leading-tight transition hover:-translate-y-px hover:shadow-sm",
+                    "absolute flex flex-col items-start justify-start gap-0 overflow-hidden rounded-lg border px-3 py-1.5 text-left leading-tight transition hover:-translate-y-px hover:shadow-sm",
                     colorStyle ? "shadow-sm" : meta.pillClass,
                     isSelected &&
                       "outline outline-2 outline-offset-2 outline-court-brand",
                   )}
                   style={{ top, height, ...laneStyle, ...(colorStyle ?? {}) }}
                 >
-                  <div className="truncate text-[10px] font-bold uppercase tracking-[0.1em]">
-                    {meta.label}
-                  </div>
-                  <div className={cn("truncate text-[12.5px] font-semibold", colorStyle ? "text-current" : "text-court-fg")}>
+                  <div className={cn("w-full truncate text-[12.5px] font-semibold", colorStyle ? "text-current" : "text-court-fg")}>
                     {ev.title}
                   </div>
-                  {height >= 58 && (
-                    <div className="truncate text-[10.5px] opacity-70">
-                      {fmtDateRange(ev.startTime, ev.endTime)}
-                    </div>
+                  <div className="mt-0.5 flex w-full min-w-0 items-center gap-1.5 truncate text-[10.5px] font-semibold opacity-75">
+                    <span className="truncate">{fmtDateRange(ev.startTime, ev.endTime)}</span>
+                    <span className="opacity-60">·</span>
+                    <span className="truncate uppercase tracking-[0.1em]">
+                      {meta.label}
+                    </span>
+                  </div>
+                </Button>
+              );
+            }
+            if (!isRich) {
+              return (
+                <Button
+                  key={ev.id}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEventClick(ev);
+                  }}
+                  className={cn(
+                    "absolute flex cursor-pointer items-center justify-start gap-3 overflow-hidden rounded-lg border px-3 py-2 text-left leading-tight transition hover:-translate-y-px hover:shadow-sm",
+                    colorStyle ? "shadow-sm" : meta.pillClass,
+                    isSelected &&
+                      "outline outline-2 outline-offset-2 outline-court-brand",
                   )}
-                </button>
+                  style={{ top, height, ...laneStyle, ...(colorStyle ?? {}) }}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className={cn("truncate text-[13.5px] font-semibold", colorStyle ? "text-current" : "text-court-fg")}>
+                      {ev.title}
+                    </div>
+                    <div className="mt-0.5 flex min-w-0 items-center gap-1.5 truncate text-[10.5px] font-semibold opacity-75">
+                      <span className="truncate">
+                        {fmtDateRange(ev.startTime, ev.endTime)}
+                      </span>
+                      <span className="opacity-60">·</span>
+                      <span className="truncate uppercase tracking-[0.1em]">
+                        {meta.label}
+                      </span>
+                      {guestCount > 0 && (
+                        <>
+                          <span className="opacity-60">·</span>
+                          <span className="truncate">{guestCount} guests</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {allOwners.length > 0 && (
+                    <span className="flex shrink-0 -space-x-1">
+                      {visibleOwners.map((m) => (
+                        <span
+                          key={m.id}
+                          className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border border-white text-[9px] font-bold text-white"
+                          style={{ background: m.image ? undefined : m.color }}
+                          title={m.name}
+                        >
+                          {m.image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={m.image}
+                              alt={m.name}
+                              referrerPolicy="no-referrer"
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            m.initials
+                          )}
+                        </span>
+                      ))}
+                      {extraOwners > 0 && (
+                        <span
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white bg-court-surface-subtle text-[8.5px] font-bold text-court-fg"
+                          title={`${extraOwners} more`}
+                        >
+                          +{extraOwners}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </Button>
               );
             }
             return (
@@ -278,33 +363,36 @@ export function CalendarDayView({
               >
                 <div className="flex items-start gap-3">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 text-[11px]">
-                      <span className="font-bold uppercase tracking-[0.14em]">
-                        {meta.label}
-                      </span>
-                      <span className="opacity-50">·</span>
+                    <div className={cn("font-serif text-base font-semibold leading-tight", colorStyle ? "text-current" : "text-court-fg")}>
+                      {ev.title}
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 text-[11px]">
                       <span className="font-semibold">
                         {fmtDateRange(ev.startTime, ev.endTime)}
                       </span>
+                      <span className="opacity-50">·</span>
+                      <span className="font-bold uppercase tracking-[0.14em]">
+                        {meta.label}
+                      </span>
                     </div>
-                    <div className={cn("mt-1 font-serif text-base font-semibold", colorStyle ? "text-current" : "text-court-fg")}>
-                      {ev.title}
-                    </div>
-                    {ev.meta && (
-                      <div className={cn("text-[12.5px]", colorStyle ? "text-current opacity-90" : "text-court-fg")}>{ev.meta}</div>
+                    {ev.meta && showMeta && (
+                      <div className={cn("mt-1 line-clamp-2 text-[12.5px] leading-snug", colorStyle ? "text-current opacity-90" : "text-court-fg")}>{ev.meta}</div>
                     )}
-                    <div className="mt-2 flex flex-wrap items-center gap-3 text-[11.5px]">
-                      {ev.location && (
-                        <span className="inline-flex items-center gap-1">
-                          <MapPin className="h-3 w-3" /> {ev.location}
-                        </span>
-                      )}
-                      {guestCount > 0 && (
-                        <span className="inline-flex items-center gap-1">
-                          <Users className="h-3 w-3" /> {guestCount} guests
-                        </span>
-                      )}
-                    </div>
+                    {showFooter && (ev.location || guestCount > 0) && (
+                      <div className="mt-2 flex flex-wrap items-center gap-3 text-[11.5px]">
+                        {ev.location && (
+                          <span className="inline-flex min-w-0 items-center gap-1">
+                            <MapPin className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{ev.location}</span>
+                          </span>
+                        )}
+                        {guestCount > 0 && (
+                          <span className="inline-flex items-center gap-1">
+                            <Users className="h-3 w-3" /> {guestCount} guests
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {allOwners.length > 0 && (
                     <span className="flex shrink-0 -space-x-1.5">
