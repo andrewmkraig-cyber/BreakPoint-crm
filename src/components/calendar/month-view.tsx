@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 
 import type { CalendarEvent, CalendarTeamMember } from "@/lib/calendar/types";
+import { Button } from "@/components/ui/button";
 import { googleEventColorStyle } from "@/lib/calendar/google-colors";
 import { eventTypeMeta, fmtTime, packLanes } from "@/lib/calendar/utils";
 import {
@@ -40,6 +41,9 @@ type Props = {
   // Empty-cell click target — opens the drawer in create mode with
   // the cell's date pre-filled.
   onDayClick: (date: Date) => void;
+  // Focus target for the day-number pill and "+N more" overflow.
+  // Unlike the empty cell, this should expand into the full day view.
+  onDayFocus: (date: Date) => void;
 };
 
 type MonthCell = {
@@ -61,6 +65,7 @@ export function CalendarMonthView({
   today,
   onEventClick,
   onDayClick,
+  onDayFocus,
 }: Props) {
   // Mon-first 6×7 grid that always starts at the Monday on or before
   // the 1st of the displayed month, so the visible month sits inside.
@@ -102,7 +107,7 @@ export function CalendarMonthView({
       else map.set(key, [e]);
     }
     // All-day events lead, then timed events ascend by start. Same
-    // order the chip stack and the "+N more" popover render in.
+    // order the chip stack and the day-detail view use.
     map.forEach((list) => {
       list.sort((a, b) => {
         if (!!a.allDay !== !!b.allDay) return a.allDay ? -1 : 1;
@@ -155,46 +160,6 @@ export function CalendarMonthView({
     });
   }, [events, hiddenMembers, weeks]);
 
-  // Single open popover at a time, keyed by the cell's date. Click on
-  // a different "+N more" pill moves the popover; click anywhere else
-  // dismisses via the document-level mousedown listener. `placement`
-  // is computed from the pill's viewport position when opened so the
-  // popover never renders below the fold — bottom-row cells flip it
-  // above the pill instead of below.
-  const [popover, setPopover] = useState<{
-    dayKey: string;
-    placement: "above" | "below";
-    maxHeight: number;
-  } | null>(null);
-  const popoverRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!popover) return;
-    const onDown = (e: MouseEvent) => {
-      const target = e.target as Node | null;
-      if (popoverRef.current && target && !popoverRef.current.contains(target)) {
-        setPopover(null);
-      }
-    };
-    window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
-  }, [popover]);
-
-  const togglePopover = (dayKey: string, anchor: HTMLElement) => {
-    setPopover((prev) => {
-      if (prev?.dayKey === dayKey) return null;
-      const rect = anchor.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom - 12;
-      const spaceAbove = rect.top - 12;
-      const preferAbove = spaceBelow < 240 && spaceAbove > spaceBelow;
-      const available = preferAbove ? spaceAbove : spaceBelow;
-      return {
-        dayKey,
-        placement: preferAbove ? "above" : "below",
-        maxHeight: Math.max(160, Math.min(320, available)),
-      };
-    });
-  };
-
   return (
     <div className="overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">
       <div className="grid grid-cols-7 border-b border-court-border">
@@ -221,7 +186,6 @@ export function CalendarMonthView({
             const visible = timed.slice(0, MAX_VISIBLE_EVENTS);
             const overflow = timed.length - visible.length;
             const band = allDayBandByWeek[wi];
-            const popoverOpen = popover?.dayKey === cellKey;
             return (
               <div
                 key={`${wi}-${di}`}
@@ -240,16 +204,29 @@ export function CalendarMonthView({
                 )}
               >
                 <div className="flex items-center justify-between">
-                  <span
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDayFocus(cell.date);
+                    }}
+                    aria-label={`Open ${cell.date.toLocaleDateString(undefined, {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                    })}`}
                     className={cn(
-                      "inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs tabular-nums",
+                      "inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs tabular-nums transition hover:bg-court-brand-tint focus-visible:outline focus-visible:outline-2 focus-visible:outline-court-brand",
                       cell.isToday
                         ? "border-2 border-court-brand font-bold text-court-brand-dark"
-                        : "font-semibold text-court-fg",
+                        : "border-0 font-semibold text-court-fg",
+                      "bg-transparent py-0 shadow-none",
                     )}
                   >
                     {cell.date.getDate()}
-                  </span>
+                  </Button>
                 </div>
                 {/* All-day band: one fixed-height row per lane so multi-day
                     bars line up across the week. Each cell draws either the
@@ -295,46 +272,17 @@ export function CalendarMonthView({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      togglePopover(cellKey, e.currentTarget);
+                      onDayFocus(cell.date);
                     }}
-                    className="mt-1 w-full truncate rounded-md bg-court-surface-subtle px-1.5 py-0.5 text-[10px] font-semibold text-court-fg-muted transition hover:bg-court-border-soft hover:text-court-fg"
+                    className="mt-1 w-full truncate rounded-md bg-court-surface-subtle px-1.5 py-0.5 text-[10px] font-semibold text-court-fg-muted transition hover:bg-court-border-soft hover:text-court-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-court-brand"
+                    aria-label={`Open all events for ${cell.date.toLocaleDateString(undefined, {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                    })}`}
                   >
                     +{overflow} more
                   </button>
-                )}
-                {popoverOpen && popover && (
-                  <div
-                    ref={popoverRef}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ maxHeight: popover.maxHeight }}
-                    className={cn(
-                      "absolute left-1 right-1 z-20 overflow-auto rounded-xl border border-court-border bg-court-surface p-2 shadow-lg",
-                      popover.placement === "above"
-                        ? "bottom-8"
-                        : "top-9",
-                    )}
-                  >
-                    <div className="px-1 pb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-court-fg-muted">
-                      {cell.date.toLocaleDateString(undefined, {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </div>
-                    <div className="space-y-1">
-                      {timed.map((ev) => (
-                        <EventChip
-                          key={ev.id}
-                          ev={ev}
-                          selfKey={selfKey}
-                          onClick={(e) => {
-                            setPopover(null);
-                            onEventClick(e);
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
                 )}
               </div>
             );

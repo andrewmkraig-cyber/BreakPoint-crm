@@ -491,6 +491,7 @@ export function CalendarView({
               today={today}
               onEventClick={openEdit}
               onDayClick={(date: Date) => openCreateAt(date)}
+              onDayFocus={goToDay}
             />
           )}
         </div>

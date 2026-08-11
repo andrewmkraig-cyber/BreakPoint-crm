@@ -65,9 +65,9 @@ type Props = {
 // team checkboxes, upcoming reminders, and a small Google sync footer.
 // Width is 280px to house the reminders panel comfortably — same width
 // the panel used when it lived on the right side of the calendar.
-// The rail matches the main calendar viewport height. Fixed-height cards sit
+// The rail stretches to the main calendar surface. Fixed-height cards sit
 // above the reminders panel, and the reminders panel flexes to the bottom so
-// its rounded lower corners line up with the calendar surface.
+// its rounded lower corners line up with whichever calendar view is tallest.
 
 export function CalendarLeftRail({
   teamMembers,
@@ -87,10 +87,7 @@ export function CalendarLeftRail({
   onDeleteReminder,
 }: Props) {
   return (
-    <aside
-      className="hidden min-h-0 w-[280px] shrink-0 flex-col gap-4 overflow-hidden pr-1 lg:flex"
-      style={{ height: "calc(100vh - 13rem)" }}
-    >
+    <aside className="hidden min-h-0 w-[280px] shrink-0 self-stretch flex-col gap-4 overflow-hidden pr-1 lg:flex">
       <div className="shrink-0">
         <MiniMonth
           monthStart={monthStart}
