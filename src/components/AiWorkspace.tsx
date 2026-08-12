@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { Check, Copy, Image as ImageIcon, Loader2, Mail, Send, Trash2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -748,29 +748,57 @@ function MessageBubble({
 //
 // Exported for reuse in the global Claude Panel so both surfaces render
 // assistant content identically.
-export function MarkdownContent({ content }: { content: string }) {
+export function MarkdownContent({
+  content,
+  onInternalLinkClick,
+}: {
+  content: string;
+  onInternalLinkClick?: (href: string) => void;
+}) {
   return (
     <div className="space-y-2 [&_p]:my-0 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_h1]:mt-2 [&_h1]:font-semibold [&_h2]:mt-2 [&_h2]:font-semibold [&_h3]:mt-2 [&_h3]:font-semibold [&_code]:rounded [&_code]:bg-court-border/40 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.85em]">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          a: ({ href, children, ...rest }) => (
-            <a
-              {...rest}
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-court-accent-dark underline underline-offset-2 hover:opacity-80"
-            >
-              {children}
-            </a>
-          ),
+          a: ({ href, children, ...rest }) => {
+            const internalHref = resolveInternalMarkdownHref(href);
+            const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+              if (!internalHref || !onInternalLinkClick) return;
+              event.preventDefault();
+              onInternalLinkClick(internalHref);
+            };
+            return (
+              <a
+                {...rest}
+                href={href}
+                target={internalHref && onInternalLinkClick ? undefined : "_blank"}
+                rel={internalHref && onInternalLinkClick ? undefined : "noopener noreferrer"}
+                onClick={handleClick}
+                className="text-court-accent-dark underline underline-offset-2 hover:opacity-80"
+              >
+                {children}
+              </a>
+            );
+          },
         }}
       >
         {collapseProseHardBreaks(content)}
       </ReactMarkdown>
     </div>
   );
+}
+
+function resolveInternalMarkdownHref(href: string | undefined): string | null {
+  if (!href) return null;
+  if (href.startsWith("/") && !href.startsWith("//")) return href;
+  if (typeof window === "undefined") return null;
+  try {
+    const url = new URL(href, window.location.origin);
+    if (url.origin !== window.location.origin) return null;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
 }
 
 // Strip CommonMark hard-break syntax from prose so a wrap mid-sentence

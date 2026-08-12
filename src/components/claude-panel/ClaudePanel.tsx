@@ -458,6 +458,10 @@ export function ClaudePanel() {
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const dragDepthRef = useRef(0);
 
+  const navigateInternalLink = useCallback((href: string) => {
+    router.push(href);
+  }, [router]);
+
   const panelRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1502,7 +1506,10 @@ export function ClaudePanel() {
                       </div>
                     ) : (
                       <>
-                        <MarkdownContent content={m.content} />
+                        <MarkdownContent
+                          content={m.content}
+                          onInternalLinkClick={navigateInternalLink}
+                        />
                         {isStreaming && (
                           <span
                             aria-hidden="true"
