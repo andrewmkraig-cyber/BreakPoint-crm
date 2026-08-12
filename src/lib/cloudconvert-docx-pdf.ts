@@ -2,7 +2,7 @@
 // Reads CLOUDCONVERT_API_KEY from env; returns null when key is absent so
 // callers can fall back without an exception.
 //
-// The sync endpoint (?sync=true) blocks until the job finishes — one round-trip:
+// The sync endpoint blocks until the job finishes — one round-trip:
 // POST job → wait → fetch output URL → return bytes.
 // AbortController timeout at 55s; Vercel maxDuration must be ≥60s on callers.
 
@@ -15,6 +15,7 @@ export async function convertDocxToPdfViaCloudConvert(
 
   const base64 = docxBytes.toString("base64");
   const cleanName = /\.docx?$/i.test(filename) ? filename : `${filename}.docx`;
+  const inputFormat = /\.doc$/i.test(cleanName) ? "doc" : "docx";
 
   const body = {
     tasks: {
@@ -26,7 +27,7 @@ export async function convertDocxToPdfViaCloudConvert(
       "convert-file": {
         operation: "convert",
         input: "import-file",
-        input_format: "docx",
+        input_format: inputFormat,
         output_format: "pdf",
       },
       "export-file": {
@@ -42,7 +43,7 @@ export async function convertDocxToPdfViaCloudConvert(
 
   let jobRes: Response;
   try {
-    jobRes = await fetch("https://api.cloudconvert.com/v2/jobs?sync=true", {
+    jobRes = await fetch("https://sync.api.cloudconvert.com/v2/jobs", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -67,7 +68,7 @@ export async function convertDocxToPdfViaCloudConvert(
     throw new Error(`CloudConvert job failed (${jobRes.status}): ${rawBody.slice(0, 300)}`);
   }
 
-  let jobData: { data: { tasks: Record<string, unknown> | unknown[] } };
+  let jobData: { data: { status?: string; tasks: Record<string, unknown> | unknown[] } };
   try {
     jobData = JSON.parse(rawBody) as typeof jobData;
   } catch {
@@ -80,16 +81,26 @@ export async function convertDocxToPdfViaCloudConvert(
     : Object.values(tasksRaw ?? {});
 
   const exportTask = tasks.find(
-    (t): t is { operation: string; status: string; result: { files: { url: string }[] } } =>
+    (
+      t,
+    ): t is {
+      operation: string;
+      status: string;
+      result: { files: Array<{ url?: string }> };
+    } =>
       typeof t === "object" &&
       t !== null &&
       (t as Record<string, unknown>).operation === "export/url" &&
       (t as Record<string, unknown>).status === "finished",
   );
 
-  const fileUrl = exportTask?.result?.files?.[0]?.url;
+  const fileUrl = exportTask?.result?.files?.find(
+    (file) => typeof file.url === "string" && file.url.length > 0,
+  )?.url;
   if (!fileUrl) {
-    throw new Error("CloudConvert: no output file URL in finished export task");
+    throw new Error(
+      `CloudConvert: no output file URL (${summarizeJobTasks(jobData.data.status, tasks)})`,
+    );
   }
 
   const downloadController = new AbortController();
@@ -108,4 +119,18 @@ export async function convertDocxToPdfViaCloudConvert(
   }
 
   return Buffer.from(await pdfRes.arrayBuffer());
+}
+
+function summarizeJobTasks(status: string | undefined, tasks: unknown[]): string {
+  const taskSummary = tasks
+    .map((task) => {
+      if (!task || typeof task !== "object") return "unknown";
+      const record = task as Record<string, unknown>;
+      const name = typeof record.name === "string" ? record.name : "unnamed";
+      const operation = typeof record.operation === "string" ? record.operation : "unknown-op";
+      const taskStatus = typeof record.status === "string" ? record.status : "unknown-status";
+      return `${name}:${operation}:${taskStatus}`;
+    })
+    .join(", ");
+  return `job=${status ?? "unknown"} tasks=[${taskSummary || "none"}]`;
 }

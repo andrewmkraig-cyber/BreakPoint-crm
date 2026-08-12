@@ -5,31 +5,27 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { getResumeBytes } from "@/lib/resume-bytes";
 import { convertDocxToPdfViaCloudConvert } from "@/lib/cloudconvert-docx-pdf";
-import { convertDocxToPdfViaFreeRenderer } from "@/lib/free-docx-pdf";
+import {
+  convertDocxToPdfViaLibreOffice,
+  isDocxMimeOrName,
+} from "@/lib/libreoffice-docx-pdf";
 
 export const dynamic = "force-dynamic";
-// CloudConvert ?sync=true blocks up to 55s; keep the function alive.
+// CloudConvert's sync endpoint blocks up to 55s; keep the function alive.
 export const maxDuration = 60;
 
 // Serves any resume as PDF bytes for the in-browser canvas viewer.
 // PDFs pass through unchanged. DOCX resumes are converted:
 //   1. Serve a cached conversion row if one exists for this exact source,
-//      preferring CloudConvert over the free preview-style renderer.
-//   2. Try CloudConvert, then fall back to the free Mammoth HTML -> PDF
-//      renderer. Both save as variant="converted:<sourceId>".
+//      preferring CloudConvert over the local LibreOffice converter.
+//   2. Try CloudConvert, then fall back to LibreOffice/soffice. Both save
+//      as variant="converted:<sourceId>".
 //
 // Tenant scope: reads filter by organizationId via getCurrentOrg().
 
-const DOCX_MIME =
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-const LEGACY_DOC_MIME = "application/msword";
 const CLOUDCONVERT_DISPLAY_NAME = "Converted (CloudConvert)";
-const FREE_CONVERT_DISPLAY_NAME = "Converted (Free)";
-
-function isDocx(mimeType: string | null | undefined, filename: string): boolean {
-  if (mimeType === DOCX_MIME || mimeType === LEGACY_DOC_MIME) return true;
-  return /\.docx?$/i.test(filename);
-}
+const LIBREOFFICE_DISPLAY_NAME = "Converted (LibreOffice)";
+const STALE_CONVERT_DISPLAY_NAMES = ["Converted (Free)", "Converted (fallback)"];
 
 export async function GET(
   _req: NextRequest,
@@ -46,7 +42,7 @@ export async function GET(
   });
   if (!resume) return new NextResponse("Not found", { status: 404 });
 
-  if (!isDocx(resume.mimeType, resume.filename)) {
+  if (!isDocxMimeOrName(resume.mimeType, resume.filename)) {
     const sourceBytes = await getResumeBytes(resume);
     return new NextResponse(new Uint8Array(sourceBytes), {
       headers: {
@@ -58,7 +54,6 @@ export async function GET(
 
   // DOCX: serve cached conversion if one exists for this exact source.
   const cachedVariant = `converted:${resume.id}`;
-  const cloudConvertConfigured = Boolean(process.env.CLOUDCONVERT_API_KEY?.trim());
   const cachedCloudConvert = await prisma.candidateResume.findFirst({
     where: {
       organizationId: org.id,
@@ -72,10 +67,10 @@ export async function GET(
       where: {
         organizationId: org.id,
         variant: cachedVariant,
-        displayName: FREE_CONVERT_DISPLAY_NAME,
+        displayName: LIBREOFFICE_DISPLAY_NAME,
       },
     }));
-  if (cached && (cached.displayName !== FREE_CONVERT_DISPLAY_NAME || !cloudConvertConfigured)) {
+  if (cached) {
     console.info("[as-pdf] using cached DOCX conversion", {
       sourceResumeId: resume.id,
       cachedResumeId: cached.id,
@@ -89,7 +84,8 @@ export async function GET(
   const sourceBytes = await getResumeBytes(resume);
 
   let pdfBytes: Buffer | null = null;
-  let displayName = FREE_CONVERT_DISPLAY_NAME;
+  let displayName = CLOUDCONVERT_DISPLAY_NAME;
+  let cloudConvertError: string | null = null;
   try {
     console.info("[as-pdf] converting DOCX via CloudConvert", {
       sourceResumeId: resume.id,
@@ -97,33 +93,44 @@ export async function GET(
     });
     pdfBytes = await convertDocxToPdfViaCloudConvert(sourceBytes, resume.filename);
     if (pdfBytes) displayName = CLOUDCONVERT_DISPLAY_NAME;
+    else {
+      console.info("[as-pdf] CloudConvert key missing; trying LibreOffice", {
+        sourceResumeId: resume.id,
+      });
+    }
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
-    console.warn("[as-pdf] CloudConvert failed; using free converter", {
+    cloudConvertError = detail;
+    console.warn("[as-pdf] CloudConvert failed; trying LibreOffice", {
       sourceResumeId: resume.id,
       error: detail,
     });
   }
 
   if (!pdfBytes) {
-    if (cached?.displayName === FREE_CONVERT_DISPLAY_NAME) {
-      console.info("[as-pdf] using cached free DOCX conversion after CloudConvert miss", {
-        sourceResumeId: resume.id,
-        cachedResumeId: cached.id,
-      });
-      const cachedBytes = await getResumeBytes(cached);
-      return new NextResponse(new Uint8Array(cachedBytes), {
-        headers: { "Content-Type": "application/pdf", "Cache-Control": "private, no-store" },
-      });
-    }
-    console.info("[as-pdf] converting DOCX via free renderer", {
+    console.info("[as-pdf] converting DOCX via LibreOffice", {
       sourceResumeId: resume.id,
       filename: resume.filename,
     });
     try {
-      pdfBytes = await convertDocxToPdfViaFreeRenderer(sourceBytes);
+      const converted = await convertDocxToPdfViaLibreOffice(sourceBytes, resume.filename);
+      if (!converted) {
+        const detail = cloudConvertError
+          ? `CloudConvert failed (${cloudConvertError}) and LibreOffice is not available.`
+          : "CloudConvert is not configured and LibreOffice is not available.";
+        console.warn("[as-pdf] DOCX conversion unavailable", {
+          sourceResumeId: resume.id,
+          detail,
+        });
+        return new NextResponse(`PDF conversion unavailable: ${detail}`, { status: 422 });
+      }
+      pdfBytes = converted;
+      displayName = LIBREOFFICE_DISPLAY_NAME;
     } catch (err) {
-      console.error("[as-pdf] free DOCX conversion failed", err);
+      console.error("[as-pdf] LibreOffice DOCX conversion failed", {
+        sourceResumeId: resume.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return new NextResponse("PDF conversion failed", { status: 500 });
     }
   }
@@ -147,7 +154,10 @@ export async function GET(
           ...candidateScope,
           OR: [
             { variant: "converted" },
-            { variant: { startsWith: "converted:" }, displayName: "Converted (fallback)" },
+            {
+              variant: { startsWith: "converted:" },
+              displayName: { in: STALE_CONVERT_DISPLAY_NAMES },
+            },
           ],
         },
       });
@@ -173,7 +183,7 @@ export async function GET(
         },
       });
     } catch (err) {
-      console.warn("[as-pdf] failed to cache CloudConvert PDF", {
+      console.warn("[as-pdf] failed to cache converted PDF", {
         sourceResumeId: resume.id,
         error: err instanceof Error ? err.message : String(err),
       });

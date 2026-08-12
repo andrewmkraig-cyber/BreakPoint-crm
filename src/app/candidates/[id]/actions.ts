@@ -11,6 +11,7 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { coordinatePatchForCandidateLocationUpdate } from "@/lib/candidate-location-geocode";
 import { prisma } from "@/lib/prisma";
 import { getResumeBytes } from "@/lib/resume-bytes";
+import { isDocxMimeOrName } from "@/lib/libreoffice-docx-pdf";
 
 type ActionResult<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -344,22 +345,19 @@ export async function deleteCandidateResume(resumeId: string): Promise<ActionRes
 //   1. Reuse a cached PDF for this exact DOCX, preferring CloudConvert.
 //   2. CloudConvert HTTPS API (CLOUDCONVERT_API_KEY env) - most faithful,
 //      formatting-preserving.
-//   3. Free in-app Mammoth HTML -> @react-pdf conversion. This matches the
-//      profile preview's level of fidelity and avoids the old raw-text
-//      fallback that flattened bullets, bold headers, and tables.
+//   3. Local LibreOffice/soffice conversion, which preserves the DOCX page
+//      layout far better than the old Mammoth text reflow.
 //
 // Tenant scope: source row + write target both filter by org via
 // getCurrentOrg(). A forged resumeId from another tenant errors out.
-const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-const LEGACY_DOC_MIME = "application/msword";
-
 function formattingSafeDocxError(detail?: string): string {
   const suffix = detail ? ` (${detail})` : "";
   return `Formatting-safe DOCX conversion failed${suffix}. No flattened PDF was created.`;
 }
 
 const CLOUDCONVERT_DISPLAY_NAME = "Converted (CloudConvert)";
-const FREE_CONVERT_DISPLAY_NAME = "Converted (Free)";
+const LIBREOFFICE_DISPLAY_NAME = "Converted (LibreOffice)";
+const STALE_CONVERT_DISPLAY_NAMES = ["Converted (Free)", "Converted (fallback)"];
 
 export async function convertDocxResumeToPdf(input: {
   resumeId: string;
@@ -380,15 +378,14 @@ export async function convertDocxResumeToPdf(input: {
       where: { id: input.resumeId, organizationId: org.id },
     });
     if (!source) return { ok: false, error: "Source resume not found." };
-    if (source.mimeType !== DOCX_MIME && source.mimeType !== LEGACY_DOC_MIME) {
+    if (!isDocxMimeOrName(source.mimeType, source.filename)) {
       return { ok: false, error: "Convert is only available for .doc / .docx resumes." };
     }
 
-    // Reuse an existing CloudConvert-produced PDF for this exact source resume.
+    // Reuse an existing formatting-preserving PDF for this exact source resume.
     // Variant encodes the source ID so a newly uploaded DOCX (new ID) always
-    // converts fresh while the same upload is never sent to CloudConvert twice.
+    // converts fresh while the same upload is never sent to a converter twice.
     const cachedVariant = `converted:${source.id}`;
-    const cloudConvertConfigured = Boolean(process.env.CLOUDCONVERT_API_KEY?.trim());
     const existingCloudConvert = await prisma.candidateResume.findFirst({
       where: {
         organizationId: org.id,
@@ -403,11 +400,11 @@ export async function convertDocxResumeToPdf(input: {
         where: {
           organizationId: org.id,
           variant: cachedVariant,
-          displayName: FREE_CONVERT_DISPLAY_NAME,
+          displayName: LIBREOFFICE_DISPLAY_NAME,
         },
         select: { id: true },
       }));
-    if (existing && (existing.id === existingCloudConvert?.id || !cloudConvertConfigured)) {
+    if (existing) {
       console.info("[docx-convert] using cached DOCX conversion", {
         sourceResumeId: source.id,
         cachedResumeId: existing.id,
@@ -433,7 +430,10 @@ export async function convertDocxResumeToPdf(input: {
           ...candidateScope,
           OR: [
             { variant: "converted" },
-            { variant: { startsWith: "converted:" }, displayName: "Converted (fallback)" },
+            {
+              variant: { startsWith: "converted:" },
+              displayName: { in: STALE_CONVERT_DISPLAY_NAMES },
+            },
           ],
         },
       });
@@ -442,7 +442,8 @@ export async function convertDocxResumeToPdf(input: {
     const sourceBuffer = await getResumeBytes(source);
 
     let outputBytes: Uint8Array | null = null;
-    let displayName = FREE_CONVERT_DISPLAY_NAME;
+    let displayName = CLOUDCONVERT_DISPLAY_NAME;
+    let cloudConvertError: string | null = null;
     try {
       const { convertDocxToPdfViaCloudConvert } = await import("@/lib/cloudconvert-docx-pdf");
       console.info("[docx-convert] converting DOCX via CloudConvert", {
@@ -451,7 +452,7 @@ export async function convertDocxResumeToPdf(input: {
       });
       const buf = await convertDocxToPdfViaCloudConvert(sourceBuffer, source.filename);
       if (!buf) {
-        console.info("[docx-convert] CloudConvert key missing; using free converter", {
+        console.info("[docx-convert] CloudConvert key missing; trying LibreOffice", {
           sourceResumeId: source.id,
         });
       } else {
@@ -460,36 +461,32 @@ export async function convertDocxResumeToPdf(input: {
       }
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      console.warn("[docx-convert] CloudConvert failed; using free converter", {
+      cloudConvertError = detail;
+      console.warn("[docx-convert] CloudConvert failed; trying LibreOffice", {
         sourceResumeId: source.id,
         error: detail,
       });
     }
 
     if (!outputBytes) {
-      if (existing && existing.id !== existingCloudConvert?.id) {
-        console.info("[docx-convert] using cached free DOCX conversion after CloudConvert miss", {
-          sourceResumeId: source.id,
-          cachedResumeId: existing.id,
-        });
-        if (source.candidateId) revalidatePath(`/candidates/${source.candidateId}`);
-        if (source.candidateRfId != null && source.candidateRfId > 0) {
-          revalidatePath(`/candidates/${source.candidateRfId}`);
-        }
-        return { ok: true, value: { resumeId: existing.id } };
-      }
       try {
-        const { convertDocxToPdfViaFreeRenderer } = await import("@/lib/free-docx-pdf");
-        console.info("[docx-convert] converting DOCX via free renderer", {
+        const { convertDocxToPdfViaLibreOffice } = await import("@/lib/libreoffice-docx-pdf");
+        console.info("[docx-convert] converting DOCX via LibreOffice", {
           sourceResumeId: source.id,
           filename: source.filename,
         });
-        outputBytes = new Uint8Array(
-          await convertDocxToPdfViaFreeRenderer(sourceBuffer),
-        );
+        const buf = await convertDocxToPdfViaLibreOffice(sourceBuffer, source.filename);
+        if (!buf) {
+          const detail = cloudConvertError
+            ? `CloudConvert failed: ${cloudConvertError}; LibreOffice/soffice is not available`
+            : "CloudConvert is not configured and LibreOffice/soffice is not available";
+          return { ok: false, error: formattingSafeDocxError(detail) };
+        }
+        outputBytes = new Uint8Array(buf);
+        displayName = LIBREOFFICE_DISPLAY_NAME;
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
-        console.warn("[docx-convert] free DOCX conversion failed", {
+        console.warn("[docx-convert] LibreOffice DOCX conversion failed", {
           sourceResumeId: source.id,
           error: detail,
         });

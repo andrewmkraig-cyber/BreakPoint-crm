@@ -1,6 +1,6 @@
-// Delete CandidateResume rows created by the old DOCX plain-text reflow
-// fallback. These rows are lossy PDFs and must not be reused as the
-// formatting-preserving CloudConvert cache.
+// Delete CandidateResume rows created by old DOCX text-reflow fallbacks.
+// These rows are lossy PDFs and must not be reused as the formatting-
+// preserving CloudConvert/LibreOffice cache.
 //
 // Dry-run by default — prints what would be deleted without touching the DB.
 // Pass --apply to execute the deletes.
@@ -21,6 +21,7 @@ async function main() {
       OR: [
         { variant: "converted" },
         { displayName: "Converted (fallback)" },
+        { displayName: "Converted (Free)" },
       ],
     },
     select: {

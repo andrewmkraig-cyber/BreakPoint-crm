@@ -102,12 +102,11 @@ function previewUrlFor(v: ResumeVersion): string {
 }
 
 // Returns a URL that always delivers PDF bytes for PdfCanvasViewer,
-// converting DOCX on the fly via CloudConvert when possible and caching
-// the result for later display/Edit Resume use.
+// converting DOCX on the fly through a formatting-preserving converter and
+// caching the result for later display/Edit Resume use.
 function asPdfUrlFor(v: ResumeVersion): string {
   return `/api/candidate-resumes/by-id/${v.resumeId}/as-pdf`;
 }
-
 
 function downloadUrlFor(v: ResumeVersion): string {
   const base = `/api/candidate-resumes/by-id/${v.resumeId}?download=1`;

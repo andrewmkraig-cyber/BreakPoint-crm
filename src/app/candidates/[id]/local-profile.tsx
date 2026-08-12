@@ -39,6 +39,10 @@ import { getInterviewsForOrg } from "@/lib/interviews";
 import { getAppPreferences } from "@/lib/preferences";
 import { normalizePlacementCompensationType } from "@/lib/placement-compensation";
 
+const STALE_CONVERTED_RESUME_DISPLAY_NAMES = new Set([
+  "Converted (Free)",
+  "Converted (fallback)",
+]);
 
 // Normalize a Placement.billingContacts / hiringContacts JSON value into the
 // { name, email }[] shape the placement dialog seeds from. Keeps name-only
@@ -263,7 +267,16 @@ export async function LocalCandidateProfile({
     // Phase 5A.5.b (Ace 20.0): DOCX → PDF conversions land as their
     // own row. Surface as kind="converted" so the dropdown labels them
     // distinctly from raw originals.
-    if (r.variant === "converted" || r.variant?.startsWith("converted:")) {
+    const isConvertedVariant =
+      r.variant === "converted" || r.variant?.startsWith("converted:");
+    if (
+      isConvertedVariant &&
+      r.displayName &&
+      STALE_CONVERTED_RESUME_DISPLAY_NAMES.has(r.displayName)
+    ) {
+      continue;
+    }
+    if (isConvertedVariant) {
       resumeVersions.push({
         key: r.id,
         resumeId: r.id,

@@ -83,7 +83,10 @@ export function PdfCanvasViewer({
       try {
         const pdfjsLib = await loadPdfjs();
         const res = await fetch(src, { credentials: "include", cache: "no-store" });
-        if (!res.ok) throw new Error(`Fetch failed ${res.status}`);
+        if (!res.ok) {
+          const message = (await res.text().catch(() => "")).trim();
+          throw new Error(message || `PDF load failed (${res.status})`);
+        }
         const buf = await res.arrayBuffer();
         if (cancelled) return;
         const doc = await pdfjsLib.getDocument({ data: buf }).promise;
