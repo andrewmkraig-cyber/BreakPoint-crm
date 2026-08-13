@@ -1400,7 +1400,7 @@ export function BulkEmailDialog({
             main MailComposer (Bold / Italic / Underline / bulleted list /
             numbered list / insert link). Emits HTML on every change. */}
         <div
-          className="min-h-0 flex-1 overflow-y-auto px-5 py-3"
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-3"
           onFocus={() => setLastFocus("body")}
           onClick={() => setLastFocus("body")}
         >
@@ -1411,6 +1411,9 @@ export function BulkEmailDialog({
             onChange={(html) => setBody(html)}
             placeholder="Write your message, or click Generate with Claude above."
             showToolbar
+            containerClassName="flex min-h-[280px] flex-1 flex-col"
+            contentClassName="min-h-0 flex-1"
+            className="h-full"
           />
         </div>
 

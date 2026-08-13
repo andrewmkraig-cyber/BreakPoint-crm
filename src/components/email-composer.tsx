@@ -1027,9 +1027,10 @@ export function EmailComposer({
         {/* min-h-0 lets this flex child shrink inside the capped modal;
             overflow belongs here so long rich-text content cannot paint over
             the attachment, confirmation toggle, or action footer below. */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-3">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-3">
           {richTextBody ? (
             <div
+              className="flex min-h-0 flex-1 flex-col"
               onFocus={() => setLastFocus("body")}
               onClick={() => setLastFocus("body")}
             >
@@ -1040,6 +1041,9 @@ export function EmailComposer({
                 onChange={(html) => setBody(html)}
                 placeholder="Write your message, or click Generate with Claude below."
                 showToolbar
+                containerClassName="flex min-h-[280px] flex-1 flex-col"
+                contentClassName="min-h-0 flex-1"
+                className="h-full"
               />
             </div>
           ) : (
@@ -1057,7 +1061,7 @@ export function EmailComposer({
               onClick={(e) => rememberCaret(e.currentTarget)}
               rows={16}
               placeholder="Write your message, or click Generate with Claude below."
-              className="resize-vertical whitespace-pre-wrap font-sans leading-relaxed"
+              className="min-h-[280px] flex-1 resize-vertical whitespace-pre-wrap font-sans leading-relaxed"
             />
           )}
         </div>

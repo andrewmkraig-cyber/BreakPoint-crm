@@ -54,7 +54,9 @@ type Props = {
   initialHtml: string;
   onChange: (html: string) => void;
   placeholder?: string;
+  containerClassName?: string;
   className?: string;
+  contentClassName?: string;
   showToolbar?: boolean;
   // Autosaved subject+body state outside the editor may restore a value that's
   // different from `initialHtml`. When `value` changes externally (e.g. after
@@ -66,7 +68,16 @@ type Props = {
 
 export const RichTextBodyEditor = forwardRef<RichTextBodyEditorHandle, Props>(
   function RichTextBodyEditor(
-    { initialHtml, onChange, placeholder, className, showToolbar = false, value },
+    {
+      initialHtml,
+      onChange,
+      placeholder,
+      containerClassName,
+      className,
+      contentClassName,
+      showToolbar = false,
+      value,
+    },
     ref,
   ) {
     const [, setToolbarTick] = useState(0);
@@ -152,14 +163,19 @@ export const RichTextBodyEditor = forwardRef<RichTextBodyEditorHandle, Props>(
 
     if (showToolbar) {
       return (
-        <div className="overflow-hidden rounded-lg border border-court-border bg-court-surface focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20">
+        <div
+          className={cn(
+            "overflow-hidden rounded-lg border border-court-border bg-court-surface focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20",
+            containerClassName,
+          )}
+        >
           <RichTextToolbar editor={editor} />
-          <EditorContent editor={editor} />
+          <EditorContent editor={editor} className={contentClassName} />
         </div>
       );
     }
 
-    return <EditorContent editor={editor} />;
+    return <EditorContent editor={editor} className={containerClassName} />;
   },
 );
 
