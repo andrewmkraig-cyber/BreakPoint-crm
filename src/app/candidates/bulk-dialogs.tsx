@@ -1412,8 +1412,8 @@ export function BulkEmailDialog({
             placeholder="Write your message, or click Generate with Claude above."
             showToolbar
             containerClassName="flex min-h-[280px] flex-1 flex-col"
-            contentClassName="min-h-0 flex-1"
-            className="h-full"
+            contentClassName="min-h-0 flex-1 overflow-y-auto"
+            className="min-h-full"
           />
         </div>
 

@@ -1042,8 +1042,8 @@ export function EmailComposer({
                 placeholder="Write your message, or click Generate with Claude below."
                 showToolbar
                 containerClassName="flex min-h-[280px] flex-1 flex-col"
-                contentClassName="min-h-0 flex-1"
-                className="h-full"
+                contentClassName="min-h-0 flex-1 overflow-y-auto"
+                className="min-h-full"
               />
             </div>
           ) : (
@@ -1061,7 +1061,7 @@ export function EmailComposer({
               onClick={(e) => rememberCaret(e.currentTarget)}
               rows={16}
               placeholder="Write your message, or click Generate with Claude below."
-              className="min-h-[280px] flex-1 resize-vertical whitespace-pre-wrap font-sans leading-relaxed"
+              className="min-h-[280px] flex-1 resize-vertical overflow-y-auto whitespace-pre-wrap font-sans leading-relaxed"
             />
           )}
         </div>
