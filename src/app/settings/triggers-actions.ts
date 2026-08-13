@@ -20,6 +20,7 @@ export type TriggerRuleRow = {
   sendAsDraft: boolean;
   templateId: string | null;
   templateName: string | null;
+  templateTrigger: string | null;
   // True when these values come from a real TriggerRule row; false when
   // they're synthesized defaults because no row exists yet. The UI uses
   // this to render a "Customized for your org" vs "System default" pill
@@ -71,7 +72,7 @@ export async function getTriggerRules(): Promise<TriggerRuleRow[]> {
 
   const rules = await prisma.triggerRule.findMany({
     where: { organizationId, triggerKey: { in: keys } },
-    include: { template: { select: { id: true, name: true } } },
+    include: { template: { select: { id: true, name: true, trigger: true } } },
   });
   const byKey = new Map(rules.map((r) => [r.triggerKey, r]));
 
@@ -85,6 +86,7 @@ export async function getTriggerRules(): Promise<TriggerRuleRow[]> {
       sendAsDraft: rule?.sendAsDraft ?? false,
       templateId: rule?.templateId ?? null,
       templateName: rule?.template?.name ?? null,
+      templateTrigger: rule?.template?.trigger ?? null,
       hasRule: !!rule,
       audience: t.audience,
       eventName: t.eventName,
@@ -123,6 +125,22 @@ export async function upsertTriggerRule(input: {
     if (input.sendAsDraft !== undefined) updateData.sendAsDraft = input.sendAsDraft;
     if (input.templateId !== undefined) updateData.templateId = input.templateId;
 
+    if (input.templateId) {
+      const template = await prisma.emailTemplate.findUnique({
+        where: { id: input.templateId },
+        select: { isActive: true, trigger: true },
+      });
+      if (!template || !template.isActive) {
+        return { ok: false, error: "Pick an active template for this trigger." };
+      }
+      if (!template.trigger) {
+        return {
+          ok: false,
+          error: "Manual-only templates can only be selected from a composer.",
+        };
+      }
+    }
+
     await prisma.triggerRule.upsert({
       where: {
         organizationId_triggerKey: { organizationId, triggerKey: input.triggerKey },
@@ -145,11 +163,10 @@ export async function upsertTriggerRule(input: {
   }
 }
 
-// Active EmailTemplates for the trigger-override dropdown. Returns
-// EVERY active template, not just the trigger-tagged subset, so a
-// recruiter who never wired `template.trigger` to a specific
-// pipeline key can still pick any template as the override. Templates
-// that ARE tagged for this trigger are flagged with matchesTrigger:
+// Active trigger-capable EmailTemplates for the trigger-override dropdown.
+// Manual-only templates (trigger=null) stay out of this list because they
+// should only send when a recruiter picks them by hand in a composer.
+// Templates that ARE tagged for this trigger are flagged with matchesTrigger:
 // true and sorted to the top so the relationship stays legible.
 export async function getTemplatesForTrigger(
   triggerKey: string,
@@ -158,7 +175,7 @@ export async function getTemplatesForTrigger(
   if (auth !== true) return [];
 
   const rows = await prisma.emailTemplate.findMany({
-    where: { isActive: true },
+    where: { isActive: true, trigger: { not: null } },
     orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
     select: { id: true, name: true, trigger: true },
   });

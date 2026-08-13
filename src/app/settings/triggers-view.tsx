@@ -219,7 +219,9 @@ function TriggerCard({
   // no-Gmail row surfaces the right call-to-action.
   const warnings: string[] = [];
   if (rule.enabled) {
-    if (rule.templateId && !explicit) {
+    if (rule.templateId && rule.templateTrigger === null) {
+      warnings.push("Assigned template is Manual only, so this trigger will skip until you pick a trigger-capable template.");
+    } else if (rule.templateId && !explicit) {
       warnings.push("Assigned template is missing or inactive — this trigger won't send until you reassign it.");
     } else if (!rule.templateId && !fallback) {
       warnings.push("No template is tagged for this trigger, so System default has nothing to send. Edit and pick one.");
@@ -401,7 +403,9 @@ function TriggerEditDialog({
   // recruiter sees the consequences of their picks before they commit.
   const warnings: string[] = [];
   if (enabled) {
-    if (templateId && !templates.some((t) => t.id === templateId)) {
+    if (templateId && templateId === rule.templateId && rule.templateTrigger === null) {
+      warnings.push("Selected template is Manual only. Pick a trigger-capable template or reset to System default.");
+    } else if (templateId && !templates.some((t) => t.id === templateId)) {
       warnings.push("Selected template is missing or inactive.");
     } else if (!templateId && hasNoTemplates) {
       warnings.push("No active templates in the library yet — publish one first or this trigger will skip.");

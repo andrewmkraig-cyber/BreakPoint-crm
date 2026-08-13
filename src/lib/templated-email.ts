@@ -15,6 +15,7 @@ export type TriggerLookupResult =
         name: string;
         subject: string;
         body: string;
+        trigger: string | null;
       };
     }
   | { kind: "missing" }
@@ -31,6 +32,7 @@ export async function loadTemplateById(id: string): Promise<TriggerLookupResult>
       name: true,
       subject: true,
       body: true,
+      trigger: true,
       isActive: true,
     },
   });
@@ -43,6 +45,7 @@ export async function loadTemplateById(id: string): Promise<TriggerLookupResult>
       name: tpl.name,
       subject: tpl.subject,
       body: tpl.body,
+      trigger: tpl.trigger,
     },
   };
 }
@@ -58,6 +61,7 @@ export async function loadTriggeredTemplate(trigger: string): Promise<TriggerLoo
       name: true,
       subject: true,
       body: true,
+      trigger: true,
       isActive: true,
     },
   });
@@ -70,6 +74,7 @@ export async function loadTriggeredTemplate(trigger: string): Promise<TriggerLoo
       name: any.name,
       subject: any.subject,
       body: any.body,
+      trigger: any.trigger,
     },
   };
 }
@@ -96,7 +101,7 @@ export type FireResult =
   | { status: "drafted"; result: SendEmailResult; subject: string; body: string; templateName: string }
   | {
       status: "skipped";
-      reason: "missing" | "inactive" | "no_recipient" | "trigger_disabled";
+      reason: "missing" | "inactive" | "manual_only" | "no_recipient" | "trigger_disabled";
       templateName?: string;
     }
   | { status: "error"; error: string };
@@ -114,6 +119,9 @@ export async function fireTemplatedEmail(input: FireTemplatedEmailInput): Promis
     : await loadTriggeredTemplate(input.trigger);
   if (look.kind === "missing") return { status: "skipped", reason: "missing" };
   if (look.kind === "inactive") return { status: "skipped", reason: "inactive", templateName: look.name };
+  if (input.templateOverrideId && !look.template.trigger) {
+    return { status: "skipped", reason: "manual_only", templateName: look.template.name };
+  }
 
   // Andrew never wants candidates or clients to receive an em dash -
   // they read as AI-generated. Strip them from the resolved subject

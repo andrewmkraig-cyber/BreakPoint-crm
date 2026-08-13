@@ -80,7 +80,14 @@ export async function upsertEmailTemplate(input: EmailTemplateInput): Promise<Re
       },
       select: { id: true },
     });
+    if (!input.trigger?.trim()) {
+      await prisma.triggerRule.updateMany({
+        where: { templateId: row.id },
+        data: { templateId: null },
+      });
+    }
     revalidatePath("/settings");
+    revalidatePath("/settings/templates");
     return { ok: true, value: { id: row.id } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to save template." };
