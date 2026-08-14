@@ -1268,14 +1268,14 @@ export function BulkEmailDialog({
     <div
       role="dialog"
       aria-label={`Email ${n} candidates`}
-      className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 p-2 sm:p-4"
     >
       {/* Intentionally NO backdrop onClick-to-close: a recruiter mid-draft can
           highlight text and drag the cursor onto the backdrop, or click/scroll
           outside the editor, without the in-progress email vanishing. The
           email only closes via the X, Cancel, or a successful send. */}
       <div
-        className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
+        className="relative flex h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] w-full max-w-3xl flex-col overflow-y-auto rounded-xl border border-court-border bg-court-surface shadow-2xl sm:h-auto sm:max-h-[90vh] sm:overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between gap-3 border-b border-court-border px-5 py-3">
@@ -1400,7 +1400,7 @@ export function BulkEmailDialog({
             main MailComposer (Bold / Italic / Underline / bulleted list /
             numbered list / insert link). Emits HTML on every change. */}
         <div
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-3"
+          className="flex min-h-[44dvh] shrink-0 flex-col overflow-visible px-4 py-3 sm:min-h-0 sm:flex-1 sm:overflow-y-auto sm:px-5"
           onFocus={() => setLastFocus("body")}
           onClick={() => setLastFocus("body")}
         >

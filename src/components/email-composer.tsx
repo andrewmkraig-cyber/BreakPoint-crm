@@ -874,14 +874,14 @@ export function EmailComposer({
       style={isFloating ? { zIndex: floatingZ } : undefined}
       className={
         isFloating
-          ? "pointer-events-none fixed inset-0 flex items-center justify-center p-4"
-          : "fixed inset-0 z-[200] flex items-center justify-center bg-ink/40 p-4"
+          ? "pointer-events-none fixed inset-0 flex items-center justify-center p-2 sm:p-4"
+          : "fixed inset-0 z-[200] flex items-center justify-center bg-ink/40 p-2 sm:p-4"
       }
     >
       <div
         onPointerDown={isFloating ? onBringToFront : undefined}
         className={cn(
-          "flex h-[calc(100dvh-2rem)] max-h-[90dvh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl",
+          "flex h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] w-full max-w-3xl flex-col overflow-y-auto rounded-xl border border-court-border bg-court-surface shadow-xl sm:h-[calc(100dvh-2rem)] sm:max-h-[90dvh] sm:overflow-hidden",
           isFloating && "pointer-events-auto",
         )}
       >
@@ -1027,7 +1027,7 @@ export function EmailComposer({
         {/* min-h-0 lets this flex child shrink inside the capped modal;
             overflow belongs here so long rich-text content cannot paint over
             the attachment, confirmation toggle, or action footer below. */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-3">
+        <div className="flex min-h-[44dvh] shrink-0 flex-col overflow-visible px-4 pb-3 sm:min-h-0 sm:flex-1 sm:overflow-y-auto sm:px-5">
           {richTextBody ? (
             <div
               className="flex min-h-0 flex-1 flex-col"
