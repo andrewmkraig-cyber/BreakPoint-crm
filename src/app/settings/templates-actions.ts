@@ -299,19 +299,24 @@ const CANDIDATE_APPLIED_CONFIRMATION_DEFAULT = {
 //
 // {{job_city}} rather than [Job Location]: city only, no state or ZIP.
 // Both resolvers (legacy bracket + Mail-tab curly) understand it.
+//
+// [Client Company Name], NOT {{client_blurb}}: the anonymous blurb token
+// is registered only in the legacy bracket resolver. The Mail tab uses a
+// separate resolver with no case for it, so it renders literally in a
+// composed email. Every token below resolves in both.
 const APPLICATION_RECEIVED_DEFAULT = {
   name: "Application Received",
-  subject: "Application Received - [Job Title] in {{job_city}}",
+  subject: "Application Received- [Job Title] in {{job_city}}",
   trigger: null as string | null,
   audience: "candidate",
   category: null as string | null,
   body:
     "Hi [Candidate First Name],\n\n" +
-    "I received your application to the [Job Title] position you applied for through BreakPoint Talent.\n\n" +
+    "I received your application to the [Job Title] position you applied for in {{job_city}}.\n\n" +
     "This is with [Client Company Name].\n\n" +
     "What salary are you targeting?\n\n" +
-    "How is the commute to {{job_city}} for you?\n\n" +
-    "Are you free for a quick call sometime tomorrow for me to run the opportunity by you and learn more about your search?",
+    "How is the commute for you to {{job_city}}?\n\n" +
+    "Why are you open to new opportunities at this time and what are you looking for in your next role?",
 } as const;
 
 const OFFER_EXTENDED_DEFAULT = {
