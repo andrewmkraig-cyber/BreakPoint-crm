@@ -291,6 +291,29 @@ const CANDIDATE_APPLIED_CONFIRMATION_DEFAULT = {
     "to this email and I'll update your file.",
 } as const;
 
+// Manual-only (trigger: null). The recruiter's own application-received
+// outreach: shorter than the auto-fire confirmation above, and it opens
+// the screening conversation instead of closing it. Deliberately has no
+// category so it stays in the general Use Template list on every
+// composer rather than being filtered into one stage's dropdown.
+//
+// {{job_city}} rather than [Job Location]: city only, no state or ZIP.
+// Both resolvers (legacy bracket + Mail-tab curly) understand it.
+const APPLICATION_RECEIVED_DEFAULT = {
+  name: "Application Received",
+  subject: "Application Received - [Job Title] in {{job_city}}",
+  trigger: null as string | null,
+  audience: "candidate",
+  category: null as string | null,
+  body:
+    "Hi [Candidate First Name],\n\n" +
+    "I received your application to the [Job Title] position you applied for through BreakPoint Talent.\n\n" +
+    "This is with [Client Company Name].\n\n" +
+    "What salary are you targeting?\n\n" +
+    "How is the commute to {{job_city}} for you?\n\n" +
+    "Are you free for a quick call sometime tomorrow for me to run the opportunity by you and learn more about your search?",
+} as const;
+
 const OFFER_EXTENDED_DEFAULT = {
   name: "Offer Extended",
   subject: "Offer extended - [Job Title] at [Client Company Name]",
@@ -413,6 +436,7 @@ export async function ensureDefaultTemplates(): Promise<void> {
     // Settings → Email Templates.
     CANDIDATE_RECRUIT_DEFAULT,
     CANDIDATE_APPLIED_CONFIRMATION_DEFAULT,
+    APPLICATION_RECEIVED_DEFAULT,
     CLIENT_SUBMITTAL_DEFAULT,
     PUBLIC_ACCOUNTING_SUBMITTAL_DEFAULT,
     CANDIDATE_CONFIRMATION_DEFAULT,
@@ -448,8 +472,10 @@ export async function ensureDefaultTemplates(): Promise<void> {
     if (existing) {
       const patch: { category?: string; sortOrder?: number } = {};
       // Backfill category on existing rows that predate the column so the
-      // composer's category filter picks them up.
-      if (!existing.category) patch.category = tpl.category;
+      // composer's category filter picks them up. Seeds that are
+      // deliberately uncategorized (Application Received) have nothing to
+      // backfill, so they skip this.
+      if (!existing.category && tpl.category) patch.category = tpl.category;
       // Backfill sortOrder on rows that predate the column. Anything at
       // the default (0) gets the seed value; recruiter-customized
       // values (non-zero) are left untouched.
