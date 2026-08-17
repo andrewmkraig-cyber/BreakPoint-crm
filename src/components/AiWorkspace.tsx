@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
-import { Check, Copy, Image as ImageIcon, Loader2, Mail, Send, Trash2, X } from "lucide-react";
+import { Check, Copy, FileText, Image as ImageIcon, Loader2, Mail, PhoneCall, Send, Trash2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
@@ -45,25 +45,35 @@ type Message = {
   createdAt: string;
 };
 
-type ScreenshotAttachment = {
+type ImageAttachmentMediaType = "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+type WorkspaceAttachmentBase = {
   id: string;
-  kind: "image";
   name: string;
   size: number;
   data: string;
-  mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
-  previewUrl: string;
 };
+type WorkspaceAttachment =
+  | (WorkspaceAttachmentBase & {
+      kind: "image";
+      mediaType: ImageAttachmentMediaType;
+      previewUrl: string;
+    })
+  | (WorkspaceAttachmentBase & {
+      kind: "pdf";
+      mediaType: "application/pdf";
+    });
 
 const TEMP_ID_PREFIX = "local-";
-const SCREENSHOT_MAX_BYTES = 10 * 1024 * 1024;
-const SCREENSHOT_TOTAL_MAX_BYTES = 25 * 1024 * 1024;
-const SUPPORTED_SCREENSHOT_MIME = new Set([
+const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+const ATTACHMENT_TOTAL_MAX_BYTES = 25 * 1024 * 1024;
+const SUPPORTED_IMAGE_MIME = new Set<ImageAttachmentMediaType>([
   "image/png",
   "image/jpeg",
   "image/gif",
   "image/webp",
 ]);
+const CANDIDATE_CALL_PREP_PROMPT =
+  "Rank this candidate out of 10, and help me explain this company and the opportunity to them simply on the call. Give me 1-2 questions to ask that can increase their score.";
 
 // Drag-to-resize: the card's height is the default
 // `calc(100dvh - bottomGapRem)` PLUS a user-dragged pixel delta. The
@@ -94,15 +104,17 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
 }
 
-function imageMime(file: File): ScreenshotAttachment["mediaType"] | null {
-  if (SUPPORTED_SCREENSHOT_MIME.has(file.type)) {
-    return file.type as ScreenshotAttachment["mediaType"];
+function attachmentMediaType(file: File): WorkspaceAttachment["mediaType"] | null {
+  if (SUPPORTED_IMAGE_MIME.has(file.type as ImageAttachmentMediaType)) {
+    return file.type as ImageAttachmentMediaType;
   }
+  if (file.type === "application/pdf") return "application/pdf";
   const lower = file.name.toLowerCase();
   if (lower.endsWith(".png")) return "image/png";
   if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
   if (lower.endsWith(".gif")) return "image/gif";
   if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".pdf")) return "application/pdf";
   return null;
 }
 
@@ -119,21 +131,31 @@ async function fileToBase64(file: File | Blob): Promise<string> {
   });
 }
 
-async function readScreenshotAttachment(file: File): Promise<ScreenshotAttachment | null> {
-  const mediaType = imageMime(file);
+async function readWorkspaceAttachment(file: File): Promise<WorkspaceAttachment | null> {
+  const mediaType = attachmentMediaType(file);
   if (!mediaType) {
-    toast.error(`${file.name || "Attachment"} is not a supported screenshot`, {
-      description: "Drop a PNG, JPEG, GIF, or WebP image.",
+    toast.error(`${file.name || "Attachment"} is not a supported file`, {
+      description: "Drop a PNG, JPEG, GIF, WebP, or PDF file.",
     });
     return null;
   }
-  if (file.size > SCREENSHOT_MAX_BYTES) {
-    toast.error(`${file.name || "Screenshot"} is too large`, {
-      description: `Screenshots must be under ${formatFileSize(SCREENSHOT_MAX_BYTES)}.`,
+  if (file.size > ATTACHMENT_MAX_BYTES) {
+    toast.error(`${file.name || "Attachment"} is too large`, {
+      description: `Files must be under ${formatFileSize(ATTACHMENT_MAX_BYTES)}.`,
     });
     return null;
   }
   const data = await fileToBase64(file);
+  if (mediaType === "application/pdf") {
+    return {
+      id: attachmentId(),
+      kind: "pdf",
+      name: file.name || "document.pdf",
+      size: file.size,
+      data,
+      mediaType,
+    };
+  }
   return {
     id: attachmentId(),
     kind: "image",
@@ -145,9 +167,11 @@ async function readScreenshotAttachment(file: File): Promise<ScreenshotAttachmen
   };
 }
 
-function attachmentMarker(attachments: ScreenshotAttachment[]): string {
+function attachmentMarker(attachments: WorkspaceAttachment[]): string {
   if (attachments.length === 0) return "";
-  return attachments.map((a) => `[Attached screenshot: ${a.name}]`).join("\n");
+  return attachments
+    .map((a) => `[Attached ${a.kind === "pdf" ? "PDF" : "screenshot"}: ${a.name}]`)
+    .join("\n");
 }
 
 export function AiWorkspace({ entityType, entityId, title, recipientEmail, bottomGapRem = 22 }: AiWorkspaceProps) {
@@ -155,7 +179,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [input, setInput] = useState("");
-  const [attachments, setAttachments] = useState<ScreenshotAttachment[]>([]);
+  const [attachments, setAttachments] = useState<WorkspaceAttachment[]>([]);
   const [dragging, setDragging] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
 
@@ -248,25 +272,23 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
   const addFiles = useCallback(
     async (files: File[]) => {
       if (files.length === 0) return;
-      const screenshots = files.filter((file) => file.type.startsWith("image/") || imageMime(file));
-      if (screenshots.length === 0) {
-        toast.error("Drop screenshots only", {
-          description: "Game Plan can read PNG, JPEG, GIF, or WebP images.",
-        });
-        return;
-      }
-
       const currentBytes = attachments.reduce((sum, a) => sum + a.size, 0);
       let nextBytes = currentBytes;
-      const next: ScreenshotAttachment[] = [];
-      for (const file of screenshots) {
-        if (nextBytes + file.size > SCREENSHOT_TOTAL_MAX_BYTES) {
-          toast.error("Too many screenshots", {
-            description: `Keep the total under ${formatFileSize(SCREENSHOT_TOTAL_MAX_BYTES)} per message.`,
+      const next: WorkspaceAttachment[] = [];
+      for (const file of files) {
+        if (!attachmentMediaType(file)) {
+          toast.error(`${file.name || "Attachment"} is not a supported file`, {
+            description: "Game Plan can read PNG, JPEG, GIF, WebP, or PDF files.",
+          });
+          continue;
+        }
+        if (nextBytes + file.size > ATTACHMENT_TOTAL_MAX_BYTES) {
+          toast.error("Too many attachments", {
+            description: `Keep the total under ${formatFileSize(ATTACHMENT_TOTAL_MAX_BYTES)} per message.`,
           });
           break;
         }
-        const attachment = await readScreenshotAttachment(file);
+        const attachment = await readWorkspaceAttachment(file);
         if (attachment) {
           nextBytes += attachment.size;
           next.push(attachment);
@@ -277,8 +299,8 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
     [attachments],
   );
 
-  async function onSend() {
-    const text = input.trim();
+  async function onSend(promptOverride?: string) {
+    const text = (promptOverride ?? input).trim();
     if ((!text && attachments.length === 0) || sending) return;
 
     setErrorText(null);
@@ -287,7 +309,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
     const outboundAttachments = attachments;
     const outboundText =
       text ||
-      `Review the attached screenshot${outboundAttachments.length === 1 ? "" : "s"} in the context of this ${emptyLabel}.`;
+      `Review the attached file${outboundAttachments.length === 1 ? "" : "s"} in the context of this ${emptyLabel}.`;
     const renderedUserContent = [outboundText, attachmentMarker(outboundAttachments)]
       .filter(Boolean)
       .join("\n\n");
@@ -397,7 +419,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
 
   const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     if (sending) return;
-    const files = Array.from(e.clipboardData.files).filter((file) => file.type.startsWith("image/"));
+    const files = Array.from(e.clipboardData.files).filter((file) => Boolean(attachmentMediaType(file)));
     if (files.length > 0) {
       e.preventDefault();
       void addFiles(files);
@@ -472,15 +494,31 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
         <h2 className="font-serif text-base font-semibold text-court-fg">
           {title ?? "AI Workspace"}
         </h2>
-        <button
-          type="button"
-          onClick={() => void onClear()}
-          disabled={messages.length === 0 || sending}
-          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-red-300 hover:text-red-600 disabled:opacity-40"
-          title="Clear this conversation"
-        >
-          <Trash2 className="h-3 w-3" /> Clear
-        </button>
+        <div className="flex items-center gap-2">
+          {entityType === "candidate" && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void onSend(CANDIDATE_CALL_PREP_PROMPT)}
+              disabled={sending}
+              className="h-7 gap-1 px-2 py-1 text-[11px] font-medium text-court-fg-muted hover:border-brand/60"
+              title={CANDIDATE_CALL_PREP_PROMPT}
+              aria-label="Ask Call Prep prompt"
+            >
+              <PhoneCall className="h-3 w-3" /> Call Prep
+            </Button>
+          )}
+          <button
+            type="button"
+            onClick={() => void onClear()}
+            disabled={messages.length === 0 || sending}
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-red-300 hover:text-red-600 disabled:opacity-40"
+            title="Clear this conversation"
+          >
+            <Trash2 className="h-3 w-3" /> Clear
+          </button>
+        </div>
       </div>
 
       <div
@@ -516,7 +554,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
       <div className="shrink-0 border-t border-court-border bg-white p-4 pb-6 dark:bg-court-surface">
         {dragging && (
           <div className="mb-3 rounded-lg border border-dashed border-brand bg-brand/10 px-3 py-2 text-sm font-medium text-court-fg">
-            Drop screenshot here and I’ll read it with this {emptyLabel} context.
+            Drop a screenshot or PDF here and I’ll read it with this {emptyLabel} context.
           </div>
         )}
         {attachments.length > 0 && (
@@ -526,12 +564,18 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
                 key={attachment.id}
                 className="group flex max-w-full items-center gap-2 rounded-lg border border-court-border bg-court-surface-subtle/60 px-2 py-1.5 text-xs text-court-fg"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={attachment.previewUrl}
-                  alt=""
-                  className="h-8 w-8 rounded border border-court-border object-cover"
-                />
+                {attachment.kind === "image" && attachment.previewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={attachment.previewUrl}
+                    alt=""
+                    className="h-8 w-8 rounded border border-court-border object-cover"
+                  />
+                ) : (
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-court-border bg-court-surface text-court-fg-muted">
+                    <FileText className="h-4 w-4" />
+                  </span>
+                )}
                 <div className="min-w-0">
                   <div className="max-w-[160px] truncate font-medium">{attachment.name}</div>
                   <div className="text-[11px] text-court-fg-muted">{formatFileSize(attachment.size)}</div>
@@ -558,7 +602,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
             onPaste={onPaste}
             maxLength={GAME_PLAN_USER_MESSAGE_MAX_CHARS}
             rows={rows}
-            placeholder={`Ask anything about this ${emptyLabel}… or drop/paste a screenshot`}
+            placeholder={`Ask anything about this ${emptyLabel}… or drop/paste a screenshot or PDF`}
             disabled={sending}
             className={cn(
               "flex-1 resize-none rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
@@ -575,7 +619,11 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
             {sending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : attachments.length > 0 && !input.trim() ? (
-              <ImageIcon className="h-4 w-4" />
+              attachments.some((a) => a.kind === "pdf") ? (
+                <FileText className="h-4 w-4" />
+              ) : (
+                <ImageIcon className="h-4 w-4" />
+              )
             ) : (
               <Send className="h-4 w-4" />
             )}
