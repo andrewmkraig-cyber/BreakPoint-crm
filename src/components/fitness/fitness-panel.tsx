@@ -242,6 +242,16 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+function visibleViewport() {
+  if (typeof window === "undefined") {
+    return { width: 1024, height: 768 };
+  }
+  return {
+    width: Math.floor(window.visualViewport?.width ?? window.innerWidth),
+    height: Math.floor(window.visualViewport?.height ?? window.innerHeight),
+  };
+}
+
 function isoToUtcDate(iso: string): Date {
   return new Date(`${iso}T12:00:00.000Z`);
 }
@@ -1092,17 +1102,16 @@ export function FitnessPanel() {
     );
   }
 
+  const viewport = visibleViewport();
+  const maxPanelWidth = Math.max(280, viewport.width - 16);
+  const maxPanelHeight = Math.max(280, viewport.height - 16);
+  const panelWidth = Math.min(size.w, maxPanelWidth);
+  const panelHeight = Math.min(size.h, maxPanelHeight);
   const panelStyle: CSSProperties = {
-    left: position?.x ?? 20,
-    top: position?.y ?? 84,
-    width: Math.min(
-      size.w,
-      typeof window === "undefined" ? size.w : window.innerWidth - 16,
-    ),
-    height: Math.min(
-      size.h,
-      typeof window === "undefined" ? size.h : window.innerHeight - 16,
-    ),
+    left: clamp(position?.x ?? 20, 8, viewport.width - panelWidth - 8),
+    top: clamp(position?.y ?? 84, 8, viewport.height - panelHeight - 8),
+    width: panelWidth,
+    height: panelHeight,
     zIndex: z,
   };
 
@@ -1175,7 +1184,23 @@ export function FitnessPanel() {
           </div>
         ) : error ? (
           <div className="rounded-md border border-court-border bg-court-surface-subtle p-4 text-sm text-court-fg">
-            {error}
+            <div className="flex items-start gap-3">
+              <BarbellIcon className="mt-0.5 h-4 w-4 shrink-0 text-court-brand" />
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold">Fitness did not load.</div>
+                <p className="mt-1 text-court-fg-muted">{error}</p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setRefreshKey((key) => key + 1)}
+                  className="mt-3"
+                >
+                  <RefreshCcw className="h-3.5 w-3.5" />
+                  Retry
+                </Button>
+              </div>
+            </div>
           </div>
         ) : snapshot ? (
           <>

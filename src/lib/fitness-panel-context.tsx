@@ -14,6 +14,7 @@ const MIN_W = 300;
 const MIN_H = 420;
 const EDGE_GAP = 20;
 const MOBILE_GAP = 8;
+const MOBILE_MIN_H = 280;
 
 export type FitnessPanelPosition = { x: number; y: number };
 export type FitnessPanelSize = { w: number; h: number };
@@ -49,19 +50,26 @@ function defaultDock(): {
       size: { w: DEFAULT_W, h: DEFAULT_H },
     };
   }
-  const mobile = window.innerWidth < 640;
+  const viewportWidth = Math.floor(window.visualViewport?.width ?? window.innerWidth);
+  const viewportHeight = Math.floor(
+    window.visualViewport?.height ?? window.innerHeight,
+  );
+  const mobile = viewportWidth < 640;
   const w = mobile
-    ? Math.max(280, window.innerWidth - MOBILE_GAP * 2)
+    ? Math.max(280, viewportWidth - MOBILE_GAP * 2)
     : DEFAULT_W;
   const h = mobile
-    ? Math.max(MIN_H, window.innerHeight - MOBILE_GAP * 2)
-    : Math.min(DEFAULT_H, window.innerHeight - EDGE_GAP * 2);
+    ? Math.max(
+        MOBILE_MIN_H,
+        Math.min(MIN_H, viewportHeight - MOBILE_GAP * 2),
+      )
+    : Math.min(DEFAULT_H, viewportHeight - EDGE_GAP * 2);
   return {
     position: mobile
       ? { x: MOBILE_GAP, y: MOBILE_GAP }
       : {
-          x: Math.max(EDGE_GAP, window.innerWidth - w - EDGE_GAP),
-          y: Math.max(EDGE_GAP, window.innerHeight - h - EDGE_GAP),
+          x: Math.max(EDGE_GAP, viewportWidth - w - EDGE_GAP),
+          y: Math.max(EDGE_GAP, viewportHeight - h - EDGE_GAP),
         },
     size: { w, h },
   };

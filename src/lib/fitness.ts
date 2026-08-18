@@ -1,3 +1,5 @@
+import { fetchWithRetry } from "@/lib/retry-fetch";
+
 export const DEFAULT_FITNESS_DAYS = [
   {
     dayType: "Shoulders",
@@ -274,11 +276,32 @@ async function readJson<T>(res: Response): Promise<T> {
   return body as T;
 }
 
+function fitnessLoadError(error: unknown): Error {
+  if (
+    error instanceof TypeError &&
+    /load failed|failed to fetch|network/i.test(error.message)
+  ) {
+    return new Error(
+      "Fitness couldn't reach Ace. Check your connection and try again.",
+    );
+  }
+  return error instanceof Error ? error : new Error("Fitness failed to load");
+}
+
 export async function getFitnessSnapshot(
   date?: string,
 ): Promise<FitnessSnapshot> {
   const qs = date ? `?date=${encodeURIComponent(date)}` : "";
-  const res = await fetch(`/api/fitness${qs}`, { cache: "no-store" });
+  let res: Response;
+  try {
+    res = await fetchWithRetry(
+      `/api/fitness${qs}`,
+      { cache: "no-store", credentials: "same-origin" },
+      { retries: 2, baseDelayMs: 350 },
+    );
+  } catch (error) {
+    throw fitnessLoadError(error);
+  }
   return readJson<FitnessSnapshot>(res);
 }
 
