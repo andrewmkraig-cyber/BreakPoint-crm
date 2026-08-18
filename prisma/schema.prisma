@@ -854,6 +854,11 @@ model Client {
   feeAgreementSigned   Boolean?
   feeAgreementSignedAt DateTime?
   feePct               Float?
+  // Payable window from the signed agreement, in days ("10 day payable" → 10,
+  // 0 = due on receipt). Every invoice this client generates seeds its terms
+  // and due date from here; null falls back to DEFAULT_PAYMENT_TERMS_DAYS (30)
+  // in src/lib/payment-terms.ts.
+  paymentTermsDays     Int?
   feeBillingContact    String?
   organizationId String
   // Per-user account ownership. Null = unclaimed / available to be

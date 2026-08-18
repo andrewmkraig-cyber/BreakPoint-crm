@@ -12,6 +12,8 @@ import {
   type MergeFieldValues,
 } from "@/lib/merge-fields";
 import { formatInvoiceDateLabelFromIso } from "@/lib/invoice-date";
+import { DEFAULT_PAYMENT_TERMS_DAYS, dueDateIsoFromTerms } from "@/lib/payment-terms";
+import { formatDate } from "@/lib/utils";
 import type { AttachmentDraft } from "@/app/mail/mail-composer";
 
 import {
@@ -99,6 +101,11 @@ export type InvoiceDetailProps = {
   candidateEmail: string | null;
   clientName: string;
   clientId: string | null;
+  // Agreed payable window from the client's fee agreement, in days. Used as
+  // the fallback when the free-text terms field has no number in it, so an
+  // unparseable entry still resolves the due date to this client's terms
+  // rather than a generic 30 days. Null = client has none set.
+  clientPaymentTermsDays: number | null;
   accountExecName: string;
   baseSalary: number | null;
   feePercentage: number | null;
@@ -144,6 +151,18 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
   const [paymentTerms, setPaymentTerms] = useState(props.paymentTerms);
   const [notes, setNotes] = useState(props.notes);
   const [clientNote, setClientNote] = useState(props.clientNote);
+  // Due date = issue date + terms, kept in sync as either input changes so a
+  // recruiter who switches a client to Net 10 doesn't have to also do the
+  // arithmetic. The field stays editable — typing in it afterwards wins until
+  // one of its two inputs moves again.
+  const applyTerms = (nextIssueIso: string, nextTerms: string) => {
+    const derived = dueDateIsoFromTerms(
+      nextIssueIso,
+      nextTerms,
+      props.clientPaymentTermsDays ?? DEFAULT_PAYMENT_TERMS_DAYS,
+    );
+    if (derived) setDueDate(derived);
+  };
   const [billingContacts, setBillingContacts] = useState<Contact[]>(props.billingContacts);
   const [hiringContacts, setHiringContacts] = useState<Contact[]>(props.hiringContacts);
   // Recruiter selects how the client paid before flipping the invoice
@@ -603,7 +622,10 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               type="date"
               disabled={!isDraft}
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) => {
+                setStartDate(e.target.value);
+                applyTerms(e.target.value, paymentTerms);
+              }}
             />
           </Field>
           <Field label="Due date">
@@ -619,7 +641,10 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               type="text"
               disabled={!isDraft}
               value={paymentTerms}
-              onChange={(e) => setPaymentTerms(e.target.value)}
+              onChange={(e) => {
+                setPaymentTerms(e.target.value);
+                applyTerms(startDate, e.target.value);
+              }}
             />
           </Field>
           <Field label="Internal notes (not on invoice)">
@@ -814,11 +839,14 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
           <dl className="mt-4 grid grid-cols-2 gap-3 text-[11px]">
             <div>
               <dt className="font-semibold uppercase tracking-wider text-court-fg-muted">Issued</dt>
-              <dd className="mt-1 text-court-fg">{startDate ? new Date(startDate).toLocaleDateString() : "—"}</dd>
+              {/* Date-only "YYYY-MM-DD" values — formatDate reads them in UTC
+                  so the panel matches the PDF instead of printing the day
+                  before. Sent/Paid below are real instants and stay local. */}
+              <dd className="mt-1 text-court-fg">{formatDate(startDate)}</dd>
             </div>
             <div>
               <dt className="font-semibold uppercase tracking-wider text-court-fg-muted">Due</dt>
-              <dd className="mt-1 text-court-fg">{dueDate ? new Date(dueDate).toLocaleDateString() : "—"}</dd>
+              <dd className="mt-1 text-court-fg">{formatDate(dueDate)}</dd>
             </div>
             <div>
               <dt className="font-semibold uppercase tracking-wider text-court-fg-muted">Sent</dt>

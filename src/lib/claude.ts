@@ -451,6 +451,10 @@ export type AgreementExtraction = {
   // Direct-hire conversion/placement fee as a number (e.g. 20 for "20%"),
   // null when not clearly stated. Never guessed.
   feePercent: number | null;
+  // Payable window in days ("Net 10" / "payable within 10 days" → 10, "due on
+  // receipt" → 0). Null when the document doesn't state one. Feeds
+  // Client.paymentTermsDays, which seeds every invoice's terms + due date.
+  paymentTermsDays: number | null;
 };
 
 // Marker that separates the human-facing markdown summary from the machine
@@ -459,19 +463,31 @@ export type AgreementExtraction = {
 const AGREEMENT_FIELDS_MARKER = "===FIELDS_JSON===";
 
 function parseAgreementExtraction(jsonTail: string): AgreementExtraction {
-  const empty: AgreementExtraction = { signed: null, feePercent: null };
+  const empty: AgreementExtraction = { signed: null, feePercent: null, paymentTermsDays: null };
   // Strip any accidental code fences, then grab the first {...} block.
   const cleaned = jsonTail.replace(/```json|```/gi, "").trim();
   const match = cleaned.match(/\{[\s\S]*\}/);
   if (!match) return empty;
   try {
-    const raw = JSON.parse(match[0]) as { signed?: unknown; feePercent?: unknown };
+    const raw = JSON.parse(match[0]) as {
+      signed?: unknown;
+      feePercent?: unknown;
+      paymentTermsDays?: unknown;
+    };
     const signed = typeof raw.signed === "boolean" ? raw.signed : null;
     const feePercent =
       typeof raw.feePercent === "number" && Number.isFinite(raw.feePercent)
         ? raw.feePercent
         : null;
-    return { signed, feePercent };
+    // Day counts are whole and non-negative; anything else is a misread and
+    // reads as "not stated" rather than a guessed payable window.
+    const paymentTermsDays =
+      typeof raw.paymentTermsDays === "number" &&
+      Number.isFinite(raw.paymentTermsDays) &&
+      raw.paymentTermsDays >= 0
+        ? Math.trunc(raw.paymentTermsDays)
+        : null;
+    return { signed, feePercent, paymentTermsDays };
   } catch {
     return empty;
   }
@@ -530,6 +546,7 @@ export async function summarizeAgreementTerms(params: {
               " and then a single minified JSON object (no code fences, nothing after it) with exactly these keys:\n" +
               '- "signed": true if the document appears executed/signed (a completed signature block, dated signatures, DocuSign/e-sign certificate or envelope id, initials on each page), false if it is clearly an unsigned draft/template/blank form, or null if you cannot tell.\n' +
               '- "feePercent": the direct-hire / permanent placement conversion fee as a NUMBER only (e.g. 20 for "20%"). Use null if the document does not clearly state a single direct-hire fee percentage. NEVER guess a percentage that is not explicitly written in the document.\n' +
+              '- "paymentTermsDays": the invoice payable window as a whole NUMBER of days (e.g. 10 for "Net 10" / "payable within ten (10) days", 0 for "due upon receipt"). Use null if the document does not state one. NEVER guess.\n' +
               "The markdown summary above must be exactly what it would be without this JSON request - do not change it.",
           },
         ],

@@ -272,6 +272,8 @@ export async function updateContact(input: UpdateContactInput): Promise<UpdateCo
 export type DetectedAgreementFields = {
   signed: boolean | null;
   feePct: number | null;
+  // Payable window in days from the agreement ("10 day payable" → 10).
+  paymentTermsDays: number | null;
   agreementDateIso: string;
 };
 
@@ -281,6 +283,7 @@ export type DetectedAgreementFields = {
 export type AppliedAgreementFields = {
   signed: boolean | null;
   feePct: number | null;
+  paymentTermsDays: number | null;
   signedAt: string | null; // YYYY-MM-DD, set when signed was auto-applied
 };
 
@@ -325,17 +328,28 @@ export async function summarizeAgreement(agreementId: string): Promise<Summarize
     // so a value the recruiter set by hand is never clobbered; genuine
     // conflicts still surface the manual Apply box in the UI for an explicit
     // overwrite.
-    const applied: AppliedAgreementFields = { signed: null, feePct: null, signedAt: null };
+    const applied: AppliedAgreementFields = {
+      signed: null,
+      feePct: null,
+      paymentTermsDays: null,
+      signedAt: null,
+    };
     if (agreement.clientId) {
       const client = await prisma.client.findUnique({
         where: { id: agreement.clientId },
-        select: { feeAgreementSigned: true, feeAgreementSignedAt: true, feePct: true },
+        select: {
+          feeAgreementSigned: true,
+          feeAgreementSignedAt: true,
+          feePct: true,
+          paymentTermsDays: true,
+        },
       });
       if (client) {
         const data: {
           feeAgreementSigned?: boolean;
           feeAgreementSignedAt?: Date;
           feePct?: number;
+          paymentTermsDays?: number;
         } = {};
         if (extracted.signed !== null && client.feeAgreementSigned === null) {
           data.feeAgreementSigned = extracted.signed;
@@ -348,6 +362,12 @@ export async function summarizeAgreement(agreementId: string): Promise<Summarize
         if (extracted.feePercent !== null && client.feePct === null) {
           data.feePct = extracted.feePercent;
           applied.feePct = extracted.feePercent;
+        }
+        // Same write-if-empty rule as the fee: a payable window the recruiter
+        // already set by hand is never overwritten by the extractor.
+        if (extracted.paymentTermsDays !== null && client.paymentTermsDays === null) {
+          data.paymentTermsDays = extracted.paymentTermsDays;
+          applied.paymentTermsDays = extracted.paymentTermsDays;
         }
         if (Object.keys(data).length > 0) {
           await prisma.client.update({ where: { id: agreement.clientId }, data });
@@ -367,6 +387,7 @@ export async function summarizeAgreement(agreementId: string): Promise<Summarize
         detected: {
           signed: extracted.signed,
           feePct: extracted.feePercent,
+          paymentTermsDays: extracted.paymentTermsDays,
           // Agreement date = the upload date (YYYY-MM-DD, local-safe slice).
           agreementDateIso,
         },
@@ -507,6 +528,9 @@ export type UpdateClientInput = {
   feeAgreementSigned: boolean;
   feeAgreementSignedAt: string;
   feePct: string;
+  // Payable window in days, free-text from the form ("10"). Empty clears it
+  // and invoices fall back to the 30-day default.
+  paymentTermsDays: string;
   feeBillingContact: string;
 };
 
@@ -544,6 +568,12 @@ export async function updateClientCompany(input: UpdateClientInput): Promise<Act
     const signedAtDate = signedAtTrimmed ? new Date(signedAtTrimmed) : null;
     const feePctTrimmed = input.feePct.trim();
     const feePctValue = feePctTrimmed ? Number(feePctTrimmed) : null;
+    const termsTrimmed = (input.paymentTermsDays ?? "").trim();
+    const termsParsed = termsTrimmed ? Number(termsTrimmed) : null;
+    const termsDaysValue =
+      termsParsed != null && Number.isFinite(termsParsed) && termsParsed >= 0
+        ? Math.trunc(termsParsed)
+        : null;
 
     await prisma.client.update({
       where: { id: existing.id },
@@ -558,6 +588,7 @@ export async function updateClientCompany(input: UpdateClientInput): Promise<Act
         feeAgreementSignedAt:
           signedAtDate && !Number.isNaN(signedAtDate.getTime()) ? signedAtDate : null,
         feePct: feePctValue != null && !Number.isNaN(feePctValue) ? feePctValue : null,
+        paymentTermsDays: termsDaysValue,
         feeBillingContact: input.feeBillingContact.trim() || null,
       },
     });

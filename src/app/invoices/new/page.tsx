@@ -54,6 +54,7 @@ export default async function NewInvoicePage() {
         candidateEmail={null}
         clientName=""
         clientId={null}
+        clientPaymentTermsDays={null}
         accountExecName=""
         baseSalary={null}
         feePercentage={null}

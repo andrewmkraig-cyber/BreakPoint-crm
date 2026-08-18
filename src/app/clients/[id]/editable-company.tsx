@@ -22,6 +22,7 @@ import { updateClientCompany } from "@/app/clients/[id]/actions";
 import { LabeledField } from "@/app/candidates/[id]/editable-helpers";
 import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { paymentTermsLabel } from "@/lib/payment-terms";
 import { Button } from "@/components/ui/button";
 
 export const INDUSTRY_OPTIONS = [
@@ -50,6 +51,9 @@ export type CompanyState = {
   feeAgreementSigned: boolean;
   feeAgreementSignedAt: string;
   feePct: string;
+  // Agreed payable window in days ("10" = 10-day payable). Seeds the terms +
+  // due date on every invoice generated for this client.
+  paymentTermsDays: string;
   feeBillingContact: string;
 };
 
@@ -294,6 +298,14 @@ export function EditableCompany({
               onChange={(v) => setDraft({ ...draft, feePct: v })}
               frameClassName={INPUT_FRAME_RECT_CLASS}
             />
+            <LabeledField
+              label="Payable (days)"
+              value={draft.paymentTermsDays}
+              onChange={(v) =>
+                setDraft({ ...draft, paymentTermsDays: v.replace(/[^0-9]/g, "") })
+              }
+              frameClassName={INPUT_FRAME_RECT_CLASS}
+            />
             <div className="block text-sm">
               <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
                 Billing contact
@@ -376,6 +388,13 @@ export function EditableCompany({
             </Detail>
             <Detail label="Fee">
               <span>{draft.feePct ? `${draft.feePct}%` : "—"}</span>
+            </Detail>
+            <Detail label="Payment Terms">
+              <span>
+                {draft.paymentTermsDays
+                  ? paymentTermsLabel(Number(draft.paymentTermsDays))
+                  : "—"}
+              </span>
             </Detail>
             <Detail label="Agreement File" icon={<FileText className="h-3 w-3" />}>
               {agreementFile?.link ? (

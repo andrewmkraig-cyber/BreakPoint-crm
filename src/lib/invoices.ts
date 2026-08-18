@@ -5,6 +5,11 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { periodRange } from "@/lib/period-utils";
+import {
+  DEFAULT_PAYMENT_TERMS_DAYS,
+  addDaysUtc,
+  paymentTermsLabel,
+} from "@/lib/payment-terms";
 
 // Server-side invoice library — single source of truth for invoice
 // lifecycle transitions and the merge data the PDF + email need.
@@ -108,18 +113,6 @@ export async function nextInvoiceNumber(organizationId: string): Promise<string>
   return formatInvoiceNumber(maxN + 1);
 }
 
-function addDays(date: Date, days: number): Date {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function termsToDays(terms: string | null | undefined): number {
-  const match = (terms ?? "").match(/(\d+)/);
-  if (!match) return 30;
-  const n = parseInt(match[1]!, 10);
-  return Number.isFinite(n) ? n : 30;
-}
 
 export type CreateFromPlacementInput = {
   placementId: string;
@@ -147,6 +140,10 @@ export async function createInvoiceForPlacement(
       hiringManagerName: true,
       hiringManagerEmail: true,
       hiringContacts: true,
+      // The client's agreed payable window seeds this invoice's terms + due
+      // date — a 10-day-payable client bills Net 10 without anyone editing
+      // the draft after Confirm Start.
+      client: { select: { paymentTermsDays: true } },
     },
   });
   if (!placement) throw new Error("Placement not found");
@@ -169,8 +166,9 @@ export async function createInvoiceForPlacement(
 
   const invoiceNumber = await nextInvoiceNumber(input.organizationId);
   const issueDate = placement.expectedStartDate ?? new Date();
-  const termsString = "Net 30";
-  const dueDate = addDays(issueDate, termsToDays(termsString));
+  const termsDays = placement.client?.paymentTermsDays ?? DEFAULT_PAYMENT_TERMS_DAYS;
+  const termsString = paymentTermsLabel(termsDays);
+  const dueDate = addDaysUtc(issueDate, termsDays);
 
   // Billing (To) + hiring (CC) contacts, resolved via the shared helper so
   // the custom-installment Confirm Start path produces identical To/CC
@@ -400,7 +398,16 @@ export async function getInvoice(id: string, organizationId: string) {
         select: { id: true, firstName: true, lastName: true, email: true },
       },
       client: {
-        select: { id: true, name: true, domain: true, location: true },
+        // paymentTermsDays rides along so the editor can recompute the due
+        // date against THIS client's agreed payable window as the recruiter
+        // edits the terms field.
+        select: {
+          id: true,
+          name: true,
+          domain: true,
+          location: true,
+          paymentTermsDays: true,
+        },
       },
       // Placement is joined so the PDF can resolve the Account Executive
       // name (placement.createdBy) and, when the Invoice's own snapshot

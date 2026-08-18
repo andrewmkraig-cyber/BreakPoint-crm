@@ -19,6 +19,12 @@ import {
   type InvoiceContact,
   type InvoicePaymentMethod,
 } from "@/lib/invoices";
+import {
+  DEFAULT_PAYMENT_TERMS_DAYS,
+  addDaysUtc,
+  paymentTermsLabel,
+  termsToDays,
+} from "@/lib/payment-terms";
 
 async function requireUserId(): Promise<string | null> {
   const s = await getServerSession(authOptions);
@@ -110,8 +116,24 @@ export async function createDraftInvoiceAction(
   try {
     const invoiceNumber = await nextInvoiceNumber(org.id);
     const today = new Date();
-    const defaultDue = new Date(today);
-    defaultDue.setDate(defaultDue.getDate() + 30);
+    // Terms the editor didn't specify fall back to the client's agreed payable
+    // window (Net 10 for a 10-day-payable client), and the due date follows
+    // whichever terms we end up with rather than a hardcoded 30 days.
+    const clientTermsDays = input.clientId
+      ? (
+          await prisma.client.findFirst({
+            where: { id: input.clientId, organizationId: org.id },
+            select: { paymentTermsDays: true },
+          })
+        )?.paymentTermsDays ?? null
+      : null;
+    const terms =
+      input.paymentTerms?.trim() ||
+      paymentTermsLabel(clientTermsDays ?? DEFAULT_PAYMENT_TERMS_DAYS);
+    const defaultDue = addDaysUtc(
+      today,
+      termsToDays(terms, clientTermsDays ?? DEFAULT_PAYMENT_TERMS_DAYS),
+    );
     const feeCleaned = (input.feeAmount ?? "").toString().replace(/[,$\s]/g, "").trim();
     const created = await prisma.invoice.create({
       data: {
@@ -124,7 +146,7 @@ export async function createDraftInvoiceAction(
         startDate: input.startDate ? new Date(input.startDate) : today,
         dueDate: input.dueDate ? new Date(input.dueDate) : defaultDue,
         feeAmount: feeCleaned ? new Prisma.Decimal(feeCleaned) : null,
-        paymentTerms: input.paymentTerms?.trim() || "Net 30",
+        paymentTerms: terms,
         notes: input.notes?.trim() || null,
         clientNote: input.clientNote?.trim() || null,
         billingContacts: sanitizeContacts(input.billingContacts) as unknown as Prisma.InputJsonValue,

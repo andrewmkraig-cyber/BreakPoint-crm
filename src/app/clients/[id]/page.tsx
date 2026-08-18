@@ -514,6 +514,8 @@ export default async function ClientDetailPage({
     feeAgreementSigned: seedSigned,
     feeAgreementSignedAt: seedSignedAtIso,
     feePct: seedFeePct,
+    paymentTermsDays:
+      client.paymentTermsDays != null ? String(client.paymentTermsDays) : "",
     feeBillingContact: seedBillingContact,
   };
 

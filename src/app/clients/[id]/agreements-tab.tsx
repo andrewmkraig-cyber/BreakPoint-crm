@@ -24,6 +24,7 @@ import {
 import type { CompanyState } from "@/app/clients/[id]/editable-company";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { cn } from "@/lib/utils";
+import { paymentTermsLabel } from "@/lib/payment-terms";
 import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
 
 export type AgreementRow = {
@@ -210,20 +211,34 @@ function AgreementItem({
       // detected but NOT applied because the client already had a value there
       // (a genuine conflict the recruiter can choose to overwrite).
       const { detected: det, applied } = result.value;
-      if (applied.signed !== null || applied.feePct !== null) {
+      if (
+        applied.signed !== null ||
+        applied.feePct !== null ||
+        applied.paymentTermsDays !== null
+      ) {
         toast.success("Fee agreement details applied", {
           description: formatDetected({
             signed: applied.signed,
             feePct: applied.feePct,
+            paymentTermsDays: applied.paymentTermsDays,
             agreementDateIso: applied.signedAt ?? det.agreementDateIso,
           }),
         });
       }
       const pendingSigned = det.signed !== null && applied.signed === null ? det.signed : null;
       const pendingFee = det.feePct !== null && applied.feePct === null ? det.feePct : null;
+      const pendingTerms =
+        det.paymentTermsDays !== null && applied.paymentTermsDays === null
+          ? det.paymentTermsDays
+          : null;
       setDetected(
-        pendingSigned !== null || pendingFee !== null
-          ? { signed: pendingSigned, feePct: pendingFee, agreementDateIso: det.agreementDateIso }
+        pendingSigned !== null || pendingFee !== null || pendingTerms !== null
+          ? {
+              signed: pendingSigned,
+              feePct: pendingFee,
+              paymentTermsDays: pendingTerms,
+              agreementDateIso: det.agreementDateIso,
+            }
           : null,
       );
       setExpanded(true);
@@ -249,6 +264,9 @@ function AgreementItem({
       };
       if (detected.signed !== null) overrides.feeAgreementSigned = detected.signed;
       if (detected.feePct !== null) overrides.feePct = String(detected.feePct);
+      if (detected.paymentTermsDays !== null) {
+        overrides.paymentTermsDays = String(detected.paymentTermsDays);
+      }
 
       const result = await updateClientCompany({ clientCuid: clientId, ...companyState, ...overrides });
       if (!result.ok) {
@@ -381,6 +399,7 @@ function formatDetected(d: DetectedAgreementFields): string {
   const parts: string[] = [];
   if (d.signed !== null) parts.push(d.signed ? "Signed" : "Unsigned");
   if (d.feePct !== null) parts.push(`${d.feePct}% fee`);
+  if (d.paymentTermsDays !== null) parts.push(paymentTermsLabel(d.paymentTermsDays));
   // Parse as local midnight so the YYYY-MM-DD upload date doesn't shift a day.
   const date = new Date(`${d.agreementDateIso}T00:00:00`);
   if (!Number.isNaN(date.getTime())) {
