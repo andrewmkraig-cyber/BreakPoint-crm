@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { invoiceScheduledEmailSource } from "@/lib/invoice-email-drafts";
 import { prisma } from "@/lib/prisma";
 import { createScheduledEmail, type StoredAttachment } from "@/lib/scheduled-email";
 
@@ -31,6 +32,10 @@ type SchedulePayload = {
   // Single-send surfaces mirror to Gmail Drafts; bulk turns this off.
   createDraft?: boolean;
   autoTag?: boolean;
+  // Optional lineage for Send Later launched from /invoices/[id].
+  invoiceId?: string;
+  // Existing scheduled row this compose session is replacing.
+  scheduledEmailId?: string;
 };
 
 export async function POST(req: NextRequest) {
@@ -80,6 +85,34 @@ export async function POST(req: NextRequest) {
 
   try {
     const org = await getCurrentOrg();
+    const invoiceId = payload.invoiceId?.trim() || null;
+    if (invoiceId) {
+      const invoice = await prisma.invoice.findFirst({
+        where: { id: invoiceId, organizationId: org.id },
+        select: { id: true },
+      });
+      if (!invoice) {
+        return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+      }
+    }
+    const replaceScheduledEmailId = payload.scheduledEmailId?.trim() || null;
+    if (replaceScheduledEmailId) {
+      const existingScheduled = await prisma.scheduledEmail.findFirst({
+        where: {
+          id: replaceScheduledEmailId,
+          organizationId: org.id,
+          userId: user.id,
+          status: "SCHEDULED",
+        },
+        select: { id: true },
+      });
+      if (!existingScheduled) {
+        return NextResponse.json(
+          { error: "Scheduled email not found" },
+          { status: 404 },
+        );
+      }
+    }
     const created = await createScheduledEmail({
       organizationId: org.id,
       userId: user.id,
@@ -98,11 +131,32 @@ export async function POST(req: NextRequest) {
       timezone: payload.timezone || "America/New_York",
       createDraft: payload.createDraft ?? true,
       autoTag: payload.autoTag ?? true,
-      source: "scheduled_send",
+      source: invoiceId ? invoiceScheduledEmailSource(invoiceId) : "scheduled_send",
     });
+    if (invoiceId) {
+      await prisma.invoiceEmailDraft.deleteMany({
+        where: { organizationId: org.id, userId: user.id, invoiceId },
+      });
+    }
+    if (replaceScheduledEmailId) {
+      await prisma.scheduledEmail.updateMany({
+        where: {
+          id: replaceScheduledEmailId,
+          organizationId: org.id,
+          userId: user.id,
+          status: "SCHEDULED",
+        },
+        data: {
+          status: "CANCELED",
+          gmailDraftId: null,
+          lastError: null,
+        },
+      });
+    }
     return NextResponse.json({
       ok: true,
       id: created.id,
+      gmailDraftId: created.gmailDraftId,
       scheduledSendAt: when.toISOString(),
     });
   } catch (e) {

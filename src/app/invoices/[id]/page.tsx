@@ -1,9 +1,13 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { getServerSession } from "next-auth";
 
+import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getBillingSettings } from "@/lib/billing-settings";
+import { getInvoiceEmailDraftForInvoice } from "@/lib/invoice-email-drafts";
 import { getInvoice, parseInvoiceContacts } from "@/lib/invoices";
+import { prisma } from "@/lib/prisma";
 import { loadTriggeredTemplate } from "@/lib/templated-email";
 import { CONFIRMED_START_INVOICE_TRIGGER } from "@/app/settings/template-constants";
 
@@ -18,15 +22,30 @@ export default async function InvoiceDetailPage({
 }) {
   const { id } = await params;
   const org = await getCurrentOrg();
-  const [invoice, billing, invoiceTpl] = await Promise.all([
+  const session = await getServerSession(authOptions);
+  const [invoice, billing, invoiceTpl, user] = await Promise.all([
     getInvoice(id, org.id),
     getBillingSettings(),
     // Active "Invoice Email" template (Settings ▸ Templates). The same
     // canonical loader every auto-trigger uses; EmailTemplate is a global
     // (single-org) table so no org scope is needed here.
     loadTriggeredTemplate(CONFIRMED_START_INVOICE_TRIGGER),
+    session?.user?.email
+      ? prisma.user.findUnique({
+          where: { email: session.user.email },
+          select: { id: true },
+        })
+      : null,
   ]);
   if (!invoice) notFound();
+  const savedEmailDraft = user
+    ? await getInvoiceEmailDraftForInvoice({
+        organizationId: org.id,
+        userId: user.id,
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+      })
+    : null;
 
   // Pass the RAW (unmerged) template subject + body to the client component;
   // merge fields resolve client-side at click time so recruiter edits to the
@@ -84,6 +103,32 @@ export default async function InvoiceDetailPage({
         billingDisplayAddress={`${billing.addressLine1} · ${billing.city}, ${billing.state} ${billing.zip}`}
         sendFromAlias={invoice.sendFromAlias ?? null}
         invoiceEmailTemplate={invoiceEmailTemplate}
+        emailDraft={
+          savedEmailDraft
+            ? {
+                id: savedEmailDraft.id,
+                kind: savedEmailDraft.kind,
+                gmailDraftId: savedEmailDraft.gmailDraftId,
+                to: savedEmailDraft.to.join(", "),
+                cc: savedEmailDraft.cc.join(", "),
+                bcc: savedEmailDraft.bcc.join(", "),
+                subject: savedEmailDraft.subject,
+                bodyHtml: savedEmailDraft.bodyHtml,
+                threadId: savedEmailDraft.threadId,
+                sendAsEmail: savedEmailDraft.sendAsEmail,
+                scheduledSendAt: savedEmailDraft.scheduledSendAt
+                  ? savedEmailDraft.scheduledSendAt.toISOString()
+                  : null,
+                attachments: savedEmailDraft.attachments.map((attachment, index) => ({
+                  key: `invoice-email-draft-${savedEmailDraft.id}-${index}`,
+                  filename: attachment.filename,
+                  mimeType: attachment.mimeType,
+                  sizeBytes: Buffer.byteLength(attachment.dataBase64, "base64"),
+                  dataBase64: attachment.dataBase64,
+                })),
+              }
+            : null
+        }
       />
     </div>
   );

@@ -130,6 +130,10 @@ type Props = {
   // we carry the draft id through pop-outs so the Delete button knows
   // which draft to remove. Null/undefined means "no draft yet".
   defaultDraftId?: string | null;
+  // Optional lineage for drafts launched from /invoices/[id]. Save Draft
+  // uses it to persist the edited email payload back onto the invoice.
+  invoiceId?: string | null;
+  scheduledEmailId?: string | null;
   // Inline-only callback fired when the recruiter clicks the Pop Out
   // icon in the header. Receives the current composer state so the
   // parent can re-launch in modal mode with everything carried over.
@@ -197,6 +201,12 @@ type Props = {
   defaultSendAsEmail?: string | null;
   onClose: () => void;
   onSent: () => void;
+  onScheduled?: () => void;
+  onDraftSaved?: (result: {
+    draftId: string | null;
+    invoiceEmailDraftId?: string | null;
+    scheduledEmailId?: string | null;
+  }) => void;
 };
 
 // Tracks which input the caret was last in so Insert Field splices the
@@ -213,6 +223,8 @@ export function MailComposer({
   defaultBody,
   defaultAttachments,
   defaultDraftId = null,
+  invoiceId = null,
+  scheduledEmailId = null,
   autoFocusBody = false,
   autoFocusTo = false,
   templates = [],
@@ -229,6 +241,8 @@ export function MailComposer({
   onPopOut,
   onClose,
   onSent,
+  onScheduled,
+  onDraftSaved,
 }: Props) {
   // Click-to-front: bumps this composer above other floating windows
   // (Claude Panel, peer composers) when the user touches it. Active
@@ -1182,6 +1196,8 @@ export function MailComposer({
           // label. New row otherwise.
           draftId: gmailDraftId ?? undefined,
           sendAsEmail: selectedFromEmail ?? undefined,
+          invoiceId: invoiceId ?? undefined,
+          scheduledEmailId: scheduledEmailId ?? undefined,
         }),
       });
       const body = await res.json().catch(() => null);
@@ -1193,6 +1209,12 @@ export function MailComposer({
       }
       const newDraftId = (body?.draftId as string | undefined) ?? null;
       if (newDraftId) setGmailDraftId(newDraftId);
+      onDraftSaved?.({
+        draftId: newDraftId,
+        invoiceEmailDraftId:
+          (body?.invoiceEmailDraftId as string | null | undefined) ?? null,
+        scheduledEmailId: (body?.scheduledEmailId as string | null | undefined) ?? null,
+      });
       toast.success("Draft saved.");
       onClose();
     } catch (e) {
@@ -1309,6 +1331,8 @@ export function MailComposer({
         scheduledSendAt: scheduledSendAtISO,
         timezone,
         createDraft: true,
+        invoiceId: invoiceId ?? undefined,
+        scheduledEmailId: scheduledEmailId ?? undefined,
       }),
     });
     const body = await res.json().catch(() => null);
@@ -1325,7 +1349,7 @@ export function MailComposer({
     toast.success(
       `Scheduled for ${formatScheduledTime(scheduledSendAtISO, timezone)}`,
     );
-    onSent();
+    (onScheduled ?? onSent)();
   }
 
   async function onSend() {

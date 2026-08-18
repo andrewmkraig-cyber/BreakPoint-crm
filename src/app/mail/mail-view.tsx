@@ -510,6 +510,7 @@ export function MailView({
         // the Drafts label view.
         setRefreshTick((n) => n + 1);
       },
+      onDraftSaved: () => setRefreshTick((n) => n + 1),
     });
     // Deselect immediately so re-clicking the same row re-loads and
     // re-opens (detail-based effect needs a fresh detail object).

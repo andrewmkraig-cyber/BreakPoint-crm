@@ -33,6 +33,21 @@ type SendAsAlias = {
 
 type Contact = { name: string; email: string; title?: string };
 
+type InvoiceEmailDraftProp = {
+  id: string;
+  kind: "invoice_draft" | "scheduled_email";
+  gmailDraftId: string | null;
+  to: string;
+  cc: string;
+  bcc: string;
+  subject: string;
+  bodyHtml: string;
+  threadId: string | null;
+  sendAsEmail: string | null;
+  scheduledSendAt: string | null;
+  attachments: AttachmentDraft[];
+};
+
 const STATUS_PILL: Record<string, { label: string; tone: string }> = {
   DRAFT: { label: "Draft", tone: "rounded-full bg-court-surface-subtle text-court-fg" },
   SENT: { label: "Sent", tone: "rounded-full bg-amber-50 text-amber-800 border border-amber-200" },
@@ -103,6 +118,9 @@ export type InvoiceDetailProps = {
   // Null when the template is missing/inactive → handleEmailDraft falls back
   // to its hardcoded literal so a deleted template never breaks the send.
   invoiceEmailTemplate?: { subject: string; body: string } | null;
+  // Saved Gmail draft payload tied to this invoice. When present, Draft Email
+  // reopens this edited body instead of regenerating from the template.
+  emailDraft?: InvoiceEmailDraftProp | null;
 };
 
 export function InvoiceDetail(props: InvoiceDetailProps) {
@@ -289,10 +307,54 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
     // Drafting the email pulls the rendered PDF from /invoices/[id]/pdf, so
     // it requires a saved row. The button is hidden in new mode; this guard
     // keeps the id non-null for the rest of the handler.
-    if (props.id === null) return;
+    const invoiceId = props.id;
+    if (invoiceId === null) return;
     setError(null);
     setDraftingEmail(true);
     try {
+      const init = await fetch("/api/mail/compose-init", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      const onInvoiceEmailSent = () => {
+        void markInvoiceSentAction(invoiceId).then((r) => {
+          if (r.ok) router.refresh();
+          else setError(r.error);
+        });
+      };
+
+      if (props.emailDraft) {
+        composer.open({
+          defaultTo: props.emailDraft.to,
+          defaultCc: props.emailDraft.cc,
+          defaultBcc: props.emailDraft.bcc,
+          defaultSubject: props.emailDraft.subject,
+          defaultBody: props.emailDraft.bodyHtml,
+          defaultAttachments: props.emailDraft.attachments,
+          defaultDraftId: props.emailDraft.gmailDraftId,
+          threadId: props.emailDraft.threadId ?? undefined,
+          templates: init?.templates ?? [],
+          mergeContext: {
+            user: {
+              firstName: init?.user?.firstName ?? "",
+              fullName: init?.user?.fullName ?? "",
+            },
+          },
+          modalTitle:
+            props.emailDraft.kind === "scheduled_email"
+              ? "Scheduled invoice email"
+              : "Draft invoice email",
+          nonBlocking: true,
+          defaultSendAsEmail: props.emailDraft.sendAsEmail ?? selectedFromAlias,
+          invoiceId,
+          scheduledEmailId:
+            props.emailDraft.kind === "scheduled_email" ? props.emailDraft.id : undefined,
+          onSent: onInvoiceEmailSent,
+          onScheduled: () => router.refresh(),
+          onDraftSaved: () => router.refresh(),
+        });
+        return;
+      }
+
       // Andrew 2026-05-27: subject reads the candidate's full first +
       // last name instead of only the last name. "Invoice from BreakPoint
       // Talent - Jennifer Cole placement (INV-1053)" replaces the older
@@ -387,13 +449,13 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
       // the file in.
       let attachments: AttachmentDraft[] = [];
       try {
-        const res = await fetch(`/invoices/${props.id}/pdf`, { cache: "no-store" });
+        const res = await fetch(`/invoices/${invoiceId}/pdf`, { cache: "no-store" });
         if (res.ok) {
           const blob = await res.blob();
           const dataBase64 = await blobToBase64(blob);
           attachments = [
             {
-              key: `inv-${props.id}-${Date.now()}`,
+              key: `inv-${invoiceId}-${Date.now()}`,
               filename: `${props.billingCompanyName} - ${props.invoiceNumber}.pdf`,
               mimeType: "application/pdf",
               sizeBytes: blob.size,
@@ -408,10 +470,6 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
           `Couldn't attach PDF: ${err instanceof Error ? err.message : "fetch failed"}. You can attach it manually.`,
         );
       }
-
-      const init = await fetch("/api/mail/compose-init", { cache: "no-store" })
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null);
 
       composer.open({
         defaultTo: to,
@@ -433,6 +491,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
         // recruiter picked). The composer falls back to its own default
         // selection when this is null.
         defaultSendAsEmail: selectedFromAlias,
+        invoiceId,
         // Ace 67.18: flip DRAFT → SENT in Neon when the recruiter
         // actually clicks Send inside the floating composer. Before
         // this, the composer sent the Gmail message but never touched
@@ -446,14 +505,9 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
         // revalidateInvoiceSurfaces, which already refreshes
         // /pipeline, /dashboard, /finances, /candidates/[id],
         // /clients/[id], and the invoice detail page in lockstep.
-        // props.id is guaranteed non-null here by the early return at
-        // line 274 above.
-        onSent: () => {
-          void markInvoiceSentAction(props.id!).then((r) => {
-            if (r.ok) router.refresh();
-            else setError(r.error);
-          });
-        },
+        onSent: onInvoiceEmailSent,
+        onScheduled: () => router.refresh(),
+        onDraftSaved: () => router.refresh(),
       });
     } finally {
       setDraftingEmail(false);
@@ -638,7 +692,11 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
                 onClick={handleEmailDraft}
                 className="rounded-md border border-blue-500 bg-transparent px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-blue-600 shadow-sm hover:bg-blue-500/10 disabled:opacity-60 dark:text-blue-400"
               >
-                {draftingEmail ? "Opening…" : "Draft Email"}
+                {draftingEmail
+                  ? "Opening…"
+                  : props.emailDraft
+                    ? "Open Email Draft"
+                    : "Draft Email"}
               </button>
             ) : null}
             {isNew ? (

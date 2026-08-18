@@ -74,6 +74,7 @@ model User {
   pushSubscriptions     PushSubscription[]
   notes                 Note[]
   scheduledEmails       ScheduledEmail[]
+  invoiceEmailDrafts    InvoiceEmailDraft[]
   fitnessExercises      Exercise[]
   workoutDays           WorkoutDay[]
   workouts              Workout[]
@@ -1185,6 +1186,7 @@ model Organization {
   triggerRules         TriggerRule[]
   notes                Note[]
   scheduledEmails      ScheduledEmail[]
+  invoiceEmailDrafts   InvoiceEmailDraft[]
   fitnessExercises     Exercise[]
   workoutDays          WorkoutDay[]
   workouts             Workout[]
@@ -1305,6 +1307,7 @@ model Invoice {
   // Cleared automatically when the invoice is marked SENT or PAID so it
   // joins the normal lists from that point on.
   isFuture        Boolean       @default(false)
+  emailDrafts     InvoiceEmailDraft[]
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -1312,6 +1315,39 @@ model Invoice {
   @@index([organizationId])
   @@index([clientId])
   @@index([organizationId, isFuture])
+}
+
+// Editable Gmail draft payloads launched from an Invoice detail page.
+// Gmail remains the visible Drafts folder, but this row is the Ace-side
+// source the invoice page reopens so edits made in /mail Drafts survive
+// when the recruiter comes back through /invoices.
+model InvoiceEmailDraft {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  invoiceId      String
+  to             String[] @default([])
+  cc             String[] @default([])
+  bcc            String[] @default([])
+  subject        String
+  bodyHtml       String   @db.Text
+  bodyText       String   @db.Text
+  threadId       String?
+  sendAsEmail    String?
+  attachments    Json?
+  gmailDraftId   String?
+  gmailThreadId  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([invoiceId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([gmailDraftId])
 }
 
 enum InvoiceStatus {

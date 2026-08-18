@@ -34,6 +34,23 @@ export async function DELETE(
 
   try {
     await deleteGmailDraft(user.id, draftId);
+    await Promise.all([
+      prisma.invoiceEmailDraft.deleteMany({
+        where: { userId: user.id, gmailDraftId: draftId },
+      }),
+      prisma.scheduledEmail.updateMany({
+        where: {
+          userId: user.id,
+          gmailDraftId: draftId,
+          status: "SCHEDULED",
+        },
+        data: {
+          status: "CANCELED",
+          gmailDraftId: null,
+          lastError: null,
+        },
+      }),
+    ]);
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Delete Draft failed";

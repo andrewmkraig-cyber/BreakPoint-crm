@@ -63,6 +63,7 @@ export default async function NewInvoicePage() {
         billingArEmail={billing.arEmail}
         billingDisplayAddress={`${billing.addressLine1} · ${billing.city}, ${billing.state} ${billing.zip}`}
         sendFromAlias={null}
+        emailDraft={null}
       />
     </div>
   );

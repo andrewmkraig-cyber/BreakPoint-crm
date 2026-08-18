@@ -37,6 +37,8 @@ export type OpenComposerInput = {
   defaultBody?: string;
   defaultAttachments?: AttachmentDraft[];
   defaultDraftId?: string | null;
+  invoiceId?: string | null;
+  scheduledEmailId?: string | null;
   defaultSubject?: string;
   threadId?: string;
   templates: ActiveTemplateSummary[];
@@ -70,6 +72,16 @@ export type OpenComposerInput = {
   // Called after a successful send. The composer auto-closes on send,
   // so this is for parent-side bookkeeping (e.g., refreshing a list).
   onSent?: () => void;
+  // Called after a successful Send Later. Defaults to onSent when
+  // omitted so existing non-invoice composers keep their behavior.
+  onScheduled?: () => void;
+  // Called after Save Draft persists to Gmail/Ace. Used by invoice
+  // launchers to refresh their server-loaded saved-draft payload.
+  onDraftSaved?: (result: {
+    draftId: string | null;
+    invoiceEmailDraftId?: string | null;
+    scheduledEmailId?: string | null;
+  }) => void;
 };
 
 type Spec = OpenComposerInput & { id: string };
@@ -145,6 +157,8 @@ export function ComposerManagerProvider({ children }: { children: ReactNode }) {
           defaultBody={s.defaultBody}
           defaultAttachments={s.defaultAttachments}
           defaultDraftId={s.defaultDraftId}
+          invoiceId={s.invoiceId}
+          scheduledEmailId={s.scheduledEmailId}
           threadId={s.threadId}
           templates={s.templates}
           mergeContext={s.mergeContext}
@@ -158,6 +172,11 @@ export function ComposerManagerProvider({ children }: { children: ReactNode }) {
             s.onSent?.();
             close(s.id);
           }}
+          onScheduled={() => {
+            (s.onScheduled ?? s.onSent)?.();
+            close(s.id);
+          }}
+          onDraftSaved={s.onDraftSaved}
         />
       ))}
     </ComposerManagerContext.Provider>

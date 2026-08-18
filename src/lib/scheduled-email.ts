@@ -10,6 +10,8 @@ import {
   type GmailAttachment,
 } from "@/lib/gmail";
 import { logActivity } from "@/lib/activity";
+import { invoiceIdFromScheduledEmailSource } from "@/lib/invoice-email-drafts";
+import { markInvoiceSent } from "@/lib/invoices";
 import type { ScheduledEmail } from "@prisma/client";
 
 // Shared plumbing for the "Send Later" scheduler. Both the HTTP route
@@ -268,6 +270,15 @@ export async function fireScheduledEmail(row: ScheduledEmail): Promise<FireResul
         });
       } catch {
         // Audit write is observability; never fail the send over it.
+      }
+    }
+
+    const invoiceId = invoiceIdFromScheduledEmailSource(row.source);
+    if (invoiceId) {
+      try {
+        await markInvoiceSent(invoiceId, row.organizationId, row.userId);
+      } catch (e) {
+        console.warn("[scheduled-send] invoice mark-sent failed", e);
       }
     }
 
