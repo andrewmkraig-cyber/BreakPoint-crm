@@ -136,6 +136,7 @@ function toLedgerRows(rows: PlacementsDashboardRow[]): LedgerRow[] {
     feeAmount: r.feeAmount,
     feeTotal: r.feeTotal,
     feePercentage: r.feePercentage,
+    minFee: r.minFee,
     placementNotes: r.placementNotes,
     acceptedSalary: r.baseSalary,
     acceptedCompensationType: r.acceptedCompensationType,

@@ -35,6 +35,7 @@ export type LedgerRow = {
   expectedStartDateIso: string | null;
   feeAmount: number | null;
   feeTotal: number | null;
+  minFee: number | null;
   feePercentage: number | null;
   placementNotes: string | null;
   acceptedSalary: number | null;
@@ -140,6 +141,7 @@ function toDrawerContext(row: LedgerRow): PlacementDrawerContext {
     acceptedCompensationType: row.acceptedCompensationType,
     feeTotal: row.feeTotal,
     feePercentage: row.feePercentage,
+    minFee: row.minFee,
     placementNotes: row.placementNotes,
     candidateSource: row.candidateSource,
     cityOverride: row.cityOverride,

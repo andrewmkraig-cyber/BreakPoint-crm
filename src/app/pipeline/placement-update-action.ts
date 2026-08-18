@@ -22,6 +22,9 @@ export type UpdatePlacementInput = {
   acceptedCompensationType?: PlacementCompensationType | null;
   feeTotal: number | null;
   feePercentage: number | null;
+  // Contract floor under the calculated fee. Undefined leaves the column
+  // untouched so callers that don't edit it can't wipe it.
+  minFee?: number | null;
   placementNotes: string | null;
   candidateSource: string | null;
   // Free-form per-placement city override. Null clears the override
@@ -93,6 +96,7 @@ export async function updatePlacement(
             : normalizePlacementCompensationType(input.acceptedCompensationType),
         feeTotal: input.feeTotal,
         feePercentage: input.feePercentage,
+        minFee: input.minFee,
         placementNotes: trimmedNotes ? trimmedNotes : null,
         candidateSource: trimmedSource ? trimmedSource : null,
         cityOverride: trimmedCity ? trimmedCity : null,

@@ -13,7 +13,10 @@ import { cn } from "@/lib/utils";
 import { updatePlacement } from "@/app/pipeline/placement-update-action";
 import { LEAD_SOURCES } from "@/lib/lead-sources";
 import {
+  formatPlacementCompensation,
   normalizePlacementCompensationType,
+  resolvePlacementFee,
+  seedFlatFeeOverride,
   type PlacementCompensationType,
 } from "@/lib/placement-compensation";
 
@@ -31,6 +34,7 @@ export type PlacementDrawerContext = {
   acceptedCompensationType: PlacementCompensationType | null;
   feeTotal: number | null;
   feePercentage: number | null;
+  minFee: number | null;
   placementNotes: string | null;
   candidateSource: string | null;
   // Placement.cityOverride. Empty = fall back to client.location.city
@@ -100,6 +104,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
   const [salaryType, setSalaryType] = useState<PlacementCompensationType>("salary");
   const [feeTotal, setFeeTotal] = useState("");
   const [feePct, setFeePct] = useState("");
+  const [minFee, setMinFee] = useState("");
   const [notes, setNotes] = useState("");
   const [source, setSource] = useState("");
   const [city, setCity] = useState("");
@@ -125,8 +130,22 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
     setStartDate(isoToDateInput(context.expectedStartDate));
     setSalary(context.acceptedSalary != null ? String(context.acceptedSalary) : "");
     setSalaryType(normalizePlacementCompensationType(context.acceptedCompensationType));
-    setFeeTotal(context.feeTotal != null ? String(context.feeTotal) : "");
+    // The fee box is a flat OVERRIDE, so it seeds empty whenever the fee can
+    // be calculated from compensation + fee % — pre-filling it from the saved
+    // feeTotal silently froze the fee, and a later comp change wouldn't move
+    // it. seedFlatFeeOverride only pre-fills when nothing is computable.
+    setFeeTotal(
+      seedFlatFeeOverride({
+        amount: context.acceptedSalary,
+        compensationType: normalizePlacementCompensationType(
+          context.acceptedCompensationType,
+        ),
+        feePercentage: context.feePercentage,
+        feeTotal: context.feeTotal,
+      }),
+    );
     setFeePct(context.feePercentage != null ? String(context.feePercentage) : "");
+    setMinFee(context.minFee != null ? String(context.minFee) : "");
     setNotes(context.placementNotes ?? "");
     setSource(context.candidateSource ?? "");
     setCity(context.cityOverride ?? "");
@@ -151,6 +170,18 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
     // across different placements.
     setTermsOpen(false);
   }, [context, open]);
+
+  // Live fee resolution, shared with the candidate-profile Offer / Record
+  // Placement dialogs so both surfaces agree on what a placement's fee is.
+  // The drawer saves `fee.feeTotal`, never the raw override box.
+  const salaryNum = parseNumberOrNull(salary);
+  const fee = resolvePlacementFee({
+    amount: salaryNum,
+    compensationType: salaryType,
+    feePercentage: parseNumberOrNull(feePct),
+    minFee: parseNumberOrNull(minFee),
+    overrideAmount: parseNumberOrNull(feeTotal),
+  });
 
   function handleSave() {
     if (!context) return;
@@ -194,8 +225,11 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
         expectedStartDate: startDate.trim() ? startDate.trim() : null,
         acceptedSalary: parseNumberOrNull(salary),
         acceptedCompensationType: salaryType,
-        feeTotal: parseNumberOrNull(feeTotal),
+        // Resolved fee, not the override box: an empty box means "calculate
+        // it", which must not persist as a null fee.
+        feeTotal: fee.feeTotal > 0 ? fee.feeTotal : null,
         feePercentage: parseNumberOrNull(feePct),
+        minFee: parseNumberOrNull(minFee),
         placementNotes: notes,
         candidateSource: source.trim() ? source.trim() : null,
         cityOverride: city.trim() ? city.trim() : null,
@@ -315,18 +349,6 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
               </div>
             </div>
             <div>
-              <FieldLabel>Fee amount (USD)</FieldLabel>
-              <Input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                value={feeTotal}
-                onChange={(e) => setFeeTotal(e.target.value)}
-                frameClassName={FIELD_FRAME_CLS}
-                className={FIELD_TEXT_CLS}
-              />
-            </div>
-            <div>
               <FieldLabel>Fee percentage (%)</FieldLabel>
               <Input
                 type="number"
@@ -338,6 +360,66 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
                 frameClassName={FIELD_FRAME_CLS}
                 className={FIELD_TEXT_CLS}
               />
+            </div>
+            <div>
+              <FieldLabel>Min fee (USD)</FieldLabel>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                value={minFee}
+                onChange={(e) => setMinFee(e.target.value)}
+                frameClassName={FIELD_FRAME_CLS}
+                className={FIELD_TEXT_CLS}
+              />
+            </div>
+            <div>
+              <FieldLabel>Fee amount (flat, overrides calc)</FieldLabel>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                value={feeTotal}
+                onChange={(e) => setFeeTotal(e.target.value)}
+                frameClassName={FIELD_FRAME_CLS}
+                className={FIELD_TEXT_CLS}
+              />
+            </div>
+          </div>
+
+          {/* What Save will actually write. Empty flat box = calculated, so
+              the number has to be visible before saving rather than implied. */}
+          <div className="flex items-baseline justify-between gap-3 rounded-lg border border-court-border-soft bg-court-surface-subtle px-3 py-2">
+            <div className="min-w-0">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                {fee.usedOverride
+                  ? "Fee (flat override)"
+                  : fee.usedMinFee
+                    ? "Fee (min fee)"
+                    : "Fee (calculated)"}
+              </div>
+              <div className="mt-0.5 truncate text-[11px] text-court-fg-muted">
+                {fee.usedOverride
+                  ? "Flat-fee amount; compensation × fee % ignored."
+                  : fee.basisAmount != null && parseNumberOrNull(feePct)
+                    ? `${formatPlacementCompensation(fee.basisAmount, "USD", "salary")}${
+                        salaryType === "hourly" ? " annualized" : ""
+                      } × ${feePct}%${
+                        fee.usedMinFee
+                          ? ` (below ${formatPlacementCompensation(
+                              parseNumberOrNull(minFee),
+                              "USD",
+                              "salary",
+                            )} min fee)`
+                          : ""
+                      }`
+                    : "Enter compensation + fee %, or a flat amount."}
+              </div>
+            </div>
+            <div className="shrink-0 font-semibold tabular-nums text-court-fg">
+              {fee.feeTotal > 0
+                ? formatPlacementCompensation(fee.feeTotal, "USD", "salary")
+                : "—"}
             </div>
           </div>
 

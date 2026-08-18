@@ -79,6 +79,7 @@ export type PlacementsDashboardRow = {
   // Raw placement-side fields for the edit drawer (separate from
   // feeAmount, which prefers the invoice's amount when present).
   feeTotal: number | null;
+  minFee: number | null;
   feePercentage: number | null;
   placementNotes: string | null;
   // High-level bucket the placement maps to for the By-Sourcing card.
@@ -300,6 +301,7 @@ export async function getPlacementsDashboardData(
         expectedStartDate: true,
         offerTitle: true,
         feeTotal: true,
+        minFee: true,
         feePercentage: true,
         placementNotes: true,
         acceptedSalary: true,
@@ -438,6 +440,7 @@ export async function getPlacementsDashboardData(
         now,
       }),
       feeTotal: p.feeTotal ?? null,
+      minFee: p.minFee ?? null,
       feePercentage: p.feePercentage ?? null,
       placementNotes: p.placementNotes ?? null,
       sourceChannel: deriveSourceChannel(p.candidateSource ?? p.source),

@@ -105,6 +105,10 @@ export type PlacementDetails = {
   acceptedCurrency: string | null;
   feePercentage: number | null;
   feeTotal: number | null;
+  // Contract floor under the calculated fee. Threaded through so the Edit
+  // Placement drawer can resolve the fee the same way the candidate-profile
+  // dialogs do (override > min-vs-calc > calc).
+  minFee: number | null;
   billingContactName: string | null;
   billingContactEmail: string | null;
   expectedStartDate: string | null;
@@ -643,6 +647,7 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
       acceptedCompensationType: row.placement.acceptedCompensationType,
       feeTotal: row.placement.feeTotal,
       feePercentage: row.placement.feePercentage,
+      minFee: row.placement.minFee,
       placementNotes: row.placement.placementNotes,
       candidateSource: row.placement.candidateSource,
       cityOverride: row.placement.cityOverride,

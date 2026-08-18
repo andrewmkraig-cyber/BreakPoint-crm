@@ -90,6 +90,8 @@ import {
   formatPlacementCompensation,
   normalizePlacementCompensationType,
   placementFeeBasisAmount,
+  resolvePlacementFee,
+  seedFlatFeeOverride,
   type PlacementCompensationType,
 } from "@/lib/placement-compensation";
 import {
@@ -1097,7 +1099,7 @@ function OfferDialog({
     snap?.minFee != null ? String(snap.minFee) : "",
   );
   const [feeAmountOverride, setFeeAmountOverride] = useState(
-    seedFlatFeeOverrideFromSnapshot({
+    seedFlatFeeOverride({
       amount: snap?.offerSalary ?? null,
       compensationType,
       feePercentage: seedFeePct,
@@ -1111,13 +1113,21 @@ function OfferDialog({
   const pctNum = parseFloat(feePct) || 0;
   const minFeeNum = parseAmount(minFee);
   const overrideNum = parseAmount(feeAmountOverride);
-  const feeBasisAmount = placementFeeBasisAmount(salaryNum, compensationType);
-  const rawFee = feeBasisAmount && pctNum ? Math.round(feeBasisAmount * (pctNum / 100)) : 0;
-  // Fee resolution priority matches the RF OfferDialog: override > min-vs-calc > calc.
-  const calcFee = minFeeNum && rawFee < minFeeNum ? minFeeNum : rawFee;
-  const feeTotal = overrideNum != null ? overrideNum : calcFee;
-  const usedMinFee = overrideNum == null && minFeeNum != null && rawFee < minFeeNum;
-  const usedOverride = overrideNum != null;
+  // Fee resolution priority matches the RF OfferDialog: override > min-vs-calc
+  // > calc. Shared with the pipeline Edit Placement drawer.
+  const {
+    feeTotal,
+    rawFee,
+    basisAmount: feeBasisAmount,
+    usedMinFee,
+    usedOverride,
+  } = resolvePlacementFee({
+    amount: salaryNum,
+    compensationType,
+    feePercentage: pctNum,
+    minFee: minFeeNum,
+    overrideAmount: overrideNum,
+  });
 
   function onSave() {
     setErr(null);
@@ -1297,7 +1307,7 @@ function LocalPlacementDialog({
     snap?.minFee != null ? String(snap.minFee) : "",
   );
   const [feeAmountOverride, setFeeAmountOverride] = useState(
-    seedFlatFeeOverrideFromSnapshot({
+    seedFlatFeeOverride({
       amount:
         snap?.acceptedSalary != null
           ? snap.acceptedSalary
@@ -1387,13 +1397,20 @@ function LocalPlacementDialog({
   const pctNum = parseFloat(feePct) || 0;
   const minFeeNum = parseAmount(minFee);
   const overrideNum = parseAmount(feeAmountOverride);
-  const feeBasisAmount = placementFeeBasisAmount(salaryNum, acceptedCompensationType);
-  const rawFee = feeBasisAmount && pctNum ? Math.round(feeBasisAmount * (pctNum / 100)) : 0;
-  const calcFee = minFeeNum && rawFee < minFeeNum ? minFeeNum : rawFee;
-  const feeTotal = overrideNum != null ? overrideNum : calcFee;
+  const {
+    feeTotal,
+    rawFee,
+    basisAmount: feeBasisAmount,
+    usedMinFee,
+    usedOverride,
+  } = resolvePlacementFee({
+    amount: salaryNum,
+    compensationType: acceptedCompensationType,
+    feePercentage: pctNum,
+    minFee: minFeeNum,
+    overrideAmount: overrideNum,
+  });
   const guaranteeDaysNum = parseAmount(guaranteeDays);
-  const usedMinFee = overrideNum == null && minFeeNum != null && rawFee < minFeeNum;
-  const usedOverride = overrideNum != null;
   const editing = job.stage === "pending_start" || job.stage === "hired";
 
   function onSave(origin?: CelebrationOrigin) {
@@ -2077,30 +2094,6 @@ function parseCompensationAmount(raw: string): number | null {
   const num = Number(cleaned);
   if (!Number.isFinite(num)) return null;
   return num;
-}
-
-function seedFlatFeeOverrideFromSnapshot({
-  amount,
-  compensationType,
-  feePercentage,
-  feeTotal,
-}: {
-  amount: number | null;
-  compensationType: PlacementCompensationType;
-  feePercentage: number | null;
-  feeTotal: number | null;
-}): string {
-  if (feeTotal == null || feeTotal <= 0) return "";
-
-  // `feeTotal` is the saved forecast/final fee for dashboards and invoices; it
-  // is not proof that the recruiter typed a flat override. When the row has a
-  // valid salary + fee %, let the dialog recalculate from the current amount.
-  const basisAmount = placementFeeBasisAmount(amount, compensationType);
-  if (basisAmount != null && feePercentage != null && feePercentage > 0) {
-    return "";
-  }
-
-  return String(feeTotal);
 }
 
 function formatMoney(amount: number, currency: string): string {

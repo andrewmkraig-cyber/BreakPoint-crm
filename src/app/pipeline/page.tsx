@@ -1187,6 +1187,7 @@ function toPlacementDetails(
     acceptedCurrency: p.acceptedCurrency,
     feePercentage: p.feePercentage,
     feeTotal: p.feeTotal,
+    minFee: p.minFee,
     billingContactName: p.billingContactName,
     billingContactEmail: p.billingContactEmail,
     expectedStartDate: p.expectedStartDate?.toISOString() ?? null,
