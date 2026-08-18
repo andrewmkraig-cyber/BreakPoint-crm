@@ -1097,7 +1097,12 @@ function OfferDialog({
     snap?.minFee != null ? String(snap.minFee) : "",
   );
   const [feeAmountOverride, setFeeAmountOverride] = useState(
-    snap?.feeTotal != null ? String(snap.feeTotal) : "",
+    seedFlatFeeOverrideFromSnapshot({
+      amount: snap?.offerSalary ?? null,
+      compensationType,
+      feePercentage: seedFeePct,
+      feeTotal: snap?.feeTotal ?? null,
+    }),
   );
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
@@ -1292,7 +1297,17 @@ function LocalPlacementDialog({
     snap?.minFee != null ? String(snap.minFee) : "",
   );
   const [feeAmountOverride, setFeeAmountOverride] = useState(
-    snap?.feeTotal != null ? String(snap.feeTotal) : "",
+    seedFlatFeeOverrideFromSnapshot({
+      amount:
+        snap?.acceptedSalary != null
+          ? snap.acceptedSalary
+          : snap?.offerSalary != null
+            ? snap.offerSalary
+            : null,
+      compensationType: acceptedCompensationType,
+      feePercentage: seedFeePct,
+      feeTotal: snap?.feeTotal ?? null,
+    }),
   );
   const [guaranteeDays, setGuaranteeDays] = useState(
     snap?.guaranteePeriodDays != null ? String(snap.guaranteePeriodDays) : "",
@@ -2062,6 +2077,30 @@ function parseCompensationAmount(raw: string): number | null {
   const num = Number(cleaned);
   if (!Number.isFinite(num)) return null;
   return num;
+}
+
+function seedFlatFeeOverrideFromSnapshot({
+  amount,
+  compensationType,
+  feePercentage,
+  feeTotal,
+}: {
+  amount: number | null;
+  compensationType: PlacementCompensationType;
+  feePercentage: number | null;
+  feeTotal: number | null;
+}): string {
+  if (feeTotal == null || feeTotal <= 0) return "";
+
+  // `feeTotal` is the saved forecast/final fee for dashboards and invoices; it
+  // is not proof that the recruiter typed a flat override. When the row has a
+  // valid salary + fee %, let the dialog recalculate from the current amount.
+  const basisAmount = placementFeeBasisAmount(amount, compensationType);
+  if (basisAmount != null && feePercentage != null && feePercentage > 0) {
+    return "";
+  }
+
+  return String(feeTotal);
 }
 
 function formatMoney(amount: number, currency: string): string {
