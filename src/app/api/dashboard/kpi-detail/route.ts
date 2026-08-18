@@ -70,11 +70,14 @@ function usd(n: number | null | undefined): string {
   return `$${Math.round(n).toLocaleString("en-US")}`;
 }
 
-// "Jun 12, 2026" — anchored to Eastern so a UTC server doesn't shift the day.
+// "Jun 12, 2026". Its only caller passes expectedStartDate, a date-only column
+// stored at midnight UTC — so this reads the day in UTC. Anchoring to Eastern
+// (what this did before) shifted midnight UTC BACK to the previous evening and
+// printed the day before the recruiter's chosen start date.
 function shortDate(d: Date | null | undefined): string {
   if (!d) return "—";
   return new Intl.DateTimeFormat("en-US", {
-    timeZone: ET,
+    timeZone: "UTC",
     month: "short",
     day: "numeric",
     year: "numeric",

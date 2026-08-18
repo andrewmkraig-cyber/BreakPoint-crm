@@ -27,7 +27,7 @@ import { fireTriggerAndLog } from "@/lib/trigger-fire";
 import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
 import { extractCandidateFields } from "@/lib/candidate-fields";
 import { formatExpectedCompensation } from "@/lib/candidate-compensation";
-import { formatLocation } from "@/lib/utils";
+import { formatDate, formatLocation } from "@/lib/utils";
 import { formatCompensation, type RFJob } from "@/lib/rf-payload-shapes";
 import { createInvoiceForPlacement, resolvePlacementInvoiceContacts } from "@/lib/invoices";
 import { createDraftInvoiceAction } from "@/app/invoices/actions";
@@ -286,9 +286,10 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
     const offerAmount = input.salary
       ? formatPlacementCompensation(input.salary, input.currency || "USD", compensationType)
       : "";
-    const startDateLabel = input.startDate
-      ? new Date(input.startDate).toLocaleDateString()
-      : "";
+    // formatDate keeps the date-only start on its own calendar day; a raw
+    // toLocaleDateString printed the day before whenever the runtime's zone
+    // was behind UTC (local dev, or any non-UTC deploy).
+    const startDateLabel = input.startDate ? formatDate(input.startDate) : "";
     await fireTriggerAndLog({
       trigger: OFFER_EXTENDED_TRIGGER,
       ref: {
@@ -789,7 +790,7 @@ export async function confirmStart(
     });
     if (placementForFire) {
       const startDateLabel = placementForFire.expectedStartDate
-        ? placementForFire.expectedStartDate.toLocaleDateString()
+        ? formatDate(placementForFire.expectedStartDate)
         : "";
       await fireTriggerAndLog({
         trigger: CANDIDATE_HIRED_WELCOME_TRIGGER,
@@ -933,11 +934,11 @@ export async function confirmStart(
           const dueIso = new Date(
             Date.UTC(baseY, baseM, baseD + spec.days),
           ).toISOString();
-          const dueLabel = new Date(dueIso).toLocaleDateString("en-US", {
+          const dueLabel = formatDate(dueIso, {
             month: "short",
             day: "numeric",
             year: "numeric",
-          });
+          }, "en-US");
           const futureNote = `Future - Installment ${spec.n} of ${count} - do not send until ${dueLabel} - custom payment agreement`;
           const existingFuture = await prisma.invoice.findFirst({
             where: {

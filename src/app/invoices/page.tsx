@@ -11,6 +11,7 @@ import {
   listInvoices,
   type InvoiceListFilter,
 } from "@/lib/invoices";
+import { formatDate as formatDateLabel } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -50,9 +51,11 @@ function formatUsdDecimal(amount: unknown): string {
   });
 }
 
+// Invoice startDate / dueDate are date-only columns stored at midnight UTC, so
+// this delegates to the shared formatDate — a raw toLocaleDateString rendered
+// them a day early for anyone in a behind-UTC zone.
 function formatDate(d: Date | null): string {
-  if (!d) return "—";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return formatDateLabel(d, { month: "short", day: "numeric", year: "numeric" }, "en-US");
 }
 
 // Render an em-dash when a string field is null, undefined, or whitespace-only

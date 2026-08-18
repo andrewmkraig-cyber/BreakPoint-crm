@@ -34,7 +34,12 @@ export function resolveGuaranteeEnd(args: {
   if (effectiveDays <= 0) return null;
   const start = new Date(startDateIso);
   if (!Number.isFinite(start.getTime())) return null;
+  // UTC day math, not local. startDateIso is a date-only value stored at
+  // midnight UTC, so getDate()/setDate() in a behind-UTC zone (ET) read the
+  // PREVIOUS day and pushed the resolved end a day early — an 8/31 start
+  // resolved to 11/28 instead of 11/29. getUTCDate()/setUTCDate() keeps the
+  // result on the same midnight-UTC grid the renderer formats in.
   const end = new Date(start);
-  end.setDate(end.getDate() + effectiveDays);
+  end.setUTCDate(end.getUTCDate() + effectiveDays);
   return end.toISOString();
 }

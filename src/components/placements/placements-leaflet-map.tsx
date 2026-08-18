@@ -19,6 +19,7 @@ import {
   formatMoneyShort,
   type CityAggregate,
 } from "@/lib/placements-map-geo";
+import { formatDate } from "@/lib/utils";
 
 // When every placement coordinate falls within this much lat/lng span,
 // we zoom to fit the cluster instead of showing the full US. Two degrees
@@ -62,13 +63,10 @@ function readSavedView(): SavedView | null {
 // (no resolved start date) reads as "Date TBD" — no em dash in the copy.
 function formatPlacementDate(iso: string | null): string {
   if (!iso) return "Date TBD";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "Date TBD";
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  // formatDate keeps the date-only start (midnight UTC) on its own day
+  // instead of rolling back to the evening before in ET.
+  const label = formatDate(iso, { month: "short", day: "numeric", year: "numeric" }, "en-US");
+  return label === "—" ? "Date TBD" : label;
 }
 
 type Props = {

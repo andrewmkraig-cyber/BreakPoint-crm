@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ExternalLink, Loader2, X } from "lucide-react";
 
 import { formatMoneyShort } from "@/lib/placements-map-geo";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import type {
   DrilldownResponse,
   DrilldownRow,
@@ -233,13 +233,15 @@ function DrilldownRowItem({
   row: DrilldownRow;
   onNavigate: () => void;
 }) {
-  const startDateLabel = row.startDateIso
-    ? new Date(row.startDateIso).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
-    : "—";
+  // formatDate, not a raw toLocaleDateString: startDateIso is expectedStartDate
+  // (date-only, midnight UTC → must render in UTC or ET shows the day before)
+  // but falls back to placedAt (a real click-time instant → renders local).
+  // formatDate picks the right zone per value.
+  const startDateLabel = formatDate(row.startDateIso, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }, "en-US");
   const fee =
     row.feeAmount != null && row.feeAmount > 0
       ? formatMoneyShort(row.feeAmount)

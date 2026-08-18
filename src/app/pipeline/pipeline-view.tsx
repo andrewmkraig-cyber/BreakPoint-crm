@@ -1287,7 +1287,10 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
           treatment as the Hired Start Date and the Last Action cell so
           every date column reads identically (no mismatched sizes/weights). */}
       <td className="px-3 py-2 align-top text-center text-sm text-court-fg-muted">
-        {startDate ? startDate.toLocaleDateString() : <span className="text-court-fg-muted">—</span>}
+        {/* formatDate (not toLocaleDateString) so the UTC-midnight date-only
+            value renders as the day the recruiter picked — this cell used to
+            read 8/30 in ET for an 08/31 expected start. */}
+        {startDate ? formatDate(startDate) : <span className="text-court-fg-muted">—</span>}
       </td>
       <td className="px-3 py-2 align-top text-center">
         {daysUntil == null ? (

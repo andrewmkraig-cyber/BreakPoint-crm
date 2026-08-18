@@ -5,11 +5,40 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatDate(value: string | Date | null | undefined): string {
+// Our date-ONLY columns (Placement.expectedStartDate / customGuaranteeDate,
+// Invoice.startDate / dueDate) are stored as midnight UTC of the chosen day:
+// the edit drawers post a "YYYY-MM-DD" string and the server's
+// `new Date("2026-08-31")` lands on 2026-08-31T00:00:00Z. Rendering that with
+// a plain toLocaleDateString() in a behind-UTC zone (ET) prints the PREVIOUS
+// calendar day — /pipeline read 8/30 for a placement whose edit drawer, which
+// slices the ISO string in UTC, correctly read 08/31.
+//
+// True instants (placedAt, lastActionAt, createdAt) must keep rendering in
+// local time, and some call sites mix the two — the dashboard drilldown falls
+// back to Placement.placedAt when there's no expected start. So we switch on
+// the value itself: an exact UTC midnight is a date-only value and formats in
+// UTC; anything carrying a time-of-day is a real timestamp and formats local.
+function isUtcMidnight(d: Date): boolean {
+  return (
+    d.getUTCHours() === 0 &&
+    d.getUTCMinutes() === 0 &&
+    d.getUTCSeconds() === 0 &&
+    d.getUTCMilliseconds() === 0
+  );
+}
+
+export function formatDate(
+  value: string | Date | null | undefined,
+  opts?: Intl.DateTimeFormatOptions,
+  locale?: string,
+): string {
   if (!value) return "—";
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString();
+  return d.toLocaleDateString(locale, {
+    ...opts,
+    ...(isUtcMidnight(d) ? { timeZone: "UTC" } : {}),
+  });
 }
 
 // US state name → USPS abbreviation. Kept small on purpose — maps the full

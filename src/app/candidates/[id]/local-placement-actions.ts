@@ -40,6 +40,7 @@ import {
 } from "@/lib/submittal-format";
 import { wrapEmailHtml } from "@/lib/email-html";
 import { fireTriggerAndLog } from "@/lib/trigger-fire";
+import { formatDate } from "@/lib/utils";
 import {
   CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
   CANDIDATE_CONFIRMATION_TRIGGER,
@@ -1847,7 +1848,7 @@ export async function recordLocalPlacement(
     // tail. The fire helper is identity-agnostic — pass both ids and it
     // picks the right channel.
     if (placement.candidateId) {
-      const startDateLabel = new Date(input.expectedStartDate).toLocaleDateString();
+      const startDateLabel = formatDate(input.expectedStartDate);
       await fireTriggerAndLog({
         trigger: OFFER_ACCEPTANCE_TRIGGER,
         ref: {
