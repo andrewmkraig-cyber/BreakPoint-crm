@@ -50,7 +50,9 @@ function defaultDock(): {
       size: { w: DEFAULT_W, h: DEFAULT_H },
     };
   }
-  const viewportWidth = Math.floor(window.visualViewport?.width ?? window.innerWidth);
+  const viewportWidth = Math.floor(
+    window.visualViewport?.width ?? window.innerWidth,
+  );
   const viewportHeight = Math.floor(
     window.visualViewport?.height ?? window.innerHeight,
   );
@@ -59,10 +61,7 @@ function defaultDock(): {
     ? Math.max(280, viewportWidth - MOBILE_GAP * 2)
     : DEFAULT_W;
   const h = mobile
-    ? Math.max(
-        MOBILE_MIN_H,
-        Math.min(MIN_H, viewportHeight - MOBILE_GAP * 2),
-      )
+    ? Math.max(MOBILE_MIN_H, viewportHeight - MOBILE_GAP * 2)
     : Math.min(DEFAULT_H, viewportHeight - EDGE_GAP * 2);
   return {
     position: mobile

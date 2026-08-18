@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
+import { useFitnessPanel } from "@/lib/fitness-panel-context";
 
 const REFRESH_THROTTLE_MS = 10_000;
 const MOBILE_REFRESH_DELAY_MS = 900;
@@ -44,12 +45,14 @@ async function canReachAce(): Promise<boolean> {
 // endpoint before kicking Next's raw RSC refresh fetch.
 export function DashboardAutoRefresh() {
   const router = useRouter();
+  const { open: fitnessOpen, minimized: fitnessMinimized } = useFitnessPanel();
   const lastRefresh = useRef(0);
   const pendingTimer = useRef<number | null>(null);
 
   useEffect(() => {
     const refresh = () => {
       if (document.visibilityState !== "visible") return;
+      if (fitnessOpen && !fitnessMinimized) return;
       if ("onLine" in navigator && !navigator.onLine) return;
       const now = Date.now();
       if (now - lastRefresh.current < REFRESH_THROTTLE_MS) return;
@@ -81,7 +84,7 @@ export function DashboardAutoRefresh() {
       window.removeEventListener("online", refresh);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, [router]);
+  }, [fitnessMinimized, fitnessOpen, router]);
 
   return null;
 }

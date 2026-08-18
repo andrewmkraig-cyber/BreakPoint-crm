@@ -27,7 +27,7 @@ try {
 }
 
 assert(
-  source.includes('const CACHE_NAME = "ace-shell-v15";'),
+  source.includes('const CACHE_NAME = "ace-shell-v16";'),
   "service worker version is bumped for activation",
 );
 
