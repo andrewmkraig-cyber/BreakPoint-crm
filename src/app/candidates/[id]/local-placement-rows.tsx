@@ -89,7 +89,6 @@ import {
   HOURS_PER_YEAR_FOR_HOURLY_PLACEMENT,
   formatPlacementCompensation,
   normalizePlacementCompensationType,
-  placementFeeBasisAmount,
   resolvePlacementFee,
   seedFlatFeeOverride,
   type PlacementCompensationType,
