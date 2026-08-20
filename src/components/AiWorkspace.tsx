@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
-import { Check, Copy, FileText, Image as ImageIcon, Loader2, Mail, PhoneCall, Send, Trash2, X } from "lucide-react";
+import { CalendarCheck, Check, ChevronDown, Copy, FileText, Image as ImageIcon, Loader2, Mail, PhoneCall, Send, Trash2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
@@ -43,6 +43,36 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+};
+
+type InterviewPrepContactOption = {
+  key: string;
+  name: string;
+  title: string | null;
+  email: string | null;
+  linkedin: string | null;
+  source: "scheduled" | "client_contact";
+  defaultSelected: boolean;
+};
+
+type InterviewPrepInterview = {
+  id: string;
+  label: string;
+  scheduledAt: string;
+  clientName: string | null;
+  jobTitle: string | null;
+  contactOptions: InterviewPrepContactOption[];
+  defaultContactKeys: string[];
+};
+
+type InterviewPrepData = {
+  candidate: {
+    id: string;
+    name: string;
+    firstName: string;
+    email: string | null;
+  };
+  interviews: InterviewPrepInterview[];
 };
 
 type ImageAttachmentMediaType = "image/png" | "image/jpeg" | "image/gif" | "image/webp";
@@ -182,7 +212,14 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
   const [attachments, setAttachments] = useState<WorkspaceAttachment[]>([]);
   const [dragging, setDragging] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [interviewPrepOpen, setInterviewPrepOpen] = useState(false);
+  const [interviewPrepLoading, setInterviewPrepLoading] = useState(false);
+  const [interviewPrepGenerating, setInterviewPrepGenerating] = useState(false);
+  const [interviewPrepData, setInterviewPrepData] = useState<InterviewPrepData | null>(null);
+  const [interviewPrepInterviewId, setInterviewPrepInterviewId] = useState("");
+  const [interviewPrepContactKeys, setInterviewPrepContactKeys] = useState<string[]>([]);
 
+  const composer = useComposerManager();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
 
@@ -268,6 +305,10 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
   const emptyLabel =
     entityType === "client" ? "client" : entityType === "job" ? "job" : "candidate";
   const inputNearLimit = input.length >= GAME_PLAN_USER_MESSAGE_MAX_CHARS * 0.8;
+  const selectedInterviewPrep =
+    interviewPrepData?.interviews.find((interview) => interview.id === interviewPrepInterviewId) ??
+    interviewPrepData?.interviews[0] ??
+    null;
 
   const addFiles = useCallback(
     async (files: File[]) => {
@@ -380,6 +421,125 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
       setAttachments(outboundAttachments);
     } finally {
       setSending(false);
+    }
+  }
+
+  async function loadInterviewPrepData(force = false): Promise<InterviewPrepData | null> {
+    if (entityType !== "candidate") return null;
+    if (interviewPrepData && !force) return interviewPrepData;
+
+    setInterviewPrepLoading(true);
+    try {
+      const res = await fetch(
+        `/api/ai-workspace/interview-prep?candidateId=${encodeURIComponent(entityId)}`,
+        { cache: "no-store" },
+      );
+      const payload = (await res.json().catch(() => null)) as
+        | (InterviewPrepData & { error?: string })
+        | null;
+      if (!res.ok) {
+        throw new Error(payload?.error ?? `Load failed (${res.status})`);
+      }
+      const data = payload as InterviewPrepData;
+      const firstInterview = data.interviews[0] ?? null;
+      const selected =
+        data.interviews.find((interview) => interview.id === interviewPrepInterviewId) ??
+        firstInterview;
+      setInterviewPrepData(data);
+      setInterviewPrepInterviewId(selected?.id ?? "");
+      setInterviewPrepContactKeys(selected?.defaultContactKeys ?? []);
+      return data;
+    } finally {
+      setInterviewPrepLoading(false);
+    }
+  }
+
+  async function onToggleInterviewPrep() {
+    if (interviewPrepOpen) {
+      setInterviewPrepOpen(false);
+      return;
+    }
+    setInterviewPrepOpen(true);
+    try {
+      await loadInterviewPrepData();
+    } catch (err) {
+      toast.error("Couldn't load interview prep", {
+        description: err instanceof Error ? err.message : "unknown error",
+      });
+    }
+  }
+
+  function onSelectInterviewPrep(interviewId: string) {
+    setInterviewPrepInterviewId(interviewId);
+    const next = interviewPrepData?.interviews.find((interview) => interview.id === interviewId);
+    setInterviewPrepContactKeys(next?.defaultContactKeys ?? []);
+  }
+
+  function onToggleInterviewPrepContact(key: string) {
+    setInterviewPrepContactKeys((prev) =>
+      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key],
+    );
+  }
+
+  async function onGenerateInterviewPrepDraft() {
+    if (entityType !== "candidate" || !selectedInterviewPrep || interviewPrepGenerating) return;
+
+    setInterviewPrepGenerating(true);
+    try {
+      const [initRes, draftRes] = await Promise.all([
+        fetch("/api/mail/compose-init"),
+        fetch("/api/ai-workspace/interview-prep", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            candidateId: entityId,
+            interviewId: selectedInterviewPrep.id,
+            contactKeys: interviewPrepContactKeys,
+          }),
+        }),
+      ]);
+      if (!initRes.ok) throw new Error(`compose-init failed (${initRes.status})`);
+      const draftPayload = (await draftRes.json().catch(() => null)) as
+        | { subject?: string; body?: string; error?: string }
+        | null;
+      if (!draftRes.ok) {
+        throw new Error(draftPayload?.error ?? `interview-prep failed (${draftRes.status})`);
+      }
+      if (!draftPayload?.subject || !draftPayload.body) {
+        throw new Error("interview-prep returned an empty draft");
+      }
+      const init = (await initRes.json()) as {
+        templates: import("@/app/email/actions").ActiveTemplateSummary[];
+        user: { firstName: string; fullName: string };
+      };
+      const toEmail = recipientEmail ?? interviewPrepData?.candidate.email ?? "";
+      if (!toEmail) {
+        toast.warning("Candidate has no email", {
+          description: "The draft opened with a blank To field.",
+        });
+      }
+      composer.open({
+        defaultTo: toEmail,
+        defaultSubject: draftPayload.subject,
+        defaultBody: markdownToCleanHtml(draftPayload.body),
+        templates: init.templates,
+        mergeContext: {
+          user: {
+            firstName: init.user.firstName,
+            fullName: init.user.fullName,
+          },
+        },
+        candidateRef: entityId,
+        modalTitle: "Interview Prep",
+        nonBlocking: true,
+      });
+      setInterviewPrepOpen(false);
+    } catch (err) {
+      toast.error("Couldn't prep interview email", {
+        description: err instanceof Error ? err.message : "unknown error",
+      });
+    } finally {
+      setInterviewPrepGenerating(false);
     }
   }
 
@@ -496,18 +656,38 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
         </h2>
         <div className="flex items-center gap-2">
           {entityType === "candidate" && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => void onSend(CANDIDATE_CALL_PREP_PROMPT)}
-              disabled={sending}
-              className="h-7 gap-1 px-2 py-1 text-[11px] font-medium text-court-fg-muted hover:border-brand/60"
-              title={CANDIDATE_CALL_PREP_PROMPT}
-              aria-label="Ask Call Prep prompt"
-            >
-              <PhoneCall className="h-3 w-3" /> Call Prep
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => void onSend(CANDIDATE_CALL_PREP_PROMPT)}
+                disabled={sending}
+                className="h-7 gap-1 px-2 py-1 text-[11px] font-medium text-court-fg-muted hover:border-brand/60"
+                title={CANDIDATE_CALL_PREP_PROMPT}
+                aria-label="Ask Call Prep prompt"
+              >
+                <PhoneCall className="h-3 w-3" /> Call Prep
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => void onToggleInterviewPrep()}
+                disabled={sending || interviewPrepGenerating}
+                className="h-7 gap-1 px-2 py-1 text-[11px] font-medium text-court-fg-muted hover:border-brand/60"
+                title="Generate an interview prep email draft"
+                aria-expanded={interviewPrepOpen}
+                aria-label="Open Interview Prep"
+              >
+                {interviewPrepGenerating || interviewPrepLoading ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <CalendarCheck className="h-3 w-3" />
+                )}
+                Interview Prep
+              </Button>
+            </>
           )}
           <button
             type="button"
@@ -520,6 +700,20 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
           </button>
         </div>
       </div>
+
+      {entityType === "candidate" && interviewPrepOpen && (
+        <InterviewPrepPanel
+          data={interviewPrepData}
+          loading={interviewPrepLoading}
+          generating={interviewPrepGenerating}
+          selectedInterviewId={selectedInterviewPrep?.id ?? interviewPrepInterviewId}
+          selectedContactKeys={interviewPrepContactKeys}
+          onSelectInterview={onSelectInterviewPrep}
+          onToggleContact={onToggleInterviewPrepContact}
+          onGenerate={() => void onGenerateInterviewPrepDraft()}
+          onClose={() => setInterviewPrepOpen(false)}
+        />
+      )}
 
       <div
         ref={scrollRef}
@@ -658,6 +852,144 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
         className="group flex shrink-0 cursor-ns-resize touch-none select-none items-center justify-center border-t border-court-border bg-court-surface py-1.5 transition hover:bg-court-surface-subtle"
       >
         <span className="h-1 w-10 rounded-full bg-court-border transition group-hover:bg-court-fg-muted/60" />
+      </div>
+    </div>
+  );
+}
+
+function InterviewPrepPanel({
+  data,
+  loading,
+  generating,
+  selectedInterviewId,
+  selectedContactKeys,
+  onSelectInterview,
+  onToggleContact,
+  onGenerate,
+  onClose,
+}: {
+  data: InterviewPrepData | null;
+  loading: boolean;
+  generating: boolean;
+  selectedInterviewId: string;
+  selectedContactKeys: string[];
+  onSelectInterview: (interviewId: string) => void;
+  onToggleContact: (key: string) => void;
+  onGenerate: () => void;
+  onClose: () => void;
+}) {
+  const selectedInterview =
+    data?.interviews.find((interview) => interview.id === selectedInterviewId) ??
+    data?.interviews[0] ??
+    null;
+  const contactOptions = selectedInterview?.contactOptions ?? [];
+  const selectedCount = selectedContactKeys.length;
+  const hasInterviews = Boolean(data && data.interviews.length > 0);
+
+  return (
+    <div className="shrink-0 border-b border-court-border bg-court-surface-subtle/40 px-5 py-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+        <label className="min-w-0 flex-1">
+          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-court-fg-muted">
+            Interview
+          </span>
+          {loading && !data ? (
+            <div className="flex h-9 items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-xs text-court-fg-muted">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading interviews…
+            </div>
+          ) : hasInterviews ? (
+            <select
+              value={selectedInterview?.id ?? ""}
+              onChange={(event) => onSelectInterview(event.target.value)}
+              className="h-9 w-full rounded-md border border-court-border bg-court-surface px-3 text-sm text-court-fg shadow-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+            >
+              {data!.interviews.map((interview) => (
+                <option key={interview.id} value={interview.id}>
+                  {interview.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="flex h-9 items-center rounded-md border border-court-border bg-court-surface px-3 text-xs text-court-fg-muted">
+              No scheduled interviews found.
+            </div>
+          )}
+        </label>
+
+        <div className="relative min-w-0 lg:w-[260px]">
+          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-court-fg-muted">
+            Interviewing With
+          </span>
+          <details className="group relative">
+            <summary
+              className={cn(
+                "flex h-9 cursor-pointer list-none items-center justify-between gap-2 rounded-md border border-court-border bg-court-surface px-3 text-sm text-court-fg shadow-sm transition hover:border-brand/50 [&::-webkit-details-marker]:hidden",
+                (!hasInterviews || loading) && "pointer-events-none opacity-60",
+              )}
+            >
+              <span className="truncate">
+                {contactOptions.length === 0
+                  ? "No contacts"
+                  : selectedCount === 0
+                    ? "Choose contacts"
+                    : `${selectedCount} selected`}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-court-fg-muted transition group-open:rotate-180" />
+            </summary>
+            <div className="absolute right-0 z-20 mt-1 max-h-72 w-full min-w-[260px] overflow-y-auto rounded-md border border-court-border bg-court-surface p-1 shadow-lg">
+              {contactOptions.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-court-fg-muted">
+                  No client contacts are attached to this interview.
+                </div>
+              ) : (
+                contactOptions.map((contact) => (
+                  <label
+                    key={contact.key}
+                    className="flex cursor-pointer items-start gap-2 rounded px-2 py-2 text-sm text-court-fg transition hover:bg-court-surface-subtle"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedContactKeys.includes(contact.key)}
+                      onChange={() => onToggleContact(contact.key)}
+                      className="mt-0.5 h-4 w-4 rounded border-court-border accent-brand"
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{contact.name}</span>
+                      <span className="block truncate text-xs text-court-fg-muted">
+                        {[contact.title, contact.linkedin ? "LinkedIn" : null, contact.source === "scheduled" ? "scheduled" : null]
+                          .filter(Boolean)
+                          .join(" · ") || contact.email || "Client contact"}
+                      </span>
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
+          </details>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            onClick={onGenerate}
+            disabled={!selectedInterview || loading || generating}
+            className="h-9 gap-1.5"
+          >
+            {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+            Draft
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            className="h-9 w-9 p-0 text-court-fg-muted"
+            aria-label="Close Interview Prep"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
