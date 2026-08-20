@@ -26,18 +26,35 @@ export function PipelinePill({
   stage,
   count,
   href,
+  compact = false,
 }: {
   stage: string;
   count: number;
   href?: string;
+  // Dot + count only, sized to a uniform width. Used by the clients LIST
+  // view, where five labeled pills per row wrapped and center-aligned into a
+  // ragged block; fixed-width chips in fixed stage columns line up down the
+  // table. The stage name moves to the tooltip.
+  compact?: boolean;
 }) {
-  const pill = (
+  const label = STAGE_LABELS[stage] ?? stage;
+  const pill = compact ? (
+    <span
+      title={`${count} ${label}`}
+      className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2 py-1 text-[11px] font-medium text-court-fg"
+    >
+      <span
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT_CLASSES[stage] ?? "bg-court-fg-muted"}`}
+      />
+      <span className="font-semibold tabular-nums">{count}</span>
+    </span>
+  ) : (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-[11px] font-medium text-court-fg">
       <span
         className={`h-1.5 w-1.5 rounded-full ${DOT_CLASSES[stage] ?? "bg-court-fg-muted"}`}
       />
       <span className="font-semibold">{count}</span>
-      <span className="text-court-fg-muted">{STAGE_LABELS[stage] ?? stage}</span>
+      <span className="text-court-fg-muted">{label}</span>
     </span>
   );
 
@@ -46,7 +63,7 @@ export function PipelinePill({
       <Link
         href={href}
         onClick={(e) => e.stopPropagation()}
-        className="transition-opacity hover:opacity-80"
+        className={`transition-opacity hover:opacity-80${compact ? " block w-full" : ""}`}
       >
         {pill}
       </Link>

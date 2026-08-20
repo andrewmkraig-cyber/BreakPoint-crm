@@ -45,11 +45,20 @@ export type PlacementsDashboardBillingStatus =
 
 export type PlacementsDashboardPlacementType = "SALARY" | "CONTRACT";
 
+// One channel per canonical Lead Source (src/lib/lead-sources.ts) plus OTHER
+// for anything legacy or free-form. Keep these in sync with that list: a
+// dropdown option with no channel here silently lands in Other, which is how
+// every Indeed placement ended up mis-bucketed.
 export type PlacementsDashboardSourceChannel =
   | "NETWORK"
   | "REFERRAL"
   | "LINKEDIN"
   | "INBOUND"
+  | "INDEED"
+  | "PIN"
+  | "APOLLO"
+  | "ZIPRECRUITER"
+  | "ZOOMINFO"
   | "OTHER";
 
 export type PlacementsDashboardRow = {
@@ -178,6 +187,12 @@ function deriveSourceChannel(
   if (!raw) return "OTHER";
   if (raw.includes("referral")) return "REFERRAL";
   if (raw.includes("linkedin")) return "LINKEDIN";
+  if (raw.includes("indeed")) return "INDEED";
+  if (raw.includes("ziprecruiter")) return "ZIPRECRUITER";
+  if (raw.includes("zoominfo")) return "ZOOMINFO";
+  if (raw.includes("apollo")) return "APOLLO";
+  // "pin" is short enough to appear inside other words, so match it whole.
+  if (/\bpin\b/.test(raw)) return "PIN";
   if (raw.includes("job_board") || raw.includes("careers_form") || raw.includes("inbound")) {
     return "INBOUND";
   }

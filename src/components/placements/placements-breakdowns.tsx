@@ -22,6 +22,11 @@ const SOURCE_LABEL: Record<PlacementsDashboardSourceChannel, string> = {
   REFERRAL: "Referral",
   LINKEDIN: "LinkedIn",
   INBOUND: "Inbound",
+  INDEED: "Indeed",
+  PIN: "Pin",
+  APOLLO: "Apollo",
+  ZIPRECRUITER: "ZipRecruiter",
+  ZOOMINFO: "ZoomInfo",
   OTHER: "Other",
 };
 
@@ -30,6 +35,11 @@ const SOURCE_ORDER: PlacementsDashboardSourceChannel[] = [
   "REFERRAL",
   "LINKEDIN",
   "INBOUND",
+  "INDEED",
+  "PIN",
+  "APOLLO",
+  "ZIPRECRUITER",
+  "ZOOMINFO",
   "OTHER",
 ];
 

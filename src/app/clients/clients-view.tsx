@@ -230,7 +230,6 @@ function ClientGridCard({ card, quietTier }: { card: ClientCard; quietTier?: Qui
 
 function ClientListRowView({ card, quietTier }: { card: ClientCard; quietTier?: QuietTier }) {
   const router = useRouter();
-  const activeStages = PIPELINE_STAGES.filter((s: StageEntry) => (card[s.countField] ?? 0) > 0);
   return (
     <DataTableRow
       className="cursor-pointer"
@@ -262,20 +261,30 @@ function ClientListRowView({ card, quietTier }: { card: ClientCard; quietTier?: 
         <span className="text-court-fg">{card.openJobsCount}</span>
         <span className="text-court-fg-muted"> / {card.openJobsCount + card.closedJobsCount}</span>
       </td>
-      <td className="px-3 py-2 align-middle text-center">
-        <div className="flex flex-wrap justify-center gap-1">
-          {activeStages.length > 0 ? (
-            activeStages.map((s) => (
-              <PipelinePill
-                key={s.key}
-                stage={s.key}
-                count={card[s.countField] ?? 0}
-                href={`/pipeline?clientId=${card.id}&stage=${s.key}`}
-              />
-            ))
-          ) : (
-            <span className="text-xs italic text-court-fg-muted">—</span>
-          )}
+      {/* One fixed column per stage, always in PIPELINE_STAGES order, so the
+          chips line up down the table instead of wrapping and re-centering per
+          row. Stages with no candidates hold their slot with a muted dash. */}
+      <td className="px-3 py-2 align-middle">
+        <div className="grid grid-cols-5 gap-1">
+          {PIPELINE_STAGES.map((s: StageEntry) => {
+            const count = card[s.countField] ?? 0;
+            return (
+              <div key={s.key} className="min-w-0">
+                {count > 0 ? (
+                  <PipelinePill
+                    compact
+                    stage={s.key}
+                    count={count}
+                    href={`/pipeline?clientId=${card.id}&stage=${s.key}`}
+                  />
+                ) : (
+                  <span className="block py-1 text-center text-[11px] text-court-fg-muted/40">
+                    –
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
       </td>
       <td className="px-3 py-2 align-middle text-center text-sm">
