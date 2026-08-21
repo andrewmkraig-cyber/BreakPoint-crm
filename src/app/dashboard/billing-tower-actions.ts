@@ -2,6 +2,10 @@
 
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
+import {
+  ANNUAL_REVENUE_GOAL_USD,
+  QUARTERLY_REVENUE_GOAL_USD,
+} from "@/app/dashboard/goal-pacing";
 import { getBillingSummaryForRange } from "@/lib/billing-events";
 import { timeRange, type TimeRangeSelection } from "@/lib/time-range";
 
@@ -12,27 +16,21 @@ export type BillingTowerData = {
   outstandingCount: number;
   goalUsd: number;
   goalPct: number;
+  goalPeriodLabel: string;
   // Plain-English label of the selected window. "Q3 2026" / "YTD 2026".
   periodLabel: string;
 };
 
-// Per-quarter dollar goal. The number lived inline in my-dashboard.tsx
-// as Q2_GOAL_USD = 125_000; extracted here so any other surface that
-// wants "what's the quarter target?" reads one constant.
-const QUARTER_GOAL_USD = 125_000;
-
-// Cumulative goal for the selected window. Quarter windows always
-// target one quarter ($125K). YTD (year / "this") scales by the number
-// of quarters touched so far this year (in Q2, YTD goal = 2 × $125K =
-// $250K) so % goal progress doesn't always read low in Q1 / high in Q4.
-// The Billing Tower dropdown only ever surfaces quarter + YTD windows.
-function goalUsdForSelection(sel: TimeRangeSelection, now: Date): number {
+// Goal for the selected window. Quarter windows target one quarter. Annual
+// / YTD shows revenue year-to-date, but progress is against the annual goal.
+function goalForSelection(sel: TimeRangeSelection): {
+  usd: number;
+  periodLabel: string;
+} {
   if (sel.grain === "YEAR") {
-    const quarters =
-      sel.offset === 0 ? Math.floor(now.getMonth() / 3) + 1 : 4;
-    return QUARTER_GOAL_USD * quarters;
+    return { usd: ANNUAL_REVENUE_GOAL_USD, periodLabel: "Annual Goal" };
   }
-  return QUARTER_GOAL_USD;
+  return { usd: QUARTERLY_REVENUE_GOAL_USD, periodLabel: "Quarterly Goal" };
 }
 
 // Compute the full Billing Tower payload for a window — Revenue,
@@ -53,7 +51,8 @@ export async function getBillingTowerData(
     prisma,
   );
   const revenueUsd = summary.revenueCents / 100;
-  const goalUsd = goalUsdForSelection(selection, now);
+  const goal = goalForSelection(selection);
+  const goalUsd = goal.usd;
   const goalPct = goalUsd > 0 ? (revenueUsd / goalUsd) * 100 : 0;
   return {
     revenueUsd,
@@ -62,6 +61,7 @@ export async function getBillingTowerData(
     outstandingCount: summary.outstandingCount,
     goalUsd,
     goalPct,
+    goalPeriodLabel: goal.periodLabel,
     periodLabel: range.label,
   };
 }

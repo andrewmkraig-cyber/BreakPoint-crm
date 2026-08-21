@@ -43,7 +43,7 @@ const BILLING_TOWER_OPTIONS = (
 //                 selecting Next Quarter shows the next-quarter
 //                 outstanding only.
 //   Goal        — % of revenue against the period's dollar target.
-//                 Quarters: $125K. YTD: $125K × quarters-in-progress.
+//                 Quarters: quarterly goal. Annual / YTD: annual goal.
 
 export function FinancialStrip({
   initial,
@@ -123,6 +123,7 @@ export function FinancialStrip({
         />
         <GoalStat
           goalUsd={data.goalUsd}
+          goalPeriodLabel={data.goalPeriodLabel}
           pct={clampedPct}
           remainingUsd={remainingUsd}
         />
@@ -214,17 +215,19 @@ function Stat({
 
 function GoalStat({
   goalUsd,
+  goalPeriodLabel,
   pct,
   remainingUsd,
 }: {
   goalUsd: number;
+  goalPeriodLabel: string;
   pct: number;
   remainingUsd: number;
 }) {
   return (
     <div className="flex min-w-0 flex-col sm:border-l-2 sm:border-court-border-soft sm:pl-6">
       <div className="text-[10px] font-extrabold uppercase tracking-wide text-court-brand-dark">
-        Goal Progress · {formatGoalUsd(goalUsd)} Quarter
+        Goal Progress · {formatGoalUsd(goalUsd)} {goalPeriodLabel}
       </div>
       <div className="mt-0.5 flex items-baseline gap-2.5 font-serif text-[32px] font-bold leading-none tracking-[-0.02em] tabular-nums text-court-fg">
         {Math.round(pct)}%
