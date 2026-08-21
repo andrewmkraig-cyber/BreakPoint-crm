@@ -1,6 +1,7 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
-import { getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
+import { getRfClientsForOrg, getRfJobsForOrg, syntheticIdFromCuid } from "@/lib/candidates";
 import { normalizeClient, normalizeJob } from "@/lib/rf-payload-shapes";
 import {
   BILLING_EVENT_PLACEMENT_SELECT,
@@ -26,6 +27,114 @@ const NOT_CANCELLED = { not: "cancelled" } as const;
 
 const DAYS = 24 * 60 * 60 * 1000;
 
+type StageKeyInput = {
+  candidateId?: string | null;
+  candidateRfId?: number | null;
+  clientId?: string | null;
+  clientRfId?: number | null;
+  jobId?: string | null;
+  jobRfId?: number | null;
+};
+
+type IdBridge = {
+  candidateByRf: Map<number, string>;
+  clientByRf: Map<number, string>;
+  jobById: Map<string, { clientId: string | null; clientRfId: number | null }>;
+  jobByRf: Map<number, { id: string; clientId: string | null; clientRfId: number | null }>;
+};
+
+function candidateKey(
+  input: { candidateId?: string | null; candidateRfId?: number | null },
+  bridge?: IdBridge,
+): string | null {
+  if (input.candidateId) return `candidate:${input.candidateId}`;
+  if (input.candidateRfId != null) {
+    const mapped = bridge?.candidateByRf.get(input.candidateRfId);
+    return mapped ? `candidate:${mapped}` : `candidate-rf:${input.candidateRfId}`;
+  }
+  return null;
+}
+
+function subjectCandidateKey(subjectId: string | null, bridge?: IdBridge): string | null {
+  if (!subjectId) return null;
+  if (!/^\d+$/.test(subjectId)) return `candidate:${subjectId}`;
+  const rfId = Number(subjectId);
+  const mapped = bridge?.candidateByRf.get(rfId);
+  return mapped ? `candidate:${mapped}` : `candidate-rf:${subjectId}`;
+}
+
+function companyScopeKey(input: {
+  clientId?: string | null;
+  clientRfId?: number | null;
+  jobId?: string | null;
+  jobRfId?: number | null;
+}, bridge?: IdBridge): string {
+  if (input.clientId) return `client:${input.clientId}`;
+  if (input.clientRfId != null && input.clientRfId > 0) {
+    const mapped = bridge?.clientByRf.get(input.clientRfId);
+    return mapped ? `client:${mapped}` : `client-rf:${input.clientRfId}`;
+  }
+  if (input.jobId) {
+    const job = bridge?.jobById.get(input.jobId);
+    if (job?.clientId || job?.clientRfId != null) {
+      return companyScopeKey({ clientId: job.clientId, clientRfId: job.clientRfId }, bridge);
+    }
+    return `job:${input.jobId}`;
+  }
+  if (input.jobRfId != null) {
+    const job = bridge?.jobByRf.get(input.jobRfId);
+    if (job?.clientId || job?.clientRfId != null) {
+      return companyScopeKey({ clientId: job.clientId, clientRfId: job.clientRfId }, bridge);
+    }
+    return job?.id ? `job:${job.id}` : `job-rf:${input.jobRfId}`;
+  }
+  return "company:unknown";
+}
+
+function funnelPairKey(input: StageKeyInput, bridge?: IdBridge): string | null {
+  const cKey = candidateKey(input, bridge);
+  if (!cKey) return null;
+  return `${cKey}|${companyScopeKey(input, bridge)}`;
+}
+
+function actionLogFunnelPairKey(
+  row: { subjectId: string; metadata: Prisma.JsonValue | null },
+  bridge?: IdBridge,
+): string | null {
+  const cKey = subjectCandidateKey(row.subjectId, bridge);
+  if (!cKey) return null;
+  const metadata = jsonObject(row.metadata);
+  return `${cKey}|${companyScopeKey({
+    clientId: stringFromJson(metadata.clientId),
+    clientRfId: numberFromJson(metadata.clientRfId),
+    jobId: stringFromJson(metadata.jobId),
+    jobRfId: numberFromJson(metadata.jobRfId),
+  }, bridge)}`;
+}
+
+function jsonObject(value: Prisma.JsonValue | null): Record<string, Prisma.JsonValue> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, Prisma.JsonValue>;
+}
+
+function stringFromJson(value: Prisma.JsonValue | undefined): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function numberFromJson(value: Prisma.JsonValue | undefined): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && /^-?\d+$/.test(value.trim())) return Number(value);
+  return null;
+}
+
+function countIntersection(left: Set<string>, right: Set<string>): number {
+  let count = 0;
+  left.forEach((key) => {
+    if (right.has(key)) count += 1;
+  });
+  return count;
+}
+
 export type ScoreboardData = {
   period: { label: string; start: Date; endExclusive: Date };
   kpis: {
@@ -47,15 +156,9 @@ export type ScoreboardData = {
     interview: number;
     offer: number;
     placed: number;
-    // Unique-candidate counts powering the Interview Coverage stat: how
-    // many distinct candidates were submitted in the window, and of those
-    // how many had at least one Interview row. The "submitted" / "interview"
-    // fields above keep counting raw events (multiple interviews per
-    // candidate inflate the interview count), so a separate coverage
-    // metric is the only honest way to read the funnel.
-    submittedUniqueCandidates: number;
-    interviewedUniqueCandidates: number;
-    interviewCoveragePct: number | null;
+    submittedToInterview: number;
+    interviewToOffer: number;
+    offerToPlaced: number;
   };
   cashForecast: {
     // Pending Invoices — every unsent billing obligation: DRAFT
@@ -117,12 +220,14 @@ export async function getScoreboardData(
     placementsQtdCount,
     submitsLast90Rows,
     interviewsLast90Rows,
-    offersLast90,
-    placedAggLast90,
+    offersLast90Rows,
     pipelinePlacementsForValue,
     cashForecastPlacements,
     rfClients,
     rfJobs,
+    candidateBridgeRows,
+    clientBridgeRows,
+    jobBridgeRows,
     aceCandidates,
     momentumRowsRaw,
   ] = await Promise.all([
@@ -154,6 +259,12 @@ export async function getScoreboardData(
       select: {
         feeTotal: true,
         placedAt: true,
+        candidateId: true,
+        candidateRfId: true,
+        clientId: true,
+        clientRfId: true,
+        jobId: true,
+        jobRfId: true,
         job: { select: { createdAt: true, createdAtRf: true } },
       },
     }),
@@ -165,37 +276,45 @@ export async function getScoreboardData(
         placedAt: { gte: periodStart, lt: periodEnd },
       },
     }),
-    // Funnel left edge: submit actions in last 90d. Each row is a single
-    // candidate-to-job submittal. We pull subjectId (= candidate cuid or
-    // String(rfId)) so we can also derive distinct-candidate count.
+    // Funnel left edge: submit actions in last 90d. Each row is a
+    // candidate-to-job submittal, but the dashboard de-dupes by
+    // candidate + client/company downstream so resubmits or multiple
+    // recipients on one client submittal do not inflate conversion rates.
     prisma.actionLog.findMany({
       where: {
         organizationId: org.id,
         actionType: "submit",
         createdAt: { gte: ninetyDaysAgo, lte: now },
       },
-      select: { subjectId: true },
+      select: { subjectId: true, metadata: true },
     }),
     prisma.interview.findMany({
       where: {
         organizationId: org.id,
         createdAt: { gte: ninetyDaysAgo, lte: now },
       },
-      select: { candidateId: true, candidateRfId: true },
+      select: {
+        candidateId: true,
+        candidateRfId: true,
+        clientId: true,
+        clientRfId: true,
+        jobId: true,
+        jobRfId: true,
+      },
     }),
-    prisma.placement.count({
+    prisma.placement.findMany({
       where: {
         organizationId: org.id,
         stage: NOT_CANCELLED,
         offerReceivedAt: { gte: ninetyDaysAgo, lte: now },
       },
-    }),
-    prisma.placement.aggregate({
-      _count: { _all: true },
-      where: {
-        organizationId: org.id,
-        stage: NOT_CANCELLED,
-        placedAt: { gte: ninetyDaysAgo, lte: now },
+      select: {
+        candidateId: true,
+        candidateRfId: true,
+        clientId: true,
+        clientRfId: true,
+        jobId: true,
+        jobRfId: true,
       },
     }),
     // Pipeline VALUE — unpaid $ across every open placement (offer +
@@ -232,6 +351,22 @@ export async function getScoreboardData(
     // same fetches; future opportunity is to share via a request cache.
     getRfClientsForOrg().catch(() => []),
     getRfJobsForOrg().catch(() => []),
+    prisma.candidate.findMany({
+      where: { organizationId: org.id, rfId: { not: null } },
+      select: { id: true, rfId: true },
+    }),
+    prisma.client.findMany({
+      where: { organizationId: org.id, legacyRfId: { not: null } },
+      select: { id: true, legacyRfId: true },
+    }),
+    prisma.job.findMany({
+      where: { organizationId: org.id },
+      select: {
+        id: true,
+        legacyRfId: true,
+        clientId: true,
+      },
+    }),
     // Ace-native client + job names — pulled via the relations on the
     // momentum-row query below; this one is just for top-clients/top-roles.
     // Includes BILLING_EVENT_PLACEMENT_SELECT so per-placement deal size
@@ -354,31 +489,62 @@ export async function getScoreboardData(
     ? Math.round(placedFees.reduce((a, b) => a + b, 0) / placedFees.length)
     : null;
 
-  // Funnel: raw event counts for the bar chart, plus unique-candidate
-  // aggregates for the Interview Coverage tile. Submit subjectId and
-  // Interview candidate identifiers are both already in the same form
-  // (cuid for Ace-native rows, stringified rfId for RF-rooted rows),
-  // so a flat Set comparison is sufficient.
-  const submittedCount = submitsLast90Rows.length;
-  const interviewCount = interviewsLast90Rows.length;
-  const submittedCandidateIds = new Set(
-    submitsLast90Rows.map((r) => r.subjectId).filter((s): s is string => !!s),
-  );
-  const interviewedCandidateIds = new Set<string>();
-  for (const iv of interviewsLast90Rows) {
-    if (iv.candidateId) interviewedCandidateIds.add(iv.candidateId);
-    else if (iv.candidateRfId != null) interviewedCandidateIds.add(String(iv.candidateRfId));
+  const idBridge: IdBridge = {
+    candidateByRf: new Map(),
+    clientByRf: new Map(),
+    jobById: new Map(),
+    jobByRf: new Map(),
+  };
+  for (const row of candidateBridgeRows) {
+    if (row.rfId != null) idBridge.candidateByRf.set(row.rfId, row.id);
   }
-  let interviewedAmongSubmitted = 0;
-  submittedCandidateIds.forEach((id) => {
-    if (interviewedCandidateIds.has(id)) interviewedAmongSubmitted += 1;
-  });
-  const interviewCoveragePct = submittedCandidateIds.size > 0
-    ? Math.round((interviewedAmongSubmitted / submittedCandidateIds.size) * 100)
-    : null;
+  for (const row of clientBridgeRows) {
+    if (row.legacyRfId != null) idBridge.clientByRf.set(row.legacyRfId, row.id);
+  }
+  for (const row of jobBridgeRows) {
+    const bridgeValue = { clientId: row.clientId, clientRfId: null };
+    idBridge.jobById.set(row.id, bridgeValue);
+    idBridge.jobByRf.set(syntheticIdFromCuid(row.id), { id: row.id, ...bridgeValue });
+    if (row.legacyRfId != null) {
+      idBridge.jobByRf.set(row.legacyRfId, { id: row.id, ...bridgeValue });
+    }
+  }
+
+  // Funnel: candidate-company pairs, not raw events. A candidate can have
+  // three interviews at one company and still count as one interviewed
+  // opportunity, while the same candidate interviewing with two companies
+  // counts as two opportunities.
+  const submittedPairs = new Set(
+    submitsLast90Rows
+      .map((row) => actionLogFunnelPairKey(row, idBridge))
+      .filter((key): key is string => Boolean(key)),
+  );
+  const interviewPairs = new Set(
+    interviewsLast90Rows
+      .map((row) => funnelPairKey(row, idBridge))
+      .filter((key): key is string => Boolean(key)),
+  );
+  const offerPairs = new Set(
+    offersLast90Rows
+      .map((row) => funnelPairKey(row, idBridge))
+      .filter((key): key is string => Boolean(key)),
+  );
+  const placedPairs = new Set(
+    placedLast90
+      .map((row) => funnelPairKey(row, idBridge))
+      .filter((key): key is string => Boolean(key)),
+  );
+
+  const submittedCount = submittedPairs.size;
+  const interviewCount = interviewPairs.size;
+  const offerCount = offerPairs.size;
+  const placedCount = placedPairs.size;
+  const submittedToInterview = countIntersection(submittedPairs, interviewPairs);
+  const interviewToOffer = countIntersection(interviewPairs, offerPairs);
+  const offerToPlaced = countIntersection(offerPairs, placedPairs);
 
   const winRateDenominator = submittedCount;
-  const winRateNumerator = placedAggLast90._count._all;
+  const winRateNumerator = placedCount;
   const winRatePct = winRateDenominator > 0
     ? Math.round((winRateNumerator / winRateDenominator) * 100)
     : null;
@@ -554,11 +720,11 @@ export async function getScoreboardData(
     funnel: {
       submitted: submittedCount,
       interview: interviewCount,
-      offer: offersLast90,
-      placed: placedAggLast90._count._all,
-      submittedUniqueCandidates: submittedCandidateIds.size,
-      interviewedUniqueCandidates: interviewedAmongSubmitted,
-      interviewCoveragePct,
+      offer: offerCount,
+      placed: placedCount,
+      submittedToInterview,
+      interviewToOffer,
+      offerToPlaced,
     },
     cashForecast: {
       pendingInvoicesUsd,

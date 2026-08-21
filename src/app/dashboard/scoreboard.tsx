@@ -196,28 +196,23 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
   ];
   const top = stages[0].n;
   // Scale every bar against the largest stage value so the widest stage
-  // always reads as 100%. Interview can exceed Submitted (multi-interview
-  // candidates), so anchoring to Submitted alone overflowed the row.
+  // always reads as 100%. Counts are de-duped candidate-company pairs, but
+  // a later-stage pair can still exist without a same-window submit log.
   const maxStage = stages.reduce((m, s) => Math.max(m, s.n), 0);
-  // Submitted → Interview reads as `submitted / interview` so the funnel
-  // top line matches the bar order; with multiple interviews per
-  // candidate the raw interview count can exceed submits, so the literal
-  // pair is the only honest reading. Interview Coverage below caps each
-  // candidate at 1 to surface the conversion rate cleanly.
   const ratios = [
     {
       label: "Submitted → Interview",
-      num: funnel.submitted,
-      den: funnel.interview,
+      num: funnel.submittedToInterview,
+      den: funnel.submitted,
     },
     {
       label: "Interview → Offer",
-      num: funnel.offer,
+      num: funnel.interviewToOffer,
       den: funnel.interview,
     },
     {
       label: "Offer → Placed",
-      num: funnel.placed,
+      num: funnel.offerToPlaced,
       den: funnel.offer,
     },
   ];
@@ -262,9 +257,9 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
             ))}
             <CoverageTile
               label="Interview Coverage"
-              pct={funnel.interviewCoveragePct}
-              num={funnel.interviewedUniqueCandidates}
-              den={funnel.submittedUniqueCandidates}
+              pct={funnel.submitted > 0 ? Math.round((funnel.submittedToInterview / funnel.submitted) * 100) : null}
+              num={funnel.submittedToInterview}
+              den={funnel.submitted}
             />
           </div>
         </>
@@ -296,10 +291,8 @@ function RatioTile({ label, num, den }: { label: string; num: number; den: numbe
   );
 }
 
-// Distinct-candidate variant. Each candidate counts at most once toward
-// the numerator regardless of how many interviews they had, so the %
-// reads as "share of submitted candidates that reached an interview"
-// instead of an event-over-event rate.
+// Pair-based coverage. Each candidate-company pair counts at most once, so
+// repeat rounds with the same company cannot inflate the conversion rate.
 function CoverageTile({
   label,
   pct,
@@ -326,7 +319,7 @@ function CoverageTile({
         {isEmpty ? "—" : `${pct}%`}
       </p>
       <p className="text-xs tabular-nums text-court-fg-muted">
-        {num} of {den} candidates
+        {num} of {den} pairs
       </p>
     </div>
   );
