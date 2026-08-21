@@ -19,6 +19,35 @@ export function paymentTermsLabel(days: number | null | undefined): string {
   return days === 0 ? "Due on receipt" : `Net ${Math.trunc(days)}`;
 }
 
+// The terms a picker may offer, and the whitelist the server validates
+// against. Every label is produced by paymentTermsLabel() above, so this
+// list can never drift from the string that ends up on the invoice PDF.
+//
+// The day values are the ones already in use across the app: 0 (the
+// helper's "Due on receipt" branch), 10 (the client-payable example this
+// module documents), 14 (the test invoice in invoices/actions.ts), and 30
+// (DEFAULT_PAYMENT_TERMS_DAYS, and the Invoice.paymentTerms column
+// default). Add a day value here and both the picker and the validator
+// pick it up with no other change.
+export const PAYMENT_TERMS_DAY_OPTIONS = [0, 10, 14, 30] as const;
+
+export const PAYMENT_TERMS_OPTIONS: ReadonlyArray<{
+  label: string;
+  days: number;
+}> = PAYMENT_TERMS_DAY_OPTIONS.map((days) => ({
+  label: paymentTermsLabel(days),
+  days,
+}));
+
+// True when `terms` is one of the labels above. Used server-side so a
+// hand-crafted request can't store a terms string the picker would never
+// produce. Existing free-text invoice terms are unaffected: nothing calls
+// this on the invoice editor's path.
+export function isKnownPaymentTerms(terms: string | null | undefined): boolean {
+  const t = (terms ?? "").trim();
+  return PAYMENT_TERMS_OPTIONS.some((o) => o.label === t);
+}
+
 // "Net 10" → 10. Recruiters type this field free-hand, so anything with a
 // number in it reads as that many days and the receipt-style phrasings read as
 // 0. Falls back to `fallbackDays` (the client's terms, when a caller has them)

@@ -4,7 +4,9 @@ import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { InvoiceRow } from "@/app/invoices/invoice-row";
 import { SendTestInvoiceButton } from "@/app/invoices/send-test-invoice-button";
 import { FutureInvoicesSection } from "@/app/invoices/future-invoices-section";
+import { RetainedSearchModal } from "@/app/invoices/retained-search-modal";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { prisma } from "@/lib/prisma";
 import {
   getInvoiceSummary,
   listFutureInvoices,
@@ -78,14 +80,34 @@ export default async function InvoicesPage({
     (f) => f.value === params.filter,
   )?.value ?? "all") as InvoiceListFilter;
   const org = await getCurrentOrg();
-  const [invoices, summary, futureInvoices] = await Promise.all([
-    listInvoices(org.id, filter),
-    getInvoiceSummary(org.id),
-    listFutureInvoices(org.id),
-  ]);
+  const [invoices, summary, futureInvoices, retainedClients, retainedJobs] =
+    await Promise.all([
+      listInvoices(org.id, filter),
+      getInvoiceSummary(org.id),
+      listFutureInvoices(org.id),
+      // Client + job options for the Send Retained Invoice modal. ALL
+      // clients in the tenant, active and inactive alike — a retainer is
+      // often what reactivates a dormant client, so filtering by activity
+      // would hide exactly the rows this flow needs. Jobs come down whole
+      // (id / title / clientId only) and the modal filters them per client
+      // in memory, which avoids a second round trip on every selection.
+      prisma.client.findMany({
+        where: { organizationId: org.id },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.job.findMany({
+        where: { organizationId: org.id },
+        select: { id: true, title: true, clientId: true },
+        orderBy: { title: "asc" },
+      }),
+    ]);
 
   return (
     <div className="flex w-full flex-col gap-6">
+      {/* Renders nothing until the topbar's Send Retained Invoice action
+          fires its window event. */}
+      <RetainedSearchModal clients={retainedClients} jobs={retainedJobs} />
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
         BILLED, COLLECTED &amp; OUTSTANDING
       </p>

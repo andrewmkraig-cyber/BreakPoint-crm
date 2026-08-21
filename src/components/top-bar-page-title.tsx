@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { ChevronRight, Plus, Upload } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useComposerManager } from "@/lib/composer-manager";
 import { usePhonePanels } from "@/lib/phone-panels-context";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
@@ -30,6 +31,7 @@ type ActionSpec =
   | { kind: "compose-mail"; label: string }
   | { kind: "phone-dial"; label: string }
   | { kind: "new-invoice"; label: string }
+  | { kind: "retained-search"; label: string }
   | { kind: "new-expense"; label: string }
   | { kind: "calendar-new-event"; label: string }
   | { kind: "candidate-add-multiple"; label: string };
@@ -160,6 +162,9 @@ function resolveBaseSpec(
     return {
       title: { label: "Invoices" },
       action: { kind: "new-invoice", label: "New Invoice" },
+      // Sits to the left of "+ New Invoice", the same two-affordance
+      // arrangement /candidates already uses for Add Multiple.
+      extraAction: { kind: "retained-search", label: "Send Retained Invoice" },
     };
   }
   if (/^\/invoices\/[^/]+/.test(pathname)) {
@@ -319,6 +324,9 @@ function ActionButton({ action }: { action: ActionSpec }) {
   if (action.kind === "new-invoice") {
     return <NewInvoiceTopBarButton label={action.label} />;
   }
+  if (action.kind === "retained-search") {
+    return <RetainedSearchTopBarButton label={action.label} />;
+  }
   if (action.kind === "new-expense") {
     return <NewExpenseTopBarButton label={action.label} />;
   }
@@ -385,6 +393,35 @@ function CalendarNewEventButton({ label }: { label: string }) {
       <Plus className="h-3 w-3" />
       {label}
     </button>
+  );
+}
+
+// Retained-search trigger. The modal lives inside the Invoices page (far
+// below the TopBar in AppShell), so we bridge with a window event the page
+// subscribes to on mount — same pattern as CalendarNewEventButton and
+// NewExpenseTopBarButton above. Unlike those, this one routes through the
+// shared <Button> per the Button Standard; the raw-button siblings in this
+// file are grandfathered, and new affordances do not add to that budget.
+// `variant="primary"` is exactly the CTA treatment (border-court-brand,
+// bg-court-brand-tint, text-court-brand-dark, rounded-md); the className
+// only restores the compact topbar chip sizing.
+function RetainedSearchTopBarButton({ label }: { label: string }) {
+  return (
+    <Button
+      variant="primary"
+      onClick={() =>
+        // Literal rather than an import: pulling the constant from
+        // retained-search-modal.tsx would drag the whole modal (and its
+        // server action) into the topbar bundle on every page. The
+        // sibling bridges above inline their event names for the same
+        // reason. Mirrors RETAINED_SEARCH_OPEN_EVENT in that file.
+        window.dispatchEvent(new CustomEvent("ace:retained-search:new"))
+      }
+      className="w-auto shrink-0 gap-1 px-2 py-1 text-[11px]"
+    >
+      <Plus className="h-3 w-3" />
+      {label}
+    </Button>
   );
 }
 
