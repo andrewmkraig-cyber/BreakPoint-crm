@@ -98,6 +98,137 @@ export function resolvePlacementInvoiceContacts(placement: {
   return { billingContacts, hiringContacts };
 }
 
+// Free-text titles that mark a client contact as the one who pays.
+// Contact has no billing/hiring flag — the only role signal on the row is
+// the free-text `currentDesignation` the recruiter typed — so a retained
+// invoice (which has no Placement to read hand-entered contact lists off)
+// splits the client's contact list on this pattern instead.
+const BILLING_TITLE_RE =
+  /(billing|accounts?\s*payable|accounts?\s*receivable|\ba\/?[pr]\b|financ|account(ing|ant)|controller|bookkeep|treasur|\bcfo\b)/i;
+
+function contactDisplayName(c: {
+  name: string | null;
+  firstName: string | null;
+  lastName: string | null;
+}): string {
+  const joined = [c.firstName, c.lastName]
+    .filter((s): s is string => Boolean(s && s.trim()))
+    .join(" ")
+    .trim();
+  return (c.name?.trim() || joined || "").trim();
+}
+
+// Billing (To) + hiring (CC) contacts for an invoice that has NO placement
+// to read them from — i.e. a retained search, where the money is committed
+// against the client before any candidate exists.
+//
+// The placement path (resolvePlacementInvoiceContacts above) reads lists the
+// recruiter typed into the Make Placement modal. Nothing equivalent exists on
+// Client, so this sources the client's own Contact rows and splits them on
+// the title pattern above. When no title reads as billing we put every
+// contact in the To list rather than shipping a draft with no recipients —
+// the invoice is a DRAFT and the detail page's Billing/Hiring lists stay
+// editable, so trimming is a click.
+export async function resolveClientInvoiceContacts(args: {
+  clientId: string;
+  organizationId: string;
+}): Promise<{ billingContacts: InvoiceContact[]; hiringContacts: InvoiceContact[] }> {
+  const rows = await prisma.contact.findMany({
+    where: { clientId: args.clientId, organizationId: args.organizationId },
+    select: {
+      name: true,
+      firstName: true,
+      lastName: true,
+      emails: true,
+      currentDesignation: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const all: InvoiceContact[] = rows
+    .map((c) => {
+      const name = contactDisplayName(c);
+      const email = (c.emails ?? []).find((e) => e && e.trim())?.trim() ?? "";
+      if (!name && !email) return null;
+      const title = c.currentDesignation?.trim();
+      return { name, email, ...(title ? { title } : {}) } as InvoiceContact;
+    })
+    .filter((x): x is InvoiceContact => x !== null);
+
+  const looksBilling = (c: InvoiceContact) => BILLING_TITLE_RE.test(c.title ?? "");
+  const billingMatches = all.filter(looksBilling);
+
+  // No explicit billing title anywhere: everyone becomes a To so the draft
+  // is never recipient-less, and CC stays empty to avoid listing the same
+  // person twice.
+  if (billingMatches.length === 0) {
+    return { billingContacts: all, hiringContacts: [] };
+  }
+
+  const billingEmails = new Set(
+    billingMatches.map((c) => c.email.trim().toLowerCase()).filter(Boolean),
+  );
+  const hiringContacts = all
+    .filter((c) => !looksBilling(c))
+    .filter((c) => !c.email || !billingEmails.has(c.email.trim().toLowerCase()));
+
+  return { billingContacts: billingMatches, hiringContacts };
+}
+
+// Creates ONE invoice row for a retained search. Single-payment engagements
+// call this once; installment engagements call it per installment (a live
+// draft for #1, isFuture drafts for the rest), exactly the way the
+// placement-side custom-terms flow in confirmStart stages its installments.
+//
+// Deliberately shares nextInvoiceNumber with every other invoice path, so
+// retained invoices sit in the same INV-#### sequence as placement invoices.
+// placementId and candidateId stay null; retainedSearchId is what makes the
+// row addressable.
+export async function createRetainedInvoiceRow(args: {
+  organizationId: string;
+  retainedSearchId: string;
+  clientId: string;
+  roleTitle: string | null;
+  feeAmountUsd: number;
+  issueDate: Date;
+  dueDate: Date;
+  paymentTerms: string;
+  notes: string | null;
+  isFuture: boolean;
+  billingContacts: InvoiceContact[];
+  hiringContacts: InvoiceContact[];
+}): Promise<{ id: string }> {
+  const invoiceNumber = await nextInvoiceNumber(args.organizationId);
+  const created = await prisma.invoice.create({
+    data: {
+      organizationId: args.organizationId,
+      invoiceNumber,
+      retainedSearchId: args.retainedSearchId,
+      // A retained engagement has neither, by definition.
+      placementId: null,
+      candidateId: null,
+      clientId: args.clientId,
+      roleTitle: args.roleTitle,
+      startDate: args.issueDate,
+      dueDate: args.dueDate,
+      feeAmount: new Prisma.Decimal(args.feeAmountUsd.toString()),
+      // No salary basis on a retainer — the fee is the negotiated engagement
+      // amount, not a percentage of anyone's comp. Left null so the PDF's
+      // fee-basis block renders blank instead of an unfounded percentage.
+      baseSalary: null,
+      feePercentage: null,
+      paymentTerms: args.paymentTerms,
+      notes: args.notes,
+      billingContacts: args.billingContacts as unknown as Prisma.InputJsonValue,
+      hiringContacts: args.hiringContacts as unknown as Prisma.InputJsonValue,
+      status: "DRAFT",
+      isFuture: args.isFuture,
+    },
+    select: { id: true },
+  });
+  return { id: created.id };
+}
+
 export async function nextInvoiceNumber(organizationId: string): Promise<string> {
   const rows = await prisma.invoice.findMany({
     where: { organizationId },

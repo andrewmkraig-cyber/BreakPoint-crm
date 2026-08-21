@@ -243,7 +243,14 @@ export function RetainedSearchModal({
         return;
       }
       close();
-      router.refresh();
+      // Land on the generated draft, ready to send — the same way Confirm
+      // Start drops the recruiter on its auto-created invoice. If generation
+      // failed the search still saved, so fall back to refreshing in place.
+      if (res.invoiceId) {
+        router.push(`/invoices/${res.invoiceId}`);
+      } else {
+        router.refresh();
+      }
     } catch {
       setError("Something went wrong saving the retained search.");
       setSaving(false);

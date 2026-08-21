@@ -91,6 +91,7 @@ export default async function InvoiceDetailPage({
         candidateName={candidateName}
         candidateId={invoice.candidate?.id ?? null}
         candidateEmail={invoice.candidate?.email ?? null}
+        isRetained={invoice.retainedSearchId != null}
         clientName={invoice.client?.name ?? ""}
         clientId={invoice.client?.id ?? null}
         clientPaymentTermsDays={invoice.client?.paymentTermsDays ?? null}

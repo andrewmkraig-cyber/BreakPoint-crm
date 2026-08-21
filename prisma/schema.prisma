@@ -1430,6 +1430,40 @@ model RetainedSearch {
   @@index([organizationId, status])
 }
 
+// One scheduled payment on a retained search that bills in stages
+// (engaged / midpoint / completion). Rows exist only when the parent
+// RetainedSearch has useInstallments = true, and they are written inside
+// the same transaction as the parent so a partial save is impossible.
+//
+// amount is Int (whole US dollars) to match RetainedSearch.totalAmount,
+// and createRetainedSearch enforces that the rows sum EXACTLY to that
+// total before either side is written.
+//
+// invoiceId is stamped when this installment's DRAFT invoice is
+// generated. Installment 1 gets a live draft immediately; later
+// installments get pre-staged isFuture drafts plus a reminder, mirroring
+// the placement-side custom-terms flow in confirmStart.
+//
+// Scalar-only FKs, matching the RetainedSearch model above.
+model RetainedSearchInstallment {
+  id               String   @id @default(cuid())
+  organizationId   String
+  retainedSearchId String
+  // 1-based display order. Installment 1 is the one billed on save.
+  sequence         Int
+  // Whole US dollars, matching RetainedSearch.totalAmount.
+  amount           Int
+  dueDate          DateTime
+  // Set once this installment's invoice exists. Null until then.
+  invoiceId        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([retainedSearchId])
+  @@index([organizationId, retainedSearchId])
+}
+
 enum RetainedSearchStatus {
   OPEN
   FILLED

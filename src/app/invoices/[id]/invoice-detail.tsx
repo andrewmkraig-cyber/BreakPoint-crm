@@ -99,6 +99,10 @@ export type InvoiceDetailProps = {
   candidateName: string;
   candidateId: string | null;
   candidateEmail: string | null;
+  // True when this invoice bills a retained search. Such an invoice has no
+  // candidate and no placement, so the drafted email swaps the candidate
+  // wording in its subject and opening line for the role being searched.
+  isRetained?: boolean;
   clientName: string;
   clientId: string | null;
   // Agreed payable window from the client's fee agreement, in days. Used as
@@ -404,11 +408,21 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
       // Hardcoded literal fallback — used verbatim when no active "Invoice
       // Email" template exists (missing or disabled) so a deleted template
       // never breaks the send. Unchanged from the pre-template behavior.
-      const fallbackSubject = `Invoice from ${props.billingCompanyName} - ${candidateClause}placement (${props.invoiceNumber})`;
+      // A retained invoice has no candidate to name, so the subject and the
+      // opening line pivot to the role being searched. Everything below
+      // (payment reference, ACH block, closing) is identical either way.
+      const roleClause = props.roleTitle?.trim() ? `${props.roleTitle.trim()} ` : "";
+      const fallbackSubject = props.isRetained
+        ? `Invoice from ${props.billingCompanyName} - ${roleClause}retained search (${props.invoiceNumber})`
+        : `Invoice from ${props.billingCompanyName} - ${candidateClause}placement (${props.invoiceNumber})`;
       const fallbackParagraphs = [
         greeting,
-        `Congratulations again on bringing ${props.candidateName || "your new hire"} onto the team${props.roleTitle ? ` as ${props.roleTitle}` : ""}.`,
-        `Attached is invoice ${props.invoiceNumber} for the placement fee${feeOfClause}, with a start date of ${startLabel}. Payment is due ${dueLabel}.`,
+        props.isRetained
+          ? `Thank you for engaging ${props.billingCompanyName} on your ${props.roleTitle?.trim() || "open"} search.`
+          : `Congratulations again on bringing ${props.candidateName || "your new hire"} onto the team${props.roleTitle ? ` as ${props.roleTitle}` : ""}.`,
+        props.isRetained
+          ? `Attached is invoice ${props.invoiceNumber} for the retained search fee${feeOfClause}. Payment is due ${dueLabel}.`
+          : `Attached is invoice ${props.invoiceNumber} for the placement fee${feeOfClause}, with a start date of ${startLabel}. Payment is due ${dueLabel}.`,
         `ACH, wire, and check details are inside the PDF. Please reference ${props.invoiceNumber} on payment. If anything looks off or you need a different billing contact on file, just reply here and we'll sort it out.`,
         `We appreciate you trusting ${props.billingCompanyName} with this search, and we hope to continue to support your hiring needs in the future.`,
         // No text sign-off here: the single branded sign-off (name/title/logo)

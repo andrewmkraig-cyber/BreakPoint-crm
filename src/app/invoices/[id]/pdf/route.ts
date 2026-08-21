@@ -4,6 +4,7 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getBillingSettings } from "@/lib/billing-settings";
 import { getInvoice, parseInvoiceContacts } from "@/lib/invoices";
 import { renderInvoicePdfBuffer } from "@/lib/invoice-pdf";
+import { prisma } from "@/lib/prisma";
 import {
   formatPlacementCompensation,
   formatPlacementFeeBasis,
@@ -37,6 +38,17 @@ export async function GET(
   if (!invoice) {
     return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
   }
+
+  // Retained engagements carry no Placement and no Candidate, so the fee
+  // basis / start date / guarantee all come from the RetainedSearch row
+  // instead. Scalar FK (no Prisma relation), hence the separate lookup.
+  const retainedSearch = invoice.retainedSearchId
+    ? await prisma.retainedSearch.findFirst({
+        where: { id: invoice.retainedSearchId, organizationId: org.id },
+        select: { guaranteeDays: true },
+      })
+    : null;
+  const isRetained = invoice.retainedSearchId != null;
 
   const billingContacts = parseInvoiceContacts(invoice.billingContacts);
   const hiringContacts = parseInvoiceContacts(invoice.hiringContacts);
@@ -130,7 +142,11 @@ export async function GET(
   const guaranteeStart =
     invoice.startDate ?? invoice.placement?.expectedStartDate ?? null;
   const customGuaranteeDate = invoice.placement?.customGuaranteeDate ?? null;
-  let guaranteeDays = invoice.placement?.guaranteePeriodDays ?? 90;
+  // Retained engagements state their own guarantee window, captured on the
+  // search itself. Falls through to the placement rules for every other
+  // invoice, so nothing about the existing path changes.
+  let guaranteeDays =
+    retainedSearch?.guaranteeDays ?? invoice.placement?.guaranteePeriodDays ?? 90;
   if (customGuaranteeDate && guaranteeStart) {
     const diffDays = Math.round(
       (customGuaranteeDate.getTime() - guaranteeStart.getTime()) / 86_400_000,
@@ -168,6 +184,7 @@ export async function GET(
     // never passed to the PDF so it stays off the client document.
     clientNote: invoice.clientNote,
     guaranteeLabel,
+    isRetained,
   });
 
   const filename = `${billing.companyName} - ${invoice.invoiceNumber}.pdf`;

@@ -357,6 +357,13 @@ export type InvoicePdfInput = {
   // "$70,000 base (minimum fee of $7,500 applied)" instead of a percentage
   // that did not actually drive the amount.
   minFeeUsd?: number | null;
+  // True when this invoice bills a retained search rather than a placement.
+  // A retained engagement has no candidate, no start date, and no salary-
+  // derived fee basis, so the renderer swaps the CANDIDATE summary box for
+  // the engagement label and drops the candidate/start-date wording from the
+  // line item. Everything else — layout, type, spacing, colors, totals,
+  // payment blocks — renders identically to a placement invoice.
+  isRetained?: boolean;
   accountExecName: string;
   billingContacts: InvoiceContact[];
   hiringContacts: InvoiceContact[];
@@ -429,6 +436,7 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
     feePercentage,
     feeBasisLabel,
     minFeeUsd,
+    isRetained = false,
     accountExecName,
     guaranteeLabel,
     billingContacts,
@@ -470,13 +478,19 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           : null;
   const feeSummaryLabel = feeBasisLabel ?? (feePercentage != null ? `${feePercentage}%` : "-");
 
-  const lineSub = [
-    roleTitle ? roleTitle : null,
-    startDateLabel ? `Start date ${startDateLabel}` : null,
-    feeBasisDescription,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  // A retained invoice's sub-line carries neither a candidate start date
+  // (nobody has started) nor a salary-derived fee basis (the retainer is a
+  // negotiated amount), and its role already prints in the line title, so
+  // the sub-line collapses to empty rather than printing misleading fields.
+  const lineSub = isRetained
+    ? ""
+    : [
+        roleTitle ? roleTitle : null,
+        startDateLabel ? `Start date ${startDateLabel}` : null,
+        feeBasisDescription,
+      ]
+        .filter(Boolean)
+        .join(" · ");
 
   return createElement(
     Document,
@@ -594,10 +608,16 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
       createElement(
         View,
         { style: styles.summary },
-        summaryItem("CANDIDATE", candidateName || "-"),
+        // Retained engagements have no candidate and no start date yet, so
+        // the first box names the engagement instead of an empty person and
+        // START DATE reads "-" rather than echoing the issue date as though
+        // someone had started.
+        isRetained
+          ? summaryItem("ENGAGEMENT", "Retained search")
+          : summaryItem("CANDIDATE", candidateName || "-"),
         summaryItem("ROLE", roleTitle || "-"),
-        summaryItem("START DATE", startDateLabel || "-"),
-        summaryItem("PLACEMENT TYPE", "Direct Hire"),
+        summaryItem("START DATE", isRetained ? "-" : startDateLabel || "-"),
+        summaryItem("PLACEMENT TYPE", isRetained ? "Retained" : "Direct Hire"),
         summaryItem("ACCOUNT EXEC", accountExecName || "-"),
         summaryItem("COMPENSATION", baseSalaryLabel ?? formatUsdCompact(baseSalaryUsd)),
         summaryItem("FEE %", feeSummaryLabel),
@@ -621,7 +641,9 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           createElement(
             Text,
             { style: styles.tdDescTitle },
-            `Placement Fee - ${candidateName || "candidate"}`,
+            isRetained
+              ? `Retained search fee - ${roleTitle || "search"}`
+              : `Placement Fee - ${candidateName || "candidate"}`,
           ),
           lineSub ? createElement(Text, { style: styles.tdDescSub }, lineSub) : null,
         ),

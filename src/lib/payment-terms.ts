@@ -27,9 +27,11 @@ export function paymentTermsLabel(days: number | null | undefined): string {
 // helper's "Due on receipt" branch), 10 (the client-payable example this
 // module documents), 14 (the test invoice in invoices/actions.ts), and 30
 // (DEFAULT_PAYMENT_TERMS_DAYS, and the Invoice.paymentTerms column
-// default). Add a day value here and both the picker and the validator
-// pick it up with no other change.
-export const PAYMENT_TERMS_DAY_OPTIONS = [0, 10, 14, 30] as const;
+// default), plus 15 / 45 / 60 for the longer windows retained clients
+// negotiate. Add a day value here and both the picker and the validator
+// pick it up with no other change. Kept ascending so the picker renders
+// shortest window first.
+export const PAYMENT_TERMS_DAY_OPTIONS = [0, 10, 14, 15, 30, 45, 60] as const;
 
 export const PAYMENT_TERMS_OPTIONS: ReadonlyArray<{
   label: string;
