@@ -425,6 +425,11 @@ model Placement {
   // values such as "Apollo BD" are preserved when already stored.
   candidateSource String?
 
+  // Set when this placement is the fill for a retained engagement. Null
+  // for every contingent placement (the overwhelming majority). Scalar
+  // FK, no Prisma relation — see the RetainedSearch model comment.
+  retainedSearchId String?
+
   createdById    String
   organizationId String
   createdAt      DateTime     @default(now())
@@ -445,6 +450,7 @@ model Placement {
   @@index([stage, expectedStartDate])
   @@index([candidateId, stage])
   @@index([organizationId])
+  @@index([retainedSearchId])
 }
 
 // Ace-native candidate record. Created by /candidates/new — no RF
@@ -1312,6 +1318,13 @@ model Invoice {
   // Cleared automatically when the invoice is marked SENT or PAID so it
   // joins the normal lists from that point on.
   isFuture        Boolean       @default(false)
+  // Set when this invoice bills a retained engagement rather than a
+  // placement. A retained invoice has retainedSearchId set and BOTH
+  // placementId and candidateId null — which is why any revenue path
+  // that reaches an Invoice by joining through Placement silently drops
+  // it. Scalar FK, no Prisma relation — see the RetainedSearch model
+  // comment.
+  retainedSearchId String?
   emailDrafts     InvoiceEmailDraft[]
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -1320,6 +1333,7 @@ model Invoice {
   @@index([organizationId])
   @@index([clientId])
   @@index([organizationId, isFuture])
+  @@index([retainedSearchId])
 }
 
 // Editable Gmail draft payloads launched from an Invoice detail page.
@@ -1366,6 +1380,60 @@ enum InvoicePaymentMethod {
   CHECK
   ACH
   CREDIT
+}
+
+// A retained search engagement — the client pays to run the search, not
+// (only) to fill it. The money is committed up front against the Client
+// and Job, so a RetainedSearch exists BEFORE any Placement and may never
+// produce one at all (CLOSED_UNFILLED). That is the whole reason it is a
+// first-class model: nearly every revenue surface in the app roots its
+// query at Placement, and a retained engagement has no Placement and no
+// Candidate to root through.
+//
+// Money type: totalAmount is Int (whole US dollars) to match
+// Placement.feeTotal, the placement-side money column this number stands
+// in for. Invoice.feeAmount is Decimal(10,2) — the two money types
+// already differ in this schema and this model deliberately does not
+// introduce a third.
+//
+// FKs here are scalar-only (no Prisma relation fields) so the model can
+// land without editing the relation blocks on Client / Job /
+// Organization / Placement, and so the two-way RetainedSearch <-> Placement
+// link doesn't need disambiguating relation names.
+model RetainedSearch {
+  id              String               @id @default(cuid())
+  organizationId  String
+  // Both required — a retained search is always sold against a specific
+  // client and a specific role.
+  clientId        String
+  jobId           String
+  // Whole US dollars, matching Placement.feeTotal.
+  totalAmount     Int
+  // Free-text terms string in the same shape Invoice.paymentTerms uses
+  // ("Net 30" / "Net 10" / "Due on receipt"), produced by
+  // paymentTermsLabel() in src/lib/payment-terms.ts. Same default as
+  // Invoice.paymentTerms.
+  paymentTerms    String               @default("Net 30")
+  guaranteeDays   Int
+  // True when the engagement bills in installments (engaged / midpoint /
+  // completion) rather than one up-front invoice.
+  useInstallments Boolean              @default(false)
+  status          RetainedSearchStatus @default(OPEN)
+  // The eventual fill. Null until a candidate starts; a retained search
+  // that closes unfilled never gets one.
+  placementId     String?
+  closedAt        DateTime?
+  closeReason     String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([organizationId, status])
+}
+
+enum RetainedSearchStatus {
+  OPEN
+  FILLED
+  CLOSED_UNFILLED
 }
 
 // Mirrors a Google Calendar event for read-only display inside Ace.
