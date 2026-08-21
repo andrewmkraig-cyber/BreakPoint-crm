@@ -212,7 +212,7 @@ function derivePlacementType(args: {
   return args.acceptedSalary != null ? "SALARY" : "CONTRACT";
 }
 
-function deriveBillingStatus(args: {
+export function deriveBillingStatus(args: {
   startDate: Date | null;
   installmentCount: number | null;
   // Full non-VOID invoice set for the placement. The split-payment branch

@@ -41,6 +41,7 @@ import {
 import { wrapEmailHtml } from "@/lib/email-html";
 import { fireTriggerAndLog } from "@/lib/trigger-fire";
 import { formatDate } from "@/lib/utils";
+import { linkPlacementToRetainedSearch } from "@/lib/retained-search-link";
 import {
   CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
   CANDIDATE_CONFIRMATION_TRIGGER,
@@ -1794,6 +1795,14 @@ export async function recordLocalPlacement(
         syncedToRf: false,
       },
       select: { id: true },
+    });
+
+    // Fill moment: offer accepted and fee locked. If this job carries an
+    // OPEN retained search, this placement is what filled it. Never throws.
+    await linkPlacementToRetainedSearch({
+      placementId: row.id,
+      jobId: placement.jobId,
+      organizationId: org.id,
     });
 
     await logActivity({

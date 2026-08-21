@@ -9,7 +9,9 @@ import {
   type LedgerRow,
 } from "@/components/placements/placements-ledger";
 import { PlacementsMapCard } from "@/components/placements/placements-map-card";
+import { RetainedSearchesCard } from "@/components/placements/retained-searches-card";
 import { RevenueCards } from "@/components/finances/revenue-cards";
+import { getRetainedSearchesForOrg } from "@/lib/retained-searches";
 import { TimeRangeTabs } from "@/components/ui/time-range-selector";
 import {
   DEFAULT_TIME_RANGE,
@@ -43,7 +45,14 @@ export async function PlacementsTab({
   const range = timeRange(selection);
   const { eyebrow: periodEyebrow, rangeLabel: periodLabel } =
     timeRangeChrome(selection);
-  const rows = await getPlacementsDashboardData(org.id, range);
+  // Retained searches load independently of the ledger's placement query:
+  // an OPEN search has no placement to be found by, and is period-agnostic
+  // (the engagement is live until it fills or closes, not until a quarter
+  // ends), so it deliberately ignores `range`.
+  const [rows, retainedSearches] = await Promise.all([
+    getPlacementsDashboardData(org.id, range),
+    getRetainedSearchesForOrg(org.id),
+  ]);
   const cities = await aggregateByCity(rows);
   const totalFee = cities.reduce((s, c) => s + c.totalFee, 0);
   const ledgerRows = toLedgerRows(rows);
@@ -65,6 +74,7 @@ export async function PlacementsTab({
           ariaLabel="Placements period"
         />
       </div>
+      <RetainedSearchesCard rows={retainedSearches} />
       <PlacementsLedger
         rows={ledgerRows}
         title={ledgerTitleFor(selection, range.label)}

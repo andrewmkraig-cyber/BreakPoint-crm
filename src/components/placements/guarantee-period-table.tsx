@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { formatDate } from "@/lib/utils";
+import { guaranteeDaysRemaining } from "@/components/placements/guarantee-period-utils";
 
 // Inputs the parent surface passes for each candidate guarantee-eligible row.
 // Each surface (Placements tab + Pipeline Hired tab) does its own status /
@@ -58,10 +59,10 @@ export function GuaranteePeriodTable({
   const active = useMemo(() => {
     return rows
       .map((r) => {
-        const endMs = new Date(r.guaranteeEndIso).getTime();
-        if (!Number.isFinite(endMs)) return null;
-        const daysRemaining = Math.ceil((endMs - now) / MS_PER_DAY);
-        if (daysRemaining <= 0) return null;
+        // Shared with the retained-searches card via guarantee-period-utils
+        // so both surfaces count down identically.
+        const daysRemaining = guaranteeDaysRemaining(r.guaranteeEndIso, now);
+        if (daysRemaining == null) return null;
         return { row: r, daysRemaining };
       })
       .filter(

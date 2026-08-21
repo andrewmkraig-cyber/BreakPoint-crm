@@ -91,7 +91,7 @@ const FILTERS: ReadonlyArray<{ id: FilterId; label: string }> = [
 // door, not whether the placement is single- or split-payment. The
 // underlying enum stays distinct so split-only logic (PARTIALLY_PAID
 // resolution, future-invoice ordering) still has the signal it needs.
-const STATUS_LABEL: Record<PlacementsDashboardBillingStatus, string> = {
+export const STATUS_LABEL: Record<PlacementsDashboardBillingStatus, string> = {
   PENDING_START: "Pending Start",
   INVOICE_DRAFT: "Invoice Draft",
   INVOICED: "Invoice Sent",
@@ -101,7 +101,7 @@ const STATUS_LABEL: Record<PlacementsDashboardBillingStatus, string> = {
   OVERDUE: "Overdue",
 };
 
-const STATUS_PILL: Record<PlacementsDashboardBillingStatus, string> = {
+export const STATUS_PILL: Record<PlacementsDashboardBillingStatus, string> = {
   PENDING_START:
     "rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900",
   // INVOICE_DRAFT reuses the neutral/slate chip family — the invoice

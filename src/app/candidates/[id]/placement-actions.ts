@@ -32,6 +32,7 @@ import { formatCompensation, type RFJob } from "@/lib/rf-payload-shapes";
 import { createInvoiceForPlacement, resolvePlacementInvoiceContacts } from "@/lib/invoices";
 import { createDraftInvoiceAction } from "@/app/invoices/actions";
 import { createReminder } from "@/app/calendar/reminder-actions";
+import { linkPlacementToRetainedSearch } from "@/lib/retained-search-link";
 import { zonedWallTimeToUtc } from "@/lib/timezone";
 import { priorFridayIfWeekendUtc } from "@/lib/business-days";
 import {
@@ -522,6 +523,15 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
       });
     }
 
+    // Fill moment: the offer is accepted and the fee is locked, so if this
+    // job carries an OPEN retained search, this placement is what filled it.
+    // Never throws — see linkPlacementToRetainedSearch.
+    await linkPlacementToRetainedSearch({
+      placementId: row.id,
+      jobId,
+      organizationId: org.id,
+    });
+
     // Auto-update the candidate's displayed comp from the accepted salary.
     // The profile's "Expected compensation" row reads from both the
     // top-level Candidate.expectedSalary column AND raw.expected_salary
@@ -656,6 +666,8 @@ export async function confirmStart(
       where: { id: input.placementId },
       select: {
         jobRfId: true,
+        // Ace-native job cuid — the key the retained-search link resolves on.
+        jobId: true,
         candidateRfId: true,
         feeTotal: true,
         acceptedSalary: true,
@@ -666,6 +678,8 @@ export async function confirmStart(
         // when this placement carries custom installment terms (the custom
         // path creates an installment-1 draft instead).
         useCustomTerms: true,
+        // Already-linked retained placements skip invoice creation entirely.
+        retainedSearchId: true,
       },
     });
     if (!existing || existing.feeTotal == null || existing.feeTotal <= 0) {
@@ -731,8 +745,24 @@ export async function confirmStart(
     // 2026-05-27: capture the resulting invoice id (or the existing one
     // when idempotent) so the Confirm Start UI can navigate the recruiter
     // straight to the composer-pop flow on /invoices/[id]?compose=1.
+    // Fill moment. Links this placement to the job's OPEN retained search
+    // (if any) and marks that search FILLED. Returns the id when this
+    // placement is retained — either just linked here, or linked earlier at
+    // recordPlacement. Never throws.
+    const retainedSearchId =
+      existing.retainedSearchId ??
+      (await linkPlacementToRetainedSearch({
+        placementId: input.placementId,
+        jobId: existing.jobId,
+        organizationId: org.id,
+      }));
+
+    // A retained placement is ALREADY invoiced on its retained search, so
+    // Confirm Start must not raise a second invoice for the same money.
+    // This guard covers the standard full-fee draft; the custom-terms
+    // installment block below carries the same condition.
     let invoiceId: string | null = null;
-    if (!existing.useCustomTerms) {
+    if (!existing.useCustomTerms && !retainedSearchId) {
       try {
         const created = await createInvoiceForPlacement({
           placementId: input.placementId,
@@ -823,7 +853,10 @@ export async function confirmStart(
     if (
       placementForFire?.useCustomTerms &&
       (placementForFire.installmentCount ?? 0) >= 1 &&
-      placementForFire.inst1Amount != null
+      placementForFire.inst1Amount != null &&
+      // Retained placements bill through the retained search's own invoice
+      // schedule. Raising installment drafts here too would double-invoice.
+      !retainedSearchId
     ) {
       customTermsFired = true;
       const count = placementForFire.installmentCount ?? 1;

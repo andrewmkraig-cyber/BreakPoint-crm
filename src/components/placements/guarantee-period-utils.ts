@@ -15,6 +15,25 @@
 // overrides this default.
 export const DEFAULT_GUARANTEE_PERIOD_DAYS = 90;
 
+const MS_PER_DAY = 86_400_000;
+
+// Days left on a guarantee, or null once it has run out (or the end date
+// is unparseable). Math.ceil so an end date later today still reads "1
+// day"; only a genuinely elapsed guarantee returns null.
+//
+// Extracted from GuaranteePeriodTable so the retained-searches card counts
+// down off the exact same math instead of forking it. The table still owns
+// the ticking `now` that drives a live recount; this is the pure part.
+export function guaranteeDaysRemaining(
+  guaranteeEndIso: string,
+  nowMs: number,
+): number | null {
+  const endMs = new Date(guaranteeEndIso).getTime();
+  if (!Number.isFinite(endMs)) return null;
+  const daysRemaining = Math.ceil((endMs - nowMs) / MS_PER_DAY);
+  return daysRemaining > 0 ? daysRemaining : null;
+}
+
 export function resolveGuaranteeEnd(args: {
   startDateIso: string | null;
   guaranteePeriodDays: number | null;

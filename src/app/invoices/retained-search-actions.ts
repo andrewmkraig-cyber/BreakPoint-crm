@@ -241,6 +241,66 @@ export async function createRetainedSearch(
   }
 }
 
+export type CloseRetainedSearchResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+// Closes an OPEN retained search that never produced a hire.
+//
+// Deliberately touches NOTHING on the money side: invoices already sent or
+// collected against this engagement stay exactly as they are. Closing
+// records that the search ended, it does not reverse the billing. Prompt 5
+// decides how a closed-unfilled engagement reads in revenue.
+//
+// FILLED searches are rejected — a filled search ended by being filled, and
+// the card only offers this action on OPEN rows.
+export async function closeRetainedSearch(input: {
+  retainedSearchId: string;
+  closeReason: string;
+}): Promise<CloseRetainedSearchResult> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in" };
+  const org = await getCurrentOrg();
+
+  const reason = (input.closeReason ?? "").trim();
+  if (!reason) return { ok: false, error: "Add a short reason for closing." };
+  if (reason.length > 500) {
+    return { ok: false, error: "Keep the reason under 500 characters." };
+  }
+
+  try {
+    const existing = await prisma.retainedSearch.findFirst({
+      where: { id: input.retainedSearchId, organizationId: org.id },
+      select: { id: true, status: true },
+    });
+    if (!existing) return { ok: false, error: "That retained search was not found." };
+    if (existing.status === "FILLED") {
+      return { ok: false, error: "That search is already filled." };
+    }
+    if (existing.status === "CLOSED_UNFILLED") {
+      return { ok: false, error: "That search is already closed." };
+    }
+
+    await prisma.retainedSearch.update({
+      where: { id: existing.id },
+      data: {
+        status: "CLOSED_UNFILLED",
+        closedAt: new Date(),
+        closeReason: reason,
+      },
+    });
+
+    revalidatePath("/dashboard");
+    revalidatePath("/invoices");
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Failed to close the search",
+    };
+  }
+}
+
 // Generates the DRAFT invoice(s) for a freshly-saved retained search and
 // returns the id the recruiter should land on.
 //
