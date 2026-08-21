@@ -5,7 +5,9 @@ import { getRfClientsForOrg, getRfJobsForOrg, syntheticIdFromCuid } from "@/lib/
 import { normalizeClient, normalizeJob } from "@/lib/rf-payload-shapes";
 import {
   BILLING_EVENT_PLACEMENT_SELECT,
+  RETAINED_INVOICE_SELECT,
   expandPlacementBillingEvents,
+  expandRetainedInvoiceEvents,
   placementTotalDollars,
   sumEventsCents,
   type PlacementForBilling,
@@ -223,6 +225,8 @@ export async function getScoreboardData(
     offersLast90Rows,
     pipelinePlacementsForValue,
     cashForecastPlacements,
+    retainedInvoicesAll,
+    retainedSearchTotals,
     rfClients,
     rfJobs,
     candidateBridgeRows,
@@ -258,6 +262,10 @@ export async function getScoreboardData(
       },
       select: {
         feeTotal: true,
+        // A retained placement carries no meaningful feeTotal - its money
+        // lives on the RetainedSearch. Selected so Avg Fee Size can swap in
+        // the retainer total instead of counting the deal as $0.
+        retainedSearchId: true,
         placedAt: true,
         candidateId: true,
         candidateRfId: true,
@@ -346,6 +354,29 @@ export async function getScoreboardData(
       },
       select: BILLING_EVENT_PLACEMENT_SELECT,
     }),
+    // Retained-search invoices for BOTH Pipeline Value and Cash Forecast.
+    // Loaded directly rather than through Placement, because a retained
+    // engagement is billed before any candidate exists and the two
+    // placement queries above can never reach it. Unbounded by date for the
+    // same reason those queries are: the events themselves carry the dates,
+    // and the buckets below do the windowing.
+    prisma.invoice.findMany({
+      where: { organizationId: org.id, retainedSearchId: { not: null } },
+      select: {
+        ...RETAINED_INVOICE_SELECT,
+        // Client identity so retained revenue can be folded into Top
+        // Clients without a second query.
+        clientId: true,
+        client: { select: { id: true, name: true } },
+      },
+    }),
+    // Retainer totals, for the Avg Fee Size swap below. The FULL engagement
+    // amount across every installment, which is what RetainedSearch
+    // .totalAmount already holds.
+    prisma.retainedSearch.findMany({
+      where: { organizationId: org.id },
+      select: { id: true, totalAmount: true },
+    }),
     // Pull RF client + job context so we can name Top Clients/Roles even
     // for RF-rooted placements. The MyDashboard tab already pays for the
     // same fetches; future opportunity is to share via a request cache.
@@ -432,10 +463,32 @@ export async function getScoreboardData(
   // future_draft + scheduled events count because the recruiter has
   // committed to those amounts even if the invoice isn't sendable yet —
   // this is the dollars-still-to-collect read.
-  const pipelineValueCents = sumEventsCents(
-    pipelinePlacementsForValue as PlacementForBilling[],
-    (e) => e.status !== "paid",
-  );
+  // Retained events are shared by Pipeline Value and Cash Forecast below.
+  // Retained PLACEMENTS contribute nothing (expandPlacementBillingEvents
+  // returns [] for them), so this is the only place the engagement's money
+  // enters either number - counted once, never twice.
+  const retainedEvents = expandRetainedInvoiceEvents(retainedInvoicesAll);
+  // retainedSearchId -> clientId, and clientId -> display name, both read
+  // off the retained invoices already loaded above.
+  const retainedClientById = new Map<string, string>();
+  const retainedClientNameById = new Map<string, string>();
+  for (const inv of retainedInvoicesAll) {
+    if (inv.retainedSearchId && inv.clientId) {
+      retainedClientById.set(inv.retainedSearchId, inv.clientId);
+    }
+    if (inv.client?.id && inv.client.name) {
+      retainedClientNameById.set(inv.client.id, inv.client.name);
+    }
+  }
+
+  const pipelineValueCents =
+    sumEventsCents(
+      pipelinePlacementsForValue as PlacementForBilling[],
+      (e) => e.status !== "paid",
+    ) +
+    retainedEvents
+      .filter((e) => e.status !== "paid")
+      .reduce((sum, e) => sum + e.amountCents, 0);
   const pipelineValueUsdRaw = Math.round(pipelineValueCents / 100);
   // Tile still wants null (renders "—") when there's nothing to show,
   // since the count column below distinguishes "no deals" from "deals
@@ -449,8 +502,14 @@ export async function getScoreboardData(
   let pendingCount = 0;
   let billedCents = 0;
   let collectedCents = 0;
-  for (const p of cashForecastPlacements) {
-    for (const e of expandPlacementBillingEvents(p as PlacementForBilling)) {
+  const cashForecastEvents = [
+    ...cashForecastPlacements.flatMap((p) =>
+      expandPlacementBillingEvents(p as PlacementForBilling),
+    ),
+    ...retainedEvents,
+  ];
+  {
+    for (const e of cashForecastEvents) {
       // Pending: unsent obligations. status=draft (real DRAFT invoice
       // row, isFuture=false — future_draft is excluded by the helper)
       // or status=scheduled (custom-terms installment with no invoice
@@ -482,8 +541,21 @@ export async function getScoreboardData(
   const pendingInvoicesCount = pendingCount;
   const billedUsd = Math.round(billedCents / 100);
   const collectedUsd = Math.round(collectedCents / 100);
+  // Avg Fee Size. Normal placements keep reading bare Placement.feeTotal -
+  // the deliberate "typical deal size, not a sum of installments" decision
+  // stands untouched for them. A RETAINED placement has its money on the
+  // RetainedSearch instead, so it contributes that engagement's FULL
+  // totalAmount (all installments, not just installment 1). Without this a
+  // retained deal would land as a $0 fee and drag the average down.
+  const retainedTotalById = new Map(
+    retainedSearchTotals.map((r) => [r.id, r.totalAmount]),
+  );
   const placedFees = placedLast90
-    .map((p) => p.feeTotal)
+    .map((p) =>
+      p.retainedSearchId
+        ? retainedTotalById.get(p.retainedSearchId) ?? null
+        : p.feeTotal,
+    )
     .filter((v): v is number => typeof v === "number" && v > 0);
   const avgFeeSizeUsd = placedFees.length > 0
     ? Math.round(placedFees.reduce((a, b) => a + b, 0) / placedFees.length)
@@ -587,6 +659,9 @@ export async function getScoreboardData(
     // roleAgg fee accumulator (avg-fee math stays clean) but DO count
     // for the placements tally (the recruiter shipped a deal regardless
     // of whether the fee was logged).
+    // Retained placements return null here (their money is on the retained
+    // invoice), so the retainer is added to clientAgg separately below
+    // rather than through the placement.
     const placementFeeUsd = placementTotalDollars(p as PlacementForBilling);
 
     const clientKey = p.client?.id
@@ -622,6 +697,25 @@ export async function getScoreboardData(
       }
       roleAgg.set(roleTitle, prev);
     }
+  }
+
+  // Retained revenue folded into Top Clients from the engagement's own
+  // invoices. Without this the retainer would be invisible here: the
+  // placement that filled it contributes $0 by design, and an OPEN search
+  // has no placement at all. Counted once, from the same invoice events
+  // every other retained total reads.
+  for (const e of retainedEvents) {
+    const clientId = e.retainedSearchId
+      ? retainedClientById.get(e.retainedSearchId)
+      : null;
+    if (!clientId) continue;
+    const name = retainedClientNameById.get(clientId);
+    if (!name) continue;
+    const key = `c:${clientId}`;
+    const prev =
+      clientAgg.get(key) ?? { clientId, name, placements: 0, feeUsd: 0 };
+    prev.feeUsd += Math.round(e.amountCents / 100);
+    clientAgg.set(key, prev);
   }
 
   const topClients = Array.from(clientAgg.values())

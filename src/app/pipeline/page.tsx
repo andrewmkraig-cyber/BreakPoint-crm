@@ -478,6 +478,9 @@ export default async function PipelinePage({
     const hiredInvoices = hiredPlacementIds.length > 0
       ? await prisma.invoice.findMany({
           where: {
+            // Rule 8: tenant-scoped. The placement ids are already org-scoped
+            // upstream, but the invoice query must say so itself.
+            organizationId: org.id,
             placementId: { in: hiredPlacementIds },
             status: { not: "VOID" },
           },

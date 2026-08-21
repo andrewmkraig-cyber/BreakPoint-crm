@@ -123,6 +123,13 @@ export async function RevenueCards({
           stage: { in: ["pending_start", "hired"] },
           feeTotal: { gt: 0 },
           invoices: { none: {} },
+          // A placement that filled a retained search has NO invoice of its
+          // own (the engagement's invoice hangs off the RetainedSearch, with
+          // placementId null), so it would otherwise sail through the
+          // `invoices: { none: {} }` test above and add its feeTotal on top
+          // of the retained invoice the query's other arm already counted.
+          // That is the double-count this excludes.
+          retainedSearchId: null,
           placedAt: { gte: revStart, lt: revEnd },
         },
         select: {

@@ -96,6 +96,18 @@ export async function GET(req: NextRequest) {
     endExclusive,
   });
 
+  // Retained-search invoices, fetched separately because they have no
+  // placement to be reached through. The billed_revenue arm's
+  // `invoices: { some: ... }` join and the cash_collected arm's
+  // placementId filter both structurally exclude them, so without this the
+  // drill-down list would disagree with the tile that opened it.
+  const retainedRows = await fetchRetainedRows({
+    kind,
+    orgId: org.id,
+    start,
+    endExclusive,
+  });
+
   // Fetch RF dictionaries once so client + job names resolve for
   // legacy rows whose Placement.clientId / jobId are still null.
   const [rfClients, rfJobs] = await Promise.all([
@@ -180,6 +192,8 @@ export async function GET(req: NextRequest) {
       primaryHref,
     };
   });
+
+  rows.push(...retainedRows);
 
   rows.sort((a, b) => {
     const ad = a.startDateIso ? Date.parse(a.startDateIso) : 0;
@@ -282,6 +296,82 @@ const PLACEMENT_SELECT = {
   client: { select: { id: true, name: true } },
   job: { select: { id: true, title: true } },
 } as const;
+
+// Retained-search invoices projected straight into DrilldownRow. Only the
+// two money kinds have a retained analogue: client / role drill-downs key
+// off Placement.clientId / Job.title aggregates that a retained engagement
+// does not participate in.
+//
+// Status gating and date windowing mirror the placement arms exactly:
+// billed_revenue takes SENT + PAID by dueDate, cash_collected takes PAID by
+// paidAt.
+async function fetchRetainedRows(args: {
+  kind: DrilldownKind;
+  orgId: string;
+  start: Date;
+  endExclusive: Date;
+}): Promise<DrilldownRow[]> {
+  const { kind, orgId, start, endExclusive } = args;
+  if (kind !== "billed_revenue" && kind !== "cash_collected") return [];
+
+  const select = {
+    id: true,
+    feeAmount: true,
+    status: true,
+    dueDate: true,
+    startDate: true,
+    roleTitle: true,
+    client: { select: { name: true } },
+  } as const;
+
+  // Two explicit queries rather than a ternary where-clause, so Prisma can
+  // infer each shape cleanly.
+  const invoices =
+    kind === "billed_revenue"
+      ? await prisma.invoice.findMany({
+          where: {
+            organizationId: orgId,
+            retainedSearchId: { not: null },
+            status: { in: ["SENT", "PAID"] },
+            dueDate: { gte: start, lt: endExclusive },
+          },
+          select,
+        })
+      : await prisma.invoice.findMany({
+          where: {
+            organizationId: orgId,
+            retainedSearchId: { not: null },
+            status: "PAID",
+            paidAt: { gte: start, lt: endExclusive },
+          },
+          select,
+        });
+
+  const now = new Date();
+  return invoices.map<DrilldownRow>((inv) => {
+    const amount = inv.feeAmount ? Number(inv.feeAmount.toString()) : null;
+    return {
+      // No placement behind this money; the invoice id keys the row.
+      placementId: `retained-invoice:${inv.id}`,
+      // A retained engagement has no candidate, so the row names the search.
+      candidateName: inv.roleTitle
+        ? `Retained search - ${inv.roleTitle}`
+        : "Retained search",
+      candidateHref: null,
+      clientName: inv.client?.name ?? "",
+      roleTitle: inv.roleTitle ?? "",
+      feeAmount: amount != null && Number.isFinite(amount) ? amount : null,
+      startDateIso: inv.startDate ? inv.startDate.toISOString() : null,
+      billingStatus: deriveBillingStatus({
+        startDate: null,
+        installmentCount: null,
+        invoices: [{ status: inv.status, dueDate: inv.dueDate }],
+        now,
+      }),
+      primaryHref: `/invoices/${inv.id}`,
+    };
+  });
+}
 
 async function fetchPlacements(args: FetchArgs): Promise<PlacementRow[]> {
   const { kind, id, orgId, start, endExclusive } = args;

@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import {
   BILLING_EVENT_PLACEMENT_SELECT,
+  RETAINED_INVOICE_SELECT,
   expandPlacementBillingEvents,
+  expandRetainedInvoiceEvents,
+  retainedInvoiceWindowWhere,
   type PlacementForBilling,
 } from "@/lib/billing-events";
 
@@ -78,7 +81,7 @@ export async function getGoalPacingData(
   const qStart = new Date(year, qIndex * 3, 1);
   const qEnd = new Date(year, qIndex * 3 + 3, 1);
 
-  const [yearPlacements, placementsYtd] = await Promise.all([
+  const [yearPlacements, retainedInvoices, placementsYtd] = await Promise.all([
     // Rows with a locked stage (pending_start or hired) where ANY billing
     // event might land in the year window. We don't pre-filter by
     // expectedStartDate/placedAt at the query level any more because a
@@ -99,6 +102,14 @@ export async function getGoalPacingData(
       },
       select: BILLING_EVENT_PLACEMENT_SELECT,
     }),
+    // Retained-search invoices, loaded directly rather than through
+    // Placement. A retained engagement is billed before any candidate
+    // exists, so the placement query above can never reach it. Without this
+    // the whole retainer was missing from Goal Pacing.
+    prisma.invoice.findMany({
+      where: retainedInvoiceWindowWhere(organizationId, yearStart, yearEnd),
+      select: RETAINED_INVOICE_SELECT,
+    }),
     prisma.placement.count({
       // YTD Placements counter for Goal Pacing — cancelled placements
       // are dropped so the count matches the booked-revenue ledger
@@ -113,8 +124,16 @@ export async function getGoalPacingData(
 
   let ytdRevenueCents = 0;
   let quarterRevenueCents = 0;
-  for (const p of yearPlacements) {
-    for (const e of expandPlacementBillingEvents(p as PlacementForBilling)) {
+  // Placement events (retained placements return none - their money is on
+  // the retained invoice below) plus the retained invoices themselves.
+  const allEvents = [
+    ...yearPlacements.flatMap((p) =>
+      expandPlacementBillingEvents(p as PlacementForBilling),
+    ),
+    ...expandRetainedInvoiceEvents(retainedInvoices),
+  ];
+  {
+    for (const e of allEvents) {
       // Goal Pacing buckets by scheduledAt for every status — even
       // paid events should land in the quarter they were billed for,
       // not the quarter they were collected in. The recruiter's read

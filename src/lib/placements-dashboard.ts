@@ -310,6 +310,10 @@ export async function getPlacementsDashboardData(
       select: {
         id: true,
         stage: true,
+        // Drives the retained exclusion inside placementTotalDollars: a
+        // placement that filled a retained search reads $0 here, because the
+        // engagement's money is already counted on its own invoice.
+        retainedSearchId: true,
         candidateId: true,
         clientId: true,
         placedAt: true,

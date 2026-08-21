@@ -50,7 +50,12 @@ export type BillingEventStatus =
 export type BillingEventSource = "invoice" | "installment" | "fee_total";
 
 export type BillingEvent = {
-  placementId: string;
+  // Null for retained-search events: a retained engagement is billed
+  // against a Client + Job before any placement exists, so its money has no
+  // placement to hang off. Exactly one of placementId / retainedSearchId is
+  // set on every event.
+  placementId: string | null;
+  retainedSearchId: string | null;
   // Always whole cents so this composes with invoices.ts which works in
   // cents throughout. Dollar callers can divide by 100 at the edge.
   amountCents: number;
@@ -75,6 +80,11 @@ export type BillingEvent = {
 // extra round trip — Prisma's inferred types are structurally compatible.
 export type PlacementForBilling = {
   id: string;
+  // Set when this placement filled a retained search. Such a placement
+  // contributes ZERO billing events: the engagement's money is already on
+  // the books through the retained search's own invoice, so counting the
+  // placement too would bill the same fee twice.
+  retainedSearchId?: string | null;
   feeTotal: number | null;
   expectedStartDate: Date | null;
   placedAt: Date | null;
@@ -103,6 +113,7 @@ export type PlacementForBilling = {
 // every required field is present without re-typing the column list.
 export const BILLING_EVENT_PLACEMENT_SELECT = {
   id: true,
+  retainedSearchId: true,
   feeTotal: true,
   expectedStartDate: true,
   placedAt: true,
@@ -157,6 +168,99 @@ function invoiceStatusToEventStatus(
   return null;
 }
 
+// Shape shared by placement-attached and retained invoices. Both convert to
+// events through invoiceToEvent below, so a retained invoice is gated on
+// status and windowed on dates exactly like every other invoice.
+export type InvoiceForBilling = {
+  id: string;
+  status: "DRAFT" | "SENT" | "PAID" | "VOID";
+  feeAmount: Prisma.Decimal | null;
+  dueDate: Date | null;
+  sentAt: Date | null;
+  paidAt: Date | null;
+  isFuture: boolean;
+  createdAt: Date;
+};
+
+// ONE invoice → event conversion, used by the placement path and the
+// retained path alike. Returns null for VOID invoices and zero amounts.
+function invoiceToEvent(
+  inv: InvoiceForBilling,
+  owner: { placementId: string | null; retainedSearchId: string | null },
+): BillingEvent | null {
+  const status = invoiceStatusToEventStatus(inv.status, inv.isFuture);
+  if (!status) return null;
+  const amountCents = decimalToCents(inv.feeAmount);
+  if (amountCents === 0) return null;
+  // dueDate is preferred for quarter bucketing — that's the date the
+  // recruiter thinks of as "when this is on the books for Q-whatever".
+  // Falls back through sentAt → createdAt so we always have *something*.
+  const scheduledAt = inv.dueDate ?? inv.sentAt ?? inv.createdAt;
+  return {
+    placementId: owner.placementId,
+    retainedSearchId: owner.retainedSearchId,
+    amountCents,
+    scheduledAt,
+    paidAt: inv.paidAt,
+    status,
+    source: "invoice",
+    invoiceId: inv.id,
+  };
+}
+
+// Every billing event carried by a retained search's invoices. This is the
+// counterpart to expandPlacementBillingEvents for money that has no
+// placement behind it, and it is what keeps a retained invoice from being
+// dropped by surfaces that used to reach invoices only through Placement.
+export function expandRetainedInvoiceEvents(
+  invoices: Array<InvoiceForBilling & { retainedSearchId: string | null }>,
+): BillingEvent[] {
+  const events: BillingEvent[] = [];
+  for (const inv of invoices) {
+    if (!inv.retainedSearchId) continue;
+    const event = invoiceToEvent(inv, {
+      placementId: null,
+      retainedSearchId: inv.retainedSearchId,
+    });
+    if (event) events.push(event);
+  }
+  return events;
+}
+
+// Prisma select fragment for a retained invoice. Mirrors the invoice select
+// inside BILLING_EVENT_PLACEMENT_SELECT so both invoice families carry the
+// same columns into invoiceToEvent.
+export const RETAINED_INVOICE_SELECT = {
+  id: true,
+  retainedSearchId: true,
+  status: true,
+  feeAmount: true,
+  dueDate: true,
+  sentAt: true,
+  paidAt: true,
+  isFuture: true,
+  createdAt: true,
+} as const;
+
+// The window every retained-invoice loader applies. Kept here so the
+// Billing Tower, Goal Pacing, and the Scoreboard all reach the same set.
+export function retainedInvoiceWindowWhere(
+  organizationId: string,
+  from: Date,
+  endExclusive: Date,
+) {
+  return {
+    organizationId,
+    retainedSearchId: { not: null },
+    OR: [
+      { dueDate: { gte: from, lt: endExclusive } },
+      { sentAt: { gte: from, lt: endExclusive } },
+      { paidAt: { gte: from, lt: endExclusive } },
+      { createdAt: { gte: from, lt: endExclusive } },
+    ],
+  };
+}
+
 // Expand a placement into its billing events. Branch selection is mutually
 // exclusive so consumers never double-count: a placement contributes
 // events from invoices OR installments OR feeTotal — never two of those
@@ -164,6 +268,15 @@ function invoiceStatusToEventStatus(
 export function expandPlacementBillingEvents(
   p: PlacementForBilling,
 ): BillingEvent[] {
+  // Branch 0: a placement that filled a retained search contributes NOTHING.
+  // The engagement was invoiced against the retained search before this
+  // candidate existed, and those invoices are counted directly (see
+  // expandRetainedInvoiceEvents). Returning events here as well would put
+  // the same fee on the books twice. The placement still counts everywhere
+  // that measures activity rather than dollars — placement count, win rate,
+  // days to fill, offers — because those never route through this helper.
+  if (p.retainedSearchId) return [];
+
   // Branch 1: any non-VOID invoice → expand them. Even a single DRAFT
   // is enough to take this branch — the recruiter has begun creating
   // invoice rows, so the installment fallback is no longer the source
@@ -172,24 +285,11 @@ export function expandPlacementBillingEvents(
   if (liveInvoices.length > 0) {
     const events: BillingEvent[] = [];
     for (const inv of liveInvoices) {
-      const status = invoiceStatusToEventStatus(inv.status, inv.isFuture);
-      if (!status) continue;
-      const amountCents = decimalToCents(inv.feeAmount);
-      if (amountCents === 0) continue;
-      // dueDate is preferred for quarter bucketing — that's the date the
-      // recruiter thinks of as "when this is on the books for Q-whatever".
-      // Falls back through sentAt → createdAt so we always have *something*.
-      const scheduledAt =
-        inv.dueDate ?? inv.sentAt ?? inv.createdAt;
-      events.push({
+      const event = invoiceToEvent(inv, {
         placementId: p.id,
-        amountCents,
-        scheduledAt,
-        paidAt: inv.paidAt,
-        status,
-        source: "invoice",
-        invoiceId: inv.id,
+        retainedSearchId: null,
       });
+      if (event) events.push(event);
     }
     return events;
   }
@@ -213,6 +313,7 @@ export function expandPlacementBillingEvents(
       const days = inst.days ?? 0;
       events.push({
         placementId: p.id,
+        retainedSearchId: null,
         amountCents: dollarsToCents(inst.amount),
         scheduledAt: addDays(anchor, days),
         paidAt: null,
@@ -234,6 +335,7 @@ export function expandPlacementBillingEvents(
     return [
       {
         placementId: p.id,
+        retainedSearchId: null,
         amountCents: flat * 100,
         scheduledAt: flatAnchor,
         paidAt: null,
@@ -380,7 +482,47 @@ async function loadBillingEventsInWindow(
     select: BILLING_PLACEMENT_SELECT,
   });
 
+  // Retained invoices are loaded directly, NOT through Placement. A retained
+  // engagement is billed before any candidate exists, so a placement-rooted
+  // query can never reach it — that is exactly how this money used to vanish
+  // from Revenue, Outstanding, Goal Progress, and both drill-downs.
+  //
+  // The window is deliberately wide (same 12-month lookback as placements)
+  // because per-event bucketing below does the precise filtering. Status
+  // gating is identical: VOID is dropped by invoiceToEvent, everything else
+  // counts on the same terms as a placement invoice.
+  const retainedInvoices = await prisma.invoice.findMany({
+    where: retainedInvoiceWindowWhere(
+      organizationId,
+      aYearBeforeStart,
+      endExclusive,
+    ),
+    select: {
+      ...RETAINED_INVOICE_SELECT,
+      roleTitle: true,
+      client: { select: { id: true, name: true } },
+    },
+  });
+
   const events: BillingEventWithPlacement[] = [];
+
+  for (const inv of retainedInvoices) {
+    if (!inv.retainedSearchId) continue;
+    // A retained engagement has no candidate, so the drill-down row names
+    // the client and the role being searched instead.
+    const ref: BillingPlacementRef = {
+      id: inv.retainedSearchId,
+      candidateRfId: null,
+      candidate: null,
+      client: inv.client,
+      job: inv.roleTitle ? { title: inv.roleTitle } : null,
+    };
+    for (const e of expandRetainedInvoiceEvents([inv])) {
+      if (e.scheduledAt < start || e.scheduledAt >= endExclusive) continue;
+      events.push({ ...e, placement: ref });
+    }
+  }
+
   for (const p of placements) {
     const ref: BillingPlacementRef = {
       id: p.id,
