@@ -37,7 +37,7 @@ All time estimates calibrated against actual build pace: Game Plan Context Depth
 
 ## Code Prompt Rules
 - Max 3 items per prompt. No exceptions.
-- Step 0 on every prompt touching candidate/job/client/placement/pipeline: grep for relevant files and report exact counts before writing any code. Baseline FILE counts (the `-l | wc -l` commands count files, measured 2026-06-08 · Ace 89.0, RfId recount 2026-06-18 · Ace 95.1): `recruiterflow` = 3 files, `RecruiterFlow` = 10 files, `RfId` = 79 files. Compare against these file-count baselines and flag any increase. **Measure Step 0 baselines against COMMITTED history (`git grep` / a clean HEAD), never the raw working tree** - uncommitted files (e.g. concurrent Codex work left in the tree) inflate the counts and caused a false "drift" report this session. If the tree is dirty, note it and baseline against HEAD.
+- Step 0 on every prompt touching candidate/job/client/placement/pipeline: grep for relevant files and report exact counts before writing any code. Baseline FILE counts (the `-l | wc -l` commands count files, measured 2026-06-08 · Ace 89.0, RfId recount 2026-06-18 · Ace 95.1, RfId corrected to 83 on 2026-08-21 · Retained Search close-out): `recruiterflow` = 3 files, `RecruiterFlow` = 10 files, `RfId` = 83 files. The RfId drift from 79 PREDATES the Retained Search session - the count was already 82 as far back as 2026-08-13 (verified by walking `git grep` over 15 commits) and reached 83 via the interview-prep route in `9c04088f`. No Retained Search prompt added an RfId file. Compare against these file-count baselines and flag any increase. **Measure Step 0 baselines against COMMITTED history (`git grep` / a clean HEAD), never the raw working tree** - uncommitted files (e.g. concurrent Codex work left in the tree) inflate the counts and caused a false "drift" report this session. If the tree is dirty, note it and baseline against HEAD.
 - Always commit and push immediately after the build succeeds (`npm run build` exits 0). Browser verification is Andrew's responsibility after deploy, not a gate before push. Never hold changes waiting for browser verification.
 - Dual-file awareness: always name BOTH files when a feature touches more than one.
 - Single terminal only. Never suggest parallel Claude Code sessions or multiple terminals.
@@ -265,7 +265,7 @@ grep -r "recruiterflow" src/ --include="*.ts" --include="*.tsx" -l | wc -l
 grep -r "RecruiterFlow" src/ --include="*.ts" --include="*.tsx" -l | wc -l
 grep -r "RfId" src/ --include="*.ts" --include="*.tsx" -l | wc -l
 ```
-Baseline FILE counts (the `-l | wc -l` commands above count files, measured 2026-06-08 · Ace 89.0, RfId recount 2026-06-18 · Ace 95.1): recruiterflow = 3 files, RecruiterFlow = 10 files, RfId = 79 files. Report counts before writing any code. If counts increased from baseline, flag it.
+Baseline FILE counts (the `-l | wc -l` commands above count files, measured 2026-06-08 · Ace 89.0, RfId recount 2026-06-18 · Ace 95.1, RfId corrected to 83 on 2026-08-21): recruiterflow = 3 files, RecruiterFlow = 10 files, RfId = 83 files. The RfId drift from 79 predates the Retained Search session. Report counts before writing any code. If counts increased from baseline, flag it.
 
 ### Code Prompt Rules
 - Max 3 items per prompt. Never queue more.
