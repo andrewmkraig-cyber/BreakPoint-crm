@@ -1,12 +1,10 @@
 # ACE_STATE.md
-Last updated: 2026-08-21 · Ace 96.0 (+ Retained Search, labelled Ace 95.0 - see note in that section)
-Current Version: Ace 96.0
-Last Shipped: 2026-07-06
+Last updated: 2026-08-22 · Ace 97.0
+Current Version: Ace 97.0
+Last Shipped: 2026-08-21
 Live at: ace.breakpointtalent.com
 
-## What Shipped in Ace 95.0 - Retained Search (2026-08-21)
-
-> Version-label note: this section is titled Ace 95.0 as requested, but an earlier **Ace 95.0 (2026-06-16) - BD self-serve sequences** section already exists below and the file header reads Current Version: Ace 96.0. Retained Search shipped chronologically AFTER 96.0. Renumber to 97.0 if the sequence should stay monotonic.
+## What Shipped in Ace 97.0 - Retained Search (2026-08-21)
 
 Retained search engagements end to end, across five prompts. Money is committed against a Client + Job before any candidate exists, so the whole arc had to work without a Placement. All pushed to main; `npm run build` exits 0 after each; raw-button, RF-blob, and topbar-smoke gates green throughout with no baseline raised.
 

@@ -1,10 +1,10 @@
 # Ace Roadmap
-Last updated: 2026-08-21 · Ace 96.0 (+ Retained Search)
+Last updated: 2026-08-22 · Ace 97.0
 
 ## Active Build Sequence
 
-### DONE this session (Ace 95.0 - Retained Search, 2026-08-21)
-Retained search end to end across five prompts. All shipped to main; `npm run build` exits 0 after each; no baseline raised. Additive schema only (`RetainedSearch`, `RetainedSearchStatus`, `RetainedSearchInstallment`, plus nullable indexed `retainedSearchId` on `Placement` and `Invoice`), applied via `db push`. Full detail in ACE_STATE.md ▸ Ace 95.0 - Retained Search. (Version-label note: an earlier Ace 95.0 section from 2026-06-16 already exists and the file header reads 96.0; renumber to 97.0 if the sequence should stay monotonic.)
+### DONE this session (Ace 97.0 - Retained Search, 2026-08-21)
+Retained search end to end across five prompts. All shipped to main; `npm run build` exits 0 after each; no baseline raised. Additive schema only (`RetainedSearch`, `RetainedSearchStatus`, `RetainedSearchInstallment`, plus nullable indexed `retainedSearchId` on `Placement` and `Invoice`), applied via `db push`. Full detail in ACE_STATE.md ▸ Ace 97.0 - Retained Search.
 - ~~**Retained search schema**~~ DONE (`a7466396`) - `RetainedSearch` + status enum + FK columns. `Invoice.placementId`/`candidateId` were already nullable, so retained invoices needed no nullability change. `totalAmount` Int to match `Placement.feeTotal`, no third money type.
 - ~~**Send Retained Invoice button + modal**~~ DONE (`1a82a5f4`) - second topbar action on `/invoices` via the existing `extraAction` slot; shared `<Button variant="primary">`; org-scoped `createRetainedSearch` with exact installment-sum validation. Inline job creation intentionally skipped in favor of a `/jobs/new?clientId=` deep link (NewJobInput needs ~15 fields).
 - ~~**Installment storage + terms expansion + invoice generation**~~ DONE (`953fa4cb`) - `RetainedSearchInstallment` written in the same transaction as its parent; terms widened to 0/10/14/15/30/45/60 from one shared array; DRAFT invoice in the SAME `INV-####` sequence, installment 1 live + later ones `isFuture` with 9:00 AM ET reminders, mirroring `confirmStart`'s custom-terms flow. Placement-less PDF + email degradations shipped with it.
