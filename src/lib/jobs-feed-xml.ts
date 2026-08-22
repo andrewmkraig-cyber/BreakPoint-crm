@@ -67,7 +67,7 @@ function renderJob(job: PublicWebsiteJob): string {
     `    <description>${cdata(descriptionHtml(job.description))}</description>`,
     `    <country>${escapeXml(job.location.country)}</country>`,
     `    <city>${escapeXml(job.location.city)}</city>`,
-    `    <state>${escapeXml(job.location.state)}</state>`,
+    ...optionalElement("state", job.location.state),
     ...optionalElement("postalcode", job.location.postalCode),
     `    <company>${escapeXml(job.company)}</company>`,
     `    <date>${escapeXml(job.datePosted)}</date>`,

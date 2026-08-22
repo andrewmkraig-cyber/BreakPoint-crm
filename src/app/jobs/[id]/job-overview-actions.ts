@@ -130,43 +130,47 @@ export async function updateJobOverview(args: {
       data.title = t;
     }
 
-    // Structured location. The Overview edit form sends City / State /
-    // Zip and they are REQUIRED on every save (enforce-on-edit). Same
-    // rule + validators as the New Job create path — no second
-    // validator. Compose the legacy `locations` array from the trio so
-    // the read-only Location cell + distance sub-line (which reads the
-    // structured columns) stay in sync. Existing loose-location jobs
-    // surface empty fields until the recruiter edits; once they save,
-    // they must provide a valid trio.
+    // Structured location. Physical jobs require City / State / Zip on
+    // every save. Remote jobs intentionally clear structured location and
+    // carry "Remote" in the legacy locations[] display field.
     if (
       patch.locationCity !== undefined ||
       patch.locationState !== undefined ||
       patch.locationZip !== undefined
     ) {
-      const city = (patch.locationCity ?? "").trim();
-      const state = (patch.locationState ?? "").trim().toUpperCase();
-      const zip = (patch.locationZip ?? "").trim();
-      if (!city) return { ok: false, error: "City is required." };
-      if (!state) return { ok: false, error: "State is required." };
-      if (!/^[A-Z]{2}$/.test(state)) {
-        return { ok: false, error: "State must be a 2-letter abbreviation." };
+      const intendedWorkplace = (patch.workplaceType ?? job.workplaceType ?? "").trim();
+      const isRemote = intendedWorkplace === "Remote";
+      const city = isRemote ? "" : (patch.locationCity ?? "").trim();
+      const state = isRemote ? "" : (patch.locationState ?? "").trim().toUpperCase();
+      const zip = isRemote ? "" : (patch.locationZip ?? "").trim();
+      if (isRemote) {
+        data.locationCity = null;
+        data.locationState = null;
+        data.locationZip = null;
+        data.locations = ["Remote"];
+      } else {
+        if (!city) return { ok: false, error: "City is required." };
+        if (!state) return { ok: false, error: "State is required." };
+        if (!/^[A-Z]{2}$/.test(state)) {
+          return { ok: false, error: "State must be a 2-letter abbreviation." };
+        }
+        if (!zip) return { ok: false, error: "Zip is required." };
+        if (!/^\d{5}$/.test(zip)) {
+          return { ok: false, error: "Zip must be a 5-digit US zip code." };
+        }
+        const cityCheck = await validateUsCity(city);
+        if (!cityCheck.ok) return { ok: false, error: `City: ${cityCheck.message}` };
+        const zipCheck = await validateUsZip(zip);
+        if (!zipCheck.ok) return { ok: false, error: `Zip: ${zipCheck.message}` };
+        data.locationCity = city;
+        data.locationState = state;
+        data.locationZip = zip;
+        const composed = [[city, state].filter(Boolean).join(", "), zip]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+        data.locations = composed ? [composed] : [];
       }
-      if (!zip) return { ok: false, error: "Zip is required." };
-      if (!/^\d{5}$/.test(zip)) {
-        return { ok: false, error: "Zip must be a 5-digit US zip code." };
-      }
-      const cityCheck = await validateUsCity(city);
-      if (!cityCheck.ok) return { ok: false, error: `City: ${cityCheck.message}` };
-      const zipCheck = await validateUsZip(zip);
-      if (!zipCheck.ok) return { ok: false, error: `Zip: ${zipCheck.message}` };
-      data.locationCity = city;
-      data.locationState = state;
-      data.locationZip = zip;
-      const composed = [[city, state].filter(Boolean).join(", "), zip]
-        .filter(Boolean)
-        .join(" ")
-        .trim();
-      data.locations = composed ? [composed] : [];
     }
     if (patch.salaryRangeStart !== undefined) data.salaryRangeStart = patch.salaryRangeStart;
     if (patch.salaryRangeEnd !== undefined) data.salaryRangeEnd = patch.salaryRangeEnd;

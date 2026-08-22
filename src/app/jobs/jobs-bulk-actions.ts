@@ -62,11 +62,12 @@ export async function runJobsBulkAction(args: {
           readString(job.override?.description) ??
           readString(job.description) ??
           readString(raw.description);
+        const isRemote = job.workplaceType === "Remote";
         const missing = [
           job.client?.ownerId !== userId ? "My Jobs ownership" : null,
           job.lifecycle !== "active" || !job.isOpen ? "Active status" : null,
           !description ? "job description" : null,
-          !job.locationCity || !job.locationState ? "city and state" : null,
+          !isRemote && (!job.locationCity || !job.locationState) ? "city and state" : null,
           !job.employmentType ? "employment type" : null,
           !job.workplaceType ? "workplace type" : null,
           job.workplaceType === "Hybrid" && !job.hybridSchedule ? "days in office" : null,

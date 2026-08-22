@@ -159,6 +159,22 @@ export function JobOverviewTab({
     setEditing(false);
   }
 
+  function setRemoteDraft(checked: boolean) {
+    setDraft({
+      ...draft,
+      workplaceType: checked ? "Remote" : "On-site",
+      hybridSchedule: "Flexible",
+      locationCity: checked ? "" : draft.locationCity,
+      locationState: checked ? "" : draft.locationState,
+      locationZip: checked ? "" : draft.locationZip,
+    });
+    if (checked) {
+      setCityErr(null);
+      setStateErr(null);
+      setZipErr(null);
+    }
+  }
+
   async function onSave() {
     if (saving) return;
     setErr(null);
@@ -177,25 +193,29 @@ export function JobOverviewTab({
       titleInvalid = true;
     }
 
-    const city = draft.locationCity.trim();
-    const stateAbbr = draft.locationState.trim();
-    const zip = draft.locationZip.trim();
+    const workplaceType = draft.workplaceType.trim() || null;
+    const isRemote = workplaceType === "Remote";
+    const hybridSchedule = workplaceType === "Hybrid" ? draft.hybridSchedule.trim() || null : null;
+    const city = isRemote ? "" : draft.locationCity.trim();
+    const stateAbbr = isRemote ? "" : draft.locationState.trim();
+    const zip = isRemote ? "" : draft.locationZip.trim();
+    const stateUpper = isRemote ? "" : stateAbbr.toUpperCase();
     let locationInvalid = false;
-    if (!city) {
+    if (!isRemote && !city) {
       setCityErr("City is required.");
       locationInvalid = true;
     }
-    if (!stateAbbr) {
+    if (!isRemote && !stateAbbr) {
       setStateErr("State is required.");
       locationInvalid = true;
-    } else if (!/^[A-Za-z]{2}$/.test(stateAbbr)) {
+    } else if (!isRemote && !/^[A-Za-z]{2}$/.test(stateAbbr)) {
       setStateErr("Use the 2-letter state abbreviation.");
       locationInvalid = true;
     }
-    if (!zip) {
+    if (!isRemote && !zip) {
       setZipErr("Zip is required.");
       locationInvalid = true;
-    } else if (!/^\d{5}$/.test(zip)) {
+    } else if (!isRemote && !/^\d{5}$/.test(zip)) {
       setZipErr("Enter a 5-digit US zip code.");
       locationInvalid = true;
     }
@@ -227,9 +247,6 @@ export function JobOverviewTab({
 
     const ccy = draft.salaryCcy.trim().toUpperCase().slice(0, 3) || null;
     const employmentType = draft.employmentType.trim() || null;
-    const workplaceType = draft.workplaceType.trim() || null;
-    const hybridSchedule = workplaceType === "Hybrid" ? draft.hybridSchedule.trim() || null : null;
-    const stateUpper = stateAbbr.toUpperCase();
 
     setSaving(true);
 
@@ -237,27 +254,29 @@ export function JobOverviewTab({
     // endpoint the New Job form uses, so a bad city/zip points at the
     // right field. Network errors fail open server-side; the server
     // re-runs the same validators as defense-in-depth.
-    try {
-      const vres = await fetch("/api/location/validate-us", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ city, zip }),
-      });
-      if (vres.ok) {
-        const vdata = (await vres.json()) as {
-          ok: boolean;
-          errors: { city?: string; zip?: string };
-        };
-        if (!vdata.ok) {
-          if (vdata.errors.city) setCityErr(vdata.errors.city);
-          if (vdata.errors.zip) setZipErr(vdata.errors.zip);
-          setSaving(false);
-          return;
+    if (!isRemote) {
+      try {
+        const vres = await fetch("/api/location/validate-us", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ city, zip }),
+        });
+        if (vres.ok) {
+          const vdata = (await vres.json()) as {
+            ok: boolean;
+            errors: { city?: string; zip?: string };
+          };
+          if (!vdata.ok) {
+            if (vdata.errors.city) setCityErr(vdata.errors.city);
+            if (vdata.errors.zip) setZipErr(vdata.errors.zip);
+            setSaving(false);
+            return;
+          }
         }
+        // Non-ok response → fail open (matches the lib's policy).
+      } catch {
+        // Fail open on network errors — the server still re-validates.
       }
-      // Non-ok response → fail open (matches the lib's policy).
-    } catch {
-      // Fail open on network errors — the server still re-validates.
     }
 
     const patch: JobOverviewPatch = {
@@ -289,22 +308,24 @@ export function JobOverviewTab({
       salaryCurrency: ccy,
       salaryFrequency: draft.salaryFreq,
     };
-    const composedLocation = [
-      [city, stateUpper].filter(Boolean).join(", "),
-      zip,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
+    const composedLocation = isRemote
+      ? "Remote"
+      : [
+          [city, stateUpper].filter(Boolean).join(", "),
+          zip,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
     setState((s) => ({
       ...s,
       title,
       employmentType,
       workplaceType,
       hybridSchedule,
-      locationCity: city,
-      locationState: stateUpper,
-      locationZip: zip,
+      locationCity: isRemote ? null : city,
+      locationState: isRemote ? null : stateUpper,
+      locationZip: isRemote ? null : zip,
       locations: composedLocation ? [composedLocation] : [],
       numberOfOpenings: openings,
       salaryRangeStart: lo,
@@ -366,9 +387,9 @@ export function JobOverviewTab({
                     onChange={(event) => setDraft({ ...draft, workplaceType: event.target.value })}
                     className={`${INPUT_CONTROL_CLASS} text-sm`}
                   >
+                    {draft.workplaceType === "Remote" && <option value="Remote">Remote</option>}
                     <option value="On-site">On-site</option>
                     <option value="Hybrid">Hybrid</option>
-                    <option value="Remote">Remote</option>
                   </select>
                 </div>
               </label>
@@ -380,6 +401,18 @@ export function JobOverviewTab({
                 placeholder="1" frameClassName={INPUT_FRAME_RECT_CLASS}
               />
             </div>
+            <label className="inline-flex w-fit items-center gap-2 text-sm font-medium text-court-fg">
+              <input
+                type="checkbox"
+                checked={draft.workplaceType === "Remote"}
+                onChange={(event) => setRemoteDraft(event.target.checked)}
+                className="h-4 w-4 accent-court-brand"
+              />
+              Remote
+              <span className="text-xs font-normal text-court-fg-muted">
+                No city, state, or zip required
+              </span>
+            </label>
             {draft.workplaceType === "Hybrid" && (
               <label className="flex max-w-[220px] flex-col">
                 <span className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
@@ -399,42 +432,44 @@ export function JobOverviewTab({
               </label>
             )}
 
-            {/* Location is the required City / State (2-letter) / Zip
-                (5-digit) trio — enforced on save, same as the New Job
-                form. Rect court-input-rect frame per the Input Field
-                Treatment. */}
-            <div className="pt-1 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
-              Location
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <RectField
-                label="City"
-                value={draft.locationCity}
-                onChange={(v) => {
-                  setDraft({ ...draft, locationCity: v });
-                  if (cityErr) setCityErr(null);
-                }}
-                error={cityErr}
-              />
-              <RectField
-                label="State"
-                value={draft.locationState}
-                onChange={(v) => {
-                  setDraft({ ...draft, locationState: v });
-                  if (stateErr) setStateErr(null);
-                }}
-                error={stateErr}
-              />
-              <RectField
-                label="Zip"
-                value={draft.locationZip}
-                onChange={(v) => {
-                  setDraft({ ...draft, locationZip: v });
-                  if (zipErr) setZipErr(null);
-                }}
-                error={zipErr}
-              />
-            </div>
+            {draft.workplaceType !== "Remote" && (
+              <>
+                {/* Physical jobs require City / State (2-letter) / Zip
+                    (5-digit), enforced on save like the New Job form. */}
+                <div className="pt-1 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                  Location
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <RectField
+                    label="City"
+                    value={draft.locationCity}
+                    onChange={(v) => {
+                      setDraft({ ...draft, locationCity: v });
+                      if (cityErr) setCityErr(null);
+                    }}
+                    error={cityErr}
+                  />
+                  <RectField
+                    label="State"
+                    value={draft.locationState}
+                    onChange={(v) => {
+                      setDraft({ ...draft, locationState: v });
+                      if (stateErr) setStateErr(null);
+                    }}
+                    error={stateErr}
+                  />
+                  <RectField
+                    label="Zip"
+                    value={draft.locationZip}
+                    onChange={(v) => {
+                      setDraft({ ...draft, locationZip: v });
+                      if (zipErr) setZipErr(null);
+                    }}
+                    error={zipErr}
+                  />
+                </div>
+              </>
+            )}
 
             <div className="pt-1 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
               Compensation

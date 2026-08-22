@@ -241,48 +241,44 @@ export async function createJob(
       }
     }
 
-    // Normalize the new structured-location parts and compose the legacy
-    // free-form "City, ST Zip" string from them. Empty parts collapse —
-    // a job in just KY (no city/zip) yields locations=["KY"]; an empty
-    // form yields locations=[] (same as before).
-    const locationCity = input.locationCity.trim();
-    const locationState = input.locationState.trim().toUpperCase();
-    const locationZip = input.locationZip.trim();
+    const isRemote = workplaceType === "Remote";
+    // Physical jobs still require the structured City / State / Zip trio.
+    // Remote jobs intentionally save with no structured city/state/zip and
+    // carry "Remote" in the legacy locations[] display field.
+    const locationCity = isRemote ? "" : input.locationCity.trim();
+    const locationState = isRemote ? "" : input.locationState.trim().toUpperCase();
+    const locationZip = isRemote ? "" : input.locationZip.trim();
 
-    // City / State / Zip are REQUIRED on new jobs (server-side guard so a
-    // missing/invalid location can never slip past a client that skipped
-    // the form check). State must be a 2-letter abbreviation, Zip 5
-    // digits. This only governs the create path — existing jobs are
-    // untouched.
-    if (!locationCity) return { ok: false, error: "City is required." };
-    if (!locationState) return { ok: false, error: "State is required." };
-    if (!/^[A-Z]{2}$/.test(locationState)) {
-      return { ok: false, error: "State must be a 2-letter abbreviation." };
-    }
-    if (!locationZip) return { ok: false, error: "Zip is required." };
-    if (!/^\d{5}$/.test(locationZip)) {
-      return { ok: false, error: "Zip must be a 5-digit US zip code." };
+    if (!isRemote) {
+      if (!locationCity) return { ok: false, error: "City is required." };
+      if (!locationState) return { ok: false, error: "State is required." };
+      if (!/^[A-Z]{2}$/.test(locationState)) {
+        return { ok: false, error: "State must be a 2-letter abbreviation." };
+      }
+      if (!locationZip) return { ok: false, error: "Zip is required." };
+      if (!/^\d{5}$/.test(locationZip)) {
+        return { ok: false, error: "Zip must be a 5-digit US zip code." };
+      }
+
+      const cityCheck = await validateUsCity(locationCity);
+      if (!cityCheck.ok) {
+        return { ok: false, error: `City: ${cityCheck.message}` };
+      }
+      const zipCheck = await validateUsZip(locationZip);
+      if (!zipCheck.ok) {
+        return { ok: false, error: `Zip: ${zipCheck.message}` };
+      }
     }
 
-    // Defense-in-depth: re-run the US location validation the form
-    // already performed via /api/location/validate-us. Network errors
-    // fail open inside the helpers, matching the form's behavior, so a
-    // transient Nominatim/Zippopotam outage can't block a valid save.
-    const cityCheck = await validateUsCity(locationCity);
-    if (!cityCheck.ok) {
-      return { ok: false, error: `City: ${cityCheck.message}` };
-    }
-    const zipCheck = await validateUsZip(locationZip);
-    if (!zipCheck.ok) {
-      return { ok: false, error: `Zip: ${zipCheck.message}` };
-    }
-    const composedLocation = [
-      [locationCity, locationState].filter(Boolean).join(", "),
-      locationZip,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
+    const composedLocation = isRemote
+      ? "Remote"
+      : [
+          [locationCity, locationState].filter(Boolean).join(", "),
+          locationZip,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
 
     const salaryFrequency =
       input.salaryFrequency === "hourly" || input.salaryFrequency === "yearly"

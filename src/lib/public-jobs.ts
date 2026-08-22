@@ -15,7 +15,7 @@ export type PublicWebsiteJob = {
   locations: string[];
   location: {
     city: string;
-    state: string;
+    state: string | null;
     postalCode: string | null;
     country: "US";
   };
@@ -119,14 +119,14 @@ export async function getPublishedWebsiteJobs(): Promise<PublicJobsResult> {
       readString(row.description) ??
       readString(raw.description);
     const applyUrl = readString(row.applyLink) ?? readString(raw.apply_link);
+    const isRemote = row.workplaceType === "Remote";
 
     // Publishing prevents this state, but keep the public read defensive in
     // case an old import or manual DB edit left a stale publish flag behind.
     if (
       !description ||
       !row.client?.name ||
-      !row.locationCity ||
-      !row.locationState ||
+      (!isRemote && (!row.locationCity || !row.locationState)) ||
       !row.employmentType ||
       !row.workplaceType ||
       (row.workplaceType === "Hybrid" && !row.hybridSchedule)
@@ -138,11 +138,11 @@ export async function getPublishedWebsiteJobs(): Promise<PublicJobsResult> {
       title: row.title,
       description: normalizePublicJobDescription(description),
       company: row.client.name,
-      locations: row.locations,
+      locations: row.locations.length ? row.locations : isRemote ? ["Remote"] : [],
       location: {
-        city: row.locationCity,
-        state: row.locationState,
-        postalCode: row.locationZip,
+        city: isRemote ? "Remote" : row.locationCity!,
+        state: isRemote ? null : row.locationState!,
+        postalCode: isRemote ? null : row.locationZip,
         country: "US",
       },
       employmentType: row.employmentType,

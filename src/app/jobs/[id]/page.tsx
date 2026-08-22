@@ -422,6 +422,7 @@ export default async function JobDetailPage({
     locationCity: jobRow.locationCity,
     locationState: jobRow.locationState,
   });
+  const isRemoteJob = overviewFields.workplaceType === "Remote";
   const websiteRequirements = [
     {
       label: "Active in My Jobs",
@@ -440,10 +441,12 @@ export default async function JobDetailPage({
     },
     {
       label: "Structured location",
-      met: Boolean(jobRow.locationCity && jobRow.locationState),
-      detail: jobRow.locationCity && jobRow.locationState
-        ? `${jobRow.locationCity}, ${jobRow.locationState}`
-        : "Add a city and state on the Overview tab.",
+      met: isRemoteJob || Boolean(jobRow.locationCity && jobRow.locationState),
+      detail: isRemoteJob
+        ? "Remote"
+        : jobRow.locationCity && jobRow.locationState
+          ? `${jobRow.locationCity}, ${jobRow.locationState}`
+          : "Add a city and state on the Overview tab.",
     },
     {
       label: "Employment type",

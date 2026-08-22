@@ -16,7 +16,7 @@ import { HYBRID_SCHEDULE_OPTIONS } from "@/lib/hybrid-schedule";
 
 const JOB_TYPES = ["Permanent", "Contract", "Contract to Hire", "Temporary", "Internship"] as const;
 const EMPLOYMENT_TYPES = ["Full time", "Part time", "Contract"] as const;
-const WORKPLACE_TYPES = ["On-site", "Hybrid", "Remote"] as const;
+const WORKPLACE_TYPES = ["On-site", "Hybrid"] as const;
 
 type ParseUrlSuccess = {
   ok: true;
@@ -345,6 +345,7 @@ export function NewJobForm({
   const loNum = salaryLow === "" ? null : Number(salaryLow);
   const hiNum = salaryHigh === "" ? null : Number(salaryHigh);
   const rangeInvalid = loNum != null && hiNum != null && loNum > hiNum;
+  const isRemote = workplaceType === "Remote";
   // Only surface the invalid-range styling/message when the recruiter is NOT
   // actively typing in the salary fields. This keeps a genuinely reversed
   // range visible (e.g. a bad AI auto-fill, which the user can then correct)
@@ -363,6 +364,19 @@ export function NewJobForm({
     if (loNum != null && hiNum != null && loNum > hiNum) {
       setSalaryLow(String(hiNum));
       setSalaryHigh(String(loNum));
+    }
+  }
+
+  function setRemoteJob(checked: boolean) {
+    setWorkplaceType(checked ? "Remote" : "On-site");
+    if (checked) {
+      setHybridSchedule("Flexible");
+      setLocationCity("");
+      setLocationState("");
+      setLocationZip("");
+      setCityErr(null);
+      setStateErr(null);
+      setZipErr(null);
     }
   }
 
@@ -389,30 +403,27 @@ export function NewJobForm({
       return;
     }
 
-    // City / State / Zip are REQUIRED on new jobs so a loose/region-only
-    // location can never be entered again. Block submit with inline
-    // errors when any is missing or malformed (State must be a 2-letter
-    // abbreviation, Zip 5 digits). The same guards run again inside the
-    // createJob server action — never trust client-only.
-    const cityToCheck = locationCity.trim();
-    const stateToCheck = locationState.trim();
-    const zipToCheck = locationZip.trim();
+    // City / State / Zip are required for physical jobs. Remote jobs use
+    // the Remote checkbox and save without physical-location fields.
+    const cityToCheck = isRemote ? "" : locationCity.trim();
+    const stateToCheck = isRemote ? "" : locationState.trim();
+    const zipToCheck = isRemote ? "" : locationZip.trim();
     let locationInvalid = false;
-    if (!cityToCheck) {
+    if (!isRemote && !cityToCheck) {
       setCityErr("City is required.");
       locationInvalid = true;
     }
-    if (!stateToCheck) {
+    if (!isRemote && !stateToCheck) {
       setStateErr("State is required.");
       locationInvalid = true;
-    } else if (!/^[A-Za-z]{2}$/.test(stateToCheck)) {
+    } else if (!isRemote && !/^[A-Za-z]{2}$/.test(stateToCheck)) {
       setStateErr("Use the 2-letter state abbreviation.");
       locationInvalid = true;
     }
-    if (!zipToCheck) {
+    if (!isRemote && !zipToCheck) {
       setZipErr("Zip is required.");
       locationInvalid = true;
-    } else if (!/^\d{5}$/.test(zipToCheck)) {
+    } else if (!isRemote && !/^\d{5}$/.test(zipToCheck)) {
       setZipErr("Enter a 5-digit US zip code.");
       locationInvalid = true;
     }
@@ -422,7 +433,7 @@ export function NewJobForm({
     // zip are now always present, so this always runs. The same helpers
     // run again inside createJob as defense-in-depth; doing the call here
     // lets us point the recruiter at the right field on failure.
-    {
+    if (!isRemote) {
       setValidatingLocation(true);
       try {
         const res = await fetch("/api/location/validate-us", {
@@ -455,9 +466,9 @@ export function NewJobForm({
       const result = await createJob({
         title: title.trim(),
         clientId,
-        locationCity: locationCity.trim(),
-        locationState: locationState.trim(),
-        locationZip: locationZip.trim(),
+        locationCity: cityToCheck,
+        locationState: stateToCheck,
+        locationZip: zipToCheck,
         jobType,
         employmentType,
         workplaceType,
@@ -693,43 +704,54 @@ export function NewJobForm({
             </CompactSelect>
           </div>
 
-          {/* Row 2: City | State | Zip — the composed "City, ST Zip"
-              string is reassembled server-side. City + Zip carry the
-              inline validation errors from the pre-save Nominatim /
-              Zippopotam round-trip. Typing in either field clears its
-              error so the message disappears as the recruiter retypes. */}
-          <div className="flex gap-4">
-            <CompactField
-              label="City"
-              value={locationCity}
-              onChange={(v) => {
-                setLocationCity(v);
-                if (cityErr) setCityErr(null);
-              }}
-              className="flex-1"
-              error={cityErr}
+          <label className="inline-flex w-fit items-center gap-2 text-sm font-medium text-court-fg">
+            <input
+              type="checkbox"
+              checked={isRemote}
+              onChange={(event) => setRemoteJob(event.target.checked)}
+              className="h-4 w-4 accent-court-brand"
             />
-            <CompactField
-              label="State"
-              value={locationState}
-              onChange={(v) => {
-                setLocationState(v);
-                if (stateErr) setStateErr(null);
-              }}
-              className="flex-1"
-              error={stateErr}
-            />
-            <CompactField
-              label="Zip"
-              value={locationZip}
-              onChange={(v) => {
-                setLocationZip(v);
-                if (zipErr) setZipErr(null);
-              }}
-              className="w-32"
-              error={zipErr}
-            />
-          </div>
+            Remote
+            <span className="text-xs font-normal text-court-fg-muted">
+              No city, state, or zip required
+            </span>
+          </label>
+
+          {/* Row 2: City | State | Zip — hidden for remote jobs. */}
+          {!isRemote && (
+            <div className="flex gap-4">
+              <CompactField
+                label="City"
+                value={locationCity}
+                onChange={(v) => {
+                  setLocationCity(v);
+                  if (cityErr) setCityErr(null);
+                }}
+                className="flex-1"
+                error={cityErr}
+              />
+              <CompactField
+                label="State"
+                value={locationState}
+                onChange={(v) => {
+                  setLocationState(v);
+                  if (stateErr) setStateErr(null);
+                }}
+                className="flex-1"
+                error={stateErr}
+              />
+              <CompactField
+                label="Zip"
+                value={locationZip}
+                onChange={(v) => {
+                  setLocationZip(v);
+                  if (zipErr) setZipErr(null);
+                }}
+                className="w-32"
+                error={zipErr}
+              />
+            </div>
+          )}
 
           {/* Row 3: Employment Type | Workplace | Job Type */}
           <div className="flex gap-4">
@@ -740,7 +762,13 @@ export function NewJobForm({
                 </option>
               ))}
             </CompactSelect>
-            <CompactSelect label="Workplace" value={workplaceType} onChange={setWorkplaceType} className="flex-1">
+            <CompactSelect
+              label="Workplace"
+              value={workplaceType}
+              onChange={setWorkplaceType}
+              className="flex-1"
+            >
+              {isRemote && <option value="Remote">Remote</option>}
               {WORKPLACE_TYPES.map((t) => (
                 <option key={t} value={t}>
                   {t}

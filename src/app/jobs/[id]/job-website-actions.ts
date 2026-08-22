@@ -62,7 +62,8 @@ export async function setJobWebsitePublished(args: {
       if (!description) {
         return { ok: false, error: "Add a complete job description before publishing." };
       }
-      if (!job.locationCity || !job.locationState) {
+      const isRemote = job.workplaceType === "Remote";
+      if (!isRemote && (!job.locationCity || !job.locationState)) {
         return { ok: false, error: "Add a structured city and state before publishing." };
       }
       if (!job.employmentType) {
