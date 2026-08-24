@@ -50,6 +50,9 @@ export type AiWorkspaceProps = {
   // instead of overlapping it. Defaults to 22rem (the candidate-page
   // chrome budget the height was originally tuned to).
   bottomGapRem?: number;
+  // Candidate quick actions use this to target one associated job.
+  // Multiple jobs trigger a picker; one job is used automatically.
+  candidateJobOptions?: CandidateGamePlanJobOption[];
 };
 
 type Message = {
@@ -89,6 +92,16 @@ type InterviewPrepData = {
   interviews: InterviewPrepInterview[];
 };
 
+export type CandidateGamePlanJobOption = {
+  key: string;
+  jobTitle: string;
+  clientName: string | null;
+  stage: string | null;
+  location: string | null;
+};
+
+type CandidateQuickAction = "call-prep" | "rank";
+
 type ImageAttachmentMediaType = "image/png" | "image/jpeg" | "image/gif" | "image/webp";
 type WorkspaceAttachmentBase = {
   id: string;
@@ -119,7 +132,7 @@ const SUPPORTED_IMAGE_MIME = new Set<ImageAttachmentMediaType>([
 const CANDIDATE_CALL_PREP_PROMPT =
   "Help me prep for a call with this candidate. Explain the company and opportunity simply, identify the most likely motivators or concerns, and give me 2-3 questions to ask.";
 const CANDIDATE_RANK_PROMPT =
-  "Rank this candidate out of 10. If they are attached to one or more active jobs, score their fit for each job separately; otherwise score their overall marketability for BreakPoint's searches. Keep it brief: give the score as X/10, a short explanation, the main strength, the main concern, and one next step to improve or validate the score.";
+  "Rank this candidate out of 10 for overall marketability for BreakPoint's searches. Keep it brief: give the score as X/10, a short explanation, the main strength, the main concern, and one next step to improve or validate the score.";
 
 // Drag-to-resize: the card's height is the default
 // `calc(100dvh - bottomGapRem)` PLUS a user-dragged pixel delta. The
@@ -220,7 +233,35 @@ function attachmentMarker(attachments: WorkspaceAttachment[]): string {
     .join("\n");
 }
 
-export function AiWorkspace({ entityType, entityId, title, recipientEmail, bottomGapRem = 22 }: AiWorkspaceProps) {
+function candidateJobPhrase(job: CandidateGamePlanJobOption): string {
+  const title = job.jobTitle || "the selected job";
+  const client = job.clientName ? ` at ${job.clientName}` : "";
+  const location = job.location ? ` in ${job.location}` : "";
+  const stage = job.stage ? `, current stage: ${job.stage}` : "";
+  return `${title}${client}${location}${stage}`;
+}
+
+function candidateQuickActionPrompt(
+  action: CandidateQuickAction,
+  job: CandidateGamePlanJobOption | null,
+): string {
+  if (action === "call-prep") {
+    if (!job) return CANDIDATE_CALL_PREP_PROMPT;
+    return `Help me prep for a call with this candidate specifically about ${candidateJobPhrase(job)}. Use that associated job from ACTIVE APPLICATIONS as the target role, not the candidate's other jobs. Explain the company and opportunity simply, identify the most likely motivators or concerns, and give me 2-3 questions to ask.`;
+  }
+
+  if (!job) return CANDIDATE_RANK_PROMPT;
+  return `Rank this candidate out of 10 specifically for ${candidateJobPhrase(job)}. Use that associated job from ACTIVE APPLICATIONS as the target role, not the candidate's other jobs. Keep it brief: give the score as X/10, a short explanation, the main strength, the main concern, and one next step to improve or validate the score.`;
+}
+
+export function AiWorkspace({
+  entityType,
+  entityId,
+  title,
+  recipientEmail,
+  bottomGapRem = 22,
+  candidateJobOptions = [],
+}: AiWorkspaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -234,6 +275,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
   const [interviewPrepData, setInterviewPrepData] = useState<InterviewPrepData | null>(null);
   const [interviewPrepInterviewId, setInterviewPrepInterviewId] = useState("");
   const [interviewPrepContactKeys, setInterviewPrepContactKeys] = useState<string[]>([]);
+  const [candidateJobAction, setCandidateJobAction] = useState<CandidateQuickAction | null>(null);
 
   const composer = useComposerManager();
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -317,6 +359,10 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
   useEffect(() => {
     void loadHistory();
   }, [loadHistory]);
+
+  useEffect(() => {
+    setCandidateJobAction(null);
+  }, [entityId, entityType]);
 
   const emptyLabel =
     entityType === "client" ? "client" : entityType === "job" ? "job" : "candidate";
@@ -438,6 +484,22 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
     } finally {
       setSending(false);
     }
+  }
+
+  function onCandidateQuickAction(action: CandidateQuickAction) {
+    if (sending) return;
+    if (candidateJobOptions.length > 1) {
+      setCandidateJobAction((current) => (current === action ? null : action));
+      return;
+    }
+    void onSend(candidateQuickActionPrompt(action, candidateJobOptions[0] ?? null));
+  }
+
+  function onPickCandidateQuickActionJob(job: CandidateGamePlanJobOption) {
+    if (!candidateJobAction) return;
+    const action = candidateJobAction;
+    setCandidateJobAction(null);
+    void onSend(candidateQuickActionPrompt(action, job));
   }
 
   async function loadInterviewPrepData(force = false): Promise<InterviewPrepData | null> {
@@ -672,12 +734,12 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
         </h2>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {entityType === "candidate" && (
-            <>
+            <div className="relative flex flex-wrap items-center justify-end gap-2">
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
-                onClick={() => void onSend(CANDIDATE_CALL_PREP_PROMPT)}
+                onClick={() => onCandidateQuickAction("call-prep")}
                 disabled={sending}
                 className="h-7 gap-1 px-2 py-1 text-[11px] font-medium text-court-fg-muted hover:border-brand/60"
                 title={CANDIDATE_CALL_PREP_PROMPT}
@@ -689,7 +751,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
                 type="button"
                 variant="secondary"
                 size="sm"
-                onClick={() => void onSend(CANDIDATE_RANK_PROMPT)}
+                onClick={() => onCandidateQuickAction("rank")}
                 disabled={sending}
                 className="h-7 gap-1 px-2 py-1 text-[11px] font-medium text-court-fg-muted hover:border-brand/60"
                 title={CANDIDATE_RANK_PROMPT}
@@ -715,7 +777,59 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
                 )}
                 Interview Prep
               </Button>
-            </>
+              {candidateJobAction && candidateJobOptions.length > 1 && (
+                <div
+                  role="menu"
+                  aria-label={`Choose job for ${
+                    candidateJobAction === "rank" ? "Rank" : "Call Prep"
+                  }`}
+                  className="absolute right-0 top-full z-30 mt-2 w-80 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg"
+                >
+                  <div className="flex items-center justify-between gap-3 border-b border-court-border px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-xs font-semibold text-court-fg">
+                        Which job?
+                      </div>
+                      <div className="truncate text-[11px] text-court-fg-muted">
+                        {candidateJobAction === "rank" ? "Rank" : "Prep"} this candidate for one associated job.
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCandidateJobAction(null)}
+                      className="h-7 w-7 shrink-0 gap-0 p-0 shadow-none"
+                      aria-label="Close job picker"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto py-1">
+                    {candidateJobOptions.map((job) => (
+                      <Button
+                        key={job.key}
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        role="menuitem"
+                        onClick={() => onPickCandidateQuickActionJob(job)}
+                        className="block h-auto w-full rounded-none px-3 py-2 text-left shadow-none hover:bg-court-accent-tint/40"
+                      >
+                        <div className="truncate text-xs font-medium text-court-fg">
+                          {job.jobTitle || "Untitled job"}
+                        </div>
+                        <div className="truncate text-[11px] text-court-fg-muted">
+                          {[job.clientName, job.location, job.stage]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </div>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           <button
             type="button"

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Target } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
+import { canonicalStage, normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { getRfClientsForOrg, getRfContactsForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { extractFeePctFromCustomFields } from "@/lib/clients";
 import { formatDistanceSubLine } from "@/lib/distance";
@@ -23,7 +23,7 @@ import {
   parseHighlightTokens,
   filterTokensToHaystack,
 } from "@/app/candidates/[id]/highlight-tokens";
-import AiWorkspace from "@/components/AiWorkspace";
+import AiWorkspace, { type CandidateGamePlanJobOption } from "@/components/AiWorkspace";
 import { TabStrip } from "@/components/ui/tab-strip";
 // 5A.5.b parity: Ace-native candidates now share the same resume
 // management UI as RF-imported (multi-version dropdown, inline rename,
@@ -698,6 +698,29 @@ export async function LocalCandidateProfile({
     };
   });
 
+  const gamePlanJobOptions: CandidateGamePlanJobOption[] = Array.from(
+    jobRows.reduce<Map<string, CandidateGamePlanJobOption>>((acc, job) => {
+      const stage = canonicalStage(job.stage);
+      if (stage === "rejected" || stage === "cancelled") return acc;
+      const key =
+        job.jobCuid
+          ? `ace:${job.jobCuid}`
+          : job.jobRfId
+            ? `rf:${job.jobRfId}`
+            : `placement:${job.placementId}`;
+      if (!acc.has(key)) {
+        acc.set(key, {
+          key,
+          jobTitle: job.jobTitle,
+          clientName: job.clientName || null,
+          stage: job.stage || null,
+          location: job.jobLocation || null,
+        });
+      }
+      return acc;
+    }, new Map()).values(),
+  );
+
   const recruiter = (() => {
     const email = session?.user?.email ?? "";
     const fullName2 = session?.user?.name ?? "";
@@ -906,6 +929,7 @@ export async function LocalCandidateProfile({
                 entityId={candidate.id}
                 recipientEmail={candidate.email ?? null}
                 bottomGapRem={26}
+                candidateJobOptions={gamePlanJobOptions}
               />
             ) : tab === "notes" ? (
               <LocalNotesTab candidateId={candidate.id} />
@@ -1063,6 +1087,7 @@ export async function LocalCandidateProfile({
               entityId={candidate.id}
               recipientEmail={candidate.email ?? null}
               bottomGapRem={26}
+              candidateJobOptions={gamePlanJobOptions}
             />
           ) : tab === "notes" ? (
             <LocalNotesTab candidateId={candidate.id} />
