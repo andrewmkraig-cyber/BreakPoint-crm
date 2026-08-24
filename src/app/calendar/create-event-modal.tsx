@@ -15,14 +15,14 @@ import {
 } from "./event-actions";
 
 // Meeting-type dropdown options. Values mirror CreateMeetingType in
-// event-actions.ts. Order chosen so the most-used types (Google Meet
-// for client + candidate video calls) sit at the top.
+// event-actions.ts. Plain calendar invites are the default; video links
+// are opt-in via Google Meet / Teams.
 const MEETING_TYPES: { value: CreateMeetingType; label: string }[] = [
+  { value: "none", label: "Calendar Invite" },
   { value: "google_meet", label: "Google Meet" },
   { value: "teams", label: "Microsoft Teams" },
   { value: "in_person", label: "In Person" },
   { value: "phone", label: "Phone Call" },
-  { value: "none", label: "No Meeting" },
 ];
 
 function toLocalDateString(d: Date): string {
@@ -87,7 +87,7 @@ export function CreateEventModal({
   const [startTime, setStartTime] = useState(toLocalTimeString(defaultStart));
   const [endTime, setEndTime] = useState(toLocalTimeString(defaultEnd));
   const [allDay, setAllDay] = useState(false);
-  const [meetingType, setMeetingType] = useState<CreateMeetingType>("google_meet");
+  const [meetingType, setMeetingType] = useState<CreateMeetingType>("none");
   const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
   const [to, setTo] = useState<string[]>([]);
@@ -106,7 +106,7 @@ export function CreateEventModal({
     setStartTime(toLocalTimeString(defaultStart));
     setEndTime(toLocalTimeString(defaultEnd));
     setAllDay(false);
-    setMeetingType("google_meet");
+    setMeetingType("none");
     setLocation("");
     setNotes("");
     setTo([]);

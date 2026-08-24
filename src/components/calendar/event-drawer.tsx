@@ -58,11 +58,11 @@ type Props = {
 };
 
 const MEETING_TYPE_OPTS: Array<{ value: CreateMeetingType; label: string }> = [
+  { value: "none", label: "Calendar Invite" },
   { value: "google_meet", label: "Google Meet" },
   { value: "teams", label: "Microsoft Teams" },
   { value: "in_person", label: "In Person" },
   { value: "phone", label: "Phone Call" },
-  { value: "none", label: "No Meeting" },
 ];
 
 // IANA zones the recruiter can pick from. Default is Eastern since the
@@ -312,10 +312,9 @@ export function CalendarEventDrawer({
   const [timeZone, setTimeZone] = useState(DEFAULT_TIMEZONE);
   // All-day blocks render in Google as a date range with no time.
   const [allDay, setAllDay] = useState(false);
-  // Create-only meeting type. "google_meet" is the recruiter's
-  // default; reminders override to "none" so a personal block doesn't
-  // attach a video link.
-  const [meetingType, setMeetingType] = useState<CreateMeetingType>("google_meet");
+  // Create-only meeting type. Default to a regular calendar invite;
+  // video links are opt-in via the Google Meet / Teams choices.
+  const [meetingType, setMeetingType] = useState<CreateMeetingType>("none");
   const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
   // Default to read-only HTML preview when the synced description is
@@ -407,7 +406,7 @@ export function CalendarEventDrawer({
         event.type === "interview" ? true : (event.reminderEnabled ?? false),
       );
       setAllDay(event.type === "reminder" ? false : (event.allDay ?? false));
-      setMeetingType("google_meet");
+      setMeetingType("none");
       setTimeZone(DEFAULT_TIMEZONE);
       // Reset the cancel-interview two-way choice so a half-opened prompt
       // never carries over to the next interview the drawer shows.
@@ -465,10 +464,7 @@ export function CalendarEventDrawer({
       setNotesPreviewMode(false);
       setReminderOn(true);
       setAllDay(false);
-      // Personal reminders shouldn't attach a video link by default;
-      // everything else opens with Google Meet pre-picked since most
-      // recruiter calls are video.
-      setMeetingType(initialType === "reminder" ? "none" : "google_meet");
+      setMeetingType("none");
       // Reminders open with the standard single 15-min lead.
       setLeads([15]);
     }
@@ -489,8 +485,9 @@ export function CalendarEventDrawer({
   const headerLabel = mode === "edit" ? "Edit event" : "New event";
 
   // Picking a type from the pill grid. In create mode, switching to
-  // Reminder re-points the time at "15 min from now" and drops the
-  // video link; switching back to a timed type restores Google Meet.
+  // Reminder re-points the time at "15 min from now" and drops any
+  // meeting/link choice. Switching back keeps the plain invite default
+  // unless the recruiter explicitly picks Google Meet / Teams.
   // Edit mode leaves the existing time untouched.
   function pickType(next: CalendarEventType) {
     setType(next);
@@ -506,8 +503,6 @@ export function CalendarEventDrawer({
       );
       setDate((d) => d || toDateInput(start));
       setMeetingType("none");
-    } else {
-      setMeetingType((m) => (m === "none" ? "google_meet" : m));
     }
   }
 

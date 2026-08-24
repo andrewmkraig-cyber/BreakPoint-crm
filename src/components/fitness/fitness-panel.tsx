@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type FocusEvent as ReactFocusEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
@@ -90,6 +91,18 @@ const DEFAULT_REST_MS = 120_000;
 const REST_INCREMENT_MS = 60_000;
 const ACTIVE_WORKOUT_STORAGE_KEY = "ace:fitness-active-workout";
 const BODYWEIGHT_VALUE = "BW";
+const WORKOUT_CONTROL_SELECTOR = "input, textarea, select";
+
+function scrollWorkoutControlIntoView(target: HTMLElement, delayMs = 120) {
+  window.setTimeout(() => {
+    if (!target.isConnected) return;
+    target.scrollIntoView({
+      block: "center",
+      inline: "nearest",
+      behavior: "smooth",
+    });
+  }, delayMs);
+}
 
 function todayIsoEt(): string {
   const fmt = new Intl.DateTimeFormat("en-CA", {
@@ -244,11 +257,14 @@ function clamp(value: number, min: number, max: number): number {
 
 function visibleViewport() {
   if (typeof window === "undefined") {
-    return { width: 1024, height: 768 };
+    return { width: 1024, height: 768, offsetLeft: 0, offsetTop: 0 };
   }
+  const visualViewport = window.visualViewport;
   return {
-    width: Math.floor(window.visualViewport?.width ?? window.innerWidth),
-    height: Math.floor(window.visualViewport?.height ?? window.innerHeight),
+    width: Math.floor(visualViewport?.width ?? window.innerWidth),
+    height: Math.floor(visualViewport?.height ?? window.innerHeight),
+    offsetLeft: Math.floor(visualViewport?.offsetLeft ?? 0),
+    offsetTop: Math.floor(visualViewport?.offsetTop ?? 0),
   };
 }
 
@@ -506,6 +522,7 @@ export function FitnessPanel() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeSession, setActiveSession] =
     useState<ActiveWorkoutSession | null>(() => readStoredActiveSession());
+  const [viewportTick, setViewportTick] = useState(0);
   const activeSessionRef = useRef<ActiveWorkoutSession | null>(activeSession);
   const sessionDraftKeyRef = useRef("");
   const rest = useRestTimer();
@@ -570,6 +587,40 @@ export function FitnessPanel() {
         : current,
     );
   }, [activeSessionForDate, date, dayType, drafts]);
+
+  useEffect(() => {
+    if (!open || minimized) return;
+    if (typeof window === "undefined") return;
+    let frame: number | null = null;
+    const bumpViewport = () => {
+      if (frame != null) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        setViewportTick((tick) => (tick + 1) % 1_000_000);
+        const active = document.activeElement;
+        if (
+          active instanceof HTMLElement &&
+          panelRef.current?.contains(active) &&
+          active.matches(WORKOUT_CONTROL_SELECTOR)
+        ) {
+          scrollWorkoutControlIntoView(active, 40);
+        }
+      });
+    };
+    const visualViewport = window.visualViewport;
+    visualViewport?.addEventListener("resize", bumpViewport);
+    visualViewport?.addEventListener("scroll", bumpViewport);
+    window.addEventListener("resize", bumpViewport);
+    window.addEventListener("orientationchange", bumpViewport);
+    bumpViewport();
+    return () => {
+      if (frame != null) window.cancelAnimationFrame(frame);
+      visualViewport?.removeEventListener("resize", bumpViewport);
+      visualViewport?.removeEventListener("scroll", bumpViewport);
+      window.removeEventListener("resize", bumpViewport);
+      window.removeEventListener("orientationchange", bumpViewport);
+    };
+  }, [minimized, open]);
 
   useEffect(() => {
     if (!open || minimized) return;
@@ -1086,6 +1137,20 @@ export function FitnessPanel() {
     );
   }
 
+  const scrollFocusedControlIntoView = useCallback(
+    (e: ReactFocusEvent<HTMLDivElement>) => {
+      const target = e.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (!target.matches(WORKOUT_CONTROL_SELECTOR)) return;
+      scrollWorkoutControlIntoView(target);
+    },
+    [],
+  );
+  const viewport = useMemo(
+    () => visibleViewport(),
+    [minimized, open, viewportTick],
+  );
+
   if (!open || typeof document === "undefined") return null;
 
   if (minimized) {
@@ -1102,14 +1167,26 @@ export function FitnessPanel() {
     );
   }
 
-  const viewport = visibleViewport();
+  const mobilePanel = viewport.width < 640;
   const maxPanelWidth = Math.max(280, viewport.width - 16);
   const maxPanelHeight = Math.max(280, viewport.height - 16);
-  const panelWidth = Math.min(size.w, maxPanelWidth);
-  const panelHeight = Math.min(size.h, maxPanelHeight);
+  const panelWidth = mobilePanel
+    ? maxPanelWidth
+    : Math.min(size.w, maxPanelWidth);
+  const panelHeight = mobilePanel
+    ? maxPanelHeight
+    : Math.min(size.h, maxPanelHeight);
+  const panelLeft = mobilePanel
+    ? viewport.offsetLeft + 8
+    : viewport.offsetLeft +
+      clamp(position?.x ?? 20, 8, viewport.width - panelWidth - 8);
+  const panelTop = mobilePanel
+    ? viewport.offsetTop + 8
+    : viewport.offsetTop +
+      clamp(position?.y ?? 84, 8, viewport.height - panelHeight - 8);
   const panelStyle: CSSProperties = {
-    left: clamp(position?.x ?? 20, 8, viewport.width - panelWidth - 8),
-    top: clamp(position?.y ?? 84, 8, viewport.height - panelHeight - 8),
+    left: panelLeft,
+    top: panelTop,
     width: panelWidth,
     height: panelHeight,
     zIndex: z,
@@ -1177,7 +1254,10 @@ export function FitnessPanel() {
         />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4"
+        onFocusCapture={scrollFocusedControlIntoView}
+      >
         {loading ? (
           <div className="grid h-full min-h-72 place-items-center text-court-fg-muted">
             <Loader2 className="h-5 w-5 animate-spin" />
