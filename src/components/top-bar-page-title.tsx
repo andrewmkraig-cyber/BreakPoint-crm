@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { ChevronRight, Plus, Upload } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useComposerManager } from "@/lib/composer-manager";
 import { usePhonePanels } from "@/lib/phone-panels-context";
@@ -33,12 +33,10 @@ type ActionSpec =
   | { kind: "new-invoice"; label: string }
   | { kind: "retained-search"; label: string }
   | { kind: "new-expense"; label: string }
-  | { kind: "calendar-new-event"; label: string }
-  | { kind: "candidate-add-multiple"; label: string };
+  | { kind: "calendar-new-event"; label: string };
 
 // `extraAction` renders a second chip to the left of the primary action,
-// for surfaces that need two topbar affordances (Candidates: bulk CSV/PDF
-// import sits next to New Candidate). Most pages leave it unset.
+// for surfaces that need two topbar affordances. Most pages leave it unset.
 type Spec = {
   group?: string;
   title: TitleSpec;
@@ -124,7 +122,6 @@ function resolveBaseSpec(
     return {
       title: { label: "Candidates" },
       action: { kind: "link", label: "New Candidate", href: "/candidates/new" },
-      extraAction: { kind: "candidate-add-multiple", label: "Add Multiple" },
     };
   }
   if (pathname === "/candidates/new") {
@@ -162,8 +159,7 @@ function resolveBaseSpec(
     return {
       title: { label: "Invoices" },
       action: { kind: "new-invoice", label: "New Invoice" },
-      // Sits to the left of "+ New Invoice", the same two-affordance
-      // arrangement /candidates already uses for Add Multiple.
+      // Sits to the left of "+ New Invoice" as a secondary invoice action.
       extraAction: { kind: "retained-search", label: "Send Retained Invoice" },
     };
   }
@@ -295,9 +291,9 @@ function TopBarPageActionInner() {
   const searchParams = useSearchParams();
   const spec = resolveSpec(pathname, searchParams);
   if (!spec.action && !spec.extraAction) return null;
-  // extraAction (e.g. "Add Multiple") renders first so it sits to the
-  // left of the primary action ("New Candidate"). Both are independent
-  // of any page filter state — the topbar never sees the page's filters.
+  // extraAction renders first so it sits to the left of the primary
+  // action. Both are independent of any page filter state — the topbar
+  // never sees the page's filters.
   return (
     <div className="flex shrink-0 items-center gap-2">
       {spec.extraAction && <ActionButton action={spec.extraAction} />}
@@ -333,30 +329,7 @@ function ActionButton({ action }: { action: ActionSpec }) {
   if (action.kind === "calendar-new-event") {
     return <CalendarNewEventButton label={action.label} />;
   }
-  if (action.kind === "candidate-add-multiple") {
-    return <CandidateAddMultipleButton label={action.label} />;
-  }
   return null;
-}
-
-// Bulk CSV/PDF import trigger. The AddMultipleDialog lives inside the
-// Candidates page (far below the TopBar in AppShell), so we bridge with
-// a window event the page subscribes to on mount — same pattern as
-// CalendarNewEventButton / NewExpenseTopBarButton. Uses the Upload icon
-// (not Plus) to read as a distinct affordance from "+ New Candidate".
-function CandidateAddMultipleButton({ label }: { label: string }) {
-  return (
-    <button
-      type="button"
-      onClick={() =>
-        window.dispatchEvent(new CustomEvent("ace:candidates:add-multiple"))
-      }
-      className={ACTION_BUTTON_CLASS}
-    >
-      <Upload className="h-3 w-3" />
-      {label}
-    </button>
-  );
 }
 
 // The expense form lives inside the Expenses tab (ExpensesSection) and

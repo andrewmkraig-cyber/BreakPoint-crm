@@ -1,17 +1,17 @@
-// Smoke test: the Candidates page topbar must always declare its core
-// actions - "New Candidate" AND "Add Multiple".
+// Smoke test: the Candidates page topbar must declare only its core
+// action: "New Candidate".
 //
-// THE BUG THIS GUARDS: in May 2026 a page redesign silently dropped the
-// "Add Multiple" affordance from the Candidates topbar. Nothing failed; it
-// just quietly vanished. This is the tripwire for that class of regression.
+// THE BUG THIS GUARDS: Add Multiple was removed because the flow was not
+// reliable. The Candidates topbar should not grow that import button back;
+// recruiters should use the single New Candidate flow from this screen.
 //
 // Why source-level, not a DOM render: the topbar lives in
 // src/components/top-bar-page-title.tsx, a "use client" component wired to
 // Next navigation hooks, and its pathname->Spec resolver is not exported -
 // so it can't be imported into a plain node test, and the repo has no React
 // render-test framework. The declarative Spec map IS what renders the
-// topbar actions, so asserting the "/candidates" spec still carries both
-// actions is a faithful tripwire. If the actions move to a different
+// topbar actions, so asserting the "/candidates" spec carries only the
+// supported action is a faithful tripwire. If the action moves to a different
 // mechanism, update this test to point at the new source of truth.
 //
 // Framework-free per the tests/unit convention. Run via:
@@ -63,20 +63,20 @@ assert(
   'Candidates topbar declares the primary "New Candidate" action',
 );
 assert(
-  /kind:\s*"candidate-add-multiple"/.test(block) &&
-    /label:\s*"Add Multiple"/.test(block),
-  'Candidates topbar declares the "Add Multiple" extra action (May-2026 regression tripwire)',
+  !/kind:\s*"candidate-add-multiple"/.test(block) &&
+    !/label:\s*"Add Multiple"/.test(block),
+  'Candidates topbar does not declare the removed "Add Multiple" action',
 );
 
 if (failed) {
   console.error("\n✖ Candidates topbar smoke test failed.");
   console.error(
-    "The Candidates topbar is missing a core action. A redesign likely dropped it.",
+    "The Candidates topbar action set no longer matches the supported flow.",
   );
   process.exit(1);
 }
 
 console.log(
-  "✓ Candidates topbar smoke test passed (New Candidate + Add Multiple present).",
+  "✓ Candidates topbar smoke test passed (only New Candidate present).",
 );
 process.exit(0);

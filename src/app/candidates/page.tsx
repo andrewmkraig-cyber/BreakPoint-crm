@@ -27,7 +27,6 @@ import {
   BulkEmailDialog,
   BulkSubmitDialog,
 } from "@/app/candidates/bulk-dialogs";
-import { AddMultipleDialog } from "@/app/candidates/add-multiple-dialog";
 import {
   getOpenJobsForBulkPicker,
   type BulkPickerJob,
@@ -699,10 +698,9 @@ export default function CandidatesPage() {
 
   // Total candidates in the org roster — the discrete tally in the
   // results header. Distinct from `total` (which is the count of the
-  // current filtered result set). Fetched once on mount and refreshed
-  // by refreshDbTotal() after a bulk import so the number ticks up as
-  // candidates are added. null until the first fetch resolves so the
-  // tally renders nothing rather than a flash of "0".
+  // current filtered result set). Fetched once on mount; null until the
+  // first fetch resolves so the tally renders nothing rather than a
+  // flash of "0".
   const [dbTotal, setDbTotal] = useState<number | null>(null);
   async function refreshDbTotal() {
     try {
@@ -715,15 +713,6 @@ export default function CandidatesPage() {
     void refreshDbTotal();
   }, []);
 
-  // Subscribe to the TopBar "Add Multiple" chip. The chip dispatches a
-  // window event because it renders far above this page in AppShell.
-  useEffect(() => {
-    const open = () => setAddMultipleOpen(true);
-    window.addEventListener("ace:candidates:add-multiple", open);
-    return () =>
-      window.removeEventListener("ace:candidates:add-multiple", open);
-  }, []);
-
   // Bulk multi-select for the results table. Independent of selectedId
   // (single-row split view) so the recruiter can build a selection set
   // without entering the split view. Sticky bulk bar shows when at
@@ -732,10 +721,6 @@ export default function CandidatesPage() {
     () => new Set(),
   );
   const [bulkDialog, setBulkDialog] = useState<null | "apply" | "list" | "email" | "submit">(null);
-  // Bulk CSV/PDF import modal. Opened from the TopBar "Add Multiple"
-  // chip via a window event (the TopBar lives above this page in
-  // AppShell and can't reach this state directly).
-  const [addMultipleOpen, setAddMultipleOpen] = useState(false);
   // Lazy-fetched bulk picker payloads. null = not fetched yet; [] =
   // fetched (possibly empty). Fetched on first open of the relevant
   // dialog so /candidates doesn't pay the round-trip on every mount.
@@ -1724,9 +1709,8 @@ export default function CandidatesPage() {
               {/* Roster tally — small, always-visible total of every
                   candidate in the org database. Separate from the big
                   match count so it reads at a glance regardless of the
-                  active filters; refreshDbTotal() ticks it up after an
-                  import. Hidden until the first fetch resolves so it
-                  never flashes a stale "0". */}
+                  active filters. Hidden until the first fetch resolves
+                  so it never flashes a stale "0". */}
               {dbTotal !== null ? (
                 <span className="hidden text-xs text-court-fg-muted tabular-nums sm:inline">
                   {dbTotal.toLocaleString()} {dbTotal === 1 ? "candidate" : "candidates"} in Ace
@@ -2074,21 +2058,6 @@ export default function CandidatesPage() {
         />
       )}
 
-      {addMultipleOpen && (
-        <AddMultipleDialog
-          onClose={() => setAddMultipleOpen(false)}
-          onImported={() => {
-            // Re-run the current search so freshly imported candidates
-            // appear in the results without a manual re-query. No-op when
-            // no filter is active (empty start state). The dialog decides
-            // whether to also close (clean import) or stay open (skips).
-            if (hasFilters) void runFetch(filters);
-            // Bump the roster tally so the header total reflects the
-            // just-imported candidates without a page reload.
-            void refreshDbTotal();
-          }}
-        />
-      )}
     </div>
   );
 }
