@@ -1,7 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
-import { CalendarCheck, Check, ChevronDown, Copy, FileText, Image as ImageIcon, Loader2, Mail, PhoneCall, Send, Trash2, X } from "lucide-react";
+import {
+  CalendarCheck,
+  Check,
+  ChevronDown,
+  Copy,
+  FileText,
+  Gauge,
+  Image as ImageIcon,
+  Loader2,
+  Mail,
+  PhoneCall,
+  Send,
+  Trash2,
+  X,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
@@ -103,7 +117,9 @@ const SUPPORTED_IMAGE_MIME = new Set<ImageAttachmentMediaType>([
   "image/webp",
 ]);
 const CANDIDATE_CALL_PREP_PROMPT =
-  "Rank this candidate out of 10, and help me explain this company and the opportunity to them simply on the call. Give me 1-2 questions to ask that can increase their score.";
+  "Help me prep for a call with this candidate. Explain the company and opportunity simply, identify the most likely motivators or concerns, and give me 2-3 questions to ask.";
+const CANDIDATE_RANK_PROMPT =
+  "Rank this candidate out of 10. If they are attached to one or more active jobs, score their fit for each job separately; otherwise score their overall marketability for BreakPoint's searches. Keep it brief: give the score as X/10, a short explanation, the main strength, the main concern, and one next step to improve or validate the score.";
 
 // Drag-to-resize: the card's height is the default
 // `calc(100dvh - bottomGapRem)` PLUS a user-dragged pixel delta. The
@@ -650,11 +666,11 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
           : "border-court-border",
       )}
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-court-border px-5 py-3">
-        <h2 className="font-serif text-base font-semibold text-court-fg">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-court-border px-5 py-3">
+        <h2 className="min-w-0 font-serif text-base font-semibold text-court-fg">
           {title ?? "AI Workspace"}
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {entityType === "candidate" && (
             <>
               <Button
@@ -668,6 +684,18 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail, botto
                 aria-label="Ask Call Prep prompt"
               >
                 <PhoneCall className="h-3 w-3" /> Call Prep
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => void onSend(CANDIDATE_RANK_PROMPT)}
+                disabled={sending}
+                className="h-7 gap-1 px-2 py-1 text-[11px] font-medium text-court-fg-muted hover:border-brand/60"
+                title={CANDIDATE_RANK_PROMPT}
+                aria-label="Rank candidate"
+              >
+                <Gauge className="h-3 w-3" /> Rank
               </Button>
               <Button
                 type="button"
