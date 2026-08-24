@@ -1304,7 +1304,7 @@ export function MarkdownContent({
           },
         }}
       >
-        {collapseProseHardBreaks(content)}
+        {escapeBareOrderedMarkers(collapseProseHardBreaks(content))}
       </ReactMarkdown>
     </div>
   );
@@ -1331,6 +1331,25 @@ function resolveInternalMarkdownHref(href: string | undefined): string | null {
 // breaks (blank lines = \n\n) are untouched, so structure survives.
 function collapseProseHardBreaks(content: string): string {
   return content.replace(/[ \t]{2,}\n/g, "\n").replace(/\\\n/g, "\n");
+}
+
+// A line holding nothing but a number and a dot is valid CommonMark for an
+// ordered list — "94608." parses to <ol start="94608"><li></li></ol>, an
+// EMPTY list item whose "94608." marker is rendered by the browser outside
+// the content box (list-outside). In the chat bubble that marker escaped the
+// bubble's left edge and got clipped, so asking Ace for a zip code printed a
+// half-visible number hanging off the panel.
+//
+// Escaping the delimiter makes the line render as the plain paragraph it was
+// always meant to be. Real lists are untouched: this only matches when the
+// marker is ALONE on the line, and a genuine list item has its content on the
+// same line ("1. First"), so it never matches. CommonMark accepts both "1."
+// and "1)" as ordered markers, hence both delimiters here.
+//
+// Only the delimiter is escaped, not the digits, so the visible text is
+// unchanged — the reader still sees exactly "94608."
+function escapeBareOrderedMarkers(content: string): string {
+  return content.replace(/^([ \t]*\d{1,9})([.)])[ \t]*$/gm, "$1\\$2");
 }
 
 // Flatten Game Plan markdown into clean plaintext for the clipboard.
