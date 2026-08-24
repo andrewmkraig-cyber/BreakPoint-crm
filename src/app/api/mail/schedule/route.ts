@@ -5,6 +5,7 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { invoiceScheduledEmailSource } from "@/lib/invoice-email-drafts";
 import { prisma } from "@/lib/prisma";
 import { createScheduledEmail, type StoredAttachment } from "@/lib/scheduled-email";
+import { ensureEmailHtmlWrapped } from "@/lib/email-html";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -122,7 +123,7 @@ export async function POST(req: NextRequest) {
       cc: (payload.cc ?? []).map((e) => e.trim()).filter(Boolean),
       bcc: (payload.bcc ?? []).map((e) => e.trim()).filter(Boolean),
       subject: payload.subject.trim(),
-      bodyHtml: payload.bodyHtml ?? "",
+      bodyHtml: ensureEmailHtmlWrapped(payload.bodyHtml ?? ""),
       bodyText: payload.bodyText,
       threadId: payload.threadId,
       sendAsEmail: payload.sendAsEmail,

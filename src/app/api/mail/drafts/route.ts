@@ -17,6 +17,7 @@ import {
   getThreadReplyHeaders,
   type GmailAttachment,
 } from "@/lib/gmail";
+import { ensureEmailHtmlWrapped } from "@/lib/email-html";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -105,6 +106,7 @@ export async function POST(req: NextRequest) {
   const subject = payload.subject?.trim() || "(no subject)";
   const bodyHtml = payload.bodyHtml ?? "";
   const bodyText = payload.bodyText ?? htmlToPlainText(bodyHtml);
+  const wrappedBodyHtml = ensureEmailHtmlWrapped(bodyHtml);
   const storedAttachments = normalizeStoredAttachments(payload.attachments ?? []);
 
   const org = await getCurrentOrg();
@@ -227,7 +229,7 @@ export async function POST(req: NextRequest) {
       cc: cc.length > 0 ? cc : undefined,
       bcc: bcc.length > 0 ? bcc : undefined,
       subject,
-      bodyHtml,
+      bodyHtml: wrappedBodyHtml,
       bodyText,
       threadId: payload.threadId,
       inReplyTo,
@@ -244,7 +246,7 @@ export async function POST(req: NextRequest) {
           cc,
           bcc,
           subject,
-          bodyHtml,
+          bodyHtml: wrappedBodyHtml,
           bodyText,
           threadId: payload.threadId ?? null,
           sendAsEmail: payload.sendAsEmail?.trim() || null,
@@ -268,7 +270,7 @@ export async function POST(req: NextRequest) {
         cc,
         bcc,
         subject,
-        bodyHtml,
+        bodyHtml: wrappedBodyHtml,
         bodyText,
         threadId: payload.threadId ?? null,
         sendAsEmail: payload.sendAsEmail?.trim() || null,

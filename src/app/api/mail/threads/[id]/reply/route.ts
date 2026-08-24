@@ -9,6 +9,7 @@ import {
   tagThreadByAddresses,
   type GmailAttachment,
 } from "@/lib/gmail";
+import { ensureEmailHtmlWrapped } from "@/lib/email-html";
 
 export const dynamic = "force-dynamic";
 // Inbound reply payloads can include attachments (PDF, DOCX, images)
@@ -94,6 +95,7 @@ export async function POST(
   }));
 
   const bodyText = payload.bodyText ?? htmlToPlainText(payload.bodyHtml);
+  const bodyHtml = ensureEmailHtmlWrapped(payload.bodyHtml);
 
   try {
     const fromAddress = payload.sendAsEmail?.trim() || user.email;
@@ -105,7 +107,7 @@ export async function POST(
       cc: payload.cc,
       bcc: payload.bcc,
       subject: payload.subject,
-      bodyHtml: payload.bodyHtml,
+      bodyHtml,
       bodyText,
       threadId: params.id,
       inReplyTo: messageId ?? undefined,

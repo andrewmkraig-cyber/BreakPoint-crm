@@ -4,7 +4,6 @@ import {
   createGmailDraft,
   deleteGmailDraft,
   getThreadReplyHeaders,
-  plainToHtml,
   sendGmail,
   tagThreadByAddresses,
   type GmailAttachment,
@@ -12,6 +11,7 @@ import {
 import { logActivity } from "@/lib/activity";
 import { invoiceIdFromScheduledEmailSource } from "@/lib/invoice-email-drafts";
 import { markInvoiceSent } from "@/lib/invoices";
+import { ensureEmailHtmlWrapped } from "@/lib/email-html";
 import type { ScheduledEmail } from "@prisma/client";
 
 // Shared plumbing for the "Send Later" scheduler. Both the HTTP route
@@ -83,6 +83,7 @@ export type CreateScheduledEmailParams = {
 export async function createScheduledEmail(
   params: CreateScheduledEmailParams,
 ): Promise<{ id: string; gmailDraftId: string | null }> {
+  const bodyHtml = ensureEmailHtmlWrapped(params.bodyHtml);
   const bodyText = params.bodyText ?? htmlToPlainText(params.bodyHtml);
   const fromAddress = params.sendAsEmail?.trim() || params.userEmail;
 
@@ -114,7 +115,7 @@ export async function createScheduledEmail(
         cc: params.cc,
         bcc: params.bcc,
         subject: params.subject,
-        bodyHtml: params.bodyHtml,
+        bodyHtml,
         bodyText,
         threadId: params.threadId,
         inReplyTo,
@@ -139,7 +140,7 @@ export async function createScheduledEmail(
       cc: params.cc ?? [],
       bcc: params.bcc ?? [],
       subject: params.subject,
-      bodyHtml: params.bodyHtml,
+      bodyHtml,
       bodyText,
       threadId: params.threadId ?? null,
       sendAsEmail: params.sendAsEmail?.trim() || null,
@@ -216,6 +217,7 @@ export async function fireScheduledEmail(row: ScheduledEmail): Promise<FireResul
   }
 
   try {
+    const bodyHtml = ensureEmailHtmlWrapped(row.bodyHtml);
     const sent = await sendGmail({
       userId: row.userId,
       from: row.sendAsEmail?.trim() || user.email,
@@ -224,8 +226,8 @@ export async function fireScheduledEmail(row: ScheduledEmail): Promise<FireResul
       cc: row.cc.length > 0 ? row.cc : undefined,
       bcc: row.bcc.length > 0 ? row.bcc : undefined,
       subject: row.subject,
-      bodyHtml: row.bodyHtml,
-      bodyText: row.bodyText || plainToHtml(row.bodyHtml),
+      bodyHtml,
+      bodyText: row.bodyText || htmlToPlainText(bodyHtml),
       threadId: row.threadId ?? undefined,
       inReplyTo,
       references,

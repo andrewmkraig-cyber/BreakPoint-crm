@@ -727,7 +727,7 @@ export function MailComposer({
           // numbered-list buttons toggle state but render nothing
           // visible. Mirrors the same pattern used in AiWorkspace +
           // message-block.
-          "min-h-[200px] w-full whitespace-pre-wrap bg-transparent px-4 py-3 font-sans text-sm leading-relaxed text-court-fg outline-none [&_p]:my-2 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-0.5 [&_li>p]:my-0 [&_a]:text-brand [&_a]:underline",
+          "min-h-[200px] w-full whitespace-pre-wrap bg-transparent px-4 py-3 font-sans text-sm leading-relaxed text-court-fg outline-none [&>*+*]:mt-3 [&_p]:my-0 [&_strong]:font-semibold [&_ul]:my-0 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-0 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 [&_li>div]:my-0 [&_li>p]:my-0 [&_a]:text-brand [&_a]:underline",
       },
       handlePaste(view, event) {
         const data = event.clipboardData;
@@ -765,20 +765,24 @@ export function MailComposer({
         const html = data.getData("text/html");
         if (html && html.trim()) {
           event.preventDefault();
-          // The Heading extension isn't enabled on this editor, so pasted
-          // <h1>-<h6> tags get flattened to plain paragraphs and the
-          // "bold section header" visual is lost. Convert headings to
-          // <p><strong>…</strong></p> up-front so JD section titles
-          // ("A Bit About Us", "Key Responsibilities and Duties", …)
-          // survive tiptap parsing as bold paragraphs.
-          const processedHtml = html.replace(
-            /<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi,
-            "<p><strong>$1</strong></p>",
-          );
+          const processedHtml = normalizePastedComposerHtml(html);
           // Defer the insertContent to the next tick so TipTap's DOM
           // mutation doesn't fire mid-React-render-cycle. Synchronous
           // insertContent inside the paste handler triggers React
           // hydration errors #418/#423/#425.
+          setTimeout(() => {
+            editor?.commands.insertContent(processedHtml, {
+              parseOptions: { preserveWhitespace: false },
+            });
+          }, 0);
+          return true;
+        }
+        const text = data.getData("text/plain");
+        if (text && /\r?\n/.test(text)) {
+          event.preventDefault();
+          const processedHtml = normalizePastedComposerHtml(
+            plainTextToComposerHtml(text),
+          );
           setTimeout(() => {
             editor?.commands.insertContent(processedHtml, {
               parseOptions: { preserveWhitespace: false },
@@ -2474,6 +2478,118 @@ function escapeHtml(s: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+const COMPOSER_BLOCK_MARGIN = "0 0 0.75rem 0";
+const COMPOSER_LIST_PADDING = "1.5rem";
+const COMPOSER_LINE_HEIGHT = "1.55";
+const COMPOSER_SPACING_STYLE_KEYS = [
+  "font-family",
+  "font-size",
+  "line-height",
+  "margin",
+  "margin-top",
+  "margin-right",
+  "margin-bottom",
+  "margin-left",
+  "padding",
+  "padding-top",
+  "padding-right",
+  "padding-bottom",
+  "padding-left",
+];
+
+function normalizePastedComposerHtml(html: string): string {
+  if (typeof DOMParser === "undefined") {
+    return html.replace(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi, "<p><strong>$1</strong></p>");
+  }
+
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc.querySelectorAll("script, style, meta, link").forEach((el) => el.remove());
+  doc.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((heading) => {
+    const paragraph = doc.createElement("p");
+    const strong = doc.createElement("strong");
+    while (heading.firstChild) {
+      strong.appendChild(heading.firstChild);
+    }
+    paragraph.appendChild(strong);
+    heading.replaceWith(paragraph);
+  });
+  doc.querySelectorAll("p, div").forEach((el) => {
+    if (el.parentElement?.tagName.toLowerCase() === "li") {
+      applyComposerSpacing(el, { margin: "0", lineHeight: COMPOSER_LINE_HEIGHT });
+      return;
+    }
+    applyComposerSpacing(el, {
+      margin: COMPOSER_BLOCK_MARGIN,
+      lineHeight: COMPOSER_LINE_HEIGHT,
+    });
+  });
+  doc.querySelectorAll("ul, ol").forEach((el) => {
+    applyComposerSpacing(el, {
+      margin: COMPOSER_BLOCK_MARGIN,
+      paddingLeft: COMPOSER_LIST_PADDING,
+      lineHeight: COMPOSER_LINE_HEIGHT,
+    });
+  });
+  doc.querySelectorAll("li").forEach((el) => {
+    applyComposerSpacing(el, {
+      margin: "0 0 0.25rem 0",
+      lineHeight: COMPOSER_LINE_HEIGHT,
+    });
+  });
+  doc.querySelectorAll("li > p, li > div").forEach((el) => {
+    applyComposerSpacing(el, { margin: "0", lineHeight: COMPOSER_LINE_HEIGHT });
+  });
+  return doc.body.innerHTML;
+}
+
+function applyComposerSpacing(
+  el: Element,
+  styles: Partial<Pick<CSSStyleDeclaration, "lineHeight" | "margin" | "paddingLeft">>,
+): void {
+  if (!(el instanceof HTMLElement)) return;
+  for (const key of COMPOSER_SPACING_STYLE_KEYS) {
+    el.style.removeProperty(key);
+  }
+  if (styles.margin) el.style.margin = styles.margin;
+  if (styles.paddingLeft) el.style.paddingLeft = styles.paddingLeft;
+  if (styles.lineHeight) el.style.lineHeight = styles.lineHeight;
+}
+
+function plainTextToComposerHtml(text: string): string {
+  const blocks = text
+    .replace(/\r\n?/g, "\n")
+    .trim()
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  return blocks
+    .map((block) => {
+      const lines = block
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (lines.length === 0) return "";
+
+      const bulletItems = lines.map((line) => line.match(/^(?:[-*]|\u2022)\s+(.+)$/));
+      if (bulletItems.every(Boolean)) {
+        return `<ul>${bulletItems
+          .map((match) => `<li>${escapeHtml(match?.[1] ?? "")}</li>`)
+          .join("")}</ul>`;
+      }
+
+      const orderedItems = lines.map((line) => line.match(/^\d+[.)]\s+(.+)$/));
+      if (orderedItems.every(Boolean)) {
+        return `<ol>${orderedItems
+          .map((match) => `<li>${escapeHtml(match?.[1] ?? "")}</li>`)
+          .join("")}</ol>`;
+      }
+
+      return `<p>${lines.map(escapeHtml).join("<br/>")}</p>`;
+    })
+    .join("");
 }
 
 type RecruitJobOption = {
