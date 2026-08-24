@@ -11,6 +11,8 @@ import { fallbackParseCandidate } from "@/lib/resume-fallback";
 import { geocodePill } from "@/lib/geocode";
 import { normalizeToE164 } from "@/lib/rf-payload-shapes";
 import { enrichCandidateZipFromCity } from "@/lib/candidate-zip-enrichment";
+import { isActiveJobLifecycle } from "@/lib/job-lifecycle";
+import { applyLocalCandidateToJob } from "@/app/candidates/[id]/local-placement-actions";
 
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -172,11 +174,78 @@ export type CreateCandidatePayload = {
 
 export type CreateCandidateInput = CreateCandidatePayload & {
   resumeUploadId?: string | null;
+  applyToJobKey?: string | null;
 };
 
 export type CreateCandidateResult =
-  | { ok: true; value: { id: string } }
+  | {
+      ok: true;
+      value: {
+        id: string;
+        appliedJobTitle?: string | null;
+        applyError?: string | null;
+      };
+    }
   | { ok: false; error: string; duplicate?: { id: string; name: string } };
+
+type ApplyJobTarget = {
+  id: string;
+  legacyRfId: number | null;
+  title: string;
+  clientId: string | null;
+  clientRfId: number | null;
+};
+
+function parseApplyJobKey(
+  key: string | null | undefined,
+): { kind: "cuid"; id: string } | { kind: "rf"; id: number } | null {
+  const trimmed = key?.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("c:")) {
+    const id = trimmed.slice(2).trim();
+    return id ? { kind: "cuid", id } : null;
+  }
+  if (trimmed.startsWith("r:")) {
+    const id = Number(trimmed.slice(2));
+    return Number.isInteger(id) && id > 0 ? { kind: "rf", id } : null;
+  }
+  return null;
+}
+
+async function loadActiveApplyJob(
+  key: string,
+  organizationId: string,
+): Promise<ApplyJobTarget | null> {
+  const parsed = parseApplyJobKey(key);
+  if (!parsed) return null;
+
+  const job = await prisma.job.findFirst({
+    where: {
+      organizationId,
+      ...(parsed.kind === "cuid"
+        ? { id: parsed.id }
+        : { legacyRfId: parsed.id }),
+    },
+    select: {
+      id: true,
+      legacyRfId: true,
+      title: true,
+      clientId: true,
+      lifecycle: true,
+      isOpen: true,
+      client: { select: { legacyRfId: true } },
+    },
+  });
+  if (!job || !isActiveJobLifecycle(job.lifecycle, job.isOpen)) return null;
+
+  return {
+    id: job.id,
+    legacyRfId: job.legacyRfId,
+    title: job.title,
+    clientId: job.clientId,
+    clientRfId: job.client?.legacyRfId ?? null,
+  };
+}
 
 // Hard rule (see MEMORY): creating a candidate in Ace writes to the local
 // Neon Postgres database ONLY. No RecruiterFlow call, no background sync.
@@ -271,6 +340,17 @@ export async function createCandidate(
     });
 
     const org = await getCurrentOrg();
+    const applyJobKey = input.applyToJobKey?.trim() || null;
+    const applyTarget = applyJobKey
+      ? await loadActiveApplyJob(applyJobKey, org.id)
+      : null;
+    if (applyJobKey && !applyTarget) {
+      return {
+        ok: false,
+        error: "Pick an active job to apply this candidate, or leave the job field blank.",
+      };
+    }
+
     const created = await prisma.candidate.create({
       data: {
         firstName: first,
@@ -388,9 +468,34 @@ export async function createCandidate(
       },
     });
 
+    let appliedJobTitle: string | null = null;
+    let applyError: string | null = null;
+    if (applyTarget) {
+      const applyResult = await applyLocalCandidateToJob({
+        candidateId: created.id,
+        jobRfId: null,
+        jobId: applyTarget.id,
+        clientRfId: applyTarget.clientId ? null : applyTarget.clientRfId,
+        clientId: applyTarget.clientId,
+      });
+      if (applyResult.ok) {
+        appliedJobTitle = applyTarget.title;
+        revalidatePath("/jobs");
+        revalidatePath(`/jobs/${applyTarget.id}`);
+        if (applyTarget.legacyRfId != null) {
+          revalidatePath(`/jobs/${applyTarget.legacyRfId}`);
+        }
+      } else {
+        applyError = applyResult.error;
+      }
+    }
+
     revalidatePath("/candidates");
     revalidatePath(`/candidates/${created.id}`);
-    return { ok: true, value: { id: created.id } };
+    return {
+      ok: true,
+      value: { id: created.id, appliedJobTitle, applyError },
+    };
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error("[createCandidate] local save failed:", e);

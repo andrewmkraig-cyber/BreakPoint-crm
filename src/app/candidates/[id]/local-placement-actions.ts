@@ -130,6 +130,7 @@ export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<
           select: { id: true, stage: true },
         });
     const org = await getCurrentOrg();
+    let placementId: string;
     if (existing) {
       // Pre-pipeline stages (sourced / applied / kept) can all transition
       // to "applied" — Apply is the natural promotion path off Kept and
@@ -143,8 +144,9 @@ export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<
         where: { id: existing.id },
         data: { stage: "applied", syncedToRf: false },
       });
+      placementId = existing.id;
     } else {
-      await prisma.placement.create({
+      const created = await prisma.placement.create({
         data: {
           candidateId: input.candidateId,
           candidateRfId: null,
@@ -158,7 +160,9 @@ export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<
           organizationId: org.id,
           syncedToRf: false,
         },
+        select: { id: true },
       });
+      placementId = created.id;
     }
 
     await createActionLog({
@@ -187,8 +191,10 @@ export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<
       },
     });
 
-    revalidatePath(`/candidates/${input.candidateId}`);
-    revalidatePath("/pipeline");
+    await revalidatePlacementSurfaces(placementId, org.id);
+    revalidatePath("/jobs");
+    if (jobId) revalidatePath(`/jobs/${jobId}`);
+    if (jobRfId != null) revalidatePath(`/jobs/${jobRfId}`);
 
     // Auto-fire Candidate Applied — Confirmation. Best-effort tail
     // off the apply path; the Placement row + ActivityLog are

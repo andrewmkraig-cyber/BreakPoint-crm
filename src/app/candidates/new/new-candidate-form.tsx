@@ -3,7 +3,7 @@
 import { useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, Loader2, Save, Sparkles, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Save, Sparkles, Target, X } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentDropzone } from "@/components/document-dropzone";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
@@ -25,6 +25,7 @@ import {
   type ParsedExperienceRow,
   type ParseSource,
 } from "@/app/candidates/new/actions";
+import type { BulkPickerJob } from "@/app/candidates/bulk-actions";
 
 type FormState = CreateCandidatePayload & {
   locationCity: string;
@@ -66,8 +67,10 @@ export function NewCandidateForm({
   // initializer seeds the Phone field on first render; a resume parse
   // later can still overwrite it (parse maps p.phone over prev.phone).
   initialPhone = "",
+  activeJobs = [],
 }: {
   initialPhone?: string;
+  activeJobs?: BulkPickerJob[];
 } = {}) {
   const router = useRouter();
   const [resume, setResume] = useState<File | null>(null);
@@ -80,6 +83,7 @@ export function NewCandidateForm({
   const [claudeError, setClaudeError] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [applyToJobKey, setApplyToJobKey] = useState("");
   const [isParsing, startParse] = useTransition();
   const [isSaving, startSave] = useTransition();
 
@@ -95,6 +99,8 @@ export function NewCandidateForm({
   const [emailCheckStatus, setEmailCheckStatus] = useState<
     "idle" | "checking" | "clean" | "duplicate"
   >("idle");
+  const selectedApplyJob =
+    activeJobs.find((job) => job.key === applyToJobKey) ?? null;
 
   function runParse(args: { file?: File } = {}) {
     setParseError(null);
@@ -352,7 +358,9 @@ export function NewCandidateForm({
       toast.error("Can't save yet", { description: msg });
       return;
     }
-    const toastId = toast.loading("Saving candidate…");
+    const toastId = toast.loading(
+      applyToJobKey ? "Saving and applying candidate…" : "Saving candidate…",
+    );
     startSave(async () => {
       try {
         // Hard gate: always run the dup check server-side at submit time,
@@ -372,7 +380,11 @@ export function NewCandidateForm({
           toast.error("Couldn't verify email", { id: toastId, description: dupCheck.error });
           return;
         }
-        const result = await createCandidate({ ...payload, resumeUploadId });
+        const result = await createCandidate({
+          ...payload,
+          resumeUploadId,
+          applyToJobKey: applyToJobKey || null,
+        });
         if (!result.ok) {
           if (result.duplicate) {
             setEmailDuplicate(result.duplicate);
@@ -385,7 +397,20 @@ export function NewCandidateForm({
           return;
         }
         // Staging row was consumed server-side — no need to discard on the client.
-        toast.success(`Saved ${payload.first_name} ${payload.last_name}`.trim(), { id: toastId });
+        const savedName = `Saved ${payload.first_name} ${payload.last_name}`.trim();
+        if (result.value.applyError) {
+          toast.warning("Saved candidate, but couldn't apply to job", {
+            id: toastId,
+            description: result.value.applyError,
+          });
+        } else {
+          toast.success(
+            result.value.appliedJobTitle
+              ? `${savedName} and applied to ${result.value.appliedJobTitle}`
+              : savedName,
+            { id: toastId },
+          );
+        }
         router.push(`/candidates/${result.value.id}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unexpected save error.";
@@ -410,6 +435,7 @@ export function NewCandidateForm({
     setEmailDuplicate(null);
     setEmailCheckStatus("idle");
     setSaveError(null);
+    setApplyToJobKey("");
   }
 
   const showFallbackBanner = parseSource === "fallback";
@@ -634,6 +660,38 @@ export function NewCandidateForm({
               options={LEAD_SOURCES}
               placeholder="Select source..."
             />
+            <div className="sm:col-span-2">
+              <label className="block text-sm">
+                <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-court-fg-muted">
+                  <Target className="h-3 w-3" />
+                  Apply to job
+                </span>
+                <div className={`${INPUT_FRAME_RECT_CLASS} mt-1 w-full`}>
+                  <select
+                    value={applyToJobKey}
+                    onChange={(e) => setApplyToJobKey(e.target.value)}
+                    disabled={activeJobs.length === 0}
+                    className={`${INPUT_CONTROL_CLASS} text-sm`}
+                  >
+                    <option value="">Do not apply to a job</option>
+                    {activeJobs.map((job) => (
+                      <option key={job.key} value={job.key}>
+                        {job.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {activeJobs.length === 0 ? (
+                  <span className="mt-1 block text-[11px] text-court-fg-muted">
+                    No active jobs found.
+                  </span>
+                ) : selectedApplyJob ? (
+                  <span className="mt-1 block text-[11px] text-court-fg-muted">
+                    Selected: {selectedApplyJob.label}
+                  </span>
+                ) : null}
+              </label>
+            </div>
             <div className="sm:col-span-2">
               <Field
                 label="Skills"
