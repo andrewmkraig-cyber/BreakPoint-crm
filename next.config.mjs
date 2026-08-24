@@ -79,10 +79,23 @@ const nextConfig = {
     },
     // Next 14.2 keeps soft-navigated dynamic pages in the client Router
     // Cache for 30s, so data created on one page (e.g. a reminder on
-    // /calendar) wouldn't show on /dashboard until a hard reload. Zero
-    // means every soft navigation refetches the dynamic route fresh.
+    // /calendar) wouldn't show on /dashboard until a hard reload. This was
+    // set to 0 to fix that, but 0 also means pressing Back re-runs every
+    // query on the previous page — a real wait, not just a perceived one.
+    //
+    // 5s instead of 0: the mutation paths that caused the original bug are
+    // server actions that already call revalidatePath on the affected
+    // routes (see calendar/reminder-actions.ts), and revalidatePath clears
+    // the client Router Cache too — so the fix now lives at the source
+    // rather than depending on caching being off everywhere. The 5s is a
+    // backstop that caps staleness for any mutation path that forgets to
+    // revalidate, while still making rapid back/forward navigation instant.
+    //
+    // Do not raise this toward Next's 30s default without auditing that
+    // every mutation revalidates: Ace is a system of record and Andrew
+    // enters data live, so stale reads are worse here than slow ones.
     staleTimes: {
-      dynamic: 0,
+      dynamic: 5,
     },
     // mammoth pulls in dynamic requires that Next's bundler mangles; keep it
     // external so `require("mammoth")` resolves at runtime on the server.

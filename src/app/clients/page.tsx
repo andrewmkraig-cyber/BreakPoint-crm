@@ -65,35 +65,40 @@ export default async function ClientsPage({
       getCurrentUserId(),
     ]);
 
-    // The "other" org member, for the "<Name>'s Clients" dropdown option.
-    // Internal two-person org, so the first member that isn't the signed-in
-    // user is the counterpart; null when there is no one else.
-    const members = await prisma.organizationMembership.findMany({
-      where: { organizationId: org.id },
-      select: { user: { select: { id: true, name: true } } },
-    });
+    // Both key only off org.id and neither reads the other's result, so
+    // they run together rather than as two serial round trips.
+    const [members, placementGroups] = await Promise.all([
+      // The "other" org member, for the "<Name>'s Clients" dropdown option.
+      // Internal two-person org, so the first member that isn't the signed-in
+      // user is the counterpart; null when there is no one else.
+      prisma.organizationMembership.findMany({
+        where: { organizationId: org.id },
+        select: { user: { select: { id: true, name: true } } },
+      }),
+      // Pipeline counts read from Neon Placement.stage (canonical post-
+      // Phase-5), one groupBy across the whole tenant rather than walking
+      // every candidate's RF jobs[] array. Filters out null clientId
+      // rows (the orphan-row class fixed by the 2026-04-28 backfill;
+      // safety net here in case any new ones land).
+      prisma.placement.groupBy({
+        by: ["clientId", "stage"],
+        where: {
+          organizationId: org.id,
+          clientId: { not: null },
+          // Cancelled rows are dropped by the canonicalStage switch below
+          // (default: break), so they don't affect counts today — but
+          // filtering at the DB layer keeps the wire payload smaller and
+          // makes the intent explicit. Mirrors the same pattern applied
+          // to the per-client groupBy in clients/[id]/page.tsx.
+          stage: { not: "cancelled" },
+        },
+        _count: { _all: true },
+      }),
+    ]);
     const other = members.map((m) => m.user).find((u) => u.id !== currentUserId) ?? null;
     otherUserId = other?.id ?? null;
     otherUserName = other?.name ?? null;
-    // Pipeline counts read from Neon Placement.stage (canonical post-
-    // Phase-5), one groupBy across the whole tenant rather than walking
-    // every candidate's RF jobs[] array. Filters out null clientId
-    // rows (the orphan-row class fixed by the 2026-04-28 backfill;
-    // safety net here in case any new ones land).
-    const placementGroups = await prisma.placement.groupBy({
-      by: ["clientId", "stage"],
-      where: {
-        organizationId: org.id,
-        clientId: { not: null },
-        // Cancelled rows are dropped by the canonicalStage switch below
-        // (default: break), so they don't affect counts today — but
-        // filtering at the DB layer keeps the wire payload smaller and
-        // makes the intent explicit. Mirrors the same pattern applied
-        // to the per-client groupBy in clients/[id]/page.tsx.
-        stage: { not: "cancelled" },
-      },
-      _count: { _all: true },
-    });
+
     const counts = new Map<string, JobPipelineCounts>();
     for (const g of placementGroups) {
       if (!g.clientId) continue;

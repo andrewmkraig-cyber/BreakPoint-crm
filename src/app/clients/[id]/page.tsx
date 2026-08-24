@@ -354,26 +354,70 @@ export default async function ClientDetailPage({
   const feePct =
     typeof feePctRaw === "number" ? feePctRaw : typeof feePctRaw === "string" ? parseFloat(feePctRaw) || null : null;
 
-  // Stat strip counts come from Neon Placement.stage (the canonical
-  // source of truth post-Phase-5), not from RF payload stage_name.
-  // The previous buildClientCounts(candidates) read RFCandidate.jobs[]
-  // which lagged whenever an Ace stage move hadn't synced back to RF —
-  // Sheehan Brothers showed Interviewing=0 for that reason. Prisma
-  // groupBy here filters by Neon clientId cuid + organizationId (Rule 8).
-  const placementGroups = await prisma.placement.groupBy({
-    by: ["stage"],
-    where: {
-      clientId: client.id,
-      organizationId: client.organizationId,
-      // Drives the Hired stat strip (counts.hired). Cancelled rows
-      // would otherwise still be grouped (the JS-side canonicalStage
-      // switch ignores them via the default branch), but excluding at
-      // the DB layer guarantees counts.hired never reflects a cancelled
-      // placement and matches the user-visible "hired" definition.
-      stage: { not: "cancelled" },
-    },
-    _count: { _all: true },
-  });
+  // These three queries are keyed solely off client.id + organizationId,
+  // so nothing among them depends on another's result — they run together
+  // rather than in series. Awaited sequentially they cost three round
+  // trips to Neon; in parallel they cost one.
+  const [placementGroups, jobPlacementGroups, allJobs] = await Promise.all([
+    // Stat strip counts come from Neon Placement.stage (the canonical
+    // source of truth post-Phase-5), not from RF payload stage_name.
+    // The previous buildClientCounts(candidates) read RFCandidate.jobs[]
+    // which lagged whenever an Ace stage move hadn't synced back to RF —
+    // Sheehan Brothers showed Interviewing=0 for that reason. Prisma
+    // groupBy here filters by Neon clientId cuid + organizationId (Rule 8).
+    prisma.placement.groupBy({
+      by: ["stage"],
+      where: {
+        clientId: client.id,
+        organizationId: client.organizationId,
+        // Drives the Hired stat strip (counts.hired). Cancelled rows
+        // would otherwise still be grouped (the JS-side canonicalStage
+        // switch ignores them via the default branch), but excluding at
+        // the DB layer guarantees counts.hired never reflects a cancelled
+        // placement and matches the user-visible "hired" definition.
+        stage: { not: "cancelled" },
+      },
+      _count: { _all: true },
+    }),
+    // Per-job row counters: another Prisma groupBy keyed by (jobRfId, stage)
+    // so each job's row in the Jobs table reads from canonical Neon stages
+    // rather than RFCandidate.jobs[]. Same pattern as the strip above.
+    // Ace-native Jobs (jobRfId null) aren't in the openJobs/closedJobs RF
+    // arrays anyway so excluding them here matches the table's data source.
+    prisma.placement.groupBy({
+      by: ["jobRfId", "stage"],
+      where: {
+        clientId: client.id,
+        organizationId: client.organizationId,
+        jobRfId: { not: null },
+        // Same rationale as the per-client groupBy above: cancelled rows
+        // would be silently dropped by the JS switch but cleaner to
+        // exclude here so the per-job row counters never reflect them.
+        stage: { not: "cancelled" },
+      },
+      _count: { _all: true },
+    }),
+    // Live Jobs table source — every Job row scoped to this client +
+    // tenant. Replaces the legacy Client.raw.open_jobs / closed_jobs RF
+    // snapshot, which never picked up Ace-native creates (the Job rowcount
+    // chip would silently disagree with the table when an Ace-native job
+    // was created against the client). Tenant-scoped per Rule 8.
+    prisma.job.findMany({
+      where: {
+        clientId: client.id,
+        organizationId: client.organizationId,
+      },
+      select: {
+        id: true,
+        legacyRfId: true,
+        title: true,
+        isOpen: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+
   const counts = emptyJobCounts();
   for (const g of placementGroups) {
     const bucket = canonicalStage(g.stage);
@@ -402,24 +446,6 @@ export default async function ClientDetailPage({
         break;
     }
   }
-  // Per-job row counters: another Prisma groupBy keyed by (jobRfId, stage)
-  // so each job's row in the Jobs table reads from canonical Neon stages
-  // rather than RFCandidate.jobs[]. Same pattern as the strip above.
-  // Ace-native Jobs (jobRfId null) aren't in the openJobs/closedJobs RF
-  // arrays anyway so excluding them here matches the table's data source.
-  const jobPlacementGroups = await prisma.placement.groupBy({
-    by: ["jobRfId", "stage"],
-    where: {
-      clientId: client.id,
-      organizationId: client.organizationId,
-      jobRfId: { not: null },
-      // Same rationale as the per-client groupBy above: cancelled rows
-      // would be silently dropped by the JS switch but cleaner to
-      // exclude here so the per-job row counters never reflect them.
-      stage: { not: "cancelled" },
-    },
-    _count: { _all: true },
-  });
   const jobCountsById = new Map<number, JobPipelineCounts>();
   for (const g of jobPlacementGroups) {
     if (g.jobRfId == null) continue;
@@ -452,25 +478,6 @@ export default async function ClientDetailPage({
     jobCountsById.set(g.jobRfId, pc);
   }
 
-  // Live Jobs table source — every Job row scoped to this client +
-  // tenant. Replaces the legacy Client.raw.open_jobs / closed_jobs RF
-  // snapshot, which never picked up Ace-native creates (the Job rowcount
-  // chip would silently disagree with the table when an Ace-native job
-  // was created against the client). Tenant-scoped per Rule 8.
-  const allJobs = await prisma.job.findMany({
-    where: {
-      clientId: client.id,
-      organizationId: client.organizationId,
-    },
-    select: {
-      id: true,
-      legacyRfId: true,
-      title: true,
-      isOpen: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: "desc" },
-  });
   const openJobs = allJobs.filter((j) => j.isOpen);
   const closedJobs = allJobs.filter((j) => !j.isOpen);
 

@@ -21,8 +21,14 @@ export default async function InvoiceDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const org = await getCurrentOrg();
-  const session = await getServerSession(authOptions);
+  // Independent of each other — the org lookup keys off the session cookie
+  // and getServerSession decodes the same cookie, so neither consumes the
+  // other's result. Awaited in series they were two round trips for no
+  // reason; the Promise.all below still needs both before it can start.
+  const [org, session] = await Promise.all([
+    getCurrentOrg(),
+    getServerSession(authOptions),
+  ]);
   const [invoice, billing, invoiceTpl, user] = await Promise.all([
     getInvoice(id, org.id),
     getBillingSettings(),

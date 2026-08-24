@@ -34,7 +34,11 @@ export default async function CampaignsPage() {
   const org = await getCurrentOrg();
   const nowMs = Date.now();
 
-  const runs = await prisma.bDRun.findMany({
+  // All three key only off org.id and none reads another's result, so they
+  // run together. Only eventCounts below is genuinely sequential — it needs
+  // the campaign ids that come back with `runs`.
+  const [runs, domainRows, bdSequenceRows] = await Promise.all([
+    prisma.bDRun.findMany({
     where: {
       organizationId: org.id,
       // Active Campaigns shows only runs that became real enrolled
@@ -62,7 +66,19 @@ export default async function CampaignsPage() {
       savedSearch: { select: { name: true, criteria: true } },
       campaigns: { select: { id: true, apolloSequenceId: true, name: true } },
     },
-  });
+    }),
+    prisma.sendingDomain.findMany({
+      where: { organizationId: org.id },
+      select: { domain: true, status: true },
+    }),
+    // Self-serve sequence mappings, so the "Open in Apollo" link can resolve a
+    // table-only sequence (e.g. "Great Neck BD") to its real Apollo id — the same
+    // chain the enroll path uses. Built once; the per-row resolver reads the map.
+    prisma.bdSequence.findMany({
+      where: { organizationId: org.id },
+      select: { name: true, apolloSequenceId: true, active: true },
+    }),
+  ]);
 
   // One round-trip for event counts. groupBy keys on (campaignId, kind)
   // so we can fan results back out to per-run aggregates client-side.
@@ -83,19 +99,8 @@ export default async function CampaignsPage() {
     eventsByCampaign.set(row.campaignId, bucket);
   }
 
-  const domainRows = await prisma.sendingDomain.findMany({
-    where: { organizationId: org.id },
-    select: { domain: true, status: true },
-  });
   const domainStatusByName = new Map(domainRows.map((d) => [d.domain, d.status]));
 
-  // Self-serve sequence mappings, so the "Open in Apollo" link can resolve a
-  // table-only sequence (e.g. "Great Neck BD") to its real Apollo id — the same
-  // chain the enroll path uses. Built once; the per-row resolver reads the map.
-  const bdSequenceRows = await prisma.bdSequence.findMany({
-    where: { organizationId: org.id },
-    select: { name: true, apolloSequenceId: true, active: true },
-  });
   const apolloSeqIdByName = new Map<string, string>();
   for (const s of bdSequenceRows) {
     if (!s.apolloSequenceId) continue;
