@@ -18,6 +18,7 @@ import {
   PHONE_NOTIFICATIONS_PREF_KEY,
 } from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
+import { useCampaignsContext } from "@/lib/campaigns-context";
 import {
   isNavItemActive,
   resolveDashboardTab,
@@ -56,6 +57,9 @@ export function Sidebar({ width }: { width?: number } = {}) {
   // use; reconciles live via NOTIF_PREFS_CHANGED_EVENT.
   const phoneNotifsEnabled = useNotifChannelEnabled(PHONE_NOTIFICATIONS_PREF_KEY);
   const phoneBadgeCount = phoneNotifsEnabled ? phoneUnreadCount : 0;
+  // Unread GENUINE Instantly replies. Confirmed auto-replies are excluded
+  // server-side, so an out-of-office can never light this badge.
+  const { unreadCount: replyBadgeCount } = useCampaignsContext();
 
   return (
     // Sidebar reads from the dedicated --court-sidebar-* token family
@@ -123,7 +127,9 @@ export function Sidebar({ width }: { width?: number } = {}) {
                       ? unreadCount
                       : item.href === "/phone"
                         ? phoneBadgeCount
-                        : 0
+                        : item.href === "/campaigns"
+                          ? replyBadgeCount
+                          : 0
                   }
                 />
               ))}

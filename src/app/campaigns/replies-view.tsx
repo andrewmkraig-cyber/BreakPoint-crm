@@ -72,11 +72,14 @@ export function RepliesView({
   campaignOptions,
   initialCampaignId,
   lockCampaign = false,
+  focusReplyId,
 }: {
   campaignOptions: { id: string; name: string }[];
   initialCampaignId?: string;
   /** Detail page: pin to one campaign and hide the picker entirely. */
   lockCampaign?: boolean;
+  /** Instantly email id to expand + mark read on arrival (toast click). */
+  focusReplyId?: string;
 }) {
   const [campaignId, setCampaignId] = useState<string>(initialCampaignId ?? "");
   const [showAuto, setShowAuto] = useState(false);
@@ -137,6 +140,25 @@ export function RepliesView({
       if (retryTimer.current) clearTimeout(retryTimer.current);
     };
   }, [data, load]);
+
+  // Toast deep-link: expand the reply that was clicked and mark it read
+  // in Ace's database. Runs once per focused id, after the rows land.
+  const markedFocus = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusReplyId || !data) return;
+    if (markedFocus.current === focusReplyId) return;
+    const hit = data.replies.find((r) => r.id === focusReplyId);
+    if (!hit) return;
+    markedFocus.current = focusReplyId;
+    setExpanded((prev) => new Set(prev).add(focusReplyId));
+    // Read state is OURS - this writes readAt in Neon and never touches
+    // the Instantly Unibox.
+    void fetch("/api/instantly/replies/read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emailIds: [focusReplyId] }),
+    }).catch(() => {});
+  }, [focusReplyId, data]);
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {

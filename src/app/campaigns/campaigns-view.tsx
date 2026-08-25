@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { TabStrip } from "@/components/ui/tab-strip";
 import { HeadlineStats } from "@/app/campaigns/headline-stats";
 import { CampaignTable, type CampaignRow } from "@/app/campaigns/campaign-table";
@@ -24,7 +25,13 @@ type Payload =
 type Pane = "overview" | "replies";
 
 export function CampaignsView() {
-  const [pane, setPane] = useState<Pane>("overview");
+  // A reply toast deep-links to /campaigns?tab=replies&reply=<id>, so
+  // land on the right pane instead of Overview when that param is set.
+  const searchParams = useSearchParams();
+  const focusReplyId = searchParams?.get("reply") ?? undefined;
+  const [pane, setPane] = useState<Pane>(
+    searchParams?.get("tab") === "replies" || focusReplyId ? "replies" : "overview",
+  );
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -85,7 +92,7 @@ export function CampaignsView() {
           </div>
         ) : null
       ) : (
-        <RepliesView campaignOptions={campaignOptions} />
+        <RepliesView campaignOptions={campaignOptions} focusReplyId={focusReplyId} />
       )}
     </div>
   );

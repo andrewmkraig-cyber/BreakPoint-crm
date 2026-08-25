@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && npm run check:ui && next build",
-    "check:ui": "node scripts/check-raw-buttons.mjs && node scripts/check-rf-blob-reads.mjs && node tests/unit/candidates-topbar-actions.test.mjs",
+    "check:ui": "node scripts/check-raw-buttons.mjs && node scripts/check-rf-blob-reads.mjs && node tests/unit/candidates-topbar-actions.test.mjs && node scripts/check-instantly-readonly.mjs",
     "check:buttons": "node scripts/check-raw-buttons.mjs",
     "check:rf-blob": "node scripts/check-rf-blob-reads.mjs",
     "test:smoke": "node tests/unit/candidates-topbar-actions.test.mjs",

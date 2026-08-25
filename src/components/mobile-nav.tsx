@@ -13,6 +13,7 @@ import {
   PHONE_NOTIFICATIONS_PREF_KEY,
 } from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
+import { useCampaignsContext } from "@/lib/campaigns-context";
 import { isNavItemActive, resolveDashboardTab } from "@/components/nav-active";
 import {
   FOOTER_NAV,
@@ -64,6 +65,9 @@ export function MobileNav() {
   // Phone badge follows the Phone-notifications toggle: off => no badge.
   const phoneNotifsEnabled = useNotifChannelEnabled(PHONE_NOTIFICATIONS_PREF_KEY);
   const phoneBadge = phoneNotifsEnabled ? phoneUnread : 0;
+  // Unread genuine Instantly replies - same source the desktop sidebar
+  // badge reads, so the PWA drawer can't drift from it.
+  const { unreadCount: replyBadge } = useCampaignsContext();
   const totalUnread = mailUnread + phoneBadge;
   // One row renderer for both the workflow groups and the pinned Settings
   // (FOOTER_NAV), so the rainbow + badge + active-state logic lives in a
@@ -84,7 +88,9 @@ export function MobileNav() {
         ? mailUnread
         : item.href === "/phone"
           ? phoneBadge
-          : 0;
+          : item.href === "/campaigns"
+            ? replyBadge
+            : 0;
     return (
       <li key={item.href}>
         <Link

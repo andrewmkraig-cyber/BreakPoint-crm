@@ -49,37 +49,37 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts              Account[]
-  sessions              Session[]
-  actions               ActionLog[]
-  activities            ActivityLog[]
-  agreements            ClientAgreement[]
-  benefitsUpdates       ClientBenefits[]
-  benefitsFiles         ClientBenefitsFile[]
-  resumeUploads         ResumeUpload[]
-  candidateResumes      CandidateResume[]
-  placements            Placement[]
-  jobOverrides          JobOverride[]
-  candidates            Candidate[]
-  ownedClients          Client[]                 @relation("ClientOwner")
-  interviews            Interview[]
-  ownedOrganizations    Organization[]           @relation("OrganizationOwner")
-  memberships           OrganizationMembership[]
-  profile               UserProfile?
+  accounts                 Account[]
+  sessions                 Session[]
+  actions                  ActionLog[]
+  activities               ActivityLog[]
+  agreements               ClientAgreement[]
+  benefitsUpdates          ClientBenefits[]
+  benefitsFiles            ClientBenefitsFile[]
+  resumeUploads            ResumeUpload[]
+  candidateResumes         CandidateResume[]
+  placements               Placement[]
+  jobOverrides             JobOverride[]
+  candidates               Candidate[]
+  ownedClients             Client[]                  @relation("ClientOwner")
+  interviews               Interview[]
+  ownedOrganizations       Organization[]            @relation("OrganizationOwner")
+  memberships              OrganizationMembership[]
+  profile                  UserProfile?
   // Phase 5A.4: lists the user has created. Inverse of
   // CandidateList.createdBy.
-  createdCandidateLists CandidateList[]          @relation("CandidateListCreatedBy")
-  chessPuzzleStreak     ChessPuzzleStreak?
-  funFactFeedback       FunFactFeedback[]
-  pushSubscriptions     PushSubscription[]
-  notes                 Note[]
-  scheduledEmails       ScheduledEmail[]
-  invoiceEmailDrafts    InvoiceEmailDraft[]
-  fitnessExercises      Exercise[]
-  workoutDays           WorkoutDay[]
-  workouts              Workout[]
-  workoutSets           WorkoutSet[]
-  dailySteps            DailySteps[]
+  createdCandidateLists    CandidateList[]           @relation("CandidateListCreatedBy")
+  chessPuzzleStreak        ChessPuzzleStreak?
+  funFactFeedback          FunFactFeedback[]
+  pushSubscriptions        PushSubscription[]
+  notes                    Note[]
+  scheduledEmails          ScheduledEmail[]
+  invoiceEmailDrafts       InvoiceEmailDraft[]
+  fitnessExercises         Exercise[]
+  workoutDays              WorkoutDay[]
+  workouts                 Workout[]
+  workoutSets              WorkoutSet[]
+  dailySteps               DailySteps[]
   fitnessHealthConnections FitnessHealthConnection[]
 }
 
@@ -89,14 +89,14 @@ model User {
 // signature HTML can embed them as a data: URI (email clients won't
 // load remote images without user action).
 model UserProfile {
-  id           String   @id @default(cuid())
-  userId       String   @unique
-  fullName     String?
-  jobTitle     String?
-  phone        String?
-  website      String?
-  logoData     Bytes?
-  logoMimeType String?
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  fullName             String?
+  jobTitle             String?
+  phone                String?
+  website              String?
+  logoData             Bytes?
+  logoMimeType         String?
   // Per-user profile picture uploaded from /settings/personal-info.
   // Bytes live inline (same pattern as logoData) so the /api/avatar/[userId]
   // route can stream them without involving Vercel Blob. When set, the
@@ -110,23 +110,23 @@ model UserProfile {
   // Personal info (Settings → Personal Info). Birthday drives the
   // dashboard horoscope chip's zodiac sign automatically when present.
   // tshirtSize is a free-form string; UI restricts to XS..3XL.
-  birthday     DateTime? @db.Date
+  birthday             DateTime? @db.Date
   // First day at BreakPoint. Surfaced on /settings/personal-info as
   // "Start date / Work anniversary"; future dashboard pills can
   // recognize anniversaries off this column. Stored as @db.Date so
   // the year-anniversary math is timezone-agnostic, same as birthday.
-  workAnniversary DateTime? @db.Date
-  address      String?
-  tshirtSize   String?
+  workAnniversary      DateTime? @db.Date
+  address              String?
+  tshirtSize           String?
   // Auto Night Mode (Settings -> Appearance). When true the client
   // flips the active Court Mode surface to its dark variant at 7:00 PM
   // ET and back to light at 7:00 AM ET on a 1-minute interval. Lives on
   // the profile (not localStorage) so the preference follows the user
   // across devices; the chosen surface/theme stay in localStorage and
   // this flag only governs the automatic day/night flip.
-  autoNightMode Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  autoNightMode        Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -147,33 +147,33 @@ model VerificationToken {
 // ---- App state ----
 
 model EmailTemplate {
-  id        String   @id @default(cuid())
-  name      String
-  subject   String
-  body      String   @db.Text
-  trigger   String? // e.g. "candidate_submitted", "interview_scheduled"
-  audience  String? // "client" | "candidate"
+  id          String   @id @default(cuid())
+  name        String
+  subject     String
+  body        String   @db.Text
+  trigger     String? // e.g. "candidate_submitted", "interview_scheduled"
+  audience    String? // "client" | "candidate"
   // Coarse-grained category used by composer filters. Interview composers
   // surface every template with category="interview", regardless of trigger,
   // so recruiters can pick any interview-flavored template (client
   // confirmation, candidate prep, legacy confirmation, or any future
   // variants) from one dropdown.
-  category  String? // "interview" | "submittal" | "offer" | "rejection" | "reference"
-  isActive  Boolean  @default(true)
+  category    String? // "interview" | "submittal" | "offer" | "rejection" | "reference"
+  isActive    Boolean  @default(true)
   // When true, the composer/send path should route this template's output
   // to the user's Gmail Drafts folder instead of sending immediately, so
   // the recruiter can approve before it goes out. Wired on the data layer
   // here; UI toggle ships with this column. Composer behavior is wired
   // in a follow-up.
-  sendAsDraft Boolean @default(false)
+  sendAsDraft Boolean  @default(false)
   // Manual display order. Lower = earlier in the list. Settings ▸
   // Templates uses up/down chevrons to swap adjacent rows; the mail
   // composer's Use Template dropdown reads templates in this order so
   // recruiter favorites sit at the top. Seeded rows are spaced 10
   // apart so new templates can slot in between without renumbering.
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   triggerRules TriggerRule[]
 
@@ -337,45 +337,45 @@ model Placement {
   stage         String // "offer" | "pending_start" | "hired"
 
   // Offer details
-  offerReceivedAt DateTime?
+  offerReceivedAt       DateTime?
   // Offered compensation amount. For offerCompensationType="salary" this is
   // annual base; for "hourly" this is the hourly rate.
   offerSalary           Float?
   offerCompensationType String?   @default("salary") // "salary" | "hourly"
   offerCurrency         String?   @default("USD")
-  offerTitle      String?
-  offerStartDate  DateTime?
-  offerNotes      String?   @db.Text
+  offerTitle            String?
+  offerStartDate        DateTime?
+  offerNotes            String?   @db.Text
 
   // Placement (offer accepted, fee locked) details
-  placedAt            DateTime?
+  placedAt                 DateTime?
   // Accepted compensation amount. For acceptedCompensationType="salary" this
   // is annual base; for "hourly" this is the hourly rate.
   acceptedSalary           Float?
   acceptedCompensationType String?   @default("salary") // "salary" | "hourly"
   acceptedCurrency         String?   @default("USD")
-  feePercentage       Float?
-  feeTotal            Int?
-  minFee              Int?
-  guaranteePeriodDays Int?
-  billingContactName  String?
-  billingContactEmail String?
+  feePercentage            Float?
+  feeTotal                 Int?
+  minFee                   Int?
+  guaranteePeriodDays      Int?
+  billingContactName       String?
+  billingContactEmail      String?
   // Multiple billing contacts per placement, stored as a JSON array of
   // { name, email } objects. We mirror the first entry into the legacy
   // billingContactName / billingContactEmail columns above so the Pipeline
   // table and any other single-contact reader keeps working without a
   // wave of call-site updates.
-  billingContacts     Json?
-  hiringManagerName   String?
-  hiringManagerEmail  String?
+  billingContacts          Json?
+  hiringManagerName        String?
+  hiringManagerEmail       String?
   // Multiple hiring manager contacts per placement, stored as a JSON array of
   // { name, email } objects. Mirrors the billingContacts pattern: the first
   // entry is mirrored into the legacy hiringManagerName / hiringManagerEmail
   // columns above so single-contact readers (Pipeline, invoice flows,
   // gmail-recipients) keep working without a wave of call-site updates.
-  hiringContacts      Json?
-  expectedStartDate   DateTime?
-  placementNotes      String?   @db.Text
+  hiringContacts           Json?
+  expectedStartDate        DateTime?
+  placementNotes           String?   @db.Text
 
   // Custom payment terms. When useCustomTerms is true the recruiter has
   // overridden the default fee/guarantee handling with an explicit
@@ -404,7 +404,7 @@ model Placement {
   // rows where Client.location.city is missing or wrong without editing
   // the client record itself. Reads fall back to Client.location.city
   // when null.
-  cityOverride          String?
+  cityOverride String?
 
   // True if the last stage change was successfully pushed to RF. Currently
   // always false because RF /external has no stage-change endpoint; the UI
@@ -529,7 +529,7 @@ model Candidate {
   gmailTags       GmailThreadTag[]
   matches         CandidateMatch[]
   calendarEvents  CalendarEvent[]
-  noteEntries     Note[]           @relation("NoteCandidates")
+  noteEntries     Note[]                    @relation("NoteCandidates")
 
   @@index([email])
   @@index([firstName])
@@ -614,7 +614,7 @@ model CandidateResume {
 // is scoped. We upsert Placement.stage = "interviewing" at create time so the
 // pipeline reflects the move.
 model Interview {
-  id                     String   @id @default(cuid())
+  id                     String    @id @default(cuid())
   candidateRfId          Int?
   candidateId            String?
   jobRfId                Int? // Phase 2: nullable — Ace-native Jobs leave this null
@@ -622,7 +622,7 @@ model Interview {
   clientRfId             Int? // Phase 2: nullable — Ace-native Clients leave this null
   clientId               String? // cuid FK to Client — backfilled in Phase 0
   scheduledAt            DateTime
-  durationMin            Int      @default(30)
+  durationMin            Int       @default(30)
   type                   String // "phone_screen" | "video" | "in_person"
   meetLink               String?
   clientAttendees        Json? // [{ id?: number, name: string, email: string }]
@@ -631,9 +631,9 @@ model Interview {
   // Calendar's event.location field so the native invite renders the
   // address (+ a Map link) inline.
   location               String?
-  notes                  String?  @db.Text
-  status                 String   @default("scheduled") // scheduled | completed | cancelled | rescheduled
-  source                 String   @default("ace_scheduled") // ace_scheduled | client_scheduled
+  notes                  String?   @db.Text
+  status                 String    @default("scheduled") // scheduled | completed | cancelled | rescheduled
+  source                 String    @default("ace_scheduled") // ace_scheduled | client_scheduled
   // Google Calendar event id on the creator's primary calendar. The event
   // is created with just the creator at schedule time; the client and
   // candidate are added as attendees later via their respective email
@@ -658,10 +658,10 @@ model Interview {
   // double as "invite delivered" flags that drive the calendar event count
   // (two events when both are set, one when only one side was emailed).
   sentCandidateSubject   String?
-  sentCandidateBody      String?  @db.Text
+  sentCandidateBody      String?   @db.Text
   sentCandidateAt        DateTime?
   sentClientSubject      String?
-  sentClientBody         String?  @db.Text
+  sentClientBody         String?   @db.Text
   sentClientAt           DateTime?
 
   createdById    String
@@ -812,46 +812,46 @@ model AiWorkspaceMessage {
 // once all reads/writes have moved to cuid FKs.
 
 model Client {
-  id             String    @id @default(cuid())
-  legacyRfId     Int?      @unique // Phase 5: drop
-  name           String
-  domain         String?
+  id                   String    @id @default(cuid())
+  legacyRfId           Int?      @unique // Phase 5: drop
+  name                 String
+  domain               String?
   // Legacy brand mark slot. Current UI resolves favicons from `domain`
   // at render time and falls back to initials when the site publishes no
   // favicon.
-  logoUrl        String?
-  industry       String?
-  linkedinPage   String?
-  careersPage    String?
-  companySize    String?
-  overview       String?   @db.Text
+  logoUrl              String?
+  industry             String?
+  linkedinPage         String?
+  careersPage          String?
+  companySize          String?
+  overview             String?   @db.Text
   // Short, anonymous candidate-facing description of the client used in
   // outreach (the {{client_blurb}} merge field). A lowercase-start noun
   // phrase that names NO client, e.g. "a growing CPA firm in Northeast
   // Ohio" — drops into "My client, ____, is looking to add a [title]."
   // Null until generated; generateClientBlurb (Claude) fills it on demand
   // from the client page or lazily at email-queue time.
-  candidateBlurb String?   @db.Text
+  candidateBlurb       String?   @db.Text
   // Free-form recruiter notes attached to the client. Distinct from
   // `overview` (which is the public-facing about/summary blurb) — this
   // field is the scratchpad for "talked to Linda Tuesday, fee terms TBD"
   // style entries that show up under the Notes tab on the client profile.
-  notes          String?   @db.Text
-  location       Json?
-  phoneNumbers   Json?
-  tags           String[]  @default([])
-  status         Json?
-  revenue        Json?
-  leadOwner      Json?
-  customFields   Json?
-  addedAt        DateTime?
-  lastContact    DateTime?
-  lastEngagement DateTime?
-  raw            Json?
+  notes                String?   @db.Text
+  location             Json?
+  phoneNumbers         Json?
+  tags                 String[]  @default([])
+  status               Json?
+  revenue              Json?
+  leadOwner            Json?
+  customFields         Json?
+  addedAt              DateTime?
+  lastContact          DateTime?
+  lastEngagement       DateTime?
+  raw                  Json?
   // How this client first entered the desk. One of: "Apollo BD" |
   // "LinkedIn BD" | "Network" | "Referral" | "Existing client" |
   // "Website" | "Other". Powers the Financial Performance lead-source mix.
-  leadSource     String?
+  leadSource           String?
   // Fee Agreement metadata — Ace-native fields edited from the client
   // profile Overview tab. For RF-imported clients these start null and
   // the profile seeds the edit draft from raw.custom_fields on first
@@ -866,28 +866,28 @@ model Client {
   // in src/lib/payment-terms.ts.
   paymentTermsDays     Int?
   feeBillingContact    String?
-  organizationId String
+  organizationId       String
   // Per-user account ownership. Null = unclaimed / available to be
   // claimed. Existing clients are backfilled to Andrew; new clients are
   // stamped with their creator. Jobs and pipeline inherit this owner.
-  ownerId        String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  ownerId              String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  organization  Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  owner         User?                @relation("ClientOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  jobs          Job[]
-  contacts      Contact[]
-  agreements    ClientAgreement[]
-  benefits      ClientBenefits?
-  benefitsFiles ClientBenefitsFile[]
-  placements    Placement[]
-  interviews    Interview[]
-  invoices      Invoice[]
-  gmailTags     GmailThreadTag[]
-  clientSignals ClientSignal[]
+  organization   Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  owner          User?                @relation("ClientOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  jobs           Job[]
+  contacts       Contact[]
+  agreements     ClientAgreement[]
+  benefits       ClientBenefits?
+  benefitsFiles  ClientBenefitsFile[]
+  placements     Placement[]
+  interviews     Interview[]
+  invoices       Invoice[]
+  gmailTags      GmailThreadTag[]
+  clientSignals  ClientSignal[]
   calendarEvents CalendarEvent[]
-  noteEntries   Note[]               @relation("NoteClients")
+  noteEntries    Note[]               @relation("NoteClients")
 
   @@index([name])
   @@index([organizationId])
@@ -895,24 +895,24 @@ model Client {
 }
 
 model Job {
-  id               String    @id @default(cuid())
-  legacyRfId       Int?      @unique // Phase 5: drop
-  title            String
-  clientId         String?
-  locations        String[]  @default([])
+  id                     String    @id @default(cuid())
+  legacyRfId             Int?      @unique // Phase 5: drop
+  title                  String
+  clientId               String?
+  locations              String[]  @default([])
   // Structured location parts, written by the /jobs/new form so search
   // can filter by city / state / zip independently. The legacy
   // `locations` array continues to carry the composed "City, ST Zip"
   // string for callers that render free-form location text.
-  locationCity     String?
-  locationState    String?
-  locationZip      String?
+  locationCity           String?
+  locationState          String?
+  locationZip            String?
   // Canonical "is this job currently active in the pipeline" signal.
   // Active + Private both stay isOpen=true so search_jobs / find-matches
   // / pipeline reads keep surfacing private jobs (the recruiter is
   // still working them — they're just hidden from the default Active
   // tab on /jobs). Inactive flips this to false.
-  isOpen           Boolean   @default(true)
+  isOpen                 Boolean   @default(true)
   // Lifecycle bucket for the /jobs tabs. Three states:
   //   "active"   — default, surfaces on the Active tab
   //   "private"  — hidden from Active but still searchable / matchable
@@ -921,51 +921,51 @@ model Job {
   // Nullable for legacy rows; readers fall back to isOpen ? "active"
   // : "inactive" when null. New writes always set this column so every
   // post-migration row has an explicit lifecycle.
-  lifecycle        String?   @default("active")
-  jobStatus        Json?
-  jobType          Json?
-  employmentType   String?
+  lifecycle              String?   @default("active")
+  jobStatus              Json?
+  jobType                Json?
+  employmentType         String?
   // Where the employee is expected to work. Kept separate from
   // employmentType so "Full time" and "Hybrid" can both be represented
   // correctly on the public site and in Google JobPosting markup.
-  workplaceType    String?
-  hybridSchedule   String?
-  department       String?
-  salaryRangeStart Int?
-  salaryRangeEnd   Int?
-  salaryCurrency   String?
-  salaryFrequency  String?
-  expectedFee      Json?
-  billRate         Json?
-  payRate          Json?
-  numberOfOpenings Int?
-  currentOpening   Int?
-  hiringTeam       Json?
-  customFields     Json?
-  applyLink        String?
+  workplaceType          String?
+  hybridSchedule         String?
+  department             String?
+  salaryRangeStart       Int?
+  salaryRangeEnd         Int?
+  salaryCurrency         String?
+  salaryFrequency        String?
+  expectedFee            Json?
+  billRate               Json?
+  payRate                Json?
+  numberOfOpenings       Int?
+  currentOpening         Int?
+  hiringTeam             Json?
+  customFields           Json?
+  applyLink              String?
   // Explicit public-site gate controlled from the Job's Website tab.
   // Active/private/inactive remains the internal recruiting lifecycle;
   // a role is exposed to breakpointtalent.com only when this is true.
-  publishToWebsite Boolean   @default(false)
-  websitePublishedAt DateTime?
+  publishToWebsite       Boolean   @default(false)
+  websitePublishedAt     DateTime?
   // Recruiter-controlled order for Active jobs. Public jobs are emitted
   // in this order, so the Ace Jobs table doubles as the website sorter.
-  websitePriority  Int?
-  lastOpenedAt     DateTime?
-  createdAtRf      DateTime?
+  websitePriority        Int?
+  lastOpenedAt           DateTime?
+  createdAtRf            DateTime?
   // Phase 2: Ace-native Jobs store their description here. RF-imported
   // jobs keep rendering via raw.description + JobOverride.description
   // (the override layer pre-dates this column). Reads prefer, in order:
   //   JobOverride.description > Job.description > raw.description
-  description      String?   @db.Text
+  description            String?   @db.Text
   // Source URL the recruiter pasted (job board listing, client careers
   // page, LinkedIn post, etc.). Save URL persists this; Parse Link will
   // eventually fetch + extract the JD into rawJobDescription.
-  sourceJobUrl     String?
+  sourceJobUrl           String?
   // Raw paste from a job board / client email. Lives next to the
   // recruiter-facing description so we can later diff / re-parse without
   // losing the original copy.
-  rawJobDescription String?  @db.Text
+  rawJobDescription      String?   @db.Text
   // Set whenever the recruiter-facing description was produced by the
   // BreakPoint Generate flow. Powers the "Last generated" timestamp on
   // the JD preview card; null means description was hand-edited or
@@ -974,33 +974,33 @@ model Job {
   // Recruiter-only context (compensation flexibility, client quirks,
   // dealbreakers, etc.). Never rendered to candidates and never fed back
   // into the JD Generate prompt — read-only sidekick to description.
-  internalRecruiterNotes String? @db.Text
+  internalRecruiterNotes String?   @db.Text
   // Comma-separated keywords / skills the recruiter wants emphasized
   // when scoring candidates. Feeds Find Matches and any Boolean
   // candidate search built off this job. Free-form text, no
   // normalization — the consumers split + lowercase as needed.
-  searchKeywords  String?  @db.Text
+  searchKeywords         String?   @db.Text
   // Saved filter state for the per-job Matches tab. One snapshot per
   // job — the Save Search button on /jobs/[id] Matches writes the
   // current sidebar filter shape here, and the tab restores it on next
   // mount so the recruiter can pick up where they left off. Shape
   // mirrors the client `Filters` type; the loader coerces each field
   // against current defaults so a stale save can't crash the tab.
-  savedSearchFilters Json?
-  raw              Json?
-  organizationId   String
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  savedSearchFilters     Json?
+  raw                    Json?
+  organizationId         String
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
-  client       Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  override     JobOverride?
-  placements   Placement[]
-  interviews   Interview[]
-  matches      CandidateMatch[]
-  boardStatuses JobBoardStatus[]
+  client         Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  override       JobOverride?
+  placements     Placement[]
+  interviews     Interview[]
+  matches        CandidateMatch[]
+  boardStatuses  JobBoardStatus[]
   calendarEvents CalendarEvent[]
-  noteEntries  Note[]            @relation("NoteJobs")
+  noteEntries    Note[]           @relation("NoteJobs")
 
   @@index([clientId])
   @@index([isOpen])
@@ -1057,12 +1057,12 @@ model JobBoardStatus {
 // candidateId) so re-running Find Matches upserts the latest score
 // instead of stacking duplicates.
 model CandidateMatch {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   organizationId String
   jobId          String
   candidateId    String
   score          Int
-  rationale      String   @db.Text
+  rationale      String    @db.Text
   // Per-axis breakdown produced by the deterministic scorer
   // (src/lib/match-scoring.ts). Carries both numeric per-axis scores
   // (titleScore, skillsScore, experienceScore, locationScore, otherScore,
@@ -1087,8 +1087,8 @@ model CandidateMatch {
   // the read path.
   computedAt     DateTime?
   sourceHash     String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   job          Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
@@ -1147,62 +1147,63 @@ model Organization {
   owner       User                     @relation("OrganizationOwner", fields: [ownerId], references: [id])
   memberships OrganizationMembership[]
 
-  candidates           Candidate[]
-  jobs                 Job[]
-  clients              Client[]
-  contacts             Contact[]
-  placements           Placement[]
-  interviews           Interview[]
-  invoices             Invoice[]
-  clientAgreements     ClientAgreement[]
-  clientBenefits       ClientBenefits[]
-  clientBenefitsFiles  ClientBenefitsFile[]
-  candidateResumes     CandidateResume[]
-  jobOverrides         JobOverride[]
-  actionLogs           ActionLog[]
-  activityLogs         ActivityLog[]
+  candidates               Candidate[]
+  jobs                     Job[]
+  clients                  Client[]
+  contacts                 Contact[]
+  placements               Placement[]
+  interviews               Interview[]
+  invoices                 Invoice[]
+  clientAgreements         ClientAgreement[]
+  clientBenefits           ClientBenefits[]
+  clientBenefitsFiles      ClientBenefitsFile[]
+  candidateResumes         CandidateResume[]
+  jobOverrides             JobOverride[]
+  actionLogs               ActionLog[]
+  activityLogs             ActivityLog[]
   // Phase 5A.4: per-org candidate lists. Cascade-delete on the list
   // side so deleting an org tears down its lists too.
-  candidateLists       CandidateList[]
-  gmailTags            GmailThreadTag[]
-  candidateMatches     CandidateMatch[]
-  personalTrainerRules PersonalTrainerRule[]
-  claudePanelMessages  ClaudePanelMessage[]
-  jobBoardStatuses     JobBoardStatus[]
-  wordsOfDay           WordOfDay[]
-  quotesOfDay          QuoteOfDay[]
-  dailyNewsFeeds       DailyNewsFeed[]
-  chessPuzzlesOfDay    ChessPuzzleOfDay[]
-  chessPuzzleStreaks   ChessPuzzleStreak[]
-  funFacts             FunFact[]
-  verticals            Vertical[]
-  savedSearches        SavedSearch[]
-  savedSearchVersions  SavedSearchVersion[]
-  sendingDomains       SendingDomain[]
-  bdRuns               BDRun[]
-  campaigns            Campaign[]
-  campaignEvents       CampaignEvent[]
-  bdActivities         BDActivity[]
-  clientSignals        ClientSignal[]
-  bdOrgConfig          BdOrgConfig?
-  bdContactTargeting   BdContactTargeting[]
-  bdSequences          BdSequence[]
-  bdReplyPromptDismissals BdReplyPromptDismissal[]
-  calendarEvents       CalendarEvent[]
-  aceReminders         AceReminder[]
-  toolExpenses         ToolExpense[]
-  pushSubscriptions    PushSubscription[]
-  gmailPushWatches     GmailPushWatch[]
-  microsoftToken       MicrosoftToken?
-  triggerRules         TriggerRule[]
-  notes                Note[]
-  scheduledEmails      ScheduledEmail[]
-  invoiceEmailDrafts   InvoiceEmailDraft[]
-  fitnessExercises     Exercise[]
-  workoutDays          WorkoutDay[]
-  workouts             Workout[]
-  workoutSets          WorkoutSet[]
-  dailySteps           DailySteps[]
+  candidateLists           CandidateList[]
+  gmailTags                GmailThreadTag[]
+  candidateMatches         CandidateMatch[]
+  personalTrainerRules     PersonalTrainerRule[]
+  claudePanelMessages      ClaudePanelMessage[]
+  instantlyReplies         InstantlyReply[]
+  jobBoardStatuses         JobBoardStatus[]
+  wordsOfDay               WordOfDay[]
+  quotesOfDay              QuoteOfDay[]
+  dailyNewsFeeds           DailyNewsFeed[]
+  chessPuzzlesOfDay        ChessPuzzleOfDay[]
+  chessPuzzleStreaks       ChessPuzzleStreak[]
+  funFacts                 FunFact[]
+  verticals                Vertical[]
+  savedSearches            SavedSearch[]
+  savedSearchVersions      SavedSearchVersion[]
+  sendingDomains           SendingDomain[]
+  bdRuns                   BDRun[]
+  campaigns                Campaign[]
+  campaignEvents           CampaignEvent[]
+  bdActivities             BDActivity[]
+  clientSignals            ClientSignal[]
+  bdOrgConfig              BdOrgConfig?
+  bdContactTargeting       BdContactTargeting[]
+  bdSequences              BdSequence[]
+  bdReplyPromptDismissals  BdReplyPromptDismissal[]
+  calendarEvents           CalendarEvent[]
+  aceReminders             AceReminder[]
+  toolExpenses             ToolExpense[]
+  pushSubscriptions        PushSubscription[]
+  gmailPushWatches         GmailPushWatch[]
+  microsoftToken           MicrosoftToken?
+  triggerRules             TriggerRule[]
+  notes                    Note[]
+  scheduledEmails          ScheduledEmail[]
+  invoiceEmailDrafts       InvoiceEmailDraft[]
+  fitnessExercises         Exercise[]
+  workoutDays              WorkoutDay[]
+  workouts                 Workout[]
+  workoutSets              WorkoutSet[]
+  dailySteps               DailySteps[]
   fitnessHealthConnections FitnessHealthConnection[]
 }
 
@@ -1212,8 +1213,8 @@ model Organization {
 // Organization; the email column records which Microsoft account was
 // connected so the Settings panel can show it back.
 model MicrosoftToken {
-  id             String   @id @default(cuid())
-  organizationId String   @unique
+  id             String       @id @default(cuid())
+  organizationId String       @unique
   accessToken    String
   refreshToken   String
   expiresAt      DateTime
@@ -1221,9 +1222,9 @@ model MicrosoftToken {
   // "connected" while the token (or its refresh grant) is usable;
   // "expired" once a refresh fails (invalid_grant / missing refresh
   // token). Drives the amber reconnect banner in Settings > Connectors.
-  status         String   @default("connected")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  status         String       @default("connected")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
@@ -1233,13 +1234,13 @@ model MicrosoftToken {
 // pointer we pass to users.history.list on the next push to fetch
 // only the new messages since the previous notification.
 model GmailPushWatch {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   email          String
   expiresAt      DateTime
   lastHistoryId  String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, email])
@@ -1267,57 +1268,57 @@ model ToolExpense {
 }
 
 model Invoice {
-  id              String        @id @default(cuid())
-  organizationId  String
-  organization    Organization  @relation(fields: [organizationId], references: [id])
-  invoiceNumber   String
-  placementId     String?
-  placement       Placement?    @relation(fields: [placementId], references: [id])
-  candidateId     String?
-  candidate       Candidate?    @relation(fields: [candidateId], references: [id])
-  clientId        String?
-  client          Client?       @relation(fields: [clientId], references: [id])
-  roleTitle       String?
-  startDate       DateTime?
-  feeAmount       Decimal?      @db.Decimal(10, 2)
+  id               String                @id @default(cuid())
+  organizationId   String
+  organization     Organization          @relation(fields: [organizationId], references: [id])
+  invoiceNumber    String
+  placementId      String?
+  placement        Placement?            @relation(fields: [placementId], references: [id])
+  candidateId      String?
+  candidate        Candidate?            @relation(fields: [candidateId], references: [id])
+  clientId         String?
+  client           Client?               @relation(fields: [clientId], references: [id])
+  roleTitle        String?
+  startDate        DateTime?
+  feeAmount        Decimal?              @db.Decimal(10, 2)
   // Snapshot columns copied from the placement at create time so the
   // invoice stays self-describing even if the source placement is
   // later edited or deleted. Test invoices (no linked placement) write
   // these directly. Reads in the PDF + detail UI now hit these columns
   // instead of joining through Placement.
-  baseSalary      Decimal?      @db.Decimal(10, 2)
-  feePercentage   Decimal?      @db.Decimal(5, 2)
-  paymentTerms    String?       @default("Net 30")
-  dueDate         DateTime?
-  billingContacts Json          @default("[]")
-  hiringContacts  Json          @default("[]")
-  status          InvoiceStatus @default(DRAFT)
-  pdfPath         String?
-  sentAt          DateTime?
-  paidAt          DateTime?
+  baseSalary       Decimal?              @db.Decimal(10, 2)
+  feePercentage    Decimal?              @db.Decimal(5, 2)
+  paymentTerms     String?               @default("Net 30")
+  dueDate          DateTime?
+  billingContacts  Json                  @default("[]")
+  hiringContacts   Json                  @default("[]")
+  status           InvoiceStatus         @default(DRAFT)
+  pdfPath          String?
+  sentAt           DateTime?
+  paidAt           DateTime?
   // Selected before the recruiter flips an invoice to PAID. Surfaces on
   // both the invoice detail view and the linked Placement so the desk
   // can scan how clients are actually paying without opening each PDF.
-  paymentMethod   InvoicePaymentMethod?
+  paymentMethod    InvoicePaymentMethod?
   // Internal-only memo. NEVER prints on the client PDF — surfaced only in
   // the invoice detail editor for the recruiter's own reference.
-  notes           String?
+  notes            String?
   // Client-facing note. Prints on the invoice PDF (the "Note:" block).
   // Separate from `notes` so internal bookkeeping (e.g. installment
   // tracking) never leaks onto the document the client receives.
-  clientNote      String?
+  clientNote       String?
   // Verified Gmail "Send mail as" alias the invoice email should go out
   // from. Set by the From selector on the invoice detail page. Null =
   // fall back to the billing AR email if it's a verified alias, otherwise
   // the Gmail account's primary address.
-  sendFromAlias   String?
+  sendFromAlias    String?
   // True when this draft is a pre-staged "future" installment that
   // should NOT appear in the main Invoices list. Set on installment 2/3
   // drafts created at Confirm Start for placements with custom payment
   // terms; the Future Invoices section on /finances surfaces these.
   // Cleared automatically when the invoice is marked SENT or PAID so it
   // joins the normal lists from that point on.
-  isFuture        Boolean       @default(false)
+  isFuture         Boolean               @default(false)
   // Set when this invoice bills a retained engagement rather than a
   // placement. A retained invoice has retainedSearchId set and BOTH
   // placementId and candidateId null — which is why any revenue path
@@ -1325,9 +1326,9 @@ model Invoice {
   // it. Scalar FK, no Prisma relation — see the RetainedSearch model
   // comment.
   retainedSearchId String?
-  emailDrafts     InvoiceEmailDraft[]
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  emailDrafts      InvoiceEmailDraft[]
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId])
@@ -1570,17 +1571,17 @@ model PersonalTrainerRule {
 // user-owned so Andrew and Austin can track private sessions without
 // commingling live workout data.
 model WorkoutDay {
-  id             String   @id @default(cuid())
-  organizationId String
-  userId         String
-  date           DateTime @db.Date
-  dayType        String
-  startedAt      DateTime?
-  endedAt        DateTime?
+  id              String    @id @default(cuid())
+  organizationId  String
+  userId          String
+  date            DateTime  @db.Date
+  dayType         String
+  startedAt       DateTime?
+  endedAt         DateTime?
   durationSeconds Int?
-  notes          String?  @db.Text
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  notes           String?   @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -2022,13 +2023,13 @@ model Vertical {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  savedSearches SavedSearch[]
-  bdRuns        BDRun[]
-  campaigns     Campaign[]
-  clientSignals ClientSignal[]
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  savedSearches    SavedSearch[]
+  bdRuns           BDRun[]
+  campaigns        Campaign[]
+  clientSignals    ClientSignal[]
   contactTargeting BdContactTargeting?
-  bdSequences   BdSequence[]
+  bdSequences      BdSequence[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -2039,17 +2040,17 @@ model Vertical {
 // (Indeed query shape lives there). `contactCap` overrides the org-level
 // daily contact cap when set; null inherits.
 model SavedSearch {
-  id             String   @id @default(cuid())
-  organizationId String
-  verticalId     String
-  name           String
-  criteria       Json
+  id                      String    @id @default(cuid())
+  organizationId          String
+  verticalId              String
+  name                    String
+  criteria                Json
   // Optional TheirStack saved-search id (one-to-one). When set, discovery
   // fetches that saved search's stored filters (GET /v0/saved_searches/{id})
   // and replays them via POST /v1/jobs/search, instead of the hardcoded
   // DISCOVERY_TITLES. Blank = run the default nationwide title search.
   theirstackSavedSearchId String?
-  active         Boolean  @default(true)
+  active                  Boolean   @default(true)
   // Per-search schedule for the 6 AM discovery cron. runFrequencyDays:
   // 1 = daily, 7 = weekly, 15 = every 15 days, etc. lastDiscoveredAt is
   // stamped each time the cron actually runs this search; the cron only
@@ -2057,11 +2058,11 @@ model SavedSearch {
   // enough ET days have passed). "Run Discovery Now" ignores the schedule
   // but still respects active=false. Defaults keep today's behavior
   // (every active search runs daily).
-  runFrequencyDays Int     @default(1)
-  lastDiscoveredAt DateTime?
-  contactCap     Int?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  runFrequencyDays        Int       @default(1)
+  lastDiscoveredAt        DateTime?
+  contactCap              Int?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   vertical     Vertical             @relation(fields: [verticalId], references: [id], onDelete: Cascade)
@@ -2120,21 +2121,21 @@ model SendingDomain {
 // Active Campaigns + Activity tabs can render the daily breakdown
 // without re-hitting Indeed/Apollo on every load.
 model BDRun {
-  id                String      @id @default(cuid())
-  organizationId    String
+  id                    String      @id @default(cuid())
+  organizationId        String
   // verticalId/savedSearchId are nullable so the org-wide BD discovery
   // cron can write a run that isn't tied to a single Launch saved-search.
   // Launch-initiated runs still pass both; only the cron leaves them null.
-  verticalId        String?
-  savedSearchId     String?
-  status            BDRunStatus @default(QUEUED)
-  discoveryProvider String      @default("theirstack")
-  discoveredCount   Int         @default(0)
+  verticalId            String?
+  savedSearchId         String?
+  status                BDRunStatus @default(QUEUED)
+  discoveryProvider     String      @default("theirstack")
+  discoveredCount       Int         @default(0)
   // Post-filter discovered jobs array written by the BD discovery cron.
   // Approval flow reads this; once approved, the BDRun moves on to enroll.
-  discoveredPayload Json?
-  approvedAt        DateTime?
-  enrolledCount     Int         @default(0)
+  discoveredPayload     Json?
+  approvedAt            DateTime?
+  enrolledCount         Int         @default(0)
   // Manual "Run Discovery Now" override: max contacts to enroll per
   // company at approve time. Null on the scheduled morning cron and on
   // legacy runs, both of which fall back to the hardcoded default of 4
@@ -2144,15 +2145,15 @@ model BDRun {
   // Launch-time snapshot the cron reads when it picks the run up:
   // contact cap, sequence id, rotation pool, etc. Shape will drift
   // as we wire Apollo, so it stays as Json instead of a column wave.
-  plan              Json?
+  plan                  Json?
   // Cron writes the final breakdown here on completion:
   // { companies, contacts, enrolled, errors }. Null until complete.
-  metrics           Json?
-  startedAt         DateTime?
-  completedAt       DateTime?
-  errorMessage      String?     @db.Text
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
+  metrics               Json?
+  startedAt             DateTime?
+  completedAt           DateTime?
+  errorMessage          String?     @db.Text
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   vertical     Vertical?    @relation(fields: [verticalId], references: [id], onDelete: Cascade)
@@ -2172,22 +2173,22 @@ model BDRun {
 // are denormalized for the Active Campaigns table; CampaignEvent has
 // the granular per-contact log if a recompute is ever needed.
 model Campaign {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   organizationId   String
   verticalId       String
   savedSearchId    String
   bdRunId          String?
   apolloSequenceId String
   name             String
-  enrolled         Int      @default(0)
-  opens            Int      @default(0)
-  replies          Int      @default(0)
-  bounces          Int      @default(0)
-  unsubs           Int      @default(0)
-  active           Boolean  @default(true)
+  enrolled         Int       @default(0)
+  opens            Int       @default(0)
+  replies          Int       @default(0)
+  bounces          Int       @default(0)
+  unsubs           Int       @default(0)
+  active           Boolean   @default(true)
   startedAt        DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   vertical     Vertical        @relation(fields: [verticalId], references: [id], onDelete: Cascade)
@@ -2410,36 +2411,36 @@ model ClientSignal {
 // fixed team and we want to avoid cascade-delete games; userId is
 // stored as a free string for attribution only.
 model AceReminder {
-  id             String       @id @default(cuid())
-  organizationId String
-  userId         String
-  title          String
+  id               String   @id @default(cuid())
+  organizationId   String
+  userId           String
+  title            String
   // The reminder's anchor time. For standalone panel reminders this is
   // when the reminder is "about" and what shows on the calendar;
   // notifications fire at reminderAt minus each lead in notifyLeadsMin.
   // Event/interview-linked rows store the exact fire time here and use
   // notifyLeadsMin [0] so they keep firing at that instant.
-  reminderAt     DateTime
+  reminderAt       DateTime
   // Minutes-before-anchor at which to notify. Default is a single
   // 15-minute lead; the panel editor lets a recruiter stack a second
   // or third lead (e.g. [15, 60, 1440]).
-  notifyLeadsMin   Int[]      @default([15])
+  notifyLeadsMin   Int[]    @default([15])
   // Leads from notifyLeadsMin that have already fired, so each lead
   // pops once and survives a reload. Reset when time or leads change.
-  notifiedLeadsMin Int[]      @default([])
-  dismissed      Boolean      @default(false)
+  notifiedLeadsMin Int[]    @default([])
+  dismissed        Boolean  @default(false)
   // Optional link to the CalendarEvent that minted this reminder via
   // the drawer's "Ace reminder" toggle. Lets us upsert / delete the
   // reminder when the event is re-saved, and lets page.tsx show the
   // toggle in the right state when the drawer reopens. Standalone
   // panel-created reminders leave this null.
-  calendarEventId String?
+  calendarEventId  String?
   // Optional link to the Interview row that minted this reminder via
   // the scheduling flow. Lets reschedule upsert the existing reminder
   // by interviewId instead of creating a duplicate.
-  interviewId    String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  interviewId      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id])
 
@@ -2482,17 +2483,17 @@ model PushSubscription {
 // profile and the job profile. The three relations are implicit
 // many-to-many; Prisma manages the join tables.
 model Note {
-  id             String   @id @default(cuid())
-  organizationId String
-  createdById    String
-  title          String?
-  body           String   @db.Text
-  pinned         Boolean  @default(false)
+  id                String  @id @default(cuid())
+  organizationId    String
+  createdById       String
+  title             String?
+  body              String  @db.Text
+  pinned            Boolean @default(false)
   // Drag-and-drop ordering within the user's note list. Lower wins;
   // new notes default to 0 (top of list) and the recruiter can drag
   // to assign explicit positions. Tied positions break by updatedAt
   // desc so brand-new notes still float above the reordered set.
-  position       Int      @default(0)
+  position          Int     @default(0)
   // When set, this note was auto-fanned out from an offer/placement save
   // (local-placement-actions.ts). It is the idempotency key: the fanout
   // upserts ONE note per placement deal keyed by (sourcePlacementId,
@@ -2543,47 +2544,47 @@ enum ScheduledEmailStatus {
 // Bulk scheduling skips draft creation to avoid piling dozens of drafts
 // into the Drafts label.
 model ScheduledEmail {
-  id              String               @id @default(cuid())
-  organizationId  String
-  userId          String
-  to              String[]             @default([])
-  cc              String[]             @default([])
-  bcc             String[]             @default([])
-  subject         String
-  bodyHtml        String               @db.Text
-  bodyText        String               @db.Text
+  id                  String               @id @default(cuid())
+  organizationId      String
+  userId              String
+  to                  String[]             @default([])
+  cc                  String[]             @default([])
+  bcc                 String[]             @default([])
+  subject             String
+  bodyHtml            String               @db.Text
+  bodyText            String               @db.Text
   // Threaded reply target. Null for fresh sends.
-  threadId        String?
+  threadId            String?
   // Selected "Send mail as" alias from the composer's From dropdown.
-  sendAsEmail     String?
+  sendAsEmail         String?
   // [{ filename, mimeType, dataBase64 }] — same shape the send/draft
   // routes accept. Null when there are no attachments.
-  attachments     Json?
+  attachments         Json?
   // The Gmail draft mirroring this scheduled email so it shows in the
   // Drafts folder. Deleted on successful send. Null for bulk sends.
-  gmailDraftId    String?
-  scheduledSendAt DateTime
+  gmailDraftId        String?
+  scheduledSendAt     DateTime
   // IANA zone the recruiter picked (default ET). Display-only; the
   // scheduledSendAt instant is already absolute (stored UTC).
-  timezone        String               @default("America/New_York")
-  status          ScheduledEmailStatus @default(SCHEDULED)
-  attempts        Int                  @default(0)
-  lastError       String?
-  sentMessageId   String?
-  sentThreadId    String?
+  timezone            String               @default("America/New_York")
+  status              ScheduledEmailStatus @default(SCHEDULED)
+  attempts            Int                  @default(0)
+  lastError           String?
+  sentMessageId       String?
+  sentThreadId        String?
   // When true the cron auto-tags the resulting thread to any
   // candidate/client whose address appears in To/CC (parity with
   // /api/mail/send). Bulk rows leave this off.
-  autoTag         Boolean              @default(true)
+  autoTag             Boolean              @default(true)
   // Optional activity-log lineage so the cron can record an
   // "email_sent" ActivityLog on fire (e.g. bulk candidate emails).
-  candidateId     String?
-  source          String?
+  candidateId         String?
+  source              String?
   // Set true once the failure toast has been shown + dismissed so the
   // app-shell poller doesn't re-surface the same failure every tick.
-  failureAcknowledged Boolean          @default(false)
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
+  failureAcknowledged Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -2591,4 +2592,53 @@ model ScheduledEmail {
   @@index([organizationId])
   @@index([status, scheduledSendAt])
   @@index([userId, status])
+}
+
+// Inbound Instantly replies, mirrored into Neon by the poller cron
+// (/api/cron/instantly-replies).
+//
+// Ace NEVER writes to Instantly. Read/unread state (`readAt`) and the
+// notification guard (`notifiedAt`) live here and here only - marking a
+// reply read in Ace has no effect on the Instantly Unibox.
+//
+// `isAutoReply` is THREE-STATE and drives whether a reply may notify:
+//   false -> confirmed genuine. Notifies, counts toward the badge.
+//   true  -> confirmed auto-reply (out-of-office etc). Stored for the
+//            record, NEVER notifies, NEVER counts toward the badge.
+//   null  -> not yet resolved. Instantly's list endpoint omits the flag,
+//            so it takes a per-row /emails/{id} call to settle. Does not
+//            notify while attempts remain; once enrichAttempts hits the
+//            cap it notifies anyway, flagged unverified - missing a real
+//            client reply costs more than dismissing a stray OOO.
+model InstantlyReply {
+  id               String    @id @default(cuid())
+  organizationId   String
+  // Instantly's own email id. Unique so a re-poll of an overlapping
+  // window upserts instead of double-counting.
+  instantlyEmailId String    @unique
+  threadId         String?
+  campaignId       String?
+  campaignName     String?
+  leadEmail        String?
+  fromEmail        String?
+  subject          String    @default("")
+  snippet          String    @default("")
+  bodyText         String    @default("") @db.Text
+  receivedAt       DateTime
+  isFocused        Boolean   @default(true)
+  isAutoReply      Boolean?
+  enrichAttempts   Int       @default(0)
+  // Set when the auto-reply check gave up. The reply still notifies, but
+  // the toast and the row both say the check never completed.
+  enrichGaveUp     Boolean   @default(false)
+  readAt           DateTime?
+  notifiedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, receivedAt])
+  @@index([organizationId, isAutoReply, readAt])
+  @@index([organizationId, isAutoReply, enrichAttempts])
 }

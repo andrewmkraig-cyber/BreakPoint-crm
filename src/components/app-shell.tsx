@@ -10,6 +10,7 @@ import { ScheduledSendFailureToaster } from "@/components/scheduled-send-failure
 import { MailProvider } from "@/lib/mail-context";
 import { PhoneProvider } from "@/lib/phone-context";
 import { TextingProvider } from "@/lib/texting-context";
+import { CampaignsProvider } from "@/lib/campaigns-context";
 
 const UNAUTH_PATHS = ["/sign-in"];
 
@@ -181,6 +182,9 @@ export function AppShell({
     <MailProvider initialUnreadCount={unreadMailCount}>
       <PhoneProvider>
         <TextingProvider>
+          {/* Instantly reply badge + toasts. Polls Ace's own DB, never
+              Instantly, so it costs nothing against the /emails budget. */}
+          <CampaignsProvider>
           <div className="flex min-h-screen bg-court-bg">
             <MailTabTitleSync />
             <GmailWatchKeepalive />
@@ -257,6 +261,7 @@ export function AppShell({
               <main className={mainCls}>{children}</main>
             </div>
           </div>
+          </CampaignsProvider>
         </TextingProvider>
       </PhoneProvider>
     </MailProvider>

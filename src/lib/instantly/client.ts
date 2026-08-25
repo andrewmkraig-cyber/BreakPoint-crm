@@ -597,6 +597,11 @@ export async function enrichAutoReplyFlags(
      * leave the rest unknown, and report how long until more frees up.
      */
     waitForBudget?: boolean;
+    /**
+     * Set by the poller, which reserves its slots from the shared ledger
+     * BEFORE calling and so must not double-record them here.
+     */
+    isPoller?: boolean;
   },
 ): Promise<EnrichResult> {
   const max = opts?.max ?? 20;
@@ -635,6 +640,17 @@ export async function enrichAutoReplyFlags(
       out.push(reply);
       pendingCount++;
     }
+  }
+
+  // Tell the shared ledger what we just spent, so the poller can yield
+  // to interactive use. Deliberately NOT awaited: the UI must never wait
+  // on bookkeeping, and a failed write only makes the poller less
+  // polite, it doesn't break anything. Skipped when the caller is the
+  // poller, which reserves its slots up front instead.
+  if (attempted > 0 && !opts?.isPoller) {
+    void import("@/lib/instantly/budget")
+      .then((m) => m.recordEmailsCalls(attempted))
+      .catch(() => {});
   }
 
   const filtered = opts?.includeAutoReplies

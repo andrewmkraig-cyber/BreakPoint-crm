@@ -4,6 +4,7 @@ import { ConnectorsView } from "@/app/settings/connectors-view";
 import { MercuryConnectorCard } from "@/app/settings/connectors/mercury-card";
 import { CollapsibleSection } from "@/components/settings/collapsible-section";
 import { getAllConnectorStatuses } from "@/lib/connectors";
+import { getInstantlyPrefs } from "@/lib/instantly/prefs";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 
@@ -21,9 +22,10 @@ export default async function ConnectorsSettingsPage() {
   // getAllConnectorStatuses so the slowest one bounds total latency.
   const session = await getServerSession(authOptions);
   const sessionUserId = (session?.user as { id?: string } | undefined)?.id ?? null;
-  const [connectors, org] = await Promise.all([
+  const [connectors, org, instantlyPrefs] = await Promise.all([
     getAllConnectorStatuses(sessionUserId),
     getCurrentOrg(),
+    getInstantlyPrefs(),
   ]);
   const orgRow = await prisma.organization.findUnique({
     where: { id: org.id },
@@ -44,6 +46,7 @@ export default async function ConnectorsSettingsPage() {
         claude={connectors.claude}
         quo={connectors.quo}
         instantly={connectors.instantly}
+        instantlyPrefs={instantlyPrefs}
       />
       <div className="mt-2">
         <MercuryConnectorCard maskedKey={mercuryMasked} />

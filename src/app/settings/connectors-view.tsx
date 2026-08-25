@@ -6,6 +6,8 @@ import { BellRing, ExternalLink, Loader2, Music, RefreshCw, Video } from "lucide
 import { toast } from "sonner";
 import { PushPermissionButton } from "@/components/push-permission-button";
 import { Button } from "@/components/ui/button";
+import { InstantlyNotificationsView } from "@/app/settings/instantly-notifications-view";
+import type { InstantlyPrefs } from "@/lib/instantly/prefs";
 import type { ConnectorStatus, ConnectorState } from "@/lib/connectors";
 
 // Ace 28.0 Connectors panel - live health of each integration. The row
@@ -26,11 +28,13 @@ export function ConnectorsView({
   claude,
   quo,
   instantly,
+  instantlyPrefs,
 }: {
   gmail: ConnectorStatus;
   claude: ConnectorStatus;
   quo: ConnectorStatus;
   instantly: ConnectorStatus;
+  instantlyPrefs: InstantlyPrefs;
 }) {
   return (
     <div className="space-y-2">
@@ -76,7 +80,7 @@ export function ConnectorsView({
           </a>
         }
       />
-      <InstantlyConnectorRow initial={instantly} />
+      <InstantlyConnectorRow initial={instantly} prefs={instantlyPrefs} />
       <PushNotificationsRow />
       <MicrosoftTeamsConnectorRow />
       <SpotifyConnectorRow />
@@ -385,7 +389,13 @@ function SpotifyConnectorRow() {
 // connection probe reports, so the recruiter can re-check without a page
 // reload. There is no key field: the credential lives in env and must
 // never be typed into, or rendered by, the browser.
-function InstantlyConnectorRow({ initial }: { initial: ConnectorStatus }) {
+function InstantlyConnectorRow({
+  initial,
+  prefs,
+}: {
+  initial: ConnectorStatus;
+  prefs: InstantlyPrefs;
+}) {
   const [status, setStatus] = useState<ConnectorStatus>(initial);
   const [testing, setTesting] = useState(false);
 
@@ -430,6 +440,7 @@ function InstantlyConnectorRow({ initial }: { initial: ConnectorStatus }) {
   }
 
   return (
+    <div>
     <ConnectorRow
       status={status}
       note="Read-only. Ace never sends, replies to, or changes anything in Instantly. Key is managed in environment config."
@@ -454,6 +465,10 @@ function InstantlyConnectorRow({ initial }: { initial: ConnectorStatus }) {
         </Button>
       }
     />
+      {/* Reply-notification settings sit directly under the connector
+          row they belong to, rather than in a separate section. */}
+      <InstantlyNotificationsView initial={prefs} />
+    </div>
   );
 }
 

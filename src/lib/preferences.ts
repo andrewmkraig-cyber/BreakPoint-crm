@@ -35,6 +35,10 @@ export type AppPreferences = {
   // list (which pulls in React + lucide icons). Org-wide, like the bulk
   // pacing settings.
   sidebarTabs: Record<string, boolean>;
+  // Instantly reply-poller settings. Shape + normalization live in
+  // lib/instantly/prefs.ts; this blob is just the storage slot, kept
+  // loose here so preferences.ts stays free of Instantly imports.
+  instantly: Record<string, unknown>;
 };
 
 export const BULK_SPACING_MIN = 0;
@@ -63,6 +67,7 @@ const DEFAULT_PREFS: AppPreferences = {
   // Empty, not `{ bd: false }` — BD's hidden-by-default lives on the nav
   // item itself so a fresh install with no Setting row still hides it.
   sidebarTabs: {},
+  instantly: {},
 };
 
 // Coerce a stored number into the allowed range, falling back to the
@@ -100,6 +105,10 @@ function normalize(raw: unknown): AppPreferences {
       DEFAULT_PREFS.bulkDailyCap,
     ),
     sidebarTabs: normalizeSidebarTabs(obj.sidebarTabs),
+    instantly:
+      obj.instantly && typeof obj.instantly === "object"
+        ? (obj.instantly as Record<string, unknown>)
+        : {},
   };
 }
 
@@ -205,6 +214,7 @@ export async function updateAppPreferences(patch: Partial<AppPreferences>): Prom
       ...current.sidebarTabs,
       ...normalizeSidebarTabs(patch.sidebarTabs),
     },
+    instantly: { ...current.instantly, ...(patch.instantly ?? {}) },
   };
   await prisma.setting.upsert({
     where: { key: PREFS_KEY },

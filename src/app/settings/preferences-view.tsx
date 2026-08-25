@@ -387,7 +387,11 @@ export function ToggleRow({
 // Label + description over a segmented pill selector. Used for the
 // notification duration + stack direction settings. Extra fields on an
 // option (e.g. duration's `ms`) are ignored here.
-function SegmentedSetting<T extends string>({
+//
+// Exported so the Instantly check-frequency picker reuses this exact
+// control rather than hand-rolling a lookalike (which would also add
+// new raw buttons to a fresh file, which the build gate rejects).
+export function SegmentedSetting<T extends string>({
   label,
   description,
   value,
