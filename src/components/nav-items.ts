@@ -15,6 +15,7 @@ import {
   StickyNote,
   BarChart3,
   Trophy,
+  Send,
 } from "lucide-react";
 
 // Single source of truth for the primary nav rows shared by the desktop
@@ -86,6 +87,9 @@ export const NAV_GROUPS: ReadonlyArray<NavGroupData> = [
     title: "CRM",
     items: [
       { key: "clients", href: "/clients", label: "Clients", icon: Building2, iconColor: "text-cyan-400" },
+      // Campaigns sits in the slot BD used to occupy. Read-only Instantly
+      // monitoring; BD stays below it, still shelved and still hidden.
+      { key: "campaigns", href: "/campaigns", label: "Campaigns", icon: Send, iconColor: "text-rose-400" },
       { key: "bd", href: "/bd", label: "BD", icon: Megaphone, iconColor: "text-rose-400", defaultVisible: false },
     ],
   },

@@ -128,18 +128,41 @@ let emailCallTimestamps: number[] = [];
 
 async function acquireEmailsSlot(): Promise<void> {
   for (;;) {
-    const now = Date.now();
-    emailCallTimestamps = emailCallTimestamps.filter(
-      (t) => now - t < EMAILS_WINDOW_MS,
-    );
-    if (emailCallTimestamps.length < EMAILS_LIMIT) {
-      emailCallTimestamps.push(now);
-      return;
-    }
-    const oldest = emailCallTimestamps[0];
-    const waitMs = EMAILS_WINDOW_MS - (now - oldest) + 50;
-    await sleep(waitMs);
+    if (tryAcquireEmailsSlot()) return;
+    await sleep(emailsBudgetRetryAfterMs());
   }
+}
+
+// Non-blocking variant. Returns false immediately when the budget is
+// spent instead of waiting. Used by the replies page: waiting up to a
+// full minute mid-render would hang the page, so the UI takes what
+// budget allows now, renders the rest unenriched, and fills them in
+// later. Never let a rate limiter turn into a blank screen.
+export function tryAcquireEmailsSlot(): boolean {
+  const now = Date.now();
+  emailCallTimestamps = emailCallTimestamps.filter(
+    (t) => now - t < EMAILS_WINDOW_MS,
+  );
+  if (emailCallTimestamps.length < EMAILS_LIMIT) {
+    emailCallTimestamps.push(now);
+    return true;
+  }
+  return false;
+}
+
+/** Milliseconds until the next /emails slot frees up. 0 when one is free. */
+export function emailsBudgetRetryAfterMs(): number {
+  const now = Date.now();
+  const live = emailCallTimestamps.filter((t) => now - t < EMAILS_WINDOW_MS);
+  if (live.length < EMAILS_LIMIT) return 0;
+  return Math.max(0, EMAILS_WINDOW_MS - (now - live[0]) + 50);
+}
+
+/** Slots still available in the current window. */
+export function emailsBudgetRemaining(): number {
+  const now = Date.now();
+  const live = emailCallTimestamps.filter((t) => now - t < EMAILS_WINDOW_MS);
+  return Math.max(0, EMAILS_LIMIT - live.length);
 }
 
 // ---------------------------------------------------------------------
@@ -198,7 +221,12 @@ function backoffMs(attempt: number, retryAfterHeader: string | null): number {
 async function request<T>(
   path: string,
   params: Record<string, QueryValue> = {},
-  opts: { ttlMs: number; bucket?: "emails" },
+  opts: {
+    ttlMs: number;
+    bucket?: "emails";
+    /** "wait" blocks for budget; "try" throws rate_limited immediately. */
+    bucketMode?: "wait" | "try";
+  },
 ): Promise<T> {
   const key = requireApiKey();
   const qs = buildQuery(params);
@@ -214,7 +242,19 @@ async function request<T>(
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     // Reserve a slot before every network attempt, retries included -
     // a retry is a real request against the budget too.
-    if (opts.bucket === "emails") await acquireEmailsSlot();
+    if (opts.bucket === "emails") {
+      if (opts.bucketMode === "try") {
+        if (!tryAcquireEmailsSlot()) {
+          throw new InstantlyError(
+            "rate_limited",
+            "Local /emails budget (20/min) is spent; not waiting.",
+            { endpoint: path },
+          );
+        }
+      } else {
+        await acquireEmailsSlot();
+      }
+    }
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -507,10 +547,14 @@ export async function listReplies(opts?: {
  * is_auto_reply (1 on an out-of-office, 0 on a genuine reply) and it is
  * the single field the list projection omits.
  */
-export async function getEmail(id: string): Promise<InstantlyEmailRaw> {
+export async function getEmail(
+  id: string,
+  opts?: { bucketMode?: "wait" | "try" },
+): Promise<InstantlyEmailRaw> {
   return request<InstantlyEmailRaw>(`/emails/${encodeURIComponent(id)}`, {}, {
     ttlMs: TTL_MS.emails,
     bucket: "emails",
+    bucketMode: opts?.bucketMode ?? "wait",
   });
 }
 
@@ -531,34 +575,80 @@ export async function getEmail(id: string): Promise<InstantlyEmailRaw> {
  * A per-row failure leaves that row unknown rather than failing the
  * batch - one bad id shouldn't blank the whole inbox view.
  */
+export type EnrichResult = {
+  replies: InstantlyReply[];
+  /** How many rows we actually resolved on this pass. */
+  enrichedCount: number;
+  /** Rows still unknown because the budget ran out (not because of an error). */
+  pendingCount: number;
+  /** True when we stopped early for budget. */
+  budgetExhausted: boolean;
+  /** Hint for when to retry the pending rows. 0 when nothing is pending. */
+  retryAfterMs: number;
+};
+
 export async function enrichAutoReplyFlags(
   replies: InstantlyReply[],
-  opts?: { max?: number; includeAutoReplies?: boolean },
-): Promise<InstantlyReply[]> {
+  opts?: {
+    max?: number;
+    includeAutoReplies?: boolean;
+    /**
+     * false (default here) = never block. Take the budget available now,
+     * leave the rest unknown, and report how long until more frees up.
+     */
+    waitForBudget?: boolean;
+  },
+): Promise<EnrichResult> {
   const max = opts?.max ?? 20;
-  const enriched: InstantlyReply[] = [];
+  const wait = opts?.waitForBudget ?? false;
+  const out: InstantlyReply[] = [];
 
-  for (let i = 0; i < replies.length; i++) {
-    const reply = replies[i];
-    if (reply.isAutoReply !== null || i >= max) {
-      enriched.push(reply);
+  let enrichedCount = 0;
+  let pendingCount = 0;
+  let budgetExhausted = false;
+  let attempted = 0;
+
+  for (const reply of replies) {
+    // Already known, or we've hit the per-pass cap: pass through.
+    if (reply.isAutoReply !== null) {
+      out.push(reply);
       continue;
     }
+    if (attempted >= max || budgetExhausted) {
+      out.push(reply);
+      pendingCount++;
+      continue;
+    }
+
+    attempted++;
     try {
-      const full = await getEmail(reply.id);
+      const full = await getEmail(reply.id, { bucketMode: wait ? "wait" : "try" });
       const flag = toTriBool(full.is_auto_reply);
-      enriched.push({
-        ...reply,
-        isAutoReply: flag,
-        countsAsReply: flag === false,
-      });
-    } catch {
-      // Leave it unknown. Unknown never counts as a genuine reply.
-      enriched.push(reply);
+      out.push({ ...reply, isAutoReply: flag, countsAsReply: flag === false });
+      enrichedCount++;
+    } catch (e) {
+      // Budget spent -> stop trying, leave the remainder pending. Any
+      // other failure leaves just this row unknown and we keep going.
+      if (e instanceof InstantlyError && e.kind === "rate_limited") {
+        budgetExhausted = true;
+      }
+      out.push(reply);
+      pendingCount++;
     }
   }
 
-  return opts?.includeAutoReplies
-    ? enriched
-    : enriched.filter((r) => r.isAutoReply !== true);
+  const filtered = opts?.includeAutoReplies
+    ? out
+    // Only CONFIRMED auto-replies are dropped. Unknown rows stay visible
+    // so the UI can mark them unverified - hiding them would silently
+    // shrink the list, and showing them as genuine would be worse.
+    : out.filter((r) => r.isAutoReply !== true);
+
+  return {
+    replies: filtered,
+    enrichedCount,
+    pendingCount,
+    budgetExhausted,
+    retryAfterMs: pendingCount > 0 ? emailsBudgetRetryAfterMs() : 0,
+  };
 }

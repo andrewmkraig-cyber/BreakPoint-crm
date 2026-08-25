@@ -127,6 +127,7 @@ export type InstantlyEmailRaw = {
   ue_type?: number | null;
   step?: string | null;
   is_unread?: number | boolean | null;
+  is_focused?: number | boolean | null;
   is_auto_reply?: number | boolean | null;
   i_status?: number | null;
   thread_id?: string | null;
@@ -192,8 +193,36 @@ export type InstantlyReply = {
   /** True ONLY when confirmed genuine. Unknown never counts as a reply. */
   countsAsReply: boolean;
   isUnread: boolean;
+  /** Instantly's Focused/Others inbox split. Drives the deep-link mode. */
+  isFocused: boolean;
   eaccount: string | null;
 };
+
+// ---------------------------------------------------------------------
+// Unibox deep link
+//
+// VERIFIED 2026-08-25 against a real Unibox URL:
+//   https://app.instantly.ai/app/unibox/8e-WuLjXxKpS7k1SVJo0haxGG_?mode=emode_focused
+//
+// The path segment is the row's `thread_id`, confirmed three ways:
+//   1. exact match against a sampled row's thread_id
+//   2. every thread_id is 26 chars base64url-safe and the segment fits;
+//      the email `id` is a 36-char UUID, so it is NOT the email id
+//   3. GET /emails?search=thread:<segment> resolved to a thread whose
+//      thread_id equals the segment, returning both of its emails
+//
+// `mode` mirrors the API's documented enum (emode_focused /
+// emode_others / emode_all). Only emode_focused appears in a real URL we
+// have seen; emode_others is the documented counterpart, used here when
+// a row is not focused so an Others-bucket thread still resolves.
+// ---------------------------------------------------------------------
+const UNIBOX_BASE = "https://app.instantly.ai/app/unibox";
+
+export function instantlyThreadUrl(reply: InstantlyReply): string | null {
+  if (!reply.threadId) return null;
+  const mode = reply.isFocused ? "emode_focused" : "emode_others";
+  return `${UNIBOX_BASE}/${encodeURIComponent(reply.threadId)}?mode=${mode}`;
+}
 
 // Instantly returns 0/1 for several boolean-ish flags, and may return a
 // real boolean or null. Normalize all three shapes.
@@ -238,6 +267,7 @@ export function normalizeReply(raw: InstantlyEmailRaw): InstantlyReply {
     // Strictly `=== false`: unknown (null) must not count.
     countsAsReply: isAutoReply === false,
     isUnread: toBool(raw.is_unread),
+    isFocused: toBool(raw.is_focused),
     eaccount: raw.eaccount ?? null,
   };
 }

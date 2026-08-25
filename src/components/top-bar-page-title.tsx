@@ -62,6 +62,7 @@ function resolveGroup(pathname: string): string | undefined {
   if (
     pathname.startsWith("/jobs")
     || pathname.startsWith("/clients")
+    || pathname.startsWith("/campaigns")
     || pathname.startsWith("/bd")
   ) {
     return "CRM";
@@ -199,6 +200,10 @@ function resolveBaseSpec(
     return { title: { label: "BD Activity" } };
   }
   if (pathname.startsWith("/bd")) return { title: { label: "BD" } };
+  // Instantly campaign monitoring. Checked before the generic /bd rules
+  // above can't match it - /campaigns is its own top-level route, not a
+  // BD sub-route.
+  if (pathname.startsWith("/campaigns")) return { title: { label: "Campaigns" } };
   if (pathname === "/dashboard") {
     const tab = resolveDashboardTab(searchParams?.get("tab"));
     return { title: { label: DASHBOARD_TAB_LABELS[tab] } };
