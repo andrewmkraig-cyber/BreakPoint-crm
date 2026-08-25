@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, type ReactNode } from "react";
+import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Loader2, Save, Sparkles, Target, X } from "lucide-react";
@@ -67,13 +67,20 @@ export function NewCandidateForm({
   // initializer seeds the Phone field on first render; a resume parse
   // later can still overwrite it (parse maps p.phone over prev.phone).
   initialPhone = "",
+  initialResumeUploadId = "",
+  initialResumeName = "",
   activeJobs = [],
 }: {
   initialPhone?: string;
+  initialResumeUploadId?: string;
+  initialResumeName?: string;
   activeJobs?: BulkPickerJob[];
 } = {}) {
   const router = useRouter();
   const [resume, setResume] = useState<File | null>(null);
+  const [stagedResumeName, setStagedResumeName] = useState(
+    initialResumeName.trim(),
+  );
   const [pastedText, setPastedText] = useState<string>("");
   const [linkedinUrl, setLinkedinUrl] = useState<string>("");
   const [form, setForm] = useState<FormState>(() =>
@@ -87,7 +94,10 @@ export function NewCandidateForm({
   const [isParsing, startParse] = useTransition();
   const [isSaving, startSave] = useTransition();
 
-  const [resumeUploadId, setResumeUploadId] = useState<string | null>(null);
+  const [resumeUploadId, setResumeUploadId] = useState<string | null>(
+    initialResumeUploadId.trim() || null,
+  );
+  const initialResumeParsedRef = useRef(false);
   const [emailDuplicate, setEmailDuplicate] = useState<{ id: string; name: string } | null>(null);
   // Email dup-check is a tri-state past "has a value":
   //   idle      — no check has run yet for the current email string
@@ -102,16 +112,30 @@ export function NewCandidateForm({
   const selectedApplyJob =
     activeJobs.find((job) => job.key === applyToJobKey) ?? null;
 
-  function runParse(args: { file?: File } = {}) {
+  useEffect(() => {
+    const uploadId = initialResumeUploadId.trim();
+    if (!uploadId || initialResumeParsedRef.current) return;
+    initialResumeParsedRef.current = true;
+    runParse({ uploadId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialResumeUploadId]);
+
+  function runParse(args: { file?: File; uploadId?: string | null } = {}) {
     setParseError(null);
     setClaudeError(null);
     // Prefer the file passed in (from the drop handler, where state hasn't
     // flushed yet) over the React state.
     const nextFile = args.file ?? resume;
+    const nextUploadId =
+      args.uploadId !== undefined
+        ? args.uploadId?.trim() || null
+        : args.file
+          ? null
+          : resumeUploadId;
     const nextText = pastedText;
     const nextUrl = linkedinUrl;
 
-    if (!nextFile && !nextText.trim() && !nextUrl.trim()) {
+    if (!nextFile && !nextUploadId && !nextText.trim() && !nextUrl.trim()) {
       toast.error("Nothing to parse", { description: "Drop a resume, paste text, or enter a LinkedIn URL." });
       return;
     }
@@ -120,7 +144,7 @@ export function NewCandidateForm({
 
     startParse(async () => {
       try {
-        let uploadId = args.file ? null : resumeUploadId;
+        let uploadId = nextUploadId;
         if (nextFile && !uploadId) {
           const res = await uploadFileInChunks(
             nextFile,
@@ -134,6 +158,7 @@ export function NewCandidateForm({
           );
           uploadId = res.id;
           setResumeUploadId(res.id);
+          setStagedResumeName(nextFile.name);
         }
 
         toast.loading("Parsing with Claude…", { id: toastId });
@@ -156,6 +181,9 @@ export function NewCandidateForm({
             },
           );
           return;
+        }
+        if (result.value.filename) {
+          setStagedResumeName(result.value.filename);
         }
         const p = result.value.parsed;
         // A "success" from the server can still contain all-null fields if
@@ -282,6 +310,7 @@ export function NewCandidateForm({
     // Clean up any prior staging row so the table doesn't accumulate dead rows.
     if (resumeUploadId) void discardResumeUpload(resumeUploadId);
     setResume(file);
+    setStagedResumeName(file?.name ?? "");
     setResumeUploadId(null);
     setParseSource(null);
     if (file) runParse({ file });
@@ -425,6 +454,7 @@ export function NewCandidateForm({
   function onReset() {
     if (resumeUploadId) void discardResumeUpload(resumeUploadId);
     setResume(null);
+    setStagedResumeName("");
     setResumeUploadId(null);
     setPastedText("");
     setLinkedinUrl("");
@@ -439,6 +469,7 @@ export function NewCandidateForm({
   }
 
   const showFallbackBanner = parseSource === "fallback";
+  const resumeName = resume?.name ?? stagedResumeName;
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
@@ -459,10 +490,10 @@ export function NewCandidateForm({
               onFiles={onFiles}
               emptyHint="PDF, DOC/DOCX, or TXT up to 15MB"
             />
-            {resume && (
+            {resumeName && (
               <div className="mt-3 flex items-center justify-between rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-xs">
                 <span className="truncate text-court-fg">
-                  {resume.name}
+                  {resumeName}
                   {isParsing && <span className="ml-2 text-court-fg-muted">· parsing…</span>}
                   {!isParsing && !parseSource && <span className="ml-2 text-court-fg-muted">· ready to parse</span>}
                   {!isParsing && parseSource === "claude" && <span className="ml-2 text-brand-dark">· parsed with Claude</span>}
@@ -470,7 +501,13 @@ export function NewCandidateForm({
                 </span>
                 <button
                   type="button"
-                  onClick={() => setResume(null)}
+                  onClick={() => {
+                    if (resumeUploadId) void discardResumeUpload(resumeUploadId);
+                    setResume(null);
+                    setStagedResumeName("");
+                    setResumeUploadId(null);
+                    setParseSource(null);
+                  }}
                   className="text-court-fg-muted hover:text-court-fg"
                 >
                   <X className="h-3 w-3" />

@@ -12,6 +12,7 @@ import {
   ChevronRight,
   ChevronsUpDown,
   ClipboardList,
+  FileUp,
   ListPlus,
   Loader2,
   Mail,
@@ -38,6 +39,7 @@ import {
 } from "@/app/candidates/lists-actions";
 import {
   Fragment,
+  type DragEvent,
   useEffect,
   useMemo,
   useRef,
@@ -50,6 +52,7 @@ import { toast } from "sonner";
 import { Button, ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { flattenBooleanQuery } from "@/lib/search/boolean-query";
 import {
   setCandidateNavList,
@@ -461,6 +464,20 @@ function hasAnyFilter(f: Filters): boolean {
   );
 }
 
+function isResumeDropFile(file: File): boolean {
+  return (
+    /\.(pdf|docx?|txt)$/i.test(file.name) ||
+    file.type === "application/pdf" ||
+    file.type === "application/msword" ||
+    file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    file.type === "text/plain"
+  );
+}
+
+function dragHasFiles(e: DragEvent<HTMLElement>): boolean {
+  return Array.from(e.dataTransfer.types).includes("Files");
+}
+
 // Count of distinct active filter categories — drives the badge on
 // the mobile Filters button. Compensation min + max collapse to one
 // category because both share a single "Compensation" rail section.
@@ -729,6 +746,12 @@ export default function CandidatesPage() {
     null,
   );
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [resumeDropActive, setResumeDropActive] = useState(false);
+  const [resumeDropBusy, setResumeDropBusy] = useState(false);
+  const [resumeDropProgress, setResumeDropProgress] = useState<number | null>(
+    null,
+  );
+  const resumeDropDepth = useRef(0);
 
   async function openBulkApply() {
     if (bulkSelectedIds.size === 0) return;
@@ -787,6 +810,78 @@ export default function CandidatesPage() {
   function openBulkEmail() {
     if (bulkSelectedIds.size === 0) return;
     setBulkDialog("email");
+  }
+
+  function onResumeDragEnter(e: DragEvent<HTMLDivElement>) {
+    if (!dragHasFiles(e)) return;
+    e.preventDefault();
+    resumeDropDepth.current += 1;
+    setResumeDropActive(true);
+  }
+
+  function onResumeDragOver(e: DragEvent<HTMLDivElement>) {
+    if (!dragHasFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = resumeDropBusy ? "none" : "copy";
+  }
+
+  function onResumeDragLeave(e: DragEvent<HTMLDivElement>) {
+    if (!dragHasFiles(e)) return;
+    e.preventDefault();
+    resumeDropDepth.current = Math.max(0, resumeDropDepth.current - 1);
+    if (resumeDropDepth.current === 0) setResumeDropActive(false);
+  }
+
+  async function onResumeDrop(e: DragEvent<HTMLDivElement>) {
+    if (!dragHasFiles(e)) return;
+    e.preventDefault();
+    resumeDropDepth.current = 0;
+    setResumeDropActive(false);
+    if (resumeDropBusy) return;
+
+    const files = Array.from(e.dataTransfer.files);
+    const resumeFile = files.find(isResumeDropFile);
+    if (!resumeFile) {
+      toast.error("Drop a PDF, DOC, DOCX, or TXT resume.");
+      return;
+    }
+
+    setResumeDropBusy(true);
+    setResumeDropProgress(0);
+    const toastId = toast.loading("Uploading resume…");
+    try {
+      const uploaded = await uploadFileInChunks(
+        resumeFile,
+        "/api/uploads/resume",
+        {},
+        {
+          onProgress: (pct) => {
+            setResumeDropProgress(pct);
+            toast.loading(`Uploading resume: ${pct}%`, { id: toastId });
+          },
+        },
+      );
+      toast.loading("Opening new candidate…", { id: toastId });
+      const params = new URLSearchParams({
+        resumeUploadId: uploaded.id,
+        resumeName: resumeFile.name,
+      });
+      router.push(`/candidates/new?${params.toString()}`);
+      toast.success("Resume uploaded", {
+        id: toastId,
+        description: "Opening the new candidate form.",
+      });
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Could not upload this resume.";
+      toast.error("Couldn't start candidate", {
+        id: toastId,
+        description: msg,
+      });
+    } finally {
+      setResumeDropBusy(false);
+      setResumeDropProgress(null);
+    }
   }
 
   // Cancel any in-flight request when a newer one starts so a slow
@@ -1731,20 +1826,52 @@ export default function CandidatesPage() {
           </div>
 
           {!hasFilters ? (
-            <div className="flex flex-1 items-center justify-center px-6 py-16">
-              <div className="flex max-w-md flex-col items-center text-center">
+            <div
+              onDragEnter={onResumeDragEnter}
+              onDragOver={onResumeDragOver}
+              onDragLeave={onResumeDragLeave}
+              onDrop={onResumeDrop}
+              className="flex flex-1 items-center justify-center px-6 py-16"
+            >
+              <div
+                className={cn(
+                  "flex max-w-md flex-col items-center rounded-xl border-2 border-dashed px-8 py-9 text-center transition",
+                  resumeDropActive || resumeDropBusy
+                    ? "border-court-accent bg-court-accent-tint/50"
+                    : "border-transparent",
+                )}
+              >
                 <div className="mb-5 flex h-[88px] w-[88px] items-center justify-center rounded-full bg-court-accent-tint">
-                  <Search
-                    className="h-7 w-7 text-court-accent-dark"
-                    strokeWidth={2}
-                  />
+                  {resumeDropBusy ? (
+                    <Loader2
+                      className="h-7 w-7 animate-spin text-court-accent-dark"
+                      strokeWidth={2}
+                    />
+                  ) : resumeDropActive ? (
+                    <FileUp
+                      className="h-7 w-7 text-court-accent-dark"
+                      strokeWidth={2}
+                    />
+                  ) : (
+                    <Search
+                      className="h-7 w-7 text-court-accent-dark"
+                      strokeWidth={2}
+                    />
+                  )}
                 </div>
                 <h3 className="font-serif text-[23px] font-extrabold text-court-fg">
-                  Apply a filter to start searching
+                  {resumeDropBusy
+                    ? `Uploading resume${resumeDropProgress !== null ? ` ${resumeDropProgress}%` : ""}`
+                    : resumeDropActive
+                      ? "Drop resume to create candidate"
+                      : "Apply a filter to start searching"}
                 </h3>
                 <p className="mt-1.5 text-sm text-court-fg-muted">
-                  Use the rail on the left to search the BreakPoint roster.
-                  Accounting & finance candidates indexed across the desk.
+                  {resumeDropBusy
+                    ? "The new candidate form will open as soon as the upload finishes."
+                    : resumeDropActive
+                      ? "PDF, DOC, DOCX, and TXT resumes are accepted."
+                      : "Use the rail on the left to search the BreakPoint roster. Accounting & finance candidates indexed across the desk."}
                 </p>
                 {savedSearches.length > 0 ? (
                   <>

@@ -11,7 +11,7 @@ import { getOpenJobsForBulkPicker } from "@/app/candidates/bulk-actions";
 export default async function NewCandidatePage({
   searchParams,
 }: {
-  searchParams: { phone?: string };
+  searchParams: { phone?: string; resumeUploadId?: string; resumeName?: string };
 }) {
   const activeJobs = await getOpenJobsForBulkPicker().catch(() => []);
 
@@ -22,6 +22,8 @@ export default async function NewCandidatePage({
       </Link>
       <NewCandidateForm
         initialPhone={searchParams.phone ?? ""}
+        initialResumeUploadId={searchParams.resumeUploadId ?? ""}
+        initialResumeName={searchParams.resumeName ?? ""}
         activeJobs={activeJobs}
       />
     </div>
