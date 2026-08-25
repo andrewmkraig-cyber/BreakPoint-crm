@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { probeConnection, isInstantlyConfigured } from "@/lib/instantly/client";
+import { describeInstantlyError } from "@/lib/instantly/errors";
 
 // Ace 28.0: server-side health checks for the three integrations the
 // recruiter relies on. Surfaces a uniform { state, detail } shape so
@@ -14,7 +16,7 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 export type ConnectorState = "connected" | "degraded" | "disconnected";
 
 export type ConnectorStatus = {
-  id: "gmail" | "claude" | "quo";
+  id: "gmail" | "claude" | "quo" | "instantly";
   label: string;
   state: ConnectorState;
   detail: string;
@@ -274,6 +276,54 @@ export async function getQuoStatus(): Promise<ConnectorStatus> {
   };
 }
 
+// Instantly - read-only outbound analytics. Env-key driven, same shape
+// as Quo: absent key => disconnected without a network call; present key
+// => prove it by hitting a real endpoint rather than trusting presence.
+//
+// probeConnection() prefers GET /workspaces/current (it yields the
+// workspace name) and falls back to GET /campaigns when the key lacks
+// the workspaces:read scope - a scope-only failure is not a broken
+// integration, since Ace reads campaigns + emails. Neither branch calls
+// /emails, so a status check can never eat that endpoint's 20/min
+// budget.
+export async function getInstantlyStatus(): Promise<ConnectorStatus> {
+  if (!isInstantlyConfigured()) {
+    return {
+      id: "instantly",
+      label: "Instantly",
+      state: "disconnected",
+      detail: "INSTANTLY_API_KEY not set.",
+      managedIn: "env",
+    };
+  }
+
+  try {
+    const probe = await probeConnection();
+    return {
+      id: "instantly",
+      label: "Instantly",
+      state: "connected",
+      detail: probe.note ?? "API key valid. Read-only.",
+      account: probe.workspace,
+      managedIn: "env",
+    };
+  } catch (e) {
+    const { kind, message } = describeInstantlyError(e);
+    // A reachable-but-rejecting Instantly is a hard fail (the key needs
+    // fixing); an unreachable or rate-limited one is degraded (transient,
+    // nothing for Andrew to change).
+    const state: ConnectorState =
+      kind === "unavailable" || kind === "rate_limited" ? "degraded" : "disconnected";
+    return {
+      id: "instantly",
+      label: "Instantly",
+      state,
+      detail: message,
+      managedIn: "env",
+    };
+  }
+}
+
 function latestestOf(a: Date | null | undefined, b: Date | null | undefined): Date | null {
   if (a && b) return a.getTime() >= b.getTime() ? a : b;
   return a ?? b ?? null;
@@ -283,11 +333,13 @@ export async function getAllConnectorStatuses(userId: string | null): Promise<{
   gmail: ConnectorStatus;
   claude: ConnectorStatus;
   quo: ConnectorStatus;
+  instantly: ConnectorStatus;
 }> {
-  const [gmail, claude, quo] = await Promise.all([
+  const [gmail, claude, quo, instantly] = await Promise.all([
     getGmailStatus(userId),
     getClaudeStatus(),
     getQuoStatus(),
+    getInstantlyStatus(),
   ]);
-  return { gmail, claude, quo };
+  return { gmail, claude, quo, instantly };
 }

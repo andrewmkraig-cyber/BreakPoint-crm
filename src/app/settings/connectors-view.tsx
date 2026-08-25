@@ -5,6 +5,7 @@ import { signIn, signOut } from "next-auth/react";
 import { BellRing, ExternalLink, Loader2, Music, RefreshCw, Video } from "lucide-react";
 import { toast } from "sonner";
 import { PushPermissionButton } from "@/components/push-permission-button";
+import { Button } from "@/components/ui/button";
 import type { ConnectorStatus, ConnectorState } from "@/lib/connectors";
 
 // Ace 28.0 Connectors panel - live health of each integration. The row
@@ -24,10 +25,12 @@ export function ConnectorsView({
   gmail,
   claude,
   quo,
+  instantly,
 }: {
   gmail: ConnectorStatus;
   claude: ConnectorStatus;
   quo: ConnectorStatus;
+  instantly: ConnectorStatus;
 }) {
   return (
     <div className="space-y-2">
@@ -73,6 +76,7 @@ export function ConnectorsView({
           </a>
         }
       />
+      <InstantlyConnectorRow initial={instantly} />
       <PushNotificationsRow />
       <MicrosoftTeamsConnectorRow />
       <SpotifyConnectorRow />
@@ -373,6 +377,83 @@ function SpotifyConnectorRow() {
         ) : null}
       </div>
     </div>
+  );
+}
+
+// Instantly - read-only outbound analytics, key managed in env. The row
+// starts from the server-computed status and swaps in whatever the Test
+// connection probe reports, so the recruiter can re-check without a page
+// reload. There is no key field: the credential lives in env and must
+// never be typed into, or rendered by, the browser.
+function InstantlyConnectorRow({ initial }: { initial: ConnectorStatus }) {
+  const [status, setStatus] = useState<ConnectorStatus>(initial);
+  const [testing, setTesting] = useState(false);
+
+  async function onTest() {
+    setTesting(true);
+    try {
+      const res = await fetch("/api/instantly/test", { method: "POST" });
+      const data = (await res.json()) as {
+        ok: boolean;
+        state: "connected" | "not_configured" | "error";
+        workspace: string | null;
+        message: string;
+        hint?: string;
+      };
+      setStatus({
+        id: "instantly",
+        label: "Instantly",
+        state:
+          data.state === "connected"
+            ? "connected"
+            : data.state === "not_configured"
+              ? "disconnected"
+              : "degraded",
+        detail: data.message,
+        account: data.workspace,
+        managedIn: "env",
+      });
+      if (data.ok) {
+        toast.success("Instantly connected", {
+          description: data.workspace ? `Workspace: ${data.workspace}` : undefined,
+        });
+      } else {
+        toast.error("Instantly test failed", { description: data.hint ?? data.message });
+      }
+    } catch (e) {
+      toast.error("Instantly test failed", {
+        description: e instanceof Error ? e.message : "Could not reach the test route.",
+      });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <ConnectorRow
+      status={status}
+      note="Read-only. Ace never sends, replies to, or changes anything in Instantly. Key is managed in environment config."
+      action={
+        /* Shared Button component, not a raw tag: this file is
+           grandfathered in the raw-button baseline and must never grow.
+           secondary + sm resolves to the same Court tokens the other
+           connector actions use, so the row still matches. */
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={() => void onTest()}
+          disabled={testing}
+        >
+          {testing ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3 w-3" />
+          )}
+          Test connection
+        </Button>
+      }
+    />
   );
 }
 

@@ -37,12 +37,13 @@ export default async function ConnectorsSettingsPage() {
     <CollapsibleSection
       id="connectors"
       title="Connectors"
-      description="Live health of Gmail, Claude, Quo, and Mercury."
+      description="Live health of Gmail, Claude, Quo, Instantly, and Mercury."
     >
       <ConnectorsView
         gmail={connectors.gmail}
         claude={connectors.claude}
         quo={connectors.quo}
+        instantly={connectors.instantly}
       />
       <div className="mt-2">
         <MercuryConnectorCard maskedKey={mercuryMasked} />
