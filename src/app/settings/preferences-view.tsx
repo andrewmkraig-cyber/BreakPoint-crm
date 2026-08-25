@@ -336,7 +336,11 @@ export function EmailPreferencesView({
 // Helpers
 // ----------------------------------------------------------------
 
-function ToggleRow({
+// Exported so the Sidebar Tabs section (sidebar-tabs-view.tsx) renders
+// the literal same switch rather than a lookalike copy. Keeping one
+// component means the two sections can't drift on shape, spacing, or the
+// disabled treatment.
+export function ToggleRow({
   label,
   description,
   checked,

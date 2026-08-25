@@ -10,6 +10,8 @@ import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getUnreadMailCount } from "@/lib/gmail";
+import { getSidebarTabVisibility } from "@/lib/preferences";
+import { SidebarTabsProvider } from "@/lib/sidebar-tabs-context";
 import {
   COURT_MODE_PRE_HYDRATION_SCRIPT,
   CourtModeProvider,
@@ -97,6 +99,18 @@ export default async function RootLayout({
     }
   }
 
+  // Sidebar tab visibility is org-wide, not per-user, so it's read
+  // outside the signed-in branch. Read server-side (rather than fetched
+  // after hydration) so the very first paint draws the right rows and a
+  // hidden tab never flashes in. A read failure collapses to {}, which
+  // means "every tab at its own default" — the sidebar always renders.
+  let sidebarTabVisibility: Record<string, boolean> = {};
+  try {
+    sidebarTabVisibility = await getSidebarTabVisibility();
+  } catch {
+    // Keep the defaults.
+  }
+
   return (
     <html lang="en" className={`${outfit.variable} ${inter.variable}`}>
       <body className="font-sans">
@@ -111,7 +125,9 @@ export default async function RootLayout({
         />
         <Providers>
           <CourtModeProvider initialAutoNightMode={autoNightMode}>
-            <AppShell unreadMailCount={unreadMailCount}>{children}</AppShell>
+            <SidebarTabsProvider initialVisibility={sidebarTabVisibility}>
+              <AppShell unreadMailCount={unreadMailCount}>{children}</AppShell>
+            </SidebarTabsProvider>
             <ReminderToastProvider />
           </CourtModeProvider>
         </Providers>

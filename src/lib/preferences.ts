@@ -27,6 +27,14 @@ export type AppPreferences = {
   // (src/lib/bulk-send-queue.ts).
   bulkSendSpacingMinutes: number;
   bulkDailyCap: number;
+  // Sidebar tab visibility overrides, keyed by the nav item `key` in
+  // src/components/nav-items.ts. SPARSE by design — only tabs the user
+  // has explicitly toggled appear here; everything else falls back to
+  // the per-item default at the nav source of truth. Deliberately typed
+  // as a plain boolean map so this server module stays free of the nav
+  // list (which pulls in React + lucide icons). Org-wide, like the bulk
+  // pacing settings.
+  sidebarTabs: Record<string, boolean>;
 };
 
 export const BULK_SPACING_MIN = 0;
@@ -52,6 +60,9 @@ const DEFAULT_PREFS: AppPreferences = {
   notifPrefs: {},
   bulkSendSpacingMinutes: 2,
   bulkDailyCap: 50,
+  // Empty, not `{ bd: false }` — BD's hidden-by-default lives on the nav
+  // item itself so a fresh install with no Setting row still hides it.
+  sidebarTabs: {},
 };
 
 // Coerce a stored number into the allowed range, falling back to the
@@ -88,7 +99,21 @@ function normalize(raw: unknown): AppPreferences {
       BULK_DAILY_CAP_MAX,
       DEFAULT_PREFS.bulkDailyCap,
     ),
+    sidebarTabs: normalizeSidebarTabs(obj.sidebarTabs),
   };
+}
+
+// Coerce a stored sidebarTabs blob into a clean { key -> boolean } map.
+// Non-boolean values are DROPPED rather than coerced, so a corrupt entry
+// falls back to the nav item's own default instead of silently pinning a
+// tab hidden.
+function normalizeSidebarTabs(v: unknown): Record<string, boolean> {
+  if (!v || typeof v !== "object") return {};
+  const out: Record<string, boolean> = {};
+  for (const [key, val] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof val === "boolean") out[key] = val;
+  }
+  return out;
 }
 
 function isStringMap(v: unknown): v is Record<string, string> {
@@ -130,6 +155,25 @@ export async function getBulkSendSettings(): Promise<{
   };
 }
 
+// Sidebar tab visibility overrides, read server-side in the root layout
+// and handed to the client provider so the first paint already has the
+// right rows (no flash of a hidden tab). Returns the SPARSE override map
+// — resolution against per-item defaults happens in nav-items.ts via
+// isNavItemVisible / resolveVisibleNavGroups.
+export async function getSidebarTabVisibility(): Promise<Record<string, boolean>> {
+  const prefs = await getAppPreferences();
+  return prefs.sidebarTabs;
+}
+
+// Write a single tab's visibility, preserving every other override.
+export async function setSidebarTabVisible(
+  key: string,
+  shown: boolean,
+): Promise<Record<string, boolean>> {
+  const next = await updateAppPreferences({ sidebarTabs: { [key]: shown } });
+  return next.sidebarTabs;
+}
+
 export async function updateAppPreferences(patch: Partial<AppPreferences>): Promise<AppPreferences> {
   const current = await getAppPreferences();
   const next: AppPreferences = {
@@ -156,6 +200,11 @@ export async function updateAppPreferences(patch: Partial<AppPreferences>): Prom
       patch.bulkDailyCap != null
         ? clampInt(patch.bulkDailyCap, BULK_DAILY_CAP_MIN, BULK_DAILY_CAP_MAX, current.bulkDailyCap)
         : current.bulkDailyCap,
+    // Shallow merge: toggling one tab must not wipe the others.
+    sidebarTabs: {
+      ...current.sidebarTabs,
+      ...normalizeSidebarTabs(patch.sidebarTabs),
+    },
   };
   await prisma.setting.upsert({
     where: { key: PREFS_KEY },

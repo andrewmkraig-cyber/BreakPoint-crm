@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,7 +14,12 @@ import {
 } from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
 import { isNavItemActive, resolveDashboardTab } from "@/components/nav-active";
-import { NAV_GROUPS, FOOTER_NAV, type NavItemData } from "@/components/nav-items";
+import {
+  FOOTER_NAV,
+  resolveVisibleNavGroups,
+  type NavItemData,
+} from "@/components/nav-items";
+import { useSidebarTabs } from "@/lib/sidebar-tabs-context";
 
 // Mobile / narrow-viewport nav drawer. Below md the sidebar is
 // `hidden md:flex` so there's no nav at all — this hamburger fills
@@ -23,7 +28,10 @@ import { NAV_GROUPS, FOOTER_NAV, type NavItemData } from "@/components/nav-items
 // dismisses it. NAV_GROUPS + FOOTER_NAV (including the per-item rainbow
 // iconColor) are imported from the shared @/components/nav-items source
 // so desktop + mobile stay in lockstep and the icon colors can never
-// drift. Settings is pinned at the bottom (FOOTER_NAV).
+// drift. Settings is pinned at the bottom (FOOTER_NAV). Rows are
+// filtered through the same resolveVisibleNavGroups the desktop sidebar
+// uses, so a tab hidden in Settings is hidden in the installed PWA
+// drawer too — otherwise BD would stay reachable on mobile only.
 //
 // Mail/Phone unread DO read from the shared MailContext/PhoneContext
 // (same source the desktop sidebar uses) so the installed iPhone PWA,
@@ -40,6 +48,12 @@ export function MobileNav() {
   // resolved dashboard tab — see src/components/nav-active.ts.
   const searchParams = useSearchParams();
   const resolvedDashboardTab = resolveDashboardTab(searchParams?.get("tab"));
+  // Same visibility filter the desktop sidebar applies.
+  const { visibility } = useSidebarTabs();
+  const visibleGroups = useMemo(
+    () => resolveVisibleNavGroups(visibility),
+    [visibility],
+  );
   // Live unread counts, same context the desktop sidebar reads. Mail =
   // unread Gmail threads; Phone = unread inbound text threads (calls do
   // not contribute — CallLog has no read state). Total drives the
@@ -199,7 +213,7 @@ export function MobileNav() {
               </button>
             </div>
             <nav className="flex flex-col gap-4">
-              {NAV_GROUPS.map((group, gi) => (
+              {visibleGroups.map((group, gi) => (
                 <div key={`${gi}-${group.title ?? "ungrouped"}`}>
                   {group.title ? (
                     <div className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-widest text-court-sidebar-fg-dim">

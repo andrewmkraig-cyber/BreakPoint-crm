@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import {
   updateAppPreferences,
   setNotifChannelForEmail,
+  setSidebarTabVisible,
   BULK_SPACING_MIN,
   BULK_SPACING_MAX,
   BULK_DAILY_CAP_MIN,
@@ -100,6 +101,28 @@ export async function setBulkDailyCap(cap: number): Promise<Result> {
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to save daily cap." };
+  }
+}
+
+// Show or hide one sidebar tab. Visibility only — the tab's route, page,
+// API handlers, tables, and cron jobs are untouched, so a hidden tab
+// still works if you navigate straight to its URL. Locked tabs
+// (Clubhouse, Settings) are never offered in the UI, and the resolver
+// ignores the stored value for them anyway.
+export async function setSidebarTabVisibility(
+  key: string,
+  shown: boolean,
+): Promise<Result> {
+  if (!(await requireEmail())) return { ok: false, error: "Not signed in." };
+  if (!key.trim()) return { ok: false, error: "Missing tab." };
+  try {
+    await setSidebarTabVisible(key, shown);
+    // The sidebar renders from the root layout, so revalidate the whole
+    // tree rather than just /settings.
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to save setting." };
   }
 }
 

@@ -2,8 +2,14 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { NAV_GROUPS, FOOTER_NAV, type NavItemData } from "@/components/nav-items";
+import {
+  FOOTER_NAV,
+  resolveVisibleNavGroups,
+  type NavItemData,
+} from "@/components/nav-items";
+import { useSidebarTabs } from "@/lib/sidebar-tabs-context";
 import { BrandMark } from "@/components/brand-mark";
 import { SidebarProfileCard } from "@/components/sidebar-profile-card";
 import {
@@ -22,6 +28,10 @@ import {
 // in @/components/nav-items so the desktop Sidebar and the mobile drawer
 // (MobileNav) share one source of truth and their icon colors can never
 // drift. This file owns only the desktop NavLink chrome.
+//
+// Which rows render is filtered through resolveVisibleNavGroups against
+// the persisted Settings toggles. Hiding a tab is display-only — its
+// route still resolves if you navigate straight to the URL.
 
 export function Sidebar({ width }: { width?: number } = {}) {
   const pathname = usePathname();
@@ -31,6 +41,14 @@ export function Sidebar({ width }: { width?: number } = {}) {
   // right row. See src/components/nav-active.ts for the discrimination logic.
   const searchParams = useSearchParams();
   const resolvedDashboardTab = resolveDashboardTab(searchParams?.get("tab"));
+  // Groups the recruiter has left visible in Settings. Empty groups are
+  // dropped by the resolver, so a section header never strands itself
+  // above an empty list when its last item is hidden.
+  const { visibility } = useSidebarTabs();
+  const visibleGroups = useMemo(
+    () => resolveVisibleNavGroups(visibility),
+    [visibility],
+  );
   const { unreadCount } = useMailContext();
   const { unreadCount: phoneUnreadCount } = usePhoneContext();
   // Turning off Phone notifications in Settings also clears the phone
@@ -86,7 +104,7 @@ export function Sidebar({ width }: { width?: number } = {}) {
           pools as a single gap directly above the footer, never
           distributed between the groups. */}
       <nav className="flex min-h-0 flex-1 flex-col gap-[clamp(11px,calc(100dvh*0.018),26px)] overflow-y-auto px-2 py-1">
-        {NAV_GROUPS.map((group, idx) => (
+        {visibleGroups.map((group, idx) => (
           <div key={group.title ?? `group-${idx}`}>
             {group.title && (
               <div className="mb-[clamp(3px,calc(100dvh*0.004),7px)] px-3 pt-[clamp(2px,calc(100dvh*0.005),9px)] text-[10px] font-bold uppercase leading-tight tracking-[0.14em] text-court-sidebar-fg-dim">
