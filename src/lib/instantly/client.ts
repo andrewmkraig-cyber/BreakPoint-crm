@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   InstantlyError,
   kindForStatus,
@@ -173,8 +174,35 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Normalize the raw env value into the token actually sent.
+ *
+ * Trims whitespace AND strips one layer of surrounding quotes. The quote
+ * case is not hypothetical: the key is stored quoted in .env.local (as
+ * dotenv format requires), dotenv strips those quotes on load, and a
+ * value copied from that file straight into a hosting dashboard keeps
+ * them. The result is a token that works locally and 401s in production
+ * - which is precisely the local/prod split this function now closes.
+ *
+ * A quoted key is never valid, so stripping is safe. It is also
+ * REPORTED rather than silently swallowed: readKeyDiagnostics() surfaces
+ * the fact so a malformed stored value still gets fixed at the source.
+ */
+export function normalizeApiKey(raw: string | undefined): string {
+  if (!raw) return "";
+  let v = raw.trim();
+  if (v.length >= 2) {
+    const first = v[0];
+    const last = v[v.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      v = v.slice(1, -1).trim();
+    }
+  }
+  return v;
+}
+
 function requireApiKey(): string {
-  const key = process.env.INSTANTLY_API_KEY?.trim();
+  const key = normalizeApiKey(process.env.INSTANTLY_API_KEY);
   if (!key) {
     throw new InstantlyError(
       "not_configured",
@@ -185,7 +213,62 @@ function requireApiKey(): string {
 }
 
 export function isInstantlyConfigured(): boolean {
-  return Boolean(process.env.INSTANTLY_API_KEY?.trim());
+  return normalizeApiKey(process.env.INSTANTLY_API_KEY).length > 0;
+}
+
+/**
+ * Describe the deployed key WITHOUT revealing it.
+ *
+ * Everything here is either non-secret (the workspace UUID, which is
+ * already visible in the app) or non-reversible (a truncated SHA-256).
+ * The secret half of the token is never returned in any form.
+ */
+export function readKeyDiagnostics(): {
+  present: boolean;
+  rawLength: number;
+  normalizedLength: number;
+  hadSurroundingQuotes: boolean;
+  hadLeadingOrTrailingWhitespace: boolean;
+  containsNewline: boolean;
+  fingerprint: string | null;
+  decodedWorkspaceId: string | null;
+  decodesToExpectedShape: boolean;
+} {
+  const raw = process.env.INSTANTLY_API_KEY;
+  const normalized = normalizeApiKey(raw);
+  const trimmedOnly = (raw ?? "").trim();
+
+  let fingerprint: string | null = null;
+  let decodedWorkspaceId: string | null = null;
+  let decodesToExpectedShape = false;
+
+  if (normalized) {
+    fingerprint = createHash("sha256").update(normalized).digest("hex").slice(0, 12);
+    try {
+      // Instantly v2 keys are base64 of "<workspace-uuid>:<secret>".
+      // Only the UUID half is reported - never the secret.
+      const decoded = Buffer.from(normalized, "base64").toString("utf8");
+      const [uuid, ...rest] = decoded.split(":");
+      if (/^[0-9a-f-]{36}$/i.test(uuid) && rest.join(":").length > 0) {
+        decodedWorkspaceId = uuid;
+        decodesToExpectedShape = true;
+      }
+    } catch {
+      // Not decodable - reported via decodesToExpectedShape:false.
+    }
+  }
+
+  return {
+    present: Boolean(raw && raw.length > 0),
+    rawLength: raw?.length ?? 0,
+    normalizedLength: normalized.length,
+    hadSurroundingQuotes: trimmedOnly.length !== normalized.length,
+    hadLeadingOrTrailingWhitespace: (raw ?? "").length !== trimmedOnly.length,
+    containsNewline: /[\r\n]/.test(raw ?? ""),
+    fingerprint,
+    decodedWorkspaceId,
+    decodesToExpectedShape,
+  };
 }
 
 type QueryValue = string | number | boolean | undefined | null | string[];

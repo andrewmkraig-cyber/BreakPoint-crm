@@ -64,6 +64,16 @@ export function kindForStatus(status: number, body?: string): InstantlyErrorKind
   return "bad_request";
 }
 
+// Extract the upstream body from an InstantlyError message, which is
+// formatted as `Instantly <status> on <path>: <body>`. Returns null when
+// there was no body to report.
+export function upstreamDetail(message: string): string | null {
+  const idx = message.indexOf(": ");
+  if (idx === -1) return null;
+  const detail = message.slice(idx + 2).trim();
+  return detail.length > 0 ? detail : null;
+}
+
 // Pull the scope names out of Instantly's error body so the Settings row
 // can name the missing scope instead of saying "some scope is missing".
 export function parseMissingScope(body: string | undefined): string | null {
@@ -95,12 +105,22 @@ export function describeInstantlyError(e: unknown): {
           message: "INSTANTLY_API_KEY is not set.",
           hint: "Add the key to your environment config and redeploy.",
         };
-      case "bad_key":
+      case "bad_key": {
+        // Carry Instantly's OWN words through. The canned message used to
+        // replace them, which meant a 401 always read as "bad key" even
+        // when the body said something far more specific - that is
+        // exactly the information you need to tell a wrong key apart
+        // from a scope or formatting problem, and it was being thrown
+        // away. e.message is `Instantly 401 on /path: <body>`.
+        const detail = upstreamDetail(e.message);
         return {
           kind: e.kind,
-          message: "Instantly rejected the API key (401).",
-          hint: "The key is missing or invalid. Generate a new one in Instantly under Settings > Integrations > API Keys.",
+          message: detail
+            ? `Instantly rejected the API key (401): ${detail}`
+            : "Instantly rejected the API key (401).",
+          hint: "Confirm the key stored in the deployed environment matches the one in Instantly, with no surrounding quotes or whitespace. /api/instantly/diagnose reports the deployed key's fingerprint without revealing it.",
         };
+      }
       case "insufficient_scope": {
         // Instantly reports this as a 401 with the scope named in the
         // body - surface the specific scope so the fix is obvious.
