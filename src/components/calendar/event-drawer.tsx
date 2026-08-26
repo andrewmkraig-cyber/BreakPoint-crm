@@ -9,6 +9,7 @@ import {
   Loader2,
   MapPin,
   Plus,
+  Sparkles,
   Trash2,
   Users,
   Video,
@@ -324,6 +325,8 @@ export function CalendarEventDrawer({
   // a recruiter edits, formatting goes (and a save persists the plain
   // text to Google).
   const [notesPreviewMode, setNotesPreviewMode] = useState(false);
+  // In flight while /api/calendar/draft-event writes the Title + Notes.
+  const [drafting, setDrafting] = useState(false);
   const [newGuests, setNewGuests] = useState<GuestSuggestion[]>([]);
   const [saving, setSaving] = useState<null | "all" | "new" | "none">(null);
   const [creating, setCreating] = useState(false);
@@ -759,6 +762,56 @@ export function CalendarEventDrawer({
       setError(e instanceof Error ? e.message : "Delete failed");
     } finally {
       setDeleting(false);
+    }
+  }
+
+  // Draft the Title + Notes from whatever is already on the form. Existing
+  // guests (strings off the synced Google event) and freshly picked ones
+  // are merged so the draft addresses everyone who will actually be on the
+  // invite. Notes are always replaced; the Title is only filled when blank
+  // so a title the recruiter deliberately typed is never overwritten.
+  async function draftWithClaude() {
+    if (drafting) return;
+    setDrafting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/calendar/draft-event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventType: type,
+          title,
+          guests: [
+            ...(event?.guests ?? []).map((g) => ({ name: g })),
+            ...newGuests.map((g) => ({ name: g.name, email: g.email })),
+          ],
+          date,
+          startTime,
+          endTime,
+          timeZone,
+          allDay,
+          meetingType,
+          location,
+        }),
+      });
+      const data = (await res.json()) as {
+        title?: string;
+        notes?: string;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      if (data.notes) {
+        setNotes(data.notes);
+        // The draft is plain text, so drop out of the HTML preview the
+        // drawer enters for descriptions that came back from Google.
+        setNotesPreviewMode(false);
+      }
+      if (data.title && !title.trim()) setTitle(data.title);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Draft failed";
+      toast.error("Couldn't draft this event", { description: message });
+    } finally {
+      setDrafting(false);
     }
   }
 
@@ -1224,6 +1277,25 @@ export function CalendarEventDrawer({
                 className="w-full resize-none rounded-[10px] border border-court-border bg-court-surface px-3 py-2.5 text-[13.5px] leading-relaxed text-court-fg outline-none placeholder:text-court-fg-dim focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
               />
             )}
+            {/* Writes the Notes (and the Title, when it's still blank)
+                from the event type, guests, and date/time already on the
+                form. Sits under the textarea so it reads as an action on
+                the field it fills. */}
+            <Button
+              type="button"
+              variant="ai-secondary"
+              size="sm"
+              onClick={() => void draftWithClaude()}
+              disabled={drafting}
+              className="mt-1.5"
+            >
+              {drafting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5" />
+              )}
+              {drafting ? "Drafting…" : "Draft with Claude"}
+            </Button>
           </div>
 
           {/* Create-mode reminders configure their own toast schedule via
