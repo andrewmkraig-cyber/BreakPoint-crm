@@ -2625,13 +2625,30 @@ model InstantlyReply {
   snippet          String    @default("")
   bodyText         String    @default("") @db.Text
   receivedAt       DateTime
+  // The warmed sending identity this reply came back through. Also the
+  // source we derive the "our own accounts" set from - GET /accounts
+  // needs a scope the key doesn't carry, but every row names its own
+  // eaccount, so the sending identities can be learned from the data.
+  eaccount         String?
   isFocused        Boolean   @default(true)
   isAutoReply      Boolean?
   enrichAttempts   Int       @default(0)
+  // True when the sender is one of OUR OWN identities - a warmed sending
+  // account, or a team address. Instantly ingests the whole thread from
+  // the synced mailbox, so a reply sent from andrew@breakpointtalent.com
+  // comes back under email_type=received. Those are our outbound mail,
+  // never a lead reply: excluded from the list, the badge, and the count.
+  isOwnSender      Boolean   @default(false)
   // Set when the auto-reply check gave up. The reply still notifies, but
   // the toast and the row both say the check never completed.
   enrichGaveUp     Boolean   @default(false)
   readAt           DateTime?
+  // Best-effort mirror of readAt into Instantly's Unibox. Local readAt is
+  // authoritative and is NEVER reverted on a sync failure - a badge that
+  // lies about what you've already seen is worse than a thread staying
+  // unread in Instantly. Retried by the poller, capped.
+  instantlyReadSyncedAt   DateTime?
+  instantlyReadSyncAttempts Int     @default(0)
   notifiedAt       DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -2640,5 +2657,6 @@ model InstantlyReply {
 
   @@index([organizationId, receivedAt])
   @@index([organizationId, isAutoReply, readAt])
+  @@index([organizationId, isOwnSender, receivedAt])
   @@index([organizationId, isAutoReply, enrichAttempts])
 }

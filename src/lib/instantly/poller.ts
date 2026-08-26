@@ -12,6 +12,8 @@ import {
   POLLER_MAX_PER_RUN,
 } from "@/lib/instantly/budget";
 import { getInstantlyPrefs } from "@/lib/instantly/prefs";
+import { buildOwnIdentity, isOwnSender } from "@/lib/instantly/identity";
+import { markInstantlyThreadRead } from "@/lib/instantly/mark-thread-read";
 import { InstantlyError } from "@/lib/instantly/errors";
 
 // =====================================================================
@@ -40,6 +42,13 @@ const POLL_STATE_KEY = "instantly.poll";
 // which the per-run enrichment cap then drains over subsequent runs.
 const MAX_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 
+// COLD START ONLY (no lastPolledAt yet). Reaches back far enough to
+// mirror the whole existing Unibox in one pass, so the Replies view -
+// which now reads from Neon - isn't showing a 7-day slice of a much
+// longer history. Enrichment is still capped per run, so a big first
+// haul drains over subsequent runs instead of blowing the budget.
+const COLD_START_LOOKBACK_MS = 180 * 24 * 60 * 60 * 1000;
+
 // Overlap the window slightly so a reply landing exactly on the boundary
 // isn't skipped. Upsert-on-unique makes re-seeing rows free.
 const WINDOW_OVERLAP_MS = 2 * 60 * 1000;
@@ -48,6 +57,14 @@ const WINDOW_OVERLAP_MS = 2 * 60 * 1000;
 // point the reply notifies ANYWAY, flagged unverified: missing a real
 // client reply costs more than dismissing a stray out-of-office.
 export const MAX_ENRICH_ATTEMPTS = 5;
+
+// Attempts to mirror a local "read" into Instantly before giving up.
+export const MAX_READ_SYNC_ATTEMPTS = 5;
+
+// Read-syncs attempted per run. Small: enrichment is the priority for
+// budget, and an unsynced read is cosmetic (it only affects how the
+// thread looks in Instantly's own Unibox).
+const READ_SYNC_PER_RUN = 5;
 
 export type PollState = {
   lastPolledAt: string | null;
@@ -84,6 +101,8 @@ export type PollResult = {
   enrichAttempted?: number;
   enrichResolved?: number;
   gaveUp?: number;
+  readSynced?: number;
+  readSyncPending?: number;
   notifiable?: number;
   budgetGranted?: number;
   budgetReason?: string;
@@ -151,11 +170,13 @@ export async function runInstantlyPoll(opts?: {
 
   // Window: from the last successful poll (minus overlap), clamped to
   // MAX_LOOKBACK so a multi-day outage backfills a bounded amount.
+  const isColdStart = !state.lastPolledAt;
+  const lookbackMs = isColdStart ? COLD_START_LOOKBACK_MS : MAX_LOOKBACK_MS;
   const lastPolledMs = state.lastPolledAt
     ? new Date(state.lastPolledAt).getTime()
-    : now - MAX_LOOKBACK_MS;
+    : now - lookbackMs;
   const from = new Date(
-    Math.max(lastPolledMs - WINDOW_OVERLAP_MS, now - MAX_LOOKBACK_MS),
+    Math.max(lastPolledMs - WINDOW_OVERLAP_MS, now - lookbackMs),
   );
 
   try {
@@ -163,8 +184,12 @@ export async function runInstantlyPoll(opts?: {
       since: from.toISOString(),
       limit: 100,
       fetchAll: true,
-      maxPages: 5,
+      maxPages: isColdStart ? 20 : 5,
     });
+
+    // Our own identity set, folding in the sending accounts visible on
+    // this batch so a new warmed mailbox is recognized immediately.
+    const identity = await buildOwnIdentity(fetched.map((r) => r.eaccount));
 
     // Campaign names, so the toast and row can say which campaign
     // without a per-reply lookup. One cheap cached call.
@@ -184,6 +209,7 @@ export async function runInstantlyPoll(opts?: {
         where: { instantlyEmailId: r.id },
         select: { id: true },
       });
+      const own = isOwnSender(r.fromEmail, identity);
       if (existing) {
         // Refresh only cosmetic fields. Never clobber isAutoReply,
         // enrichAttempts, readAt, or notifiedAt - those are our state.
@@ -192,6 +218,10 @@ export async function runInstantlyPoll(opts?: {
           data: {
             campaignName: r.campaignId ? (campaignNames.get(r.campaignId) ?? null) : null,
             snippet: r.snippet,
+            eaccount: r.eaccount,
+            // Re-evaluated each poll so a newly-learned identity
+            // retroactively excludes rows stored before we knew it.
+            isOwnSender: own,
           },
         });
         continue;
@@ -209,10 +239,12 @@ export async function runInstantlyPoll(opts?: {
           snippet: r.snippet,
           bodyText: r.bodyText,
           receivedAt: r.receivedAt ? new Date(r.receivedAt) : new Date(),
+          eaccount: r.eaccount,
           isFocused: r.isFocused,
           // Always null off the list endpoint - it omits is_auto_reply.
           isAutoReply: null,
           enrichAttempts: 0,
+          isOwnSender: own,
         },
       });
       inserted++;
@@ -223,6 +255,7 @@ export async function runInstantlyPoll(opts?: {
       where: {
         organizationId: orgId,
         isAutoReply: null,
+        isOwnSender: false,
         enrichAttempts: { lt: MAX_ENRICH_ATTEMPTS },
       },
       orderBy: { receivedAt: "desc" },
@@ -276,6 +309,13 @@ export async function runInstantlyPoll(opts?: {
       data: { enrichGaveUp: true },
     });
 
+    // ---- read-sync retry ------------------------------------------
+    // Rows read in Ace whose mark-as-read never reached Instantly. Local
+    // readAt is authoritative and untouched here - this only retries the
+    // outbound mirror, within the same budget and with a hard attempt
+    // cap so a permanently-failing thread stops consuming slots.
+    const readSynced = await retryReadSync(orgId);
+
     const notifiable = await prisma.instantlyReply.count({
       where: notifiableWhere(orgId),
     });
@@ -294,6 +334,8 @@ export async function runInstantlyPoll(opts?: {
       enrichAttempted: attempted,
       enrichResolved: resolved,
       gaveUp: gaveUpResult.count,
+      readSynced: readSynced.synced,
+      readSyncPending: readSynced.pending,
       notifiable,
       budgetGranted: grant.granted,
       budgetReason: grant.reason,
@@ -308,6 +350,63 @@ export async function runInstantlyPoll(opts?: {
 }
 
 /**
+ * Retry the outbound read mirror for rows read in Ace but not yet
+ * acknowledged by Instantly.
+ *
+ * Failure here NEVER touches readAt. The local state is what the badge
+ * and the list are built on, and reverting it would make Ace lie about
+ * what has already been seen - strictly worse than a thread staying
+ * unread in Instantly's Unibox.
+ */
+async function retryReadSync(
+  organizationId: string,
+): Promise<{ synced: number; pending: number }> {
+  const pendingRows = await prisma.instantlyReply.findMany({
+    where: {
+      organizationId,
+      readAt: { not: null },
+      instantlyReadSyncedAt: null,
+      threadId: { not: null },
+      instantlyReadSyncAttempts: { lt: MAX_READ_SYNC_ATTEMPTS },
+    },
+    orderBy: { readAt: "desc" },
+    take: READ_SYNC_PER_RUN,
+    select: { id: true, threadId: true },
+  });
+
+  let synced = 0;
+  for (const row of pendingRows) {
+    if (!row.threadId) continue;
+    const result = await markInstantlyThreadRead(row.threadId);
+    if (result.ok) {
+      await prisma.instantlyReply.update({
+        where: { id: row.id },
+        data: { instantlyReadSyncedAt: new Date(), instantlyReadSyncAttempts: { increment: 1 } },
+      });
+      synced++;
+    } else {
+      await prisma.instantlyReply.update({
+        where: { id: row.id },
+        data: { instantlyReadSyncAttempts: { increment: 1 } },
+      });
+      // Budget exhausted - stop and let the next run continue.
+      if (result.kind === "rate_limited") break;
+    }
+  }
+
+  const pending = await prisma.instantlyReply.count({
+    where: {
+      organizationId,
+      readAt: { not: null },
+      instantlyReadSyncedAt: null,
+      instantlyReadSyncAttempts: { lt: MAX_READ_SYNC_ATTEMPTS },
+    },
+  });
+
+  return { synced, pending };
+}
+
+/**
  * Prisma filter for replies that are allowed to surface as a
  * notification / badge. Mirrors shouldNotify() exactly - keep them in
  * step. Confirmed auto-replies are excluded unconditionally.
@@ -315,6 +414,9 @@ export async function runInstantlyPoll(opts?: {
 export function notifiableWhere(organizationId: string) {
   return {
     organizationId,
+    // Our own outbound mail is not a lead reply. Excluded from the
+    // badge, the toasts, and the count.
+    isOwnSender: false,
     OR: [
       { isAutoReply: false },
       // Unresolved but out of attempts: notify, flagged unverified.

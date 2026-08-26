@@ -51,6 +51,8 @@ export type ReplyRow = {
   isUnread: boolean;
   eaccount: string | null;
   threadUrl: string | null;
+  /** Auto-reply check exhausted its retries. Shown, never implied genuine. */
+  unverified?: boolean;
 };
 
 type Payload = {
@@ -59,7 +61,8 @@ type Payload = {
   page: number;
   pageSize: number;
   hasMore: boolean;
-  enrichedCount: number;
+  total: number;
+  enrichedCount?: number;
   pendingCount: number;
   budgetExhausted: boolean;
   retryAfterMs: number;
