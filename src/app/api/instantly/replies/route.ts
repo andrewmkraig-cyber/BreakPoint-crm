@@ -58,8 +58,9 @@ export async function GET(req: NextRequest) {
       ...(includeAuto ? {} : { isAutoReply: { not: true } }),
     };
 
-    const [total, rows] = await Promise.all([
+    const [total, unreadTotal, rows] = await Promise.all([
       prisma.instantlyReply.count({ where }),
+      prisma.instantlyReply.count({ where: { ...where, readAt: null } }),
       prisma.instantlyReply.findMany({
         where,
         orderBy: { receivedAt: "desc" },
@@ -97,6 +98,7 @@ export async function GET(req: NextRequest) {
         page,
         pageSize: PAGE_SIZE,
         total,
+        unreadTotal,
         hasMore: (page + 1) * PAGE_SIZE < total,
         // Still reported so the UI can show how much of the page has not
         // yet been classified. No longer a rate-limit signal - nothing on

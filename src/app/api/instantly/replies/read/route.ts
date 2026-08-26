@@ -27,7 +27,21 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json().catch(() => null)) as
-    | { ids?: string[]; emailIds?: string[]; all?: boolean }
+    | {
+        ids?: string[];
+        emailIds?: string[];
+        all?: boolean;
+        campaignId?: string;
+        includeAuto?: boolean;
+        /**
+         * Skip the inline outbound mirror and let the poller drain it.
+         * Used by "Mark all as read", which can span 25+ threads - firing
+         * that many calls inline would blow the /emails budget and stall
+         * the request. The rows are left with instantlyReadSyncedAt null,
+         * which is exactly the state the poller's retry pass looks for.
+         */
+        deferSync?: boolean;
+      }
     | null;
   if (!body) return NextResponse.json({ ok: false, error: "Bad request." }, { status: 400 });
 
@@ -42,8 +56,15 @@ export async function POST(req: NextRequest) {
       readAt: null,
       // Accept either our cuid or Instantly's email id - the toast
       // knows the former, the Replies list knows the latter.
+      // "Mark all as read" scopes to what the user can actually see:
+      // the campaign filter and the auto-reply toggle, mirroring the
+      // list query so the button never touches a hidden row.
       ...(body.all
-        ? {}
+        ? {
+            isOwnSender: false,
+            ...(body.campaignId ? { campaignId: body.campaignId } : {}),
+            ...(body.includeAuto ? {} : { isAutoReply: { not: true } }),
+          }
         : {
             OR: [
               { id: { in: body.ids ?? [] } },
@@ -70,7 +91,9 @@ export async function POST(req: NextRequest) {
       new Set(affected.map((a) => a.threadId).filter((t): t is string => Boolean(t))),
     );
     let threadsSynced = 0;
-    for (const threadId of threads) {
+    // deferSync: hand the whole batch to the poller instead of firing
+    // one call per thread from inside this request.
+    for (const threadId of body.deferSync ? [] : threads) {
       const res = await markInstantlyThreadRead(threadId);
       const rowIds = affected.filter((a) => a.threadId === threadId).map((a) => a.id);
       if (res.ok) {
@@ -93,7 +116,13 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { ok: true, updated: result.count, threadsSynced, threadsTotal: threads.length },
+      {
+        ok: true,
+        updated: result.count,
+        threadsSynced,
+        threadsTotal: threads.length,
+        deferred: Boolean(body.deferSync),
+      },
       { status: 200 },
     );
   } catch (e) {

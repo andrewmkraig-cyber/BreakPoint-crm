@@ -17,11 +17,21 @@ import { formatCount, formatRate, type InstantlyHeadline } from "@/lib/instantly
 
 export function HeadlineStats({
   headline,
-  scope,
+  scopeLabel,
+  instantlyReplyCount,
 }: {
   headline: InstantlyHeadline;
-  scope: "active" | "all";
+  scopeLabel: string;
+  /** Instantly's own reply total for this scope, for the delta line. */
+  instantlyReplyCount?: number;
 }) {
+  // Instantly counts our own replies to leads as replies. When the two
+  // numbers differ, say so on the page rather than leaving it to be
+  // discovered against Instantly's dashboard.
+  const delta =
+    typeof instantlyReplyCount === "number"
+      ? instantlyReplyCount - headline.genuineReplies
+      : 0;
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -43,11 +53,19 @@ export function HeadlineStats({
           auto-replies (out-of-office and similar) - excluded from genuine replies and from reply rate
         </span>
         <span className="ml-auto text-[11px] text-court-fg-muted">
-          {scope === "active"
-            ? `Across ${headline.campaignCount} active campaign${headline.campaignCount === 1 ? "" : "s"}`
-            : `No active campaigns - showing all ${headline.campaignCount}`}
+          {scopeLabel}
         </span>
       </div>
+
+      {delta > 0 && (
+        <p className="px-1 text-[11px] leading-relaxed text-court-fg-muted">
+          Instantly reports {instantlyReplyCount} replies for this view.{" "}
+          {delta} {delta === 1 ? "is" : "are"} your own repl
+          {delta === 1 ? "y" : "ies"} to leads - Instantly reads them back out
+          of the synced mailbox and counts them as inbound. Ace excludes them,
+          so the number above is {headline.genuineReplies}.
+        </p>
+      )}
     </div>
   );
 }

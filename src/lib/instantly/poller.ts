@@ -61,10 +61,14 @@ export const MAX_ENRICH_ATTEMPTS = 5;
 // Attempts to mirror a local "read" into Instantly before giving up.
 export const MAX_READ_SYNC_ATTEMPTS = 5;
 
-// Read-syncs attempted per run. Small: enrichment is the priority for
-// budget, and an unsynced read is cosmetic (it only affects how the
-// thread looks in Instantly's own Unibox).
-const READ_SYNC_PER_RUN = 5;
+// Floor for read-syncs per run. Enrichment gets first claim on the
+// budget - an unresolved auto-reply flag decides whether you get
+// notified, while an unsynced read only affects how a thread looks in
+// Instantly's own Unibox. Whatever enrichment does not spend is handed
+// to read-sync on top of this floor, so a "Mark all as read" over 25
+// threads drains in a couple of runs instead of five.
+const READ_SYNC_MIN_PER_RUN = 5;
+const READ_SYNC_MAX_PER_RUN = 20;
 
 export type PollState = {
   lastPolledAt: string | null;
@@ -314,7 +318,12 @@ export async function runInstantlyPoll(opts?: {
     // readAt is authoritative and untouched here - this only retries the
     // outbound mirror, within the same budget and with a hard attempt
     // cap so a permanently-failing thread stops consuming slots.
-    const readSynced = await retryReadSync(orgId);
+    const leftoverBudget = Math.max(0, grant.granted - attempted);
+    const readSyncBudget = Math.min(
+      READ_SYNC_MAX_PER_RUN,
+      READ_SYNC_MIN_PER_RUN + leftoverBudget,
+    );
+    const readSynced = await retryReadSync(orgId, readSyncBudget);
 
     const notifiable = await prisma.instantlyReply.count({
       where: notifiableWhere(orgId),
@@ -360,6 +369,7 @@ export async function runInstantlyPoll(opts?: {
  */
 async function retryReadSync(
   organizationId: string,
+  budget: number,
 ): Promise<{ synced: number; pending: number }> {
   const pendingRows = await prisma.instantlyReply.findMany({
     where: {
@@ -370,7 +380,7 @@ async function retryReadSync(
       instantlyReadSyncAttempts: { lt: MAX_READ_SYNC_ATTEMPTS },
     },
     orderBy: { readAt: "desc" },
-    take: READ_SYNC_PER_RUN,
+    take: Math.max(0, budget),
     select: { id: true, threadId: true },
   });
 

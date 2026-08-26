@@ -4,8 +4,13 @@ import {
   getDailyAnalytics,
   listCampaigns,
 } from "@/lib/instantly/client";
-import { computeCampaignMetrics, computeHeadline } from "@/lib/instantly/metrics";
+import {
+  mergeCampaignMetrics,
+  computeHeadlineFromRows,
+} from "@/lib/instantly/metrics";
 import { withInstantly } from "@/app/api/instantly/_respond";
+import { prisma } from "@/lib/prisma";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +30,7 @@ export async function GET(req: NextRequest) {
   const endDate = searchParams.get("endDate") ?? undefined;
 
   return withInstantly(async () => {
+    const org = await getCurrentOrg();
     const [analytics, daily] = await Promise.all([
       getCampaignAnalytics({
         ids: campaignId ? [campaignId] : undefined,
@@ -46,11 +52,46 @@ export async function GET(req: NextRequest) {
       status = status ?? match?.status ?? null;
     }
 
+    // Reply counts from Ace, same as the Overview and the Replies list.
+    // Without this the detail tiles would report Instantly's reply_count
+    // (which includes our own outbound) while the replies rendered
+    // directly beneath them came from Ace - the same tile-vs-list
+    // disagreement, one page down. See metrics.ts for the full reasoning
+    // and the 180-day coverage caveat.
+    const [aceGenuine, aceAuto] = await Promise.all([
+      prisma.instantlyReply.count({
+        where: {
+          organizationId: org.id,
+          isOwnSender: false,
+          isAutoReply: false,
+          ...(campaignId ? { campaignId } : {}),
+        },
+      }),
+      prisma.instantlyReply.count({
+        where: {
+          organizationId: org.id,
+          isOwnSender: false,
+          isAutoReply: true,
+          ...(campaignId ? { campaignId } : {}),
+        },
+      }),
+    ]);
+
+    const rows = analytics.map((a) =>
+      mergeCampaignMetrics(
+        a,
+        a.campaign_id === campaignId
+          ? { genuine: aceGenuine, auto: aceAuto }
+          : undefined,
+      ),
+    );
+
     return {
       name,
       status,
-      headline: computeHeadline(analytics),
-      perCampaign: analytics.map(computeCampaignMetrics),
+      headline: computeHeadlineFromRows(rows),
+      perCampaign: rows,
+      instantlyReplyCount: analytics.reduce((s2, a) => s2 + (a.reply_count ?? 0), 0),
       // Ascending by date so the chart reads left-to-right oldest-first.
       daily: [...daily].sort((a, b) => (a.date < b.date ? -1 : 1)),
     };

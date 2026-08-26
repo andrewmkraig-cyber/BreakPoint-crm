@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  CheckCheck,
   ChevronDown,
   ChevronRight,
   ExternalLink,
@@ -9,6 +10,7 @@ import {
   BotMessageSquare,
   HelpCircle,
 } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { InstantlyEmptyState, InstantlyErrorState } from "@/app/campaigns/instantly-states";
@@ -62,6 +64,7 @@ type Payload = {
   pageSize: number;
   hasMore: boolean;
   total: number;
+  unreadTotal: number;
   enrichedCount?: number;
   pendingCount: number;
   budgetExhausted: boolean;
@@ -91,6 +94,7 @@ export function RepliesView({
   const [error, setError] = useState<ErrPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [markingAll, setMarkingAll] = useState(false);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(
@@ -163,6 +167,47 @@ export function RepliesView({
     }).catch(() => {});
   }, [focusReplyId, data]);
 
+  // Mark every reply the CURRENT FILTERS expose as read. Scoped by the
+  // same campaign + auto-reply filters the list uses, so it never touches
+  // a row that isn't on screen.
+  //
+  // deferSync hands the outbound Instantly mirror to the poller rather
+  // than firing one call per thread from here - 25 threads inline would
+  // exhaust the /emails budget and stall the request. Local read state
+  // applies immediately either way.
+  async function onMarkAllRead() {
+    if (markingAll) return;
+    setMarkingAll(true);
+    try {
+      const res = await fetch("/api/instantly/replies/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          all: true,
+          deferSync: true,
+          campaignId: campaignId || undefined,
+          includeAuto: showAuto,
+        }),
+      });
+      const json = (await res.json()) as { ok: boolean; updated?: number; error?: string };
+      if (!json.ok) {
+        toast.error("Couldn't mark all as read", { description: json.error });
+        return;
+      }
+      toast.success(
+        `Marked ${json.updated ?? 0} repl${(json.updated ?? 0) === 1 ? "y" : "ies"} as read`,
+        { description: "Syncing to Instantly in the background." },
+      );
+      await load({ quiet: true });
+    } catch (e) {
+      toast.error("Couldn't mark all as read", {
+        description: e instanceof Error ? e.message : "Try again in a moment.",
+      });
+    } finally {
+      setMarkingAll(false);
+    }
+  }
+
   function toggleExpand(id: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -171,6 +216,10 @@ export function RepliesView({
       return next;
     });
   }
+
+  // Unread among what the current filters expose. `total` is the filtered
+  // count from the server, so this stays honest across pages.
+  const unreadVisible = data?.unreadTotal ?? 0;
 
   return (
     <div className="space-y-3">
@@ -209,6 +258,21 @@ export function RepliesView({
         >
           <BotMessageSquare className="h-3.5 w-3.5" />
           {showAuto ? "Hiding nothing - auto-replies shown" : "Show auto-replies"}
+        </Button>
+
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={() => void onMarkAllRead()}
+          disabled={markingAll || unreadVisible === 0}
+        >
+          {markingAll ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <CheckCheck className="h-3.5 w-3.5" />
+          )}
+          {unreadVisible > 0 ? `Mark ${unreadVisible} as read` : "All read"}
         </Button>
 
         {data && data.pendingCount > 0 ? (

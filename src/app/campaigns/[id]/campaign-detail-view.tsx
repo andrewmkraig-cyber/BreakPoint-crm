@@ -20,6 +20,7 @@ type Payload =
       status: number | null;
       headline: InstantlyHeadline;
       daily: InstantlyDailyPoint[];
+      instantlyReplyCount?: number;
     }
   | { ok: false; kind: string; message: string; hint: string };
 
@@ -82,7 +83,11 @@ export function CampaignDetailView({ campaignId }: { campaignId: string }) {
             </div>
           </div>
 
-          <HeadlineStats headline={data.headline} scope="all" />
+          <HeadlineStats
+            headline={data.headline}
+            scopeLabel="This campaign"
+            instantlyReplyCount={data.instantlyReplyCount}
+          />
 
           <section className="rounded-xl border border-court-border/40 bg-court-surface p-5">
             <h2 className="mb-3 text-sm font-semibold text-court-fg">Daily activity</h2>

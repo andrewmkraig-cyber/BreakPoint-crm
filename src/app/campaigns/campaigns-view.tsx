@@ -19,10 +19,25 @@ import type { InstantlyHeadline } from "@/lib/instantly/metrics";
 // hands off to Instantly's own Unibox.
 
 type Payload =
-  | { ok: true; headline: InstantlyHeadline; headlineScope: "active" | "all"; campaigns: CampaignRow[] }
+  | {
+      ok: true;
+      scope: CampaignScope;
+      headline: InstantlyHeadline;
+      campaigns: CampaignRow[];
+      activeCount: number;
+      totalCount: number;
+      instantlyReplyCount: number;
+      ownSenderCount: number;
+    }
   | { ok: false; kind: string; message: string; hint: string };
 
 type Pane = "overview" | "replies";
+
+// Which campaigns the Overview describes. ONE piece of state - it drives
+// the tiles and the table together, because they used to be filtered
+// separately and disagreed (tiles 18 replies, table summing to 27).
+// Default "all": a completed campaign's replies are still replies.
+type CampaignScope = "all" | "active";
 
 export function CampaignsView() {
   // A reply toast deep-links to /campaigns?tab=replies&reply=<id>, so
@@ -32,14 +47,16 @@ export function CampaignsView() {
   const [pane, setPane] = useState<Pane>(
     searchParams?.get("tab") === "replies" || focusReplyId ? "replies" : "overview",
   );
+  const [scope, setScope] = useState<CampaignScope>("all");
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      setLoading(true);
       try {
-        const res = await fetch("/api/instantly/campaigns");
+        const res = await fetch(`/api/instantly/campaigns?scope=${scope}`);
         const json = (await res.json()) as Payload;
         if (!cancelled) setData(json);
       } catch (e) {
@@ -58,7 +75,7 @@ export function CampaignsView() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [scope]);
 
   const campaignOptions =
     data?.ok === true
@@ -87,7 +104,28 @@ export function CampaignsView() {
           <InstantlyErrorState kind={data.kind} message={data.message} hint={data.hint} />
         ) : data && data.ok === true ? (
           <div className="space-y-4">
-            <HeadlineStats headline={data.headline} scope={data.headlineScope} />
+            {/* Scope selector. Shared TabStrip, per the UI rules - and
+                the single control behind both the tiles and the table. */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <TabStrip<CampaignScope>
+                ariaLabel="Campaign scope"
+                items={[
+                  { id: "all", label: "All campaigns", count: data.totalCount },
+                  { id: "active", label: "Active only", count: data.activeCount },
+                ]}
+                activeId={scope}
+                onChange={setScope}
+              />
+            </div>
+            <HeadlineStats
+              headline={data.headline}
+              scopeLabel={
+                scope === "active"
+                  ? `Across ${data.headline.campaignCount} active campaign${data.headline.campaignCount === 1 ? "" : "s"}`
+                  : `Across all ${data.headline.campaignCount} campaign${data.headline.campaignCount === 1 ? "" : "s"}`
+              }
+              instantlyReplyCount={data.instantlyReplyCount}
+            />
             <CampaignTable campaigns={data.campaigns} />
           </div>
         ) : null
