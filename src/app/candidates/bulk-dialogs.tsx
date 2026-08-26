@@ -48,7 +48,13 @@ import { Input, Select } from "@/components/ui/input";
 import { useSendLater } from "@/components/mail/send-later-popover";
 import { formatScheduledTime } from "@/lib/timezone";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
-import { MERGE_FIELDS, htmlToReadableText, templateBodyToEditorHtml, type MergeFieldValues } from "@/lib/merge-fields";
+import {
+  MERGE_FIELDS,
+  buildSmartGreeting,
+  htmlToReadableText,
+  templateBodyToEditorHtml,
+  type MergeFieldValues,
+} from "@/lib/merge-fields";
 import { cn } from "@/lib/utils";
 import { TEAM_BCC_OPTIONS } from "@/lib/team-contacts";
 
@@ -394,12 +400,13 @@ export function BulkSubmitDialog({
         </div>
       }
       generateFallbackSubject={generateSubject}
-      onGenerate={async (_draft, { instructions }) => {
+      onGenerate={async (_draft, { instructions, toRecipients }) => {
         const res = await generateBulkLocalSubmittal({
           candidateIds,
           jobId: picked.jobId,
           jobRfId: picked.jobRfId,
           instructions,
+          clientGreeting: buildSmartGreeting(toRecipients),
         });
         if (!res.ok) throw new Error(res.error);
         return res.value.writeup;

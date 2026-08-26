@@ -1516,6 +1516,7 @@ export type GenerateSubmittalInput = {
   // seed "Hi [ClientFirstName]," at the top of the generated submittal so the
   // recruiter doesn't hand-edit the greeting for every send.
   clientContactFirstName?: string;
+  clientGreeting?: string;
 };
 
 export type GenerateSubmittalResult = Result<{ text: string }>;
@@ -1580,6 +1581,7 @@ export async function generateSubmittal(input: GenerateSubmittalInput): Promise<
       },
       job: jobCtx,
       clientContactFirstName: input.clientContactFirstName,
+      clientGreeting: input.clientGreeting,
       callContext,
     };
 

@@ -21,7 +21,11 @@ import {
 } from "@/app/candidates/[id]/local-placement-actions";
 import { formatOpenJobOption } from "@/components/placements/placement-shared";
 import { extractCityFromLocation } from "@/lib/candidate-compensation";
-import { applyMergeFields as applyMergeFieldsClient, type MergeFieldValues } from "@/lib/merge-fields";
+import {
+  applyMergeFields as applyMergeFieldsClient,
+  buildSmartGreeting,
+  type MergeFieldValues,
+} from "@/lib/merge-fields";
 import { submittalMarkdownToEditorHtml } from "@/lib/submittal-format";
 import { TEAM_BCC_OPTIONS } from "@/lib/team-contacts";
 import {
@@ -453,12 +457,13 @@ function SubmitModal(props: {
       // so a picked template's subject or a hand-typed subject is never
       // clobbered.
       generateFallbackSubject={generateSubject}
-      onGenerate={async (_draft, { instructions }) => {
+      onGenerate={async (_draft, { instructions, toRecipients }) => {
         const res = await generateLocalSubmittal({
           candidateId: props.candidateId,
           jobRfId: job.jobCuid ? null : job.jobRfId,
           jobId: job.jobCuid ?? null,
           instructions,
+          clientGreeting: buildSmartGreeting(toRecipients),
         });
         if (!res.ok) throw new Error(res.error);
         return res.value.writeup;

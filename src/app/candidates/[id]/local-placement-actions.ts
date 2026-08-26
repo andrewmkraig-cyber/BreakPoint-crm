@@ -376,6 +376,7 @@ export type GenerateLocalSubmittalInput = {
   jobRfId?: number | null;
   jobId?: string | null;
   instructions?: string | null;
+  clientGreeting?: string | null;
 };
 
 export type GenerateLocalSubmittalResult =
@@ -513,6 +514,7 @@ export async function generateLocalSubmittal(
       },
       candidateContext,
       recruiterInstructions: input.instructions ?? "",
+      clientGreeting: input.clientGreeting ?? undefined,
     });
 
     return { ok: true, value: { writeup } };
@@ -2062,6 +2064,7 @@ export async function generateBulkLocalSubmittal(input: {
   jobRfId?: number | null;
   jobId?: string | null;
   instructions?: string | null;
+  clientGreeting?: string | null;
 }): Promise<GenerateLocalSubmittalResult> {
   const user = await requireUser();
   if (!user) return { ok: false, error: "Not signed in." };
@@ -2136,6 +2139,7 @@ export async function generateBulkLocalSubmittal(input: {
         job: jobPayload,
         candidateContext,
         recruiterInstructions: input.instructions ?? "",
+        clientGreeting: input.clientGreeting ?? undefined,
       });
       const name = [c.firstName, c.lastName].filter(Boolean).join(" ").trim() || "Candidate";
       sections.push(`## ${name}\n\n${writeup.trim()}`);

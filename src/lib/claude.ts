@@ -911,6 +911,9 @@ export type SubmittalInput = {
     internalNotes?: string;
   };
   clientContactFirstName?: string;
+  // Full greeting line resolved by the composer from current To recipients,
+  // e.g. "Hi Jane," / "Hi Jane and Tom," / "Hi Team,".
+  clientGreeting?: string;
   callContext?: string;
   candidateContext?: string;
   recruiterInstructions?: string;
@@ -947,6 +950,77 @@ const SUBMITTAL_SIGNOFF_RE =
 
 function stripTrailingSignOff(text: string): string {
   return text.replace(SUBMITTAL_SIGNOFF_RE, "").replace(/\s+$/, "");
+}
+
+function normalizeSubmittalGreeting(raw: string | null | undefined): string {
+  const compact = (raw ?? "").trim().replace(/\s+/g, " ");
+  if (!compact) return "";
+  return /[,.!?]$/.test(compact) ? compact : `${compact},`;
+}
+
+function forceOpeningGreeting(text: string, greeting: string): string {
+  const cleanGreeting = normalizeSubmittalGreeting(greeting);
+  const cleanText = text.trim();
+  if (!cleanGreeting) return cleanText;
+  if (!cleanText) return cleanGreeting;
+
+  const lines = cleanText.split(/\r?\n/);
+  const firstTextIndex = lines.findIndex((line) => line.trim().length > 0);
+  if (firstTextIndex === -1) return cleanGreeting;
+
+  const first = lines[firstTextIndex]!.trim();
+  if (/^(hi|hello|dear)\b[^,\n]*(?:,|:)?$/i.test(first)) {
+    lines[firstTextIndex] = cleanGreeting;
+    return lines.join("\n").trim();
+  }
+  return `${cleanGreeting}\n\n${cleanText}`;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function forceSubmittalLocationPresentation(
+  text: string,
+  cityOnly: string,
+  locationLineValue: string,
+): string {
+  const cleanText = text.trim();
+  const cleanCity = cityOnly.trim();
+  const cleanLocation = locationLineValue.trim() || cleanCity;
+  if (!cleanText || !cleanLocation) return cleanText;
+
+  const state =
+    cleanCity && cleanLocation.startsWith(`${cleanCity},`)
+      ? cleanLocation.slice(cleanCity.length + 1).trim()
+      : "";
+  const cityStateOutsideLocationRe =
+    cleanCity && state
+      ? new RegExp(`${escapeRegExp(cleanCity)}\\s*,?\\s+${escapeRegExp(state)}\\b`, "gi")
+      : null;
+
+  const lines = cleanText.split(/\r?\n/);
+  let foundLocationLine = false;
+  const next = lines.map((line) => {
+    if (/^\s*(?:\*\*)?Location:(?:\*\*)?/i.test(line)) {
+      foundLocationLine = true;
+      return `**Location:** ${cleanLocation}`;
+    }
+    return cityStateOutsideLocationRe
+      ? line.replace(cityStateOutsideLocationRe, cleanCity)
+      : line;
+  });
+
+  if (!foundLocationLine) {
+    const closingIndex = next.findIndex((line) =>
+      /^Let me know if you'd like to set up an interview/i.test(line.trim()),
+    );
+    const insert = ["", `**Location:** ${cleanLocation}`, ""];
+    if (closingIndex >= 0) next.splice(closingIndex, 0, ...insert);
+    else next.push("", `**Location:** ${cleanLocation}`);
+  }
+
+  return next.join("\n").trim();
 }
 
 function normalizeBulletOnlyOutput(text: string): string {
@@ -1069,6 +1143,14 @@ export function clientFacingCandidateLocation(
   return splitCityState(candidateLocation).city;
 }
 
+export function clientFacingCandidateCityState(
+  candidateLocation: string | null | undefined,
+): string {
+  const { city, state } = splitCityState(candidateLocation);
+  if (city && state) return `${city}, ${state}`;
+  return city;
+}
+
 // Timing phrase for the submittal's closing line. Submittals go out every
 // day of the week, so a hardcoded "this week" reads wrong from Thursday on
 // ("interview him this week" sent Friday afternoon). Resolved against
@@ -1182,12 +1264,16 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
   const fullName = [input.candidate.firstName, input.candidate.lastName].filter(Boolean).join(" ") || "Candidate";
   const firstName = input.candidate.firstName || "this candidate";
   const clientFirst = (input.clientContactFirstName ?? "").trim() || "there";
+  const greetingLine =
+    normalizeSubmittalGreeting(input.clientGreeting) || `Hi ${clientFirst},`;
   const callContext = input.callContext?.trim();
   const candidateContext = input.candidateContext?.trim();
   const recruiterInstructions = input.recruiterInstructions?.trim();
-  // City only, always. Plus a closing timing phrase that respects what day
+  // Narrative copy gets city only; the final **Location:** field gets city +
+  // state when available. Plus a closing timing phrase that respects what day
   // it actually is.
   const clientLocation = clientFacingCandidateLocation(input.candidate.location);
+  const clientLocationLine = clientFacingCandidateCityState(input.candidate.location);
   const timingPhrase = schedulingWindowPhrase();
 
   const customFieldLines = (input.job.customFields ?? [])
@@ -1217,8 +1303,10 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
     `Current employer: ${input.candidate.employer || "—"}\n` +
     // The RAW candidate location is deliberately NOT in this block. When it
     // was, the model copied it verbatim ("Dayton, OH 45410") no matter what
-    // the rules said. It cannot emit a state or ZIP it was never shown.
-    `Location (this is the ONLY location string you may use for the candidate, verbatim): ${clientLocation || "—"}\n` +
+    // the rules said. Give the model only the two client-safe renderings it
+    // needs: city-only for prose and city/state for the final field.
+    `Candidate location for prose (city only; never include state or ZIP in body copy): ${clientLocation || "—"}\n` +
+    `Candidate location for the final **Location:** line (city and state, no ZIP; use exactly): ${clientLocationLine || clientLocation || "—"}\n` +
     `Expected salary: ${input.candidate.expectedSalary || "—"}\n` +
     `LinkedIn: ${input.candidate.linkedin || "—"}\n` +
     `Skills: ${(input.candidate.skills || []).slice(0, 20).join(", ") || "—"}\n` +
@@ -1250,7 +1338,7 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
           "Use additional candidate context when it adds concrete, client-safe facts about motivation, compensation, availability, goals, objections, communication style, or fit. Do not mention Game Plan, call transcripts, call summaries, texts, AI notes, or internal recruiter notes in the email. " +
           "If there's a real mismatch (e.g. candidate's stack doesn't match), stay honest, don't manufacture fit.\n\n" +
           "Output MUST match this EXACT structure, with the `**…**` bold wrappers and the dash bullets preserved verbatim:\n\n" +
-          `Hi ${clientFirst},\n\n` +
+          `${greetingLine}\n\n` +
           `Here is a candidate I wanted to show you for the ${input.job.title} role.\n\n` +
           `**About ${firstName}:**\n` +
           "<2 to 3 sentence paragraph: who they are, where they're based, most relevant experience, closest parallel to what the job requires>\n\n" +
@@ -1262,12 +1350,14 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
           "**Technically:**\n" +
           "- <Honest assessment of their technical toolkit: concrete tools / stacks / certifications that match the role>\n\n" +
           "**Comp Target:** <the number or range on its own; if unknown, say 'Open / to be discussed'. Never compare it to the client's posted range.>\n\n" +
-          "**Location:** <the candidate profile's Location string, verbatim and nothing added; note remote/hybrid/on-site posture if relevant>\n\n" +
+          "**Location:** <the candidate location for the final **Location:** line, verbatim; include city and state when available; no ZIP>\n\n" +
           `Let me know if you'd like to set up an interview with [her/him] ${timingPhrase}.\n\n` +
           "Rules:\n" +
           "- Replace [She/He] and [her/him] with the correct pronouns; infer from the candidate's name if possible, otherwise use 'them/they'.\n" +
+          `- The opening greeting MUST be exactly: ${greetingLine}\n` +
           `- The closing line's timing phrase is '${timingPhrase}'. Use it exactly. Do not substitute 'this week' or any other timing wording.\n` +
-          "- Anywhere you mention where the candidate is based, including the About paragraph, use the Location string from the candidate profile verbatim. NEVER append a state, ZIP code, country, or metro area to it, and never pull a fuller address out of the resume or notes. If the Location string says 'Dayton', the email says 'Dayton'.\n" +
+          `- In the About paragraph and all other narrative/body copy, mention the candidate location as city only: ${clientLocation || "—"}. Do not add a state, ZIP code, country, or metro area there.\n` +
+          `- In the **Location:** line, use exactly this value: ${clientLocationLine || clientLocation || "—"}. This is the only place the candidate state belongs, and it must never include a ZIP code.\n` +
           NO_EDITORIALIZING_RULES +
           "- Keep the `**…**` bold wrappers on the section headers, the `**Comp Target:**` and `**Location:**` labels, and the `**About [Name]:**` header. Do not bold body copy.\n" +
           "- Dash bullets ('- ') only; never '•', '*', or numbered lists.\n" +
@@ -1303,7 +1393,11 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
   // conversion on send. stripMarkdownToPlain would flatten them. Strip any
   // stray closing sign-off so the recruiter's real signature isn't doubled
   // when withSignature appends it at send time.
-  return stripTrailingSignOff(text);
+  return forceSubmittalLocationPresentation(
+    forceOpeningGreeting(stripTrailingSignOff(text), greetingLine),
+    clientLocation,
+    clientLocationLine,
+  );
 }
 
 // Generates the anonymous candidate-facing client blurb — the

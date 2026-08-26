@@ -43,7 +43,12 @@ export type EmailDraft = {
   sendCandidateConfirmation?: boolean;
 };
 
-export type GenerateOptions = { instructions: string };
+export type GenerateRecipient = { name: string; email: string };
+
+export type GenerateOptions = {
+  instructions: string;
+  toRecipients: GenerateRecipient[];
+};
 
 export type ResolveTemplateFn = (template: ActiveTemplateSummary) => Promise<{ subject: string; body: string }> | { subject: string; body: string };
 
@@ -582,6 +587,33 @@ export function EmailComposer({
       .filter(Boolean);
   }
 
+  function emailKey(raw: string): string {
+    const match = raw.match(/<([^<>\s@]+@[^<>\s]+)>/);
+    return (match?.[1] ?? raw).trim().toLowerCase();
+  }
+
+  function displayNameFromAddress(raw: string): string {
+    const match = raw.match(/^\s*"?([^"<]+?)"?\s*<[^<>]+>\s*$/);
+    return match?.[1]?.trim() ?? "";
+  }
+
+  function toRecipientDetails(emails: string[]): GenerateRecipient[] {
+    const lookup = new Map<string, ContactOption>();
+    for (const option of [...(toOptions ?? []), ...(recipientOptions ?? [])]) {
+      const key = emailKey(option.email);
+      if (!key || lookup.has(key)) continue;
+      lookup.set(key, option);
+    }
+    return emails.map((raw) => {
+      const key = emailKey(raw);
+      const option = lookup.get(key);
+      return {
+        email: key || raw.trim(),
+        name: option?.name?.trim() || displayNameFromAddress(raw),
+      };
+    });
+  }
+
   function draftValue(): EmailDraft {
     return {
       to: parseList(to),
@@ -691,8 +723,10 @@ export function EmailComposer({
     setErr(null);
     startGenerate(async () => {
       try {
-        const text = await onGenerate(draftValue(), {
+        const currentDraft = draftValue();
+        const text = await onGenerate(currentDraft, {
           instructions: generateInstructions.trim(),
+          toRecipients: toRecipientDetails(currentDraft.to),
         });
         // Defensive — reject anything that isn't a clean string. If a server
         // action got middleware-redirected to a sign-in/error HTML response,
