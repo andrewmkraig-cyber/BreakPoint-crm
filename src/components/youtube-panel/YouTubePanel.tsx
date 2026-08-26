@@ -77,6 +77,10 @@ const DOCK_W = 320;
 const DOCK_H = 52;
 const DOCK_EDGE_GAP = 24;
 const YT_API_SRC = "https://www.youtube.com/iframe_api";
+// YT.PlayerState.ENDED. Hard-coded rather than read off window.YT so the
+// autoplay-next check doesn't depend on the API object being hot at the
+// moment the event fires.
+const YT_STATE_ENDED = 0;
 // 15-second skip increment per the recruiter's spec — matches the
 // jump-back arrow on Apple's iOS player and most podcast apps.
 const SEEK_DELTA = 15;
@@ -105,7 +109,11 @@ declare global {
         opts: {
           videoId?: string;
           playerVars?: Record<string, string | number>;
-          events?: { onReady?: () => void; onStateChange?: () => void };
+          events?: {
+            onReady?: () => void;
+            // `data` is the YT.PlayerState enum value (0 = ENDED).
+            onStateChange?: (e: { data: number }) => void;
+          };
         },
       ) => YTPlayer;
     };
@@ -176,6 +184,12 @@ export function YouTubePanel() {
   // user switches videos while YT.js is still loading — bootPlayer
   // reads from this ref instead so it always plays the right video.
   const activeVideoIdRef = useRef<string | null>(null);
+  // Autoplay queue. Mirrors whichever list the recruiter played from —
+  // a channel's uploads when a channel is open, otherwise the search
+  // results. Lives in a ref because the ENDED handler is registered
+  // once when the player boots and would otherwise close over the
+  // first render's empty array forever.
+  const playQueueRef = useRef<VideoResult[]>([]);
   // Re-entry mutex for backToSearch. The state-based check inside
   // backToSearch closes over the captured activeVideoId from the
   // render that built it, so a doubled invocation in the same tick
@@ -205,6 +219,13 @@ export function YouTubePanel() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Keep the autoplay queue pointed at the list currently on screen.
+  // Channel view wins when it's open because that's the list the
+  // recruiter clicked into.
+  useEffect(() => {
+    playQueueRef.current = channelView ? channelView.videos : videoResults;
+  }, [channelView, videoResults]);
 
   // YouTube player lifecycle. Boots the player ONCE on first play
   // (lazy — YT.js may still be loading), reuses the same player for
@@ -291,6 +312,35 @@ export function YouTubePanel() {
                 const r = playerRef.current?.getPlaybackRate() ?? 1;
                 setPlaybackRate(r);
               } catch {}
+            },
+            // Autoplay-next. Without this the panel went silent the
+            // moment a video ended (rel=0 also suppresses YouTube's
+            // own end-screen suggestions), so playback stopped dead
+            // instead of continuing down the search.
+            //
+            // Deliberately NOT guarded on `cancelled`: this effect's
+            // cleanup flips that flag on the very first video switch,
+            // which would kill autoplay for the rest of the session.
+            // The activeVideoIdRef check below is the real guard — it
+            // reads live state, so a recruiter who has already gone
+            // back to the search list never gets yanked into a video.
+            onStateChange: (e) => {
+              if (e?.data !== YT_STATE_ENDED) return;
+              const currentId = activeVideoIdRef.current;
+              if (!currentId) return;
+              const queue = playQueueRef.current;
+              const idx = queue.findIndex((v) => v.videoId === currentId);
+              // -1 means the playing video isn't in the visible list
+              // anymore (the recruiter reran the search while it
+              // played) — nothing sensible to advance to, so stop.
+              if (idx === -1) return;
+              const next = queue[idx + 1];
+              // End of the loaded list. Stops rather than looping;
+              // "View more" pulls the next page if they want more.
+              if (!next) return;
+              setActiveVideoId(next.videoId);
+              setActiveVideoTitle(next.title);
+              setActiveVideoDurationLabel(next.durationLabel ?? null);
             },
           },
         });
