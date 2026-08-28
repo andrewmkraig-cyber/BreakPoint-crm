@@ -499,7 +499,17 @@ export async function getRfContactsForOrg(): Promise<RFContactWithAce[]> {
   // than the legacy numeric client_company_id pathway.
   const rows = await prisma.contact.findMany({
     where: { organizationId: org.id },
-    select: { id: true, legacyRfId: true, raw: true, firstName: true, lastName: true, emails: true, clientId: true, currentDesignation: true },
+    select: {
+      id: true,
+      legacyRfId: true,
+      raw: true,
+      firstName: true,
+      lastName: true,
+      name: true,
+      emails: true,
+      clientId: true,
+      currentDesignation: true,
+    },
   });
   // Look up each contact's Client row so we can populate
   // client_company_id (legacy numeric path) for RF-imported clients
@@ -530,14 +540,37 @@ export async function getRfContactsForOrg(): Promise<RFContactWithAce[]> {
     // never collide.
     const numericId = r.legacyRfId != null ? r.legacyRfId : syntheticIdFromCuid(r.id);
     const aceClientId = r.clientId ?? undefined;
+    const clientRfId = r.clientId ? clientIdToLegacyRf.get(r.clientId) ?? null : null;
+    const columnName = [r.firstName, r.lastName]
+      .map((p) => (p ?? "").trim())
+      .filter(Boolean)
+      .join(" ");
+    const currentName = columnName || r.name || "(unnamed)";
+    const currentEmail = r.emails && r.emails.length > 0 ? r.emails : null;
     const raw = r.raw as RFContact | null;
     if (raw && typeof raw === "object") {
+      const currentFirstName = r.firstName;
+      const currentLastName = r.lastName;
+      const rawColumnName = [currentFirstName, currentLastName]
+        .map((p) => (p ?? "").trim())
+        .filter(Boolean)
+        .join(" ");
+      const currentRawName = rawColumnName || r.name || raw.name || "(unnamed)";
       // RF-imported with payload — preserve the raw shape and stamp the
       // identity + cuid fields on top so downstream cuid-matching
       // (local-profile clientContacts filter) works for RF clients too.
+      // Current Contact columns are the editable source of truth, so they
+      // must override the stale imported RF JSON after a recruiter renames
+      // a contact in Ace.
       out.push({
         ...raw,
         id: numericId,
+        first_name: currentFirstName,
+        last_name: currentLastName,
+        name: currentRawName,
+        email: currentEmail,
+        current_designation: r.currentDesignation,
+        client_company_id: clientRfId,
         _aceContactId: r.id,
         _aceClientId: aceClientId,
       });
@@ -545,11 +578,11 @@ export async function getRfContactsForOrg(): Promise<RFContactWithAce[]> {
     }
     // Fallback shape — either an RF row whose raw payload was lost or
     // any Ace-native row (raw is always null there).
-    const clientRfId = r.clientId ? clientIdToLegacyRf.get(r.clientId) ?? null : null;
     out.push({
       id: numericId,
       first_name: r.firstName,
       last_name: r.lastName,
+      name: currentName,
       email: r.emails && r.emails.length > 0 ? r.emails : null,
       current_designation: r.currentDesignation,
       client_company_id: clientRfId,
