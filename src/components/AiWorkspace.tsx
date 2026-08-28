@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useComposerManager } from "@/lib/composer-manager";
 import { GAME_PLAN_USER_MESSAGE_MAX_CHARS } from "@/lib/game-plan-limits";
+import { uploadFileInChunks } from "@/lib/chunked-upload";
 
 // Per-entity AI chat surface. Drops onto a client or candidate detail page
 // as a standalone card: loads its own history from /api/ai-workspace,
@@ -103,11 +104,14 @@ export type CandidateGamePlanJobOption = {
 type CandidateQuickAction = "call-prep" | "rank";
 
 type ImageAttachmentMediaType = "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+type DocxAttachmentMediaType =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+type WorkspaceAttachmentKind = "image" | "pdf" | "docx";
 type WorkspaceAttachmentBase = {
   id: string;
+  uploadId: string;
   name: string;
   size: number;
-  data: string;
 };
 type WorkspaceAttachment =
   | (WorkspaceAttachmentBase & {
@@ -118,7 +122,15 @@ type WorkspaceAttachment =
   | (WorkspaceAttachmentBase & {
       kind: "pdf";
       mediaType: "application/pdf";
+    })
+  | (WorkspaceAttachmentBase & {
+      kind: "docx";
+      mediaType: DocxAttachmentMediaType;
     });
+type WorkspaceAttachmentMeta =
+  | { kind: "image"; mediaType: ImageAttachmentMediaType }
+  | { kind: "pdf"; mediaType: "application/pdf" }
+  | { kind: "docx"; mediaType: DocxAttachmentMediaType };
 
 const TEMP_ID_PREFIX = "local-";
 const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
@@ -129,6 +141,8 @@ const SUPPORTED_IMAGE_MIME = new Set<ImageAttachmentMediaType>([
   "image/gif",
   "image/webp",
 ]);
+const DOCX_MIME =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const CANDIDATE_CALL_PREP_PROMPT =
   "Help me prep for a call with this candidate. Explain the company and opportunity simply, identify the most likely motivators or concerns, and give me 2-3 questions to ask.";
 const CANDIDATE_RANK_PROMPT =
@@ -163,18 +177,28 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
 }
 
-function attachmentMediaType(file: File): WorkspaceAttachment["mediaType"] | null {
+function attachmentMeta(file: File): WorkspaceAttachmentMeta | null {
   if (SUPPORTED_IMAGE_MIME.has(file.type as ImageAttachmentMediaType)) {
-    return file.type as ImageAttachmentMediaType;
+    return { kind: "image", mediaType: file.type as ImageAttachmentMediaType };
   }
-  if (file.type === "application/pdf") return "application/pdf";
+  if (file.type === "application/pdf") return { kind: "pdf", mediaType: "application/pdf" };
+  if (file.type === DOCX_MIME) return { kind: "docx", mediaType: DOCX_MIME };
   const lower = file.name.toLowerCase();
-  if (lower.endsWith(".png")) return "image/png";
-  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-  if (lower.endsWith(".gif")) return "image/gif";
-  if (lower.endsWith(".webp")) return "image/webp";
-  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".png")) return { kind: "image", mediaType: "image/png" };
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+    return { kind: "image", mediaType: "image/jpeg" };
+  }
+  if (lower.endsWith(".gif")) return { kind: "image", mediaType: "image/gif" };
+  if (lower.endsWith(".webp")) return { kind: "image", mediaType: "image/webp" };
+  if (lower.endsWith(".pdf")) return { kind: "pdf", mediaType: "application/pdf" };
+  if (lower.endsWith(".docx")) return { kind: "docx", mediaType: DOCX_MIME };
   return null;
+}
+
+function attachmentKindLabel(kind: WorkspaceAttachmentKind): string {
+  if (kind === "image") return "screenshot";
+  if (kind === "pdf") return "PDF";
+  return "DOCX";
 }
 
 async function fileToBase64(file: File | Blob): Promise<string> {
@@ -191,10 +215,10 @@ async function fileToBase64(file: File | Blob): Promise<string> {
 }
 
 async function readWorkspaceAttachment(file: File): Promise<WorkspaceAttachment | null> {
-  const mediaType = attachmentMediaType(file);
-  if (!mediaType) {
+  const meta = attachmentMeta(file);
+  if (!meta) {
     toast.error(`${file.name || "Attachment"} is not a supported file`, {
-      description: "Drop a PNG, JPEG, GIF, WebP, or PDF file.",
+      description: "Drop a PNG, JPEG, GIF, WebP, PDF, or DOCX file.",
     });
     return null;
   }
@@ -204,32 +228,45 @@ async function readWorkspaceAttachment(file: File): Promise<WorkspaceAttachment 
     });
     return null;
   }
-  const data = await fileToBase64(file);
-  if (mediaType === "application/pdf") {
+  const [upload, previewData] = await Promise.all([
+    uploadFileInChunks(file, "/api/uploads/ai-workspace-attachment"),
+    meta.kind === "image" ? fileToBase64(file) : Promise.resolve(""),
+  ]);
+  if (meta.kind === "pdf") {
     return {
       id: attachmentId(),
+      uploadId: upload.id,
       kind: "pdf",
       name: file.name || "document.pdf",
       size: file.size,
-      data,
-      mediaType,
+      mediaType: meta.mediaType,
+    };
+  }
+  if (meta.kind === "docx") {
+    return {
+      id: attachmentId(),
+      uploadId: upload.id,
+      kind: "docx",
+      name: file.name || "document.docx",
+      size: file.size,
+      mediaType: meta.mediaType,
     };
   }
   return {
     id: attachmentId(),
+    uploadId: upload.id,
     kind: "image",
     name: file.name || "screenshot.png",
     size: file.size,
-    data,
-    mediaType,
-    previewUrl: `data:${mediaType};base64,${data}`,
+    mediaType: meta.mediaType,
+    previewUrl: `data:${meta.mediaType};base64,${previewData}`,
   };
 }
 
 function attachmentMarker(attachments: WorkspaceAttachment[]): string {
   if (attachments.length === 0) return "";
   return attachments
-    .map((a) => `[Attached ${a.kind === "pdf" ? "PDF" : "screenshot"}: ${a.name}]`)
+    .map((a) => `[Attached ${attachmentKindLabel(a.kind)}: ${a.name}]`)
     .join("\n");
 }
 
@@ -265,6 +302,7 @@ export function AiWorkspace({
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<WorkspaceAttachment[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -375,36 +413,47 @@ export function AiWorkspace({
   const addFiles = useCallback(
     async (files: File[]) => {
       if (files.length === 0) return;
+      setAttachmentUploading(true);
       const currentBytes = attachments.reduce((sum, a) => sum + a.size, 0);
       let nextBytes = currentBytes;
       const next: WorkspaceAttachment[] = [];
-      for (const file of files) {
-        if (!attachmentMediaType(file)) {
-          toast.error(`${file.name || "Attachment"} is not a supported file`, {
-            description: "Game Plan can read PNG, JPEG, GIF, WebP, or PDF files.",
-          });
-          continue;
+      try {
+        for (const file of files) {
+          if (!attachmentMeta(file)) {
+            toast.error(`${file.name || "Attachment"} is not a supported file`, {
+              description: "Game Plan can read PNG, JPEG, GIF, WebP, PDF, or DOCX files.",
+            });
+            continue;
+          }
+          if (nextBytes + file.size > ATTACHMENT_TOTAL_MAX_BYTES) {
+            toast.error("Too many attachments", {
+              description: `Keep the total under ${formatFileSize(ATTACHMENT_TOTAL_MAX_BYTES)} per message.`,
+            });
+            break;
+          }
+          try {
+            const attachment = await readWorkspaceAttachment(file);
+            if (attachment) {
+              nextBytes += attachment.size;
+              next.push(attachment);
+            }
+          } catch (err) {
+            toast.error(`Couldn't attach ${file.name || "file"}`, {
+              description: err instanceof Error ? err.message : "Upload failed.",
+            });
+          }
         }
-        if (nextBytes + file.size > ATTACHMENT_TOTAL_MAX_BYTES) {
-          toast.error("Too many attachments", {
-            description: `Keep the total under ${formatFileSize(ATTACHMENT_TOTAL_MAX_BYTES)} per message.`,
-          });
-          break;
-        }
-        const attachment = await readWorkspaceAttachment(file);
-        if (attachment) {
-          nextBytes += attachment.size;
-          next.push(attachment);
-        }
+        if (next.length > 0) setAttachments((prev) => [...prev, ...next]);
+      } finally {
+        setAttachmentUploading(false);
       }
-      if (next.length > 0) setAttachments((prev) => [...prev, ...next]);
     },
     [attachments],
   );
 
   async function onSend(promptOverride?: string) {
     const text = (promptOverride ?? input).trim();
-    if ((!text && attachments.length === 0) || sending) return;
+    if ((!text && attachments.length === 0) || sending || attachmentUploading) return;
 
     setErrorText(null);
     setSending(true);
@@ -448,10 +497,10 @@ export function AiWorkspace({
           userMessage: outboundText,
           attachments: outboundAttachments.map((a) => ({
             id: a.id,
+            uploadId: a.uploadId,
             kind: a.kind,
             name: a.name,
             size: a.size,
-            data: a.data,
             mediaType: a.mediaType,
           })),
         }),
@@ -580,6 +629,17 @@ export function AiWorkspace({
     );
   }
 
+  function onRemoveAttachment(attachment: WorkspaceAttachment) {
+    setAttachments((prev) => prev.filter((a) => a.id !== attachment.id));
+    void fetch("/api/uploads/ai-workspace-attachment", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: attachment.uploadId }),
+    }).catch(() => {
+      // Best-effort cleanup; stale staging rows are harmless.
+    });
+  }
+
   async function onGenerateInterviewPrepDraft() {
     if (entityType !== "candidate" || !selectedInterviewPrep || interviewPrepGenerating) return;
     await generateInterviewPrepDraft(
@@ -690,7 +750,7 @@ export function AiWorkspace({
 
   const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     if (sending) return;
-    const files = Array.from(e.clipboardData.files).filter((file) => Boolean(attachmentMediaType(file)));
+    const files = Array.from(e.clipboardData.files).filter((file) => Boolean(attachmentMeta(file)));
     if (files.length > 0) {
       e.preventDefault();
       void addFiles(files);
@@ -923,7 +983,7 @@ export function AiWorkspace({
       <div className="shrink-0 border-t border-court-border bg-white p-4 pb-6 dark:bg-court-surface">
         {dragging && (
           <div className="mb-3 rounded-lg border border-dashed border-brand bg-brand/10 px-3 py-2 text-sm font-medium text-court-fg">
-            Drop a screenshot or PDF here and I’ll read it with this {emptyLabel} context.
+            Drop a screenshot, PDF, or DOCX here and I’ll read it with this {emptyLabel} context.
           </div>
         )}
         {attachments.length > 0 && (
@@ -953,7 +1013,7 @@ export function AiWorkspace({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => setAttachments((prev) => prev.filter((a) => a.id !== attachment.id))}
+                  onClick={() => onRemoveAttachment(attachment)}
                   className="h-7 w-7 shrink-0 rounded p-0 text-court-fg-muted hover:bg-court-border/50 hover:text-red-600"
                   aria-label={`Remove ${attachment.name}`}
                 >
@@ -971,8 +1031,8 @@ export function AiWorkspace({
             onPaste={onPaste}
             maxLength={GAME_PLAN_USER_MESSAGE_MAX_CHARS}
             rows={rows}
-            placeholder={`Ask anything about this ${emptyLabel}… or drop/paste a screenshot or PDF`}
-            disabled={sending}
+            placeholder={`Ask anything about this ${emptyLabel}… or drop/paste a screenshot, PDF, or DOCX`}
+            disabled={sending || attachmentUploading}
             className={cn(
               "flex-1 resize-none rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
               "focus:border-brand focus:bg-court-surface focus:outline-none focus:ring-2 focus:ring-brand/20",
@@ -983,12 +1043,16 @@ export function AiWorkspace({
             type="button"
             size="md"
             onClick={() => void onSend()}
-            disabled={(!input.trim() && attachments.length === 0) || sending}
+            disabled={
+              (!input.trim() && attachments.length === 0) ||
+              sending ||
+              attachmentUploading
+            }
           >
-            {sending ? (
+            {sending || attachmentUploading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : attachments.length > 0 && !input.trim() ? (
-              attachments.some((a) => a.kind === "pdf") ? (
+              attachments.some((a) => a.kind === "pdf" || a.kind === "docx") ? (
                 <FileText className="h-4 w-4" />
               ) : (
                 <ImageIcon className="h-4 w-4" />

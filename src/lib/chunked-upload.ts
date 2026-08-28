@@ -19,6 +19,10 @@ export type ChunkUploadResult = {
 
 function inferMimeType(filename: string): string | null {
   const lower = filename.toLowerCase();
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".webp")) return "image/webp";
   if (lower.endsWith(".pdf")) return "application/pdf";
   if (lower.endsWith(".docx")) {
     return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -52,6 +56,11 @@ export async function uploadFileInChunks(
     const slice = file.slice(start, end);
     const buffer = await slice.arrayBuffer();
     const dataBase64 = arrayBufferToBase64(buffer);
+    const inferredMimeType = inferMimeType(file.name);
+    const mimeType =
+      file.type && file.type !== "application/octet-stream"
+        ? file.type
+        : inferredMimeType || file.type || "application/octet-stream";
 
     const isFirst = i === 0;
     const isLast = i === totalChunks - 1;
@@ -60,7 +69,7 @@ export async function uploadFileInChunks(
       ...(isFirst
         ? {
             filename: file.name,
-            mimeType: file.type || inferMimeType(file.name) || "application/octet-stream",
+            mimeType,
             size: file.size,
           }
         : { id: recordId }),
