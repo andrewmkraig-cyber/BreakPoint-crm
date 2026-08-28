@@ -23,8 +23,21 @@ import { renderNewReplyToast, type NewReplyEvent } from "@/components/reply-noti
 //
 // Confirmed auto-replies never appear here at all - the route filters
 // them out server-side, so they can neither toast nor reach the badge.
+//
+// One thing here DOES cost an Instantly call: the focus handler below.
+// Reading a thread in Instantly clears the Ace badge, and the cron that
+// notices bounds that at 5 minutes - which is too slow for the case that
+// actually happens, tabbing straight back to Ace from Instantly. So
+// regaining focus asks the server to reconcile once. Both sides throttle
+// it: this file at FOCUS_SYNC_MIN_INTERVAL_MS per tab, and the route
+// itself in the database, which is the guard that actually holds when
+// two Ace tabs are open.
 
 const POLL_INTERVAL_MS = 15_000;
+
+// Slightly above the route's own 45s floor, so the common case is a
+// no-op here rather than a wasted round trip that comes back throttled.
+const FOCUS_SYNC_MIN_INTERVAL_MS = 60_000;
 
 type Summary = {
   // null = the server could not determine the count this tick. Keep the
@@ -50,6 +63,7 @@ export function CampaignsProvider({ children }: { children: ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const inFlight = useRef(false);
   const seenIds = useRef<Set<string> | null>(null);
+  const lastFocusSync = useRef(0);
 
   const fetchSummary = useCallback(async (): Promise<Summary | null> => {
     if (inFlight.current) return null;
@@ -103,6 +117,23 @@ export function CampaignsProvider({ children }: { children: ReactNode }) {
     }).catch(() => {});
   }, []);
 
+  // Ask the server to reconcile Ace's unread state against Instantly's,
+  // then re-read the badge. Fire-and-forget: if the reconcile fails or
+  // comes back throttled, the badge just keeps its current value until
+  // the cron catches it.
+  const syncReadFromInstantly = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastFocusSync.current < FOCUS_SYNC_MIN_INTERVAL_MS) return;
+    lastFocusSync.current = now;
+    try {
+      await fetch("/api/instantly/replies/sync-read", { method: "POST" });
+    } catch {
+      // Offline or mid-deploy. Nothing to show the user - the badge is
+      // unchanged and the next focus or the cron retries.
+    }
+    await refreshUnread();
+  }, [refreshUnread]);
+
   useEffect(() => {
     void refreshUnread();
     const id = window.setInterval(() => {
@@ -110,6 +141,22 @@ export function CampaignsProvider({ children }: { children: ReactNode }) {
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(id);
   }, [refreshUnread]);
+
+  // Coming back to the tab is the signal that you may have just been in
+  // Instantly. `visibilitychange` covers the tab switch; `focus` covers
+  // switching back to the browser window itself.
+  useEffect(() => {
+    function onReturn() {
+      if (document.visibilityState !== "visible") return;
+      void syncReadFromInstantly();
+    }
+    document.addEventListener("visibilitychange", onReturn);
+    window.addEventListener("focus", onReturn);
+    return () => {
+      document.removeEventListener("visibilitychange", onReturn);
+      window.removeEventListener("focus", onReturn);
+    };
+  }, [syncReadFromInstantly]);
 
   return (
     <CampaignsContext.Provider value={{ unreadCount, refreshUnread, markReplyRead }}>

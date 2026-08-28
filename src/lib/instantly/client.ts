@@ -7,6 +7,7 @@ import {
 } from "@/lib/instantly/errors";
 import {
   normalizeReply,
+  toBool,
   toTriBool,
   type InstantlyAnalyticsOverview,
   type InstantlyCampaign,
@@ -621,6 +622,94 @@ export async function listReplies(opts?: {
   // Call enrichAutoReplyFlags() on the rows you intend to show, then
   // filter. `includeAutoReplies` is honored there, not here.
   return out;
+}
+
+// ---------------------------------------------------------------------
+// Unread snapshot - the INBOUND half of read-state sync.
+//
+// The outbound half (Ace read -> Instantly read) lives in
+// mark-thread-read.ts. This is the other direction: what is STILL unread
+// in Instantly's Unibox right now, so Ace can clear a badge for a thread
+// you already dealt with over there.
+//
+// It is a plain GET /emails listing with `is_unread=true`, so it stays
+// inside the read-only guarantee. One call covers 100 unread threads.
+//
+// The two flags on the result exist because the caller INFERS "read"
+// from ABSENCE, and an absence is only meaningful when the listing is
+// trustworthy:
+//
+//   complete       - the listing reached its end inside maxPages. When
+//                    false the tail was never seen, so a missing row
+//                    proves nothing and the caller must not clear.
+//   filterHonored  - every returned row really did carry is_unread. If
+//                    Instantly ever stops honoring the filter, this goes
+//                    false and the listing degrades into "every received
+//                    email", which is a SUPERSET of unread - so nothing
+//                    gets wrongly cleared, it just stops clearing. The
+//                    flag exists so that silence is diagnosable rather
+//                    than mysterious.
+// ---------------------------------------------------------------------
+export type InstantlyUnreadSnapshot = {
+  /** Instantly email ids still unread. */
+  emailIds: Set<string>;
+  /** Threads with at least one unread email. Read state is thread-level. */
+  threadIds: Set<string>;
+  complete: boolean;
+  filterHonored: boolean;
+  since: string;
+  pages: number;
+  rows: number;
+};
+
+export async function fetchUnreadSnapshot(opts: {
+  since: string;
+  maxPages?: number;
+}): Promise<InstantlyUnreadSnapshot> {
+  const maxPages = Math.max(1, opts.maxPages ?? DEFAULT_MAX_PAGES);
+
+  const emailIds = new Set<string>();
+  const threadIds = new Set<string>();
+  let startingAfter: string | undefined;
+  let complete = false;
+  let filterHonored = true;
+  let pages = 0;
+  let rows = 0;
+
+  for (let page = 0; page < maxPages; page++) {
+    const res = await request<InstantlyList<InstantlyEmailRaw>>(
+      "/emails",
+      {
+        email_type: "received",
+        is_unread: true,
+        min_timestamp_created: opts.since,
+        sort_order: "desc",
+        limit: MAX_PAGE_SIZE,
+        starting_after: startingAfter,
+      },
+      { ttlMs: TTL_MS.emails, bucket: "emails" },
+    );
+    pages++;
+
+    const items = res.items ?? [];
+    rows += items.length;
+    for (const raw of items) {
+      // Read the flag off the row itself, not just the filter. A row
+      // that came back marked read means the filter was ignored.
+      if (!toBool(raw.is_unread)) filterHonored = false;
+      emailIds.add(raw.id);
+      if (raw.thread_id) threadIds.add(raw.thread_id);
+    }
+
+    const next = res.next_starting_after;
+    if (!next || items.length === 0) {
+      complete = true;
+      break;
+    }
+    startingAfter = next;
+  }
+
+  return { emailIds, threadIds, complete, filterHonored, since: opts.since, pages, rows };
 }
 
 /**

@@ -14,6 +14,10 @@ import {
 import { getInstantlyPrefs } from "@/lib/instantly/prefs";
 import { buildOwnIdentity, isOwnSender } from "@/lib/instantly/identity";
 import { markInstantlyThreadRead } from "@/lib/instantly/mark-thread-read";
+import {
+  syncReadFromInstantly,
+  type InboundReadSyncResult,
+} from "@/lib/instantly/inbound-read-sync";
 import { InstantlyError } from "@/lib/instantly/errors";
 
 // =====================================================================
@@ -107,6 +111,8 @@ export type PollResult = {
   gaveUp?: number;
   readSynced?: number;
   readSyncPending?: number;
+  /** Instantly -> Ace read sync. Runs on every tick, interval or not. */
+  inboundRead?: InboundReadSyncResult;
   notifiable?: number;
   budgetGranted?: number;
   budgetReason?: string;
@@ -156,6 +162,21 @@ export async function runInstantlyPoll(opts?: {
   const state = await getPollState();
   const now = Date.now();
 
+  const orgId = await resolvePollOrgId();
+  if (!orgId) return { ok: false, error: "No organization to attribute replies to." };
+
+  // Instantly -> Ace read sync, BEFORE the interval gate on purpose.
+  //
+  // Clearing a badge you already cleared in Instantly should not wait on
+  // a 30-minute reply-poll setting: that interval exists to ration the
+  // /emails budget against fetching replies, and this costs zero calls
+  // whenever nothing is unread locally (the overwhelming common case)
+  // and exactly one when something is. So it runs every cron tick, which
+  // makes 5 minutes the worst-case lag regardless of the interval.
+  const inboundRead = prefs.clearReadFromInstantly
+    ? await syncReadFromInstantly(orgId)
+    : undefined;
+
   // Vercel cron schedules are static, so the configurable interval is
   // enforced HERE: the cron fires every 5 minutes and we no-op until the
   // chosen interval has actually elapsed. This can only make polling
@@ -165,12 +186,9 @@ export async function runInstantlyPoll(opts?: {
     const wanted = prefs.pollIntervalMinutes * 60_000;
     // 30s of slack so a cron firing a hair early doesn't skip a slot.
     if (elapsed < wanted - 30_000) {
-      return { ok: true, skipped: "interval" };
+      return { ok: true, skipped: "interval", inboundRead };
     }
   }
-
-  const orgId = await resolvePollOrgId();
-  if (!orgId) return { ok: false, error: "No organization to attribute replies to." };
 
   // Window: from the last successful poll (minus overlap), clamped to
   // MAX_LOOKBACK so a multi-day outage backfills a bounded amount.
@@ -345,6 +363,7 @@ export async function runInstantlyPoll(opts?: {
       gaveUp: gaveUpResult.count,
       readSynced: readSynced.synced,
       readSyncPending: readSynced.pending,
+      inboundRead,
       notifiable,
       budgetGranted: grant.granted,
       budgetReason: grant.reason,

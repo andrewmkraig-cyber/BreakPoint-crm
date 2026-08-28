@@ -53,6 +53,14 @@ export function InstantlyNotificationsView({ initial }: { initial: InstantlyPref
         disabled={isPending && pendingKey === "notify"}
       />
 
+      <ToggleRow
+        label="Clear when I read it in Instantly"
+        description="Reads the thread in Instantly and the Ace badge clears itself, so you don't have to dismiss the same reply twice. Ace already works the other way round: reading it here marks it read there."
+        checked={prefs.clearReadFromInstantly}
+        onChange={(next) => save({ clearReadFromInstantly: next }, "clearRead")}
+        disabled={isPending && pendingKey === "clearRead"}
+      />
+
       <div className="border-t border-court-border pt-3">
         {/* Same segmented control the notification duration / stack
             settings use, reused rather than reimplemented. */}

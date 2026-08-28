@@ -17,12 +17,20 @@ export type InstantlyPrefs = {
   pollingEnabled: boolean;
   /** Fire an in-app toast when a genuine reply lands. */
   replyNotificationsEnabled: boolean;
+  /**
+   * Clear an Ace notification when the same thread is read in Instantly.
+   * The return leg of the read mirror - Ace already pushes its own reads
+   * outward, this brings Instantly's reads back in so the badge follows
+   * whichever inbox you actually cleared from.
+   */
+  clearReadFromInstantly: boolean;
   pollIntervalMinutes: number;
 };
 
 export const DEFAULT_INSTANTLY_PREFS: InstantlyPrefs = {
   pollingEnabled: true,
   replyNotificationsEnabled: true,
+  clearReadFromInstantly: true,
   pollIntervalMinutes: 5,
 };
 
@@ -46,6 +54,10 @@ export async function getInstantlyPrefs(): Promise<InstantlyPrefs> {
       typeof raw.replyNotificationsEnabled === "boolean"
         ? raw.replyNotificationsEnabled
         : DEFAULT_INSTANTLY_PREFS.replyNotificationsEnabled,
+    clearReadFromInstantly:
+      typeof raw.clearReadFromInstantly === "boolean"
+        ? raw.clearReadFromInstantly
+        : DEFAULT_INSTANTLY_PREFS.clearReadFromInstantly,
     pollIntervalMinutes: normalizeInterval(raw.pollIntervalMinutes),
   };
 }
@@ -63,6 +75,10 @@ export async function updateInstantlyPrefs(
       typeof patch.replyNotificationsEnabled === "boolean"
         ? patch.replyNotificationsEnabled
         : current.replyNotificationsEnabled,
+    clearReadFromInstantly:
+      typeof patch.clearReadFromInstantly === "boolean"
+        ? patch.clearReadFromInstantly
+        : current.clearReadFromInstantly,
     pollIntervalMinutes:
       patch.pollIntervalMinutes != null
         ? normalizeInterval(patch.pollIntervalMinutes)
