@@ -532,14 +532,35 @@ export function AiWorkspace({
     }
   }
 
-  async function onToggleInterviewPrep() {
+  async function onInterviewPrepClick() {
     if (interviewPrepOpen) {
       setInterviewPrepOpen(false);
       return;
     }
-    setInterviewPrepOpen(true);
     try {
-      await loadInterviewPrepData();
+      const data = await loadInterviewPrepData();
+      if (!data) return;
+      if (data.interviews.length === 0) {
+        setInterviewPrepOpen(true);
+        toast.warning("No scheduled interviews found", {
+          description: "Schedule an interview first, then I can draft the prep email.",
+        });
+        return;
+      }
+
+      if (data.interviews.length > 1 && !interviewPrepInterviewId) {
+        setInterviewPrepOpen(true);
+        return;
+      }
+
+      const interview =
+        data.interviews.find((item) => item.id === interviewPrepInterviewId) ??
+        data.interviews[0];
+      const contactKeys =
+        interview.id === interviewPrepInterviewId
+          ? interviewPrepContactKeys
+          : interview.defaultContactKeys;
+      await generateInterviewPrepDraft(interview, contactKeys, data);
     } catch (err) {
       toast.error("Couldn't load interview prep", {
         description: err instanceof Error ? err.message : "unknown error",
@@ -561,7 +582,18 @@ export function AiWorkspace({
 
   async function onGenerateInterviewPrepDraft() {
     if (entityType !== "candidate" || !selectedInterviewPrep || interviewPrepGenerating) return;
+    await generateInterviewPrepDraft(
+      selectedInterviewPrep,
+      interviewPrepContactKeys,
+      interviewPrepData,
+    );
+  }
 
+  async function generateInterviewPrepDraft(
+    interview: InterviewPrepInterview,
+    contactKeys: string[],
+    data: InterviewPrepData | null,
+  ) {
     setInterviewPrepGenerating(true);
     try {
       const [initRes, draftRes] = await Promise.all([
@@ -571,8 +603,8 @@ export function AiWorkspace({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             candidateId: entityId,
-            interviewId: selectedInterviewPrep.id,
-            contactKeys: interviewPrepContactKeys,
+            interviewId: interview.id,
+            contactKeys,
           }),
         }),
       ]);
@@ -590,7 +622,8 @@ export function AiWorkspace({
         templates: import("@/app/email/actions").ActiveTemplateSummary[];
         user: { firstName: string; fullName: string };
       };
-      const toEmail = recipientEmail ?? interviewPrepData?.candidate.email ?? "";
+      const toEmail =
+        recipientEmail ?? data?.candidate.email ?? interviewPrepData?.candidate.email ?? "";
       if (!toEmail) {
         toast.warning("Candidate has no email", {
           description: "The draft opened with a blank To field.",
@@ -763,12 +796,12 @@ export function AiWorkspace({
                 type="button"
                 variant="secondary"
                 size="sm"
-                onClick={() => void onToggleInterviewPrep()}
-                disabled={sending || interviewPrepGenerating}
+                onClick={() => void onInterviewPrepClick()}
+                disabled={sending || interviewPrepLoading || interviewPrepGenerating}
                 className="h-7 gap-1 px-2 py-1 text-[11px] font-medium text-court-fg-muted hover:border-brand/60"
-                title="Generate an interview prep email draft"
+                title="Draft an interview prep email"
                 aria-expanded={interviewPrepOpen}
-                aria-label="Open Interview Prep"
+                aria-label="Draft Interview Prep Email"
               >
                 {interviewPrepGenerating || interviewPrepLoading ? (
                   <Loader2 className="h-3 w-3 animate-spin" />

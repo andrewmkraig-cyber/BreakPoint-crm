@@ -189,7 +189,8 @@ export async function POST(req: NextRequest) {
         {
           role: "user",
           content:
-            "Create an interview prep email draft from the context below.\n\n" +
+            "Create a send-ready interview prep email draft for the candidate. " +
+            "It must break down the company, the role, who they are interviewing with, and practical tips.\n\n" +
             interview.promptContext +
             "\n\nSELECTED INTERVIEWING TEAM:\n" +
             formatContactContext(selectedContacts),
@@ -501,9 +502,12 @@ function buildSystemPrompt(firstName: string): string {
     `{ "subject": string, "body": string }. ` +
     "Rules:\n" +
     `- The body must start with "Hi ${firstName || "there"}," followed by a blank line.\n` +
-    "- Include the interview date/time, duration, format, link/address when provided, company/opportunity summary, and the role details.\n" +
-    "- Include the selected interviewing team. If an interviewer has a LinkedIn URL, include it as a markdown link using that person's name, e.g. [Michael LinkedIn](https://...). If no LinkedIn is provided for someone, do not invent one and do not apologize.\n" +
-    "- Add practical interview tips and 2-4 tailored prep bullets based on the company, role, and interviewer titles.\n" +
+    "- Use these candidate-facing sections in this order: Interview Details, Company Breakdown, Role Breakdown, Interviewing With, Prep Tips.\n" +
+    "- Interview Details must include date/time, duration, format, link/address when provided, and any location details.\n" +
+    "- Company Breakdown must explain what the company does, relevant industry/size/context, and one candidate-safe reason the opportunity could matter. Use only the facts provided.\n" +
+    "- Role Breakdown must summarize the title, setup, location, compensation when provided, and 2-4 responsibilities or fit signals from the job description.\n" +
+    "- Interviewing With must name each selected interviewer and include title, email, and LinkedIn when provided. If an interviewer has a LinkedIn URL, include it as a markdown link using that person's name, e.g. [Michael LinkedIn](https://...). If no LinkedIn is provided for someone, do not invent one and do not apologize.\n" +
+    "- Prep Tips must include 3-5 practical, tailored bullets based on the company, role, interviewer titles, and candidate background.\n" +
     "- Keep it warm, simple, and sendable. The candidate should feel prepared without reading a novel.\n" +
     "- Never mention internal recruiter notes as internal notes. Use only candidate-safe facts.\n" +
     "- Never invent facts, people, LinkedIn links, addresses, compensation, or meeting links.\n" +
