@@ -17,6 +17,7 @@ import {
   Loader2,
   Mail,
   Minus,
+  Plus,
   Search,
   Send,
   SlidersHorizontal,
@@ -1821,6 +1822,24 @@ export default function CandidatesPage() {
                   className="h-3.5 w-3.5 text-court-fg-muted transition group-hover:text-court-accent-dark"
                   strokeWidth={2}
                 />
+              </Link>
+              {/* Mobile / tablet New Candidate action. The topbar's
+                  "+ New Candidate" chip (TopBarPageAction) is gated
+                  `hidden lg:block` in top-bar.tsx, so below lg there is
+                  no way to reach /candidates/new at all - the only other
+                  desktop entry point is the drag-and-drop resume target,
+                  which doesn't exist on touch. `lg:hidden` here mirrors
+                  that breakpoint exactly so the two affordances hand off
+                  and never both render. Brand-tint chip matches
+                  ACTION_BUTTON_CLASS in top-bar-page-title.tsx (create =
+                  brand, per the icon semantic-color rule) at the same
+                  px-3 py-1.5 as the Saved Lists pill beside it. */}
+              <Link
+                href="/candidates/new"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 lg:hidden"
+              >
+                <Plus className="h-3.5 w-3.5" strokeWidth={2.2} />
+                New Candidate
               </Link>
             </div>
           </div>

@@ -471,6 +471,41 @@ export function NewCandidateForm({
   const showFallbackBanner = parseSource === "fallback";
   const resumeName = resume?.name ?? stagedResumeName;
 
+  // Save is gated on:
+  //   - no pending save or parse
+  //   - IF an email was typed, its dup-check resolved cleanly
+  //     (not "duplicate" / "checking" / "idle")
+  // Email is optional - a blank email never blocks Save (the server stores
+  // it as null). The hard-gate recheck + format validation inside onSave is
+  // still the source of truth; this just prevents obvious UX dead-ends.
+  //
+  // Hoisted out of the JSX because the button renders TWICE: once in the
+  // "Candidate fields" card header (the only Save at lg+) and once as a
+  // full-width footer CTA that is lg:hidden. On a phone the two left-column
+  // cards (Resume, LinkedIn) stack ABOVE the fields card, so the header Save
+  // sits a long scroll back up once the recruiter has worked down the form.
+  // One gate expression, two render sites, so the two can never disagree.
+  const saveDisabled =
+    isSaving ||
+    isParsing ||
+    (form.email.trim().length > 0 && emailCheckStatus !== "clean");
+  const saveTitle =
+    emailCheckStatus === "duplicate"
+      ? "This candidate already exists in Ace"
+      : isParsing
+        ? "Wait for parsing to finish first"
+        : emailCheckStatus === "checking"
+          ? "Checking email…"
+          : emailCheckStatus === "idle" && form.email.trim()
+            ? "Tab out of the email field to run the duplicate check"
+            : undefined;
+  const saveLabel = isParsing ? "Waiting for parse…" : "Save";
+  const saveIcon = isSaving ? (
+    <Loader2 className="h-3 w-3 animate-spin" />
+  ) : (
+    <Save className="h-3 w-3" />
+  );
+
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
       {/* Left: inputs */}
@@ -479,7 +514,7 @@ export function NewCandidateForm({
           <div className="border-b border-court-border px-5 py-3">
             <h2 className="font-serif text-base font-semibold text-court-fg">Resume</h2>
             <p className="text-xs text-court-fg-muted">
-              Drop a PDF and we&apos;ll parse it automatically. If Claude is unavailable, a basic extractor fills in name / email / phone. Re-parse manually after editing the LinkedIn fields below.
+              Add a PDF and we&apos;ll parse it automatically. If Claude is unavailable, a basic extractor fills in name / email / phone. Re-parse manually after editing the LinkedIn fields below.
             </p>
           </div>
           <div className="p-5">
@@ -570,48 +605,27 @@ export function NewCandidateForm({
       {/* Right: editable fields */}
       <div className="lg:col-span-3">
         <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
-          <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
-            <div>
+          <div className="flex items-center justify-between gap-3 border-b border-court-border px-5 py-3">
+            <div className="min-w-0">
               <h2 className="font-serif text-base font-semibold text-court-fg">Candidate fields</h2>
               <p className="text-xs text-court-fg-muted">
                 {parseSource === "claude"
                   ? "Pre-filled by Claude. Review and edit before saving."
                   : parseSource === "fallback"
                     ? "Basic extraction only. Please review every field."
-                    : "Drop a resume on the left or fill these in manually."}
+                    : "Add a resume first or fill these in manually."}
               </p>
             </div>
             <Button
               type="button"
               size="sm"
               onClick={onSave}
-              // Save is gated on:
-              //   - no pending save or parse
-              //   - IF an email was typed, its dup-check resolved cleanly
-              //     (not "duplicate" / "checking" / "idle")
-              // Email is optional — a blank email never blocks Save (the
-              // server stores it as null). The hard-gate recheck + format
-              // validation inside onSave is still the source of truth; this
-              // just prevents obvious UX dead-ends.
-              disabled={
-                isSaving ||
-                isParsing ||
-                (form.email.trim().length > 0 && emailCheckStatus !== "clean")
-              }
-              title={
-                emailCheckStatus === "duplicate"
-                  ? "This candidate already exists in Ace"
-                  : isParsing
-                    ? "Wait for parsing to finish first"
-                    : emailCheckStatus === "checking"
-                      ? "Checking email…"
-                      : emailCheckStatus === "idle" && form.email.trim()
-                        ? "Tab out of the email field to run the duplicate check"
-                        : undefined
-              }
+              disabled={saveDisabled}
+              title={saveTitle}
+              className="shrink-0"
             >
-              {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              {isParsing ? "Waiting for parse…" : "Save"}
+              {saveIcon}
+              {saveLabel}
             </Button>
           </div>
 
@@ -791,6 +805,35 @@ export function NewCandidateForm({
               <div className="rounded-lg border border-red-200 bg-red-50 p-3">{saveError}</div>
             </div>
           )}
+          {/* Mobile / tablet footer Save. Below lg the left column (Resume +
+              LinkedIn) stacks above this card, so the header Save is a long
+              scroll away by the time the fields are filled in. lg:hidden so
+              desktop still has exactly one Save, in the card header. Full
+              width is the documented form-submit-CTA exception to the
+              no-full-width-buttons rule - this button submits the form it
+              sits at the bottom of. */}
+          <div className="border-t border-court-border px-5 py-4 lg:hidden">
+            <Button
+              type="button"
+              size="md"
+              onClick={onSave}
+              disabled={saveDisabled}
+              title={saveTitle}
+              className="w-full"
+            >
+              {saveIcon}
+              {saveLabel}
+            </Button>
+            {/* Touch has no hover, so the `title` tooltip that explains a
+                disabled Save on desktop is invisible on a phone - the
+                recruiter would just see a dead button. Render the same
+                reason string inline instead. */}
+            {saveDisabled && saveTitle && (
+              <p className="mt-2 text-center text-[11px] text-court-fg-muted">
+                {saveTitle}
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>
