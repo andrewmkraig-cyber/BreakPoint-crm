@@ -21,6 +21,7 @@ import {
   Search,
   Send,
   SlidersHorizontal,
+  Upload,
   X,
 } from "lucide-react";
 import {
@@ -465,6 +466,14 @@ function hasAnyFilter(f: Filters): boolean {
   );
 }
 
+// `accept` for the tap-to-browse file input. Mirrors isResumeDropFile
+// below - the predicate is still the real gate (a drag-drop never sees
+// this string, and a phone file picker can hand back anything), this just
+// narrows what the picker offers. Same list as ACCEPT_RESUME_MIME in
+// src/app/candidates/[id]/editable-resume.tsx.
+const ACCEPT_RESUME_MIME =
+  "application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,text/plain,.txt";
+
 function isResumeDropFile(file: File): boolean {
   return (
     /\.(pdf|docx?|txt)$/i.test(file.name) ||
@@ -753,6 +762,10 @@ export default function CandidatesPage() {
     null,
   );
   const resumeDropDepth = useRef(0);
+  // Hidden <input type="file"> behind the "Upload Resume" button in the
+  // centered empty state. Kept as a ref-triggered input rather than a
+  // <label> so the button can stay a shared <Button> (raw-button gate).
+  const resumeFileInputRef = useRef<HTMLInputElement>(null);
 
   async function openBulkApply() {
     if (bulkSelectedIds.size === 0) return;
@@ -838,12 +851,29 @@ export default function CandidatesPage() {
     e.preventDefault();
     resumeDropDepth.current = 0;
     setResumeDropActive(false);
+    await startResumeUpload(Array.from(e.dataTransfer.files));
+  }
+
+  // Tap-to-browse twin of the drop target. Touch devices have no
+  // drag-and-drop, so on a phone the centered empty state was a dead
+  // panel - the only way into /candidates/new was the topbar chip, which
+  // is itself hidden below lg. Routing both the drop handler and the file
+  // input through one function keeps the upload, the progress toasts and
+  // the redirect identical on both paths.
+  function onResumeInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    // Reset before the await so picking the SAME file twice in a row still
+    // fires a change event the second time.
+    e.currentTarget.value = "";
+    if (files.length > 0) void startResumeUpload(files);
+  }
+
+  async function startResumeUpload(files: File[]) {
     if (resumeDropBusy) return;
 
-    const files = Array.from(e.dataTransfer.files);
     const resumeFile = files.find(isResumeDropFile);
     if (!resumeFile) {
-      toast.error("Drop a PDF, DOC, DOCX, or TXT resume.");
+      toast.error("Pick a PDF, DOC, DOCX, or TXT resume.");
       return;
     }
 
@@ -1890,8 +1920,45 @@ export default function CandidatesPage() {
                     ? "The new candidate form will open as soon as the upload finishes."
                     : resumeDropActive
                       ? "PDF, DOC, DOCX, and TXT resumes are accepted."
-                      : "Use the rail on the left to search the BreakPoint roster. Accounting & finance candidates indexed across the desk."}
+                      : "Use the filters to search the BreakPoint roster. Accounting & finance candidates indexed across the desk."}
                 </p>
+                {/* Tap-to-browse resume upload. This panel was drop-only,
+                    which meant it did nothing at all on a phone - touch has
+                    no drag-and-drop, so the centered empty state read as a
+                    dead panel and there was no way into /candidates/new.
+                    The button renders at every width (a visible affordance
+                    beats an invisible drag target on desktop too) and shares
+                    startResumeUpload with the drop handler, so both paths
+                    upload, toast, and redirect identically. Blue outlined
+                    per the Upload Resume line in the Button Standard, same
+                    treatment as the profile page's Upload Resume button. */}
+                <div className="mt-5 flex flex-col items-center gap-1.5">
+                  <input
+                    ref={resumeFileInputRef}
+                    type="file"
+                    accept={ACCEPT_RESUME_MIME}
+                    className="hidden"
+                    onChange={onResumeInputChange}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => resumeFileInputRef.current?.click()}
+                    disabled={resumeDropBusy}
+                    className="rounded-md border-blue-500 text-blue-600"
+                  >
+                    {resumeDropBusy ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Upload className="h-3 w-3" />
+                    )}
+                    Upload Resume
+                  </Button>
+                  <span className="text-[11px] text-court-fg-muted">
+                    Starts a new candidate from a PDF, DOC, DOCX, or TXT.
+                  </span>
+                </div>
                 {savedSearches.length > 0 ? (
                   <>
                     <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
