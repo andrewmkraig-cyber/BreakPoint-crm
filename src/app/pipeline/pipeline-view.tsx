@@ -70,11 +70,11 @@ export type OwnerScope = "mine" | "theirs" | "all";
 
 // Client-side sortable columns shared by the main pipeline table and the
 // intake (Applicants/Kept) table. "distance" = Location column (numeric
-// miles to the job), "lastAction" = Updated / Last Action column. The
-// main table also supports a null (no active sort) state so it can fall
-// back to the server-provided default order; the intake table always
-// carries one of its IntakeSortKey values.
-type MainSortKey = "distance" | "lastAction";
+// miles to the job), "job" = Job/Client column, "lastAction" = Updated /
+// Last Action column. The main table also supports a null (no active sort)
+// state so it can fall back to the server-provided default order; the intake
+// table always carries one of its IntakeSortKey values.
+type MainSortKey = "distance" | "job" | "lastAction";
 type SortDir = "asc" | "desc";
 
 // Shared distance comparator. Rows with no resolvable distance (null /
@@ -94,6 +94,10 @@ function compareDistance(
   if (aMissing) return 1;
   if (bMissing) return -1;
   return (a - b) * mul;
+}
+
+function jobClientSortValue(row: { jobTitle: string; clientName: string }): string {
+  return [row.jobTitle, row.clientName].map((value) => value.trim().toLowerCase()).join(" ");
 }
 
 export type PlacementDetails = {
@@ -362,7 +366,7 @@ function formatExpectedSalary(value: string | null | undefined): string {
 }
 
 // Six uniform LEFT header cells for the main pipeline table. When sort
-// props are passed the Location (distance) and Last Action columns become
+// props are passed the Location, Job/Client, and Last Action columns become
 // clickable, reusing the IntakeColHeader chevron affordance so the main
 // table sorts identically to the intake (Applicants/Kept) table. Without
 // the props they render as plain headers (unchanged default).
@@ -392,7 +396,16 @@ function UniformLeftHeaderCells({
         <DataTableHeaderCell>Location</DataTableHeaderCell>
       )}
       <DataTableHeaderCell align="right">Salary</DataTableHeaderCell>
-      <DataTableHeaderCell>Job/Client</DataTableHeaderCell>
+      {onSort ? (
+        <IntakeColHeader
+          label="Job/Client"
+          active={sortKey === "job"}
+          dir={sortDir ?? "asc"}
+          onClick={() => onSort("job")}
+        />
+      ) : (
+        <DataTableHeaderCell>Job/Client</DataTableHeaderCell>
+      )}
       {onSort ? (
         <IntakeColHeader
           label="Last Action"
@@ -576,8 +589,9 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
   // table's sortKey/sortDir + toggle pattern, but the key is nullable so
   // "no active sort" falls back to the server-provided default order
   // (default ordering stays untouched). One column active at a time -
-  // selecting Location clears Last Action and vice versa. Distance sorts
-  // closest-first on first click (asc); Last Action newest-first (desc).
+  // selecting one sortable column clears the others. Distance sorts
+  // closest-first on first click (asc), Job/Client A-Z, and Last Action
+  // newest-first (desc).
   const [mainSortKey, setMainSortKey] = useState<MainSortKey | null>(null);
   const [mainSortDir, setMainSortDir] = useState<SortDir>("asc");
   function toggleMainSort(k: MainSortKey) {
@@ -597,7 +611,7 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
   }, [stage, q]);
 
   // Display order for the main table. Null key = server default order
-  // (same array reference, untouched). distance/lastAction re-sort a
+  // (same array reference, untouched). distance/job/lastAction re-sort a
   // shallow copy via the shared comparators; no-distance rows fall to the
   // bottom in both directions.
   const sortedRows = useMemo(() => {
@@ -607,6 +621,9 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
     out.sort((a, b) => {
       if (mainSortKey === "distance") {
         return compareDistance(a.distanceMiles, b.distanceMiles, mul);
+      }
+      if (mainSortKey === "job") {
+        return jobClientSortValue(a).localeCompare(jobClientSortValue(b)) * mul;
       }
       const ta = a.lastActionAt ? new Date(a.lastActionAt).getTime() : 0;
       const tb = b.lastActionAt ? new Date(b.lastActionAt).getTime() : 0;
@@ -2284,8 +2301,8 @@ function sortApplied(rows: AppliedRow[], key: IntakeSortKey, dir: IntakeSortDir)
         vb = b.candidateName.toLowerCase();
         break;
       case "job":
-        va = a.jobTitle.toLowerCase();
-        vb = b.jobTitle.toLowerCase();
+        va = jobClientSortValue(a);
+        vb = jobClientSortValue(b);
         break;
       case "when":
         va = a.appliedAt ? new Date(a.appliedAt).getTime() : 0;
@@ -2316,8 +2333,8 @@ function sortKept(rows: KeptRow[], key: IntakeSortKey, dir: IntakeSortDir): Kept
         vb = b.candidateName.toLowerCase();
         break;
       case "job":
-        va = a.jobTitle.toLowerCase();
-        vb = b.jobTitle.toLowerCase();
+        va = jobClientSortValue(a);
+        vb = jobClientSortValue(b);
         break;
       case "when":
         va = new Date(a.keptAt).getTime();
