@@ -1031,10 +1031,16 @@ export function AiWorkspace({
             onPaste={onPaste}
             maxLength={GAME_PLAN_USER_MESSAGE_MAX_CHARS}
             rows={rows}
-            placeholder={`Ask anything about this ${emptyLabel}… or drop/paste a screenshot, PDF, or DOCX`}
+            // No example text inside the compose box. The box stays empty
+            // on job, client, and candidate Game Plan alike (one textarea
+            // serves all three entityTypes). Same empty-placeholder
+            // convention as the Matches tab filter inputs. The
+            // "No conversation yet" line above the composer still says
+            // what this workspace is for.
+            placeholder=""
             disabled={sending || attachmentUploading}
             className={cn(
-              "flex-1 resize-none rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
+              "flex-1 resize-none rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-sm text-court-fg",
               "focus:border-brand focus:bg-court-surface focus:outline-none focus:ring-2 focus:ring-brand/20",
               "disabled:cursor-not-allowed disabled:opacity-60",
             )}
