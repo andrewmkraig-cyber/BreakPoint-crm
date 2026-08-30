@@ -159,11 +159,13 @@ export default async function JobDetailPage({
   // the lookup keys type-correct without string-munging cuids vs ints.
   const stageByRfCandidate = new Map<number, { stage: string; movedAt: string }>();
   const stageByAceCandidate = new Map<string, { stage: string; movedAt: string }>();
+  // movedAt feeds the Stage Moved column, so it reads stageMovedAt and not
+  // updatedAt: an edit to a fee or a note must not look like a stage move.
   for (const p of localPlacements) {
     if (p.candidateRfId != null) {
-      stageByRfCandidate.set(p.candidateRfId, { stage: p.stage, movedAt: p.updatedAt.toISOString() });
+      stageByRfCandidate.set(p.candidateRfId, { stage: p.stage, movedAt: p.stageMovedAt.toISOString() });
     } else if (p.candidateId) {
-      stageByAceCandidate.set(p.candidateId, { stage: p.stage, movedAt: p.updatedAt.toISOString() });
+      stageByAceCandidate.set(p.candidateId, { stage: p.stage, movedAt: p.stageMovedAt.toISOString() });
     }
   }
 
@@ -229,7 +231,7 @@ export default async function JobDetailPage({
         candidateTitle,
         stageName: p.stage,
         bucket: p.stage as PipelineBucket,
-        stageMovedAt: p.updatedAt.toISOString(),
+        stageMovedAt: p.stageMovedAt.toISOString(),
         nextInterview: nextInterviewByRfCandidate.get(p.candidateRfId) ?? null,
       });
       continue;
@@ -245,7 +247,7 @@ export default async function JobDetailPage({
         candidateTitle: ace?.currentDesignation ?? "",
         stageName: p.stage,
         bucket: p.stage as PipelineBucket,
-        stageMovedAt: p.updatedAt.toISOString(),
+        stageMovedAt: p.stageMovedAt.toISOString(),
         nextInterview: nextInterviewByAceCandidate.get(p.candidateId) ?? null,
       });
     }

@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
   // Runtime + app queries go through the Neon POOLER endpoint (the host
   // with "-pooler" in it). That is what the app should always use.
   url       = env("DATABASE_URL")
@@ -439,6 +439,21 @@ model Placement {
   // for every contingent placement (the overwhelming majority). Scalar
   // FK, no Prisma relation — see the RetainedSearch model comment.
   retainedSearchId String?
+
+  // When this row last actually CHANGED STAGE. Deliberately not updatedAt:
+  // editing a fee, a note or a billing contact must not reset the pipeline
+  // clock, which is what powers Days in Stage, the 7-day amber and 14-day
+  // red pills, and the Submitted follow-up prompt.
+  //
+  // DO NOT set this from application code. It is maintained by the Postgres
+  // trigger `placement_stage_moved_at` (added in the migration
+  // 20260830202113_add_placement_stage_moved_at), which stamps CURRENT_TIMESTAMP
+  // only when NEW.stage IS DISTINCT FROM OLD.stage. That covers all 75 stage
+  // writes across 17 files plus any future path, script or raw SQL, and it
+  // means a no-op stage write (the idempotent upserts in the P2002 catch,
+  // for instance) correctly leaves the clock alone. Writing this column
+  // WITHOUT changing stage still works, so data-fix scripts can correct it.
+  stageMovedAt DateTime @default(now())
 
   createdById    String
   organizationId String

@@ -595,8 +595,16 @@ export default async function PipelinePage({
         // covers the active pipeline stages by design.
         stageName: PIPELINE_LABELS[stageName] ?? (p.stage === "cancelled" ? "Cancelled" : p.stage),
         bucket: stageName,
+        // lastActionAt stays updatedAt: this column is "Last Action", and
+        // for an Ace row the last write genuinely is the last action.
         lastActionAt: p.updatedAt.toISOString(),
-        daysInStage: daysBetween(p.updatedAt.toISOString()),
+        // Days in Stage reads stageMovedAt, NOT updatedAt. updatedAt moves
+        // on any edit (fee, note, billing contact), which used to reset the
+        // clock to zero and silence the amber/red pills and the Submitted
+        // follow-up prompt. The RF rows below already used a real
+        // stage-moved timestamp, so this is also what makes the two halves
+        // of this table agree.
+        daysInStage: daysBetween(p.stageMovedAt.toISOString()),
         isKept: rfEntry?.isKept ?? false,
         placementId: p.id,
         placement: toPlacementDetails(
