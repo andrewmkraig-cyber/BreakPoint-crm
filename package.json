@@ -12,8 +12,11 @@
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate",
-    "db:push": "prisma db push",
-    "db:studio": "prisma studio",
+    "db:migrate": "node scripts/new-migration.mjs",
+    "db:deploy": "node scripts/prisma-with-env.mjs migrate deploy",
+    "db:status": "node scripts/prisma-with-env.mjs migrate status",
+    "db:studio": "node scripts/prisma-with-env.mjs studio",
+    "db:push": "node scripts/db-push-retired.mjs",
     "test:cloudconvert": "npx tsx scripts/test-cloudconvert.ts"
   },
   "dependencies": {

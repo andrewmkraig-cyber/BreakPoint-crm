@@ -7,7 +7,17 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Runtime + app queries go through the Neon POOLER endpoint (the host
+  // with "-pooler" in it). That is what the app should always use.
+  url       = env("DATABASE_URL")
+  // Schema migrations must NOT go through the pooler: PgBouncer runs in
+  // transaction mode and cannot hold the advisory lock or the multi-
+  // statement DDL transaction that `prisma migrate` needs. directUrl is
+  // the same Neon database via its DIRECT (non-pooled) endpoint - the
+  // identical URL with "-pooler" removed from the host. Only the
+  // `prisma migrate` / `prisma db` commands read it; the app never does,
+  // so a missing DIRECT_URL cannot break a build or a request.
+  directUrl = env("DIRECT_URL")
 }
 
 // ---- Auth (NextAuth PrismaAdapter tables) ----

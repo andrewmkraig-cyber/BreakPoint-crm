@@ -19,11 +19,32 @@ RecruiterFlow (RF) is the system of record: all candidate / job / client / conta
 ## Getting started
 
 ```bash
-cp .env.local.example .env.local   # fill in DATABASE_URL, GOOGLE_CLIENT_ID/SECRET, NEXTAUTH_SECRET
+cp .env.local.example .env.local   # fill in DATABASE_URL, DIRECT_URL, GOOGLE_CLIENT_ID/SECRET, NEXTAUTH_SECRET
 npm install
-npx prisma db push                 # create tables in Neon
+npm run db:deploy                  # apply migrations to the database
 npm run dev
 ```
+
+## Changing the database schema
+
+Ace uses Prisma Migrate. Every schema change is recorded as a numbered SQL file
+under `prisma/migrations/`, so the database can be rebuilt and any change can be
+read back later.
+
+```bash
+# 1. edit prisma/schema.prisma
+npm run db:migrate -- short-name-for-the-change   # writes the SQL, applies nothing
+# 2. read the SQL it prints
+npm run db:deploy                                 # applies it
+npm run db:status                                 # confirm nothing is pending
+```
+
+`npm run db:push` is retired: it changed the database without recording anything,
+which is how Ace ended up with no migration history.
+
+`DIRECT_URL` is the same Neon database as `DATABASE_URL` with `-pooler` removed
+from the host. Migrations cannot run through the pooler. Only the `prisma migrate`
+commands read it; the app always uses the pooled `DATABASE_URL`.
 
 Open http://localhost:3000 and sign in with your `@breakpointtalent.com` Google account.
 
