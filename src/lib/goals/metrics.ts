@@ -189,6 +189,109 @@ export function buildRevenueResult(
   return { earned, billed, collected, billedExceedsEarned: billed > earned };
 }
 
+// ---------------------------------------------------------------------
+// Shared WHERE builders
+// ---------------------------------------------------------------------
+// The exclusion rules, as plain objects, exported for two reasons:
+//   1. They become assertable in a unit test instead of only being
+//      reachable through a live query.
+//   2. Any surface that needs the same money sliced a different way -
+//      src/lib/goals/client-leaderboard.ts groups it BY CLIENT - filters
+//      through these exact objects instead of restating the rules. That is
+//      what makes it impossible for the leaderboard to disagree with the
+//      goal meters: there is one definition of "which placements count"
+//      and one of "which invoices count", and both live here.
+//
+// A retained invoice carries no placementId, so the cancelled-placement
+// exclusion is written as "no placement, OR a placement that is not
+// cancelled" rather than a relation filter that would drop it.
+function notOnCancelledPlacement() {
+  return {
+    OR: [
+      { placementId: null },
+      { placement: { stage: { not: CANCELLED_PLACEMENT_STAGE } } },
+    ],
+  };
+}
+
+// Invoices that count as BILLED in the window: SENT or PAID, dated by
+// sentAt. VOID never counts.
+export function billedInvoiceWhere(
+  organizationId: string,
+  start: Date,
+  endExclusive: Date,
+  ownerUserId: string | null,
+) {
+  return {
+    organizationId,
+    status: { in: [...BILLED_INVOICE_STATUSES] },
+    sentAt: { gte: start, lt: endExclusive },
+    AND: [
+      notOnCancelledPlacement(),
+      ...(ownerUserId ? [{ client: { ownerId: ownerUserId } }] : []),
+    ],
+  };
+}
+
+// Invoices that count as COLLECTED in the window: PAID only, dated by
+// paidAt. An invoice sent in Q1 and paid in Q2 is Q1 billed, Q2 collected.
+export function collectedInvoiceWhere(
+  organizationId: string,
+  start: Date,
+  endExclusive: Date,
+  ownerUserId: string | null,
+) {
+  return {
+    organizationId,
+    status: "PAID" as const,
+    paidAt: { gte: start, lt: endExclusive },
+    AND: [
+      notOnCancelledPlacement(),
+      ...(ownerUserId ? [{ client: { ownerId: ownerUserId } }] : []),
+    ],
+  };
+}
+
+// Placements that COUNT as placements in the window. Note this does NOT
+// exclude retained placements: a retained fill is a real placement, it just
+// contributes no dollars (Ace 97.0 keeps every non-dollar metric - count,
+// win rate, days to fill - inclusive of them). Only `earned` excludes them.
+export function placementCountWhere(
+  organizationId: string,
+  start: Date,
+  endExclusive: Date,
+  ownerUserId: string | null,
+) {
+  return {
+    organizationId,
+    placedAt: { gte: start, lt: endExclusive },
+    stage: { notIn: [...DEAD_PLACEMENT_STAGES] },
+    ...(ownerUserId ? { client: { ownerId: ownerUserId } } : {}),
+  };
+}
+
+// The `earned` filter.
+//
+// Three exclusions, each for its own reason:
+//   - cancelled / rejected: the placement did not happen.
+//   - retainedSearchId != null: the money is on the RetainedSearch invoice
+//     (see the note below); counting it here double-counts the retainer.
+//   - owner scope, when asked for, through the client's owner.
+export function earnedPlacementWhere(
+  organizationId: string,
+  start: Date,
+  endExclusive: Date,
+  ownerUserId: string | null,
+) {
+  return {
+    organizationId,
+    placedAt: { gte: start, lt: endExclusive },
+    stage: { notIn: [...DEAD_PLACEMENT_STAGES] },
+    retainedSearchId: null,
+    ...(ownerUserId ? { client: { ownerId: ownerUserId } } : {}),
+  };
+}
+
 // All three figures in one call so they can never be resolved from
 // differently-filtered queries and disagree.
 //
@@ -205,11 +308,23 @@ export function buildRevenueResult(
 // placement.feeTotal`). Reading the same field is what stops earned and
 // billed from drifting apart on the same placement.
 //
-// Retained placements are a known future wrinkle: a retained engagement is
-// billed on the RetainedSearch, and the filling placement contributes $0 to
-// every other revenue surface (Ace 97.0). If one ever carries a feeTotal it
-// would inflate `earned` against `billed`. Zero live placements currently
-// have a retainedSearchId, so this is flagged rather than pre-solved.
+// RETAINED PLACEMENTS ARE EXCLUDED FROM `earned`. A retained engagement is
+// billed on the RetainedSearch before any candidate exists, and the
+// placement that eventually fills it contributes $0 to every other revenue
+// surface in the app (Ace 97.0: `expandPlacementBillingEvents` returns []
+// for a retained placement, which is what zeroes its dollars everywhere at
+// once). If such a placement carries a feeTotal, counting it here would
+// add the retainer a second time - once on the invoice as `billed`, once
+// on the placement as `earned`. So `earned` skips any placement with a
+// non-null retainedSearchId, matching what the rest of the app already
+// does. Zero live placements carry one today; the guard is in place so the
+// first one cannot silently inflate the number.
+//
+// NOTE the asymmetry this leaves: retained money reaches `billed` and
+// `collected` through its invoice, but reaches `earned` through nothing at
+// all, so an OPEN retained engagement reads as billed-with-no-earned. See
+// resolveRevenue's caller notes - adding it would mean summing
+// RetainedSearch.totalAmount, which is a separate change.
 export async function resolveRevenue(
   organizationId: string,
   rangeStart: Date,
@@ -218,41 +333,18 @@ export async function resolveRevenue(
 ): Promise<RevenueResult> {
   const { start, endExclusive } = etWindow(rangeStart, rangeEnd);
 
-  const notOnCancelledPlacement = {
-    OR: [
-      { placementId: null },
-      { placement: { stage: { not: CANCELLED_PLACEMENT_STAGE } } },
-    ],
-  };
-  const ownerClause = ownerUserId ? [{ client: { ownerId: ownerUserId } }] : [];
-
   const [earnedAgg, billedAgg, collectedAgg] = await Promise.all([
     prisma.placement.aggregate({
       _sum: { feeTotal: true },
-      where: {
-        organizationId,
-        placedAt: { gte: start, lt: endExclusive },
-        stage: { notIn: [...DEAD_PLACEMENT_STAGES] },
-        ...(ownerUserId ? { client: { ownerId: ownerUserId } } : {}),
-      },
+      where: earnedPlacementWhere(organizationId, start, endExclusive, ownerUserId),
     }),
     prisma.invoice.aggregate({
       _sum: { feeAmount: true },
-      where: {
-        organizationId,
-        status: { in: [...BILLED_INVOICE_STATUSES] },
-        sentAt: { gte: start, lt: endExclusive },
-        AND: [notOnCancelledPlacement, ...ownerClause],
-      },
+      where: billedInvoiceWhere(organizationId, start, endExclusive, ownerUserId),
     }),
     prisma.invoice.aggregate({
       _sum: { feeAmount: true },
-      where: {
-        organizationId,
-        status: "PAID",
-        paidAt: { gte: start, lt: endExclusive },
-        AND: [notOnCancelledPlacement, ...ownerClause],
-      },
+      where: collectedInvoiceWhere(organizationId, start, endExclusive, ownerUserId),
     }),
   ]);
 
@@ -261,6 +353,28 @@ export async function resolveRevenue(
     toNumber(billedAgg._sum.feeAmount),
     toNumber(collectedAgg._sum.feeAmount),
   );
+}
+
+// The individual billed invoices behind `resolveRevenue(...).billed`, for
+// callers that need to bucket the money over time (the pace chart) rather
+// than take one total. Filtered through the SAME billedInvoiceWhere the
+// aggregate uses, so a chart built from these rows always sums back to the
+// headline figure.
+export async function listBilledInvoices(
+  organizationId: string,
+  rangeStart: Date,
+  rangeEnd: Date,
+  ownerUserId: string | null,
+): Promise<Array<{ sentAt: Date; amount: number }>> {
+  const { start, endExclusive } = etWindow(rangeStart, rangeEnd);
+  const rows = await prisma.invoice.findMany({
+    where: billedInvoiceWhere(organizationId, start, endExclusive, ownerUserId),
+    select: { sentAt: true, feeAmount: true },
+    orderBy: { sentAt: "asc" },
+  });
+  return rows
+    .filter((r): r is { sentAt: Date; feeAmount: typeof r.feeAmount } => r.sentAt != null)
+    .map((r) => ({ sentAt: r.sentAt, amount: toNumber(r.feeAmount) }));
 }
 
 // The single number a REVENUE goal is paced against.
@@ -293,12 +407,7 @@ export async function resolvePlacements(
 ): Promise<number> {
   const { start, endExclusive } = etWindow(rangeStart, rangeEnd);
   return prisma.placement.count({
-    where: {
-      organizationId,
-      placedAt: { gte: start, lt: endExclusive },
-      stage: { notIn: [...DEAD_PLACEMENT_STAGES] },
-      ...(ownerUserId ? { client: { ownerId: ownerUserId } } : {}),
-    },
+    where: placementCountWhere(organizationId, start, endExclusive, ownerUserId),
   });
 }
 

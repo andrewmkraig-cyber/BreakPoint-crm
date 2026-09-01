@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 
 import {
   buildRevenueResult,
+  earnedPlacementWhere,
   etDaysInclusive,
   etWindow,
   revenueHeadline,
@@ -409,6 +410,41 @@ assert.equal(pacingShapeFor("AVG_DEAL_SIZE", "MILESTONE"), "RATIO");
   assert.equal(withRevenue.revenue?.earned, 71_750);
   assert.equal(withRevenue.revenue?.collected, 20_000);
   assert.equal(withoutRevenue.revenue, undefined);
+}
+
+// ---- earned excludes retained placements ----
+// A retained engagement is billed on its RetainedSearch before any
+// candidate exists, and the placement that fills it contributes $0 to every
+// other revenue surface (Ace 97.0). Counting its feeTotal as `earned` would
+// add the retainer twice - once as billed on the invoice, once as earned on
+// the placement.
+{
+  const start = new Date("2026-07-01T04:00:00.000Z");
+  const end = new Date("2026-10-01T04:00:00.000Z");
+  const w = earnedPlacementWhere("org_1", start, end, null) as Record<string, unknown>;
+
+  // The guard itself: only placements with NO retained search count.
+  assert.equal("retainedSearchId" in w, true);
+  assert.equal(w.retainedSearchId, null);
+
+  // The other exclusions still stand alongside it.
+  assert.deepEqual(w.stage, { notIn: ["cancelled", "rejected"] });
+  assert.deepEqual(w.placedAt, { gte: start, lt: end });
+  assert.equal(w.organizationId, "org_1"); // rule 8, always scoped
+  assert.equal("client" in w, false); // no owner clause when unscoped
+}
+{
+  // Owner scoping goes through the client's owner and does not disturb the
+  // retained guard.
+  const w = earnedPlacementWhere(
+    "org_1",
+    new Date("2026-07-01T04:00:00.000Z"),
+    new Date("2026-10-01T04:00:00.000Z"),
+    "user_andrew",
+  ) as Record<string, unknown>;
+  assert.deepEqual(w.client, { ownerId: "user_andrew" });
+  assert.equal(w.retainedSearchId, null);
+  assert.deepEqual(w.stage, { notIn: ["cancelled", "rejected"] });
 }
 
 console.log("goal-pacing-engine.test.ts: all assertions passed");

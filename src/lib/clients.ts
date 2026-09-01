@@ -2,6 +2,12 @@ import type { Client } from "@prisma/client";
 
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
+import { clientSlug, extractFeePctFromCustomFields } from "@/lib/client-identity";
+
+// Re-exported so the existing
+// `import { extractFeePctFromCustomFields } from "@/lib/clients"` call sites
+// (candidate profile, job detail) keep working after the move.
+export { clientSlug, extractFeePctFromCustomFields };
 import type { RFClient } from "@/lib/rf-payload-shapes";
 
 // Row shape used by the /clients list and the /jobs/new client dropdown.
@@ -44,23 +50,6 @@ export type ClientListRow = {
 //   - /candidates/[id] page  (defensive read when Client.feePct is null)
 //   - LocalPlacementRows seed path via local-profile.tsx
 //   - scripts/backfill-client-feepct.ts (one-shot Client.feePct backfill)
-export function extractFeePctFromCustomFields(raw: unknown): number | null {
-  if (!Array.isArray(raw)) return null;
-  for (const f of raw) {
-    if (!f || typeof f !== "object") continue;
-    const name = (f as { name?: unknown }).name;
-    if (typeof name !== "string") continue;
-    const lower = name.toLowerCase();
-    if (!(lower.includes("avg fee") || lower.includes("fee %") || lower.includes("fee percent"))) continue;
-    const value = (f as { value?: unknown }).value;
-    if (typeof value === "number") return value;
-    if (typeof value === "string") {
-      const n = parseFloat(value);
-      return Number.isFinite(n) ? n : null;
-    }
-  }
-  return null;
-}
 
 type LocationJson = {
   street_address_1?: string | null;
@@ -80,9 +69,9 @@ function compactLocation(raw: LocationJson): string {
   return [cityState, postalCode].filter(Boolean).join(" ");
 }
 
-function slugFor(row: { id: string; legacyRfId: number | null }): string {
-  return row.legacyRfId != null ? String(row.legacyRfId) : row.id;
-}
+// Delegates to the canonical implementation in @/lib/client-identity so
+// there is exactly one definition of the client URL segment.
+const slugFor = clientSlug;
 
 // Lists every Client in the signed-in tenant. Returns both RF-imported
 // rows (legacyRfId set, rich `raw` payload) and Ace-native rows

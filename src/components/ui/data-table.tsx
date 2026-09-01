@@ -68,3 +68,46 @@ export function DataTableRow({
     </tr>
   );
 }
+
+// Sortable column header. Lives here rather than in each table because the
+// clickable header is a raw <button> by necessity - it has to inherit the
+// header cell's own uppercase micro-type, and the shared <Button> variants
+// are all real buttons with borders and padding. src/components/ui/ is
+// where the raw-button gate allows that, and a sortable header is a shared
+// table primitive in any case.
+//
+// Pure props, no hooks: the owning client component holds the sort state.
+export function DataTableSortableHeaderCell({
+  children,
+  align = "left",
+  active,
+  descending,
+  onToggle,
+  className,
+}: {
+  children: ReactNode;
+  align?: "left" | "center" | "right";
+  active: boolean;
+  descending: boolean;
+  onToggle: () => void;
+  className?: string;
+}) {
+  return (
+    <DataTableHeaderCell align={align} className={className}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-sort={active ? (descending ? "descending" : "ascending") : "none"}
+        className={cn(
+          "inline-flex items-center gap-1 uppercase tracking-[0.18em] transition-colors hover:text-court-fg",
+          active && "text-court-fg",
+        )}
+      >
+        {children}
+        <span aria-hidden className="text-[9px] leading-none">
+          {active ? (descending ? "\u25BC" : "\u25B2") : ""}
+        </span>
+      </button>
+    </DataTableHeaderCell>
+  );
+}
