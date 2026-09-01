@@ -56,9 +56,27 @@ model User {
   emailVerified DateTime?
   image         String?
   role          UserRole  @default(ADMIN)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
 
+  // ---- Goals org chart (read ONLY by src/lib/goals/permissions.ts) ----
+  // Deliberately NOT part of auth or permissions. `role` (UserRole) still
+  // decides what the app lets a user do; these two columns exist purely so
+  // the Goals tab can answer "may this person set a goal for that person".
+  // Never gate a route, action or query on them.
+  //
+  // Seniority rank. LOWER means MORE senior; 0 is the owner. Null means
+  // "most junior" (see rankOf() in the permissions helper) so unseeded
+  // users can never set goals for anyone but themselves.
+  goalLevel Int?
+  // Who this user reports to. Self-relation, walked transitively by
+  // canSetGoalFor so a manager reaches reports at any depth. SetNull on
+  // delete: losing a manager must never cascade-delete their reports.
+  managerId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  manager                  User?                     @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
+  reports                  User[]                    @relation("UserManager")
   accounts                 Account[]
   sessions                 Session[]
   actions                  ActionLog[]
@@ -91,6 +109,8 @@ model User {
   workoutSets              WorkoutSet[]
   dailySteps               DailySteps[]
   fitnessHealthConnections FitnessHealthConnection[]
+
+  @@index([managerId])
 }
 
 // Per-user branding for the email signature, resume header, and any
@@ -1230,6 +1250,8 @@ model Organization {
   workoutSets              WorkoutSet[]
   dailySteps               DailySteps[]
   fitnessHealthConnections FitnessHealthConnection[]
+  goals                    Goal[]
+  goalActualEntries        GoalActualEntry[]
 }
 
 // One row per org holding the Microsoft Graph OAuth tokens that let us
@@ -2684,4 +2706,144 @@ model InstantlyReply {
   @@index([organizationId, isAutoReply, readAt])
   @@index([organizationId, isOwnSender, receivedAt])
   @@index([organizationId, isAutoReply, enrichAttempts])
+}
+
+// ---- Goals ----
+// A target the desk is held to. Two scopes: COMPANY (the whole org) and
+// USER (one person's number). Every row is org-scoped per architecture
+// rule 8.
+//
+// Actuals come from ONE of two places, never both:
+//   - metric != MANUAL: computed live from the canonical Ace tables
+//     (Invoice.paidAt for REVENUE, Client.feeAgreementSignedAt for
+//     SIGNED_CLIENTS, Placement.stage/stageMovedAt for the pipeline
+//     metrics, etc.). No stored actual, so a corrected invoice or a
+//     re-staged placement moves the number with no backfill.
+//   - metric == MANUAL: summed from GoalActualEntry rows. This is the
+//     escape hatch for numbers Ace has no feed for yet (Instantly
+//     campaign counts, LinkedIn posting success rate, Indeed messages).
+//     When one of those grows a real feed it becomes a new GoalMetric
+//     value and its goals switch over; the entries stay as history.
+
+enum GoalScope {
+  COMPANY
+  USER
+}
+
+enum GoalMetric {
+  REVENUE
+  SIGNED_CLIENTS
+  PLACEMENTS
+  SUBMITTALS
+  INTERVIEWS
+  BD_CONTACTS_ENROLLED
+  BD_REPLIES
+  // No automatic feed. Actual = sum of this goal's GoalActualEntry rows,
+  // and manualLabel names what is being counted.
+  MANUAL
+}
+
+enum GoalPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+  // Cumulative all-time. periodStart / periodEnd are null for these and
+  // for these only - a milestone has no window to fall outside of.
+  MILESTONE
+}
+
+enum GoalStatus {
+  DRAFT
+  PENDING_APPROVAL
+  ACTIVE
+  ACHIEVED
+  MISSED
+  ARCHIVED
+}
+
+model Goal {
+  id               String     @id @default(cuid())
+  organizationId   String
+  scope            GoalScope
+  // The person this goal belongs to. Null when scope is COMPANY, set when
+  // scope is USER. App-layer invariant, not a DB constraint - Postgres
+  // can't express "null exactly when scope = COMPANY" across two columns.
+  ownerUserId      String?
+  metric           GoalMetric
+  // Required in app logic when metric is MANUAL, ignored otherwise. Names
+  // what the manual entries are counting, e.g. "LinkedIn posts landed".
+  manualLabel      String?
+  period           GoalPeriod
+  // Nullable ONLY because MILESTONE goals are cumulative and have no
+  // window. Every other period sets both.
+  periodStart      DateTime?
+  periodEnd        DateTime?
+  // One money/count column rather than two. Decimal(14, 2) covers dollar
+  // targets with headroom and holds whole-number counts (9 signed clients)
+  // exactly, so the metric decides how it renders, not the storage type.
+  targetValue      Decimal    @db.Decimal(14, 2)
+  // Rolls this goal up into a longer one - the four 2026 quarterly revenue
+  // goals point at the 2026 annual. NoAction on delete so a parent can't
+  // be removed while children still reference it; re-parent or archive
+  // instead of orphaning the rollup.
+  parentGoalId     String?
+  status           GoalStatus @default(DRAFT)
+  createdByUserId  String
+  approvedByUserId String?
+  approvedAt       DateTime?
+  declinedReason   String?    @db.Text
+  // ANNUAL goals only. The percent to raise this year's target by when
+  // seeding next year's goal. Null everywhere else.
+  escalationPct    Int?
+  notes            String?    @db.Text
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parentGoal    Goal?             @relation("GoalRollup", fields: [parentGoalId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  childGoals    Goal[]            @relation("GoalRollup")
+  actualEntries GoalActualEntry[]
+
+  // ownerUserId / createdByUserId / approvedByUserId are scalar FKs with no
+  // Prisma relation field, the same choice RetainedSearch makes and for the
+  // same reason: three more named back-relations on the NextAuth User model
+  // buys nothing the goals code needs (it resolves names with one findMany
+  // over the org's members) and keeps this addition off the auth model.
+
+  @@index([organizationId])
+  @@index([organizationId, scope, status])
+  @@index([organizationId, ownerUserId, status])
+  @@index([organizationId, metric, periodStart, periodEnd])
+  @@index([parentGoalId])
+}
+
+// A hand-entered actual for a MANUAL goal. One row per contribution, not
+// a running total, so entries can be corrected or removed individually and
+// the goal's actual is always SUM(value) over its rows.
+//
+// Automatic metrics ignore this table entirely - if rows ever exist under a
+// non-MANUAL goal (a metric switched after entries were logged) they are not
+// read, and are kept only as history.
+model GoalActualEntry {
+  id              String   @id @default(cuid())
+  organizationId  String
+  goalId          String
+  value           Decimal  @db.Decimal(14, 2)
+  // The date the value counts toward, which is NOT createdAt - Monday's
+  // calls logged on Tuesday still belong to Monday and to whichever goal
+  // period contains it.
+  entryDate       DateTime
+  enteredByUserId String
+  note            String?  @db.Text
+  createdAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  goal         Goal         @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([goalId])
+  @@index([goalId, entryDate])
+  @@index([organizationId, entryDate])
 }
