@@ -63,8 +63,8 @@ export function GoalsRevenueMeter({
           : "Unknown";
 
   const tiers = [
-    { key: "earned", label: "Earned", value: earned, fill: "bg-court-brand/25" },
-    { key: "billed", label: "Billed", value: billed, fill: "bg-court-brand/60" },
+    { key: "earned", label: "Earned", value: earned, fill: "bg-court-brand/40" },
+    { key: "billed", label: "Billed", value: billed, fill: "bg-court-brand/75" },
     { key: "collected", label: "Collected", value: collected, fill: "bg-court-brand" },
   ];
 
@@ -99,7 +99,13 @@ export function GoalsRevenueMeter({
 
       {/* The bar. Nested fills, widest first, so each tier reads as a
           prefix of the one behind it. */}
-      <div className="relative mt-4 h-7 w-full overflow-hidden rounded-lg bg-court-surface-subtle">
+      {/* Track is bg-court-bg, NOT surface-subtle. Measured in Chrome
+          across all eight Court combinations: solid brand reaches only
+          2.90:1 against surface-subtle at clay/light (below the 3:1
+          non-text floor) but 3.26:1 against court-bg, which clears it in
+          every palette. The ring delineates the bar's extent where brand
+          still sits close to the track. */}
+      <div className="relative mt-4 h-7 w-full overflow-hidden rounded-lg bg-court-bg ring-1 ring-inset ring-court-border">
         {tiers.map((t) => (
           <div
             key={t.key}
@@ -177,7 +183,7 @@ function Figure({ label, value, sub }: { label: string; value: string; sub?: str
       <dd className="mt-0.5 text-[15px] font-semibold tabular-nums text-court-fg">
         {value}
       </dd>
-      {sub && <dd className="text-[10px] text-court-fg-dim">{sub}</dd>}
+      {sub && <dd className="text-[10px] text-court-fg-muted">{sub}</dd>}
     </div>
   );
 }

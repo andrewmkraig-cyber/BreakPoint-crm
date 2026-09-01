@@ -568,8 +568,8 @@ export async function GoalsTab({
           )}
           {paceChart && meterPacing && (
             <GoalsPaceChart
-              title={`Cumulative billed · ${quarterLabel(meterPacing.goal.periodStart!)}`}
-              subtitle="Billed to date against a straight run to target."
+              title={`Cumulative earned · ${quarterLabel(meterPacing.goal.periodStart!)}`}
+              subtitle="Earned to date against a straight run to target."
               buckets={paceChart.buckets}
               target={paceChart.target}
             />

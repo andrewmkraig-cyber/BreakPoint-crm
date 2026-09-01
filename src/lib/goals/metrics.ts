@@ -111,9 +111,11 @@ export function ownershipFieldFor(metric: GoalMetric): string | null {
 // Three tiers of the same money, widest to narrowest. In normal operation
 // earned >= billed >= collected: work is done, then invoiced, then paid.
 export type RevenueResult = {
-  // Placement.feeTotal for placements PLACED in the window, whether or not
-  // an invoice exists yet. This is the widest tier - work the desk has
-  // earned but may not have billed.
+  // Work the desk has closed in the window, whether or not an invoice
+  // exists yet - the widest tier. Two sources, which cannot overlap:
+  // Placement.feeTotal for placements PLACED in the window (retained
+  // placements excluded), plus RetainedSearch.totalAmount for engagements
+  // BOOKED in the window. See retainedEarnedWhere.
   readonly earned: number;
   // Invoice.feeAmount for SENT + PAID invoices, dated by sentAt.
   readonly billed: number;
@@ -218,6 +220,72 @@ export function placementCountWhere(
   };
 }
 
+// ---------------------------------------------------------------------
+// Retained engagements inside `earned`
+// ---------------------------------------------------------------------
+// WHICH TIMESTAMP DATES A RETAINER, and why it is createdAt.
+//
+// RetainedSearch records totalAmount (whole USD), useInstallments, status
+// (OPEN / FILLED / CLOSED_UNFILLED), a nullable placementId for the
+// eventual fill, closedAt, and createdAt. There is NO signedAt column.
+// The candidates, and why the others lose:
+//   - closedAt    - only set when the engagement closes, so a live OPEN
+//                   retainer would be invisible for months. Wrong.
+//   - installment dueDate - a BILLING schedule, not an earning event.
+//   - invoice sentAt - that is the definition of `billed`, not `earned`.
+//   - the fill's placedAt - a retainer that closes unfilled still earned
+//                   its money, and an OPEN one has no placement at all.
+//   - createdAt   - the row is written when the recruiter records a
+//                   committed engagement (the Send Retained Invoice flow
+//                   creates it and invoices immediately after). It is the
+//                   direct analogue of placedAt: the moment the deal
+//                   closed. THIS IS THE ONE.
+//
+// THE FULL totalAmount LANDS AT ONCE, even for a staged retainer.
+// Installments are a billing schedule. A contingent placement with
+// custom terms earns its whole feeTotal on placedAt and bills it across
+// three invoices; a retainer behaves identically, or the two kinds of
+// deal would be measured on different clocks. "Part billed" changes
+// `billed`, never `earned`.
+//
+// NO DOUBLE COUNT. Retained money enters `earned` here and ONLY here:
+// earnedPlacementWhere still excludes every placement carrying a
+// retainedSearchId, so a retainer that later fills contributes its
+// totalAmount once from this side and zero from its placement. That
+// mirrors what the rest of the app already does - Avg Fee Size in
+// scoreboard-data.ts substitutes RetainedSearch.totalAmount for a
+// retained placement's feeTotal for the same reason.
+export function retainedEarnedWhere(
+  organizationId: string,
+  start: Date,
+  endExclusive: Date,
+  ownedClientIds: string[] | null,
+) {
+  return {
+    organizationId,
+    createdAt: { gte: start, lt: endExclusive },
+    // CLOSED_UNFILLED is deliberately included: the client paid to run the
+    // search, so the money was earned whether or not it produced a hire.
+    ...(ownedClientIds ? { clientId: { in: ownedClientIds } } : {}),
+  };
+}
+
+// RetainedSearch carries scalar-only FKs (no Prisma relation fields), so an
+// owner-scoped query cannot filter through `client: { ownerId }` the way
+// Placement and Invoice do. Resolve the owned client ids first. Returns
+// null when no owner scope is asked for, meaning "no clientId filter".
+async function ownedClientIdsFor(
+  organizationId: string,
+  ownerUserId: string | null,
+): Promise<string[] | null> {
+  if (!ownerUserId) return null;
+  const rows = await prisma.client.findMany({
+    where: { organizationId, ownerId: ownerUserId },
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
+
 // The `earned` filter.
 //
 // Three exclusions, each for its own reason:
@@ -281,10 +349,18 @@ export async function resolveRevenue(
 ): Promise<RevenueResult> {
   const { start, endExclusive } = etWindow(rangeStart, rangeEnd);
 
-  const [earnedAgg, billedAgg, collectedAgg] = await Promise.all([
+  const ownedClientIds = await ownedClientIdsFor(organizationId, ownerUserId);
+
+  const [earnedAgg, retainedAgg, billedAgg, collectedAgg] = await Promise.all([
     prisma.placement.aggregate({
       _sum: { feeTotal: true },
       where: earnedPlacementWhere(organizationId, start, endExclusive, ownerUserId),
+    }),
+    // Retained engagements, dated by createdAt. See retainedEarnedWhere for
+    // why that timestamp and why the whole amount lands at once.
+    prisma.retainedSearch.aggregate({
+      _sum: { totalAmount: true },
+      where: retainedEarnedWhere(organizationId, start, endExclusive, ownedClientIds),
     }),
     prisma.invoice.aggregate({
       _sum: { feeAmount: true },
@@ -297,7 +373,10 @@ export async function resolveRevenue(
   ]);
 
   return buildRevenueResult(
-    toNumber(earnedAgg._sum.feeTotal),
+    // Placement fees PLUS retained engagements. The two cannot overlap:
+    // earnedPlacementWhere excludes every placement with a
+    // retainedSearchId, so each retainer is counted exactly once.
+    toNumber(earnedAgg._sum.feeTotal) + toNumber(retainedAgg._sum.totalAmount),
     toNumber(billedAgg._sum.feeAmount),
     toNumber(collectedAgg._sum.feeAmount),
   );
@@ -333,7 +412,10 @@ export async function listBilledInvoices(
 //
 // This replaced listBilledInvoices as the pace chart's source when earned
 // became the pacing actual (Ace 99.0) - a chart drawn from a different
-// tier than the headline would not land on the headline's number.
+// tier than the headline would not land on the headline's number. For the
+// same reason it carries RETAINED engagements too (Ace 99.2), dated by
+// createdAt: leaving them out would put the curve below its own headline
+// by the value of every retainer in the window.
 export async function listEarnedPlacements(
   organizationId: string,
   rangeStart: Date,
@@ -341,14 +423,28 @@ export async function listEarnedPlacements(
   ownerUserId: string | null,
 ): Promise<Array<{ placedAt: Date; amount: number }>> {
   const { start, endExclusive } = etWindow(rangeStart, rangeEnd);
-  const rows = await prisma.placement.findMany({
-    where: earnedPlacementWhere(organizationId, start, endExclusive, ownerUserId),
-    select: { placedAt: true, feeTotal: true },
-    orderBy: { placedAt: "asc" },
-  });
-  return rows
-    .filter((r): r is { placedAt: Date; feeTotal: typeof r.feeTotal } => r.placedAt != null)
-    .map((r) => ({ placedAt: r.placedAt, amount: toNumber(r.feeTotal) }));
+  const ownedClientIds = await ownedClientIdsFor(organizationId, ownerUserId);
+
+  const [placements, retained] = await Promise.all([
+    prisma.placement.findMany({
+      where: earnedPlacementWhere(organizationId, start, endExclusive, ownerUserId),
+      select: { placedAt: true, feeTotal: true },
+    }),
+    prisma.retainedSearch.findMany({
+      where: retainedEarnedWhere(organizationId, start, endExclusive, ownedClientIds),
+      select: { createdAt: true, totalAmount: true },
+    }),
+  ]);
+
+  const events = [
+    ...placements
+      .filter((r): r is { placedAt: Date; feeTotal: typeof r.feeTotal } => r.placedAt != null)
+      .map((r) => ({ placedAt: r.placedAt, amount: toNumber(r.feeTotal) })),
+    // A retainer's "placed at" for charting purposes is when it was booked.
+    ...retained.map((r) => ({ placedAt: r.createdAt, amount: toNumber(r.totalAmount) })),
+  ];
+  events.sort((a, b) => a.placedAt.getTime() - b.placedAt.getTime());
+  return events;
 }
 
 // The single number a REVENUE goal is paced against.

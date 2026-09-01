@@ -72,16 +72,23 @@ export function GoalsPaceChart({
           {buckets.length === 1 ? "bucket" : "buckets"}.
         </p>
       ) : (
-        <div className="mt-4 flex h-32 items-end gap-1.5">
+        // NO `items-end` on this row. The columns must STRETCH to the
+        // container's height or the track's flex-1 has nothing to fill:
+        // with items-end each column shrank to its label, the track
+        // measured 0px tall, and the bars rendered blank while every
+        // number underneath stayed correct. Same structure the Finances
+        // TrendCard uses - a fixed-height row, a flex-col column, and a
+        // flex-1 track that grows into it.
+        <div className="mt-4 flex h-32 gap-1.5">
           {buckets.map((b) => {
             const fillPct = pctOf(b.cumulativeActual);
             const pacePct = pctOf(b.requiredPace);
             return (
               <div key={b.label} className="flex flex-1 flex-col items-center gap-1.5">
-                <div className="relative h-full w-full overflow-hidden rounded-md bg-court-surface-subtle">
+                <div className="relative w-full flex-1 overflow-hidden rounded-md bg-court-bg ring-1 ring-inset ring-court-border">
                   {!b.isFuture && (
                     <div
-                      className="absolute inset-x-0 bottom-0 bg-court-brand-tint"
+                      className="absolute inset-x-0 bottom-0 bg-court-brand/70"
                       style={{ height: `${fillPct}%`, minHeight: 2 }}
                       aria-hidden
                     />

@@ -28,6 +28,7 @@ import {
   earnedPlacementWhere,
   etWindow,
   placementCountWhere,
+  retainedEarnedWhere,
 } from "@/lib/goals/metrics";
 
 export type ClientLeaderboardRow = {
@@ -38,8 +39,9 @@ export type ClientLeaderboardRow = {
   readonly name: string;
   readonly revenueCollected: number;
   readonly revenueBilled: number;
-  // Placement fee value earned in the window. Retained placements are
-  // excluded (their money is on the RetainedSearch invoice).
+  // Work closed in the window: placement fees PLUS retained engagements
+  // booked in the window. Retained PLACEMENTS stay excluded, so each
+  // retainer counts exactly once (see retainedEarnedWhere in metrics.ts).
   readonly revenueEarned: number;
   readonly placements: number;
   // Jobs opened in the window, by Job.createdAt.
@@ -88,8 +90,15 @@ export async function getClientLeaderboard(
       }
     : etWindow(input.rangeStart, input.rangeEnd);
 
-  const [clients, placementGroups, earnedGroups, billedGroups, collectedGroups, jobs] =
-    await Promise.all([
+  const [
+    clients,
+    placementGroups,
+    earnedGroups,
+    retainedGroups,
+    billedGroups,
+    collectedGroups,
+    jobs,
+  ] = await Promise.all([
       prisma.client.findMany({
         where: { organizationId },
         select: {
@@ -97,6 +106,9 @@ export async function getClientLeaderboard(
           // select the wrong ones.
           ...CLIENT_SLUG_SELECT,
           name: true,
+          // Needed to owner-scope retained engagements: RetainedSearch has
+          // scalar-only FKs and cannot filter through client.ownerId.
+          ownerId: true,
           feePct: true,
           // The typed Json column, NOT the legacy `raw` blob. Canonical
           // Client.feePct wins; this is the fallback for unbackfilled
@@ -116,6 +128,14 @@ export async function getClientLeaderboard(
         by: ["clientId"],
         where: earnedPlacementWhere(organizationId, start, endExclusive, ownerUserId),
         _sum: { feeTotal: true },
+      }),
+      // Retained engagements booked in the window, grouped the same way.
+      // Owner scope is applied by the caller-resolved client id list below
+      // rather than a relation filter - RetainedSearch has scalar-only FKs.
+      prisma.retainedSearch.groupBy({
+        by: ["clientId"],
+        where: retainedEarnedWhere(organizationId, start, endExclusive, null),
+        _sum: { totalAmount: true },
       }),
       prisma.invoice.groupBy({
         by: ["clientId"],
@@ -156,6 +176,20 @@ export async function getClientLeaderboard(
   for (const g of earnedGroups) {
     if (!g.clientId) continue;
     earned.set(g.clientId, num(g._sum.feeTotal));
+  }
+  // Retained engagements add onto the same client's earned figure.
+  //
+  // Owner scope is applied HERE rather than in the query: RetainedSearch
+  // carries scalar-only FKs, so it cannot filter through client.ownerId
+  // the way Placement and Invoice do. Dropping this would leak another
+  // recruiter's retainer into an owner-scoped leaderboard.
+  const ownedClientIds = ownerUserId
+    ? new Set(clients.filter((c) => c.ownerId === ownerUserId).map((c) => c.id))
+    : null;
+  for (const g of retainedGroups) {
+    if (!g.clientId) continue;
+    if (ownedClientIds && !ownedClientIds.has(g.clientId)) continue;
+    earned.set(g.clientId, (earned.get(g.clientId) ?? 0) + num(g._sum.totalAmount));
   }
 
   const billed = new Map<string, number>();

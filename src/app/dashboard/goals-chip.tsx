@@ -19,7 +19,12 @@ const TONE: Record<PacingStatus | "UNKNOWN", string> = {
     "rounded-full bg-slate-50 text-slate-700 border border-slate-200 dark:bg-slate-900/60 dark:text-slate-200 dark:border-slate-700",
   BEHIND:
     "rounded-full bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-900",
-  UNKNOWN: "rounded-full border border-court-border bg-transparent text-court-fg-dim",
+  // text-court-fg-muted, NOT fg-dim. Measured in Chrome across all eight
+  // Court combinations: fg-dim bottoms out at 2.54:1 on hard/light and
+  // night/light, below the 4.5:1 AA floor for text; fg-muted holds 4.83:1
+  // at its worst. The chip still reads quieter than the others because it
+  // is the only one with no fill.
+  UNKNOWN: "rounded-full border border-court-border bg-transparent text-court-fg-muted",
 };
 
 const LABEL: Record<PacingStatus | "UNKNOWN", string> = {

@@ -50,7 +50,7 @@ export function GoalsMilestoneCard({
       </p>
 
       {/* Same track + fill idiom as the funnel and TrendCard. */}
-      <div className="relative mt-3 h-3 w-full overflow-hidden rounded-full bg-court-surface-subtle">
+      <div className="relative mt-3 h-3 w-full overflow-hidden rounded-full bg-court-bg ring-1 ring-inset ring-court-border">
         <div
           className="absolute inset-y-0 left-0 rounded-full bg-court-brand"
           style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
@@ -106,7 +106,7 @@ function Figure({ label, value, sub }: { label: string; value: string; sub?: str
         {label}
       </dt>
       <dd className="mt-0.5 text-[15px] font-semibold tabular-nums text-court-fg">{value}</dd>
-      {sub && <dd className="text-[10px] text-court-fg-dim">{sub}</dd>}
+      {sub && <dd className="text-[10px] text-court-fg-muted">{sub}</dd>}
     </div>
   );
 }

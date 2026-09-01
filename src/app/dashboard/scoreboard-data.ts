@@ -709,12 +709,15 @@ export async function getScoreboardData(
   });
   const topClients = [...leaderboard]
     // The leaderboard keeps a client with ANY activity in the window,
-    // including one with only open jobs and no placements. This card is
-    // "Top Clients by Revenue", so it takes the same entry condition the
-    // hand-rolled aggregation had: a client appears once it has a
-    // placement in the window. Without this the card padded its five
-    // slots with $0 / 0-placement rows.
-    .filter((c) => c.placements > 0)
+    // including one with only open jobs and no placements, which padded
+    // the card's five slots with $0 rows. This card is "Top Clients by
+    // Revenue", so the entry condition is REVENUE OR A PLACEMENT.
+    //
+    // It is deliberately not `placements > 0` alone: a retained engagement
+    // earns revenue with NO placement behind it (Ace 99.2), so a
+    // placement-only filter would hide a client whose entire contribution
+    // this period is a retainer - which is exactly the live tsaADVET case.
+    .filter((c) => c.revenueEarned > 0 || c.placements > 0)
     .sort((a, b) => b.revenueEarned - a.revenueEarned || b.placements - a.placements)
     .slice(0, 5)
     .map((c, i) => ({

@@ -109,7 +109,7 @@ function GoalRow({ row }: { row: GoalListRow }) {
           {row.ownerName && (
             <>
               {" · "}
-              <span className="text-court-fg-dim">{row.ownerName}</span>
+              <span className="text-court-fg-muted">{row.ownerName}</span>
             </>
           )}
         </p>
@@ -121,12 +121,12 @@ function GoalRow({ row }: { row: GoalListRow }) {
             {fmt(row.actual, row.isMoney)}
             <span className="text-court-fg-muted"> / {fmt(row.target, row.isMoney)}</span>
             {row.collected !== null && (
-              <span className="block text-xs text-court-fg-dim">
+              <span className="block text-xs text-court-fg-muted">
                 {fmt(row.collected, row.isMoney)} collected
               </span>
             )}
             {row.actual === null && row.notTrackedReason && (
-              <span className="block text-xs text-court-fg-dim">not tracked yet</span>
+              <span className="block text-xs text-court-fg-muted">not tracked yet</span>
             )}
           </div>
           {/* Same track + fill idiom as the Scoreboard funnel and the
@@ -144,7 +144,7 @@ function GoalRow({ row }: { row: GoalListRow }) {
               would read as a failed measurement instead of a category that
               does not apply. */}
           {row.isMilestone ? (
-            <span className="text-xs text-court-fg-dim">no pace window</span>
+            <span className="text-xs text-court-fg-muted">no pace window</span>
           ) : (
             <PaceChip status={row.status} />
           )}

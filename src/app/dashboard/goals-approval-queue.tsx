@@ -81,7 +81,7 @@ function PendingRow({ row }: { row: PendingGoalRow }) {
           {row.scopeLabel} · {row.periodLabel} · requested by {row.requesterName}
         </p>
         {row.notes && (
-          <p className="mt-0.5 text-xs italic text-court-fg-dim">{row.notes}</p>
+          <p className="mt-0.5 text-xs italic text-court-fg-muted">{row.notes}</p>
         )}
       </div>
       <div className="w-24 text-xs text-court-fg-muted">{row.targetLabel}</div>
