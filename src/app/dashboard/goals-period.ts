@@ -15,7 +15,9 @@
 // with the rest of the app resolve through one implementation and cannot
 // drift. Only DAY is computed here, and it uses the same ET anchoring the
 // goals engine uses everywhere else.
-import { etWindow } from "@/lib/goals/metrics";
+// MUST come from the pure module, not from metrics.ts: this file is
+// imported by the CLIENT period selector, and metrics.ts pulls in prisma.
+import { etWindow } from "@/lib/goals/et-window";
 import { timeRange, type TimeGrain } from "@/lib/time-range";
 
 export type GoalsGrain = "DAY" | TimeGrain;

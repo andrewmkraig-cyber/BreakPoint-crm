@@ -7,7 +7,7 @@ import { setInstantlyPref } from "@/app/settings/instantly-actions";
 import {
   POLL_INTERVAL_OPTIONS,
   type InstantlyPrefs,
-} from "@/lib/instantly/prefs";
+} from "@/lib/instantly/prefs-shared";
 
 // Instantly reply-notification settings. Renders directly beneath the
 // Instantly connector row.

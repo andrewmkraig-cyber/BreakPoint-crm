@@ -23,13 +23,16 @@
 // period arithmetic in one place (see `priorEquivalentPeriod`).
 import { GoalMetric, GoalPeriod } from "@prisma/client";
 
+// Day maths from the pure module so this file never drags prisma into a
+// bundle; only the RevenueResult TYPE comes from metrics.ts, and a type
+// import is erased at build time.
 import {
   etDaysInclusive,
   etWindow,
   shiftUtcMarker,
   utcMarkerDaysInclusive,
-  type RevenueResult,
-} from "@/lib/goals/metrics";
+} from "@/lib/goals/et-window";
+import type { RevenueResult } from "@/lib/goals/metrics";
 
 // Shared status bands. Applied to paceIndex for CUMULATIVE and to
 // current/target for RATIO. Null when the ratio is undefined (a zero
