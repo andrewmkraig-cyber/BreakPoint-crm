@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { prisma } from "@/lib/prisma";
 import {
   BILLING_EVENT_PLACEMENT_SELECT,
@@ -18,10 +20,27 @@ function formatUsd(n: number): string {
   return USD_NO_CENTS.format(Math.round(n));
 }
 
+// LEGACY HARDCODED TARGETS - no longer used by this card.
+//
+// The Goal Pacing card now reads its targets from the Goal table (Ace 99.0)
+// so there is one place a revenue target is set. These constants remain
+// ONLY because two other surfaces still import them:
+//   - src/app/dashboard/billing-tower-actions.ts (Billing Tower goal)
+//   - src/components/finances/revenue-cards.tsx  (TrendCard subtitle)
+// Both were deliberately left unchanged in Ace 99.0 so no other dashboard
+// surface moved in that pass; pointing them at the Goal table is an open
+// follow-up in ACE_ROADMAP.md. Until then they can disagree with this card -
+// the annual constant reads 300k while the live 2026 ANNUAL goal is 500k.
+// Do NOT add new consumers.
 export const QUARTERLY_REVENUE_GOAL_USD = 125_000;
 export const ANNUAL_REVENUE_GOAL_USD = 300_000;
 
+// A pacing block with no matching goal row renders the "no goal set"
+// state instead of falling back to a number nobody chose.
+type NoGoal = { hasGoal: false; eyebrow: string };
+
 type QuarterPacingData = {
+  hasGoal: true;
   eyebrow: string;
   revenueFormatted: string;
   goalFormatted: string;
@@ -35,6 +54,7 @@ type QuarterPacingData = {
 };
 
 type AnnualPacingData = {
+  hasGoal: true;
   eyebrow: string;
   revenueFormatted: string;
   goalFormatted: string;
@@ -48,8 +68,8 @@ type AnnualPacingData = {
 };
 
 export type GoalPacingCardData = {
-  quarter: QuarterPacingData;
-  annual: AnnualPacingData;
+  quarter: QuarterPacingData | NoGoal;
+  annual: AnnualPacingData | NoGoal;
   avgFeeFormatted: string;
   placementsYtd: number;
 };
@@ -187,8 +207,48 @@ export async function getGoalPacingData(
 
   const fmtPctInt = (n: number) => `${Math.round(n)}%`;
 
-  const qPctToGoal = (quarterRevenueUsd / QUARTERLY_REVENUE_GOAL_USD) * 100;
-  const qToGoUsd = Math.max(0, QUARTERLY_REVENUE_GOAL_USD - quarterRevenueUsd);
+  // TARGETS COME FROM THE GOAL TABLE (Ace 99.0), not from a constant.
+  // Matched marker-against-marker: Goal.periodStart / periodEnd are UTC
+  // calendar-date markers, so they are compared against the quarter's and
+  // year's own markers rather than against the local-time instants above.
+  // (Comparing a marker to an instant is what put Q3 inside the Q2 goal on
+  // a non-UTC clock earlier in this arc.)
+  const qStartMarker = new Date(Date.UTC(year, qIndex * 3, 1));
+  const yStartMarker = new Date(Date.UTC(etYear, 0, 1));
+  const revenueGoals = await prisma.goal.findMany({
+    where: {
+      organizationId,
+      metric: "REVENUE",
+      status: "ACTIVE",
+      period: { in: ["QUARTERLY", "ANNUAL"] },
+    },
+    select: { period: true, targetValue: true, periodStart: true, periodEnd: true },
+  });
+  const goalTargetFor = (
+    period: "QUARTERLY" | "ANNUAL",
+    marker: Date,
+  ): number | null => {
+    const hit = revenueGoals.find(
+      (g) =>
+        g.period === period &&
+        g.periodStart != null &&
+        g.periodEnd != null &&
+        marker >= g.periodStart &&
+        marker <= g.periodEnd,
+    );
+    return hit ? Number(hit.targetValue) : null;
+  };
+  const quarterTargetUsd = goalTargetFor("QUARTERLY", qStartMarker);
+  const annualTargetUsd = goalTargetFor("ANNUAL", yStartMarker);
+
+  const quarterLabelForEyebrow = `Q${qIndex + 1} ${year}`;
+  if (quarterTargetUsd == null || annualTargetUsd == null) {
+    // Fall through to the per-block no-goal states below rather than
+    // inventing a number. Handled after both are computed.
+  }
+
+  const qPctToGoal = quarterTargetUsd ? (quarterRevenueUsd / quarterTargetUsd) * 100 : 0;
+  const qToGoUsd = Math.max(0, (quarterTargetUsd ?? 0) - quarterRevenueUsd);
   const qPacingPts = qPctToGoal - etPctOfQuarter;
   const qPacingLabel = (() => {
     const rounded = Math.round(Math.abs(qPacingPts));
@@ -196,8 +256,8 @@ export async function getGoalPacingData(
     return qPacingPts >= 0 ? `+${rounded} pts ahead` : `-${rounded} pts behind`;
   })();
 
-  const annualPctToGoal = (ytdRevenueUsd / ANNUAL_REVENUE_GOAL_USD) * 100;
-  const annualToGoUsd = Math.max(0, ANNUAL_REVENUE_GOAL_USD - ytdRevenueUsd);
+  const annualPctToGoal = annualTargetUsd ? (ytdRevenueUsd / annualTargetUsd) * 100 : 0;
+  const annualToGoUsd = Math.max(0, (annualTargetUsd ?? 0) - ytdRevenueUsd);
   const annualForecastUsd =
     etDayOfYear > 0 ? (ytdRevenueUsd / etDayOfYear) * etDaysInYear : 0;
 
@@ -205,10 +265,13 @@ export async function getGoalPacingData(
   const quarterLabel = `Q${qIndex + 1} ${year}`;
 
   return {
-    quarter: {
+    quarter: quarterTargetUsd == null
+      ? { hasGoal: false as const, eyebrow: `${quarterLabelForEyebrow.toUpperCase()} · QUARTERLY GOAL` }
+      : {
+      hasGoal: true as const,
       eyebrow: `${quarterLabel.toUpperCase()} · QUARTERLY GOAL`,
       revenueFormatted: formatUsd(quarterRevenueUsd),
-      goalFormatted: formatUsd(QUARTERLY_REVENUE_GOAL_USD),
+      goalFormatted: formatUsd(quarterTargetUsd),
       pctToGoal: qPctToGoal,
       pctToGoalLabel: fmtPctInt(qPctToGoal),
       dayOfQuarter: etDayOfQuarter,
@@ -217,10 +280,13 @@ export async function getGoalPacingData(
       toGoFormatted: formatUsd(qToGoUsd),
       pacingLabel: qPacingLabel,
     },
-    annual: {
+    annual: annualTargetUsd == null
+      ? { hasGoal: false as const, eyebrow: `FY ${etYear} · ANNUAL GOAL` }
+      : {
+      hasGoal: true as const,
       eyebrow: `FY ${etYear} · ANNUAL GOAL`,
       revenueFormatted: formatUsd(ytdRevenueUsd),
-      goalFormatted: formatUsd(ANNUAL_REVENUE_GOAL_USD),
+      goalFormatted: formatUsd(annualTargetUsd),
       pctToGoal: annualPctToGoal,
       pctToGoalLabel: fmtPctInt(annualPctToGoal),
       dayOfYear: etDayOfYear,
@@ -246,28 +312,36 @@ export function GoalPacingCard({ data }: { data: GoalPacingCardData }) {
         </p>
       </div>
 
-      <PacingBlock
-        eyebrow={data.quarter.eyebrow}
-        revenueFormatted={data.quarter.revenueFormatted}
-        goalFormatted={data.quarter.goalFormatted}
-        pctToGoal={data.quarter.pctToGoal}
-        pctToGoalLabel={data.quarter.pctToGoalLabel}
-        leftFooter={`Day ${data.quarter.dayOfQuarter} of ${data.quarter.daysInQuarter} (${data.quarter.pctOfQuarterLabel} of quarter)`}
-        rightFooter={`${data.quarter.toGoFormatted} to goal`}
-        className="mt-4"
-      />
+      {data.quarter.hasGoal ? (
+        <PacingBlock
+          eyebrow={data.quarter.eyebrow}
+          revenueFormatted={data.quarter.revenueFormatted}
+          goalFormatted={data.quarter.goalFormatted}
+          pctToGoal={data.quarter.pctToGoal}
+          pctToGoalLabel={data.quarter.pctToGoalLabel}
+          leftFooter={`Day ${data.quarter.dayOfQuarter} of ${data.quarter.daysInQuarter} (${data.quarter.pctOfQuarterLabel} of quarter)`}
+          rightFooter={`${data.quarter.toGoFormatted} to goal`}
+          className="mt-4"
+        />
+      ) : (
+        <NoGoalBlock eyebrow={data.quarter.eyebrow} className="mt-4" />
+      )}
 
       <div className="my-4 h-px bg-court-border-soft" />
 
-      <PacingBlock
-        eyebrow={data.annual.eyebrow}
-        revenueFormatted={data.annual.revenueFormatted}
-        goalFormatted={data.annual.goalFormatted}
-        pctToGoal={data.annual.pctToGoal}
-        pctToGoalLabel={data.annual.pctToGoalLabel}
-        leftFooter={`Day ${data.annual.dayOfYear} of ${data.annual.daysInYear} (${data.annual.pctOfYearLabel} of year)`}
-        rightFooter={`${data.annual.toGoFormatted} to goal`}
-      />
+      {data.annual.hasGoal ? (
+        <PacingBlock
+          eyebrow={data.annual.eyebrow}
+          revenueFormatted={data.annual.revenueFormatted}
+          goalFormatted={data.annual.goalFormatted}
+          pctToGoal={data.annual.pctToGoal}
+          pctToGoalLabel={data.annual.pctToGoalLabel}
+          leftFooter={`Day ${data.annual.dayOfYear} of ${data.annual.daysInYear} (${data.annual.pctOfYearLabel} of year)`}
+          rightFooter={`${data.annual.toGoFormatted} to goal`}
+        />
+      ) : (
+        <NoGoalBlock eyebrow={data.annual.eyebrow} />
+      )}
 
       <p className="mt-4 border-t border-court-border-soft pt-3 text-xs text-court-fg-muted">
         Avg fee {data.avgFeeFormatted} · {data.placementsYtd} placement
@@ -318,6 +392,27 @@ function PacingBlock({
         <span>{leftFooter}</span>
         <span className="text-right">{rightFooter}</span>
       </div>
+    </div>
+  );
+}
+
+// Rendered when no ACTIVE REVENUE goal covers this window. Deliberately NOT
+// a fallback number: a hardcoded target nobody chose is worse than an
+// honest gap, because it reads as a real plan the desk is being measured
+// against. Links to where the target is actually set.
+function NoGoalBlock({ eyebrow, className }: { eyebrow: string; className?: string }) {
+  return (
+    <div className={className}>
+      <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-court-fg-muted">
+        {eyebrow}
+      </p>
+      <p className="mt-2 text-[13px] text-court-fg-muted">No goal set.</p>
+      <Link
+        href="/dashboard?tab=goals"
+        className="mt-1 inline-block text-xs font-semibold text-court-brand hover:underline"
+      >
+        Set one on the Goals tab
+      </Link>
     </div>
   );
 }
