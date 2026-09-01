@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-09-01 · Ace 99.1
+Last updated: 2026-09-01 · Ace 99.2
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -183,7 +183,17 @@ Two exceptions, both deliberate:
 
 **One definition per surface.** The Goal Pacing card used to compute a third figure from billing events (`expandPlacementBillingEvents` by `scheduledAt`) and disagreed with the Goals tab by $25,750 while claiming to describe the same thing. Any new revenue surface reads the goals engine; do not add a fourth definition. `expandPlacementBillingEvents` remains correct for the Cash Forecast, which is a genuinely different question (when will money arrive).
 
-**Known gap:** `earned` excludes retained engagements entirely, so retained money is counted in billed and collected but is invisible to pace. There is a live OPEN retained search. Open item 6 in ACE_ROADMAP.md.
+**Retained engagements count in `earned`** (added Ace 99.2), keyed by `RetainedSearch.createdAt` - there is no `signedAt`, and createdAt is written when the recruiter records a committed engagement, making it the analogue of `placedAt`. The FULL `totalAmount` lands at once even when the retainer bills in installments, because installments are a billing schedule and a contingent placement with custom terms already earns its whole fee on placedAt. `earnedPlacementWhere` still excludes every placement carrying a `retainedSearchId`, so the two sides total each retainer exactly once. CLOSED_UNFILLED counts - the client paid to run the search.
+
+## Both-modes verification means a real browser (added 2026-09-01 · Ace 99.2 - PERMANENT)
+The Ace 66.0 rule says every interactive element is verified in BOTH modes before a task is done. **Token compliance is not that verification and never has been.** A real-browser pass over the Goals tab found three defects that hex-free, token-only code passed cleanly:
+- a chart that rendered COMPLETELY BLANK (a flex `items-end` bug gave the track 0px height) while every number beside it was correct;
+- a text token (`text-court-fg-dim`) that fails AA at 2.54:1 in two of the eight palette combinations;
+- a solid brand fill that misses the 3:1 non-text floor against `surface-subtle` in one palette.
+
+**How to do it.** Playwright is already a dependency; installed Chrome can be driven with `chromium.launch({ channel: "chrome" })`, so no browser download is needed. Set `data-surface` (hard / clay / grass / night) and `data-theme` (light / dark) on the root element for all EIGHT combinations, measure contrast from RESOLVED computed colours with alpha composited over the real backdrop, and READ the screenshots - the blank chart was invisible to the numbers and obvious in the image. Thresholds: 4.5:1 for text, 3:1 for non-text UI.
+
+If a browser genuinely cannot be driven, say so plainly and hand the check back. Do not substitute a token audit and call it verified.
 
 ## Pure helpers must not live in prisma-importing modules (added 2026-09-01 · Ace 99.0 - PERMANENT)
 `src/lib/prisma.ts` calls `base.$extends(...)` at MODULE SCOPE. In a browser bundle `@prisma/client` resolves to a shim whose `PrismaClient` is a Proxy that throws on ANY property access, so that `$extends` read throws the instant the module is evaluated client-side:

@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-09-01 · Ace 99.1
+Last updated: 2026-09-01 · Ace 99.2
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -453,6 +453,14 @@ No charting library and no SVG, matching the Scoreboard Deal Funnel and the Fina
 
 ### The pace chart tracks the headline tier
 The cumulative curve must be drawn from the SAME tier the headline uses, or it will not land on the headline's number. When earned became the pacing figure the chart moved from billed invoices to earned placements with it. If the headline tier ever changes again, the chart moves too - this is a correctness constraint, not a labelling one.
+
+### Measured contrast on this surface (Ace 99.2)
+Verified in real Chrome across all four Court surfaces x light and dark, from resolved computed colours with alpha composited over the actual backdrop - not from token compliance, which would have passed every one of the defects found.
+
+- **`text-court-fg-dim` fails AA for text**, bottoming out at 2.54:1 on hard/light and night/light. Use `text-court-fg-muted` (4.83:1 worst) for anything informational. fg-dim is for decorative or duplicated text only.
+- **Progress tracks use `bg-court-bg`, not `bg-court-surface-subtle`.** Solid `bg-court-brand` reaches only 2.90:1 against surface-subtle at clay/light but 3.26:1 against court-bg, clearing the 3:1 non-text floor in every palette. Add `ring-1 ring-inset ring-court-border` so the bar's extent stays visible where brand sits close to the track.
+- **A bar chart column must STRETCH, not sit at `items-end`.** The pace chart rendered completely blank because `items-end` on the flex row let each column shrink to its label, leaving the `h-full` track 0px tall - while every number underneath stayed correct. Use the Finances TrendCard structure: fixed-height row, `flex-col` column, `flex-1` track.
+- **Known and accepted:** the meter's light alpha tiers (earned 40%, billed 75%) read 1.53 and 2.34 at clay/light, under the 3:1 non-text floor, and alpha on brand cannot clear it. This is why every tier is also named in the legend and printed as its own labelled figure - the redundancy is load-bearing, not decoration.
 
 ### Null is never zero
 Any metric that cannot be measured renders a muted dash plus "not tracked yet". A zero is a measured result and must look different from an absence - this is why `AVG_DEAL_SIZE` with no placements shows a dash, not $0.

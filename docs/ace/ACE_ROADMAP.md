@@ -1,7 +1,12 @@
 # Ace Roadmap
-Last updated: 2026-09-01 · Ace 99.1
+Last updated: 2026-09-01 · Ace 99.2
 
 ## Active Build Sequence
+
+### DONE this session (Ace 99.2 - retained revenue in earned + browser pass, 2026-09-01)
+Full detail in ACE_STATE.md ▸ Ace 99.2.
+- ~~**Retained revenue counts in `earned`**~~ DONE (`956e859f`) - keyed by RetainedSearch.createdAt, full amount at once, placement-side exclusion unchanged so each retainer counts once. Q3 56,750 -> 61,750.
+- ~~**Both-modes browser verification**~~ DONE (`956e859f`) - real Chrome, 8 palette combinations, three defects fixed including a pace chart that rendered completely blank.
 
 ### DONE this session (Ace 99.1 - revenue definition settled, 2026-09-01)
 Closes items 1 and 2 below. Full detail in ACE_STATE.md ▸ Ace 99.1.
@@ -39,7 +44,9 @@ Billing events count money SCHEDULED to bill in the window (invoice due dates, c
 
 **5. Instantly reply data exists but is deliberately NOT wired to BD_REPLIES.** `InstantlyReply` holds 80 rows (27 genuine after excluding own-senders and auto-replies) with a real `receivedAt`. It is a DIFFERENT channel from the Apollo BD engine and is bucketed under MANUAL goals for now; wiring it into `BD_REPLIES` would silently redefine what that metric counts. Decide whether Instantly deserves its own metric.
 
-**6. Retained-search revenue and `earned` - NOW LIVE AND MORE URGENT (updated Ace 99.1).** `earned` EXCLUDES placements with a `retainedSearchId`, because a retained engagement bills on its own invoice and the filling placement contributes $0 everywhere else (Ace 97.0). The asymmetry: retained money reaches `billed` and `collected` through its invoice but reaches `earned` through nothing.
+**6. ~~Retained-search revenue and `earned`~~ DONE 2026-09-01 (Ace 99.2, `956e859f`).** Retained engagements now count in `earned`, keyed by `RetainedSearch.createdAt` (there is no `signedAt`; createdAt is written when the recruiter records a committed engagement, making it the analogue of `placedAt`). The full `totalAmount` lands at once even for a staged retainer, because installments are a billing schedule and a contingent placement with custom terms already behaves that way. The placement-side exclusion is unchanged, so each retainer counts exactly once. Q3 earned 56,750 -> 61,750; FY 71,750 -> 76,750. Original note kept below for the reasoning.
+
+**6a. (historical) Retained-search revenue and `earned` - the problem as it stood in Ace 99.1.** `earned` EXCLUDES placements with a `retainedSearchId`, because a retained engagement bills on its own invoice and the filling placement contributes $0 everywhere else (Ace 97.0). The asymmetry: retained money reaches `billed` and `collected` through its invoice but reaches `earned` through nothing.
 
 **This stopped being hypothetical.** There is one live OPEN `RetainedSearch` - tsaADVET, $5,000, created 2026-08-22, no fill yet - and since Ace 99.1 `earned` is THE PACING FIGURE. So that $5,000 is counted in billed and collected but is invisible to pace index, projection and status. Every future retainer will be too.
 
@@ -49,7 +56,11 @@ The open question is unchanged: adding retained money to `earned` means summing 
 
 **7. SUBMITTALS is sourced from `ActionLog`, not `Placement`.** Worth knowing if the submit-logging path ever changes: `stageMovedAt` cannot date a past transition, so there is no fallback. The de-dup key is candidate + job and currently reads 100 raw rows as 98 submittals.
 
-**8. Both-modes visual verification of the Goals tab is outstanding.** Nothing in this arc was looked at in a browser - every new file is hex-free and token-based, but that is not the same as verified (Ace 66.0). Lowest-contrast elements to check first: the revenue meter's lightest `bg-court-brand/25` earned fill against `court-surface-subtle`, the pace chart's `bg-court-fg/60` rules, and the UNKNOWN pace chip's `border-court-border` / `text-court-fg-dim`.
+**8. ~~Both-modes visual verification of the Goals tab~~ DONE 2026-09-01 (Ace 99.2, `956e859f`).** Real browser: Playwright driving installed Chrome across all four Court surfaces x light and dark, measuring WCAG contrast from resolved computed colours and reading the screenshots. Three defects found and fixed - the pace chart rendering BLANK (a flex `items-end` bug that gave the track 0px height while every number stayed correct), `text-court-fg-dim` failing AA at 2.54:1, and solid brand only reaching 2.90:1 against `surface-subtle` at clay/light. Two residual items below.
+
+**9. The meter's light alpha tiers cannot reach the 3:1 non-text threshold.** Measured: earned at `bg-court-brand/40` reads 1.53:1 and billed at `/75` reads 2.34:1 at clay/light. Alpha on brand cannot clear it, because SOLID brand itself tops out at 3.26:1 against the track there - it is a palette-level relationship between `court-brand` and the surfaces, not something the component can fix. The mitigation is deliberate and was designed in from the start: every tier is named in the legend AND printed as its own labelled dollar figure, so no information depends on the fill. Options if this should change: give `court-brand` more luminance separation in the clay/light palette, or drop the meter to two visible tiers plus figures.
+
+**10. The Ahead chip's `text-court-brand` reads 3.44:1 at its worst, under the 4.5:1 AA floor for small text.** This is the SHARED placements-ledger chip treatment (the COLLECTED chip), reused deliberately per the do-not-invent-a-new-chip rule, so the existing Placements surface has the same reading. `text-court-brand-dark` was measured as a candidate and is WORSE (2.63:1 at clay/dark), so this needs a token decision rather than a per-component swap.
 
 ### DONE this session (Ace 98.0 - Prisma migrations baseline + stage clock, 2026-08-30)
 Two items picked out of a code-level audit of Ace as a recruiting operating system. Both pushed to main; `npm run build` exits 0 after each. Full detail in ACE_STATE.md ▸ Ace 98.0.

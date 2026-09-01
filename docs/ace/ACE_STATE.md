@@ -1,8 +1,39 @@
 # ACE_STATE.md
-Last updated: 2026-09-01 · Ace 99.1
-Current Version: Ace 99.1
+Last updated: 2026-09-01 · Ace 99.2
+Current Version: Ace 99.2
 Last Shipped: 2026-09-01
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 99.2 - retained revenue in earned, and a real-browser pass (2026-09-01)
+
+**Retained engagements now count in `earned` (`956e859f`).** The exclusion added in Ace 99.0 stopped a double count; it also erased retained revenue entirely, which stopped mattering hypothetically and started mattering the moment `earned` became the pacing figure in Ace 99.1.
+
+**The timestamp is `createdAt`, and here is why.** RetainedSearch records `totalAmount` (whole USD), `useInstallments`, `status` (OPEN / FILLED / CLOSED_UNFILLED), a nullable `placementId` for the eventual fill, `closedAt` and `createdAt`. **There is no `signedAt` column.** The row is written when the recruiter records a committed engagement (the Send Retained Invoice flow creates it and invoices immediately after), which makes `createdAt` the direct analogue of `placedAt`. The alternatives all fail: `closedAt` is only set at close, so a live OPEN retainer would be invisible for months; installment `dueDate` is a billing schedule; invoice `sentAt` is the definition of `billed`; and the fill's `placedAt` does not exist for an OPEN or CLOSED_UNFILLED engagement that still earned its money.
+
+**The full `totalAmount` lands at once, even for a staged retainer.** Installments are a billing schedule. A contingent placement with custom terms already earns its whole `feeTotal` on `placedAt` and bills it across three invoices; a retainer behaves identically, or the two kinds of deal would be measured on different clocks. Part-billed moves `billed`, never `earned`.
+
+**No double count, structurally.** `earnedPlacementWhere` still excludes every placement carrying a `retainedSearchId`, unchanged, so a retainer contributes its `totalAmount` once from the RetainedSearch side and zero from its fill. CLOSED_UNFILLED is deliberately included - the client paid to run the search. Owner scope goes through a resolved client-id list because RetainedSearch has scalar-only FKs and cannot filter on `client.ownerId`.
+
+| figure | before | after |
+|---|---|---|
+| Q3 2026 earned | $56,750 | **$61,750** |
+| FY 2026 earned | $71,750 | **$76,750** |
+| Client leaderboard, tsaADVET | $0 earned | **$5,000 earned** |
+
+`AVG_DEAL_SIZE` is unchanged at $6,625 (Q3) and $6,375 (FY) - it is billed over placements and must never absorb retained revenue. The pace chart's `listEarnedPlacements` carries retained events too, keyed by `createdAt`, or the curve would sit below its own headline by the value of every retainer in the window.
+
+One bug this exposed: the Ace 99.1 Top Clients filter was `placements > 0`, which hides a client whose entire contribution is a retainer. Now `revenueEarned > 0 || placements > 0`.
+
+**Both-modes verification, done in a real browser.** Playwright driving installed Chrome across all four Court surfaces x light and dark, measuring WCAG contrast from resolved computed colours with alpha composited over the actual backdrop, and reading the screenshots. **Three real defects, none of which token compliance would have caught:**
+
+- **THE PACE CHART RENDERED BLANK.** `items-end` on the flex row stopped the columns stretching, so the track's `h-full` measured 0px and no bar could draw - while every number underneath stayed correct. Restructured to match the Finances TrendCard (fixed-height row, flex-col column, `flex-1` track). Tracks now measure 109px and the fills draw.
+- **`text-court-fg-dim` fails AA**, bottoming out at 2.54:1 on hard/light and night/light against the 4.5:1 floor. Every informational `fg-dim` on this surface is now `fg-muted` (4.83:1 worst), including the UNKNOWN chip.
+- **Solid brand only reached 2.90:1** against `bg-court-surface-subtle` at clay/light. The meter and milestone tracks moved to `bg-court-bg`, where it reaches 3.26:1 in every palette, plus a `ring-inset` border so the bar's extent is always visible. Meter fills raised 25 -> 40 and 60 -> 75.
+
+**Limits, measured rather than assumed.** The earned (40%) and billed (75%) alpha tiers still read 1.53 and 2.34 at clay/light, under the 3:1 non-text threshold, and alpha on brand cannot clear it - solid brand itself tops out at 3.26 there. Every tier is named in the legend AND printed as its own labelled figure, designed in from the start precisely so no information depends on the fill. Separately, the Ahead chip (`text-court-brand`, 3.44:1 worst) is the SHARED placements-ledger treatment, so it is an app-wide chip question rather than something to diverge on here. Both are open items in ACE_ROADMAP.md.
+
+## Next Task
+Decide the two contrast items in ACE_ROADMAP.md (the meter's light alpha tiers, and the shared brand-on-surface chip text, which affects the existing placements ledger as much as Goals). Nothing on the Goals tab is blocked.
 
 ## What Shipped in Ace 99.1 - the revenue definition settled (2026-09-01)
 
@@ -32,8 +63,7 @@ The tsaADVET case recorded in Ace 99.0 as a `billedExceedsEarned` condition **wa
 
 **What that surfaced instead: there is one live OPEN `RetainedSearch`** (tsaADVET, $5,000, created 2026-08-22, no fill yet). The retained-vs-earned asymmetry is therefore no longer theoretical, and it matters more now than it did: `earned` excludes retained money entirely, and earned is the pacing figure, so that $5,000 is counted in billed and collected but is **invisible to pace**. Still the open decision in ACE_ROADMAP.md.
 
-## Next Task
-Andrew to browser-verify the Goals tab in BOTH light and dark mode across the Court surfaces (Ace 66.0) - still outstanding, nothing in this arc was ever looked at in a browser. Then decide the retained-vs-earned question, which is now live rather than hypothetical.
+(Superseded by Ace 99.2 above: the browser pass was done and the retained question is closed.)
 
 ## What Shipped in Ace 99.0 - The Goals tab, end to end (2026-09-01)
 
