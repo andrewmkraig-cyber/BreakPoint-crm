@@ -1,7 +1,43 @@
 # Ace Roadmap
-Last updated: 2026-08-30 · Ace 98.0
+Last updated: 2026-09-01 · Ace 99.0
 
 ## Active Build Sequence
+
+### DONE this session (Ace 99.0 - the Goals tab, 2026-09-01)
+Six prompts plus a production hotfix. Full detail in ACE_STATE.md ▸ Ace 99.0.
+- ~~**Goals schema + permissions helper + 2026 seed**~~ DONE (`3b385df`) - `Goal` / `GoalActualEntry`, four enums, nullable `User.goalLevel` + `managerId` read only by the goals permissions helper. Live 2026 targets seeded.
+- ~~**Metric resolvers + pacing engine + read-only report**~~ DONE (`8de534f`) - one resolver per metric, ET-anchored, null-means-not-measurable. Three pacing shapes kept apart.
+- ~~**Three-tier revenue + milestone-collected exception + the Goals tab**~~ DONE (`02f5681`) - earned / billed / collected in one call; tab, KPI strip, revenue meter.
+- ~~**Goal list, milestone tracker, pace chart, client leaderboard**~~ DONE (`383f1b4`) - leaderboard imports every filter from `metrics.ts` so it cannot disagree with the meters.
+- ~~**Create/edit modal, write actions, approval queue**~~ DONE (`b292587d`) - server-session-only identity, permission failures throw, metric/period frozen after create. Org chart seeded (Andrew 0, Austin 1).
+- ~~**PrismaClient-in-browser hotfix + new build gate**~~ DONE (`a6defb4`) - Sentry ACE-CRM-1Y. `scripts/check-client-prisma.mjs` wired into `check:ui`.
+- ~~**Goal Pacing reads targets from the Goal table**~~ DONE (`3c7d5c82`) - annual was hardcoded 300k against a live 500k goal. "No goal set" state when no goal covers the window.
+
+### Open follow-ups from Ace 99.0 (Andrew's call, none are blockers)
+
+**1. Which revenue definition wins? (blocks items 2 and 3)**
+Three defensible numbers for "billed revenue" now coexist. Measured 2026-09-01:
+
+| window | Goal Pacing card (billing events) | engine `earned` (Placement.feeTotal) | engine `billed` (Invoice by sentAt) |
+|---|---|---|---|
+| Q3 2026 | $65,500 | $56,750 | $39,750 |
+| FY 2026 YTD | $76,750 | $71,750 | $51,000 |
+
+Billing events count money SCHEDULED to bill in the window (invoice due dates, custom-terms installments, and placements with no invoice yet, bucketed by `scheduledAt`) - "work booked". `earned` counts the fee on placements PLACED in the window. `billed` counts invoices actually SENT in the window. They answer different questions and all three are honest. Nothing was silently swapped; the Goal Pacing card keeps its billing-events actual until this is settled.
+
+**2. Point Scoreboard's Top Clients at the shared leaderboard.** Deliberately NOT done in Ace 99.0 - it cannot be done without changing what the card shows. Three differences, all measured: (a) `aceCandidates` has NO date filter, so the card is ALL-TIME despite sitting in a period-selected Scoreboard; (b) it uses `placementTotalDollars` (billing events) where the leaderboard uses `Placement.feeTotal` - tsaADVET reads $12,500 on the card and $7,500 in the leaderboard, because its one hired placement has `feeTotal` $7,500 but two PAID invoices totalling $12,500 (exactly the `billedExceedsEarned` condition); (c) `NOT_CANCELLED` is `{ not: "cancelled" }`, so the card includes REJECTED placements, and its RF-only client aggregates would vanish (moot today at 143/143 with a clientId). Settle item 1 first, then this is mechanical.
+
+**3. Point the Billing Tower + Finances TrendCard at the Goal table.** `QUARTERLY_REVENUE_GOAL_USD` / `ANNUAL_REVENUE_GOAL_USD` are still imported by `billing-tower-actions.ts` and `finances/revenue-cards.tsx`. **The Billing Tower annual goal currently reads 300k while the Goal Pacing card reads the real 500k** - a visible inconsistency, left in place because moving them would have changed two more dashboard surfaces in a pass scoped to one.
+
+**4. BD_REPLIES returns null until the Apollo webhook writes a row.** `/api/webhooks/apollo` maps only OPEN / REPLY / BOUNCE / UNSUB and has never fired; live `BDActivity` is 39 ENROLL rows and nothing else. Flip the one-line switch in `resolveBdReplies` once real rows arrive, and verify the count first.
+
+**5. Instantly reply data exists but is deliberately NOT wired to BD_REPLIES.** `InstantlyReply` holds 80 rows (27 genuine after excluding own-senders and auto-replies) with a real `receivedAt`. It is a DIFFERENT channel from the Apollo BD engine and is bucketed under MANUAL goals for now; wiring it into `BD_REPLIES` would silently redefine what that metric counts. Decide whether Instantly deserves its own metric.
+
+**6. Retained-search revenue and `earned`.** `earned` EXCLUDES placements with a `retainedSearchId`, because a retained engagement bills on its own invoice and the filling placement contributes $0 everywhere else (Ace 97.0). The asymmetry that leaves: retained money reaches `billed` and `collected` through its invoice but reaches `earned` through nothing, so an OPEN retained engagement reads as billed-with-no-earned. Adding it would mean summing `RetainedSearch.totalAmount`, and the open question is whether an OPEN engagement counts as earned before anyone is placed. Zero live placements carry a `retainedSearchId` today.
+
+**7. SUBMITTALS is sourced from `ActionLog`, not `Placement`.** Worth knowing if the submit-logging path ever changes: `stageMovedAt` cannot date a past transition, so there is no fallback. The de-dup key is candidate + job and currently reads 100 raw rows as 98 submittals.
+
+**8. Both-modes visual verification of the Goals tab is outstanding.** Nothing in this arc was looked at in a browser - every new file is hex-free and token-based, but that is not the same as verified (Ace 66.0). Lowest-contrast elements to check first: the revenue meter's lightest `bg-court-brand/25` earned fill against `court-surface-subtle`, the pace chart's `bg-court-fg/60` rules, and the UNKNOWN pace chip's `border-court-border` / `text-court-fg-dim`.
 
 ### DONE this session (Ace 98.0 - Prisma migrations baseline + stage clock, 2026-08-30)
 Two items picked out of a code-level audit of Ace as a recruiting operating system. Both pushed to main; `npm run build` exits 0 after each. Full detail in ACE_STATE.md ▸ Ace 98.0.
