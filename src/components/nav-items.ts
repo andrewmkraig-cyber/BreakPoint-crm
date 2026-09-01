@@ -15,6 +15,7 @@ import {
   StickyNote,
   BarChart3,
   Trophy,
+  Target,
   Send,
 } from "lucide-react";
 
@@ -106,6 +107,7 @@ export const NAV_GROUPS: ReadonlyArray<NavGroupData> = [
     items: [
       { key: "placements", href: "/dashboard?tab=placements", label: "Placements", icon: Trophy, iconColor: "text-emerald-400" },
       { key: "metrics", href: "/dashboard?tab=scoreboard", label: "Metrics", icon: BarChart3, iconColor: "text-fuchsia-400" },
+      { key: "goals", href: "/dashboard?tab=goals", label: "Goals", icon: Target, iconColor: "text-sky-400" },
     ],
   },
 ];

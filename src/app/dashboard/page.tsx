@@ -4,8 +4,13 @@ import { resolveDashboardTab } from "@/app/dashboard/tabs";
 import { MyDashboard } from "@/app/dashboard/my-dashboard";
 import { Scoreboard } from "@/app/dashboard/scoreboard";
 import { PlacementsTab } from "@/app/dashboard/placements-tab";
+import { GoalsTab } from "@/app/dashboard/goals-tab";
 import { resolveTimeRange } from "@/lib/time-range";
 import { CLUBHOUSE_PERIOD_PARAM } from "@/app/dashboard/clubhouse-period";
+import {
+  GOALS_PERIOD_PARAM,
+  resolveGoalsPeriod,
+} from "@/app/dashboard/goals-period";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +18,7 @@ type RawParams = {
   tab?: string | string[];
   period?: string | string[];
   [CLUBHOUSE_PERIOD_PARAM]?: string | string[];
+  [GOALS_PERIOD_PARAM]?: string | string[];
 };
 type SearchParams = Promise<RawParams> | RawParams;
 
@@ -39,6 +45,10 @@ export default async function DashboardPage({
     firstParam(resolved[CLUBHOUSE_PERIOD_PARAM]),
     { grain: "WEEK", offset: 0 },
   );
+  // Goals keeps its own param (it has a Day grain the shared four-grain
+  // model does not), so switching Goals to Day never disturbs the ?period=
+  // that Placements and Metrics share. Defaults to the current quarter.
+  const goalsSelection = resolveGoalsPeriod(firstParam(resolved[GOALS_PERIOD_PARAM]));
 
   return (
     <div className="flex w-full flex-col gap-6">
@@ -49,6 +59,7 @@ export default async function DashboardPage({
       {active === "dashboard" && <MyDashboard selection={clubhousePeriod} />}
       {active === "scoreboard" && <Scoreboard selection={period} />}
       {active === "placements" && <PlacementsTab selection={period} />}
+      {active === "goals" && <GoalsTab selection={goalsSelection} />}
     </div>
   );
 }

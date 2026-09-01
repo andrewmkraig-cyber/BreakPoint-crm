@@ -18,11 +18,18 @@ export function KpiTile({
   value,
   icon: Icon,
   live = false,
+  sub,
 }: {
   label: string;
   value: number | string;
   icon: LucideIcon;
   live?: boolean;
+  // Optional caption under the value, matching the Scoreboard tile's
+  // bottom line. Additive and OPTIONAL: every existing caller omits it and
+  // renders byte-for-byte as before. Added for the Goals KPI strip, which
+  // needs to say "not tracked yet" under a dashed value so a null metric
+  // can never be mistaken for a zero.
+  sub?: string;
 }) {
   const isZero = value === 0 || value === "0";
   return (
@@ -71,6 +78,11 @@ export function KpiTile({
       <div className="mt-1 text-center text-[11px] font-semibold text-court-fg-muted sm:hidden">
         {label}
       </div>
+      {sub && (
+        <div className="mt-1 text-center text-[10px] text-court-fg-dim">
+          {sub}
+        </div>
+      )}
     </div>
   );
 }

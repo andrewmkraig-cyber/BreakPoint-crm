@@ -28,6 +28,7 @@ import {
   etWindow,
   shiftUtcMarker,
   utcMarkerDaysInclusive,
+  type RevenueResult,
 } from "@/lib/goals/metrics";
 
 // Shared status bands. Applied to paceIndex for CUMULATIVE and to
@@ -78,6 +79,10 @@ export type CumulativePacing = {
   // Positive means still to go; negative means past target.
   readonly gapToTarget: number;
   readonly status: PacingStatus | null;
+  // REVENUE goals only. `actual` above is the BILLED figure and that is
+  // what everything paces on; earned and collected ride along purely for
+  // display, so a card can show all three tiers without a second query.
+  readonly revenue?: RevenueResult;
 };
 
 export function pacingForCumulative(input: {
@@ -86,8 +91,11 @@ export function pacingForCumulative(input: {
   periodStart: Date;
   periodEnd: Date;
   now?: Date;
+  // Passed through untouched for REVENUE goals. It never changes the
+  // pacing maths - the headline stays billed.
+  revenue?: RevenueResult;
 }): CumulativePacing {
-  const { target, actual, periodStart, periodEnd } = input;
+  const { target, actual, periodStart, periodEnd, revenue } = input;
   const now = input.now ?? new Date();
 
   // periodStart / periodEnd arrive as UTC calendar-date markers. Resolve
@@ -127,6 +135,7 @@ export function pacingForCumulative(input: {
     projectedFinish,
     gapToTarget: target - actual,
     status: statusFor(paceIndex),
+    ...(revenue ? { revenue } : {}),
   };
 }
 

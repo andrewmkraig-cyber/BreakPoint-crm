@@ -1,12 +1,13 @@
 import { resolveDashboardTab, type DashboardTab } from "@/app/dashboard/tabs";
 
 // Single source of truth for sidebar + mobile-nav row active state.
-// Both Clubhouse (/dashboard), Metrics (/dashboard?tab=scoreboard), and
-// Placements (/dashboard?tab=placements) share the same pathname, so a
+// Clubhouse (/dashboard), Metrics (?tab=scoreboard), Placements
+// (?tab=placements) and Goals (?tab=goals) share the same pathname, so a
 // pathname-only check lights up all three together. Reading the resolved
 // dashboard tab disambiguates them: Clubhouse is active only when no
 // tab param (or an unknown one) is present, Metrics on tab=scoreboard,
-// Placements on tab=placements. Every other nav row keeps the existing
+// Placements on tab=placements, Goals on tab=goals. Every other nav row
+// keeps the existing
 // pathname-prefix match.
 export function isNavItemActive(args: {
   href: string;
@@ -33,6 +34,12 @@ export function isNavItemActive(args: {
     return (
       (pathname === "/dashboard" || pathname.startsWith("/dashboard/"))
       && resolvedDashboardTab === "placements"
+    );
+  }
+  if (href === "/dashboard?tab=goals") {
+    return (
+      (pathname === "/dashboard" || pathname.startsWith("/dashboard/"))
+      && resolvedDashboardTab === "goals"
     );
   }
 

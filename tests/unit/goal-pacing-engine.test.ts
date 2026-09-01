@@ -3,8 +3,10 @@
 import assert from "node:assert/strict";
 
 import {
+  buildRevenueResult,
   etDaysInclusive,
   etWindow,
+  revenueHeadline,
   utcMarkerDaysInclusive,
 } from "../../src/lib/goals/metrics";
 import {
@@ -318,6 +320,95 @@ assert.equal(pacingShapeFor("AVG_DEAL_SIZE", "MILESTONE"), "RATIO");
   // A zero target has no percentage.
   const p = pacingForMilestone({ target: 0, actual: 10, trailingWindowActual: 5 });
   assert.equal(p.percentComplete, null);
+}
+
+// ---- Revenue: three tiers ----
+// Normal operation: work is earned, then invoiced, then paid, so the three
+// nest widest to narrowest.
+{
+  const r = buildRevenueResult(71_750, 51_000, 20_000);
+  assert.equal(r.earned, 71_750);
+  assert.equal(r.billed, 51_000);
+  assert.equal(r.collected, 20_000);
+  assert.equal(r.billedExceedsEarned, false);
+  assert.equal(r.earned >= r.billed && r.billed >= r.collected, true);
+}
+
+// Earned with NO invoice at all: a placement is made and nothing has been
+// billed yet. earned stands alone; billed and collected are honestly zero,
+// and that is not an anomaly.
+{
+  const r = buildRevenueResult(30_000, 0, 0);
+  assert.equal(r.earned, 30_000);
+  assert.equal(r.billed, 0);
+  assert.equal(r.collected, 0);
+  assert.equal(r.billedExceedsEarned, false);
+  // The goal still paces on billed, so a period of unbilled work reads as
+  // behind - which is the truth.
+  assert.equal(revenueHeadline(r), 0);
+}
+
+// Billed with no earned: an invoice exists with no live placement behind
+// it. Flagged, NOT clamped - both numbers survive so the mismatch can be
+// chased instead of hidden.
+{
+  const r = buildRevenueResult(0, 12_000, 0);
+  assert.equal(r.billedExceedsEarned, true);
+  assert.equal(r.earned, 0);
+  assert.equal(r.billed, 12_000); // not floored to earned
+}
+{
+  // Partial version of the same problem.
+  const r = buildRevenueResult(10_000, 12_000, 5_000);
+  assert.equal(r.billedExceedsEarned, true);
+  assert.equal(r.billed, 12_000);
+}
+{
+  // Exactly equal is normal, not an anomaly.
+  const r = buildRevenueResult(12_000, 12_000, 12_000);
+  assert.equal(r.billedExceedsEarned, false);
+}
+
+// ---- revenueHeadline: the MILESTONE exception ----
+{
+  const r = buildRevenueResult(71_750, 51_000, 20_000);
+  // Every period paces on BILLED...
+  assert.equal(revenueHeadline(r), 51_000);
+  assert.equal(revenueHeadline(r, "QUARTERLY"), 51_000);
+  assert.equal(revenueHeadline(r, "ANNUAL"), 51_000);
+  assert.equal(revenueHeadline(r, "DAILY"), 51_000);
+  assert.equal(revenueHeadline(r, "WEEKLY"), 51_000);
+  assert.equal(revenueHeadline(r, "MONTHLY"), 51_000);
+  // ...except MILESTONE, which is lifetime cash actually collected.
+  assert.equal(revenueHeadline(r, "MILESTONE"), 20_000);
+}
+
+// ---- CUMULATIVE carries the three tiers without changing the maths ----
+{
+  const revenue = buildRevenueResult(71_750, 51_000, 20_000);
+  const withRevenue = pacingForCumulative({
+    target: 125_000,
+    actual: revenue.billed,
+    periodStart: Q1_START,
+    periodEnd: Q1_END,
+    now: new Date("2026-02-15T17:00:00.000Z"),
+    revenue,
+  });
+  const withoutRevenue = pacingForCumulative({
+    target: 125_000,
+    actual: revenue.billed,
+    periodStart: Q1_START,
+    periodEnd: Q1_END,
+    now: new Date("2026-02-15T17:00:00.000Z"),
+  });
+  // The passthrough is display-only: every pacing number is identical.
+  assert.equal(withRevenue.paceIndex, withoutRevenue.paceIndex);
+  assert.equal(withRevenue.expectedToDate, withoutRevenue.expectedToDate);
+  assert.equal(withRevenue.status, withoutRevenue.status);
+  assert.equal(withRevenue.actual, 51_000); // paces on billed, not earned
+  assert.equal(withRevenue.revenue?.earned, 71_750);
+  assert.equal(withRevenue.revenue?.collected, 20_000);
+  assert.equal(withoutRevenue.revenue, undefined);
 }
 
 console.log("goal-pacing-engine.test.ts: all assertions passed");

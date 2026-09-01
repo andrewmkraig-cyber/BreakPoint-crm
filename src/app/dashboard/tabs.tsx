@@ -1,4 +1,4 @@
-export type DashboardTab = "dashboard" | "scoreboard" | "placements";
+export type DashboardTab = "dashboard" | "scoreboard" | "placements" | "goals";
 
 // Display labels for each dashboard view. The section nav itself lives in
 // the left sidebar (Clubhouse / Metrics / Placements); these labels are
@@ -9,10 +9,12 @@ export const DASHBOARD_TAB_LABELS: Record<DashboardTab, string> = {
   dashboard: "Clubhouse",
   scoreboard: "Metrics",
   placements: "Placements",
+  goals: "Goals",
 };
 
 export function resolveDashboardTab(raw: string | undefined | null): DashboardTab {
   if (raw === "scoreboard") return raw;
   if (raw === "placements") return raw;
+  if (raw === "goals") return raw;
   return "dashboard";
 }

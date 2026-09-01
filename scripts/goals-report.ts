@@ -121,6 +121,7 @@ async function main(): Promise<void> {
       rangeStart,
       rangeEnd,
       ownerUserId: goal.ownerUserId,
+      period: goal.period,
       goalId: goal.id,
     });
 
@@ -129,13 +130,17 @@ async function main(): Promise<void> {
       `${day(goal.periodStart)} -> ${day(goal.periodEnd)}`;
     console.log(header);
     console.log(`  ${"-".repeat(Math.max(20, header.length - 2))}`);
-    // Revenue prints both figures side by side: an invoice sent in Q1 and
-    // paid in Q2 is Q1 billed and Q2 collected, and the two answer
-    // different questions. `actual` is the BILLED figure - see
-    // revenueHeadline() in metrics.ts for why.
+    // Revenue prints all three tiers side by side: a placement made in Q1,
+    // invoiced in Q1 and paid in Q2 is Q1 earned, Q1 billed, Q2 collected.
+    // `actual` is the BILLED figure for every period EXCEPT MILESTONE,
+    // which reads collected - see revenueHeadline() in metrics.ts.
     const bothRevenue = result.revenue
-      ? `   [billed ${usd.format(Math.round(result.revenue.billed))} | ` +
-        `collected ${usd.format(Math.round(result.revenue.collected))}]`
+      ? `   [earned ${usd.format(Math.round(result.revenue.earned))} | ` +
+        `billed ${usd.format(Math.round(result.revenue.billed))} | ` +
+        `collected ${usd.format(Math.round(result.revenue.collected))}]` +
+        (result.revenue.billedExceedsEarned
+          ? "  <<< BILLED EXCEEDS EARNED - an invoice has no live placement behind it"
+          : "")
       : "";
     console.log(
       `  target ${fmt(target, goal.metric).padStart(12)}   actual ${fmt(result.value, goal.metric).padStart(12)}` +
@@ -159,6 +164,7 @@ async function main(): Promise<void> {
         periodStart: goal.periodStart,
         periodEnd: goal.periodEnd,
         now,
+        revenue: result.revenue,
       });
       console.log(
         `  expected to date ${fmt(p.expectedToDate, goal.metric).padStart(12)}   ` +
@@ -181,6 +187,7 @@ async function main(): Promise<void> {
             rangeStart: prior.start,
             rangeEnd: prior.end,
             ownerUserId: goal.ownerUserId,
+            period: goal.period,
             goalId: goal.id,
           })
         : null;
@@ -204,6 +211,7 @@ async function main(): Promise<void> {
         rangeStart: trailingStart,
         rangeEnd: now,
         ownerUserId: goal.ownerUserId,
+        period: goal.period,
         goalId: goal.id,
       });
       const p = pacingForMilestone({
@@ -277,9 +285,12 @@ async function printTrace(
       resolvePlacements(orgId, rangeStart, rangeEnd, ownerUserId),
     ]);
     console.log(
+      `  trace: earned ${usd.format(Math.round(revenue?.earned ?? 0))} = sum(Placement.feeTotal) over ${placements} placement(s)`,
+    );
+    console.log(
       `  trace: billed ${usd.format(Math.round(revenue?.billed ?? 0))} over ${billedCount} invoice(s)  |  ` +
         `collected ${usd.format(Math.round(revenue?.collected ?? 0))} over ${collectedCount} invoice(s)  |  ` +
-        `${voided} VOID excluded  |  ${placements} placement(s)`,
+        `${voided} VOID excluded`,
     );
     console.log(`  trace: ${etLabel}`);
     return;

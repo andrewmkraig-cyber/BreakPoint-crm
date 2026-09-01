@@ -20,7 +20,7 @@
 // into Q1. So `etWindow` reads each bound's UTC calendar date and anchors
 // THAT date to ET midnight. Passing an already-ET-anchored start back
 // through is a no-op, so the helper is safe to apply more than once.
-import { GoalMetric } from "@prisma/client";
+import { GoalMetric, GoalPeriod } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_TIMEZONE, zonedWallTimeToUtc } from "@/lib/timezone";
@@ -160,22 +160,56 @@ export function ownershipFieldFor(metric: GoalMetric): string | null {
 // REVENUE
 // ---------------------------------------------------------------------
 
+// Three tiers of the same money, widest to narrowest. In normal operation
+// earned >= billed >= collected: work is done, then invoiced, then paid.
 export type RevenueResult = {
+  // Placement.feeTotal for placements PLACED in the window, whether or not
+  // an invoice exists yet. This is the widest tier - work the desk has
+  // earned but may not have billed.
+  readonly earned: number;
   // Invoice.feeAmount for SENT + PAID invoices, dated by sentAt.
   readonly billed: number;
   // Invoice.feeAmount for PAID invoices only, dated by paidAt.
   readonly collected: number;
+  // True when billed came out ABOVE earned, which should not happen. NOT
+  // clamped: an invoice with no live placement behind it is a real data
+  // problem (a placement cancelled after invoicing, or an invoice attached
+  // to the wrong row), and silently flooring it to `earned` would hide it.
+  // Callers should surface the two numbers and this flag.
+  readonly billedExceedsEarned: boolean;
 };
 
-// Both figures in one call so they can never be resolved from two
+// Pure assembly, split out so the invariant is unit-testable without a
+// database.
+export function buildRevenueResult(
+  earned: number,
+  billed: number,
+  collected: number,
+): RevenueResult {
+  return { earned, billed, collected, billedExceedsEarned: billed > earned };
+}
+
+// All three figures in one call so they can never be resolved from
 // differently-filtered queries and disagree.
 //
-// The two are dated by DIFFERENT columns on purpose: an invoice sent in Q1
-// and paid in Q2 is Q1 billed and Q2 collected. VOID is excluded from
-// both, and so is any invoice hanging off a cancelled placement. Retained
-// invoices carry no placementId at all, so the exclusion is written as
-// "no placement, OR a placement that is not cancelled" rather than a
-// relation filter that would silently drop them.
+// Each tier is dated by a DIFFERENT column on purpose: a placement made in
+// Q1, invoiced in Q1 and paid in Q2 is Q1 earned, Q1 billed, Q2 collected.
+// VOID is excluded from billed and collected, and so is any invoice
+// hanging off a cancelled placement. Retained invoices carry no
+// placementId at all, so that exclusion is written as "no placement, OR a
+// placement that is not cancelled" rather than a relation filter that
+// would silently drop them.
+//
+// EARNED reads Placement.feeTotal - the SAME column createInvoiceForPlacement
+// copies into Invoice.feeAmount (src/lib/invoices.ts: `feeAmount =
+// placement.feeTotal`). Reading the same field is what stops earned and
+// billed from drifting apart on the same placement.
+//
+// Retained placements are a known future wrinkle: a retained engagement is
+// billed on the RetainedSearch, and the filling placement contributes $0 to
+// every other revenue surface (Ace 97.0). If one ever carries a feeTotal it
+// would inflate `earned` against `billed`. Zero live placements currently
+// have a retainedSearchId, so this is flagged rather than pre-solved.
 export async function resolveRevenue(
   organizationId: string,
   rangeStart: Date,
@@ -192,7 +226,16 @@ export async function resolveRevenue(
   };
   const ownerClause = ownerUserId ? [{ client: { ownerId: ownerUserId } }] : [];
 
-  const [billedAgg, collectedAgg] = await Promise.all([
+  const [earnedAgg, billedAgg, collectedAgg] = await Promise.all([
+    prisma.placement.aggregate({
+      _sum: { feeTotal: true },
+      where: {
+        organizationId,
+        placedAt: { gte: start, lt: endExclusive },
+        stage: { notIn: [...DEAD_PLACEMENT_STAGES] },
+        ...(ownerUserId ? { client: { ownerId: ownerUserId } } : {}),
+      },
+    }),
     prisma.invoice.aggregate({
       _sum: { feeAmount: true },
       where: {
@@ -213,20 +256,28 @@ export async function resolveRevenue(
     }),
   ]);
 
-  return {
-    billed: toNumber(billedAgg._sum.feeAmount),
-    collected: toNumber(collectedAgg._sum.feeAmount),
-  };
+  return buildRevenueResult(
+    toNumber(earnedAgg._sum.feeTotal),
+    toNumber(billedAgg._sum.feeAmount),
+    toNumber(collectedAgg._sum.feeAmount),
+  );
 }
 
 // The single number a REVENUE goal is paced against.
 //
-// BILLED, not collected - the same basis the dashboard's Goal Pacing card
+// BILLED for every period, the same basis the dashboard's Goal Pacing card
 // settled on (Ace fix 2026-05-26, documented in goal-pacing.tsx): the
-// recruiter's question is "did I earn enough work this quarter", not "did
-// the cash land". Change it HERE if that ever flips, so the report, the
-// pacing engine and any future UI move together.
-export function revenueHeadline(r: RevenueResult): number {
+// recruiter's question inside a quarter is "did I earn enough work", not
+// "did the cash land".
+//
+// MILESTONE IS A DELIBERATE EXCEPTION and reads COLLECTED. A milestone is
+// lifetime cash actually in the bank - the seeded one says so in its own
+// notes ("Lifetime cash collected. Ron takes us seriously past this
+// line.") - and billing a number is not the same as having been paid it.
+// This exception is scoped to GoalPeriod.MILESTONE only; every other
+// surface keeps billed.
+export function revenueHeadline(r: RevenueResult, period?: GoalPeriod): number {
+  if (period === GoalPeriod.MILESTONE) return r.collected;
   return r.billed;
 }
 
@@ -287,6 +338,9 @@ export async function resolveAvgDealSize(
     resolvePlacements(organizationId, rangeStart, rangeEnd, ownerUserId),
   ]);
   if (placements === 0) return null;
+  // Billed over placements, with no period passed: an average deal size is
+  // "what did a deal bill for", so the MILESTONE-reads-collected exception
+  // deliberately does not apply here.
   return revenueHeadline(revenue) / placements;
 }
 
@@ -354,7 +408,7 @@ export async function resolveSubmittals(
     const md = (row.metadata ?? {}) as Record<string, unknown>;
     // The `jobRfId` fallback is DELIBERATE and load-bearing, and it is why
     // this file raises the RfId Step 0 count from 83 to 84. It is not a new
-    // RecruiterFlow dependency: nothing here reads RF, calls RF, or falls
+    // RF dependency: nothing here reads RF, calls RF, or falls
     // back to RF as a data source. It reads one legacy identifier out of
     // Ace's OWN append-only ActionLog, because 12 of the 100 live submit
     // rows were written in April 2026 with `jobRfId` set and `jobId` null.
@@ -513,16 +567,21 @@ export async function resolveMetric(input: {
   rangeStart: Date;
   rangeEnd: Date;
   ownerUserId: string | null;
+  // The goal's period. Only REVENUE reads it, and only to apply the
+  // MILESTONE-reads-collected exception in revenueHeadline. Omitting it
+  // yields the billed headline, which is the right default everywhere
+  // that is not a milestone.
+  period?: GoalPeriod | null;
   // Required when metric is MANUAL.
   goalId?: string | null;
 }): Promise<MetricResult> {
-  const { organizationId, metric, rangeStart, rangeEnd, ownerUserId, goalId } = input;
+  const { organizationId, metric, rangeStart, rangeEnd, ownerUserId, goalId, period } = input;
   const args = [organizationId, rangeStart, rangeEnd, ownerUserId] as const;
 
   switch (metric) {
     case GoalMetric.REVENUE: {
       const revenue = await resolveRevenue(...args);
-      return { value: revenueHeadline(revenue), revenue };
+      return { value: revenueHeadline(revenue, period ?? undefined), revenue };
     }
     case GoalMetric.PLACEMENTS:
       return { value: await resolvePlacements(...args) };
