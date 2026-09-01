@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-09-01 · Ace 99.0
+Last updated: 2026-09-01 · Ace 99.1
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -425,6 +425,7 @@ The Goals tab (`/dashboard?tab=goals`). Big-panel chrome throughout (`rounded-3x
 
 ### The three-tier revenue meter
 The focal element of the page. One horizontal bar carrying earned, billed and collected against the quarter's target.
+- **The headline figure is EARNED** (Ace 99.1). The big number reads "$X earned of $Y", the bar's pace marker is measured against earned, and billed and collected sit alongside it as their own labelled figures. All three tiers stay visible - the decision changed which one is in charge, not which ones are shown.
 - **The three fills are NESTED, not stacked end to end.** They are the same money at three stages of one pipe (earned >= billed >= collected), so drawing them as segments that add up would triple-count it. Each fill is drawn from the left edge at its own absolute percentage of target, widest behind narrowest.
 - Fills are brand-green alpha steps - `bg-court-brand/25` (earned), `/60` (billed), solid `bg-court-brand` (collected). Tokens only, no hex, so they re-skin across all seven Court palettes.
 - **Colour is never the only cue.** Three steps of one green are exactly what fails for anyone who cannot separate them, so every tier is ALSO named in a legend and printed as its own labelled dollar figure underneath. The same rule applies to any future multi-series fill.
@@ -449,6 +450,9 @@ Rendered above the goal list, only for a `goalLevel` 0 viewer, and **only when i
 
 ### Charts on this surface
 No charting library and no SVG, matching the Scoreboard Deal Funnel and the Finances TrendCard: a rounded `bg-court-surface-subtle` track with `overflow-hidden` and an absolutely positioned `bg-court-brand-tint` fill grown by width % (horizontal) or height % (vertical). That idiom cannot express a two-series line, so the pace chart draws cumulative billed as a per-bucket fill with the required pace as a thin rule across each column at its own height - reading the rules left to right gives the pace line. Both series are named in a legend and repeated as numbers.
+
+### The pace chart tracks the headline tier
+The cumulative curve must be drawn from the SAME tier the headline uses, or it will not land on the headline's number. When earned became the pacing figure the chart moved from billed invoices to earned placements with it. If the headline tier ever changes again, the chart moves too - this is a correctness constraint, not a labelling one.
 
 ### Null is never zero
 Any metric that cannot be measured renders a muted dash plus "not tracked yet". A zero is a measured result and must look different from an absence - this is why `AVG_DEAL_SIZE` with no placements shows a dash, not $0.

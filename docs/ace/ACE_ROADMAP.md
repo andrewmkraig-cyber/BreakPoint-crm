@@ -1,7 +1,13 @@
 # Ace Roadmap
-Last updated: 2026-09-01 · Ace 99.0
+Last updated: 2026-09-01 · Ace 99.1
 
 ## Active Build Sequence
+
+### DONE this session (Ace 99.1 - revenue definition settled, 2026-09-01)
+Closes items 1 and 2 below. Full detail in ACE_STATE.md ▸ Ace 99.1.
+- ~~**`earned` is the pacing number**~~ DONE (`2870fcdb`) - Andrew's decision. MILESTONE keeps collected, AVG_DEAL_SIZE keeps billed. Goal Pacing card moved onto the engine; the billing-events definition is gone from it.
+- ~~**Top Clients onto the shared leaderboard**~~ DONE (`2870fcdb`) - plus the missing date filter and the rejected-placement leak.
+- ~~**Invoice-vs-fee integrity scan**~~ DONE (`2870fcdb`) - `scripts/report-invoice-fee-gaps.ts`, read-only. Zero clients to reconcile; the tsaADVET case was a retained invoice, not a gap.
 
 ### DONE this session (Ace 99.0 - the Goals tab, 2026-09-01)
 Six prompts plus a production hotfix. Full detail in ACE_STATE.md ▸ Ace 99.0.
@@ -15,17 +21,17 @@ Six prompts plus a production hotfix. Full detail in ACE_STATE.md ▸ Ace 99.0.
 
 ### Open follow-ups from Ace 99.0 (Andrew's call, none are blockers)
 
-**1. Which revenue definition wins? (blocks items 2 and 3)**
-Three defensible numbers for "billed revenue" now coexist. Measured 2026-09-01:
+**1. ~~Which revenue definition wins?~~ SETTLED 2026-09-01 (Ace 99.1, `2870fcdb`) - EARNED.**
+Andrew's call: a deal counts when it CLOSES, not when it is invoiced. `revenueHeadline` returns `earned`; billed and collected stay displayed everywhere they were. MILESTONE keeps reading collected and AVG_DEAL_SIZE keeps reading billed, both deliberate. The Goal Pacing card moved onto the engine's earned figure, so the third (billing-events) definition is gone from that surface. Card and Goals tab now agree at $56,750 for Q3 where they used to differ by $25,750. The comparison that drove the decision:
 
 | window | Goal Pacing card (billing events) | engine `earned` (Placement.feeTotal) | engine `billed` (Invoice by sentAt) |
 |---|---|---|---|
 | Q3 2026 | $65,500 | $56,750 | $39,750 |
 | FY 2026 YTD | $76,750 | $71,750 | $51,000 |
 
-Billing events count money SCHEDULED to bill in the window (invoice due dates, custom-terms installments, and placements with no invoice yet, bucketed by `scheduledAt`) - "work booked". `earned` counts the fee on placements PLACED in the window. `billed` counts invoices actually SENT in the window. They answer different questions and all three are honest. Nothing was silently swapped; the Goal Pacing card keeps its billing-events actual until this is settled.
+Billing events count money SCHEDULED to bill in the window (invoice due dates, custom-terms installments, and placements with no invoice yet, bucketed by `scheduledAt`) - "work booked". `earned` counts the fee on placements PLACED in the window. `billed` counts invoices actually SENT in the window. All three are honest; earned won because it moves the day the desk books the work and cannot be shifted by invoice timing.
 
-**2. Point Scoreboard's Top Clients at the shared leaderboard.** Deliberately NOT done in Ace 99.0 - it cannot be done without changing what the card shows. Three differences, all measured: (a) `aceCandidates` has NO date filter, so the card is ALL-TIME despite sitting in a period-selected Scoreboard; (b) it uses `placementTotalDollars` (billing events) where the leaderboard uses `Placement.feeTotal` - tsaADVET reads $12,500 on the card and $7,500 in the leaderboard, because its one hired placement has `feeTotal` $7,500 but two PAID invoices totalling $12,500 (exactly the `billedExceedsEarned` condition); (c) `NOT_CANCELLED` is `{ not: "cancelled" }`, so the card includes REJECTED placements, and its RF-only client aggregates would vanish (moot today at 143/143 with a clientId). Settle item 1 first, then this is mechanical.
+**2. ~~Point Scoreboard's Top Clients at the shared leaderboard.~~ DONE 2026-09-01 (Ace 99.1, `2870fcdb`).** Swapped once item 1 was settled. It also fixed two defects the old query carried: it had **NO date filter at all**, so the card rendered all-time numbers inside a period-selected page, and its `NOT_CANCELLED` filter still counted REJECTED placements. Before (all-time): Sheehan $46.8K, tsaADVET $12.5K, Ross $10.0K, Excellware $7.5K. After (Q3 2026, earned): Sheehan $46.8K, Ross $10.0K. Rows are filtered to `placements > 0` so the card does not pad its five slots with open-jobs-only clients.
 
 **3. Point the Billing Tower + Finances TrendCard at the Goal table.** `QUARTERLY_REVENUE_GOAL_USD` / `ANNUAL_REVENUE_GOAL_USD` are still imported by `billing-tower-actions.ts` and `finances/revenue-cards.tsx`. **The Billing Tower annual goal currently reads 300k while the Goal Pacing card reads the real 500k** - a visible inconsistency, left in place because moving them would have changed two more dashboard surfaces in a pass scoped to one.
 
@@ -33,7 +39,13 @@ Billing events count money SCHEDULED to bill in the window (invoice due dates, c
 
 **5. Instantly reply data exists but is deliberately NOT wired to BD_REPLIES.** `InstantlyReply` holds 80 rows (27 genuine after excluding own-senders and auto-replies) with a real `receivedAt`. It is a DIFFERENT channel from the Apollo BD engine and is bucketed under MANUAL goals for now; wiring it into `BD_REPLIES` would silently redefine what that metric counts. Decide whether Instantly deserves its own metric.
 
-**6. Retained-search revenue and `earned`.** `earned` EXCLUDES placements with a `retainedSearchId`, because a retained engagement bills on its own invoice and the filling placement contributes $0 everywhere else (Ace 97.0). The asymmetry that leaves: retained money reaches `billed` and `collected` through its invoice but reaches `earned` through nothing, so an OPEN retained engagement reads as billed-with-no-earned. Adding it would mean summing `RetainedSearch.totalAmount`, and the open question is whether an OPEN engagement counts as earned before anyone is placed. Zero live placements carry a `retainedSearchId` today.
+**6. Retained-search revenue and `earned` - NOW LIVE AND MORE URGENT (updated Ace 99.1).** `earned` EXCLUDES placements with a `retainedSearchId`, because a retained engagement bills on its own invoice and the filling placement contributes $0 everywhere else (Ace 97.0). The asymmetry: retained money reaches `billed` and `collected` through its invoice but reaches `earned` through nothing.
+
+**This stopped being hypothetical.** There is one live OPEN `RetainedSearch` - tsaADVET, $5,000, created 2026-08-22, no fill yet - and since Ace 99.1 `earned` is THE PACING FIGURE. So that $5,000 is counted in billed and collected but is invisible to pace index, projection and status. Every future retainer will be too.
+
+Also corrects the Ace 99.0 note: the tsaADVET $12,500-vs-$7,500 discrepancy recorded there as a `billedExceedsEarned` condition **was not one**. It is a $7,500 placement invoice plus `INV-1060`, a $5,000 retained invoice with `placementId` null - working exactly as designed. `scripts/report-invoice-fee-gaps.ts` (read-only) confirms **zero** clients across the org actually invoice above their placements' recorded fee.
+
+The open question is unchanged: adding retained money to `earned` means summing `RetainedSearch.totalAmount`, and someone has to decide whether an OPEN engagement counts as earned before anyone is placed.
 
 **7. SUBMITTALS is sourced from `ActionLog`, not `Placement`.** Worth knowing if the submit-logging path ever changes: `stageMovedAt` cannot date a past transition, so there is no fallback. The de-dup key is candidate + job and currently reads 100 raw rows as 98 submittals.
 

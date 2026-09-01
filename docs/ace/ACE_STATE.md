@@ -1,8 +1,39 @@
 # ACE_STATE.md
-Last updated: 2026-09-01 · Ace 99.0
-Current Version: Ace 99.0
+Last updated: 2026-09-01 · Ace 99.1
+Current Version: Ace 99.1
 Last Shipped: 2026-09-01
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 99.1 - the revenue definition settled (2026-09-01)
+
+Closes the two items ACE_ROADMAP.md carried out of Ace 99.0. **Andrew's decision: `earned` is the pacing number. A deal counts when it CLOSES, not when it is invoiced.** Billed and collected keep being displayed everywhere they already were; only the figure that drives pace index, projection and status moved.
+
+**`earned` is the headline (`2870fcdb`).** `revenueHeadline` returns `earned` (`Placement.feeTotal` for placements PLACED in the window, retained excluded). Both prior exceptions survive unchanged and are pinned in comments: **MILESTONE still reads COLLECTED** (lifetime cash in the bank - neither booking nor invoicing a deal is being paid for it), and **AVG_DEAL_SIZE still reads BILLED**, now bypassing `revenueHeadline` entirely rather than depending on what it happens to return.
+
+The pace chart had to move with the headline or its curve would never land on the meter's number: new `listEarnedPlacements` filtered through the SAME `earnedPlacementWhere` the aggregate uses, so the last bucket equals the headline by construction. Relabelled "Cumulative earned".
+
+**The third definition of revenue is gone.** The Goal Pacing card computed its own billed figure from billing events (`expandPlacementBillingEvents` bucketed by `scheduledAt`); it now reads `resolveRevenue().earned`, and its two dead queries were deleted. Measured before -> after:
+
+| surface | before | after |
+|---|---|---|
+| Goal Pacing, Q3 2026 | $65,500 | **$56,750** |
+| Goal Pacing, FY 2026 | $76,750 | **$71,750** |
+| Goals tab, Q3 headline | $39,750 | **$56,750** |
+
+The card and the tab now agree at $56,750. Before this they differed by $25,750 while claiming to describe the same thing.
+
+`expandPlacementBillingEvents` is NOT dead - it still feeds the Cash Forecast in `scoreboard-data.ts`, and `placementTotalDollars` still has four consumers. `listBilledInvoices` is now unused and was kept as the billed-tier twin of `listEarnedPlacements`.
+
+**Top Clients reads the shared leaderboard.** `scoreboard-data.ts` dropped its own client aggregation. Three defects went with it: the old query had **NO date filter at all**, so the card rendered ALL-TIME numbers inside a period-selected page; its `NOT_CANCELLED` filter was `{ not: "cancelled" }`, so REJECTED placements still counted; and it used billing-events dollars. Before (all-time): Sheehan $46.8K, tsaADVET $12.5K, Ross $10.0K, Excellware $7.5K. After (Q3 2026, earned): Sheehan $46.8K, Ross $10.0K - and paging to Q2 gives tsaADVET and Excellware at $7.5K each, YTD gives all four. One correction the swap needed: the leaderboard keeps a client with ANY activity including open-jobs-only, so the card was padding its five slots with $0 rows; filtered to `placements > 0`, matching the old entry condition.
+
+**Integrity report, and a correction to the Ace 99.0 write-up.** `scripts/report-invoice-fee-gaps.ts` (read-only, no `--apply`) scans every client for an invoiced total above the summed `feeTotal` of its non-cancelled, non-rejected placements. **Result: zero clients to reconcile.**
+
+The tsaADVET case recorded in Ace 99.0 as a `billedExceedsEarned` condition **was wrong**. Its $12,500 is a $7,500 placement invoice plus `INV-1060`, a $5,000 **RETAINED** invoice with `retainedSearchId` set and `placementId` null - money that is supposed to have no placement behind it (Ace 97.0). Corrected here.
+
+**What that surfaced instead: there is one live OPEN `RetainedSearch`** (tsaADVET, $5,000, created 2026-08-22, no fill yet). The retained-vs-earned asymmetry is therefore no longer theoretical, and it matters more now than it did: `earned` excludes retained money entirely, and earned is the pacing figure, so that $5,000 is counted in billed and collected but is **invisible to pace**. Still the open decision in ACE_ROADMAP.md.
+
+## Next Task
+Andrew to browser-verify the Goals tab in BOTH light and dark mode across the Court surfaces (Ace 66.0) - still outstanding, nothing in this arc was ever looked at in a browser. Then decide the retained-vs-earned question, which is now live rather than hypothetical.
 
 ## What Shipped in Ace 99.0 - The Goals tab, end to end (2026-09-01)
 
@@ -52,8 +83,7 @@ Verified against a production build by invoking the real server actions over `Ne
 
 **Goal Pacing targets (`3c7d5c82`).** The Scoreboard's Goal Pacing card now reads its quarterly and annual targets from the Goal table instead of hardcoded constants (its annual was 300k while the live goal says 500k). No matching ACTIVE goal renders "No goal set." with a link to the Goals tab rather than a number nobody chose. **Its ACTUAL was deliberately left alone** - see the open decision in ACE_ROADMAP.md.
 
-## Next Task
-Andrew to browser-verify the Goals tab in BOTH light and dark mode across the Court surfaces (Ace 66.0 both-modes rule) - nothing in this arc was visually verified, only token-checked. Then settle the revenue-definition question in ACE_ROADMAP.md, which unblocks pointing Scoreboard's Top Clients card at the shared leaderboard and pointing the Billing Tower + Finances TrendCard at the Goal table.
+(Superseded by Ace 99.1 above: the revenue definition was settled and both dependent items shipped.)
 
 ## What Shipped in Ace 98.0 - Prisma migrations baseline + stage clock (2026-08-30)
 

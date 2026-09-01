@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-09-01 · Ace 99.0
+Last updated: 2026-09-01 · Ace 99.1
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -171,6 +171,19 @@ The build gate `scripts/check-raw-buttons.mjs` (wired into `npm run build`) bloc
   - Baseline at introduction: 5 files / 16 reads (top debt: `src/lib/candidates.ts` 5, `src/lib/clients.ts` 4, `src/app/clients/[id]/page.tsx` 3, `src/app/pipeline/page.tsx` 2, `src/app/candidates/[id]/placement-actions.ts` 2).
 
 - **Client/prisma bundle gate (added 2026-09-01 · Ace 99.0)** - `scripts/check-client-prisma.mjs`. Walks the VALUE-import graph from every `"use client"` file and fails the build if any path reaches `@/lib/prisma`. It ignores `"use server"` modules (Next replaces those imports with an RPC stub, so they are never bundled) and type-only imports (erased at build). **This gate has no baseline and nothing is grandfathered - there is no acceptable count above zero.** The fix is never to silence it: move the pure helpers into a module that does not import prisma and re-export them from the server-side one. See the pure-helper rule below for why.
+
+## Revenue definition (added 2026-09-01 · Ace 99.1 - PERMANENT, Andrew's decision)
+**`earned` is the number the desk is paced against. A deal counts when it CLOSES, not when it is invoiced.** `earned` = `Placement.feeTotal` for placements PLACED in the window, excluding cancelled, rejected, and retained placements. It moves the day the work is booked and cannot be shifted by invoice timing.
+
+`billed` (SENT+PAID invoices by `sentAt`) and `collected` (PAID by `paidAt`) are still resolved and still displayed everywhere they already were. The decision changed which figure drives pace index, projection and status - not which figures are shown.
+
+Two exceptions, both deliberate:
+- **MILESTONE goals read COLLECTED.** Lifetime cash actually in the bank; neither booking a deal nor invoicing it is the same as having been paid for it.
+- **AVG_DEAL_SIZE reads BILLED**, and deliberately does NOT route through `revenueHeadline`. "What did a deal bill for" is the question that metric answers.
+
+**One definition per surface.** The Goal Pacing card used to compute a third figure from billing events (`expandPlacementBillingEvents` by `scheduledAt`) and disagreed with the Goals tab by $25,750 while claiming to describe the same thing. Any new revenue surface reads the goals engine; do not add a fourth definition. `expandPlacementBillingEvents` remains correct for the Cash Forecast, which is a genuinely different question (when will money arrive).
+
+**Known gap:** `earned` excludes retained engagements entirely, so retained money is counted in billed and collected but is invisible to pace. There is a live OPEN retained search. Open item 6 in ACE_ROADMAP.md.
 
 ## Pure helpers must not live in prisma-importing modules (added 2026-09-01 · Ace 99.0 - PERMANENT)
 `src/lib/prisma.ts` calls `base.$extends(...)` at MODULE SCOPE. In a browser bundle `@prisma/client` resolves to a shim whose `PrismaClient` is a Proxy that throws on ANY property access, so that `$extends` read throws the instant the module is evaluated client-side:
