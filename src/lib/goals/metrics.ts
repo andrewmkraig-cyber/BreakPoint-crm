@@ -325,22 +325,59 @@ export async function listBilledInvoices(
     .map((r) => ({ sentAt: r.sentAt, amount: toNumber(r.feeAmount) }));
 }
 
+// The individual PLACEMENTS behind `resolveRevenue(...).earned`, for
+// callers that need to bucket the money over time (the pace chart) rather
+// than take one total. Filtered through the SAME earnedPlacementWhere the
+// aggregate uses, so a chart built from these rows always sums back to the
+// headline figure.
+//
+// This replaced listBilledInvoices as the pace chart's source when earned
+// became the pacing actual (Ace 99.0) - a chart drawn from a different
+// tier than the headline would not land on the headline's number.
+export async function listEarnedPlacements(
+  organizationId: string,
+  rangeStart: Date,
+  rangeEnd: Date,
+  ownerUserId: string | null,
+): Promise<Array<{ placedAt: Date; amount: number }>> {
+  const { start, endExclusive } = etWindow(rangeStart, rangeEnd);
+  const rows = await prisma.placement.findMany({
+    where: earnedPlacementWhere(organizationId, start, endExclusive, ownerUserId),
+    select: { placedAt: true, feeTotal: true },
+    orderBy: { placedAt: "asc" },
+  });
+  return rows
+    .filter((r): r is { placedAt: Date; feeTotal: typeof r.feeTotal } => r.placedAt != null)
+    .map((r) => ({ placedAt: r.placedAt, amount: toNumber(r.feeTotal) }));
+}
+
 // The single number a REVENUE goal is paced against.
 //
-// BILLED for every period, the same basis the dashboard's Goal Pacing card
-// settled on (Ace fix 2026-05-26, documented in goal-pacing.tsx): the
-// recruiter's question inside a quarter is "did I earn enough work", not
-// "did the cash land".
+// EARNED for every period (Andrew's decision, 2026-09-01 · Ace 99.0).
+// A deal counts when it CLOSES, not when someone gets round to invoicing
+// it: `earned` is Placement.feeTotal for placements PLACED in the window,
+// so it moves the day the desk actually books the work and cannot be
+// shifted by invoice timing. This replaces the earlier billed-based
+// headline (the 2026-05-26 Goal Pacing basis).
 //
-// MILESTONE IS A DELIBERATE EXCEPTION and reads COLLECTED. A milestone is
-// lifetime cash actually in the bank - the seeded one says so in its own
-// notes ("Lifetime cash collected. Ron takes us seriously past this
-// line.") - and billing a number is not the same as having been paid it.
-// This exception is scoped to GoalPeriod.MILESTONE only; every other
-// surface keeps billed.
+// `billed` and `collected` are NOT dropped - every surface that showed
+// them still does. Only the figure that drives pace index, projection and
+// status changed.
+//
+// TWO EXCEPTIONS, both deliberate and both unchanged by that decision:
+//
+//   MILESTONE reads COLLECTED. A milestone is lifetime cash actually in
+//   the bank - the seeded one says so in its own notes ("Lifetime cash
+//   collected. Ron takes us seriously past this line.") - and neither
+//   booking a deal nor invoicing it is the same as having been paid.
+//
+//   AVG_DEAL_SIZE reads BILLED, and does not call this function at all
+//   (see resolveAvgDealSize). "What did a deal bill for" is the question
+//   that metric answers; pacing it on earned would silently change what
+//   the average means.
 export function revenueHeadline(r: RevenueResult, period?: GoalPeriod): number {
   if (period === GoalPeriod.MILESTONE) return r.collected;
-  return r.billed;
+  return r.earned;
 }
 
 // ---------------------------------------------------------------------
@@ -395,10 +432,12 @@ export async function resolveAvgDealSize(
     resolvePlacements(organizationId, rangeStart, rangeEnd, ownerUserId),
   ]);
   if (placements === 0) return null;
-  // Billed over placements, with no period passed: an average deal size is
-  // "what did a deal bill for", so the MILESTONE-reads-collected exception
-  // deliberately does not apply here.
-  return revenueHeadline(revenue) / placements;
+  // AVG_DEAL_SIZE stays on BILLED, deliberately, and therefore does NOT go
+  // through revenueHeadline (which now returns earned). An average deal
+  // size answers "what did a deal bill for"; switching it to earned would
+  // quietly change what the number means, and it is the one revenue-shaped
+  // metric the earned decision does not apply to.
+  return revenue.billed / placements;
 }
 
 // ---------------------------------------------------------------------

@@ -82,9 +82,10 @@ export type CumulativePacing = {
   // Positive means still to go; negative means past target.
   readonly gapToTarget: number;
   readonly status: PacingStatus | null;
-  // REVENUE goals only. `actual` above is the BILLED figure and that is
-  // what everything paces on; earned and collected ride along purely for
-  // display, so a card can show all three tiers without a second query.
+  // REVENUE goals only. `actual` above is the EARNED figure (Ace 99.0)
+  // and that is what everything paces on; billed and collected ride along
+  // purely for display, so a card can show all three tiers without a
+  // second query.
   readonly revenue?: RevenueResult;
 };
 
@@ -95,7 +96,7 @@ export function pacingForCumulative(input: {
   periodEnd: Date;
   now?: Date;
   // Passed through untouched for REVENUE goals. It never changes the
-  // pacing maths - the headline stays billed.
+  // pacing maths - the headline is `actual`, which is earned.
   revenue?: RevenueResult;
 }): CumulativePacing {
   const { target, actual, periodStart, periodEnd, revenue } = input;

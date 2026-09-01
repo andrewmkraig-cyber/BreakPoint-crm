@@ -1,14 +1,7 @@
 import Link from "next/link";
 
 import { prisma } from "@/lib/prisma";
-import {
-  BILLING_EVENT_PLACEMENT_SELECT,
-  RETAINED_INVOICE_SELECT,
-  expandPlacementBillingEvents,
-  expandRetainedInvoiceEvents,
-  retainedInvoiceWindowWhere,
-  type PlacementForBilling,
-} from "@/lib/billing-events";
+import { resolveRevenue } from "@/lib/goals/metrics";
 
 const USD_NO_CENTS = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -101,35 +94,11 @@ export async function getGoalPacingData(
   const qStart = new Date(year, qIndex * 3, 1);
   const qEnd = new Date(year, qIndex * 3 + 3, 1);
 
-  const [yearPlacements, retainedInvoices, placementsYtd] = await Promise.all([
-    // Rows with a locked stage (pending_start or hired) where ANY billing
-    // event might land in the year window. We don't pre-filter by
-    // expectedStartDate/placedAt at the query level any more because a
-    // custom-terms inst3 might be scheduled for next year even if the
-    // placement's expectedStartDate is in this one (or vice-versa).
-    // Year-bucket filtering happens after expandPlacementBillingEvents
-    // below — open-stage placement counts are small enough that pulling
-    // the wider set is fine.
-    prisma.placement.findMany({
-      where: {
-        organizationId,
-        stage: { in: ["pending_start", "hired"] },
-        OR: [
-          { expectedStartDate: { gte: yearStart, lt: yearEnd } },
-          { placedAt: { gte: yearStart, lt: yearEnd } },
-          { startConfirmedAt: { gte: yearStart, lt: yearEnd } },
-        ],
-      },
-      select: BILLING_EVENT_PLACEMENT_SELECT,
-    }),
-    // Retained-search invoices, loaded directly rather than through
-    // Placement. A retained engagement is billed before any candidate
-    // exists, so the placement query above can never reach it. Without this
-    // the whole retainer was missing from Goal Pacing.
-    prisma.invoice.findMany({
-      where: retainedInvoiceWindowWhere(organizationId, yearStart, yearEnd),
-      select: RETAINED_INVOICE_SELECT,
-    }),
+  // The billing-event placement query and the retained-invoice query that
+  // used to sit here were deleted in Ace 99.0 when this card moved onto the
+  // goals engine's `earned` tier. `resolveRevenue` does that work now, with
+  // the same exclusions every other goals surface uses.
+  const [placementsYtd] = await Promise.all([
     prisma.placement.count({
       // YTD Placements counter for Goal Pacing — cancelled placements
       // are dropped so the count matches the booked-revenue ledger
@@ -142,33 +111,31 @@ export async function getGoalPacingData(
     }),
   ]);
 
-  let ytdRevenueCents = 0;
-  let quarterRevenueCents = 0;
-  // Placement events (retained placements return none - their money is on
-  // the retained invoice below) plus the retained invoices themselves.
-  const allEvents = [
-    ...yearPlacements.flatMap((p) =>
-      expandPlacementBillingEvents(p as PlacementForBilling),
-    ),
-    ...expandRetainedInvoiceEvents(retainedInvoices),
-  ];
-  {
-    for (const e of allEvents) {
-      // Goal Pacing buckets by scheduledAt for every status — even
-      // paid events should land in the quarter they were billed for,
-      // not the quarter they were collected in. The recruiter's read
-      // is "did I earn enough work this quarter to hit goal?", not
-      // "did the cash arrive?".
-      if (e.scheduledAt >= yearStart && e.scheduledAt < yearEnd) {
-        ytdRevenueCents += e.amountCents;
-      }
-      if (e.scheduledAt >= qStart && e.scheduledAt < qEnd) {
-        quarterRevenueCents += e.amountCents;
-      }
-    }
-  }
-  const ytdRevenueUsd = ytdRevenueCents / 100;
-  const quarterRevenueUsd = quarterRevenueCents / 100;
+  // ACTUALS COME FROM THE GOALS ENGINE (Ace 99.0), on the EARNED tier.
+  //
+  // This card used to compute its own billed figure from billing events
+  // (expandPlacementBillingEvents bucketed by scheduledAt), which is a
+  // THIRD definition of revenue alongside the engine's earned and billed.
+  // Andrew settled it on 2026-09-01: a deal counts when it CLOSES, not
+  // when it is invoiced. Reading resolveRevenue here means this card and
+  // the Goals tab can no longer disagree - same window, same query, same
+  // exclusions (cancelled + rejected out, retained placements out of
+  // earned because their money is on the retained invoice).
+  //
+  // Windows are converted to UTC calendar-date MARKERS because that is
+  // what the engine's etWindow expects; handing it the local-time instants
+  // above would re-anchor the wrong calendar day.
+  const asMarker = (d: Date) =>
+    new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const lastDayOf = (endExclusive: Date) =>
+    asMarker(new Date(endExclusive.getTime() - 1));
+
+  const [yearRevenue, quarterRevenue] = await Promise.all([
+    resolveRevenue(organizationId, asMarker(yearStart), lastDayOf(yearEnd), null),
+    resolveRevenue(organizationId, asMarker(qStart), lastDayOf(qEnd), null),
+  ]);
+  const ytdRevenueUsd = yearRevenue.earned;
+  const quarterRevenueUsd = quarterRevenue.earned;
 
   const ET_DAY_MS = 86_400_000;
   const etParts = new Intl.DateTimeFormat("en-US", {

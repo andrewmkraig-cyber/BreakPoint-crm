@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { getClientLeaderboard } from "@/lib/goals/client-leaderboard";
 import { getRfClientsForOrg, getRfJobsForOrg, syntheticIdFromCuid } from "@/lib/candidates";
 import { normalizeClient, normalizeJob } from "@/lib/rf-payload-shapes";
 import {
@@ -642,10 +643,6 @@ export async function getScoreboardData(
     rfJobTitle.set(j.id, normalizeJob(j).title);
   }
 
-  const clientAgg = new Map<
-    string,
-    { clientId: string; name: string; placements: number; feeUsd: number }
-  >();
   const roleAgg = new Map<string, { title: string; placements: number; feeSum: number; feeCount: number }>();
 
   for (const p of aceCandidates) {
@@ -664,28 +661,6 @@ export async function getScoreboardData(
     // rather than through the placement.
     const placementFeeUsd = placementTotalDollars(p as PlacementForBilling);
 
-    const clientKey = p.client?.id
-      ? `c:${p.client.id}`
-      : p.clientRfId != null
-        ? `r:${p.clientRfId}`
-        : null;
-    const clientName = p.client?.name
-      ?? (p.clientRfId != null ? rfClientName.get(p.clientRfId) : null);
-
-    if (clientKey && clientName) {
-      const prev =
-        clientAgg.get(clientKey) ??
-        {
-          clientId: p.client?.id ?? "",
-          name: clientName,
-          placements: 0,
-          feeUsd: 0,
-        };
-      prev.placements += 1;
-      prev.feeUsd += placementFeeUsd ?? 0;
-      clientAgg.set(clientKey, prev);
-    }
-
     const roleTitle = p.job?.title
       ?? (p.jobRfId != null ? rfJobTitle.get(p.jobRfId) : null);
     if (roleTitle) {
@@ -699,34 +674,55 @@ export async function getScoreboardData(
     }
   }
 
-  // Retained revenue folded into Top Clients from the engagement's own
-  // invoices. Without this the retainer would be invisible here: the
-  // placement that filled it contributes $0 by design, and an OPEN search
-  // has no placement at all. Counted once, from the same invoice events
-  // every other retained total reads.
-  for (const e of retainedEvents) {
-    const clientId = e.retainedSearchId
-      ? retainedClientById.get(e.retainedSearchId)
-      : null;
-    if (!clientId) continue;
-    const name = retainedClientNameById.get(clientId);
-    if (!name) continue;
-    const key = `c:${clientId}`;
-    const prev =
-      clientAgg.get(key) ?? { clientId, name, placements: 0, feeUsd: 0 };
-    prev.feeUsd += Math.round(e.amountCents / 100);
-    clientAgg.set(key, prev);
-  }
-
-  const topClients = Array.from(clientAgg.values())
-    .sort((a, b) => b.feeUsd - a.feeUsd || b.placements - a.placements)
+  // TOP CLIENTS COMES FROM THE SHARED LEADERBOARD (Ace 99.0).
+  //
+  // This card used to run its own client aggregation here, which disagreed
+  // with the Goals tab in three ways - all three are fixed by the swap:
+  //   1. It had NO date filter at all (`aceCandidates` is every
+  //      non-cancelled placement ever), so it rendered ALL-TIME numbers
+  //      inside a period-selected page. It is now scoped to the same
+  //      `range` the rest of this function uses.
+  //   2. It used placementTotalDollars (billing events); the leaderboard
+  //      uses `earned`, the settled pacing definition (Andrew, 2026-09-01).
+  //   3. Its NOT_CANCELLED filter is `{ not: "cancelled" }`, so REJECTED
+  //      placements still counted. The leaderboard excludes cancelled AND
+  //      rejected, which is correct.
+  //
+  // Retained engagements: `earned` deliberately excludes retained
+  // placements (their money is on the RetainedSearch invoice), so the
+  // hand-rolled retained fold-in that used to sit here is gone with the
+  // rest. That is the open item in ACE_ROADMAP.md, not a regression here.
+  //
+  // The window is converted to UTC calendar-date MARKERS, which is what the
+  // goals engine's etWindow expects; `range` carries local-time instants.
+  const rangeStartMarker = new Date(
+    Date.UTC(periodStart.getFullYear(), periodStart.getMonth(), periodStart.getDate()),
+  );
+  const rangeEndInstant = new Date(periodEnd.getTime() - 1);
+  const rangeEndMarker = new Date(
+    Date.UTC(rangeEndInstant.getFullYear(), rangeEndInstant.getMonth(), rangeEndInstant.getDate()),
+  );
+  const leaderboard = await getClientLeaderboard({
+    organizationId: org.id,
+    rangeStart: rangeStartMarker,
+    rangeEnd: rangeEndMarker,
+  });
+  const topClients = [...leaderboard]
+    // The leaderboard keeps a client with ANY activity in the window,
+    // including one with only open jobs and no placements. This card is
+    // "Top Clients by Revenue", so it takes the same entry condition the
+    // hand-rolled aggregation had: a client appears once it has a
+    // placement in the window. Without this the card padded its five
+    // slots with $0 / 0-placement rows.
+    .filter((c) => c.placements > 0)
+    .sort((a, b) => b.revenueEarned - a.revenueEarned || b.placements - a.placements)
     .slice(0, 5)
     .map((c, i) => ({
       id: `c${i}`,
       clientId: c.clientId,
       name: c.name,
       placements: c.placements,
-      feeUsd: c.feeUsd,
+      feeUsd: c.revenueEarned,
     }));
 
   const topRoles = Array.from(roleAgg.values())

@@ -40,8 +40,11 @@ export function GoalsRevenueMeter({
   pacing: CumulativePacing;
 }) {
   const { target, revenue } = pacing;
+  // `pacing.actual` IS earned (Ace 99.0), so it is the right fallback for
+  // earned and the wrong one for billed - a missing revenue detail leaves
+  // billed at 0 rather than silently mirroring the earned figure.
   const earned = revenue?.earned ?? pacing.actual;
-  const billed = revenue?.billed ?? pacing.actual;
+  const billed = revenue?.billed ?? 0;
   const collected = revenue?.collected ?? 0;
 
   // Scale so the bar can show an overshoot: if any tier beats target, the
@@ -73,9 +76,9 @@ export function GoalsRevenueMeter({
             {goalLabel}
           </p>
           <p className="mt-1 font-serif text-[26px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-court-fg">
-            {usd(billed)}
+            {usd(earned)}
             <span className="ml-2 font-sans text-[13px] font-medium tracking-normal text-court-fg-muted">
-              billed of {usd(target)} · {periodLabel}
+              earned of {usd(target)} · {periodLabel}
             </span>
           </p>
         </div>

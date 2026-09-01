@@ -29,7 +29,7 @@ import {
 import { GOAL_METRIC_LABELS, GOAL_PERIOD_LABELS } from "@/lib/goals/goal-options";
 import { prisma } from "@/lib/prisma";
 import {
-  listBilledInvoices,
+  listEarnedPlacements,
   resolveAvgDealSize,
   resolveMetric,
   resolvePlacements,
@@ -140,7 +140,9 @@ export async function GoalsTab({
           goal: quarterGoal,
           pacing: pacingForCumulative({
             target: Number(quarterGoal.targetValue),
-            actual: goalRevenue.billed,
+            // EARNED is the pacing actual (Ace 99.0). billed and
+            // collected still ride along on `revenue` for display.
+            actual: goalRevenue.earned,
             periodStart: quarterGoal.periodStart!,
             periodEnd: quarterGoal.periodEnd!,
             revenue: goalRevenue,
@@ -269,7 +271,7 @@ export async function GoalsTab({
         status: result.value === null ? null : p.status,
         progressPct: target > 0 && result.value !== null ? (result.value / target) * 100 : 0,
         daysRemaining: p.daysRemaining,
-        // Revenue rows show billed as the actual with collected muted
+        // Revenue rows show the earned actual with collected muted
         // underneath. Every other metric has no second figure.
         collected: g.metric === "REVENUE" ? (result.revenue?.collected ?? null) : null,
       };
@@ -312,13 +314,16 @@ export async function GoalsTab({
       })()
     : null;
 
-  // Pace chart buckets. Built from the individual billed invoices behind
-  // the same billedInvoiceWhere the headline uses, bucketed in JS, so the
-  // last bucket's cumulative total always equals the meter's billed figure.
+  // Pace chart buckets. Built from the individual placements behind the
+  // same earnedPlacementWhere the headline uses, bucketed in JS, so the
+  // last bucket's cumulative total always equals the meter's actual.
+  // Switched from billed invoices to earned placements in Ace 99.0 when
+  // earned became the pacing figure - a curve drawn from a different tier
+  // than the headline would never land on the headline's number.
   const paceChart = meterPacing
     ? await (async () => {
         const goal = meterPacing.goal;
-        const invoices = await listBilledInvoices(
+        const placements = await listEarnedPlacements(
           org.id,
           goal.periodStart!,
           goal.periodEnd!,
@@ -329,7 +334,7 @@ export async function GoalsTab({
           buckets: buildPaceBuckets(
             goal.periodStart!,
             goal.periodEnd!,
-            invoices,
+            placements,
             Number(goal.targetValue),
           ),
         };
@@ -590,7 +595,7 @@ const ALL_TIME_START = new Date(Date.UTC(2000, 0, 1));
 function buildPaceBuckets(
   periodStart: Date,
   periodEnd: Date,
-  invoices: Array<{ sentAt: Date; amount: number }>,
+  events: Array<{ placedAt: Date; amount: number }>,
   target: number,
 ): PaceBucket[] {
   const totalDays = Math.max(1, utcMarkerDaysInclusive(periodStart, periodEnd));
@@ -607,14 +612,14 @@ function buildPaceBuckets(
   const buckets: PaceBucket[] = [];
   let cumulative = 0;
   let cursor = 0;
-  const sorted = [...invoices].sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+  const sorted = [...events].sort((a, b) => a.placedAt.getTime() - b.placedAt.getTime());
 
   for (let i = 0; i < bucketCount; i += 1) {
     const startDayOffset = Math.round(daysPer * i);
     const endDayOffset = Math.round(daysPer * (i + 1));
     const bucketStartMs = startMs + startDayOffset * 86_400_000;
     const endMs = startMs + endDayOffset * 86_400_000;
-    while (cursor < sorted.length && sorted[cursor].sentAt.getTime() < endMs) {
+    while (cursor < sorted.length && sorted[cursor].placedAt.getTime() < endMs) {
       cumulative += sorted[cursor].amount;
       cursor += 1;
     }

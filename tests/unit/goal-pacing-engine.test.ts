@@ -344,9 +344,11 @@ assert.equal(pacingShapeFor("AVG_DEAL_SIZE", "MILESTONE"), "RATIO");
   assert.equal(r.billed, 0);
   assert.equal(r.collected, 0);
   assert.equal(r.billedExceedsEarned, false);
-  // The goal still paces on billed, so a period of unbilled work reads as
-  // behind - which is the truth.
-  assert.equal(revenueHeadline(r), 0);
+  // The goal paces on EARNED (Ace 99.0), so work that closed but has not
+  // been invoiced yet counts the moment the deal lands. Under the old
+  // billed headline this same period read as $0 and therefore Behind,
+  // which is exactly what the earned decision was meant to fix.
+  assert.equal(revenueHeadline(r), 30_000);
 }
 
 // Billed with no earned: an invoice exists with no live placement behind
@@ -373,15 +375,19 @@ assert.equal(pacingShapeFor("AVG_DEAL_SIZE", "MILESTONE"), "RATIO");
 // ---- revenueHeadline: the MILESTONE exception ----
 {
   const r = buildRevenueResult(71_750, 51_000, 20_000);
-  // Every period paces on BILLED...
-  assert.equal(revenueHeadline(r), 51_000);
-  assert.equal(revenueHeadline(r, "QUARTERLY"), 51_000);
-  assert.equal(revenueHeadline(r, "ANNUAL"), 51_000);
-  assert.equal(revenueHeadline(r, "DAILY"), 51_000);
-  assert.equal(revenueHeadline(r, "WEEKLY"), 51_000);
-  assert.equal(revenueHeadline(r, "MONTHLY"), 51_000);
-  // ...except MILESTONE, which is lifetime cash actually collected.
+  // Every period paces on EARNED (Ace 99.0)...
+  assert.equal(revenueHeadline(r), 71_750);
+  assert.equal(revenueHeadline(r, "QUARTERLY"), 71_750);
+  assert.equal(revenueHeadline(r, "ANNUAL"), 71_750);
+  assert.equal(revenueHeadline(r, "DAILY"), 71_750);
+  assert.equal(revenueHeadline(r, "WEEKLY"), 71_750);
+  assert.equal(revenueHeadline(r, "MONTHLY"), 71_750);
+  // ...except MILESTONE, which is lifetime cash actually collected. This
+  // exception survived the earned decision unchanged.
   assert.equal(revenueHeadline(r, "MILESTONE"), 20_000);
+  // And the headline is never billed any more - the tier that used to
+  // drive pacing is still carried, just not in charge.
+  assert.notEqual(revenueHeadline(r), r.billed);
 }
 
 // ---- CUMULATIVE carries the three tiers without changing the maths ----
@@ -389,7 +395,7 @@ assert.equal(pacingShapeFor("AVG_DEAL_SIZE", "MILESTONE"), "RATIO");
   const revenue = buildRevenueResult(71_750, 51_000, 20_000);
   const withRevenue = pacingForCumulative({
     target: 125_000,
-    actual: revenue.billed,
+    actual: revenueHeadline(revenue),
     periodStart: Q1_START,
     periodEnd: Q1_END,
     now: new Date("2026-02-15T17:00:00.000Z"),
@@ -397,7 +403,7 @@ assert.equal(pacingShapeFor("AVG_DEAL_SIZE", "MILESTONE"), "RATIO");
   });
   const withoutRevenue = pacingForCumulative({
     target: 125_000,
-    actual: revenue.billed,
+    actual: revenueHeadline(revenue),
     periodStart: Q1_START,
     periodEnd: Q1_END,
     now: new Date("2026-02-15T17:00:00.000Z"),
@@ -406,7 +412,7 @@ assert.equal(pacingShapeFor("AVG_DEAL_SIZE", "MILESTONE"), "RATIO");
   assert.equal(withRevenue.paceIndex, withoutRevenue.paceIndex);
   assert.equal(withRevenue.expectedToDate, withoutRevenue.expectedToDate);
   assert.equal(withRevenue.status, withoutRevenue.status);
-  assert.equal(withRevenue.actual, 51_000); // paces on billed, not earned
+  assert.equal(withRevenue.actual, 71_750); // paces on earned, not billed
   assert.equal(withRevenue.revenue?.earned, 71_750);
   assert.equal(withRevenue.revenue?.collected, 20_000);
   assert.equal(withoutRevenue.revenue, undefined);

@@ -5,7 +5,7 @@ const USD_SHORT = (n: number): string => {
 
 export type PaceBucket = {
   label: string;
-  // Cumulative billed revenue through the END of this bucket.
+  // Cumulative EARNED revenue through the END of this bucket.
   cumulativeActual: number;
   // Where a straight line to target would be at the end of this bucket.
   requiredPace: number;
@@ -13,7 +13,7 @@ export type PaceBucket = {
   isFuture: boolean;
 };
 
-// Cumulative actual vs required pace across the goal's period.
+// Cumulative actual (EARNED, Ace 99.0) vs required pace across the period.
 //
 // HOW CHARTS ARE DRAWN IN THIS APP, and why this one looks like it does.
 // There is no charting library and no SVG anywhere in the chart surfaces.
@@ -67,7 +67,7 @@ export function GoalsPaceChart({
 
       {!hasActual ? (
         <p className="mt-6 text-[13px] text-court-fg-muted">
-          Nothing billed in this period yet, so there is no curve to draw. The
+          Nothing earned in this period yet, so there is no curve to draw. The
           required pace is {USD_SHORT(target)} across {buckets.length}{" "}
           {buckets.length === 1 ? "bucket" : "buckets"}.
         </p>
@@ -108,7 +108,7 @@ export function GoalsPaceChart({
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
         <span className="inline-flex items-center gap-1.5 text-[11px] text-court-fg-muted">
           <span className="inline-block h-2.5 w-2.5 rounded-sm bg-court-brand-tint" aria-hidden />
-          Cumulative billed
+          Cumulative earned
         </span>
         <span className="inline-flex items-center gap-1.5 text-[11px] text-court-fg-muted">
           <span className="inline-block h-px w-3 bg-court-fg/60" aria-hidden />
