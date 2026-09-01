@@ -100,16 +100,18 @@ function reportsTo(target: GoalActor, actor: GoalActor, directory: GoalDirectory
 //   1. It is their own goal.
 //   2. The actor is the owner (goalLevel 0), who has authority over the
 //      whole org whether or not managerId is seeded.
-//   3. They are at the same rank as each other.
-//   4. The target is somewhere in the actor's reporting subtree.
+//   3. The target ranks at or below the actor, anywhere in the org.
+//   4. The target is somewhere in the actor's reporting subtree, which
+//      catches anyone whose goalLevel is null or seeded out of order.
 //
-// NOTE ON "SAME LEVEL OR BELOW". Being merely lower-ranked is deliberately
-// NOT sufficient on its own. A manager reaches people below them through
-// case 4 (their own subtree); a peer's report - lower-ranked, but in
-// someone else's branch - is NOT theirs to set numbers for, which is the
-// behaviour the spec's own test list calls for. Widening case 3 from
-// `===` to `>=` is the one-character change that adopts the looser
-// "anyone at or below my rank, anywhere in the company" reading.
+// NOTE ON "SAME LEVEL OR BELOW". Rank alone is sufficient: a manager can
+// set goals for anyone at their own rank or below, anywhere in the org,
+// not only inside their own reporting branch. A peer's report IS settable.
+// That is Andrew's stated rule - "any manager can set goals for anyone at
+// the same level or below" - confirmed on 2026-09-01 after the shipped
+// version had read it strictly. Case 4 (the subtree walk) still earns its
+// keep for a report whose goalLevel is null or mis-seeded ABOVE their
+// manager's: they are still reachable by the person they report to.
 export function canSetGoalFor(
   organizationId: string,
   actor: GoalActor,
@@ -123,7 +125,7 @@ export function canSetGoalFor(
 
   if (target.id === actor.id) return true;
   if (canApproveCompanyGoal(organizationId, actor)) return true;
-  if (rankOf(target) === rankOf(actor)) return true;
+  if (rankOf(target) >= rankOf(actor)) return true;
   return reportsTo(target, actor, directory);
 }
 

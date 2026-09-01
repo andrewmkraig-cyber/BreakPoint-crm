@@ -2738,6 +2738,11 @@ enum GoalMetric {
   INTERVIEWS
   BD_CONTACTS_ENROLLED
   BD_REPLIES
+  // Billed revenue over placement count for the same window. A RATIO
+  // goal, not a cumulative one - an average converges rather than
+  // accumulating, so it gets its own pacing shape (src/lib/goals/pacing.ts)
+  // and is never given an expected-to-date or a linear projection.
+  AVG_DEAL_SIZE
   // No automatic feed. Actual = sum of this goal's GoalActualEntry rows,
   // and manualLabel names what is being counted.
   MANUAL

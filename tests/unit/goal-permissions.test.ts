@@ -72,9 +72,12 @@ assert.equal(canSetGoalFor(ORG, manager, report, directory), true);
 // Two levels below, reached transitively through managerId.
 assert.equal(canSetGoalFor(ORG, manager, deepReport, directory), true);
 
-// A peer's report the actor does not manage. Lower rank, but someone
-// else's branch, so no.
-assert.equal(canSetGoalFor(ORG, manager, peersReport, directory), false);
+// A peer's report, in a branch the actor does not manage. Rank alone is
+// enough: any manager may set goals for anyone at their level or below,
+// anywhere in the org.
+assert.equal(canSetGoalFor(ORG, manager, peersReport, directory), true);
+// Same for someone two ranks down in the other branch.
+assert.equal(canSetGoalFor(ORG, manager, deepReport, directory), true);
 
 // Upward is not allowed either: a report cannot set their manager's goal.
 assert.equal(canSetGoalFor(ORG, report, manager, directory), false);
@@ -90,8 +93,31 @@ assert.equal(rankOf(unseeded) > rankOf(deepReport), true);
 assert.equal(canSetGoalFor(ORG, unseeded, manager, directory), false);
 assert.equal(canSetGoalFor(ORG, unseeded, deepReport, directory), false);
 
-// A manager reaches an unseeded user only if they actually report to them.
-assert.equal(canSetGoalFor(ORG, manager, unseeded, directory), false);
+// A null goalLevel is the most junior rank, so a manager outranks an
+// unseeded user and may set their goals.
+assert.equal(canSetGoalFor(ORG, manager, unseeded, directory), true);
+// The subtree walk still matters on its own: it reaches a report whose
+// rank is seeded ABOVE their manager's, which the rank test alone misses.
+const inverted: GoalDirectory = {
+  organizationId: ORG,
+  members: new Map([
+    ["boss", person("boss", 4, null)],
+    ["underling", person("underling", 2, "boss")],
+  ]),
+};
+assert.equal(
+  rankOf(inverted.members.get("underling")!) < rankOf(inverted.members.get("boss")!),
+  true,
+);
+assert.equal(
+  canSetGoalFor(
+    ORG,
+    inverted.members.get("boss")!,
+    inverted.members.get("underling")!,
+    inverted,
+  ),
+  true,
+);
 const attached: GoalDirectory = {
   organizationId: ORG,
   members: new Map(directory.members).set(
@@ -112,8 +138,10 @@ const cyclic: GoalDirectory = {
     ["b", person("b", 5, "a")],
   ]),
 };
+// The actor is ranked BELOW both, so the rank shortcut cannot fire and the
+// manager walk actually runs - straight into the cycle.
 assert.equal(
-  canSetGoalFor(ORG, person("outsider", 1, null), cyclic.members.get("a")!, cyclic),
+  canSetGoalFor(ORG, person("outsider", 9, null), cyclic.members.get("a")!, cyclic),
   false,
 );
 
@@ -187,14 +215,16 @@ assert.equal(
   "ACTIVE",
 );
 
-// A user-scoped goal for someone the actor may not set is refused.
+// A user-scoped goal for someone the actor may not set is refused. Under
+// the rank rule the only unreachable direction is UPWARD, so the target
+// here outranks the actor and is not their manager.
 assert.throws(
   () =>
     resolveGoalStatusOnCreate({
       organizationId: ORG,
-      actor: manager,
+      actor: report,
       scope: "USER",
-      target: peersReport,
+      target: manager,
       directory,
     }),
   GoalPermissionError,
