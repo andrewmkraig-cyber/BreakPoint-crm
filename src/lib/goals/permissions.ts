@@ -19,7 +19,7 @@
 // (`getCurrentOrg`), never from a client payload. A mismatch is a bug or an
 // attack, so it throws rather than returning false - a silent `false` would
 // look like an ordinary permission denial and hide the real problem.
-import { GoalScope, GoalStatus } from "@prisma/client";
+import { GoalMetric, GoalPeriod, GoalScope, GoalStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 
@@ -179,6 +179,89 @@ export function resolveGoalStatusOnCreate(input: {
     throw new GoalPermissionError("This user cannot set goals for that person.");
   }
   return GoalStatus.ACTIVE;
+}
+
+// ---------------------------------------------------------------------
+// Write gates
+// ---------------------------------------------------------------------
+// The server actions in src/app/dashboard/goal-actions.ts call these. They
+// are split out as PURE functions - no session, no database - so the
+// permission rules can be unit-tested directly instead of only through a
+// live action.
+//
+// They THROW rather than returning false. A forbidden write is not an
+// ordinary validation failure the UI should dress up in an inline message;
+// it means the caller reached a code path they had no right to, and it
+// should fail loudly. Ordinary validation (a missing target, a bad date)
+// still returns a result object in the action layer.
+
+// The person a goal belongs to, for permission purposes. COMPANY goals
+// have no owner, so they are gated on the company rules instead.
+export function goalOwnerFrom(
+  goal: { scope: GoalScope; ownerUserId: string | null },
+  directory: GoalDirectory,
+): GoalActor | null {
+  if (goal.scope !== GoalScope.USER || !goal.ownerUserId) return null;
+  return directory.members.get(goal.ownerUserId) ?? null;
+}
+
+// May the actor CREATE or EDIT this goal?
+//
+//   COMPANY scope - leadership only (rank 0 or 1). Approving is a separate,
+//                   stricter gate; this is the "may you touch it at all"
+//                   check.
+//   USER scope    - the ordinary canSetGoalFor rule against the owner.
+export function assertCanMutateGoal(
+  organizationId: string,
+  actor: GoalActor,
+  goal: { scope: GoalScope; ownerUserId: string | null },
+  directory: GoalDirectory,
+): void {
+  assertOrg(organizationId, actor);
+
+  if (goal.scope === GoalScope.COMPANY) {
+    if (!canRequestCompanyGoal(organizationId, actor)) {
+      throw new GoalPermissionError("This user cannot change company goals.");
+    }
+    return;
+  }
+
+  const owner = goalOwnerFrom(goal, directory);
+  if (!owner) {
+    throw new GoalPermissionError("This goal has no owner in the current org.");
+  }
+  if (!canSetGoalFor(organizationId, actor, owner, directory)) {
+    throw new GoalPermissionError("This user cannot set goals for that person.");
+  }
+}
+
+export function assertCanApprove(organizationId: string, actor: GoalActor): void {
+  if (!canApproveCompanyGoal(organizationId, actor)) {
+    throw new GoalPermissionError("Only the owner can approve or decline a company goal.");
+  }
+}
+
+// Metric and period are FROZEN once a goal exists.
+//
+// Changing either silently rewrites history: the goal's actual is computed
+// live from its metric over its window, so flipping REVENUE to PLACEMENTS
+// or QUARTERLY to ANNUAL would leave every past reading attached to a
+// number that no longer means what it meant. Archive and recreate instead -
+// that keeps the old goal queryable with its original meaning.
+export function assertImmutableFieldsUnchanged(
+  existing: { metric: GoalMetric; period: GoalPeriod },
+  patch: { metric?: GoalMetric | null; period?: GoalPeriod | null },
+): void {
+  if (patch.metric != null && patch.metric !== existing.metric) {
+    throw new GoalPermissionError(
+      "A goal's metric cannot be changed. Archive this goal and create a new one.",
+    );
+  }
+  if (patch.period != null && patch.period !== existing.period) {
+    throw new GoalPermissionError(
+      "A goal's period cannot be changed. Archive this goal and create a new one.",
+    );
+  }
 }
 
 // Loads every member of one org as a GoalDirectory.

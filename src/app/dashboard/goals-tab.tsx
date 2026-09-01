@@ -15,8 +15,18 @@ import {
   goalsPeriod,
   type GoalsPeriodSelection,
 } from "@/app/dashboard/goals-period";
-import { Button } from "@/components/ui/button";
+import { GoalsAddButton, type AssignableUser, type ParentGoalOption } from "@/app/dashboard/goal-form-modal";
+import { GoalsApprovalQueue, type PendingGoalRow } from "@/app/dashboard/goals-approval-queue";
+import { getServerSession } from "next-auth";
+
+import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import {
+  canApproveCompanyGoal,
+  canSetGoalFor,
+  loadGoalActor,
+} from "@/lib/goals/permissions";
+import { GOAL_METRIC_LABELS, GOAL_PERIOD_LABELS } from "@/lib/goals/goal-options";
 import { prisma } from "@/lib/prisma";
 import {
   listBilledInvoices,
@@ -58,6 +68,17 @@ export async function GoalsTab({
   const org = await getCurrentOrg();
   const period = goalsPeriod(selection);
   const { rangeStart, rangeEnd } = period;
+
+  // Who is looking at this, and what may they do? Resolved from the SERVER
+  // SESSION only (rule 8) - never from the URL or a prop. A viewer with no
+  // membership row gets no write affordances at all rather than a fallback.
+  const session = await getServerSession(authOptions);
+  const sessionEmail = session?.user?.email ?? null;
+  const sessionUser = sessionEmail
+    ? await prisma.user.findUnique({ where: { email: sessionEmail }, select: { id: true } })
+    : null;
+  const viewer = sessionUser ? await loadGoalActor(org.id, sessionUser.id) : null;
+  const canApprove = viewer ? canApproveCompanyGoal(org.id, viewer.actor) : false;
 
   const [goals, revenue, placements, signedClients, avgDealSize] = await Promise.all([
     prisma.goal.findMany({
@@ -346,12 +367,88 @@ export async function GoalsTab({
     lastPlacementIso: r.lastPlacementAt?.toISOString() ?? null,
   });
 
+  // People this viewer may set goals for. The modal only offers these, and
+  // createGoal re-checks the same rule server-side regardless of what the
+  // client sends.
+  const assignableUsers: AssignableUser[] = [];
+  if (viewer) {
+    const members = Array.from(viewer.directory.members.values()).filter((m) =>
+      canSetGoalFor(org.id, viewer.actor, m, viewer.directory),
+    );
+    const names = members.length
+      ? await prisma.user.findMany({
+          where: { id: { in: members.map((m) => m.id) } },
+          select: { id: true, name: true, email: true },
+        })
+      : [];
+    for (const u of names) {
+      assignableUsers.push({ id: u.id, name: u.name ?? u.email ?? u.id });
+    }
+    assignableUsers.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // Longer goals a new one can roll up into. A goal only makes sense as a
+  // parent if it outlasts its child, so quarterlies point at annuals.
+  const parentOptions: ParentGoalOption[] = goals
+    .filter((g) => g.period === "ANNUAL" || g.period === "MILESTONE")
+    .map((g) => ({
+      id: g.id,
+      label: `${GOAL_METRIC_LABELS[g.metric]} · ${GOAL_PERIOD_LABELS[g.period]}${
+        g.periodStart ? ` ${g.periodStart.getUTCFullYear()}` : ""
+      }`,
+    }));
+
+  // Approval queue. Only loaded for someone who can actually act on it.
+  const pendingRows: PendingGoalRow[] = [];
+  if (canApprove) {
+    const pending = await prisma.goal.findMany({
+      where: { organizationId: org.id, status: "PENDING_APPROVAL" },
+      orderBy: { createdAt: "asc" },
+    });
+    const requesterIds = Array.from(new Set(pending.map((g) => g.createdByUserId)));
+    const requesters = requesterIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: requesterIds } },
+          select: { id: true, name: true, email: true },
+        })
+      : [];
+    const requesterName = new Map(
+      requesters.map((u) => [u.id, u.name ?? u.email ?? u.id]),
+    );
+    for (const g of pending) {
+      const money = g.metric === "REVENUE" || g.metric === "AVG_DEAL_SIZE";
+      pendingRows.push({
+        id: g.id,
+        requesterName: requesterName.get(g.createdByUserId) ?? "Unknown",
+        scopeLabel: g.scope === "COMPANY" ? "Company" : "Personal",
+        metricLabel: g.manualLabel ?? GOAL_METRIC_LABELS[g.metric],
+        targetLabel: money
+          ? USD.format(Math.round(Number(g.targetValue)))
+          : String(Number(g.targetValue)),
+        periodLabel:
+          g.periodStart && g.periodEnd
+            ? `${g.periodStart.toISOString().slice(0, 10)} - ${g.periodEnd.toISOString().slice(0, 10)}`
+            : GOAL_PERIOD_LABELS[g.period],
+        notes: g.notes,
+      });
+    }
+  }
+
+  const addGoalButton = viewer ? (
+    <GoalsAddButton
+      assignableUsers={assignableUsers}
+      parentOptions={parentOptions}
+      canApprove={canApprove}
+    />
+  ) : null;
+
   const header = (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           GOALS &amp; PACE
         </p>
+        {addGoalButton}
       </div>
       <GoalsPeriodTabs value={selection} rangeLabel={period.label} />
     </div>
@@ -366,11 +463,7 @@ export async function GoalsTab({
             No active goals yet. Set one and this tab starts tracking it against
             real placements, invoices and signed agreements.
           </p>
-          <div className="mt-3">
-            <Button variant="primary" disabled>
-              Add Goal
-            </Button>
-          </div>
+          <div className="mt-3">{addGoalButton}</div>
         </section>
       </div>
     );
@@ -455,6 +548,8 @@ export async function GoalsTab({
           pacing={meterPacing.pacing}
         />
       )}
+      {/* Only rendered when there is actually something to approve. */}
+      {pendingRows.length > 0 && <GoalsApprovalQueue rows={pendingRows} />}
       <GoalsListPanel rows={listRows} />
       {/* Milestone tracker and pace chart share one row. */}
       {(milestoneCard || paceChart) && (
