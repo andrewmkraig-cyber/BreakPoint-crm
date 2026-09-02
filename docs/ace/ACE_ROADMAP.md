@@ -1,7 +1,17 @@
 # Ace Roadmap
-Last updated: 2026-09-01 · Ace 99.2
+Last updated: 2026-09-02 · Ace 99.3
 
 ## Active Build Sequence
+
+### DONE this session (Ace 99.3 - a meter for every headline goal, 2026-09-02)
+Full detail in ACE_STATE.md ▸ Ace 99.3.
+- ~~**Shared goal meter**~~ DONE (`b3393a33`) - `goal-meter.tsx`; revenue is now a variant of it, not a separate component. Percent complete is the largest element on every meter.
+- ~~**Segmented fills for count metrics**~~ DONE (`b3393a33`) - limit is 20, MEASURED (25 gives 8.2px segments on a 390px phone, below the ~10px countability floor).
+- ~~**Headline goals row**~~ DONE (`b3393a33`) - `Goal.isHeadline`, capped at 4 per window with an inline explanation, seeded for the current quarter.
+
+### Open follow-up from Ace 99.3
+
+**11. The quarterly placements target is 9, and the money says 19.** $125,000 / $6,625 observed average deal = 18.9 placements, which is the target that makes the revenue and placements goals arithmetically consistent. Actual placements ran 0 / 2 / 6 across Q1-Q3 2026, so 19 is 3.2x the best quarter yet recorded and would read Behind every day. 9 was seeded (it matches the signed-clients target and stays under the segment limit). Raising it to 19 means accepting a permanently red meter until the average deal size rises - a business call, not a data one.
 
 ### DONE this session (Ace 99.2 - retained revenue in earned + browser pass, 2026-09-01)
 Full detail in ACE_STATE.md ▸ Ace 99.2.

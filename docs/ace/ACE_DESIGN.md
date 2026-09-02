@@ -1,5 +1,5 @@
 # Ace Design System
-Last updated: 2026-09-01 · Ace 99.2
+Last updated: 2026-09-02 · Ace 99.3
 
 Visual + component design language for Ace. Sourced from ChatGPT design audit (2026-04-23).
 
@@ -453,6 +453,16 @@ No charting library and no SVG, matching the Scoreboard Deal Funnel and the Fina
 
 ### The pace chart tracks the headline tier
 The cumulative curve must be drawn from the SAME tier the headline uses, or it will not land on the headline's number. When earned became the pacing figure the chart moved from billed invoices to earned placements with it. If the headline tier ever changes again, the chart moves too - this is a correctness constraint, not a labelling one.
+
+### The shared goal meter (Ace 99.3)
+Every CUMULATIVE goal renders through one component (`goal-meter.tsx`). Revenue is a VARIANT of it, not a separate card - a second meter component is how the two drift apart.
+
+- **Percent complete is the largest element on every meter**, with the raw actual-of-target immediately beneath it, so the number that matters and the number it came from are read together.
+- **Three fill shapes share one track** so height and marker behaviour cannot diverge: nested `tiers` (revenue only), `single`, and `segments`.
+- **Count metrics under 20 units render as SEGMENTS**, one per unit, so "6 of 9" is countable without reading a number. **20 is a measured limit, not a taste call:** at the real 302px mobile track width with a 4px gap, 20 segments give 11.3px each and 25 give 8.2px - below roughly 10px a segment reads as texture rather than a division. Above the limit, fall back to a continuous bar.
+- **Over 100%: the percent keeps counting, the fill caps.** The fill scale never exceeds the target, so a bar can reach the end of its track but never overflow it. A complete card takes a `ring-1 ring-court-brand` plus a "Complete" tag - the state reads from across the row rather than from a bar that merely looks full.
+- **The pace marker rides UNDER a segmented bar**, not through it. Drawn over the top it reads as another divider.
+- **RATIO goals get no meter and no percent.** An average converges rather than accumulating; percent-toward-target is a meaningless number for one. They keep the list-row treatment.
 
 ### Measured contrast on this surface (Ace 99.2)
 Verified in real Chrome across all four Court surfaces x light and dark, from resolved computed colours with alpha composited over the actual backdrop - not from token compliance, which would have passed every one of the defects found.

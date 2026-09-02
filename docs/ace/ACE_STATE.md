@@ -1,8 +1,31 @@
 # ACE_STATE.md
-Last updated: 2026-09-01 · Ace 99.2
-Current Version: Ace 99.2
-Last Shipped: 2026-09-01
+Last updated: 2026-09-02 · Ace 99.3
+Current Version: Ace 99.3
+Last Shipped: 2026-09-02
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 99.3 - a meter for every headline goal (2026-09-02)
+
+Only revenue had a full meter; every other goal was a slim bar in a list row.
+
+**`src/app/dashboard/goal-meter.tsx` is the shared meter (`b3393a33`).** Every CUMULATIVE goal renders through it - label, **percent complete as the largest element**, actual against target, fill, expected-to-date marker, gap / days remaining / projected finish, and the pace chip. **Revenue is now a VARIANT of it, not a separate component**; what is particular to revenue is only its three nested tiers and their legend. Three fill shapes share one track so height and marker behaviour cannot drift: `tiers` (revenue), `single` (any other continuous metric), and `segments` (one element per unit, so 6 of 9 reads as six filled and three empty without reading a number).
+
+**The segment limit is 20, not the 25 proposed, and it was measured.** Real track widths in the headline row are 330px at 1440px and 302px on a 390px phone. With the 4px gap, 20 segments give 11.3px each on mobile and 25 give 8.2px - below roughly 10px a segment stops reading as a countable division and becomes texture. The live 9-unit goals draw at 33px desktop, 30px mobile.
+
+**Over 100%:** the percent keeps counting past 100 while the fill caps at the track (the scale never exceeds target, so a bar reaches the end but cannot overflow), and the card takes a brand ring plus a "Complete" tag.
+
+**RATIO goals get no meter and no percent.** An average converges rather than accumulating, so percent-toward-target is meaningless for one. AVG_DEAL_SIZE keeps its list-row treatment and the modal hides the headline toggle for it.
+
+**`Goal.isHeadline`** (migration `20260902160947`, additive). Declared `Boolean @default(false)` rather than nullable as the prompt proposed - the flag only ever means on or off, a third state would have no meaning, and every other boolean on this schema is declared the same way. Headline goals render as meter cards above the goal list (one up, two at md, three at xl); everything else stays in the list. **The standalone revenue meter is gone from the tab** - revenue is a headline goal now and was rendering twice.
+
+**The cap is 4 per window**, enforced server-side on create and update, applied again on read, and returned as an INLINE MESSAGE rather than a throw - a full row is an ordinary "not right now", not a permission failure. Verified live over Next-Action: a fifth headline came back HTTP 200 with "That window already has 4 headline goals, which is the most the row fits. Turn one of them off first." and the goal was left unflagged.
+
+**The placements target is 9, and the two candidate numbers disagree.** 19 comes from the money ($125,000 quarterly goal / $6,625 observed average deal = 18.9), which makes the revenue and placements goals arithmetically consistent. 9 comes from the desk: actuals ran 0 / 2 / 6 across Q1-Q3 2026, so 19 is 3.2x the best quarter yet recorded and would read Behind every day. 9 matches the existing signed-clients target (one placement per signed client), is a genuine stretch over 6, and sits under the segment limit so the meter draws countable segments. **Raising it to 19 is a business call, not a data one.** Seeded by `scripts/seed-headline-goals.ts` (dry-run default, `--apply`, idempotent).
+
+**Real-browser pass**, all eight Court combinations plus a 390px mobile pass, screenshots read: no zero-height tracks anywhere, segments countable at 33px desktop / 30px mobile, percent figure contrast 14.82-18.88 (needs 4.5), segment fill vs track 3.44-7.41 (needs 3.0). **Two things only the browser caught:** the duplicate revenue meter, and that the original two-across grid left the third meter alone beside dead space.
+
+## Next Task
+Prompt 10: dollar labels on the revenue meter bar (current earned at the fill edge, expected-to-date at the pace marker, target at the track end, gap in the empty space) plus month markers at the one-third and two-thirds points of a quarter.
 
 ## What Shipped in Ace 99.2 - retained revenue in earned, and a real-browser pass (2026-09-01)
 
@@ -32,8 +55,7 @@ One bug this exposed: the Ace 99.1 Top Clients filter was `placements > 0`, whic
 
 **Limits, measured rather than assumed.** The earned (40%) and billed (75%) alpha tiers still read 1.53 and 2.34 at clay/light, under the 3:1 non-text threshold, and alpha on brand cannot clear it - solid brand itself tops out at 3.26 there. Every tier is named in the legend AND printed as its own labelled figure, designed in from the start precisely so no information depends on the fill. Separately, the Ahead chip (`text-court-brand`, 3.44:1 worst) is the SHARED placements-ledger treatment, so it is an app-wide chip question rather than something to diverge on here. Both are open items in ACE_ROADMAP.md.
 
-## Next Task
-Decide the two contrast items in ACE_ROADMAP.md (the meter's light alpha tiers, and the shared brand-on-surface chip text, which affects the existing placements ledger as much as Goals). Nothing on the Goals tab is blocked.
+(Superseded by Ace 99.3 above. The two contrast items remain open in ACE_ROADMAP.md.)
 
 ## What Shipped in Ace 99.1 - the revenue definition settled (2026-09-01)
 

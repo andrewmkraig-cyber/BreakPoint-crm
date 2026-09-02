@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-09-01 · Ace 99.2
+Last updated: 2026-09-02 · Ace 99.3
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -184,6 +184,9 @@ Two exceptions, both deliberate:
 **One definition per surface.** The Goal Pacing card used to compute a third figure from billing events (`expandPlacementBillingEvents` by `scheduledAt`) and disagreed with the Goals tab by $25,750 while claiming to describe the same thing. Any new revenue surface reads the goals engine; do not add a fourth definition. `expandPlacementBillingEvents` remains correct for the Cash Forecast, which is a genuinely different question (when will money arrive).
 
 **Retained engagements count in `earned`** (added Ace 99.2), keyed by `RetainedSearch.createdAt` - there is no `signedAt`, and createdAt is written when the recruiter records a committed engagement, making it the analogue of `placedAt`. The FULL `totalAmount` lands at once even when the retainer bills in installments, because installments are a billing schedule and a contingent placement with custom terms already earns its whole fee on placedAt. `earnedPlacementWhere` still excludes every placement carrying a `retainedSearchId`, so the two sides total each retainer exactly once. CLOSED_UNFILLED counts - the client paid to run the search.
+
+## Thresholds in a visual spec get MEASURED (added 2026-09-02 · Ace 99.3)
+When a prompt proposes a number that governs how something looks - "segments up to 25 units", a breakpoint, a minimum width - measure it in the browser at the real rendered size before accepting it. The Ace 99.3 segment limit came in at 25 and shipped at 20, because the real headline-row track is 302px on a 390px phone and 25 segments leave 8.2px each, below the ~10px where a division still reads as a division rather than texture. The prompt invited the check ("report the threshold you settle on if 25 is wrong"); the answer only exists once something is rendered.
 
 ## Both-modes verification means a real browser (added 2026-09-01 · Ace 99.2 - PERMANENT)
 The Ace 66.0 rule says every interactive element is verified in BOTH modes before a task is done. **Token compliance is not that verification and never has been.** A real-browser pass over the Goals tab found three defects that hex-free, token-only code passed cleanly:
