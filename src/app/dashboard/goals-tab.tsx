@@ -10,6 +10,7 @@ import type { ClientLeaderboardRowView } from "@/app/dashboard/goals-client-lead
 import { getClientLeaderboard } from "@/lib/goals/client-leaderboard";
 import { GoalsPeriodTabs } from "@/app/dashboard/goals-period-tabs";
 import { GoalsRevenueMeter } from "@/app/dashboard/goals-revenue-meter";
+import { GoalMeter, shouldSegment } from "@/app/dashboard/goal-meter";
 import {
   DEFAULT_GOALS_PERIOD,
   goalsPeriod,
@@ -26,7 +27,7 @@ import {
   canSetGoalFor,
   loadGoalActor,
 } from "@/lib/goals/permissions";
-import { GOAL_METRIC_LABELS, GOAL_PERIOD_LABELS } from "@/lib/goals/goal-options";
+import { GOAL_METRIC_LABELS, GOAL_PERIOD_LABELS, HEADLINE_LIMIT } from "@/lib/goals/goal-options";
 import { prisma } from "@/lib/prisma";
 import {
   listEarnedPlacements,
@@ -447,6 +448,49 @@ export async function GoalsTab({
     />
   ) : null;
 
+  // ---- Headline meter row -----------------------------------------------
+  // Goals flagged isHeadline render as full meter cards above the list.
+  // Everything else stays a slim bar in the list panel. RATIO goals are
+  // excluded outright: an average converges rather than accumulating, so a
+  // percent-toward-target would be a meaningless number for one.
+  const headlineGoals = goals
+    .filter(
+      (g) =>
+        g.isHeadline &&
+        g.period !== "MILESTONE" &&
+        g.periodStart != null &&
+        g.periodEnd != null &&
+        pacingShapeFor(g.metric, g.period) === "CUMULATIVE" &&
+        g.periodStart <= period.rangeEnd &&
+        g.periodEnd >= period.rangeStart,
+    )
+    // Same cap the write path enforces, applied again on read so a row can
+    // never grow past four even if the data got there some other way.
+    .slice(0, HEADLINE_LIMIT);
+
+  const headlineMeters = await Promise.all(
+    headlineGoals.map(async (g) => {
+      const result = await resolveMetric({
+        organizationId: org.id,
+        metric: g.metric,
+        rangeStart: g.periodStart!,
+        rangeEnd: g.periodEnd!,
+        ownerUserId: g.ownerUserId,
+        period: g.period,
+        goalId: g.id,
+      });
+      const target = Number(g.targetValue);
+      const pacing = pacingForCumulative({
+        target,
+        actual: result.value ?? 0,
+        periodStart: g.periodStart!,
+        periodEnd: g.periodEnd!,
+        revenue: result.revenue,
+      });
+      return { goal: g, pacing, target, measurable: result.value !== null };
+    }),
+  );
+
   const header = (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -546,15 +590,50 @@ export async function GoalsTab({
           />
         ))}
       </div>
-      {meterPacing && (
-        <GoalsRevenueMeter
-          goalLabel="Quarterly revenue goal"
-          periodLabel={quarterLabel(meterPacing.goal.periodStart!)}
-          pacing={meterPacing.pacing}
-        />
-      )}
+      {/* The standalone revenue meter that used to sit here is gone (Ace
+          99.3): revenue is a headline goal now, so it renders in the row
+          below like every other one and would otherwise appear twice.
+          `meterPacing` is still resolved above - the pace chart needs the
+          quarter's revenue goal to draw its required-pace line. */}
       {/* Only rendered when there is actually something to approve. */}
       {pendingRows.length > 0 && <GoalsApprovalQueue rows={pendingRows} />}
+      {/* Headline meters. Three across at xl and two at md, which keeps a
+          track wide enough for its segments to stay countable at every
+          breakpoint - measured at 34px per segment for a 9-unit goal on a
+          three-across desktop row, and 30px on mobile. See SEGMENT_LIMIT. */}
+      {headlineMeters.length > 0 && (
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {headlineMeters.map(({ goal: g, pacing, target, measurable }) => {
+            const label = `${GOAL_METRIC_LABELS[g.metric]} · ${GOAL_PERIOD_LABELS[g.period].toLowerCase()}`;
+            const window = g.periodStart ? quarterOrRangeLabel(g.periodStart, g.period) : period.label;
+            if (!measurable) return null;
+            if (g.metric === "REVENUE") {
+              return (
+                <GoalsRevenueMeter
+                  key={g.id}
+                  goalLabel={label}
+                  periodLabel={window}
+                  pacing={pacing}
+                />
+              );
+            }
+            return (
+              <GoalMeter
+                key={g.id}
+                label={g.manualLabel ?? label}
+                periodLabel={window}
+                pacing={pacing}
+                format={(n) => String(Math.round(n * 100) / 100)}
+                fill={
+                  shouldSegment(target)
+                    ? { kind: "segments", units: target }
+                    : { kind: "single" }
+                }
+              />
+            );
+          })}
+        </div>
+      )}
       <GoalsListPanel rows={listRows} />
       {/* Milestone tracker and pace chart share one row. */}
       {(milestoneCard || paceChart) && (
@@ -588,6 +667,19 @@ export async function GoalsTab({
 // Everything Ace has recorded postdates this; used as the open end of an
 // all-time window.
 const ALL_TIME_START = new Date(Date.UTC(2000, 0, 1));
+
+// A window label for a headline meter: "Q3 2026" for a quarter, the year
+// for an annual, otherwise the raw dates. Read in UTC because goal period
+// bounds are UTC calendar-date markers.
+function quarterOrRangeLabel(periodStart: Date, period: string): string {
+  const y = periodStart.getUTCFullYear();
+  if (period === "QUARTERLY") return `Q${Math.floor(periodStart.getUTCMonth() / 3) + 1} ${y}`;
+  if (period === "ANNUAL") return String(y);
+  if (period === "MONTHLY") {
+    return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "long", year: "numeric" }).format(periodStart);
+  }
+  return periodStart.toISOString().slice(0, 10);
+}
 
 // Splits a goal's period into up to 12 equal buckets and returns the
 // cumulative billed total at the end of each, alongside where a straight

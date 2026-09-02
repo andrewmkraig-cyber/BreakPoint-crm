@@ -21,6 +21,7 @@ import {
   GOAL_METRICS,
   GOAL_PERIODS,
   GOAL_SCOPES,
+  HEADLINE_LIMIT,
   metricNeedsManualLabel,
   periodHasDates,
 } from "@/lib/goals/goal-options";
@@ -127,6 +128,50 @@ function validateGoalShape(input: {
   return null;
 }
 
+
+// Can this goal be flagged as a headline meter, and is there room?
+//
+// Returns an error STRING rather than throwing: a full headline row is an
+// ordinary "you cannot do that right now" the form should explain inline,
+// not a permission failure. The caller surfaces it verbatim.
+//
+// The cap is per WINDOW, not per org: four meters for this quarter does not
+// stop a goal in next quarter being headline too. Matched on periodStart,
+// because periodEnd is stored as the last instant of the last day and
+// equality on both bounds is brittle.
+async function headlineBlockedReason(input: {
+  organizationId: string;
+  metric: GoalMetric;
+  period: GoalPeriod;
+  periodStart: Date | null;
+  excludeGoalId?: string;
+}): Promise<string | null> {
+  const { organizationId, metric, period, periodStart, excludeGoalId } = input;
+
+  if (metric === GoalMetric.AVG_DEAL_SIZE) {
+    return "An average deal size goal cannot be a headline meter - an average converges rather than filling toward a target, so it has no percent complete.";
+  }
+  if (period === GoalPeriod.MILESTONE) {
+    return "A milestone has no period to pace against, so it cannot be a headline meter. It keeps its own tracker.";
+  }
+  if (!periodStart) return null;
+
+  const used = await prisma.goal.count({
+    where: {
+      organizationId,
+      status: GoalStatus.ACTIVE,
+      isHeadline: true,
+      period,
+      periodStart,
+      ...(excludeGoalId ? { id: { not: excludeGoalId } } : {}),
+    },
+  });
+  if (used >= HEADLINE_LIMIT) {
+    return `That window already has ${HEADLINE_LIMIT} headline goals, which is the most the row fits. Turn one of them off first.`;
+  }
+  return null;
+}
+
 export type CreateGoalInput = {
   scope: string;
   // Required when scope is USER. Verified to be a member of the resolved org.
@@ -140,6 +185,7 @@ export type CreateGoalInput = {
   manualLabel?: string | null;
   notes?: string | null;
   escalationPct?: number | null;
+  isHeadline?: boolean;
 };
 
 export async function createGoal(input: CreateGoalInput): Promise<GoalWriteResult> {
@@ -186,6 +232,20 @@ export async function createGoal(input: CreateGoalInput): Promise<GoalWriteResul
     directory,
   });
 
+  // Headline capacity, checked BEFORE the row is written so a rejected
+  // flag never leaves a half-configured goal behind.
+  let isHeadline = false;
+  if (input.isHeadline) {
+    const blocked = await headlineBlockedReason({
+      organizationId: orgId,
+      metric,
+      period,
+      periodStart,
+    });
+    if (blocked) return { ok: false, error: blocked };
+    isHeadline = true;
+  }
+
   // A parent must be a real goal in the same org. Ratio goals never roll up.
   let parentGoalId: string | null = null;
   if (input.parentGoalId) {
@@ -216,6 +276,7 @@ export async function createGoal(input: CreateGoalInput): Promise<GoalWriteResul
         // so it carries its approver. A PENDING_APPROVAL one does not.
         approvedByUserId: status === GoalStatus.ACTIVE ? userId : null,
         approvedAt: status === GoalStatus.ACTIVE ? new Date() : null,
+        isHeadline,
         escalationPct:
           period === GoalPeriod.ANNUAL && Number.isFinite(input.escalationPct ?? NaN)
             ? Math.round(input.escalationPct as number)
@@ -244,6 +305,7 @@ export type UpdateGoalInput = {
   // than having them silently ignored. Never written.
   metric?: string | null;
   period?: string | null;
+  isHeadline?: boolean;
 };
 
 export async function updateGoal(input: UpdateGoalInput): Promise<GoalWriteResult> {
@@ -284,6 +346,24 @@ export async function updateGoal(input: UpdateGoalInput): Promise<GoalWriteResul
   });
   if (shapeError) return { ok: false, error: shapeError };
 
+  // Turning a headline ON has to fit the window; turning it OFF always
+  // does. The existing goal excludes itself from the count, so re-saving
+  // an already-headline goal cannot trip its own cap.
+  let isHeadline = existing.isHeadline;
+  if (input.isHeadline !== undefined && input.isHeadline !== existing.isHeadline) {
+    if (input.isHeadline) {
+      const blocked = await headlineBlockedReason({
+        organizationId: orgId,
+        metric: existing.metric,
+        period: existing.period,
+        periodStart: existing.periodStart,
+        excludeGoalId: existing.id,
+      });
+      if (blocked) return { ok: false, error: blocked };
+    }
+    isHeadline = input.isHeadline;
+  }
+
   let parentGoalId = existing.parentGoalId;
   if (input.parentGoalId !== undefined) {
     if (!input.parentGoalId) {
@@ -310,6 +390,7 @@ export async function updateGoal(input: UpdateGoalInput): Promise<GoalWriteResul
         periodEnd,
         manualLabel,
         parentGoalId,
+        isHeadline,
         notes: input.notes !== undefined ? input.notes?.trim() || null : existing.notes,
         escalationPct:
           input.escalationPct !== undefined && existing.period === GoalPeriod.ANNUAL

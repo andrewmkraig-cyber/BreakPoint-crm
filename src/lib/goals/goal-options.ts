@@ -57,6 +57,18 @@ export const GOAL_PERIOD_LABELS: Record<GoalPeriodValue, string> = {
   MILESTONE: "Milestone (all time)",
 };
 
+// Most headline meter cards allowed in one window. Four fills a two-across
+// row exactly twice; a fifth wraps to a third line and the row stops being
+// a headline row. Enforced server-side in goal-actions.ts and applied again
+// on read in goals-tab.tsx.
+export const HEADLINE_LIMIT = 4;
+
+// A RATIO goal can never be a headline meter: an average converges rather
+// than accumulating, so percent-toward-target is meaningless for one.
+export function canBeHeadline(metric: GoalMetricValue, period: GoalPeriodValue): boolean {
+  return !isRatioMetric(metric) && period !== "MILESTONE";
+}
+
 // AVG_DEAL_SIZE is a RATIO goal: an average converges rather than
 // accumulating, so it has no rollup parent and no progress-to-target
 // reading. The modal hides parent selection for it.

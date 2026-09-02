@@ -2799,6 +2799,16 @@ model Goal {
   approvedByUserId String?
   approvedAt       DateTime?
   declinedReason   String?    @db.Text
+  // Renders as a full meter card in the headline row above the goal list
+  // instead of a slim bar inside it. Capped at 4 per window in app logic
+  // (see goal-actions.ts) - a headline row that wraps to three lines is
+  // not a headline row.
+  //
+  // Non-null with a default rather than nullable: the flag only ever means
+  // on or off, and a third state would have no meaning. Every other
+  // boolean on this schema (Invoice.isFuture, RetainedSearch.useInstallments,
+  // Placement.syncedToRf) is declared the same way.
+  isHeadline       Boolean    @default(false)
   // ANNUAL goals only. The percent to raise this year's target by when
   // seeding next year's goal. Null everywhere else.
   escalationPct    Int?
@@ -2819,6 +2829,7 @@ model Goal {
 
   @@index([organizationId])
   @@index([organizationId, scope, status])
+  @@index([organizationId, status, isHeadline])
   @@index([organizationId, ownerUserId, status])
   @@index([organizationId, metric, periodStart, periodEnd])
   @@index([parentGoalId])

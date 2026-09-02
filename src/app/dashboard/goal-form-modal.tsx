@@ -11,6 +11,7 @@ import {
   GOAL_METRIC_LABELS,
   GOAL_PERIODS,
   GOAL_PERIOD_LABELS,
+  canBeHeadline,
   defaultPeriodDates,
   isRatioMetric,
   metricNeedsManualLabel,
@@ -41,6 +42,7 @@ export type GoalFormInitial = {
   manualLabel: string | null;
   notes: string | null;
   parentGoalId: string | null;
+  isHeadline: boolean;
 };
 
 export function GoalFormModal({
@@ -73,6 +75,7 @@ export function GoalFormModal({
   const [parentGoalId, setParentGoalId] = useState(initial?.parentGoalId ?? "");
   const [manualLabel, setManualLabel] = useState(initial?.manualLabel ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [isHeadline, setIsHeadline] = useState(initial?.isHeadline ?? false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -92,6 +95,10 @@ export function GoalFormModal({
   // A ratio goal is an average, which converges rather than accumulating,
   // so it has nothing to roll up into.
   const showParent = !isRatio && parentOptions.length > 0;
+  // A ratio goal has no percent to fill and a milestone has no period to
+  // pace against, so neither can be a headline meter. The toggle disappears
+  // rather than being offered and then rejected on save.
+  const showHeadline = canBeHeadline(metric, period);
   const needsApproval = scope === "COMPANY" && !canApprove;
 
   const submitLabel = useMemo(() => {
@@ -120,6 +127,7 @@ export function GoalFormModal({
             notes,
             manualLabel: showManualLabel ? manualLabel : null,
             parentGoalId: showParent ? parentGoalId || null : null,
+            isHeadline: showHeadline ? isHeadline : false,
           })
         : await createGoal({
             scope,
@@ -132,6 +140,7 @@ export function GoalFormModal({
             parentGoalId: showParent ? parentGoalId || null : null,
             manualLabel: showManualLabel ? manualLabel : null,
             notes,
+            isHeadline: showHeadline ? isHeadline : false,
           });
       if (!res.ok) {
         setError(res.error);
@@ -301,6 +310,25 @@ export function GoalFormModal({
               An average deal size converges rather than accumulating, so it
               does not roll up into a longer goal and gets no progress bar.
             </p>
+          )}
+
+          {showHeadline && (
+            <label className="flex items-start gap-2.5">
+              <input
+                type="checkbox"
+                checked={isHeadline}
+                onChange={(e) => setIsHeadline(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-court-brand"
+              />
+              <span className="text-[13px] text-court-fg">
+                Show as a headline meter
+                <span className="block text-xs text-court-fg-muted">
+                  Renders as a full meter card above the goal list instead of a
+                  row inside it. Up to four per period; the save will say so if
+                  that window is already full.
+                </span>
+              </span>
+            </label>
           )}
 
           <Textarea
