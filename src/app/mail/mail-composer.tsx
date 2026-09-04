@@ -68,6 +68,7 @@ import {
   applyMailMergeFields,
   type MailMergeContext,
 } from "@/lib/mail-merge-fields";
+import { escapeHtml } from "@/lib/ai-output-formatting";
 import { useMinimizedDrafts } from "@/lib/minimized-drafts-context";
 import { useFloatingZ } from "@/lib/floating-z";
 
@@ -2471,13 +2472,6 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
       )}
     </div>
   );
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
 }
 
 const COMPOSER_BLOCK_MARGIN = "0 0 0.75rem 0";

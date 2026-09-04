@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
+import { escapeHtmlAttribute as escapeHtml } from "@/lib/ai-output-formatting";
 
 export const dynamic = "force-dynamic";
 
@@ -215,14 +216,6 @@ function stripInlineMarkdown(s: string): string {
     .replace(/(^|\s)_(?!\s)(.+?)(?<!\s)_(?=\s|$|[.,;:!?)])/g, "$1$2")
     .replace(/\s*[–—]\s*/g, ", ")
     .trim();
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function bulletList(items: string[]): string {

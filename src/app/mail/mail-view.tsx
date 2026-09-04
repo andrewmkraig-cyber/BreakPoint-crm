@@ -45,6 +45,7 @@ import type { ActiveTemplateSummary } from "@/app/email/actions";
 import { MailComposer, type ComposerStateSnapshot } from "@/app/mail/mail-composer";
 import { BdReplyPromptBanner } from "@/app/mail/bd-reply-prompt-banner";
 import { normalizeCopiedEmail } from "@/lib/email-address";
+import { escapeHtml } from "@/lib/ai-output-formatting";
 
 const MAIL_THREAD_DRAG_MIME = "application/x-mail-thread-ids";
 
@@ -2871,13 +2872,6 @@ function buildForwardQuote(latest: MailThreadMessage | undefined): string {
     "<p></p>",
     `<blockquote>${latest.bodyHtml}</blockquote>`,
   ].join("");
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
 }
 
 // True when the message has at least one recipient (To/Cc) besides

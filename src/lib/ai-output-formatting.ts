@@ -128,9 +128,41 @@ function ensureColon(text: string): string {
   return text.endsWith(":") ? text : `${text}:`;
 }
 
+// A bare "&" has to become "&amp;" or a mail client eats it - but text that
+// ALREADY carries an encoded entity ("Mowat Mackie &amp; Anderson") must be
+// left alone. Escaping that a second time writes "&amp;amp;", which Gmail
+// renders as the literal string "&amp;" in the body: the ampersand bug.
+// Both kinds of input reach this function. Claude routinely hands back
+// already-encoded entities when it is asked for HTML output, and imported
+// client / company names carry them from whatever page they were scraped
+// off. So escape an ampersand only when it does not already open a valid
+// named / decimal / hex entity.
+const BARE_AMPERSAND =
+  /&(?![a-zA-Z][a-zA-Z0-9]{1,31};|#\d{1,7};|#[xX][0-9a-fA-F]{1,6};)/g;
+
 export function escapeHtml(text: string): string {
   return text
-    .replace(/&/g, "&amp;")
+    .replace(BARE_AMPERSAND, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+// Same rule, plus the quote characters an attribute value needs. Callers
+// that build `href="..."` use this one; body text uses escapeHtml.
+export function escapeHtmlAttribute(text: string): string {
+  return escapeHtml(text).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+// The inverse: turn encoded entities back into the characters they stand
+// for. Used where HTML gets flattened into plain text (subject lines,
+// text/plain alternatives) - there an entity is never wanted.
+export function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
 }

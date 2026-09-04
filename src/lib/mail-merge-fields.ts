@@ -7,6 +7,7 @@
 import { stripMarkdownToPlain } from "@/lib/markdown-to-plain";
 import { extractCityFromLocation } from "@/lib/candidate-compensation";
 import {
+  decodeHtmlEntities,
   escapeHtml,
   markdownishTextToEmailHtml,
 } from "@/lib/ai-output-formatting";
@@ -225,9 +226,13 @@ function renderResolvedValue(tag: string, value: string, targetIsHtml: boolean):
   if (tag === "{{job.description}}" || looksStructuredMarkdown(value)) {
     return targetIsHtml
       ? markdownishTextToEmailHtml(value)
-      : escapeHtml(stripMarkdownToPlain(value));
+      : decodeHtmlEntities(stripMarkdownToPlain(value));
   }
-  if (!targetIsHtml) return escapeHtml(value);
+  // A plain-text target is a subject line or a text/plain body - it is never
+  // parsed as HTML, so escaping there is what PUTS "&amp;" in front of the
+  // recruiter instead of "&". Decode instead: a client stored as
+  // "Mowat Mackie &amp; Anderson" resolves to "Mowat Mackie & Anderson".
+  if (!targetIsHtml) return decodeHtmlEntities(value);
   return escapeHtml(value).replace(/\r\n|\r|\n/g, "<br/>");
 }
 

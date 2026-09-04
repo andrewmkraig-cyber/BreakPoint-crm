@@ -10,6 +10,7 @@ import { buildPersonalTrainerBlock } from "@/lib/personal-trainer";
 import {
   HTML_EMAIL_OUTPUT_FORMAT_RULES,
   convertInlineMarkdownToHtml,
+  decodeHtmlEntities,
   markdownishTextToEmailHtml,
 } from "@/lib/ai-output-formatting";
 import { formatExpectedCompensation } from "@/lib/candidate-compensation";
@@ -228,7 +229,9 @@ export async function POST(req: NextRequest): Promise<NextResponse<AiComposeResp
         return NextResponse.json({ bodyHtml: toSafeHtml(raw) });
       }
       return NextResponse.json({
-        subject: parsed.subject,
+        // The subject lands in a plain <input>, so an entity Claude
+        // encoded into it ("&amp;") would sit there as literal text.
+        subject: decodeHtmlEntities(parsed.subject),
         bodyHtml: toSafeHtml(parsed.bodyHtml),
       });
     }

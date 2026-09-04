@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { useComposerManager } from "@/lib/composer-manager";
 import { GAME_PLAN_USER_MESSAGE_MAX_CHARS } from "@/lib/game-plan-limits";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
+import { escapeHtmlAttribute } from "@/lib/ai-output-formatting";
 
 // Per-entity AI chat surface. Drops onto a client or candidate detail page
 // as a standalone card: loads its own history from /api/ai-workspace,
@@ -1488,14 +1489,10 @@ export function flattenMarkdownForClipboard(input: string): string {
 // Output uses zero classes / inline styles, so a paste into Gmail /
 // Outlook / Word inherits the destination's theme — no dark background
 // dragged along from the source bubble.
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+// Shared with the mail composer so a clipboard paste and a composed
+// email encode an ampersand the same way - and neither double-encodes
+// one Claude already wrote as "&amp;".
+const escapeHtml = escapeHtmlAttribute;
 
 function renderMarkdownInline(text: string): string {
   // Process inline markdown — link / bold / italic — on a single string.
