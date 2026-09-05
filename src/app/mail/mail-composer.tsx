@@ -38,6 +38,7 @@ import {
   List,
   ListOrdered,
   Link as LinkIcon,
+  Image as ImageIcon,
   Paperclip,
   X,
   Loader2,
@@ -199,6 +200,13 @@ type Props = {
   // AR email) so invoice emails go out from AR@ without the recruiter
   // having to re-pick on every Draft Email click.
   defaultSendAsEmail?: string | null;
+  // Pins the sender to one address and replaces the From dropdown with a
+  // read-only row. Used by the company-wide deal announcement, which must
+  // go out from deals@ — an alias deliberately withheld from
+  // /api/mail/send-as-aliases so it never appears in the normal picker.
+  // Because it isn't in that list, the "resync to a known-verified alias"
+  // fallback below would otherwise overwrite it the moment the list loads.
+  lockedSendAsEmail?: string | null;
   onClose: () => void;
   onSent: () => void;
   onScheduled?: () => void;
@@ -238,6 +246,7 @@ export function MailComposer({
   growToFill = false,
   replyingTo,
   defaultSendAsEmail = null,
+  lockedSendAsEmail = null,
   onPopOut,
   onClose,
   onSent,
@@ -270,7 +279,7 @@ export function MailComposer({
     Array<{ sendAsEmail: string; displayName: string; isDefault: boolean }>
   >([]);
   const [selectedFromEmail, setSelectedFromEmail] = useState<string | null>(
-    defaultSendAsEmail,
+    lockedSendAsEmail ?? defaultSendAsEmail,
   );
   useEffect(() => {
     let cancelled = false;
@@ -289,6 +298,9 @@ export function MailComposer({
           | null;
         if (cancelled || !body?.aliases) return;
         setSendAsAliases(body.aliases);
+        // A locked sender is the caller's decision and is intentionally
+        // absent from the alias list, so nothing below may touch it.
+        if (lockedSendAsEmail) return;
         // Caller-provided defaultSendAsEmail wins when it matches a
         // verified alias — that's the Invoice "send from AR@" path. If
         // it doesn't match (or isn't supplied), fall back to Gmail's
@@ -322,7 +334,7 @@ export function MailComposer({
     return () => {
       cancelled = true;
     };
-  }, [defaultSendAsEmail]);
+  }, [defaultSendAsEmail, lockedSendAsEmail]);
   // Tracks the Gmail draft id the most recent Save Draft created. Set
   // by Save Draft on success, carried over from defaults when the
   // composer is re-opened from a pop-out, and cleared after Delete.
@@ -1568,7 +1580,16 @@ export function MailComposer({
             )}
           </div>
         )}
-        {sendAsAliases.length > 1 && (
+        {lockedSendAsEmail ? (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="w-14 shrink-0 text-[10px] uppercase tracking-wider text-court-fg-muted">
+              From
+            </span>
+            <span className="min-w-0 flex-1 truncate rounded-md border border-court-border bg-court-surface-subtle px-3 py-1.5 text-[13px] text-court-fg-muted">
+              {lockedSendAsEmail}
+            </span>
+          </div>
+        ) : sendAsAliases.length > 1 ? (
           <label className="flex items-center gap-2 text-sm">
             <span className="w-14 shrink-0 text-[10px] uppercase tracking-wider text-court-fg-muted">
               From
@@ -1588,7 +1609,7 @@ export function MailComposer({
               ))}
             </Select>
           </label>
-        )}
+        ) : null}
         <AddressRow
           label="To"
           value={to}
@@ -2468,6 +2489,34 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
         },
         <LinkIcon className="h-3.5 w-3.5" />,
         "Link",
+      )}
+      {/* Insert an image INLINE in the body, as opposed to the paperclip
+          below, which adds a downloadable attachment. Pasting a screenshot
+          already did this (see handlePaste); this is the same path for a
+          photo that lives in a file rather than the clipboard, which is the
+          usual case for a deal announcement picture off a phone. Encoded as
+          a data: URL because that is what makes the image survive into the
+          sent message body. */}
+      {btn(
+        false,
+        () => {
+          const picker = document.createElement("input");
+          picker.type = "file";
+          picker.accept = "image/*";
+          picker.onchange = () => {
+            const file = picker.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+              if (typeof reader.result !== "string") return;
+              editor.chain().focus().setImage({ src: reader.result }).run();
+            };
+            reader.readAsDataURL(file);
+          };
+          picker.click();
+        },
+        <ImageIcon className="h-3.5 w-3.5" />,
+        "Insert image",
       )}
     </div>
   );

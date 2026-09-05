@@ -60,6 +60,10 @@ export type OpenComposerInput = {
   // Invoice "Sent from"). Composer falls back to its own default
   // selection when this is null/unset or doesn't match a verified alias.
   defaultSendAsEmail?: string | null;
+  // Pins the sender and hides the From dropdown. Used by the company-wide
+  // deal announcement, which must go out from deals@ (an alias held back
+  // from the normal picker). See MailComposer's prop comment.
+  lockedSendAsEmail?: string | null;
   // Optional To-field type-ahead source. The FAB pre-loads this with
   // the active client's contacts when launched from /clients/[id] so
   // the recruiter can start typing a name and pick from a dropdown.
@@ -166,6 +170,7 @@ export function ComposerManagerProvider({ children }: { children: ReactNode }) {
           toSuggestions={s.toSuggestions}
           replyingTo={s.replyingTo}
           defaultSendAsEmail={s.defaultSendAsEmail}
+          lockedSendAsEmail={s.lockedSendAsEmail}
           autoFocusTo
           onClose={() => close(s.id)}
           onSent={() => {

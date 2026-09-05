@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, Loader2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, PartyPopper, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ import { StageBadge } from "@/components/stage-badge";
 import { TabStrip } from "@/components/ui/tab-strip";
 import { cn } from "@/lib/utils";
 import { updatePlacement } from "@/app/pipeline/placement-update-action";
+import { buildDealAnnouncement } from "@/app/pipeline/deal-announcement-action";
+import { useComposerManager } from "@/lib/composer-manager";
 import { LEAD_SOURCES } from "@/lib/lead-sources";
 import {
   formatPlacementCompensation,
@@ -98,7 +100,9 @@ function parseIntOrNull(value: string): number | null {
 
 export function PlacementEditDrawer({ open, context, onClose }: Props) {
   const router = useRouter();
+  const composer = useComposerManager();
   const [pending, startTransition] = useTransition();
+  const [announcing, setAnnouncing] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [salary, setSalary] = useState("");
   const [salaryType, setSalaryType] = useState<PlacementCompensationType>("salary");
@@ -182,6 +186,49 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
     minFee: parseNumberOrNull(minFee),
     overrideAmount: parseNumberOrNull(feeTotal),
   });
+
+  // Opens the company-wide deal announcement as a DRAFT. Nothing is sent
+  // here: Ace fills in the facts (fee, dates, industry, lead source), the
+  // recipient list (everyone in the org, with the closer in Cc so Reply All
+  // reaches them), and pins the sender to deals@. The recruiter writes the
+  // story and drops the photo into the composer body, then hits Send there.
+  //
+  // Deliberately NOT wired to save: announcing is its own decision, and a
+  // recruiter editing a fee months later must not re-broadcast the deal.
+  async function handleAnnounce() {
+    if (!context || announcing) return;
+    setAnnouncing(true);
+    try {
+      const result = await buildDealAnnouncement(context.placementId);
+      if (!result.ok) {
+        toast.error("Couldn't build the announcement", {
+          description: result.error,
+        });
+        return;
+      }
+      const { draft } = result;
+      composer.open({
+        defaultTo: draft.to,
+        defaultCc: draft.cc,
+        defaultSubject: draft.subject,
+        defaultBody: draft.bodyHtml,
+        lockedSendAsEmail: draft.fromEmail,
+        modalTitle: `Announce deal to ${draft.recipientCount} teammate${draft.recipientCount === 1 ? "" : "s"}`,
+        // No templates or merge fields: this draft is fully assembled and
+        // applying a template would wipe the facts block.
+        templates: [],
+        mergeContext: {},
+        nonBlocking: true,
+      });
+      onClose();
+    } catch (err) {
+      toast.error("Couldn't build the announcement", {
+        description: err instanceof Error ? err.message : "Please try again.",
+      });
+    } finally {
+      setAnnouncing(false);
+    }
+  }
 
   function handleSave() {
     if (!context) return;
@@ -603,6 +650,22 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
             className="h-9 rounded-md px-4 text-[12.5px]"
           >
             Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="apply"
+            size="md"
+            onClick={() => void handleAnnounce()}
+            disabled={pending || announcing || !context}
+            title="Open a company-wide announcement draft for this deal"
+            className="h-9 gap-1.5 rounded-md px-4 text-[12.5px]"
+          >
+            {announcing ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <PartyPopper className="h-3.5 w-3.5" />
+            )}
+            Announce deal
           </Button>
           <div className="flex-1" />
           <Button

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getFreshAccessToken } from "@/lib/gmail";
+import { DEALS_FROM_EMAIL } from "@/lib/deal-announcement";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,12 @@ export const dynamic = "force-dynamic";
 // From dropdown in the Mail composer. Primary address always appears
 // (verificationStatus is empty for the primary); secondary aliases only
 // surface once verified, otherwise Gmail rewrites the From on send.
+//
+// deals@ is deliberately withheld from this list. It exists only to send
+// company-wide deal announcements, and the announcement flow selects it by
+// locking the composer's sender (MailComposer `lockedSendAsEmail`) rather
+// than by picking it here. Leaving it out of the response is what keeps it
+// off the From dropdown for ordinary mail.
 
 type GmailSendAsListResponse = {
   sendAs?: Array<{
@@ -63,7 +70,8 @@ export async function GET() {
         sendAsEmail: a.sendAsEmail!,
         displayName: a.displayName ?? "",
         isDefault: !!a.isDefault,
-      }));
+      }))
+      .filter((a) => a.sendAsEmail.toLowerCase() !== DEALS_FROM_EMAIL);
 
     return NextResponse.json({ aliases });
   } catch (e) {
