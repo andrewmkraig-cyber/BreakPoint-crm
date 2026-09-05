@@ -14,6 +14,7 @@ import {
   Handshake,
   Image as ImageIcon,
   Loader2,
+  PartyPopper,
   Plus,
   RotateCcw,
   Send,
@@ -34,6 +35,7 @@ import {
   cancelPlacement,
   reinstatePlacement,
 } from "@/app/candidates/[id]/placement-actions";
+import { buildDealAnnouncement } from "@/app/pipeline/deal-announcement-action";
 import {
   CANCELLATION_REASON_LABEL,
   MIN_CANCEL_DETAIL_CHARS,
@@ -43,6 +45,7 @@ import { DismissPlacementButton } from "@/app/candidates/[id]/dismiss-placement-
 import { toast } from "sonner";
 import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
 import { Button } from "@/components/ui/button";
+import { useComposerManager } from "@/lib/composer-manager";
 import {
   getInterviewSchedulingTemplates,
   scheduleInterview,
@@ -1451,6 +1454,8 @@ function LocalPlacementDialog({
   // Cancelling now requires a written explanation, so the old
   // window.confirm is replaced by a real dialog. This flag opens it.
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [announcing, setAnnouncing] = useState(false);
+  const dialogComposer = useComposerManager();
 
   const salaryNum = parseCompensationAmount(acceptedSalary);
   const pctNum = parseFloat(feePct) || 0;
@@ -1560,6 +1565,48 @@ function LocalPlacementDialog({
   // mirrors the same guard the DismissPlacementButton uses elsewhere in
   // this file (~line 885).
   const canCancel = editing && !job.placementId.startsWith("local-applied-");
+  // Announce is available on the same rows as Cancel: the placement has to
+  // exist in the DB before there is anything to tell the company about.
+  // Lives here as well as in the /pipeline drawer because this dialog is
+  // where a deal is actually booked, and having to navigate to Pipeline to
+  // announce a deal you just made is the wrong shape.
+  const canAnnounce = canCancel;
+
+  // Opens the company-wide announcement DRAFT. Nothing sends here: Ace
+  // fills the facts and the recipients, the recruiter writes the story and
+  // drops the photo in the composer, then sends from there.
+  async function onAnnounce() {
+    if (announcing) return;
+    setAnnouncing(true);
+    try {
+      const result = await buildDealAnnouncement(job.placementId);
+      if (!result.ok) {
+        toast.error("Couldn't build the announcement", { description: result.error });
+        return;
+      }
+      const { draft } = result;
+      dialogComposer.open({
+        defaultTo: draft.to,
+        defaultCc: draft.cc,
+        defaultSubject: draft.subject,
+        defaultBody: draft.bodyHtml,
+        lockedSendAsEmail: draft.fromEmail,
+        modalTitle: `Announce deal to ${draft.recipientCount} teammate${draft.recipientCount === 1 ? "" : "s"}`,
+        // No templates or merge fields: the draft is fully assembled and
+        // applying a template would wipe the facts block.
+        templates: [],
+        mergeContext: {},
+        nonBlocking: true,
+      });
+      onClose();
+    } catch (e) {
+      toast.error("Couldn't build the announcement", {
+        description: e instanceof Error ? e.message : "Please try again.",
+      });
+    } finally {
+      setAnnouncing(false);
+    }
+  }
 
   // Runs once CancelPlacementDialog has collected a reason and a written
   // explanation. The explanation is not optional: the server action rejects
@@ -1846,6 +1893,28 @@ function LocalPlacementDialog({
       </div>
 
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
+      {canAnnounce && (
+        <div className="mt-4 border-t border-court-border/40 pt-3">
+          <Button
+            type="button"
+            variant="apply"
+            size="sm"
+            onClick={() => void onAnnounce()}
+            disabled={announcing || isPending}
+            title="Open a company-wide announcement draft for this deal"
+          >
+            {announcing ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <PartyPopper className="h-3 w-3" />
+            )}
+            Announce deal
+          </Button>
+          <p className="mt-1 text-[11px] text-court-fg-muted">
+            Opens a draft to the whole company from deals@, with the closer on Cc. Write the story and add the photo before sending. Nothing goes out until you hit Send.
+          </p>
+        </div>
+      )}
       {/* Cancel Placement — destructive action sits at the bottom of the
           body so the Footer's primary Save action stays unambiguous.
           Visible only after the placement row exists (canCancel). Red
