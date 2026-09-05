@@ -11,8 +11,10 @@ import {
   Image as ImageIcon,
   Loader2,
   Mail,
+  Mic,
   PhoneCall,
   Send,
+  Square,
   Trash2,
   X,
 } from "lucide-react";
@@ -24,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { useComposerManager } from "@/lib/composer-manager";
 import { GAME_PLAN_USER_MESSAGE_MAX_CHARS } from "@/lib/game-plan-limits";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
+import { useVoiceDictation } from "@/lib/use-voice-dictation";
 
 // Per-entity AI chat surface. Drops onto a client or candidate detail page
 // as a standalone card: loads its own history from /api/ai-workspace,
@@ -304,6 +307,13 @@ export function AiWorkspace({
   const [sending, setSending] = useState(false);
   const [attachmentUploading, setAttachmentUploading] = useState(false);
   const [input, setInput] = useState("");
+  // In-flight dictated words the recognizer has not finalized yet. Shown as
+  // a live tail on the composer text but deliberately kept OUT of `input`,
+  // so a half-heard phrase is never sent, never counted against the
+  // character cap, and gets replaced cleanly when the recognizer settles on
+  // the final wording. Clicking the mic to stop flushes whatever is pending
+  // into `input` rather than dropping it.
+  const [interimText, setInterimText] = useState("");
   const [attachments, setAttachments] = useState<WorkspaceAttachment[]>([]);
   const [dragging, setDragging] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -318,6 +328,34 @@ export function AiWorkspace({
   const composer = useComposerManager();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Voice dictation. Each finalized phrase is appended to whatever is
+  // already in the composer with a single separating space, so the
+  // recruiter can type half a prompt, dictate the rest, and keep going.
+  // Sentence-ending punctuation is left alone (the recognizer emits it on
+  // Chrome; iOS mostly doesn't) — this only guarantees the words don't run
+  // together.
+  const appendDictatedText = useCallback((text: string) => {
+    setInput((prev) => {
+      const needsSpace = prev.length > 0 && !/\s$/.test(prev);
+      const next = needsSpace ? `${prev} ${text}` : `${prev}${text}`;
+      // The 50k cap is the server's, enforced in /api/ai-workspace. At
+      // ~150 spoken words per minute that is roughly nine hours of talking,
+      // so it is not a practical dictation limit — but truncate rather than
+      // silently build a message the API will reject.
+      if (next.length <= GAME_PLAN_USER_MESSAGE_MAX_CHARS) return next;
+      toast.warning("Game Plan message limit reached", {
+        description: `Dictation stopped at ${GAME_PLAN_USER_MESSAGE_MAX_CHARS.toLocaleString()} characters.`,
+      });
+      return next.slice(0, GAME_PLAN_USER_MESSAGE_MAX_CHARS);
+    });
+  }, []);
+
+  const dictation = useVoiceDictation({
+    onFinalText: appendDictatedText,
+    onInterimText: setInterimText,
+  });
 
   // Drag-to-resize state. heightDelta is the px added to the card's
   // default viewport-based height; resizeStart holds the pointer anchor
@@ -454,6 +492,11 @@ export function AiWorkspace({
   async function onSend(promptOverride?: string) {
     const text = (promptOverride ?? input).trim();
     if ((!text && attachments.length === 0) || sending || attachmentUploading) return;
+
+    // Sending closes the mic. Leaving it open would append the next
+    // sentence into an already-cleared composer, which reads like the
+    // dictation was lost.
+    if (dictation.listening) dictation.stop();
 
     setErrorText(null);
     setSending(true);
@@ -735,10 +778,46 @@ export function AiWorkspace({
     }
   }
 
+  // The greyed tail of not-yet-final dictated words, plus the separator
+  // that will be inserted when it commits. Kept as one string so the
+  // onChange handler below can strip exactly what it rendered.
+  const interimSuffix = interimText
+    ? `${input.length > 0 && !/\s$/.test(input) ? " " : ""}${interimText}`
+    : "";
+  const composerValue = input + interimSuffix;
+
+  // The textarea renders `input + interimSuffix` but only `input` is real.
+  // While dictating, a keystroke arrives as the full rendered string plus
+  // the edit — so if the interim tail is still intact, peel it back off and
+  // keep only the typed part. If the edit landed inside the tail (the
+  // recruiter selected over it), drop the interim entirely and take the new
+  // value as-is; the recognizer will re-emit those words as a final phrase
+  // anyway.
+  function onComposerChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const next = e.target.value;
+    if (interimSuffix && next.endsWith(interimSuffix)) {
+      setInput(next.slice(0, next.length - interimSuffix.length));
+      return;
+    }
+    if (interimSuffix) setInterimText("");
+    setInput(next);
+  }
+
+  // Keep the caret pinned to the end while dictating. Each new interim
+  // result re-renders a longer value; without this the caret would sit
+  // wherever it was and the recruiter would watch text appear behind it.
+  useEffect(() => {
+    if (!dictation.listening) return;
+    const el = textareaRef.current;
+    if (!el || document.activeElement !== el) return;
+    el.selectionStart = el.selectionEnd = el.value.length;
+    el.scrollTop = el.scrollHeight;
+  }, [composerValue, dictation.listening]);
+
   // Rows auto-expand between 2 and 6 based on the newline count in the
   // current input. Matches the user's spec: 2 rows default, 6 rows ceiling,
   // Enter sends, Shift+Enter newline.
-  const rows = Math.min(6, Math.max(2, input.split("\n").length));
+  const rows = Math.min(6, Math.max(2, composerValue.split("\n").length));
 
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -1023,10 +1102,23 @@ export function AiWorkspace({
             ))}
           </div>
         )}
+        {dictation.listening && (
+          <div className="mb-2 flex items-center gap-2 text-xs font-medium text-red-600">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-70" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
+            </span>
+            Listening… talk as long as you like, then click the mic to stop.
+          </div>
+        )}
+        {dictation.error && !dictation.listening && (
+          <div className="mb-2 text-xs text-red-600">{dictation.error}</div>
+        )}
         <div className="flex items-end gap-2">
           <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
+            ref={textareaRef}
+            value={composerValue}
+            onChange={onComposerChange}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             maxLength={GAME_PLAN_USER_MESSAGE_MAX_CHARS}
@@ -1045,6 +1137,32 @@ export function AiWorkspace({
               "disabled:cursor-not-allowed disabled:opacity-60",
             )}
           />
+          {/* Voice dictation. Hidden outright on browsers with no
+              SpeechRecognition (Firefox) rather than shown dead — the
+              recruiter uses Chrome and Safari on the laptop and the
+              installed PWA on iOS, all three of which support it. There is
+              no time or character limit on a session: the hook restarts
+              recognition under the hood whenever the browser ends it, so
+              one click holds the mic open until the next click. */}
+          {dictation.supported && (
+            <Button
+              type="button"
+              size="md"
+              variant={dictation.listening ? "reject" : "secondary"}
+              onClick={dictation.toggle}
+              disabled={sending || attachmentUploading}
+              aria-pressed={dictation.listening}
+              aria-label={dictation.listening ? "Stop dictation" : "Dictate with your voice"}
+              title={dictation.listening ? "Stop dictation" : "Dictate with your voice"}
+              className="shrink-0 px-3"
+            >
+              {dictation.listening ? (
+                <Square className="h-4 w-4 fill-current" />
+              ) : (
+                <Mic className="h-4 w-4" />
+              )}
+            </Button>
+          )}
           <Button
             type="button"
             size="md"
