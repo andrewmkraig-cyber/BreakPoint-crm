@@ -27,6 +27,11 @@ import {
   INPUT_FRAME_RECT_CLASS,
   INPUT_CONTROL_CLASS,
 } from "@/components/ui/input";
+import {
+  CPA_OPTIONS,
+  coerceCpaValue,
+  type CpaValue,
+} from "@/lib/candidate-cpa";
 import { LEAD_SOURCES } from "@/lib/lead-sources";
 import {
   formatExpectedCompensation,
@@ -84,6 +89,7 @@ export function CandidateCompactOverview({
   altPhones,
   linkedinProfile,
   source,
+  cpa,
   expectedSalary,
   highlightTokens,
 }: {
@@ -100,6 +106,7 @@ export function CandidateCompactOverview({
   altPhones?: string[];
   linkedinProfile: string | null;
   source: string | null;
+  cpa: CpaValue;
   expectedSalary: CandidateCompactOverviewExpectedSalary | null;
   highlightTokens?: string[];
 }) {
@@ -538,7 +545,79 @@ export function CandidateCompactOverview({
           </Field>
         </dl>
       )}
+
+      {/* CPA sits OUTSIDE the edit/read swap on purpose. It saves the
+          moment it changes, so it is neither part of the card's
+          Save/Cancel transaction (Cancel must not silently revert a
+          committed CPA) nor hidden while the rest of the card is being
+          edited. */}
+      <CpaControl candidateRef={candidateRef} initial={cpa} />
     </section>
+  );
+}
+
+// Immediate-save CPA control. One select, three states, no Save button:
+// picking a value fires updateCandidate straight away and the row is
+// optimistic, reverting to the prior value if the write fails so the
+// control never shows a state the database does not hold.
+function CpaControl({
+  candidateRef,
+  initial,
+}: {
+  candidateRef: string;
+  initial: CpaValue;
+}) {
+  const router = useRouter();
+  const [value, setValue] = useState<CpaValue>(initial);
+  const [isSaving, startSaving] = useTransition();
+
+  // Re-seed when the server sends a new value (router.refresh after a
+  // save elsewhere on the page, or navigating between candidates in the
+  // split view, which reuses this component instance).
+  useEffect(() => {
+    setValue(initial);
+  }, [initial]);
+
+  function onPick(next: CpaValue) {
+    const previous = value;
+    if (next === previous) return;
+    setValue(next);
+    startSaving(async () => {
+      const res = await updateCandidate({ id: candidateRef, cpa: next });
+      if (!res.ok) {
+        setValue(previous);
+        toast.error(res.error || "Could not save CPA.");
+        return;
+      }
+      toast.success("CPA saved.");
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-court-border pt-2.5">
+      <span
+        className="shrink-0 text-[10px] uppercase tracking-wide text-court-fg-muted"
+        id={`cpa-label-${candidateRef}`}
+      >
+        CPA
+      </span>
+      <Select
+        value={value}
+        disabled={isSaving}
+        onChange={(e) => onPick(coerceCpaValue(e.target.value))}
+        aria-labelledby={`cpa-label-${candidateRef}`}
+        containerClassName="w-[130px]"
+        frameClassName="h-7"
+        className="py-0 text-xs"
+      >
+        {CPA_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </Select>
+    </div>
   );
 }
 

@@ -10,6 +10,7 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { coordinatePatchForCandidateLocationUpdate } from "@/lib/candidate-location-geocode";
 import { prisma } from "@/lib/prisma";
+import { coerceCpaValue, type CpaValue } from "@/lib/candidate-cpa";
 import { getResumeBytes } from "@/lib/resume-bytes";
 import { isDocxMimeOrName } from "@/lib/libreoffice-docx-pdf";
 
@@ -47,6 +48,10 @@ export type CandidatePatch = {
   current_organization?: string;
   linkedin_profile?: string;
   source?: string | null;
+  // CPA credential. Three-state, non-null (see CpaStatus in
+  // prisma/schema.prisma). Only ever set by a human on the profile
+  // control - never inferred from notes, tags, or resume text.
+  cpa?: CpaValue;
   candidate_summary?: string;
   location?: { location?: string; city?: string; state?: string; country?: string } | string;
   expected_salary?: {
@@ -146,6 +151,9 @@ export async function updateCandidate(patch: CandidatePatch): Promise<ActionResu
     if (patch.linkedin_profile !== undefined)
       data.linkedinProfile = linkedinUrlFrom(patch.linkedin_profile) || null;
     if (patch.source !== undefined) data.source = patch.source?.trim() || null;
+    // Coerce rather than trust: an unrecognized value falls back to the
+    // column default instead of throwing at the DB layer.
+    if (patch.cpa !== undefined) data.cpa = coerceCpaValue(patch.cpa);
     if (patch.location !== undefined) {
       const nextLocation = locationToString(patch.location);
       data.location = nextLocation;
@@ -180,6 +188,11 @@ export async function updateCandidate(patch: CandidatePatch): Promise<ActionResu
     const nextRaw: Record<string, unknown> = { ...prevRaw };
     for (const [key, value] of Object.entries(patch)) {
       if (key === "id") continue;
+      // cpa is a canonical Neon column only. Keeping it out of the raw
+      // blob avoids creating a second place to read it from, which is
+      // exactly the dual-field-read trap that produced the client-fee
+      // bug (one surface reading the column, another the legacy blob).
+      if (key === "cpa") continue;
       nextRaw[key] = value;
     }
     data.raw = nextRaw as Prisma.InputJsonValue;

@@ -511,6 +511,18 @@ model Placement {
 // involvement in the save path. `rfId` is intentionally nullable and is
 // NOT populated at create time; it's reserved for a future manual-pull or
 // admin-tool scenario, not for automatic sync.
+// CPA credential, recorded by hand on the candidate profile. Three real
+// states: the recruiter has confirmed the candidate IS a CPA, has
+// confirmed they are NOT, or nobody has asked yet. UNKNOWN is the
+// default and is NOT a null - every row carries one of the three, so no
+// consumer needs a null branch. Never inferred from notes, tags, or
+// resume text; only a human sets it.
+enum CpaStatus {
+  UNKNOWN
+  YES
+  NO
+}
+
 model Candidate {
   id   String @id @default(cuid())
   rfId Int?   @unique
@@ -540,6 +552,10 @@ model Candidate {
   // display strings as placement lead source options, but is stored
   // on the candidate so it survives before any placement exists.
   source              String?
+  // See CpaStatus above. Filterable from the Candidate Search rail
+  // (Any / Yes / No) - UNKNOWN is excluded from both the Yes and the No
+  // result sets rather than folded into No.
+  cpa                 CpaStatus @default(UNKNOWN)
   skills              String[] @default([])
   // Free-form tags + RF attributes normalized to strings (e.g. "kept",
   // "keep"). Used by the profile chips and the keep filter.

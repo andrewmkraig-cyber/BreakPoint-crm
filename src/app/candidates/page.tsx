@@ -54,6 +54,11 @@ import { toast } from "sonner";
 import { Button, ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import {
+  CPA_FILTER_OPTIONS,
+  coerceCpaFilter,
+  type CpaFilterValue,
+} from "@/lib/candidate-cpa";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { flattenBooleanQuery } from "@/lib/search/boolean-query";
 import {
@@ -141,6 +146,10 @@ type Filters = {
   // current employer column. "any" widens it to include any historical
   // employer recorded in the experience JSON.
   employerScope: string;
+  // "any" (default) applies no CPA clause. "yes" / "no" match the
+  // stored Candidate.cpa column exactly, so candidates whose CPA has
+  // never been recorded (Unknown) drop out of BOTH.
+  cpa: CpaFilterValue;
   lastApply: string;
   lastAction: string;
 };
@@ -155,6 +164,7 @@ const INITIAL_FILTERS: Filters = {
   distance: "25",
   employers: [],
   employerScope: "current",
+  cpa: "any",
   lastApply: "any",
   lastAction: "any",
 };
@@ -227,6 +237,9 @@ function buildQuery(f: Filters): string {
   if (f.employers.length > 0 && f.employerScope === "any") {
     sp.set("employerScope", "any");
   }
+  // Only emitted when non-default, so an untouched CPA filter leaves
+  // the query string exactly as it was before this filter existed.
+  if (f.cpa !== "any") sp.set("cpa", f.cpa);
   return sp.toString();
 }
 
@@ -461,6 +474,7 @@ function hasAnyFilter(f: Filters): boolean {
     f.maxComp.trim() !== "" ||
     f.locations.length > 0 ||
     f.employers.length > 0 ||
+    f.cpa !== "any" ||
     (f.lastApply !== "" && f.lastApply !== "any") ||
     (f.lastAction !== "" && f.lastAction !== "any")
   );
@@ -499,6 +513,7 @@ function countActiveFilters(f: Filters): number {
     (f.minComp.trim() !== "" || f.maxComp.trim() !== "" ? 1 : 0) +
     (f.locations.length > 0 ? 1 : 0) +
     (f.employers.length > 0 ? 1 : 0) +
+    (f.cpa !== "any" ? 1 : 0) +
     (f.lastApply !== "" && f.lastApply !== "any" ? 1 : 0) +
     (f.lastAction !== "" && f.lastAction !== "any" ? 1 : 0)
   );
@@ -627,6 +642,10 @@ function coerceFilters(value: unknown): Filters {
       typeof v.employerScope === "string"
         ? v.employerScope
         : INITIAL_FILTERS.employerScope,
+    // Saved searches written before this filter existed have no `cpa`
+    // key; coerceCpaFilter lands them on "any" so an old save keeps
+    // returning exactly what it used to.
+    cpa: coerceCpaFilter(v.cpa),
     lastApply:
       typeof v.lastApply === "string" ? v.lastApply : INITIAL_FILTERS.lastApply,
     lastAction:
@@ -1179,6 +1198,7 @@ export default function CandidatesPage() {
     filters.distance,
     employersKey,
     filters.employerScope,
+    filters.cpa,
     filters.lastApply,
     filters.lastAction,
   ]);
@@ -1508,6 +1528,26 @@ export default function CandidatesPage() {
                   <option value="any">Current + Past</option>
                 </SelectField>
               </div>
+            </div>
+            {/* CPA. Reads the recorded Candidate.cpa column only - it
+                never scans notes, tags, or resume text. Yes and No each
+                return only candidates explicitly marked that way, so
+                anyone still Unknown appears in neither. */}
+            <div className="mt-1.5">
+              <FieldLabel>CPA</FieldLabel>
+              <SelectField
+                value={filters.cpa}
+                onChange={(e) =>
+                  setField("cpa", coerceCpaFilter(e.target.value))
+                }
+                aria-label="CPA"
+              >
+                {CPA_FILTER_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </SelectField>
             </div>
           </section>
 

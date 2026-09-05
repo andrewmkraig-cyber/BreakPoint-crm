@@ -10,6 +10,7 @@ import { parseBooleanQuery, flattenBooleanQuery } from "@/lib/search/boolean-que
 import { geocodePill, type GeoHit } from "@/lib/geocode";
 import { formatExpectedCompensationFull } from "@/lib/candidate-compensation";
 import { haversineMiles } from "@/lib/distance";
+import { coerceCpaFilter, cpaFilterToStoredValue } from "@/lib/candidate-cpa";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -466,6 +467,13 @@ export async function GET(req: Request) {
   const employerScope =
     (sp.get("employerScope") ?? "current").trim() === "any" ? "any" : "current";
   const tenure = (sp.get("tenure") ?? "any").trim();
+  // CPA filter: "any" (default, no clause), "yes", or "no". Matched
+  // against the stored Candidate.cpa column ONLY - never against notes,
+  // tags, skills, or resume text. UNKNOWN candidates are excluded from
+  // both "yes" and "no", so the two result sets do not add up to the
+  // full roster and that is intentional. An unrecognized value coerces
+  // back to "any" rather than narrowing.
+  const cpaFilter = coerceCpaFilter((sp.get("cpa") ?? "any").trim());
   // workAuth is accepted but currently a no-op — Candidate has no
   // workAuthorization column. When/if the schema gains one this filter
   // becomes a single Prisma equals clause; until then accepting the
@@ -678,6 +686,14 @@ export async function GET(req: Request) {
         const ids = await resolveEmployerAnyIds(org.id, employersExclude);
         andClauses.push({ id: { notIn: ids } });
       }
+    }
+
+    // CPA. Exact equality on the enum column, so UNKNOWN falls out of
+    // both directions. Composes into the outer AND like every other
+    // filter; "any" pushes no clause at all.
+    const cpaStored = cpaFilterToStoredValue(cpaFilter);
+    if (cpaStored) {
+      andClauses.push({ cpa: cpaStored });
     }
 
     // Rejected tab inverts the hide-rejected filter: show ONLY

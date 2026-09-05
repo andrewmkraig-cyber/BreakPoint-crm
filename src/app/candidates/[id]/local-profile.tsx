@@ -105,6 +105,7 @@ export async function LocalCandidateProfile({
         lng: true,
         linkedinProfile: true,
         source: true,
+        cpa: true,
         skills: true,
         tags: true,
         notes: true,
@@ -969,6 +970,7 @@ export async function LocalCandidateProfile({
               altPhones={candidate.altPhones}
               linkedinProfile={candidate.linkedinProfile}
               source={candidate.source}
+              cpa={candidate.cpa}
               expectedSalary={toExpectedSalary(candidate.expectedSalary)}
               highlightTokens={highlightTokens}
             />
@@ -1116,6 +1118,7 @@ export async function LocalCandidateProfile({
             altPhones={candidate.altPhones}
             linkedinProfile={candidate.linkedinProfile}
             source={candidate.source}
+            cpa={candidate.cpa}
             expectedSalary={toExpectedSalary(candidate.expectedSalary)}
           />
           <CandidateActivityCard
