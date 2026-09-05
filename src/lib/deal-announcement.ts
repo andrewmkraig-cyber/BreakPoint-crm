@@ -15,6 +15,17 @@
 export const DEALS_FROM_EMAIL = "deals@breakpointtalent.com";
 export const DEALS_FROM_NAME = "BreakPoint Talent Deals";
 
+// A cancelled deal notifies a fixed short list rather than the whole
+// company: the announcement is a celebration, the cancellation is
+// bookkeeping that AR needs for invoicing and that leadership needs to
+// know about. Hard-coded on purpose — this is not an org-membership
+// broadcast, it is these three mailboxes.
+export const DEAL_CANCELLATION_RECIPIENTS = [
+  "ar@breakpointtalent.com",
+  "austin@breakpointtalent.com",
+  "andrew@breakpointtalent.com",
+] as const;
+
 export type DealAnnouncementFacts = {
   recruiterName: string;
   positionTitle: string | null;
@@ -109,4 +120,105 @@ export function dealAnnouncementBodyHtml(facts: DealAnnouncementFacts): string {
   );
 
   return parts.join("");
+}
+
+
+// ---- Cancelled deal notice ----
+//
+// Unlike the announcement, this one SENDS immediately rather than opening a
+// draft. The recruiter has already typed the explanation in the cancel
+// dialog (it is required there), so there is nothing left to compose, and a
+// cancellation that silently waited in someone's drafts folder would defeat
+// the point of notifying AR.
+
+export type DealCancellationFacts = {
+  // Who booked the deal originally.
+  recruiterName: string;
+  // Who is cancelling it. Often the same person; rendered separately only
+  // when it differs, so the common case reads cleanly.
+  cancelledByName: string;
+  positionTitle: string | null;
+  clientName: string | null;
+  candidateName: string | null;
+  feeTotal: number | null;
+  placementDate: string | null;
+  startDate: string | null;
+  // Human label for the structured reason (e.g. "Candidate resigned").
+  reasonLabel: string;
+  // The free-text explanation. Required by the cancel dialog.
+  explanation: string;
+};
+
+// "Cancelled deal: Austin Barnard, $25,000, Tax Manager". Amount and
+// position each drop out when unknown rather than rendering a placeholder,
+// so the subject never carries a dangling comma.
+export function dealCancellationSubject(facts: DealCancellationFacts): string {
+  const parts = [facts.recruiterName];
+  if (facts.feeTotal != null && facts.feeTotal > 0) parts.push(money(facts.feeTotal));
+  if (facts.positionTitle?.trim()) parts.push(facts.positionTitle.trim());
+  return `Cancelled deal: ${parts.join(", ")}`;
+}
+
+export function dealCancellationBodyHtml(facts: DealCancellationFacts): string {
+  const parts: string[] = [];
+
+  const who =
+    facts.cancelledByName.trim() &&
+    facts.cancelledByName.trim() !== facts.recruiterName.trim()
+      ? `${escapeHtml(facts.cancelledByName)} cancelled a placement booked by ${escapeHtml(facts.recruiterName)}`
+      : `${escapeHtml(facts.recruiterName)} cancelled a placement`;
+  const feePhrase =
+    facts.feeTotal != null && facts.feeTotal > 0
+      ? ` worth ${money(facts.feeTotal)}`
+      : "";
+  parts.push(`<p>${who}${feePhrase}.</p>`);
+
+  const rows: Array<[string, string | null]> = [
+    ["Candidate", facts.candidateName],
+    ["Position", facts.positionTitle],
+    ["Client", facts.clientName],
+    ["Placement date", facts.placementDate],
+    ["Start date", facts.startDate],
+    ["Reason", facts.reasonLabel],
+  ];
+  parts.push("<ul>");
+  for (const [label, value] of rows) {
+    parts.push(
+      `<li><strong>${label}:</strong> ${escapeHtml(value?.trim() || "TBD")}</li>`,
+    );
+  }
+  parts.push("</ul>");
+
+  // The explanation is the entire point of this email, so it gets its own
+  // labelled block rather than a bullet. Newlines the recruiter typed are
+  // preserved as separate paragraphs.
+  parts.push("<p><strong>What happened</strong></p>");
+  for (const line of facts.explanation.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed) parts.push(`<p>${escapeHtml(trimmed)}</p>`);
+  }
+
+  return parts.join("");
+}
+
+// Plain-text alternative. sendGmail wants both parts, and a text/plain body
+// that just says "see HTML" is what trips spam filters.
+export function dealCancellationBodyText(facts: DealCancellationFacts): string {
+  const lines: string[] = [];
+  const who =
+    facts.cancelledByName.trim() &&
+    facts.cancelledByName.trim() !== facts.recruiterName.trim()
+      ? `${facts.cancelledByName} cancelled a placement booked by ${facts.recruiterName}`
+      : `${facts.recruiterName} cancelled a placement`;
+  const feePhrase =
+    facts.feeTotal != null && facts.feeTotal > 0 ? ` worth ${money(facts.feeTotal)}` : "";
+  lines.push(`${who}${feePhrase}.`, "");
+  lines.push(`Candidate: ${facts.candidateName?.trim() || "TBD"}`);
+  lines.push(`Position: ${facts.positionTitle?.trim() || "TBD"}`);
+  lines.push(`Client: ${facts.clientName?.trim() || "TBD"}`);
+  lines.push(`Placement date: ${facts.placementDate?.trim() || "TBD"}`);
+  lines.push(`Start date: ${facts.startDate?.trim() || "TBD"}`);
+  lines.push(`Reason: ${facts.reasonLabel}`, "");
+  lines.push("What happened", facts.explanation.trim());
+  return lines.join("\n");
 }

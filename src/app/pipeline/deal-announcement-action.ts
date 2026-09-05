@@ -10,7 +10,7 @@ import {
   dealAnnouncementSubject,
   type DealAnnouncementFacts,
 } from "@/lib/deal-announcement";
-import { getFreshAccessToken } from "@/lib/gmail";
+import { canSendAsDeals } from "@/lib/deals-alias";
 import {
   normalizePlacementCompensationType,
   resolvePlacementFee,
@@ -38,32 +38,6 @@ export type DealAnnouncementDraft = {
 export type DealAnnouncementResult =
   | { ok: true; draft: DealAnnouncementDraft }
   | { ok: false; error: string };
-
-// Whether deals@ is a verified "Send mail as" on the signed-in user's Gmail.
-// Gmail silently REWRITES the From header to the account's own address when
-// it isn't, so without this check the announcement would go out looking like
-// a personal email and nobody would notice. Each teammate who announces
-// deals has to add the alias in their own Gmail settings once.
-async function senderCanUseDealsAlias(userId: string): Promise<boolean> {
-  const accessToken = await getFreshAccessToken(userId);
-  const res = await fetch(
-    "https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs",
-    { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" },
-  );
-  if (!res.ok) return false;
-  const json = (await res.json()) as {
-    sendAs?: Array<{
-      sendAsEmail?: string;
-      isPrimary?: boolean;
-      verificationStatus?: string;
-    }>;
-  };
-  return (json.sendAs ?? []).some(
-    (a) =>
-      a.sendAsEmail?.toLowerCase() === DEALS_FROM_EMAIL &&
-      (a.isPrimary || !a.verificationStatus || a.verificationStatus === "accepted"),
-  );
-}
 
 function formatDate(value: Date | null): string | null {
   if (!value) return null;
@@ -110,7 +84,7 @@ export async function buildDealAnnouncement(
   });
   if (!placement) return { ok: false, error: "Placement not found." };
 
-  if (!(await senderCanUseDealsAlias(sender.id))) {
+  if (!(await canSendAsDeals(sender.id))) {
     return {
       ok: false,
       error: `${DEALS_FROM_EMAIL} is not a verified "Send mail as" address on your Gmail account. Add it under Gmail Settings, Accounts, "Send mail as", then try again.`,

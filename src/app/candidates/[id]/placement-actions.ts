@@ -25,6 +25,22 @@ import { getAppPreferences } from "@/lib/preferences";
 import { fireTemplatedEmail, type FireResult } from "@/lib/templated-email";
 import { fireTriggerAndLog } from "@/lib/trigger-fire";
 import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
+import { canSendAsDeals } from "@/lib/deals-alias";
+import {
+  CANCELLATION_REASON_LABEL,
+  MIN_CANCEL_DETAIL_CHARS,
+  VALID_CANCEL_REASON,
+  type CancellationReason,
+} from "@/lib/placement-cancellation";
+import {
+  DEALS_FROM_EMAIL,
+  DEALS_FROM_NAME,
+  DEAL_CANCELLATION_RECIPIENTS,
+  dealCancellationBodyHtml,
+  dealCancellationBodyText,
+  dealCancellationSubject,
+  type DealCancellationFacts,
+} from "@/lib/deal-announcement";
 import { extractCandidateFields } from "@/lib/candidate-fields";
 import { formatExpectedCompensation } from "@/lib/candidate-compensation";
 import { formatDate, formatLocation } from "@/lib/utils";
@@ -38,6 +54,7 @@ import { priorFridayIfWeekendUtc } from "@/lib/business-days";
 import {
   formatPlacementCompensation,
   normalizePlacementCompensationType,
+  resolvePlacementFee,
   type PlacementCompensationType,
 } from "@/lib/placement-compensation";
 import {
@@ -1056,29 +1073,47 @@ export async function confirmStart(
 // "cancelled" and logging the reason. Kept as a Placement row so we don't lose
 // fee/billing history for audit.
 
-export type CancellationReason =
-  | "candidate_resigned"
-  | "client_terminated"
-  | "failed_background_check"
-  | "other";
-
 export type CancelPlacementInput = {
   placementId: string;
   reason: CancellationReason;
+  // Why the deal fell through, in the canceller's own words. REQUIRED —
+  // the whole point of the cancel dialog is that a deal cannot disappear
+  // without an explanation, and this text is the body of the notice that
+  // goes to AR, Austin and Andrew.
   detail: string;
 };
 
-const VALID_CANCEL_REASON: ReadonlySet<CancellationReason> = new Set<CancellationReason>([
-  "candidate_resigned",
-  "client_terminated",
-  "failed_background_check",
-  "other",
-]);
 
-export async function cancelPlacement(input: CancelPlacementInput): Promise<Result> {
+// Result carries whether the AR / Austin / Andrew notice actually went out.
+// The cancellation itself is the primary action and must never be blocked by
+// a mail failure, so a failed notice returns ok:true with noticeError set and
+// the caller warns instead of implying the cancel did not happen.
+export type CancelPlacementResult =
+  | {
+      ok: true;
+      noticeSent: boolean;
+      // Address the notice actually went out from. Usually deals@, but
+      // falls back to the canceller's own address when they have not added
+      // deals@ as a verified alias — AR still needs to hear about a dead
+      // deal, so a missing alias must not swallow the notification.
+      noticeFrom?: string;
+      noticeError?: string;
+    }
+  | { ok: false; error: string };
+
+export async function cancelPlacement(
+  input: CancelPlacementInput,
+): Promise<CancelPlacementResult> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   if (!VALID_CANCEL_REASON.has(input.reason)) return { ok: false, error: "Invalid cancellation reason." };
+  const detail = (input.detail ?? "").trim();
+  if (detail.length < MIN_CANCEL_DETAIL_CHARS) {
+    return {
+      ok: false,
+      error: `Explain why this deal is being cancelled (at least ${MIN_CANCEL_DETAIL_CHARS} characters). The explanation is emailed to AR, Austin and Andrew.`,
+    };
+  }
   const org = await getCurrentOrg();
   if (!org) return { ok: false, error: "No organization context." };
 
@@ -1086,9 +1121,30 @@ export async function cancelPlacement(input: CancelPlacementInput): Promise<Resu
     // Rule 8: org-scoped lookup so a stray placementId from another tenant
     // can't probe candidate / client ids out of this org. findFirst (not
     // findUnique) because we need to AND organizationId onto the lookup.
+    //
+    // Read BEFORE the update: the notice quotes the deal as it stood, and
+    // reading after would race the write for no benefit.
     const existing = await prisma.placement.findFirst({
       where: { id: input.placementId, organizationId: org.id },
-      select: { candidateRfId: true, jobRfId: true, clientRfId: true },
+      select: {
+        candidateRfId: true,
+        jobRfId: true,
+        clientRfId: true,
+        offerTitle: true,
+        acceptedSalary: true,
+        acceptedCompensationType: true,
+        feePercentage: true,
+        feeTotal: true,
+        minFee: true,
+        placedAt: true,
+        createdAt: true,
+        startConfirmedAt: true,
+        expectedStartDate: true,
+        createdBy: { select: { name: true, email: true } },
+        candidate: { select: { firstName: true, lastName: true } },
+        client: { select: { name: true } },
+        job: { select: { title: true } },
+      },
     });
     if (!existing) return { ok: false, error: "Placement not found." };
 
@@ -1111,19 +1167,129 @@ export async function cancelPlacement(input: CancelPlacementInput): Promise<Resu
         jobRfId: existing.jobRfId,
         clientRfId: existing.clientRfId,
         reason: input.reason,
-        detail: input.detail || null,
+        detail,
       },
     });
+
+    // Notify AR / Austin / Andrew. Wrapped so a Gmail failure cannot roll
+    // back a cancellation that has already committed: the row is cancelled
+    // either way and the caller surfaces the mail error separately.
+    let noticeSent = false;
+    let noticeFrom: string | undefined;
+    let noticeError: string | undefined;
+    try {
+      noticeFrom = await sendCancellationNotice({
+        userId,
+        detail,
+        reason: input.reason,
+        placement: existing,
+      });
+      noticeSent = true;
+    } catch (e) {
+      noticeError = e instanceof Error ? e.message : "Notification failed.";
+    }
 
     // Bust every server-rendered surface a cancel affects: dashboard
     // metrics, placements ledger, pipeline tabs, finances cash forecast,
     // and the specific candidate / client pages. Replaces the old narrow
     // revalidatePath('/pipeline') + candidate-page only.
     await revalidatePlacementSurfaces(input.placementId, org.id);
-    return { ok: true };
+    return { ok: true, noticeSent, noticeFrom, noticeError };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to cancel placement." };
   }
+}
+
+// Sends the cancelled-deal notice, preferring deals@ so both halves of a
+// deal's life carry one mail identity. Returns the address it actually sent
+// from.
+//
+// When the canceller has not verified deals@ on their own Gmail we send from
+// their primary address instead of forcing it: Gmail would otherwise rewrite
+// the From silently and report success, which reads as a deals@ email that
+// never was. AR hearing about a dead deal matters more than the letterhead,
+// so the fallback sends and the caller says which address was used.
+//
+// Throws on a real send failure; cancelPlacement catches so the DB write
+// stands regardless.
+async function sendCancellationNotice(args: {
+  userId: string;
+  detail: string;
+  reason: CancellationReason;
+  placement: {
+    offerTitle: string | null;
+    acceptedSalary: number | null;
+    acceptedCompensationType: string | null;
+    feePercentage: number | null;
+    feeTotal: number | null;
+    minFee: number | null;
+    placedAt: Date | null;
+    createdAt: Date;
+    startConfirmedAt: Date | null;
+    expectedStartDate: Date | null;
+    createdBy: { name: string | null; email: string | null } | null;
+    candidate: { firstName: string | null; lastName: string | null } | null;
+    client: { name: string } | null;
+    job: { title: string | null } | null;
+  };
+}): Promise<string> {
+  const { placement } = args;
+  const canceller = await prisma.user.findUnique({
+    where: { id: args.userId },
+    select: { name: true, email: true },
+  });
+
+  const fmt = (d: Date | null): string | null =>
+    d
+      ? d.toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+          timeZone: "America/New_York",
+        })
+      : null;
+
+  const fee = resolvePlacementFee({
+    amount: placement.acceptedSalary,
+    compensationType: normalizePlacementCompensationType(placement.acceptedCompensationType),
+    feePercentage: placement.feePercentage,
+    minFee: placement.minFee,
+    overrideAmount: placement.feeTotal,
+  });
+
+  const candidateName = [placement.candidate?.firstName, placement.candidate?.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  const facts: DealCancellationFacts = {
+    recruiterName:
+      placement.createdBy?.name?.trim() || placement.createdBy?.email?.trim() || "the team",
+    cancelledByName: canceller?.name?.trim() || canceller?.email?.trim() || "",
+    positionTitle: placement.job?.title ?? placement.offerTitle ?? null,
+    clientName: placement.client?.name ?? null,
+    candidateName: candidateName || null,
+    feeTotal: fee.feeTotal || null,
+    placementDate: fmt(placement.placedAt ?? placement.createdAt),
+    startDate: fmt(placement.startConfirmedAt ?? placement.expectedStartDate),
+    reasonLabel: CANCELLATION_REASON_LABEL[args.reason],
+    explanation: args.detail,
+  };
+
+  const useDeals = await canSendAsDeals(args.userId);
+  const fromAddress =
+    useDeals || !canceller?.email ? DEALS_FROM_EMAIL : canceller.email;
+
+  await sendGmail({
+    userId: args.userId,
+    from: fromAddress,
+    fromName: useDeals ? DEALS_FROM_NAME : (canceller?.name ?? undefined),
+    to: [...DEAL_CANCELLATION_RECIPIENTS],
+    subject: dealCancellationSubject(facts),
+    bodyHtml: wrapEmailHtml(dealCancellationBodyHtml(facts)),
+    bodyText: dealCancellationBodyText(facts),
+  });
+  return fromAddress;
 }
 
 export async function deletePlacement(placementId: string): Promise<Result> {

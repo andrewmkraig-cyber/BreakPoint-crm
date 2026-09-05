@@ -31,6 +31,11 @@ import {
 // — rather than duplicated onto the Ace-native module). The Cancel button
 // in LocalPlacementDialog imports from here.
 import { cancelPlacement } from "@/app/candidates/[id]/placement-actions";
+import {
+  CANCELLATION_REASON_LABEL,
+  MIN_CANCEL_DETAIL_CHARS,
+  type CancellationReason,
+} from "@/lib/placement-cancellation";
 import { DismissPlacementButton } from "@/app/candidates/[id]/dismiss-placement-button";
 import { toast } from "sonner";
 import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
@@ -1391,6 +1396,9 @@ function LocalPlacementDialog({
   // can't fire both. Pending lights the spinner on the destructive button
   // while the cancelPlacement server action runs.
   const [cancelPending, startCancel] = useTransition();
+  // Cancelling now requires a written explanation, so the old
+  // window.confirm is replaced by a real dialog. This flag opens it.
+  const [cancelOpen, setCancelOpen] = useState(false);
 
   const salaryNum = parseCompensationAmount(acceptedSalary);
   const pctNum = parseFloat(feePct) || 0;
@@ -1500,29 +1508,43 @@ function LocalPlacementDialog({
   // this file (~line 885).
   const canCancel = editing && !job.placementId.startsWith("local-applied-");
 
-  function onCancelPlacement() {
-    // Plain window.confirm satisfies the spec ("Cancel this placement?
-    // This cannot be undone."). Keeps the path simple — no extra modal,
-    // no reason picker. The server action accepts reason="other" with
-    // empty detail and logs the cancellation either way.
-    if (typeof window === "undefined") return;
-    const ok = window.confirm("Cancel this placement? This cannot be undone.");
-    if (!ok) return;
+  // Runs once CancelPlacementDialog has collected a reason and a written
+  // explanation. The explanation is not optional: the server action rejects
+  // a short one, and it becomes the body of the notice sent to AR, Austin
+  // and Andrew.
+  function onCancelConfirmed(reason: CancellationReason, detail: string) {
     setErr(null);
     startCancel(async () => {
       const result = await cancelPlacement({
         placementId: job.placementId,
-        reason: "other",
-        detail: "",
+        reason,
+        detail,
       });
       if (!result.ok) {
         setErr(result.error);
         toast.error("Couldn't cancel placement", { description: result.error });
         return;
       }
-      toast.success("Placement cancelled", {
-        description: "Hidden from dashboards, map, and pipeline. Toggle Show Cancelled in /pipeline to re-find it.",
-      });
+      setCancelOpen(false);
+      // The cancel itself committed even when the notice failed to send —
+      // say so plainly rather than implying the whole thing worked, so the
+      // recruiter knows to tell AR by hand.
+      if (result.noticeSent && result.noticeFrom === "deals@breakpointtalent.com") {
+        toast.success("Placement cancelled", {
+          description: "AR, Austin and Andrew have been emailed the reason.",
+        });
+      } else if (result.noticeSent) {
+        // Sent, but not from deals@ — say which address it came from rather
+        // than let the recruiter assume the deals@ letterhead was used.
+        toast.warning("Placement cancelled, notice sent from your address", {
+          description: `deals@breakpointtalent.com is not a verified "Send mail as" on your Gmail, so AR, Austin and Andrew got the reason from ${result.noticeFrom}.`,
+        });
+      } else {
+        toast.warning("Placement cancelled, notice not sent", {
+          description:
+            result.noticeError ?? "The cancellation saved but the email failed. Let AR know directly.",
+        });
+      }
       onCancelled();
       onClose();
       router.refresh();
@@ -1761,7 +1783,7 @@ function LocalPlacementDialog({
         <div className="mt-4 border-t border-court-border/40 pt-3">
           <button
             type="button"
-            onClick={onCancelPlacement}
+            onClick={() => setCancelOpen(true)}
             disabled={cancelPending || isPending}
             className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-red-50/50 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
           >
@@ -1777,6 +1799,125 @@ function LocalPlacementDialog({
           </p>
         </div>
       )}
+      {cancelOpen && (
+        <CancelPlacementDialog
+          jobTitle={job.jobTitle}
+          clientName={job.clientName}
+          pending={cancelPending}
+          onClose={() => setCancelOpen(false)}
+          onConfirm={onCancelConfirmed}
+        />
+      )}
+    </ModalShell>
+  );
+}
+
+// Cancel confirmation. Replaces the former window.confirm because a
+// cancelled deal now has to carry an explanation: the text typed here is
+// the body of the email that goes to AR, Austin and Andrew, so it is a
+// required field rather than an optional note.
+//
+// Rendered inside LocalPlacementDialog's ModalShell (which is itself a
+// portal), so it sits above the placement dialog rather than replacing it.
+// dismissOnOverlay stays off for the same reason the parent turns it off:
+// a stray backdrop click must not discard typed reasoning.
+function CancelPlacementDialog({
+  jobTitle,
+  clientName,
+  pending,
+  onClose,
+  onConfirm,
+}: {
+  jobTitle: string;
+  clientName: string;
+  pending: boolean;
+  onClose: () => void;
+  onConfirm: (reason: CancellationReason, detail: string) => void;
+}) {
+  const [reason, setReason] = useState<CancellationReason>("candidate_resigned");
+  const [detail, setDetail] = useState("");
+  const tooShort = detail.trim().length < MIN_CANCEL_DETAIL_CHARS;
+
+  return (
+    <ModalShell
+      title="Cancel this placement"
+      subtitle={`${jobTitle} · ${clientName}`}
+      onClose={onClose}
+      dismissOnOverlay={false}
+      footer={
+        <>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onClose}
+            disabled={pending}
+          >
+            <X className="h-3 w-3" /> Keep placement
+          </Button>
+          <Button
+            type="button"
+            variant="reject"
+            size="sm"
+            onClick={() => onConfirm(reason, detail.trim())}
+            disabled={pending || tooShort}
+          >
+            {pending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <AlertTriangle className="h-3 w-3" />
+            )}
+            Cancel placement and notify
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div>
+          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
+            Reason
+          </label>
+          <select
+            value={reason}
+            onChange={(e) => setReason(e.target.value as CancellationReason)}
+            disabled={pending}
+            className="w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+          >
+            {(Object.keys(CANCELLATION_REASON_LABEL) as CancellationReason[]).map((key) => (
+              <option key={key} value={key}>
+                {CANCELLATION_REASON_LABEL[key]}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
+            What happened
+          </label>
+          <textarea
+            value={detail}
+            onChange={(e) => setDetail(e.target.value)}
+            disabled={pending}
+            rows={5}
+            autoFocus
+            placeholder="Explain how the deal fell through. This text is the body of the email."
+            className="w-full resize-y rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+          />
+          {tooShort && (
+            <p className="mt-1 text-[11px] text-court-fg-muted">
+              Required. Write at least a sentence.
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
+          Cancelling emails <strong>ar@</strong>, <strong>austin@</strong> and{" "}
+          <strong>andrew@breakpointtalent.com</strong> from deals@ with the reason above.
+          The row is hidden from dashboards, the map, the guarantee table and the client
+          hired count.
+        </div>
+      </div>
     </ModalShell>
   );
 }
