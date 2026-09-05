@@ -30,7 +30,10 @@ import {
 // was hardened in place — added org-scope lookup + revalidatePlacementSurfaces
 // — rather than duplicated onto the Ace-native module). The Cancel button
 // in LocalPlacementDialog imports from here.
-import { cancelPlacement } from "@/app/candidates/[id]/placement-actions";
+import {
+  cancelPlacement,
+  reinstatePlacement,
+} from "@/app/candidates/[id]/placement-actions";
 import {
   CANCELLATION_REASON_LABEL,
   MIN_CANCEL_DETAIL_CHARS,
@@ -688,6 +691,7 @@ function LocalJobActionRow({
   const router = useRouter();
   const [isRejecting, startRejecting] = useTransition();
   const [isReapplying, startReapplying] = useTransition();
+  const [isReinstating, startReinstating] = useTransition();
   const [rejectOpen, setRejectOpen] = useState(false);
   const normalizedStage = (job.stage ?? "sourced").trim().toLowerCase();
   // Schedule disappears once the candidate is past the interviewing
@@ -759,8 +763,34 @@ function LocalJobActionRow({
   // profile.
   const canReapply = normalizedStage === "rejected";
 
+  // Reinstate is the inverse of Cancel, and the only way back: a cancelled
+  // row otherwise offers nothing but View, and the (candidateId, jobId)
+  // uniqueness means a fresh placement can't be recorded alongside it.
+  const canReinstate = normalizedStage === "cancelled";
+
   function onReject() {
     setRejectOpen(true);
+  }
+
+  function onReinstate() {
+    if (
+      !confirm(
+        `Reinstate the placement for ${candidateName} on ${job.jobTitle}? Puts the deal back where it was before it was cancelled. No email is sent.`,
+      )
+    ) {
+      return;
+    }
+    startReinstating(async () => {
+      const res = await reinstatePlacement(job.placementId);
+      if (!res.ok) {
+        toast.error("Couldn't reinstate", { description: res.error });
+        return;
+      }
+      toast.success("Placement reinstated", {
+        description: "Back on dashboards, the map, and the guarantee table.",
+      });
+      router.refresh();
+    });
   }
 
   function onReapply() {
@@ -1009,6 +1039,20 @@ function LocalJobActionRow({
             >
               {isReapplying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
               <span className="hidden sm:inline">Reapply</span>
+            </Button>
+          )}
+          {canReinstate && (
+            <Button
+              type="button"
+              size="sm"
+              variant="keep"
+              onClick={onReinstate}
+              disabled={isReinstating}
+              title="Undo the cancellation and put this placement back"
+              className={CHIP_BTN_CLS}
+            >
+              {isReinstating ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+              <span className="hidden sm:inline">Reinstate</span>
             </Button>
           )}
           {/* Faint X on the far right of the pill. Optimistic apply rows

@@ -1292,6 +1292,75 @@ async function sendCancellationNotice(args: {
   return fromAddress;
 }
 
+// ---- Reinstate a cancelled placement ----
+//
+// The inverse of cancelPlacement. Without this a cancel is a one-way door:
+// a cancelled row's only action is View, so there is no path back and no way
+// to re-record the deal for that candidate/job pair (the row is unique on
+// (candidateId, jobId), so a second placement cannot be created either).
+//
+// Restores the stage the row was in before it was cancelled, inferred from
+// startConfirmedAt: that column is stamped only by the confirm-start
+// transition that writes stage "hired", so its presence identifies a row
+// that had reached hired, and its absence a row that was still
+// pending_start.
+//
+// Deliberately sends NO email. The cancellation notice already went to AR,
+// Austin and Andrew; a follow-up on every undo would be noise, and a
+// reinstated deal that is genuinely worth announcing has the Announce deal
+// button for that.
+//
+// Does NOT restore invoicingFlagged. Cancelling clears it and the prior
+// value is not recorded anywhere, so re-flagging goes through the normal
+// invoicing path rather than being guessed at here.
+export async function reinstatePlacement(placementId: string): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
+  if (!org) return { ok: false, error: "No organization context." };
+
+  try {
+    const existing = await prisma.placement.findFirst({
+      where: { id: placementId, organizationId: org.id },
+      select: {
+        stage: true,
+        startConfirmedAt: true,
+        candidateRfId: true,
+        jobRfId: true,
+        clientRfId: true,
+      },
+    });
+    if (!existing) return { ok: false, error: "Placement not found." };
+    if (existing.stage !== "cancelled") {
+      return { ok: false, error: "Only a cancelled placement can be reinstated." };
+    }
+
+    const restoredStage = existing.startConfirmedAt ? "hired" : "pending_start";
+    await prisma.placement.update({
+      where: { id: placementId },
+      data: { stage: restoredStage, syncedToRf: false },
+    });
+
+    await createActionLog({
+      userId,
+      actionType: "reinstate_placement",
+      subjectType: "candidate",
+      subjectId: String(existing.candidateRfId),
+      metadata: {
+        placementId,
+        jobRfId: existing.jobRfId,
+        clientRfId: existing.clientRfId,
+        restoredStage,
+      },
+    });
+
+    await revalidatePlacementSurfaces(placementId, org.id);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to reinstate placement." };
+  }
+}
+
 export async function deletePlacement(placementId: string): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
