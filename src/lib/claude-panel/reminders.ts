@@ -1,4 +1,4 @@
-// Shared validation for the Ace Assistant `create_reminder` tool. Lives
+// Shared validation for the Wilson `create_reminder` tool. Lives
 // in lib so BOTH callers enforce the SAME rules:
 //  - the chat route (src/app/api/claude-panel/chat/route.ts) on the
 //    direct, batched, under-the-cap execution path, and

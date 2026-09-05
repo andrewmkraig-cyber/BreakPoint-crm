@@ -1089,7 +1089,7 @@ export function ClaudePanel() {
       setItems((prev) =>
         prev.filter((it) => !(it.kind === "message" && it.id === STREAMING_ID)),
       );
-      toast.error("Ace couldn't respond", { description: message });
+      toast.error("Wilson couldn't respond", { description: message });
       setSending(false);
       return;
     }
@@ -1370,7 +1370,7 @@ export function ClaudePanel() {
     <div
       ref={panelRef}
       role="dialog"
-      aria-label="Ace Assistant"
+      aria-label="Wilson"
       onPointerDownCapture={bringToFront}
       // Native file drag/drop. dataTransfer.types includes "Files" only
       // when the drag originates from the OS file picker / Finder, not
@@ -1416,7 +1416,7 @@ export function ClaudePanel() {
       >
         <div className="flex flex-1 items-center gap-2 min-w-0">
           <span className="font-serif text-base font-medium text-court-fg">
-            Ace Assistant
+            Wilson
           </span>
           {entityName && (
             <span
@@ -1457,7 +1457,7 @@ export function ClaudePanel() {
           </div>
         ) : items.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-sm text-court-fg-muted">
-            <div className="font-serif text-court-fg">Ask Ace anything.</div>
+            <div className="font-serif text-court-fg">Ask Wilson anything.</div>
             <div className="text-xs">
               This panel is org-scoped and persists across pages.
             </div>

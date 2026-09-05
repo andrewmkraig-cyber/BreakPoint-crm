@@ -122,7 +122,7 @@ export function TopBar() {
         <button
           type="button"
           onClick={toggleClaude}
-          aria-label="Ace Assistant"
+          aria-label="Wilson"
           aria-pressed={claudeOpen}
           className={
             "group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
@@ -135,7 +135,7 @@ export function TopBar() {
             aria-hidden="true"
             className="pointer-events-none absolute right-full mr-2 whitespace-nowrap rounded-md bg-court-fg px-2 py-1 text-xs font-medium text-court-surface opacity-0 transition-opacity duration-150 group-hover:opacity-100"
           >
-            Ace Assistant
+            Wilson
           </span>
           <InConversation size={22} />
         </button>

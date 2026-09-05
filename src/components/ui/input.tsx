@@ -19,7 +19,7 @@
 // components below rather than wiring the raw classes by hand — those wrap
 // this exact frame + control (the rectangular court-input-rect standard) and
 // add an optional label + error message. The raw constants stay exported for
-// the pill surfaces (search bar / SMS composer / Ace Assistant) and any field
+// the pill surfaces (search bar / SMS composer / Wilson) and any field
 // that needs the frame without the component shell.
 import * as React from "react";
 import { ChevronDown } from "lucide-react";

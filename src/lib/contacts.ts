@@ -22,7 +22,7 @@ export type CreateContactInput = {
 };
 
 // Single source of truth for inserting a Contact. Used by the client-profile
-// Contacts tab (addContact) AND the Ace Assistant create_contact tool, so
+// Contacts tab (addContact) AND the Wilson create_contact tool, so
 // there is exactly ONE insert path — no parallel writes. Mirrors the row shape
 // addContact has always written (name composed from first+last, blank-stripped
 // emails, phoneNumbers omitted when empty) and fires the same Gmail

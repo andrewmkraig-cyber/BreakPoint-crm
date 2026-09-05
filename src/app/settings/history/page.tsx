@@ -85,11 +85,11 @@ export default async function HistorySettingsPage() {
     <CollapsibleSection
       id="history"
       title="Claude History"
-      description="Past Ace Assistant conversations. Cleared chats are preserved here as separate entries."
+      description="Past Wilson conversations. Cleared chats are preserved here as separate entries."
     >
       {conversations.length === 0 ? (
         <div className="rounded-md border border-court-border bg-court-surface-subtle px-4 py-6 text-center text-sm text-court-fg-muted">
-          No conversations yet. Open the Ace Assistant panel from the topbar to start one.
+          No conversations yet. Open the Wilson panel from the topbar to start one.
         </div>
       ) : (
         <ul className="divide-y divide-court-border rounded-md border border-court-border bg-court-surface">

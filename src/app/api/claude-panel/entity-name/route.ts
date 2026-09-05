@@ -7,7 +7,7 @@ import { getCandidateByIdentifier } from "@/lib/candidates";
 import { getJobByIdentifier } from "@/lib/jobs";
 
 // Tiny GET endpoint the Claude Panel calls to populate the header
-// pill ("Ace Assistant · Tom Marek"). The full build*Context payload
+// pill ("Wilson · Tom Marek"). The full build*Context payload
 // is far too heavy for a label, so this hits one indexed SELECT and
 // returns just the display name. Org-scoping is enforced inside
 // getEntityDisplayName via getCurrentOrg().

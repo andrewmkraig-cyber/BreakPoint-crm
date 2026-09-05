@@ -98,7 +98,7 @@ export default async function HistoryDetailPage({
                 </div>
               </div>
               <div className="mt-0.5 text-[10px] text-court-fg-muted">
-                {isUser ? "you" : "Ace"} · {time} UTC
+                {isUser ? "you" : "Wilson"} · {time} UTC
               </div>
             </div>
           );
