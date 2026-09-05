@@ -124,6 +124,7 @@ export type PlacementDetails = {
   invoicePaymentMethod: "CHECK" | "ACH" | "CREDIT" | null;
   placementNotes: string | null;
   candidateSource: string | null;
+  dealType: string | null;
   cityOverride: string | null;
   // Custom payment agreement fields, threaded through to seed the edit
   // drawer. customGuaranteeDate is an ISO string (serialized in
@@ -667,6 +668,7 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
       minFee: row.placement.minFee,
       placementNotes: row.placement.placementNotes,
       candidateSource: row.placement.candidateSource,
+      dealType: row.placement.dealType,
       cityOverride: row.placement.cityOverride,
       useCustomTerms: row.placement.useCustomTerms,
       installmentCount: row.placement.installmentCount,

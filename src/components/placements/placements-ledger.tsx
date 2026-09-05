@@ -41,6 +41,7 @@ export type LedgerRow = {
   acceptedSalary: number | null;
   acceptedCompensationType: PlacementCompensationType | null;
   candidateSource: string | null;
+  dealType: string | null;
   billingStatus: PlacementsDashboardBillingStatus;
   leadSource: string | null;
   // Custom payment agreement fields, threaded through to seed the edit
@@ -144,6 +145,7 @@ function toDrawerContext(row: LedgerRow): PlacementDrawerContext {
     minFee: row.minFee,
     placementNotes: row.placementNotes,
     candidateSource: row.candidateSource,
+    dealType: row.dealType,
     cityOverride: row.cityOverride,
     useCustomTerms: row.useCustomTerms,
     installmentCount: row.installmentCount,

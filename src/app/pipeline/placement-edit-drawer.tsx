@@ -14,6 +14,7 @@ import { updatePlacement } from "@/app/pipeline/placement-update-action";
 import { buildDealAnnouncement } from "@/app/pipeline/deal-announcement-action";
 import { useComposerManager } from "@/lib/composer-manager";
 import { LEAD_SOURCES } from "@/lib/lead-sources";
+import { DEAL_TYPES, DEAL_TYPE_LABEL, normalizeDealType, type DealType } from "@/lib/deal-type";
 import {
   formatPlacementCompensation,
   normalizePlacementCompensationType,
@@ -39,6 +40,9 @@ export type PlacementDrawerContext = {
   minFee: number | null;
   placementNotes: string | null;
   candidateSource: string | null;
+  // Placement.dealType. Absent on consumers that don't thread it yet, in
+  // which case the drawer opens on "new" and Save writes that value.
+  dealType?: string | null;
   // Placement.cityOverride. Empty = fall back to client.location.city
   // when the dashboard derives the per-placement city.
   cityOverride: string | null;
@@ -111,6 +115,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
   const [minFee, setMinFee] = useState("");
   const [notes, setNotes] = useState("");
   const [source, setSource] = useState("");
+  const [dealType, setDealType] = useState<DealType>("new");
   const [city, setCity] = useState("");
 
   // Custom Payment Agreement section. Collapsed by default; the fields
@@ -152,6 +157,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
     setMinFee(context.minFee != null ? String(context.minFee) : "");
     setNotes(context.placementNotes ?? "");
     setSource(context.candidateSource ?? "");
+    setDealType(normalizeDealType(context.dealType));
     setCity(context.cityOverride ?? "");
 
     setUseCustomTerms(context.useCustomTerms ?? false);
@@ -279,6 +285,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
         minFee: parseNumberOrNull(minFee),
         placementNotes: notes,
         candidateSource: source.trim() ? source.trim() : null,
+        dealType,
         cityOverride: city.trim() ? city.trim() : null,
         ...termsPayload,
       });
@@ -504,6 +511,25 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
                 ) && (
                   <option value={source}>{source}</option>
                 )}
+            </Select>
+          </div>
+
+          {/* New placement vs replacement. Beside Lead Source because both
+              classify the deal rather than price it, and both feed the
+              company-wide announcement email. */}
+          <div>
+            <FieldLabel>Deal Type</FieldLabel>
+            <Select
+              value={dealType}
+              onChange={(e) => setDealType(e.target.value as DealType)}
+              frameClassName={FIELD_FRAME_CLS}
+              className={FIELD_TEXT_CLS}
+            >
+              {DEAL_TYPES.map((opt) => (
+                <option key={opt} value={opt}>
+                  {DEAL_TYPE_LABEL[opt]}
+                </option>
+              ))}
             </Select>
           </div>
 

@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { createActionLog } from "@/lib/action-log";
+import { type DealType } from "@/lib/deal-type";
 import { logActivity } from "@/lib/activity";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
@@ -1672,6 +1673,10 @@ export type RecordLocalPlacementInput = {
   // (Pin, Apollo BD) keep working; the dialog renders a fixed
   // dropdown of canonical channels but stores free text.
   candidateSource?: string | null;
+  // Whether this deal is a first-time fill or a replacement for someone who
+  // did not stick. Optional so callers that do not render the control leave
+  // the column untouched (Prisma treats undefined as "leave unchanged").
+  dealType?: DealType;
   // Custom Payment Agreement. Optional and only written when present
   // (the dialog passes them whenever its Custom Payment Agreement section
   // has been touched). When useCustomTerms is false the installment +
@@ -1796,6 +1801,7 @@ export async function recordLocalPlacement(
         expectedStartDate: new Date(input.expectedStartDate),
         placementNotes: input.notes.trim() || null,
         candidateSource: trimmedSource || null,
+        dealType: input.dealType,
         ...termsPayload,
         // Ace-native placements never round-trip to RF; keep the flag
         // pinned to false so the pill's source-of-truth indicator is

@@ -151,6 +151,7 @@ function toLedgerRows(rows: PlacementsDashboardRow[]): LedgerRow[] {
     acceptedSalary: r.baseSalary,
     acceptedCompensationType: r.acceptedCompensationType,
     candidateSource: r.leadSource ?? null,
+    dealType: r.dealType ?? null,
     billingStatus: r.billingStatus,
     leadSource: r.leadSource ?? null,
     useCustomTerms: r.useCustomTerms,

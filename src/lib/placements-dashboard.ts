@@ -114,6 +114,9 @@ export type PlacementsDashboardRow = {
   // "Source" column on the placements ledger and as the source-mix
   // input on the Financial Performance card.
   leadSource: string | null;
+  // Placement.dealType. "new" | "replacement"; null only on rows written
+  // before the column existed.
+  dealType: string | null;
   // Custom payment agreement fields — threaded through so the placement
   // edit drawer can display and edit previously-saved terms. Raw
   // Placement columns; customGuaranteeDate stays a Date here and is
@@ -328,6 +331,7 @@ export async function getPlacementsDashboardData(
         cityOverride: true,
         source: true,
         candidateSource: true,
+        dealType: true,
         useCustomTerms: true,
         installmentCount: true,
         inst1Amount: true,
@@ -471,6 +475,7 @@ export async function getPlacementsDashboardData(
         ? priorYearClientIds.has(p.clientId)
         : false,
       leadSource: p.candidateSource ?? null,
+      dealType: p.dealType ?? null,
       useCustomTerms: p.useCustomTerms,
       installmentCount: p.installmentCount ?? null,
       inst1Amount: p.inst1Amount ?? null,

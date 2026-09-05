@@ -11,6 +11,7 @@ import {
   type DealAnnouncementFacts,
 } from "@/lib/deal-announcement";
 import { canSendAsDeals } from "@/lib/deals-alias";
+import { DEAL_TYPE_LABEL, normalizeDealType } from "@/lib/deal-type";
 import {
   normalizePlacementCompensationType,
   resolvePlacementFee,
@@ -76,6 +77,7 @@ export async function buildDealAnnouncement(
       startConfirmedAt: true,
       expectedStartDate: true,
       candidateSource: true,
+      dealType: true,
       createdBy: { select: { name: true, email: true } },
       candidate: { select: { firstName: true, lastName: true } },
       client: { select: { name: true, industry: true, leadSource: true } },
@@ -150,6 +152,7 @@ export async function buildDealAnnouncement(
     // falls back to the client's own acquisition channel.
     industry: placement.client?.industry ?? null,
     leadSource: placement.candidateSource ?? placement.client?.leadSource ?? null,
+    dealTypeLabel: DEAL_TYPE_LABEL[normalizeDealType(placement.dealType)],
   };
 
   return {

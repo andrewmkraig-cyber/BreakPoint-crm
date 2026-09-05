@@ -1207,6 +1207,7 @@ function toPlacementDetails(
     invoicePaymentMethod,
     placementNotes: p.placementNotes ?? null,
     candidateSource: p.candidateSource ?? null,
+    dealType: p.dealType ?? null,
     cityOverride: p.cityOverride ?? null,
     useCustomTerms: p.useCustomTerms,
     installmentCount: p.installmentCount ?? null,

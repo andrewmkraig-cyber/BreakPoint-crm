@@ -455,6 +455,15 @@ model Placement {
   // values such as "Apollo BD" are preserved when already stored.
   candidateSource String?
 
+  // Whether this deal filled a role for the first time ("new") or replaced
+  // someone who did not stick ("replacement"). Every deal is exactly one of
+  // the two, so this is deliberately NOT nullable in practice: the column
+  // default backfills existing rows to "new", which is what nearly all of
+  // them are, and any historical replacement gets flipped by hand from the
+  // placement dialog. A null third state would only add "unknown" branches
+  // to the UI and the announcement email for no real-world case.
+  dealType String? @default("new") // "new" | "replacement"
+
   // Set when this placement is the fill for a retained engagement. Null
   // for every contingent placement (the overwhelming majority). Scalar
   // FK, no Prisma relation — see the RetainedSearch model comment.

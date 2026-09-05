@@ -78,6 +78,7 @@ import {
 // shipped to the wrong file (placement-flows.tsx PlacementDialog, RF
 // flow); this file is the modal the recruiter actually uses.
 import { LEAD_SOURCES } from "@/lib/lead-sources";
+import { DEAL_TYPES, DEAL_TYPE_LABEL, normalizeDealType, type DealType } from "@/lib/deal-type";
 import {
   INTERVIEW_TIMEZONES,
   DEFAULT_INTERVIEW_TIMEZONE,
@@ -181,6 +182,7 @@ export type LocalPlacementSnapshot = {
   expectedStartDate: string | null;
   placementNotes: string | null;
   candidateSource: string | null;
+  dealType: string | null;
   // Custom Payment Agreement (mirrors the /pipeline placement-edit drawer).
   // Lets the candidate-profile Edit Placement dialog re-seed + edit the
   // same custom-installment terms instead of opening a stripped version.
@@ -1401,6 +1403,12 @@ function LocalPlacementDialog({
   });
   const [notes, setNotes] = useState(snap?.placementNotes ?? snap?.offerNotes ?? "");
   const [source, setSource] = useState(snap?.candidateSource ?? "");
+  // New placement vs replacement. Defaults to "new" for a fresh deal and
+  // for any row saved before the column existed, which is what nearly all
+  // of them are.
+  const [dealType, setDealType] = useState<DealType>(
+    normalizeDealType(snap?.dealType),
+  );
   // Custom Payment Agreement — full parity with the /pipeline Hired drawer
   // (Ace fix 2026-06-01). Seeded from the placement snapshot so re-opening
   // Edit Placement shows the saved installment schedule + custom guarantee
@@ -1514,6 +1522,7 @@ function LocalPlacementDialog({
         expectedStartDate: startDate,
         notes,
         candidateSource: source.trim() || null,
+        dealType,
         // Custom Payment Agreement. Always sent (useCustomTerms defined) so
         // the section round-trips; the action gates inst2/3 on the count and
         // clears every term column when the toggle is off. Days map to Int
@@ -1682,6 +1691,25 @@ function LocalPlacementDialog({
               !LEAD_SOURCES.some(
                 (o) => o.toLowerCase() === source.toLowerCase(),
               ) && <option value={source}>{source}</option>}
+          </select>
+        </label>
+        {/* New placement vs replacement. Sits beside Lead Source because
+            both classify the deal rather than price it, and both feed the
+            company-wide announcement email. */}
+        <label className="block text-sm">
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+            Deal type
+          </span>
+          <select
+            value={dealType}
+            onChange={(e) => setDealType(e.target.value as DealType)}
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          >
+            {DEAL_TYPES.map((opt) => (
+              <option key={opt} value={opt}>
+                {DEAL_TYPE_LABEL[opt]}
+              </option>
+            ))}
           </select>
         </label>
       </div>

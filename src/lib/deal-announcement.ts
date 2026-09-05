@@ -41,6 +41,9 @@ export type DealAnnouncementFacts = {
   startDate: string | null;
   industry: string | null;
   leadSource: string | null;
+  // "New placement" or "Replacement". Always set: Placement.dealType
+  // carries a default, and normalizeDealType resolves anything older.
+  dealTypeLabel: string;
 };
 
 function money(amount: number): string {
@@ -99,6 +102,7 @@ export function dealAnnouncementBodyHtml(facts: DealAnnouncementFacts): string {
   );
 
   const rows: Array<[string, string | null]> = [
+    ["Deal type", facts.dealTypeLabel],
     ["Placement date", facts.placementDate],
     ["Start date", facts.startDate],
     ["Industry", facts.industry],

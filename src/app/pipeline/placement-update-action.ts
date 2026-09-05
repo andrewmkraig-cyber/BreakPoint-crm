@@ -7,6 +7,7 @@ import {
 } from "@/lib/placement-compensation";
 import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
 import { prisma } from "@/lib/prisma";
+import { type DealType } from "@/lib/deal-type";
 
 // Edit drawer save action invoked from the pipeline placement-edit
 // drawer. Org-scoped — the existence check filters by organizationId
@@ -27,6 +28,9 @@ export type UpdatePlacementInput = {
   minFee?: number | null;
   placementNotes: string | null;
   candidateSource: string | null;
+  // "new" | "replacement". Optional so a caller that doesn't render the
+  // control leaves the column untouched.
+  dealType?: DealType;
   // Free-form per-placement city override. Null clears the override
   // so the dashboard falls back to client.location.city.
   cityOverride: string | null;
@@ -99,6 +103,7 @@ export async function updatePlacement(
         minFee: input.minFee,
         placementNotes: trimmedNotes ? trimmedNotes : null,
         candidateSource: trimmedSource ? trimmedSource : null,
+        dealType: input.dealType,
         cityOverride: trimmedCity ? trimmedCity : null,
         useCustomTerms: input.useCustomTerms,
         installmentCount: input.installmentCount,

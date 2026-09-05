@@ -644,6 +644,7 @@ export async function LocalCandidateProfile({
       expectedStartDate: p.expectedStartDate?.toISOString() ?? null,
       placementNotes: p.placementNotes,
       candidateSource: p.candidateSource,
+      dealType: p.dealType,
       // Custom Payment Agreement — threaded so the candidate-profile Edit
       // Placement dialog renders the same full field set as the /pipeline
       // drawer (getPlacementsForOrg selects all scalar columns, so these
