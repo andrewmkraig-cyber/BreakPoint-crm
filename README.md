@@ -1,9 +1,12 @@
 # ACE
 
 
-Internal recruiting CRM for BreakPoint Talent, built on top of RecruiterFlow.
+Internal recruiting CRM for BreakPoint Talent.
 
-RecruiterFlow (RF) is the system of record: all candidate / job / client / contact data lives there. ACE is the daily-driver UI — cleaner, faster, and tailored to the full-desk workflow. We read/write to RF via its REST API. Local Postgres (Neon) holds only what RF doesn't: email templates, settings, user accounts, KPI cache, call logs, action history.
+Neon Postgres is the sole system of record: candidates, jobs, clients, contacts,
+placements, invoices, and everything else live there and nowhere else. Ace is the
+full-desk workflow end to end — sourcing, pipeline, submittals, interviews,
+placements, invoicing, and goals — not a UI layer over another system.
 
 ## Stack
 
@@ -11,9 +14,8 @@ RecruiterFlow (RF) is the system of record: all candidate / job / client / conta
 - Next.js 14 (App Router) + TypeScript + Tailwind + shadcn/ui primitives
 - Prisma ORM + Neon Postgres
 - NextAuth (Google OAuth, restricted to `@breakpointtalent.com`)
-- RecruiterFlow REST API (primary data source)
 - Google Calendar + Gmail APIs (interview invites, outbound email)
-- Krispcall OAuth 2.0 (click-to-call / text, call log sync)
+- Quo (OpenPhone) webhook + REST API (click-to-call / text, call + message sync)
 - Vercel for hosting
 
 ## Getting started
@@ -50,9 +52,20 @@ Open http://localhost:3000 and sign in with your `@breakpointtalent.com` Google 
 
 ## Pages
 
-- `/dashboard` — weekly activity, billing tower, placement + cash metrics
-- `/candidates` — pool of sourced / applied candidates (not yet submitted)
-- `/inbox` — live pipeline of submitted candidates across all jobs
+- `/dashboard` — Clubhouse home. Also hosts the Placements, Metrics, and Goals
+  tabs via `?tab=` (`placements` / `scoreboard` / `goals`)
+- `/pipeline` — live pipeline of submitted candidates across all jobs
+- `/candidates` — candidate pool, search rail, lists, bulk actions
 - `/jobs` — active + inactive jobs with submittal / interview / hire counts
 - `/clients` — client tiles, agreements, contacts
-- `/settings` — email templates, triggers, user management
+- `/mail` — Gmail inbox, composer, templates, scheduled sends
+- `/phone` — Quo calls and texts
+- `/calendar` — interviews and events
+- `/campaigns` — bulk candidate email
+- `/invoices` — invoices and retained searches
+- `/expenses` — tool expenses and subscriptions
+- `/notes` — free-form notes attached to candidates, jobs, and clients
+- `/settings` — email templates, triggers, appearance, connectors, user management
+
+`/bd` (business development) also exists and is fully live, but ships hidden in
+the sidebar — see the note in `src/components/nav-items.ts`.
