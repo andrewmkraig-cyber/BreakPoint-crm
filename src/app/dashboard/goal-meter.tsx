@@ -57,6 +57,12 @@ export function GoalMeter({
   pacing,
   fill,
   format,
+  // Which number leads the card. "percent" (the default) makes percent
+  // complete the largest element on every meter, per the Ace 99.3 rule.
+  // The revenue card passes "value" to lead with the dollar figure and
+  // demote the percent to the supporting line - presentation only, the
+  // calculation is identical either way.
+  focus = "percent",
   // Rendered under the figures. Revenue uses it for the
   // billed-exceeds-earned notice.
   footnote,
@@ -68,6 +74,7 @@ export function GoalMeter({
   // How this metric's numbers read - currency for revenue, plain counts
   // for everything else.
   format: (n: number) => string;
+  focus?: "percent" | "value";
   footnote?: React.ReactNode;
 }) {
   const { target, actual } = pacing;
@@ -98,11 +105,17 @@ export function GoalMeter({
           <p className="text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">
             {label}
           </p>
-          {/* Percent is the largest element on every meter. The raw
-              figures sit immediately under it so the number that matters
-              and the number it came from are read together. */}
+          {/* The focal number: percent complete by default (largest element
+              on every meter, Ace 99.3), or the dollar figure when the card
+              asks to lead with value (revenue). The raw figures sit
+              immediately under it so the number that matters and the number
+              it came from are read together. */}
           <p className="mt-1 font-serif text-[32px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-court-fg">
-            {percentComplete === null ? "—" : `${Math.round(percentComplete)}%`}
+            {focus === "value"
+              ? format(actual)
+              : percentComplete === null
+                ? "—"
+                : `${Math.round(percentComplete)}%`}
             {isComplete && (
               <span className="ml-2 align-middle text-[11px] font-sans font-extrabold uppercase tracking-wide text-court-brand">
                 Complete
@@ -110,7 +123,16 @@ export function GoalMeter({
             )}
           </p>
           <p className="mt-1 text-[13px] text-court-fg-muted">
-            <span className="font-semibold tabular-nums text-court-fg">{format(actual)}</span>
+            {/* The demoted figure keeps the leading-token emphasis the
+                supporting line has always used - the dollar actual under a
+                percent focus, or the percent under a value focus. */}
+            <span className="font-semibold tabular-nums text-court-fg">
+              {focus === "value"
+                ? percentComplete === null
+                  ? "—"
+                  : `${Math.round(percentComplete)}%`
+                : format(actual)}
+            </span>
             {" of "}
             {format(target)} · {periodLabel}
           </p>

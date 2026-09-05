@@ -57,6 +57,9 @@ export function GoalsRevenueMeter({
       periodLabel={periodLabel}
       pacing={pacing}
       format={usd}
+      // Revenue leads with the dollar figure; percent moves to the
+      // supporting line. The count meters keep percent as the focal number.
+      focus="value"
       fill={{ kind: "tiers", tiers }}
       footnote={
         revenue?.billedExceedsEarned ? (
