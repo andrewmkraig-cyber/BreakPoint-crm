@@ -1455,6 +1455,13 @@ function LocalPlacementDialog({
   // window.confirm is replaced by a real dialog. This flag opens it.
   const [cancelOpen, setCancelOpen] = useState(false);
   const [announcing, setAnnouncing] = useState(false);
+  // Set the moment a NEW placement saves, holding the real cuid the server
+  // action returned. Non-null means "this dialog just booked a deal", which
+  // swaps the body for the announce step instead of closing straight away.
+  // Booking is the only moment the recruiter is guaranteed to be looking at
+  // the deal, so it is the only place the announcement can be offered
+  // without them having to go find it again.
+  const [justPlacedId, setJustPlacedId] = useState<string | null>(null);
   const dialogComposer = useComposerManager();
 
   const salaryNum = parseCompensationAmount(acceptedSalary);
@@ -1552,6 +1559,11 @@ function LocalPlacementDialog({
       });
       if (!editing) {
         launchPlacementConfetti(origin);
+        // Hold the dialog open on the announce step rather than closing.
+        // onSaved (which unmounts this dialog) is deferred to dismiss().
+        setJustPlacedId(result.value.id);
+        router.refresh();
+        return;
       }
       onSaved();
       router.refresh();
@@ -1565,12 +1577,35 @@ function LocalPlacementDialog({
   // mirrors the same guard the DismissPlacementButton uses elsewhere in
   // this file (~line 885).
   const canCancel = editing && !job.placementId.startsWith("local-applied-");
-  // Announce is available on the same rows as Cancel: the placement has to
-  // exist in the DB before there is anything to tell the company about.
-  // Lives here as well as in the /pipeline drawer because this dialog is
-  // where a deal is actually booked, and having to navigate to Pipeline to
-  // announce a deal you just made is the wrong shape.
-  const canAnnounce = canCancel;
+  // The placement this dialog would announce. Normally the row it opened
+  // on; right after a fresh booking it is the cuid recordLocalPlacement
+  // just returned (job.placementId is still the pre-save value, and on a
+  // never-placed row that is the synthetic "local-applied-" id).
+  const announceTargetId = justPlacedId ?? job.placementId;
+  // Announce needs the placement to exist in the DB. That is true in edit
+  // mode, AND immediately after a create-mode save - which is the case the
+  // original `canAnnounce = canCancel` missed: `editing` is derived from
+  // the stage the dialog OPENED on, so booking a deal left the button
+  // hidden on the one screen where it matters most, and the recruiter had
+  // to reopen the placement to find it. Lives here as well as in the
+  // /pipeline drawer because this dialog is where a deal is actually
+  // booked, and having to navigate to Pipeline to announce a deal you just
+  // made is the wrong shape.
+  const canAnnounce =
+    (editing || justPlacedId != null) &&
+    !announceTargetId.startsWith("local-applied-");
+
+  // The single exit from this dialog. After a fresh booking the parent has
+  // not been told yet (onSaved is deferred so the announce step can render),
+  // so every close path has to go through here or the optimistic stage pill
+  // never flips to Pending Start.
+  function dismiss() {
+    if (justPlacedId != null) {
+      onSaved();
+      return;
+    }
+    onClose();
+  }
 
   // Opens the company-wide announcement DRAFT. Nothing sends here: Ace
   // fills the facts and the recipients, the recruiter writes the story and
@@ -1579,7 +1614,7 @@ function LocalPlacementDialog({
     if (announcing) return;
     setAnnouncing(true);
     try {
-      const result = await buildDealAnnouncement(job.placementId);
+      const result = await buildDealAnnouncement(announceTargetId);
       if (!result.ok) {
         toast.error("Couldn't build the announcement", { description: result.error });
         return;
@@ -1598,7 +1633,10 @@ function LocalPlacementDialog({
         mergeContext: {},
         nonBlocking: true,
       });
-      onClose();
+      // Leaving via the announce step still has to report the save to the
+      // parent, or the stage pill sits on the old stage until a hard
+      // reload. onClose alone would drop that.
+      dismiss();
     } catch (e) {
       toast.error("Couldn't build the announcement", {
         description: e instanceof Error ? e.message : "Please try again.",
@@ -1649,6 +1687,62 @@ function LocalPlacementDialog({
       onClose();
       router.refresh();
     });
+  }
+
+  // The step that replaces the form the instant a NEW deal is booked. It
+  // exists because the announcement is a manual send that nothing else
+  // prompts for: recording a placement is deliberately silent, and the
+  // story and the photo are typed and pasted into the draft this opens,
+  // not stored on the placement. Without this step the recruiter books a
+  // deal, gets confetti, and never learns the announcement exists.
+  if (justPlacedId != null) {
+    return (
+      <ModalShell
+        title="Deal recorded"
+        subtitle={`${job.jobTitle} · ${job.clientName}`}
+        onClose={dismiss}
+        dismissOnOverlay={false}
+        draggable
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={dismiss}
+              disabled={announcing}
+            >
+              Not now
+            </Button>
+            <Button
+              type="button"
+              variant="apply"
+              size="sm"
+              onClick={() => void onAnnounce()}
+              disabled={announcing}
+            >
+              {announcing ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <PartyPopper className="h-3 w-3" />
+              )}
+              Announce deal
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-court-fg">
+          Moved to Pending Start. Confirm Start when they begin.
+        </p>
+        <p className="mt-2 text-xs text-court-fg-muted">
+          Announce deal opens a draft to the whole company from deals@, with
+          you on Cc and the fee, dates, industry and lead source already
+          filled in. Write how the deal went down and paste the photo into
+          the body before sending. Nothing goes out until you hit Send, and
+          you can still announce later from this placement.
+        </p>
+      </ModalShell>
+    );
   }
 
   return (
