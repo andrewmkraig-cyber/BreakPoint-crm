@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-09-02 · Ace 99.3
+Last updated: 2026-09-05 · Ace 100.0
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -153,7 +153,7 @@ Mirrored in ACE_DESIGN.md. Permanent, apply to every surface.
 - **No full-width buttons** unless the button is a full-width form-submit CTA. Action buttons are `w-auto`. A button only stretches edge-to-edge when it submits the form it sits at the bottom of.
 - **TabStrip is mandatory for grouped controls.** Any in-page filter, tab, time-range selector, or nav group uses the `TabStrip` component (`src/components/ui/tab-strip.tsx`). No hand-rolled button rows. The Clubhouse "This Week / Last Week" strip is the reference.
 - **Both-modes verification gates every button task.** Every button and interactive element must be visually verified in BOTH light and dark mode across the Court themes before a button task is considered done. Token compliance alone is NOT sufficient - look at it in both modes.
-- **Input Field Treatment is source of truth for input shape.** Forms use the rectangular `court-input-rect` frame; the search bar, SMS composer, and Ace Assistant keep the pill `court-input-frame`. Buttons stay `rounded-md` (Button Standard); inputs do not follow the button shape rule.
+- **Input Field Treatment is source of truth for input shape.** Forms use the rectangular `court-input-rect` frame; the search bar, SMS composer, and Wilson keep the pill `court-input-frame`. Buttons stay `rounded-md` (Button Standard); inputs do not follow the button shape rule.
 
 ## Raw-button baseline ratchet (added 2026-06-11 · PERMANENT)
 The build gate `scripts/check-raw-buttons.mjs` (wired into `npm run build`) blocks NEW raw `<button>` JSX outside `src/components/ui/`, but grandfathers existing ones via per-file counts in `scripts/raw-button-baseline.json`. The gate only fails when a file EXCEEDS its baseline, so old raw buttons keep shipping in grandfathered files even while you are actively editing them. That is the gap: a passing build is not a clean file.
@@ -238,12 +238,44 @@ Mirrored in ACE_DESIGN.md. The interview restructure (D1/D2/E) shipped this vers
 - **Interviewers are multi-chip and client-event-only.** The Interviewer field is the multi-chip `InlineContactMultiInput` (same widget Cc/Bcc use), in new + edit modes. Every interviewer attaches as a guest on the **CLIENT** invite event only - never the candidate event - and is **never auto-Cc'd** (Cc stays the separate client-contacts pool). Picked chips drop out of the remaining options. This is the interview-scheduler application of the Composer Recipient Standard above.
 - **Stored sent copy is the calendar source of truth.** Each sent invite's subject + body is stored per party (`Interview.sent{Client,Candidate}{Subject,Body,At}`); the calendar renders per-party events off what was actually emailed and the tile detail shows that stored copy. One Save drives the three-way notify choice (all / new-only / don't-send); "don't send updates" patches the Google event silently so Ace and Google never drift. Seed bodies into the editor / tile / Bcc copy through `htmlToReadableText` (the live calendar invite path is unchanged). Reuse the existing templates + send engine verbatim - do not fork the invite copy or send logic.
 
-## Ace Assistant Write-Tool Pattern (added 2026-06-02 · Ace 78.0 - PERMANENT)
+## Wilson Write-Tool Pattern (added 2026-06-02 · Ace 78.0 - PERMANENT; renamed from "Ace Assistant" in Ace 100.0)
 Shipped with `create_reminder` (the first assistant write capability). These are the standing rules for any future Assistant write tool (calendar events next).
 - **Direct-execute (no per-item Confirm/Cancel card) is allowed ONLY for reversible, explicitly-user-requested creates.** Reminders execute directly server-side and render a single `batch_receipt` summary line ("Added 6 reminders") instead of a per-item card. This is a **documented, intentional carve-out** from the Confirm/Cancel-card pattern - NOT a violation of the killed "AI agent / auto-execute / next-best-action" line, because the creates are (a) reversible and (b) initiated by an explicit user instruction, never volunteered by the model. **Destructive actions (delete) ALWAYS keep a confirm.** A bulk destructive action may collapse to ONE batched confirm ("delete all N?") but must never become per-item-cardless. Calendar events, when built, follow the same reversible-create carve-out.
 - **Over-N batch cap.** A single turn that fires more than 10 creates falls back to one confirm card rather than silently executing an unbounded batch.
 - **Server-side tenant resolution (Rule 8).** The write path resolves `organizationId` + `userId` from the server session itself; no client-supplied tenant id passes through the tool input.
 - **Timezone rule for server-side Assistant time writes (standing pattern, applies to calendar events too).** Inject the live `{{NOW_ET}}` (Eastern wall-clock now) + `{{ET_OFFSET}}` (DST-correct) into the model prompt so relative phrases ("in 20 minutes", "tomorrow at 3") anchor to the real current time - the original reminder skew was a MISSING current-time injection, not a UTC conversion bug. Require an explicit ET-offset ISO timestamp; **reject naive datetimes** (no offset). Re-anchor any emitted timestamp onto the correct Eastern offset (`reanchorToEastern`) as defense-in-depth. For calendar events apply the same guard to BOTH start and end.
+
+## The assistant is Wilson. The product is Ace. (added 2026-09-05 · Ace 100.0 - PERMANENT)
+Renamed in Ace 100.0 (`17692c53`). **Never sweep the string "Ace".** It names two different things: the CRM (browser tab, PWA manifest, sidebar wordmark and icon, "Ace dashboard", calendar/news `source: "Ace"`, the push test notification, "Create one Ace reminder" in the reminder tool description, and every version number in these docs) and the chat panel, which is now Wilson. A find-and-replace renames the whole product. Rename by hand-picked list.
+
+When renaming anything user-facing, **the system prompt counts as a user-facing string.** `src/app/api/claude-panel/chat/route.ts` carries `"You are Wilson, ..."`. Changing the buttons without it leaves the UI saying one name while the bot introduces itself as another.
+
+Historical entries in ACE_STATE.md and ACE_ROADMAP.md keep the old name - they record what shipped when. Live rules in this file take the current name.
+
+## deals@ is backend-only (added 2026-09-05 · Ace 100.0 - PERMANENT)
+`deals@breakpointtalent.com` sends deal email and nothing else. It is filtered out of `/api/mail/send-as-aliases` so it never reaches the composer's From dropdown, and the announcement flow selects it by passing `lockedSendAsEmail`, which pins the sender and renders From read-only. **Never add it to the alias list to make a one-off send easier.** Constants live in `src/lib/deal-announcement.ts`.
+
+This is a UI restriction, not a server-enforced one. A hand-crafted request could still set that From. Do not describe it as a security boundary.
+
+## Gmail silently rewrites an unverified From (added 2026-09-05 · Ace 100.0 - PERMANENT)
+Sending as an alias the user has NOT verified under Gmail Settings ▸ Accounts ▸ "Send mail as" does not error. Gmail rewrites the From header to the account's own address and **reports a successful send**. Nothing signals that anything went wrong, so mail that looks personal goes out under a green toast.
+
+Always check before claiming an alias: `canSendAsDeals()` in `src/lib/deals-alias.ts` is the pattern. Then decide per surface whether to refuse (the announcement does) or fall back and SAY SO (the cancellation notice does, because AR hearing about a dead deal matters more than the letterhead). Never report success without knowing which address actually sent.
+
+## A required explanation belongs on both sides (added 2026-09-05 · Ace 100.0)
+Where a destructive action must carry a reason, enforce the minimum server-side AND disable the confirm button on the same threshold. The server check is the guarantee; the disabled button means the user is never bounced for something the form could have caught. `cancelPlacement` + `CancelPlacementDialog` share `MIN_CANCEL_DETAIL_CHARS` from `src/lib/placement-cancellation.ts`.
+
+Related: **a "use server" module can only export async functions.** Label maps, enums-as-objects and numeric constants that a client component also needs must live in a plain `src/lib/` module, or the build fails. That is why the cancellation vocabulary is not in `placement-actions.ts`.
+
+## A notification must never roll back the write it describes (added 2026-09-05 · Ace 100.0 - PERMANENT)
+Wrap the send separately from the mutation. `cancelPlacement` commits the stage change, then attempts the notice inside its own try/catch, and returns `noticeSent` / `noticeFrom` / `noticeError` so the toast can say what actually happened. A mail failure must not surface as "the cancellation failed", and a partial success must not surface as a clean one.
+
+Read any row the notification quotes BEFORE the mutation, not after.
+
+## A two-state field gets a default, not a nullable third state (added 2026-09-05 · Ace 100.0)
+`Placement.dealType` (new / replacement) and `Goal.isHeadline` both declare a column default rather than allowing null. Where the domain has exactly two states, a null "unknown" adds dead branches to every consumer for a case that does not exist. The Postgres default backfills existing rows; say so explicitly when reporting the migration, because it is a real data assertion about history.
+
+**When a field defaults in the editor, thread it to every consumer of that editor.** The placement drawer defaults Deal Type to "new", so any surface opening it without supplying `dealType` would silently overwrite a real "replacement" on the next Save. That cost five extra files and was the actual work of the change.
 
 ## UI Consistency Rules (added 2026-05-12 · Ace 43.0)
 - **TabStrip is the single source of truth.** All tab strips and filter pill groups across the app route through `src/components/ui/tab-strip.tsx`. No one-off pill groups anywhere — if a new surface needs filter pills or a tabbed selector, use TabStrip (link mode for navigation, controlled mode for in-page state).

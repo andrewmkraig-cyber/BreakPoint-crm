@@ -1,7 +1,26 @@
 # Ace Roadmap
-Last updated: 2026-09-02 · Ace 99.3
+Last updated: 2026-09-05 · Ace 100.0
 
 ## Active Build Sequence
+
+### DONE this session (Ace 100.0 - the deal lifecycle, and Wilson, 2026-09-05)
+Full detail in ACE_STATE.md ▸ Ace 100.0.
+- ~~**Voice dictation on Game Plan**~~ DONE (`b2198e10`) - `use-voice-dictation.ts`, browser-native Web Speech. Unlimited length via a restart loop, because every browser ends a recognition session on its own.
+- ~~**Company-wide deal announcement**~~ DONE (`ae892b78`, `c8c1b0f2`) - draft from deals@, on BOTH placement surfaces. Story and photo live in the email, not in Ace (Andrew's call).
+- ~~**Cancel requires a reason + notifies AR/Austin/Andrew**~~ DONE (`f6b35702`) - explanation is the body. Cancellation commits even if the mail fails.
+- ~~**Reinstate a cancelled placement**~~ DONE (`bec939b5`) - cancel was a one-way door; the unique (candidateId, jobId) meant no second placement could be created either.
+- ~~**Deal type: new vs replacement**~~ DONE (`8569bac6`) - `Placement.dealType`, migration `20260905124529`. Threaded through 5 consumers so the drawer cannot overwrite a real "replacement".
+- ~~**Ace Assistant renamed to Wilson**~~ DONE (`17692c53`) - 10 strings, hand-picked. The product is still Ace.
+
+### Open follow-ups from Ace 100.0
+
+**12. Browser verification is outstanding.** Andrew verified cancel and reinstate live. NOT yet verified in a browser: the announcement send (confirm the From actually reads deals@ rather than a silent Gmail rewrite to andrew@), the Deal Type control on both surfaces, and voice dictation on the installed iOS PWA. The iOS permission-prime path is the one piece that could not be checked from the terminal.
+
+**13. Each teammate must add deals@ as a verified "Send mail as" in their own Gmail.** Andrew's is done. Austin's is not. Until it is, his announcements are refused with instructions and his cancellation notices fall back to sending from austin@ (and say so in the toast). This is a Gmail account setting, not a code change.
+
+**14. deals@ is UI-restricted, not server-enforced.** It is filtered out of the From dropdown and the announcement pins it via `lockedSendAsEmail`, which stops accidental misuse. A hand-crafted API request could still set that From. Worth hardening only if the org grows past people who would not.
+
+**15. Every existing placement is now marked "New placement".** The column default backfilled that way. Any historical replacement needs flipping by hand from the placement dialog.
 
 ### DONE this session (Ace 99.3 - a meter for every headline goal, 2026-09-02)
 Full detail in ACE_STATE.md ▸ Ace 99.3.

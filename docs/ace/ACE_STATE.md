@@ -1,8 +1,49 @@
 # ACE_STATE.md
-Last updated: 2026-09-02 · Ace 99.3
-Current Version: Ace 99.3
-Last Shipped: 2026-09-02
+Last updated: 2026-09-05 · Ace 100.0
+Current Version: Ace 100.0
+Last Shipped: 2026-09-05
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 100.0 - the deal lifecycle, and Wilson (2026-09-05)
+
+Six commits. A deal now has a full life in Ace: it gets announced, it can be cancelled with a reason, it can come back, and it is classified. Plus voice input on Game Plan and a rename.
+
+**Voice dictation on Game Plan (`b2198e10`).** A mic button beside Send on the Game Plan composer. One component (`AiWorkspace`) serves candidate, client and job, so all three got it from one change. Built on the browser-native Web Speech API - no transcription vendor, no API key, no audio through our own network stack.
+
+**The hard part was DURATION, not recognition.** Every browser ends a recognition session on its own: Chrome cuts out after silence, iOS Safari ends after every single utterance regardless of `continuous`. A naive mic button dies after one sentence. `src/lib/use-voice-dictation.ts` keeps a `wantOn` ref as the source of truth for "the mic is still open" and relaunches recognition from `onend` whenever that ref is still true, capped at 12 consecutive failures with the counter reset on real audio so a long dictation never accumulates toward the cap. One click holds the mic open until the next click, however long that takes.
+
+Interim words render as a live tail but stay OUT of `input`, so a half-heard phrase can never be sent or counted against the 50k cap. Stopping mid-sentence FLUSHES the pending words rather than dropping them - `abort()` discards whatever the engine had not finalized. On iOS the `getUserMedia` permission prime fires un-awaited in the same tick as `recognition.start()`: installed PWAs are unreliable with SpeechRecognition's own prompt, but awaiting would push `start()` out of the user-gesture window and Safari refuses that on first use.
+
+**Company-wide deal announcement (`ae892b78`, `c8c1b0f2`).** An Announce deal button on both placement surfaces. **The story and the photo deliberately do NOT live in Ace** - Andrew's call. There is no dealStory column and no uploaded-image row: recording a placement stays silent, and the button assembles a DRAFT in the mail composer where the recruiter types how the deal went down and drops the picture into the body. Ace pre-fills the facts and the recipients, then gets out of the way. Nothing sends until Send is clicked.
+
+Subject is `Congrats to {recruiter} for a ${fee} placement of a {title}`; the body carries deal type, placement date, start date, industry and lead source, then a writing prompt. Fee and title each drop their clause independently when missing, so a thin row still reads as a sentence rather than "a placement of a new placement" - which is what the first version did until the sparse case was test-rendered. To is every org member; Cc is the closer, so Reply All reaches them.
+
+The button shipped in the /pipeline drawer first, which was wrong on its own: a deal is BOOKED in the candidate-profile dialog, so announcing one you just made meant navigating to Pipeline to find the button. It is now on both.
+
+**Cancelling requires a reason, and notifies (`f6b35702`).** Cancel used to be a bare `window.confirm` that called `cancelPlacement` with `reason: "other"` and an empty detail - a deal could disappear with no record of why. Now a dialog requires a structured reason plus a written explanation, and on confirm emails ar@ / austin@ / andrew@ with that explanation as the body. Subject `Cancelled deal: {recruiter}, ${amount}, {position}`.
+
+The row is read BEFORE the stage flip, since the notice quotes the deal as it stood. The send is wrapped so a Gmail failure cannot roll back a cancellation that already committed; the result carries `noticeSent` / `noticeFrom` / `noticeError` and the toast reports what actually happened rather than implying success.
+
+**Reinstate (`bec939b5`).** Cancelling was a one-way door - a cancelled row's only action is View, and the `(candidateId, jobId)` uniqueness means a second placement cannot be created alongside it. `reinstatePlacement` restores the stage the row held before the cancel, inferred from `startConfirmedAt` (stamped only by the confirm-start transition that writes stage "hired"). No email: the cancellation notice already went out, and a follow-up on every undo would be noise. Does NOT restore `invoicingFlagged` - cancelling clears it and the prior value is not recorded anywhere.
+
+**Deal type: new placement vs replacement (`8569bac6`).** `Placement.dealType TEXT DEFAULT 'new'` (migration `20260905124529`, additive). Declared with a default rather than nullable for the same reason `Goal.isHeadline` was: a deal is exactly one of two things, and a null "unknown" third state would add dead branches to the UI and the announcement email for a case that does not exist. **The Postgres default backfilled every existing row to 'new'** - correct for nearly all of them; any historical replacement gets flipped by hand.
+
+The control had to be threaded further than its two screens. The drawer defaults to "new", so any consumer that opened it without supplying `dealType` would have silently overwritten a real "replacement" back to "new" on the next Save. That meant carrying the column through `placements-dashboard`, `placements-ledger`, `placements-tab`, `pipeline-view` and `pipeline/page`.
+
+**deals@ is backend-only.** The alias is filtered out of `/api/mail/send-as-aliases`, so it never appears in the From dropdown beside Andrew and AR. The announcement selects it through a new `lockedSendAsEmail` composer prop that pins the sender and renders From read-only - needed because the alias is absent from the list, and the existing "resync to a known-verified alias" fallback would otherwise overwrite the selection the moment that list loaded. This keeps deals@ out of the UI and prevents accidental misuse; it is NOT a server-enforced restriction.
+
+**Gmail does not error on an unverified sendAs alias - it silently rewrites the From and reports success.** So `src/lib/deals-alias.ts` asks first. The announcement refuses with instructions; the cancellation falls back to the canceller's own address and names it in the toast, because AR hearing about a dead deal matters more than the letterhead. Each teammate who announces or cancels adds the alias once in their own Gmail.
+
+Also added an inline-image button to the composer toolbar. Pasting a screenshot already inlined as a data: URL, but there was no path for a photo that lives in a file rather than the clipboard, which is the usual case for a deal picture off a phone.
+
+**Ace Assistant is now Wilson (`17692c53`).** Ten user-facing strings across five files, hand-picked rather than swept: "Ace" names both the product and the assistant, so a find-and-replace would have renamed the whole app. The system prompt changed too (`"You are Wilson, ..."`), or the buttons would say Wilson while the bot introduced itself as Ace. The browser tab, PWA manifest, sidebar wordmark, "Ace dashboard", calendar/news `source: "Ace"` and the push test notification all stay Ace. Historical entries in these docs keep the old name.
+
+**Not browser-verified.** Every change passed `next build`, `tsc --noEmit`, `next lint` and `check:ui`, and the email bodies were test-rendered across full / sparse / vowel-title cases. Andrew verified cancel and reinstate live. The announcement send, the deal-type control and voice dictation on the iOS PWA are unverified in a real browser.
+
+## Next Task
+Andrew to verify in the browser: the announcement send from deals@ (confirm the From actually reads deals@ and not andrew@), the Deal Type control on both placement surfaces, and voice dictation on the installed iOS PWA - the iOS permission-prime path is the one piece that could not be checked from the terminal. Then Prompt 10 below.
+
+Prompt 10: dollar labels on the revenue meter bar (current earned at the fill edge, expected-to-date at the pace marker, target at the track end, gap in the empty space) plus month markers at the one-third and two-thirds points of a quarter.
 
 ## What Shipped in Ace 99.3 - a meter for every headline goal (2026-09-02)
 
@@ -24,8 +65,6 @@ Only revenue had a full meter; every other goal was a slim bar in a list row.
 
 **Real-browser pass**, all eight Court combinations plus a 390px mobile pass, screenshots read: no zero-height tracks anywhere, segments countable at 33px desktop / 30px mobile, percent figure contrast 14.82-18.88 (needs 4.5), segment fill vs track 3.44-7.41 (needs 3.0). **Two things only the browser caught:** the duplicate revenue meter, and that the original two-across grid left the third meter alone beside dead space.
 
-## Next Task
-Prompt 10: dollar labels on the revenue meter bar (current earned at the fill edge, expected-to-date at the pace marker, target at the track end, gap in the empty space) plus month markers at the one-third and two-thirds points of a quarter.
 
 ## What Shipped in Ace 99.2 - retained revenue in earned, and a real-browser pass (2026-09-01)
 
