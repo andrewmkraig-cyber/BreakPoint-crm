@@ -14,6 +14,7 @@ import { GoalMeter, shouldSegment } from "@/app/dashboard/goal-meter";
 import {
   DEFAULT_GOALS_PERIOD,
   goalsPeriod,
+  type GoalsGrain,
   type GoalsPeriodSelection,
 } from "@/app/dashboard/goals-period";
 import { GoalsAddButton, type AssignableUser, type ParentGoalOption } from "@/app/dashboard/goal-form-modal";
@@ -37,6 +38,8 @@ import {
   resolveRevenue,
   resolveSignedClients,
   utcMarkerDaysInclusive,
+  etWindow,
+  etDaysInclusive,
 } from "@/lib/goals/metrics";
 import {
   pacingForCumulative,
@@ -52,6 +55,28 @@ const USD = new Intl.NumberFormat("en-US", {
   currency: "USD",
   maximumFractionDigits: 0,
 });
+
+// The period word the revenue meter shows for the active selector grain
+// (the count meters keep GOAL_PERIOD_LABELS[g.period] instead). Distinct
+// from GOAL_PERIOD_LABELS, which calls the annual period "Annual" - the
+// selector's Year grain reads "Yearly".
+const GRAIN_PERIOD_WORD: Record<GoalsGrain, string> = {
+  DAY: "Daily",
+  WEEK: "Weekly",
+  MONTH: "Monthly",
+  QUARTER: "Quarterly",
+  YEAR: "Yearly",
+};
+
+// ET-day length of a [start, end] window of UTC calendar-date markers,
+// counted EXACTLY as pacingForCumulative does (resolve the markers to ET
+// instants, then count inclusive ET days) so a prorated target and the
+// pace maths that consume it never disagree by a day across a DST edge.
+function etDayCount(periodStart: Date, periodEnd: Date): number {
+  const { start, endExclusive } = etWindow(periodStart, periodEnd);
+  const lastInstant = new Date(endExclusive.getTime() - 1);
+  return Math.max(1, etDaysInclusive(start, lastInstant));
+}
 
 // Every metric that returns null renders this, never a zero. "0" is a
 // measured result; a dash plus this caption is the honest rendering of
@@ -470,21 +495,44 @@ export async function GoalsTab({
 
   const headlineMeters = await Promise.all(
     headlineGoals.map(async (g) => {
+      // REVENUE follows the period selector: it resolves and paces over the
+      // SELECTED window, with the stored quarterly target prorated to that
+      // window's length. Revenue is continuous, so a fraction of a quarter's
+      // target is a meaningful number at any grain.
+      //
+      // PLACEMENTS and SIGNED_CLIENTS deliberately do NOT follow the
+      // selector - they stay on their own quarterly window and raw target at
+      // every grain. Prorating a 9-per-quarter target down to a day or week
+      // yields a sub-1 target that (a) reads as permanently Behind whenever
+      // the short window happens to hold zero closes, and (b) cannot be drawn
+      // by the segmented bar, which needs a whole-unit count. So they clamp
+      // to the quarter.
+      const followsSelector = g.metric === "REVENUE";
+      const rangeStart = followsSelector ? period.rangeStart : g.periodStart!;
+      const rangeEnd = followsSelector ? period.rangeEnd : g.periodEnd!;
+
       const result = await resolveMetric({
         organizationId: org.id,
         metric: g.metric,
-        rangeStart: g.periodStart!,
-        rangeEnd: g.periodEnd!,
+        rangeStart,
+        rangeEnd,
         ownerUserId: g.ownerUserId,
         period: g.period,
         goalId: g.id,
       });
-      const target = Number(g.targetValue);
+
+      const rawTarget = Number(g.targetValue);
+      const target = followsSelector
+        ? rawTarget *
+          (etDayCount(period.rangeStart, period.rangeEnd) /
+            etDayCount(g.periodStart!, g.periodEnd!))
+        : rawTarget;
+
       const pacing = pacingForCumulative({
         target,
         actual: result.value ?? 0,
-        periodStart: g.periodStart!,
-        periodEnd: g.periodEnd!,
+        periodStart: rangeStart,
+        periodEnd: rangeEnd,
         revenue: result.revenue,
       });
       return { goal: g, pacing, target, measurable: result.value !== null };
@@ -608,11 +656,15 @@ export async function GoalsTab({
             const window = g.periodStart ? quarterOrRangeLabel(g.periodStart, g.period) : period.label;
             if (!measurable) return null;
             if (g.metric === "REVENUE") {
+              // Revenue follows the selector (see headlineMeters above), so
+              // its eyebrow reads the active grain, not the goal's stored
+              // QUARTERLY, and its window label is the selected window.
+              const revenueLabel = `${GOAL_METRIC_LABELS[g.metric]} · ${GRAIN_PERIOD_WORD[selection.grain].toLowerCase()}`;
               return (
                 <GoalsRevenueMeter
                   key={g.id}
-                  goalLabel={label}
-                  periodLabel={window}
+                  goalLabel={revenueLabel}
+                  periodLabel={period.label}
                   pacing={pacing}
                 />
               );
