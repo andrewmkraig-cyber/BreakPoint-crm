@@ -51,7 +51,10 @@ export function GoalsPeriodTabs({
           router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
         }}
       />
-      <span className="text-[13px] font-medium text-court-fg-muted">{rangeLabel}</span>
+      {/* A read-only window label, not a tab. The "Showing:" prefix and the
+          extra left margin keep it from reading as a sixth option next to the
+          active grain pill. */}
+      <span className="ml-3 text-[13px] font-medium text-court-fg-muted">Showing: {rangeLabel}</span>
     </div>
   );
 }
