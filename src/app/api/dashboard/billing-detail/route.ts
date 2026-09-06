@@ -8,6 +8,9 @@ import {
   type BillingEventWithPlacement,
 } from "@/lib/billing-events";
 import { resolveTimeRange, timeRange } from "@/lib/time-range";
+// Same formatter the Billing Tower tiles use, so a row, this popup's
+// total and the number that opened it are the same string of digits.
+import { formatUsdExactFromCents } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 
@@ -81,10 +84,6 @@ function candLabel(
   return last ? `${c.firstName} ${last}` : c.firstName;
 }
 
-function usdFromCents(cents: number): string {
-  return `$${Math.round(cents / 100).toLocaleString("en-US")}`;
-}
-
 // "Aug 12, 2026" — anchored to Eastern so a UTC server doesn't shift the day.
 function shortDate(d: Date): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -129,7 +128,7 @@ export async function GET(req: NextRequest) {
   const body: BillingDetailResponse = {
     rows: sorted.map(toRow),
     count: sorted.length,
-    totalLabel: usdFromCents(totalCents),
+    totalLabel: formatUsdExactFromCents(totalCents),
     periodLabel: label,
   };
   return NextResponse.json(body);
@@ -146,7 +145,7 @@ function toRow(e: BillingEventWithPlacement, i: number): BillingDetailRow {
     key: `${p.id}:${e.invoiceId ?? e.source}:${i}`,
     title: candLabel(p.candidate, p.candidateRfId),
     subtitle,
-    amountLabel: usdFromCents(e.amountCents),
+    amountLabel: formatUsdExactFromCents(e.amountCents),
     // Always scheduledAt — that is the field the tower windows on, so this
     // is the date that actually put the row in the period being viewed.
     // Payment state is carried separately by statusLabel.

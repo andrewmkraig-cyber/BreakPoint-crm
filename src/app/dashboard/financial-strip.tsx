@@ -9,6 +9,7 @@ import {
 import { BillingDetailDialog } from "@/app/dashboard/billing-detail-dialog";
 import { TimeRangeDropdown } from "@/components/ui/time-range-selector";
 import type { TimeRangeSelection } from "@/lib/time-range";
+import { formatUsdExact } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 // Billing Tower window options — the only four the tower ever surfaces, in
@@ -109,13 +110,13 @@ export function FinancialStrip({
       >
         <Stat
           label="Revenue"
-          value={formatCompactUsd(data.revenueUsd)}
+          value={formatUsdExact(data.revenueUsd)}
           meta={revenueMeta}
           onDrill={() => setDrilldown("revenue")}
         />
         <Stat
           label="Outstanding"
-          value={formatCompactUsd(data.outstandingUsd)}
+          value={formatUsdExact(data.outstandingUsd)}
           meta={outstandingMeta}
           dim={data.outstandingUsd === 0}
           divider
@@ -194,7 +195,11 @@ function Stat({
       </div>
       <div
         className={cn(
-          "mt-0.5 font-serif text-[32px] font-bold leading-none tracking-[-0.02em] tabular-nums transition-colors",
+          // Exact dollars are longer than the old compact form
+          // ($1,250,000 vs $1.25M), and the 3-up grid is at its tightest
+          // right at the sm breakpoint - the number steps down there so a
+          // seven-figure annual total can't run under the divider.
+          "mt-0.5 font-serif text-[32px] font-bold leading-none tracking-[-0.02em] tabular-nums transition-colors sm:text-[26px] md:text-[32px]",
           dim ? "text-court-fg-dim" : "text-court-fg",
           onDrill && "group-hover:text-court-brand-dark",
         )}
@@ -227,12 +232,12 @@ function GoalStat({
   return (
     <div className="flex min-w-0 flex-col sm:border-l-2 sm:border-court-border-soft sm:pl-6">
       <div className="text-[10px] font-extrabold uppercase tracking-wide text-court-brand-dark">
-        Goal Progress · {formatGoalUsd(goalUsd)} {goalPeriodLabel}
+        Goal Progress · {formatUsdExact(goalUsd)} {goalPeriodLabel}
       </div>
       <div className="mt-0.5 flex items-baseline gap-2.5 font-serif text-[32px] font-bold leading-none tracking-[-0.02em] tabular-nums text-court-fg">
         {Math.round(pct)}%
         <span className="text-[11.5px] font-semibold tracking-normal text-court-fg-muted">
-          · {formatGoalUsd(remainingUsd)} to go
+          · {formatUsdExact(remainingUsd)} to go
         </span>
       </div>
       <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-court-surface-subtle">
@@ -248,35 +253,4 @@ function GoalStat({
       </div>
     </div>
   );
-}
-
-// Compact USD with up-to-2-decimal precision so 3,750 renders $3.75K
-// instead of rounding to $3.8K (the old toFixed(1) behavior). Trailing
-// zeros are stripped so $4,000 stays $4K, not $4.00K. Decimal cap is
-// 2 places — Billing Tower numbers are always whole dollars, so 2dp
-// is enough to express any K-ratio exactly (e.g. 3,750 → 3.75).
-function formatCompactUsd(amount: number): string {
-  if (amount === 0) return "$0";
-  const abs = Math.abs(amount);
-  if (abs >= 1_000_000) {
-    return `$${stripTrailingZeros((amount / 1_000_000).toFixed(2))}M`;
-  }
-  if (abs >= 1_000) {
-    return `$${stripTrailingZeros((amount / 1_000).toFixed(2))}K`;
-  }
-  return `$${Math.round(amount)}`;
-}
-
-function stripTrailingZeros(numStr: string): string {
-  // "3.75" → "3.75", "4.00" → "4", "3.30" → "3.3"
-  if (!numStr.includes(".")) return numStr;
-  return numStr.replace(/\.?0+$/, "");
-}
-
-function formatGoalUsd(amount: number): string {
-  if (amount >= 1_000) {
-    const k = amount / 1_000;
-    return `$${k % 1 === 0 ? k.toFixed(0) : stripTrailingZeros(k.toFixed(2))}K`;
-  }
-  return `$${amount.toLocaleString("en-US")}`;
 }
