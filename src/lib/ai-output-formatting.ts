@@ -21,7 +21,7 @@ const BULLET_RE = /^\s*[-*+\u2022]\s+(.+)$/;
 const NUMBER_RE = /^\s*\d+[.)]\s+(.+)$/;
 
 export function markdownishTextToEmailHtml(raw: string): string {
-  const normalized = raw.replace(/\r\n|\r/g, "\n").trim();
+  const normalized = decodeCommonHtmlEntities(raw).replace(/\r\n|\r/g, "\n").trim();
   if (!normalized) return "";
 
   return normalized
@@ -38,6 +38,56 @@ export function convertInlineMarkdownToHtml(html: string): string {
       /\[([^\]\n]+?)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,
       '<a href="$2">$1</a>',
     );
+}
+
+const COMMON_HTML_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  ndash: "\u2013",
+  mdash: "\u2014",
+  lsquo: "\u2018",
+  rsquo: "\u2019",
+  ldquo: "\u201c",
+  rdquo: "\u201d",
+};
+
+export function decodeCommonHtmlEntities(raw: string): string {
+  let out = raw;
+  for (let pass = 0; pass < 3; pass++) {
+    const next = out
+      .replace(/&([a-z]+);/gi, (match, name: string) => {
+        return COMMON_HTML_ENTITIES[name.toLowerCase()] ?? match;
+      })
+      .replace(/&#(\d{1,7});/g, (match, digits: string) => {
+        return decodeCodePoint(match, Number(digits));
+      })
+      .replace(/&#x([0-9a-f]{1,6});/gi, (match, hex: string) => {
+        return decodeCodePoint(match, parseInt(hex, 16));
+      });
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
+function decodeCodePoint(fallback: string, codePoint: number): string {
+  if (
+    !Number.isFinite(codePoint) ||
+    codePoint < 0 ||
+    codePoint > 0x10ffff ||
+    (codePoint >= 0xd800 && codePoint <= 0xdfff)
+  ) {
+    return fallback;
+  }
+  try {
+    return String.fromCodePoint(codePoint);
+  } catch {
+    return fallback;
+  }
 }
 
 function renderMarkdownishBlock(block: string): string {

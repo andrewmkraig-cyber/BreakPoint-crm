@@ -11,6 +11,7 @@ import { createReminder } from "@/app/calendar/reminder-actions";
 import { parseReminderToolInput } from "@/lib/claude-panel/reminders";
 import type { PlacementStage } from "@/lib/placements";
 import { triggerJobsSiteRebuild } from "@/lib/jobs-site-rebuild";
+import { decodeCommonHtmlEntities } from "@/lib/ai-output-formatting";
 
 // Executes confirmed Claude Panel proposals. The chat route never
 // runs writes itself — when Claude calls move_candidate_stage /
@@ -393,8 +394,10 @@ export async function POST(req: Request) {
 
   if (name === "draft_email") {
     const to = typeof input.to === "string" ? input.to : "";
-    const subject = typeof input.subject === "string" ? input.subject : "";
-    const emailBody = typeof input.body === "string" ? input.body : "";
+    const subject =
+      typeof input.subject === "string" ? decodeCommonHtmlEntities(input.subject) : "";
+    const emailBody =
+      typeof input.body === "string" ? decodeCommonHtmlEntities(input.body) : "";
     if (!to || !subject) {
       return NextResponse.json(
         { ok: false, error: "to and subject are required" },

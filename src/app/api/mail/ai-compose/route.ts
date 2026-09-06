@@ -10,6 +10,7 @@ import { buildPersonalTrainerBlock } from "@/lib/personal-trainer";
 import {
   HTML_EMAIL_OUTPUT_FORMAT_RULES,
   convertInlineMarkdownToHtml,
+  decodeCommonHtmlEntities,
   markdownishTextToEmailHtml,
 } from "@/lib/ai-output-formatting";
 import { formatExpectedCompensation } from "@/lib/candidate-compensation";
@@ -311,7 +312,7 @@ function unescapeJsonString(s: string): string {
 // Claude sometimes wraps responses in ```html ... ``` fences or
 // preambles like "Here's a draft:"; strip those before returning.
 function toSafeHtml(raw: string): string {
-  let s = raw.trim();
+  let s = decodeCommonHtmlEntities(raw).trim();
   // Strip markdown code fences.
   s = s.replace(/^```(?:html)?\s*/i, "").replace(/\s*```$/i, "");
   // If Claude returned plain text (no <p>), wrap paragraphs ourselves.

@@ -27,6 +27,7 @@ import { useComposerManager } from "@/lib/composer-manager";
 import { GAME_PLAN_USER_MESSAGE_MAX_CHARS } from "@/lib/game-plan-limits";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { useVoiceDictation } from "@/lib/use-voice-dictation";
+import { decodeCommonHtmlEntities } from "@/lib/ai-output-formatting";
 
 // Per-entity AI chat surface. Drops onto a client or candidate detail page
 // as a standalone card: loads its own history from /api/ai-workspace,
@@ -1644,7 +1645,7 @@ function renderMarkdownInline(text: string): string {
 }
 
 export function markdownToCleanHtml(input: string): string {
-  const lines = input.split(/\r?\n/);
+  const lines = decodeCommonHtmlEntities(input).split(/\r?\n/);
   const out: string[] = [];
   let listKind: "ul" | "ol" | null = null;
   // Running counter so consecutive `<ol>` blocks separated by paragraph
