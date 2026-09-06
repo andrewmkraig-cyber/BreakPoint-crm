@@ -22,6 +22,18 @@ import { parseReminderToolInput, claimsReminderSaved } from "@/lib/claude-panel/
 import { createContact } from "@/lib/contacts";
 import { normalizeToE164 } from "@/lib/rf-payload-shapes";
 import { MARKDOWN_OUTPUT_FORMAT_RULES } from "@/lib/ai-output-formatting";
+// Revenue reads the goals engine and nothing else. ACE_RULES 99.1: one
+// definition per surface - `earned` / `billed` / `collected` are resolved
+// here exactly as the Goals tab and Clubhouse resolve them, so Wilson can
+// never quote a number that disagrees with the screen. The exported WHERE
+// builders are reused for the per-deal breakdown for the same reason: the
+// list and the total are filtered by the same rules.
+import {
+  billedInvoiceWhere,
+  earnedPlacementWhere,
+  resolveRevenue,
+} from "@/lib/goals/metrics";
+import { goalsPeriod, type GoalsGrain } from "@/app/dashboard/goals-period";
 
 // Live Claude call for the global Claude Panel (Sparkles topbar
 // toggle). Streams text deltas as NDJSON events back to the client so
@@ -72,6 +84,9 @@ const SYSTEM_PROMPT =
   "- General pipeline questions without a stage → get_pipeline({ clientName? }).\n" +
   "- 'what jobs are open' / 'show open roles' / 'active jobs' → search_jobs with the literal phrase as the query (the tool detects this intent and lists every open job).\n" +
   "- Specific candidate / role / client lookups (skills, titles, locations, industries) → search_candidates / search_jobs / search_clients with the user's natural phrasing.\n" +
+  "- ANY money question - 'what is my revenue', 'how much have I billed', 'what did we collect', 'what are my numbers', 'revenue this quarter', 'how much did I earn last month', 'how big was that deal', or a request to put revenue numbers into an email → get_revenue. Map the recruiter's period onto grain + offset: 'this month' = month/0, 'last month' = month/-1, 'this quarter' = quarter/0, 'last quarter' = quarter/-1, 'this year' / 'YTD' = year/0. Add includeDeals: true whenever they want the deals or invoices themselves rather than a single total.\n" +
+  "- You DO have the revenue and billing numbers. Never say you lack access to revenue, billing, fees or Clubhouse, and never ask the recruiter to paste their own numbers - Clubhouse, Goals, Placements and Invoices are all screens inside Ace, and get_revenue reads the same goals engine those screens read. Placements DO carry fee amounts. Call get_revenue first; only report a shortfall if the tool itself comes back empty.\n" +
+  "- Quote the tier the recruiter asked for and say which one it is. EARNED is fees on deals placed in the period and is what the desk is paced against; BILLED is invoices sent; COLLECTED is invoices paid. They are three different numbers and are not interchangeable - if the recruiter just says 'revenue' with no qualifier, lead with earned and name it.\n" +
   "- Questions about what was said on a call, call transcripts, AI call summaries, candidate motivation, compensation expectations from a call, or call next steps → first resolve the candidate with search_candidates if needed, then call get_candidate_call_context with the candidate id from the result.\n" +
   "- 'Recently added candidates' / 'candidates I just imported' / 'newest candidates' → call search_candidates with sortBy='createdAt' (and an empty query string when no keyword filter applies). Use limit to honor counts the recruiter mentions ('the 25 candidates I just imported' → limit 25).\n" +
   "Pass the user's wording through; the tools handle stop-word stripping, plural collapsing, and ranking on their side.\n" +
@@ -171,6 +186,31 @@ const DATA_TOOLS: Anthropic.Tool[] = [
           type: "boolean",
           description:
             "True for past-tense / 'all-time' pipeline questions. Returns merged Placement + Interview history with no date filter. Optional, defaults to false.",
+        },
+      },
+    },
+  },
+  {
+    name: "get_revenue",
+    description:
+      "Revenue and billing numbers for a time period. Reads Ace's goals engine, the SAME source the Goals tab and the Clubhouse revenue cards read, so the figures always agree with what is on screen. Returns three tiers: EARNED (fees on deals placed in the window, plus retained engagements booked in it - this is the number the desk is paced against), BILLED (invoices sent or paid in the window, dated by when they were sent) and COLLECTED (invoices actually paid, dated by payment). Use this for ANY money question: 'what is my revenue', 'how much have I billed', 'what did we collect', 'revenue this quarter', 'how much did I earn last month', 'what are my numbers', 'how big was that deal'. Set includeDeals for the deal-by-deal and invoice-by-invoice breakdown with candidate and client names.",
+    input_schema: {
+      type: "object",
+      properties: {
+        grain: {
+          type: "string",
+          description:
+            "Period size: day, week, month, quarter, or year. Optional, defaults to quarter (the same default the Goals tab opens on).",
+        },
+        offset: {
+          type: "number",
+          description:
+            "Which period, relative to now. 0 = the current one (default), -1 = the previous one, -2 = two back. Use -1 for 'last month' / 'last quarter'.",
+        },
+        includeDeals: {
+          type: "boolean",
+          description:
+            "True to list the individual placements behind EARNED and the individual invoices behind BILLED, with names, dates and amounts. Optional, defaults to false.",
         },
       },
     },
@@ -1337,6 +1377,15 @@ async function runGetPipeline(
       id: true,
       stage: true,
       updatedAt: true,
+      // Fee + placedAt ride along so a pipeline answer can quote the money
+      // on a deal. Omitting them is why the panel once told Andrew that
+      // "the placement records here don't have fee amounts attached" - the
+      // columns were always there, this select just never asked. For
+      // PERIOD totals use get_revenue instead: feeTotal here is the raw
+      // column, not the goals engine's `earned` (which excludes cancelled
+      // and retained rows and adds retained engagements).
+      feeTotal: true,
+      placedAt: true,
       candidate: { select: { firstName: true, lastName: true } },
       job: { select: { title: true } },
       client: { select: { name: true } },
@@ -1362,7 +1411,9 @@ async function runGetPipeline(
     const job = p.job?.title ?? "(unknown job)";
     const cl = p.client?.name ?? "(unknown client)";
     const updated = p.updatedAt.toISOString().slice(0, 10);
-    return `${i + 1}. ${cand}, ${job}, ${cl}, stage: ${p.stage}, updated: ${updated}`;
+    const fee = p.feeTotal != null ? `, fee: ${money0(Number(p.feeTotal))}` : "";
+    const placed = p.placedAt ? `, placed: ${p.placedAt.toISOString().slice(0, 10)}` : "";
+    return `${i + 1}. ${cand}, ${job}, ${cl}, stage: ${p.stage}${fee}${placed}, updated: ${updated}, id: ${p.id}`;
   });
   return `Pipeline${clientName ? ` for "${clientName}"` : ""}${stage ? ` (stage=${stage})` : ""}: ${rows.length} row${rows.length === 1 ? "" : "s"}:\n${lines.join("\n")}`;
 }
@@ -1704,6 +1755,144 @@ function formatDateLabel(d: Date | null | undefined): string {
 function formatMoneyLabel(n: number | null | undefined): string {
   if (n == null) return "—";
   return `$${n.toLocaleString("en-US")}`;
+}
+
+// Whole dollars, for the revenue tool. The goals surfaces round to the
+// dollar, so Wilson does too - quoting cents next to a screen that does
+// not show them reads as a different number.
+function money0(n: number): string {
+  return `$${Math.round(n).toLocaleString("en-US")}`;
+}
+
+const REVENUE_GRAINS: Record<string, GoalsGrain> = {
+  day: "DAY",
+  today: "DAY",
+  week: "WEEK",
+  month: "MONTH",
+  quarter: "QUARTER",
+  q: "QUARTER",
+  year: "YEAR",
+  ytd: "YEAR",
+};
+
+// Revenue + billing for one period, straight off the goals engine.
+//
+// Deliberately does NOT compute anything itself. `resolveRevenue` owns the
+// definitions (ACE_RULES 99.1 - one definition per surface) and the
+// breakdown lists filter through the same exported WHERE builders the
+// aggregate uses, so a listed deal can never be one the total left out.
+//
+// ownerUserId is null (whole desk), matching goals-tab.tsx and
+// goal-pacing.tsx. Ace is a two-person org and every revenue surface shows
+// the company number, so scoping this one to the caller would make Wilson
+// disagree with every screen it is sitting next to.
+async function runGetRevenue(
+  args: { grain?: string; offset?: number; includeDeals?: boolean },
+  orgId: string,
+): Promise<string> {
+  const grain: GoalsGrain =
+    REVENUE_GRAINS[(args.grain ?? "").trim().toLowerCase()] ?? "QUARTER";
+  const offset =
+    typeof args.offset === "number" && Number.isFinite(args.offset)
+      ? Math.trunc(args.offset)
+      : 0;
+  const period = goalsPeriod({ grain, offset });
+
+  const revenue = await resolveRevenue(
+    orgId,
+    period.rangeStart,
+    period.rangeEnd,
+    null,
+  );
+
+  const lines: string[] = [];
+  lines.push(`Revenue for ${period.label} (whole desk):`);
+  lines.push(`- Earned: ${money0(revenue.earned)} - fees on deals placed in this period, plus retained engagements booked in it. This is the number the desk is paced against.`);
+  lines.push(`- Billed: ${money0(revenue.billed)} - invoices sent or paid, dated by when they were sent.`);
+  lines.push(`- Collected: ${money0(revenue.collected)} - invoices actually paid, dated by payment.`);
+  if (revenue.billedExceedsEarned) {
+    // Surfaced, never clamped: billed above earned means an invoice has no
+    // live placement behind it, which is a real data problem.
+    lines.push(
+      "- WARNING: billed came out ABOVE earned. That should not happen and usually means an invoice is attached to a cancelled or wrong placement. Tell the recruiter to check it.",
+    );
+  }
+
+  if (!args.includeDeals) {
+    lines.push(
+      "Call get_revenue again with includeDeals: true for the deal-by-deal breakdown.",
+    );
+    return lines.join("\n");
+  }
+
+  const [placements, invoices] = await Promise.all([
+    prisma.placement.findMany({
+      where: earnedPlacementWhere(orgId, period.start, period.endExclusive, null),
+      select: {
+        id: true,
+        placedAt: true,
+        feeTotal: true,
+        offerTitle: true,
+        candidate: { select: { firstName: true, lastName: true } },
+        client: { select: { name: true } },
+        job: { select: { title: true } },
+      },
+      orderBy: { placedAt: "desc" },
+      take: 50,
+    }),
+    prisma.invoice.findMany({
+      where: billedInvoiceWhere(orgId, period.start, period.endExclusive, null),
+      select: {
+        invoiceNumber: true,
+        sentAt: true,
+        paidAt: true,
+        status: true,
+        feeAmount: true,
+        candidate: { select: { firstName: true, lastName: true } },
+        client: { select: { name: true } },
+      },
+      orderBy: { sentAt: "desc" },
+      take: 50,
+    }),
+  ]);
+
+  lines.push("");
+  if (placements.length === 0) {
+    lines.push("Deals behind Earned: none in this period.");
+  } else {
+    lines.push(`Deals behind Earned (${placements.length}):`);
+    placements.forEach((p, i) => {
+      const who = p.candidate
+        ? joinName(p.candidate.firstName, p.candidate.lastName)
+        : "(unknown candidate)";
+      const role = p.job?.title ?? p.offerTitle ?? "(unknown role)";
+      const cl = p.client?.name ?? "(unknown client)";
+      lines.push(
+        `${i + 1}. ${who}, ${role}, ${cl}, ${money0(Number(p.feeTotal ?? 0))}, placed ${formatDateLabel(p.placedAt)}`,
+      );
+    });
+    lines.push(
+      "Retained engagements also count toward Earned and are not in this list; if the total is bigger than these deals add up to, the difference is retained.",
+    );
+  }
+
+  lines.push("");
+  if (invoices.length === 0) {
+    lines.push("Invoices behind Billed: none in this period.");
+  } else {
+    lines.push(`Invoices behind Billed (${invoices.length}):`);
+    invoices.forEach((inv, i) => {
+      const who = inv.candidate
+        ? joinName(inv.candidate.firstName, inv.candidate.lastName)
+        : "(no candidate)";
+      const cl = inv.client?.name ?? "(unknown client)";
+      lines.push(
+        `${i + 1}. ${inv.invoiceNumber}, ${cl}, ${who}, ${money0(Number(inv.feeAmount ?? 0))}, ${inv.status}, sent ${formatDateLabel(inv.sentAt)}${inv.paidAt ? `, paid ${formatDateLabel(inv.paidAt)}` : ""}`,
+      );
+    });
+  }
+
+  return lines.join("\n");
 }
 
 // Parse a user-supplied date input. Accepts YYYY-MM-DD (treated as UTC
@@ -2217,6 +2406,16 @@ async function executeTool(
       const stage = typeof input.stage === "string" ? input.stage : undefined;
       const historical = input.historical === true;
       return await runGetPipeline({ clientName, stage, historical }, orgId);
+    }
+    if (name === "get_revenue") {
+      return await runGetRevenue(
+        {
+          grain: typeof input.grain === "string" ? input.grain : undefined,
+          offset: typeof input.offset === "number" ? input.offset : undefined,
+          includeDeals: input.includeDeals === true,
+        },
+        orgId,
+      );
     }
     if (name === "get_candidate_call_context") {
       const candidateId = typeof input.candidateId === "string" ? input.candidateId.trim() : "";
