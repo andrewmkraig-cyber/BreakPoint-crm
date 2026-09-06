@@ -1,8 +1,28 @@
 # ACE_STATE.md
-Last updated: 2026-09-05 · Ace 100.0
-Current Version: Ace 100.0
-Last Shipped: 2026-09-05
+Last updated: 2026-09-06 · Ace 100.1
+Current Version: Ace 100.1
+Last Shipped: 2026-09-06
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 100.1 - headline meters follow the period selector (2026-09-06)
+
+Follow-on from the Ace 99.x Goals-tab meter work. Every change is presentation or window-selection; no metric definition changed. Each pushed to main; `npm run build` exits 0 after each; Step 0 held at 3 / 10 / 85.
+
+**Headline meters now follow the period selector (`5bffb114`, `0cacd0dc`).** REVENUE prorates its quarterly target to the selected window at EVERY grain (Day / Week / Month / Quarter / Year) and resolves + paces over that window - revenue is continuous, so a fraction of a quarter's target is meaningful anywhere. The count meters (PLACEMENTS, SIGNED_CLIENTS) follow the selector from MONTH up, rounding the prorated target to a whole unit (min 1) so the segmented bar can draw it - 9 per quarter reads as 3 at Month. Day and Week FLOOR to the quarterly window, target and QUARTERLY label, because 9 per quarter prorates to ~0.7 per week and ~0.1 per day, which rounds to a target that reads permanently Behind and cannot be segmented. Proration counts ET days through a local `etDayCount` helper that mirrors `pacingForCumulative` exactly. The per-row resolution in the Active goals list and the KPI tiles are unchanged; only the headline meters moved.
+
+**`pacingForCumulative` gained an opt-in `partialCurrentDay` flag (`7b64e3b6`).** Default false, so every existing caller is byte-for-byte unchanged. When on, the current, incomplete day counts as the ET fraction of it elapsed rather than as a whole day; `daysElapsed` / `daysRemaining` stay whole integers so the "N of M days" readouts are untouched. ONLY the revenue meter opts in. Without it a Day window reported the full prorated target as expected-to-date from the first minute (1/1 days elapsed) and a Week's last day the same (7/7); at quarter length the shift is at most half a day and stays invisible. Whole-day elapsed is left correct for the discrete count meters.
+
+**New helper `etDayFractionElapsed` in `src/lib/goals/et-window.ts`** - the ET wall-clock fraction of the current day, re-exported from `metrics.ts` to keep that module's "re-exports every symbol" invariant true. It is the single ET-day-fraction implementation, alongside the existing `etDaysInclusive`.
+
+**Headline meters lead with the achieved VALUE, not the percentage (`052062fd`).** Revenue shows dollars earned, the count meters show the count achieved, as the focal number; the percentage moved to the supporting line with target and window ("89% of 9 · Q3 2026"). `GoalMeter` takes a `focus` prop (`"percent"` | `"value"`, default `"percent"`); the headline cards pass `"value"`. SUPERSEDES the Ace 99.3 "percent complete is the largest element on every meter" rule.
+
+**Metric name is now the meter card title (`e1f9045f`).** The eyebrow split into a large serif metric title (Revenue / Signed Clients / Placements) with the grain word (Yearly / Quarterly / Monthly ...) small and muted beside it, in both `goal-meter.tsx` and `goals-revenue-meter.tsx`.
+
+**Days remaining hoisted to page level when the three cards share a window (`e1f9045f`).** At Month / Quarter / Year all three meters resolve over the same selected window, so days remaining is identical on every card - it renders once near the period selector and is dropped from the cards (`showDaysRemaining` prop). At Day / Week the cards do NOT share a window (revenue follows the selector, the counts floor to the quarter), so it stays per-card and there is no page-level copy.
+
+**Active goals list excludes expired goals (`36e31c08`).** `periodGoals` now also requires `g.periodEnd >= todayMarker` (ET calendar-date markers, compared the way the rest of the goals code counts days; `>=` keeps a goal through its final ET day). A Year selection previously resurrected expired Q1 / Q2 goals that resolved to $0 / 0 / "0d left" / BEHIND; at Year the list dropped from 10 period rows to 6. Future-dated goals (periodEnd today or later, e.g. Q4) still appear. Row-window resolution, the headline meters, the KPI tiles and the DB status field are all unchanged.
+
+**Goals period-row label prefixed "Showing:" (`bd3c0b69`).** The window label after the grain tabs (e.g. "Showing: Q3 2026") reads as a description, with extra left margin, rather than as a broken sixth tab. Presentation only; still `period.label`, not clickable, not a grain.
 
 ## What Shipped in Ace 100.0 - the deal lifecycle, and Wilson (2026-09-05)
 
