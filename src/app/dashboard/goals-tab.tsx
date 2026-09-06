@@ -95,6 +95,28 @@ export async function GoalsTab({
   const period = goalsPeriod(selection);
   const { rangeStart, rangeEnd } = period;
 
+  // At Month and above, all three headline cards resolve over the SAME
+  // selected window (revenue follows the selector, the count meters follow
+  // it from Month up), so "Days remaining" is identical across them and is
+  // hoisted to page level. At Day/Week the cards do not share a window
+  // (revenue follows the selector, counts floor to Quarter), so it stays
+  // per-card and there is no page-level copy.
+  const daysRemainingIsShared =
+    selection.grain === "MONTH" ||
+    selection.grain === "QUARTER" ||
+    selection.grain === "YEAR";
+  // Day count for the shared page-level readout - the selected window's own
+  // pacing. target/actual are irrelevant to the day count; this changes no
+  // metric, it only relocates a number that already renders.
+  const pageDays = daysRemainingIsShared
+    ? pacingForCumulative({
+        target: 1,
+        actual: 0,
+        periodStart: period.rangeStart,
+        periodEnd: period.rangeEnd,
+      })
+    : null;
+
   // Who is looking at this, and what may they do? Resolved from the SERVER
   // SESSION only (rule 8) - never from the URL or a prop. A viewer with no
   // membership row gets no write affordances at all rather than a fallback.
@@ -565,7 +587,20 @@ export async function GoalsTab({
         </p>
         {addGoalButton}
       </div>
-      <GoalsPeriodTabs value={selection} rangeLabel={period.label} />
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <GoalsPeriodTabs value={selection} rangeLabel={period.label} />
+        {/* Days remaining is shown once here when the headline cards share
+            one window (Month and above), instead of repeating identically on
+            all three. At Day/Week it stays per-card. */}
+        {pageDays && (
+          <p className="text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">
+            Days remaining{" "}
+            <span className="tabular-nums text-court-fg">
+              {pageDays.daysRemaining} of {pageDays.daysInPeriod}
+            </span>
+          </p>
+        )}
+      </div>
     </div>
   );
 
@@ -670,14 +705,15 @@ export async function GoalsTab({
       {headlineMeters.length > 0 && (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
           {headlineMeters.map(({ goal: g, pacing, target, measurable, followsSelector }) => {
-            // Eyebrow + window track the meter's resolved window: the active
-            // grain and the selected window when it follows the selector,
-            // else the goal's stored QUARTERLY and its quarter label. (The
-            // revenue branch below sets its own labels and ignores these.)
+            // The title is the metric name (large); periodWord is the grain
+            // word (small, muted beside it). Both track the meter's resolved
+            // window: the active grain and the selected window when it follows
+            // the selector, else the goal's stored QUARTERLY and its quarter
+            // label.
             const periodWord = followsSelector
               ? GRAIN_PERIOD_WORD[selection.grain]
               : GOAL_PERIOD_LABELS[g.period];
-            const label = `${GOAL_METRIC_LABELS[g.metric]} · ${periodWord.toLowerCase()}`;
+            const title = g.manualLabel ?? GOAL_METRIC_LABELS[g.metric];
             const window = followsSelector
               ? period.label
               : g.periodStart
@@ -685,29 +721,29 @@ export async function GoalsTab({
                 : period.label;
             if (!measurable) return null;
             if (g.metric === "REVENUE") {
-              // Revenue follows the selector (see headlineMeters above), so
-              // its eyebrow reads the active grain, not the goal's stored
-              // QUARTERLY, and its window label is the selected window.
-              const revenueLabel = `${GOAL_METRIC_LABELS[g.metric]} · ${GRAIN_PERIOD_WORD[selection.grain].toLowerCase()}`;
               return (
                 <GoalsRevenueMeter
                   key={g.id}
-                  goalLabel={revenueLabel}
+                  title={GOAL_METRIC_LABELS[g.metric]}
+                  periodWord={periodWord}
                   periodLabel={period.label}
                   pacing={pacing}
+                  showDaysRemaining={!daysRemainingIsShared}
                 />
               );
             }
             return (
               <GoalMeter
                 key={g.id}
-                label={g.manualLabel ?? label}
+                title={title}
+                periodWord={periodWord}
                 periodLabel={window}
                 pacing={pacing}
                 // Lead with the count achieved (e.g. "8"); percent moves to
                 // the supporting line ("89% of 9 · Q3 2026"), matching the
                 // revenue meter. Presentation only.
                 focus="value"
+                showDaysRemaining={!daysRemainingIsShared}
                 format={(n) => String(Math.round(n * 100) / 100)}
                 fill={
                   shouldSegment(target)

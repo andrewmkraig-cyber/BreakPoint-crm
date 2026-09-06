@@ -52,7 +52,8 @@ function pctOf(value: number, scaleMax: number): number {
 }
 
 export function GoalMeter({
-  label,
+  title,
+  periodWord,
   periodLabel,
   pacing,
   fill,
@@ -63,11 +64,22 @@ export function GoalMeter({
   // demote the percent to the supporting line - presentation only, the
   // calculation is identical either way.
   focus = "percent",
+  // When the three headline cards share one window (Month and above), Days
+  // remaining is identical on all of them and is hoisted to page level, so
+  // it is dropped from the card grid. At Day/Week the cards do not share a
+  // window and it stays per-card. Default true keeps every other caller
+  // unchanged.
+  showDaysRemaining = true,
   // Rendered under the figures. Revenue uses it for the
   // billed-exceeds-earned notice.
   footnote,
 }: {
-  label: string;
+  // The metric name (Revenue / Signed Clients / Placements) - the card
+  // title, the largest text in the header.
+  title: string;
+  // The grain word (Yearly / Quarterly / Monthly ...) - small and muted
+  // beside the title.
+  periodWord: string;
   periodLabel: string;
   pacing: CumulativePacing;
   fill: MeterFill;
@@ -75,6 +87,7 @@ export function GoalMeter({
   // for everything else.
   format: (n: number) => string;
   focus?: "percent" | "value";
+  showDaysRemaining?: boolean;
   footnote?: React.ReactNode;
 }) {
   const { target, actual } = pacing;
@@ -102,9 +115,16 @@ export function GoalMeter({
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">
-            {label}
-          </p>
+          {/* The metric name is the card title - the largest text in the
+              header - with the grain word small and muted beside it. */}
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <p className="font-serif text-lg font-bold tracking-tight text-court-fg">
+              {title}
+            </p>
+            <span className="text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">
+              {periodWord}
+            </span>
+          </div>
           {/* The focal number: percent complete by default (largest element
               on every meter, Ace 99.3), or the dollar figure when the card
               asks to lead with value (revenue). The raw figures sit
@@ -171,10 +191,14 @@ export function GoalMeter({
           value={format(Math.abs(pacing.gapToTarget))}
         />
         <Figure label="Expected to date" value={format(pacing.expectedToDate)} />
-        <Figure
-          label="Days remaining"
-          value={`${pacing.daysRemaining} of ${pacing.daysInPeriod}`}
-        />
+        {/* Hoisted to page level when the headline cards share one window
+            (Month and above); kept here at Day/Week where they do not. */}
+        {showDaysRemaining && (
+          <Figure
+            label="Days remaining"
+            value={`${pacing.daysRemaining} of ${pacing.daysInPeriod}`}
+          />
+        )}
         <Figure
           label="Projected finish"
           value={pacing.projectedFinish === null ? "—" : format(pacing.projectedFinish)}

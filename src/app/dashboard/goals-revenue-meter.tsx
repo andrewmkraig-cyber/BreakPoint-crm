@@ -28,13 +28,17 @@ export function usd(n: number): string {
 // and alpha on brand cannot clear it (solid brand itself tops out at 3.26
 // there). See ACE_DESIGN.md.
 export function GoalsRevenueMeter({
-  goalLabel,
+  title,
+  periodWord,
   periodLabel,
   pacing,
+  showDaysRemaining,
 }: {
-  goalLabel: string;
+  title: string;
+  periodWord: string;
   periodLabel: string;
   pacing: CumulativePacing;
+  showDaysRemaining?: boolean;
 }) {
   const { revenue } = pacing;
   // `pacing.actual` IS earned (Ace 99.1), so it is the right fallback for
@@ -53,13 +57,15 @@ export function GoalsRevenueMeter({
 
   return (
     <GoalMeter
-      label={goalLabel}
+      title={title}
+      periodWord={periodWord}
       periodLabel={periodLabel}
       pacing={pacing}
       format={usd}
       // Revenue leads with the dollar figure; percent moves to the
       // supporting line. The count meters keep percent as the focal number.
       focus="value"
+      showDaysRemaining={showDaysRemaining}
       fill={{ kind: "tiers", tiers }}
       footnote={
         revenue?.billedExceedsEarned ? (
