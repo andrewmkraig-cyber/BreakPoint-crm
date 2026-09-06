@@ -704,6 +704,10 @@ export async function GoalsTab({
                 label={g.manualLabel ?? label}
                 periodLabel={window}
                 pacing={pacing}
+                // Lead with the count achieved (e.g. "8"); percent moves to
+                // the supporting line ("89% of 9 · Q3 2026"), matching the
+                // revenue meter. Presentation only.
+                focus="value"
                 format={(n) => String(Math.round(n * 100) / 100)}
                 fill={
                   shouldSegment(target)
