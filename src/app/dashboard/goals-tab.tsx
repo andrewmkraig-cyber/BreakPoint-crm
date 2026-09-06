@@ -526,28 +526,32 @@ export async function GoalsTab({
 
   const headlineMeters = await Promise.all(
     headlineGoals.map(async (g) => {
-      // REVENUE follows the period selector at EVERY grain: it resolves and
-      // paces over the selected window with its quarterly target prorated to
-      // that window's length. Revenue is continuous, so a fraction of a
-      // quarter's target is meaningful at any grain.
-      //
-      // PLACEMENTS and SIGNED_CLIENTS follow the selector too, but with a
-      // FLOOR AT MONTH. Day and Week hold at the quarterly window, target
-      // and QUARTERLY label: 9 per quarter prorates to ~0.7 per week and
-      // ~0.1 per day, which rounds to a whole-unit target that reads
-      // permanently Behind whenever the short window holds zero closes and
-      // cannot be segmented meaningfully. At Month and above the prorated,
-      // whole-unit-rounded target (9/quarter -> 3 at Month) is a sane
-      // discrete goal.
+      // At DAY and WEEK the window is too short for pace to mean anything -
+      // a prorated revenue slice hits absurd percentages (a week's ~$9,511
+      // slice read 606% "Complete") and a prorated count target rounds to
+      // 1/week or 1/day, so Behind means "no deal today" rather than off
+      // pace. So at those grains EVERY meter reports ACTUALS ONLY over the
+      // selected window: the count / dollars for that window, no target,
+      // percentage, bar or pace. At MONTH and above the full pace treatment
+      // renders - revenue prorates its quarterly target and the counts
+      // prorate from Month up, rounded to a whole unit so the segmented bar
+      // can draw them (9/quarter -> 3 at Month).
       const isRevenue = g.metric === "REVENUE";
+      const isDayOrWeek = selection.grain === "DAY" || selection.grain === "WEEK";
       const grainAtOrAboveMonth =
         selection.grain === "MONTH" ||
         selection.grain === "QUARTER" ||
         selection.grain === "YEAR";
-      const followsSelector = isRevenue || grainAtOrAboveMonth;
+      const actualsOnly = isDayOrWeek;
+      // Every headline meter resolves over the SELECTED window now, at every
+      // grain - the old count floor to the quarter at Day/Week is gone, so a
+      // count is the count for the selected window. followsSelector is
+      // therefore always true and drives the grain-word + selected-window
+      // labels in the render below.
+      const followsSelector = isDayOrWeek || isRevenue || grainAtOrAboveMonth;
 
-      const rangeStart = followsSelector ? period.rangeStart : g.periodStart!;
-      const rangeEnd = followsSelector ? period.rangeEnd : g.periodEnd!;
+      const rangeStart = period.rangeStart;
+      const rangeEnd = period.rangeEnd;
 
       const result = await resolveMetric({
         organizationId: org.id,
@@ -564,27 +568,29 @@ export async function GoalsTab({
         rawTarget *
         (etDayCount(period.rangeStart, period.rangeEnd) /
           etDayCount(g.periodStart!, g.periodEnd!));
-      const target = !followsSelector
-        ? rawTarget
-        : isRevenue
-          ? proratedTarget
-          : // Discrete counts round to a whole unit (min 1) so the segmented
-            // bar can draw them: 9/quarter at Month -> 3.
-            Math.max(1, Math.round(proratedTarget));
+      // Target is rendered only at Month and above (actuals-only cards show
+      // none). Revenue keeps the exact prorated figure; the counts round to
+      // a whole unit (min 1) so the segmented bar can draw them.
+      const target = isRevenue ? proratedTarget : Math.max(1, Math.round(proratedTarget));
 
       const pacing = pacingForCumulative({
         target,
         actual: result.value ?? 0,
         periodStart: rangeStart,
         periodEnd: rangeEnd,
-        // Partial current day is revenue-only: at its Day/Week lengths a
-        // whole final day would report the full prorated target before the
-        // window ends. Whole-day elapsed is correct for discrete count
-        // events, and the count meters never render below Month anyway.
+        // Partial current day is revenue-only and only shifts pace figures,
+        // which actuals-only mode does not render - harmless at Day/Week.
         partialCurrentDay: isRevenue,
         revenue: result.revenue,
       });
-      return { goal: g, pacing, target, measurable: result.value !== null, followsSelector };
+      return {
+        goal: g,
+        pacing,
+        target,
+        measurable: result.value !== null,
+        followsSelector,
+        actualsOnly,
+      };
     }),
   );
 
@@ -713,7 +719,7 @@ export async function GoalsTab({
           three-across desktop row, and 30px on mobile. See SEGMENT_LIMIT. */}
       {headlineMeters.length > 0 && (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {headlineMeters.map(({ goal: g, pacing, target, measurable, followsSelector }) => {
+          {headlineMeters.map(({ goal: g, pacing, target, measurable, followsSelector, actualsOnly }) => {
             // The title is the metric name (large); periodWord is the grain
             // word (small, muted beside it). Both track the meter's resolved
             // window: the active grain and the selected window when it follows
@@ -738,6 +744,7 @@ export async function GoalsTab({
                   periodLabel={period.label}
                   pacing={pacing}
                   showDaysRemaining={!daysRemainingIsShared}
+                  actualsOnly={actualsOnly}
                 />
               );
             }
@@ -753,6 +760,7 @@ export async function GoalsTab({
                 // revenue meter. Presentation only.
                 focus="value"
                 showDaysRemaining={!daysRemainingIsShared}
+                actualsOnly={actualsOnly}
                 format={(n) => String(Math.round(n * 100) / 100)}
                 fill={
                   shouldSegment(target)

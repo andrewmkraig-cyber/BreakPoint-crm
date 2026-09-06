@@ -70,6 +70,12 @@ export function GoalMeter({
   // window and it stays per-card. Default true keeps every other caller
   // unchanged.
   showDaysRemaining = true,
+  // Actuals-only: at Day/Week the window is too short for pace to mean
+  // anything, so the card shows the title, grain word, focal achieved value,
+  // window label and (per-card) days remaining - and NOTHING pace-related:
+  // no target, percentage, bar/segments, chip, expected/gap/projected, or
+  // revenue tier legend. Default false leaves every other caller unchanged.
+  actualsOnly = false,
   // Rendered under the figures. Revenue uses it for the
   // billed-exceeds-earned notice.
   footnote,
@@ -88,6 +94,7 @@ export function GoalMeter({
   format: (n: number) => string;
   focus?: "percent" | "value";
   showDaysRemaining?: boolean;
+  actualsOnly?: boolean;
   footnote?: React.ReactNode;
 }) {
   const { target, actual } = pacing;
@@ -109,8 +116,9 @@ export function GoalMeter({
         "flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_12px_32px_rgba(0,0,0,0.10)]" +
         // The complete treatment: a brand ring around the whole card, so a
         // finished goal reads as finished from across the row without
-        // relying on the bar being visually full.
-        (isComplete ? " ring-1 ring-court-brand" : "")
+        // relying on the bar being visually full. Suppressed in actuals-only
+        // mode, where there is no target to be complete against.
+        (isComplete && !actualsOnly ? " ring-1 ring-court-brand" : "")
       }
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -131,38 +139,48 @@ export function GoalMeter({
               immediately under it so the number that matters and the number
               it came from are read together. */}
           <p className="mt-1 font-serif text-[32px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-court-fg">
-            {focus === "value"
+            {/* Actuals-only always leads with the achieved value. */}
+            {actualsOnly || focus === "value"
               ? format(actual)
               : percentComplete === null
                 ? "—"
                 : `${Math.round(percentComplete)}%`}
-            {isComplete && (
+            {isComplete && !actualsOnly && (
               <span className="ml-2 align-middle text-[11px] font-sans font-extrabold uppercase tracking-wide text-court-brand">
                 Complete
               </span>
             )}
           </p>
-          <p className="mt-1 text-[13px] text-court-fg-muted">
-            {/* The demoted figure keeps the leading-token emphasis the
-                supporting line has always used - the dollar actual under a
-                percent focus, or the percent under a value focus. */}
-            <span className="font-semibold tabular-nums text-court-fg">
-              {focus === "value"
-                ? percentComplete === null
-                  ? "—"
-                  : `${Math.round(percentComplete)}%`
-                : format(actual)}
-            </span>
-            {" of "}
-            {format(target)} · {periodLabel}
-          </p>
+          {actualsOnly ? (
+            // No target to compare against: the window label alone.
+            <p className="mt-1 text-[13px] text-court-fg-muted">{periodLabel}</p>
+          ) : (
+            <p className="mt-1 text-[13px] text-court-fg-muted">
+              {/* The demoted figure keeps the leading-token emphasis the
+                  supporting line has always used - the dollar actual under a
+                  percent focus, or the percent under a value focus. */}
+              <span className="font-semibold tabular-nums text-court-fg">
+                {focus === "value"
+                  ? percentComplete === null
+                    ? "—"
+                    : `${Math.round(percentComplete)}%`
+                  : format(actual)}
+              </span>
+              {" of "}
+              {format(target)} · {periodLabel}
+            </p>
+          )}
         </div>
-        <PaceChip status={pacing.status} />
+        {!actualsOnly && <PaceChip status={pacing.status} />}
       </div>
 
-      <MeterBar fill={fill} pacing={pacing} scaleMax={scaleMax} expectedPct={expectedPct} />
+      {/* Pace chrome - bar, tier legend and the pace figures - is dropped in
+          actuals-only mode; only the value, window and days remaining stay. */}
+      {!actualsOnly && (
+        <MeterBar fill={fill} pacing={pacing} scaleMax={scaleMax} expectedPct={expectedPct} />
+      )}
 
-      {fill.kind === "tiers" && (
+      {!actualsOnly && fill.kind === "tiers" && (
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
           {fill.tiers.map((t) => (
             <span
@@ -181,16 +199,22 @@ export function GoalMeter({
       )}
 
       {/* The same information as text. Anyone who skips the bar entirely,
-          or cannot separate its bands, still gets every figure. */}
+          or cannot separate its bands, still gets every figure. In
+          actuals-only mode only Days remaining survives; the dl is omitted
+          entirely if even that is hoisted, so the card never shows an empty
+          figure grid. */}
+      {(!actualsOnly || showDaysRemaining) && (
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
-        {fill.kind === "tiers" &&
+        {!actualsOnly && fill.kind === "tiers" &&
           fill.tiers.map((t) => <Figure key={t.key} label={t.label} value={format(t.value)} />)}
-        <Figure label="Target" value={format(target)} />
-        <Figure
-          label={pacing.gapToTarget > 0 ? "Gap to target" : "Past target by"}
-          value={format(Math.abs(pacing.gapToTarget))}
-        />
-        <Figure label="Expected to date" value={format(pacing.expectedToDate)} />
+        {!actualsOnly && <Figure label="Target" value={format(target)} />}
+        {!actualsOnly && (
+          <Figure
+            label={pacing.gapToTarget > 0 ? "Gap to target" : "Past target by"}
+            value={format(Math.abs(pacing.gapToTarget))}
+          />
+        )}
+        {!actualsOnly && <Figure label="Expected to date" value={format(pacing.expectedToDate)} />}
         {/* Hoisted to page level when the headline cards share one window
             (Month and above); kept here at Day/Week where they do not. */}
         {showDaysRemaining && (
@@ -199,14 +223,17 @@ export function GoalMeter({
             value={`${pacing.daysRemaining} of ${pacing.daysInPeriod}`}
           />
         )}
-        <Figure
-          label="Projected finish"
-          value={pacing.projectedFinish === null ? "—" : format(pacing.projectedFinish)}
-          sub={pacing.projectedFinish === null ? "period not started" : "at current pace"}
-        />
+        {!actualsOnly && (
+          <Figure
+            label="Projected finish"
+            value={pacing.projectedFinish === null ? "—" : format(pacing.projectedFinish)}
+            sub={pacing.projectedFinish === null ? "period not started" : "at current pace"}
+          />
+        )}
       </dl>
+      )}
 
-      {footnote}
+      {!actualsOnly && footnote}
     </section>
   );
 }

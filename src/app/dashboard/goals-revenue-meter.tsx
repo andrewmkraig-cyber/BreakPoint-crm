@@ -33,12 +33,14 @@ export function GoalsRevenueMeter({
   periodLabel,
   pacing,
   showDaysRemaining,
+  actualsOnly,
 }: {
   title: string;
   periodWord: string;
   periodLabel: string;
   pacing: CumulativePacing;
   showDaysRemaining?: boolean;
+  actualsOnly?: boolean;
 }) {
   const { revenue } = pacing;
   // `pacing.actual` IS earned (Ace 99.1), so it is the right fallback for
@@ -66,6 +68,7 @@ export function GoalsRevenueMeter({
       // supporting line. The count meters keep percent as the focal number.
       focus="value"
       showDaysRemaining={showDaysRemaining}
+      actualsOnly={actualsOnly}
       fill={{ kind: "tiers", tiers }}
       footnote={
         revenue?.billedExceedsEarned ? (
