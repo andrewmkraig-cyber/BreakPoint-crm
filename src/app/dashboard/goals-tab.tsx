@@ -204,13 +204,22 @@ export async function GoalsTab({
   // Quarter view shows that quarter's goals AND the annual that contains
   // it, and a Year view shows every quarter inside it. MILESTONE goals have
   // no window at all and are pinned to the bottom regardless of period.
+  //
+  // EXPIRED goals are excluded: a goal whose window has already ended has
+  // nothing left to pace and would read $0 / "0d left" / BEHIND forever, so
+  // a Year selection must not resurrect Q1 and Q2. Compared MARKER against
+  // MARKER - `todayMarker` (above) is today's ET calendar date as a UTC
+  // marker and `g.periodEnd` is the same marker form, which is how the rest
+  // of the goals code counts days. `>=` keeps a goal through its final ET
+  // day (periodEnd === today still runs).
   const periodGoals = goals.filter(
     (g) =>
       g.period !== "MILESTONE" &&
       g.periodStart != null &&
       g.periodEnd != null &&
       g.periodStart <= period.rangeEnd &&
-      g.periodEnd >= period.rangeStart,
+      g.periodEnd >= period.rangeStart &&
+      g.periodEnd >= todayMarker,
   );
   const milestoneGoals = goals.filter((g) => g.period === "MILESTONE");
 
