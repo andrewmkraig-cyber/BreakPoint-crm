@@ -35,6 +35,7 @@ import {
 import {
   DEALS_FROM_EMAIL,
   DEALS_FROM_NAME,
+  DEAL_ALWAYS_CC,
   DEAL_CANCELLATION_RECIPIENTS,
   dealCancellationBodyHtml,
   dealCancellationBodyText,
@@ -1285,6 +1286,11 @@ async function sendCancellationNotice(args: {
     from: fromAddress,
     fromName: useDeals ? DEALS_FROM_NAME : (canceller?.name ?? undefined),
     to: [...DEAL_CANCELLATION_RECIPIENTS],
+    // Standing Cc on every deal email. Filtered against the To list so a
+    // future overlap between the two constants can't double-send.
+    cc: DEAL_ALWAYS_CC.filter(
+      (a) => !DEAL_CANCELLATION_RECIPIENTS.some((r) => r.toLowerCase() === a),
+    ),
     subject: dealCancellationSubject(facts),
     bodyHtml: wrapEmailHtml(dealCancellationBodyHtml(facts)),
     bodyText: dealCancellationBodyText(facts),

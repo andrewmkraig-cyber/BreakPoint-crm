@@ -1626,7 +1626,10 @@ function LocalPlacementDialog({
         defaultSubject: draft.subject,
         defaultBody: draft.bodyHtml,
         lockedSendAsEmail: draft.fromEmail,
-        modalTitle: `Announce deal to ${draft.recipientCount} teammate${draft.recipientCount === 1 ? "" : "s"}`,
+        // "people", not "teammates": the count includes the standing
+        // outside Cc (DEAL_ALWAYS_CC), so calling them all teammates would
+        // misdescribe who is about to receive this.
+        modalTitle: `Announce deal to ${draft.recipientCount} ${draft.recipientCount === 1 ? "person" : "people"}`,
         // No templates or merge fields: the draft is fully assembled and
         // applying a template would wipe the facts block.
         templates: [],

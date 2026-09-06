@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
   DEALS_FROM_EMAIL,
+  DEAL_ALWAYS_CC,
   dealAnnouncementBodyHtml,
   dealAnnouncementSubject,
   type DealAnnouncementFacts,
@@ -102,15 +103,22 @@ export async function buildDealAnnouncement(
   });
 
   const closerEmail = placement.createdBy?.email?.trim().toLowerCase() ?? null;
+  // Standing Cc list plus the closer. Built first so the To list can
+  // subtract it: an address must never land in both fields, or the
+  // recipient gets the mail twice and the count double-reports.
+  const ccList = Array.from(
+    new Set([...(closerEmail ? [closerEmail] : []), ...DEAL_ALWAYS_CC]),
+  );
+  const ccSet = new Set(ccList);
   const recipients = Array.from(
     new Set(
       members
         .map((m) => m.user?.email?.trim().toLowerCase())
         .filter((e): e is string => Boolean(e)),
     ),
-  ).filter((e) => e !== closerEmail);
+  ).filter((e) => !ccSet.has(e));
 
-  if (recipients.length === 0 && !closerEmail) {
+  if (recipients.length === 0 && ccList.length === 0) {
     return { ok: false, error: "No teammates found to announce to." };
   }
 
@@ -159,11 +167,15 @@ export async function buildDealAnnouncement(
     ok: true,
     draft: {
       to: recipients.join(", "),
-      cc: closerEmail ?? "",
+      cc: ccList.join(", "),
       subject: dealAnnouncementSubject(facts),
       bodyHtml: dealAnnouncementBodyHtml(facts),
       fromEmail: DEALS_FROM_EMAIL,
-      recipientCount: recipients.length + (closerEmail ? 1 : 0),
+      // Every address that will receive this, To and Cc together. The
+      // count exists so the sender knows how many people are about to get
+      // it, so a standing Cc has to be inside it - the list is no longer
+      // all teammates, which is why the confirm copy says "people".
+      recipientCount: recipients.length + ccList.length,
     },
   };
 }
