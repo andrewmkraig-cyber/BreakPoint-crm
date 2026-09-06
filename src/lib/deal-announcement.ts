@@ -20,19 +20,21 @@ export const DEALS_FROM_NAME = "BreakPoint Talent Deals";
 // bookkeeping that AR needs for invoicing and that leadership needs to
 // know about. Hard-coded on purpose — this is not an org-membership
 // broadcast, it is these three mailboxes.
-// Always copied on every deal email - both the announcement draft and the
-// cancellation notice. Kept as a list so a second standing recipient is a
-// one-line change rather than another round of plumbing.
+// Always copied on the deal ANNOUNCEMENT. Kept as a list so a second
+// standing recipient is a one-line change rather than another round of
+// plumbing.
 //
 // Stored lowercase because every consumer dedupes case-insensitively
 // against the org roster and the closer.
 //
-// NOTE: this is an outside address, not an org member. The cancellation
-// notice carries the client name, the candidate name and the fee, so
-// anything added here receives real client and candidate data. That is a
-// deliberate choice by the account owner, not an oversight - do not widen
-// this list without asking.
-export const DEAL_ALWAYS_CC = ["cacucco1@gmail.com"] as const;
+// SCOPE: the announcement only. The cancellation notice deliberately does
+// NOT carry this (Andrew, 2026-09-06). These are outside addresses, and
+// the two emails do not expose the same thing: the announcement names
+// neither the client nor the candidate, while the cancellation notice
+// names both and carries the written explanation. Do not "make it
+// consistent" by wiring this into cancelPlacement - the asymmetry is the
+// decision.
+export const DEAL_ANNOUNCEMENT_CC = ["cacucco1@gmail.com"] as const;
 
 export const DEAL_CANCELLATION_RECIPIENTS = [
   "ar@breakpointtalent.com",

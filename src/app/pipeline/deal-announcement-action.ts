@@ -6,7 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
   DEALS_FROM_EMAIL,
-  DEAL_ALWAYS_CC,
+  DEAL_ANNOUNCEMENT_CC,
   dealAnnouncementBodyHtml,
   dealAnnouncementSubject,
   type DealAnnouncementFacts,
@@ -107,7 +107,7 @@ export async function buildDealAnnouncement(
   // subtract it: an address must never land in both fields, or the
   // recipient gets the mail twice and the count double-reports.
   const ccList = Array.from(
-    new Set([...(closerEmail ? [closerEmail] : []), ...DEAL_ALWAYS_CC]),
+    new Set([...(closerEmail ? [closerEmail] : []), ...DEAL_ANNOUNCEMENT_CC]),
   );
   const ccSet = new Set(ccList);
   const recipients = Array.from(
