@@ -24,6 +24,7 @@ import { GoalMetric, GoalPeriod } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import {
+  etDayFractionElapsed,
   etDaysInclusive,
   etWindow,
   shiftUtcMarker,
@@ -35,6 +36,7 @@ import {
 // working. Anything running in a CLIENT component must import them from
 // "@/lib/goals/et-window" directly - this module pulls in prisma.
 export {
+  etDayFractionElapsed,
   etDaysInclusive,
   etWindow,
   shiftUtcMarker,

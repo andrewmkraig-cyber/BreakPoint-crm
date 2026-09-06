@@ -27,6 +27,7 @@ import { GoalMetric, GoalPeriod } from "@prisma/client";
 // bundle; only the RevenueResult TYPE comes from metrics.ts, and a type
 // import is erased at build time.
 import {
+  etDayFractionElapsed,
   etDaysInclusive,
   etWindow,
   shiftUtcMarker,
@@ -95,12 +96,20 @@ export function pacingForCumulative(input: {
   periodStart: Date;
   periodEnd: Date;
   now?: Date;
+  // Opt-in: count the current, incomplete day as the ET fraction of it
+  // already elapsed rather than as a whole day. OFF by default, so every
+  // existing caller is unchanged. It only matters at short window lengths
+  // (a Day or Week meter otherwise reports the full target on the final
+  // day); at quarter length it shifts by at most half a day and stays
+  // invisible. See the elapsedFraction note below.
+  partialCurrentDay?: boolean;
   // Passed through untouched for REVENUE goals. It never changes the
   // pacing maths - the headline is `actual`, which is earned.
   revenue?: RevenueResult;
 }): CumulativePacing {
   const { target, actual, periodStart, periodEnd, revenue } = input;
   const now = input.now ?? new Date();
+  const partialCurrentDay = input.partialCurrentDay ?? false;
 
   // periodStart / periodEnd arrive as UTC calendar-date markers. Resolve
   // them to real ET instants FIRST, then do every day count against those.
@@ -120,7 +129,22 @@ export function pacingForCumulative(input: {
   const rawElapsed = etDaysInclusive(start, now);
   const daysElapsed = Math.min(Math.max(rawElapsed, 0), daysInPeriod);
   const daysRemaining = daysInPeriod - daysElapsed;
-  const elapsedFraction = daysElapsed / daysInPeriod;
+
+  // elapsedFraction drives expectedToDate / paceIndex / projectedFinish.
+  // By default the current day counts whole (daysElapsed / daysInPeriod,
+  // the day-one=day-1 convention that keeps a quarter's projection defined
+  // from the first morning). With partialCurrentDay the current incomplete
+  // day counts as the ET fraction of it elapsed instead - rawElapsed counts
+  // today as a whole day, so drop it and add the partial. The integer
+  // daysElapsed / daysRemaining above are deliberately left whole, so the
+  // "N of M days" readouts stay whole-day counts.
+  const elapsedForFraction = partialCurrentDay
+    ? rawElapsed <= 0
+      ? 0
+      : rawElapsed - 1 + etDayFractionElapsed(now)
+    : daysElapsed;
+  const elapsedFraction =
+    Math.min(Math.max(elapsedForFraction, 0), daysInPeriod) / daysInPeriod;
 
   const expectedToDate = target * elapsedFraction;
   const paceIndex = expectedToDate > 0 ? actual / expectedToDate : null;

@@ -533,6 +533,11 @@ export async function GoalsTab({
         actual: result.value ?? 0,
         periodStart: rangeStart,
         periodEnd: rangeEnd,
+        // Only the selector-following revenue meter counts the current day
+        // as partial - at its Day/Week lengths a whole final day would
+        // report the full prorated target before the window ends. The count
+        // meters clamp to the quarter, where it is invisible anyway.
+        partialCurrentDay: followsSelector,
         revenue: result.revenue,
       });
       return { goal: g, pacing, target, measurable: result.value !== null };
