@@ -266,6 +266,7 @@ export async function getWeekData(
         sentCandidateBody: true,
         sentClientSubject: true,
         sentClientBody: true,
+        candidate: { select: { firstName: true, lastName: true, email: true } },
       },
     }),
   ]);
@@ -283,6 +284,8 @@ export async function getWeekData(
   type InterviewEventMeta = {
     interviewId: string;
     candidateId: string | null;
+    candidateName?: string;
+    candidateEmail?: string;
     party: "candidate" | "client" | "none";
     sentSubject?: string;
     sentBody?: string;
@@ -290,10 +293,20 @@ export async function getWeekData(
   const interviewMetaByGoogleEventId = new Map<string, InterviewEventMeta>();
   const interviewIdByGoogleEventId = new Map<string, string>();
   for (const iv of activeInterviews) {
+    // Mirrors /calendar: candidate identity rides along so the drawer can
+    // link the matching guest row to the profile.
+    const candidateName =
+      [iv.candidate?.firstName, iv.candidate?.lastName]
+        .filter((s): s is string => Boolean(s && s.trim()))
+        .join(" ")
+        .trim() || undefined;
+    const candidateEmail = iv.candidate?.email ?? undefined;
     if (iv.googleEventIdCandidate) {
       interviewMetaByGoogleEventId.set(iv.googleEventIdCandidate, {
         interviewId: iv.id,
         candidateId: iv.candidateId,
+        candidateName,
+        candidateEmail,
         party: "candidate",
         sentSubject: iv.sentCandidateSubject ?? undefined,
         sentBody: iv.sentCandidateBody ?? undefined,
@@ -303,6 +316,8 @@ export async function getWeekData(
       interviewMetaByGoogleEventId.set(iv.googleEventIdClient, {
         interviewId: iv.id,
         candidateId: iv.candidateId,
+        candidateName,
+        candidateEmail,
         party: "client",
         sentSubject: iv.sentClientSubject ?? undefined,
         sentBody: iv.sentClientBody ?? undefined,
@@ -312,6 +327,8 @@ export async function getWeekData(
       interviewMetaByGoogleEventId.set(iv.googleEventIdMine, {
         interviewId: iv.id,
         candidateId: iv.candidateId,
+        candidateName,
+        candidateEmail,
         party: "none",
       });
     }
@@ -394,6 +411,8 @@ export async function getWeekData(
       ownerKeys: ["ak"],
       jobId: row.jobId ?? undefined,
       candidateId: interviewMeta?.candidateId ?? row.candidateId ?? undefined,
+      candidateName: interviewMeta?.candidateName,
+      candidateEmail: interviewMeta?.candidateEmail,
       clientId: row.clientId ?? undefined,
       calendarName: row.calendarName,
       calendarColor: row.calendarColor ?? undefined,

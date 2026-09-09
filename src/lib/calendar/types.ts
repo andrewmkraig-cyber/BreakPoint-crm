@@ -28,6 +28,12 @@ export type CalendarEvent = {
   ownerKeys: string[];
   jobId?: string;
   candidateId?: string;
+  // Candidate identity carried alongside candidateId so the interview
+  // detail card can tell WHICH guest row is the candidate (guests are
+  // display strings from Google) and render just that one as a link to
+  // the profile. Only set for interview-linked blocks.
+  candidateName?: string;
+  candidateEmail?: string;
   clientId?: string;
   calendarName?: string;
   calendarColor?: string;

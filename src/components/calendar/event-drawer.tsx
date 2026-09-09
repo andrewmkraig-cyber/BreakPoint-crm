@@ -712,6 +712,13 @@ export function CalendarEventDrawer({
     router.push(`/candidates/${candidateId}?edit=interview&interviewId=${interviewId}`);
   }
 
+  // Clicking the candidate's name in the guest row jumps straight to their
+  // profile (no interview deep-link — that's what Edit interview is for).
+  function doOpenCandidate(candidateId: string) {
+    onClose();
+    router.push(`/candidates/${candidateId}`);
+  }
+
   async function doCancelInterview(notifyGuests: boolean) {
     if (!interviewId) return;
     setCancelChoiceOpen(false);
@@ -966,7 +973,9 @@ export function CalendarEventDrawer({
               event. The full editor is intentionally hidden - editing
               routes through the one scheduler via the strip's Edit
               button, so a calendar tile never opens the generic editor. */}
-          {isInterviewEvent && event && <InterviewDetailCard event={event} />}
+          {isInterviewEvent && event && (
+            <InterviewDetailCard event={event} onOpenCandidate={doOpenCandidate} />
+          )}
 
           {/* Generic editor - shown for every non-interview event. */}
           {!isInterviewEvent && (
@@ -1672,7 +1681,13 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 // REPLACES the generic event editor for interview tiles so clicking one
 // shows what was sent, not a date/tz/guests form. Times render with the
 // same browser-local read the grid uses, so they match the tile.
-function InterviewDetailCard({ event }: { event: CalendarEvent }) {
+function InterviewDetailCard({
+  event,
+  onOpenCandidate,
+}: {
+  event: CalendarEvent;
+  onOpenCandidate: (candidateId: string) => void;
+}) {
   const whenLabel = `${event.startTime.toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
@@ -1688,6 +1703,18 @@ function InterviewDetailCard({ event }: { event: CalendarEvent }) {
   const where = event.location?.trim() || null;
   const meet = event.meetLink || null;
   const guests = event.guests ?? [];
+  const candidateId = event.candidateId ?? null;
+  const candidateName = event.candidateName?.trim().toLowerCase() ?? "";
+  const candidateEmail = event.candidateEmail?.trim().toLowerCase() ?? "";
+  // Guest strings are Google's displayName-or-email, so match on either.
+  // The single-guest candidate invite is the candidate by construction, so
+  // it still links when Google shows a name we don't hold on the record.
+  const isCandidateGuest = (guest: string) => {
+    const g = guest.trim().toLowerCase();
+    if (candidateName && g === candidateName) return true;
+    if (candidateEmail && g === candidateEmail) return true;
+    return event.interviewParty === "candidate" && guests.length === 1;
+  };
   return (
     <div className="space-y-4">
       <div className="space-y-2.5">
@@ -1715,7 +1742,25 @@ function InterviewDetailCard({ event }: { event: CalendarEvent }) {
         {guests.length > 0 && (
           <div className="flex items-start gap-2 text-[13px] text-court-fg">
             <Users className="mt-0.5 h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
-            <span>{guests.join(", ")}</span>
+            <span className="min-w-0">
+              {guests.map((g, i) => (
+                <span key={`${g}-${i}`}>
+                  {i > 0 && ", "}
+                  {candidateId && isCandidateGuest(g) ? (
+                    <button
+                      type="button"
+                      onClick={() => onOpenCandidate(candidateId)}
+                      className="font-medium text-court-brand-dark hover:underline"
+                      title="Open candidate profile"
+                    >
+                      {g}
+                    </button>
+                  ) : (
+                    g
+                  )}
+                </span>
+              ))}
+            </span>
           </div>
         )}
       </div>
