@@ -8,6 +8,7 @@ import { getBillingSettings } from "@/lib/billing-settings";
 import { getInvoiceEmailDraftForInvoice } from "@/lib/invoice-email-drafts";
 import { getInvoice, parseInvoiceContacts } from "@/lib/invoices";
 import { prisma } from "@/lib/prisma";
+import { paymentTermsLabel } from "@/lib/payment-terms";
 import { loadTriggeredTemplate } from "@/lib/templated-email";
 import { CONFIRMED_START_INVOICE_TRIGGER } from "@/app/settings/template-constants";
 
@@ -88,7 +89,9 @@ export default async function InvoiceDetailPage({
         startDate={invoice.startDate ? invoice.startDate.toISOString().slice(0, 10) : ""}
         dueDate={invoice.dueDate ? invoice.dueDate.toISOString().slice(0, 10) : ""}
         feeAmount={invoice.feeAmount ? invoice.feeAmount.toString() : ""}
-        paymentTerms={invoice.paymentTerms ?? "Net 30"}
+        paymentTerms={
+          invoice.paymentTerms ?? paymentTermsLabel(invoice.client?.paymentTermsDays ?? null)
+        }
         notes={invoice.notes ?? ""}
         clientNote={invoice.clientNote ?? ""}
         sentAt={invoice.sentAt ? invoice.sentAt.toISOString() : null}

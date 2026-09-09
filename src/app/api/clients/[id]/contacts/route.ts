@@ -23,14 +23,17 @@ export async function GET(
   if (!raw) return NextResponse.json({ contacts: [] });
 
   const org = await getCurrentOrg();
+  // paymentTermsDays rides along so a caller that needs both (the invoice
+  // editor: contact pickers + the agreed payable window) makes one request.
+  // Existing callers ignore the extra field.
   const client = /^-?\d+$/.test(raw)
     ? await prisma.client.findFirst({
         where: { legacyRfId: Number(raw), organizationId: org.id },
-        select: { id: true },
+        select: { id: true, name: true, paymentTermsDays: true },
       })
     : await prisma.client.findFirst({
         where: { id: raw, organizationId: org.id },
-        select: { id: true },
+        select: { id: true, name: true, paymentTermsDays: true },
       });
   if (!client) return NextResponse.json({ contacts: [] });
 
@@ -57,5 +60,9 @@ export async function GET(
     }
   }
 
-  return NextResponse.json({ contacts });
+  return NextResponse.json({
+    contacts,
+    clientName: client.name,
+    paymentTermsDays: client.paymentTermsDays,
+  });
 }

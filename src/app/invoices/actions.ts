@@ -186,7 +186,7 @@ export async function updateInvoiceAction(input: UpdateInvoiceInput): Promise<Re
   try {
     const existing = await prisma.invoice.findFirst({
       where: { id: input.id, organizationId: org.id },
-      select: { id: true, status: true },
+      select: { id: true, status: true, clientId: true },
     });
     if (!existing) return fail("Invoice not found");
     if (existing.status !== "DRAFT") return fail("Only drafts can be edited");
@@ -201,7 +201,22 @@ export async function updateInvoiceAction(input: UpdateInvoiceInput): Promise<Re
       data.feeAmount = cleaned ? new Prisma.Decimal(cleaned) : null;
     }
     if (input.paymentTerms !== undefined) {
-      data.paymentTerms = input.paymentTerms?.trim() || "Net 30";
+      // Blank terms fall back to THIS client's agreed payable window, not a
+      // generic Net 30. Only reached when the editor clears the field.
+      const trimmed = input.paymentTerms?.trim();
+      if (trimmed) {
+        data.paymentTerms = trimmed;
+      } else {
+        const clientTermsDays = existing.clientId
+          ? (
+              await prisma.client.findFirst({
+                where: { id: existing.clientId, organizationId: org.id },
+                select: { paymentTermsDays: true },
+              })
+            )?.paymentTermsDays ?? null
+          : null;
+        data.paymentTerms = paymentTermsLabel(clientTermsDays ?? DEFAULT_PAYMENT_TERMS_DAYS);
+      }
     }
     if (input.dueDate !== undefined) {
       data.dueDate = input.dueDate ? new Date(input.dueDate) : null;

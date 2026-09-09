@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { Button } from "@/components/ui/button";
 import { Input, Textarea, Select } from "@/components/ui/input";
 
 import { useComposerManager } from "@/lib/composer-manager";
@@ -12,7 +13,11 @@ import {
   type MergeFieldValues,
 } from "@/lib/merge-fields";
 import { formatInvoiceDateLabelFromIso } from "@/lib/invoice-date";
-import { DEFAULT_PAYMENT_TERMS_DAYS, dueDateIsoFromTerms } from "@/lib/payment-terms";
+import {
+  DEFAULT_PAYMENT_TERMS_DAYS,
+  dueDateIsoFromTerms,
+  paymentTermsLabel,
+} from "@/lib/payment-terms";
 import { formatDate } from "@/lib/utils";
 import type { AttachmentDraft } from "@/app/mail/mail-composer";
 
@@ -169,6 +174,44 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
   };
   const [billingContacts, setBillingContacts] = useState<Contact[]>(props.billingContacts);
   const [hiringContacts, setHiringContacts] = useState<Contact[]>(props.hiringContacts);
+  // This client's contact roster, for the Billing/Hiring pickers. Fetched from
+  // the same endpoint the composer typeahead uses, so there is one definition
+  // of "who works at this client". Empty when the invoice has no client (a
+  // blank New Invoice), which leaves both sections free-text as before.
+  const [clientRoster, setClientRoster] = useState<Contact[]>([]);
+  // The client's agreed payable window, so the editor can offer it instead of
+  // whatever generic terms the row was created with.
+  const [clientTermsDays, setClientTermsDays] = useState<number | null>(
+    props.clientPaymentTermsDays,
+  );
+  useEffect(() => {
+    const clientId = props.clientId;
+    if (!clientId) {
+      setClientRoster([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/clients/${encodeURIComponent(clientId)}/contacts`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          contacts?: Contact[];
+          paymentTermsDays?: number | null;
+        };
+        if (cancelled) return;
+        setClientRoster(Array.isArray(json.contacts) ? json.contacts : []);
+        if (json.paymentTermsDays != null) setClientTermsDays(json.paymentTermsDays);
+      } catch {
+        // Picker degrades to free-text entry; never blocks the editor.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [props.clientId]);
   // Recruiter selects how the client paid before flipping the invoice
   // to PAID. Null until picked; the Mark-as-paid button stays disabled
   // until it's set so we never write a PAID row without an attribution.
@@ -572,6 +615,18 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
     setter((prev) => [...prev, { name: "", email: "" }]);
   }
 
+  // Append a roster pick. Skips anyone already on this list (by email) so a
+  // double-pick can't create a duplicate To/CC line, and drops a leading blank
+  // row so picking into a fresh section doesn't leave an empty pair behind.
+  function addContactFromRoster(setter: typeof setBillingContacts, picked: Contact) {
+    setter((prev) => {
+      const key = picked.email.trim().toLowerCase();
+      if (key && prev.some((c) => c.email.trim().toLowerCase() === key)) return prev;
+      const cleaned = prev.filter((c) => c.name.trim() || c.email.trim());
+      return [...cleaned, { name: picked.name, email: picked.email }];
+    });
+  }
+
   function updateContact(
     setter: typeof setBillingContacts,
     index: number,
@@ -660,6 +715,30 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
                 applyTerms(startDate, e.target.value);
               }}
             />
+            {/* The client's agreed payable window, offered as one click rather
+                than applied silently: this invoice may have been created before
+                the terms were recorded, and overwriting a recruiter-set value
+                without asking is exactly what the write-if-empty rule on the
+                client record avoids. */}
+            {isDraft && clientTermsDays != null && paymentTermsLabel(clientTermsDays) !== paymentTerms ? (
+              <p className="mt-1 text-[11px] text-court-fg-muted">
+                {props.clientName || "This client"} is{" "}
+                {paymentTermsLabel(clientTermsDays)}.{" "}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const next = paymentTermsLabel(clientTermsDays);
+                    setPaymentTerms(next);
+                    applyTerms(startDate, next);
+                  }}
+                  className="h-auto px-1 py-0 align-baseline text-[11px] font-semibold text-court-brand-dark hover:underline"
+                >
+                  Use client terms
+                </Button>
+              </p>
+            ) : null}
           </Field>
           <Field label="Internal notes (not on invoice)">
             <Input
@@ -686,16 +765,22 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
         <ContactSection
           title="Billing contacts (To)"
           contacts={billingContacts}
+          roster={clientRoster}
+          clientName={props.clientName}
           disabled={!isDraft}
           onAdd={() => addContact(setBillingContacts)}
+          onPick={(c) => addContactFromRoster(setBillingContacts, c)}
           onChange={(i, f, v) => updateContact(setBillingContacts, i, f, v)}
           onRemove={(i) => removeContact(setBillingContacts, i)}
         />
         <ContactSection
           title="Hiring contacts (CC)"
           contacts={hiringContacts}
+          roster={clientRoster}
+          clientName={props.clientName}
           disabled={!isDraft}
           onAdd={() => addContact(setHiringContacts)}
+          onPick={(c) => addContactFromRoster(setHiringContacts, c)}
           onChange={(i, f, v) => updateContact(setHiringContacts, i, f, v)}
           onRemove={(i) => removeContact(setHiringContacts, i)}
         />
@@ -975,18 +1060,34 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function ContactSection({
   title,
   contacts,
+  roster,
+  clientName,
   disabled,
   onAdd,
+  onPick,
   onChange,
   onRemove,
 }: {
   title: string;
   contacts: Contact[];
+  // Existing contacts at this client. Empty when the invoice has no client,
+  // in which case the picker is hidden and the section stays free-text.
+  roster: Contact[];
+  clientName: string;
   disabled: boolean;
   onAdd: () => void;
+  onPick: (contact: Contact) => void;
   onChange: (i: number, field: keyof Contact, value: string) => void;
   onRemove: (i: number) => void;
 }) {
+  // Anyone already on this list drops out of the picker, the same way the
+  // interviewer picker on the scheduler hides chips that are already chosen.
+  const chosen = new Set(
+    contacts.map((c) => c.email.trim().toLowerCase()).filter(Boolean),
+  );
+  const available = roster.filter(
+    (c) => c.email.trim() && !chosen.has(c.email.trim().toLowerCase()),
+  );
   return (
     <section className="mt-6 border-t border-court-border pt-5">
       <div className="flex items-center justify-between">
@@ -1003,6 +1104,29 @@ function ContactSection({
           </button>
         ) : null}
       </div>
+      {/* Native select, not a popover: picking a known contact is the common
+          case, and typing a new one stays available in the rows below. */}
+      {!disabled && available.length > 0 ? (
+        <div className="mt-3 max-w-xs">
+          <Select
+            value=""
+            onChange={(e) => {
+              const picked = available.find((c) => c.email === e.target.value);
+              if (picked) onPick(picked);
+              e.target.selectedIndex = 0;
+            }}
+          >
+            <option value="">
+              {clientName ? `Add from ${clientName}…` : "Add an existing contact…"}
+            </option>
+            {available.map((c) => (
+              <option key={c.email} value={c.email}>
+                {c.name && c.name !== c.email ? `${c.name} · ${c.email}` : c.email}
+              </option>
+            ))}
+          </Select>
+        </div>
+      ) : null}
       {contacts.length === 0 ? (
         <p className="mt-2 text-[12px] text-court-fg-muted">No contacts yet.</p>
       ) : (
