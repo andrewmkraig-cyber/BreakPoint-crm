@@ -5,7 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { canonicalStage, normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { getRfClientsForOrg, getRfContactsForOrg, getRfJobsForOrg } from "@/lib/candidates";
-import { extractFeePctFromCustomFields } from "@/lib/clients";
+import { extractFeePctFromCustomFields, formatClientStreetAddress } from "@/lib/clients";
 import { formatDistanceSubLine } from "@/lib/distance";
 import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/local-candidate-actions";
 import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
@@ -385,6 +385,11 @@ export async function LocalCandidateProfile({
   }
   const feePctByCuid = new Map<string, number | null>();
   const feePctByRfId = new Map<number, number | null>();
+  // Street address off the same client rows, keyed the same two ways. Seeds
+  // the in-person interview Address field so the recruiter doesn't retype an
+  // address Ace already holds; blank when the client has none on file.
+  const addressByCuid = new Map<string, string>();
+  const addressByRfId = new Map<number, string>();
   if (placementClientCuids.size > 0 || placementClientRfIds.size > 0) {
     const rows = await prisma.client.findMany({
       where: {
@@ -398,13 +403,24 @@ export async function LocalCandidateProfile({
             : []),
         ],
       },
-      select: { id: true, legacyRfId: true, feePct: true, customFields: true },
+      select: {
+        id: true,
+        legacyRfId: true,
+        feePct: true,
+        customFields: true,
+        location: true,
+      },
     });
     for (const r of rows) {
       const resolved =
         r.feePct ?? extractFeePctFromCustomFields(r.customFields ?? null) ?? null;
       feePctByCuid.set(r.id, resolved);
       if (r.legacyRfId != null) feePctByRfId.set(r.legacyRfId, resolved);
+      const address = formatClientStreetAddress(r.location);
+      if (address) {
+        addressByCuid.set(r.id, address);
+        if (r.legacyRfId != null) addressByRfId.set(r.legacyRfId, address);
+      }
     }
   }
 
@@ -668,6 +684,9 @@ export async function LocalCandidateProfile({
     const resolvedClientFeePct =
       (p.clientId ? feePctByCuid.get(p.clientId) ?? null : null) ??
       (p.clientRfId != null ? feePctByRfId.get(p.clientRfId) ?? null : null);
+    const resolvedClientAddress =
+      (p.clientId ? addressByCuid.get(p.clientId) ?? "" : "") ||
+      (p.clientRfId != null ? addressByRfId.get(p.clientRfId) ?? "" : "");
     return {
       placementId: p.id,
       jobRfId: p.jobRfId ?? (rfJob?.id ?? 0),
@@ -687,6 +706,7 @@ export async function LocalCandidateProfile({
       clientWebsite: client?.website ?? "",
       clientLinkedIn: client?.linkedIn ?? "",
       clientFeePct: resolvedClientFeePct,
+      clientAddress: resolvedClientAddress,
       clientContacts,
       stage: p.stage,
       interviews: rowInterviews,

@@ -126,3 +126,28 @@ export function formatUpcomingInterviewWhen(d: Date, tz?: string): string {
     minute: "2-digit",
   }).format(d)} ${abbrForTimeZone(tz)}`;
 }
+
+// Phone screens carry no address and no Meet link, so the calendar LOCATION
+// line is where "who calls whom, at what number" belongs: the invite reads
+// "Chris to call Kaan @ (216) 555-0134" on both parties' events. Built from
+// the primary interviewer's first name, the candidate's first name and the
+// candidate's phone on file. Returns "" when there is no phone number — an
+// invite that says "call Kaan @" with nothing after it is worse than a blank
+// location, and blank is what the in-person path does with a missing address.
+export function buildPhoneScreenLocation(input: {
+  interviewerName?: string | null;
+  clientName?: string | null;
+  candidateFirstName?: string | null;
+  candidatePhone?: string | null;
+}): string {
+  const phone = (input.candidatePhone ?? "").trim();
+  if (!phone) return "";
+  const caller =
+    firstWord(input.interviewerName) || (input.clientName ?? "").trim() || "The client";
+  const callee = firstWord(input.candidateFirstName) || "the candidate";
+  return `${caller} to call ${callee} @ ${phone}`;
+}
+
+function firstWord(value?: string | null): string {
+  return (value ?? "").trim().split(/\s+/)[0] ?? "";
+}

@@ -71,6 +71,7 @@ import {
   applyMergeFields as applyMergeFieldsClient,
   buildSmartGreeting,
   htmlToReadableText,
+  looksLikeHtml,
   MERGE_FIELDS,
   type MergeFieldValues,
 } from "@/lib/merge-fields";
@@ -90,6 +91,7 @@ import {
   utcToWallClockInZone,
 } from "@/lib/timezones";
 import {
+  buildPhoneScreenLocation,
   formatInterviewDate,
   formatInterviewTime,
   formatInterviewWhen,
@@ -224,6 +226,10 @@ export type LocalJobRow = {
   // LocalPlacementDialog. Null when no fee % is on file for the
   // client; the dialogs fall back to an empty input.
   clientFeePct: number | null;
+  // Client's street address on file, formatted for a calendar invite. Seeds
+  // the in-person Address field; "" when the client record has no address,
+  // which leaves the field blank rather than guessing.
+  clientAddress: string;
   stage: string;
   interviews: LocalInterview[];
   // Populated once the placement has been through offer / placement
@@ -389,6 +395,10 @@ export function LocalPlacementRows({
           clientName: detail.clientName,
           clientWebsite: "",
           clientLinkedIn: "",
+          // Same optimistic-stub reasoning as clientFeePct below: the
+          // scheduler isn't reachable from an Applied row, and the refresh
+          // replaces this stub with the server row that carries the address.
+          clientAddress: "",
           // Optimistic stub for the freshly-applied pill — the
           // OfferDialog isn't reachable from this row state (Applied
           // stage hasn't moved past Submitted), so leaving feePct null
@@ -3021,6 +3031,39 @@ function defaultInPersonClientBody(interviewerLabel: string): string {
     `Reply here if anything changes.`
   );
 }
+// Phone screens have no address and no join link, so the body has to carry
+// the one logistic that matters: the client calls the candidate on the
+// candidate's own number. The number rides in as the [Candidate Phone] merge
+// token (so it re-resolves live in the editor) wrapped in <b> — Google
+// Calendar renders that bold in the invite the client receives.
+function defaultPhoneScreenClientBody(): string {
+  return (
+    `[Greeting]\n\nConfirming the phone interview with [Candidate Full Name] for the [Job Title] role. ` +
+    `The calendar invite is on its way.\n\n` +
+    `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]\n\n` +
+    `Please call [Candidate Full Name] directly at <b>[Candidate Phone]</b> at the scheduled time.\n\n` +
+    `Reply to this email if anything needs to change.`
+  );
+}
+function defaultPhoneScreenCandidateBody(interviewerLabel: string): string {
+  return (
+    `Hi [Candidate First Name],\n\nYou are confirmed for your phone interview with [Client Company Name] ` +
+    `for the [Job Title] role. The calendar invite is on its way.\n\n` +
+    `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]\n\n` +
+    `${interviewerLabel} will call you at [Candidate Phone] at the scheduled time, so please have your ` +
+    `phone with you and be somewhere quiet.\n\n` +
+    `Good luck!`
+  );
+}
+// Seeds a party editor from a STORED sent body. htmlToReadableText strips
+// every tag, which would silently un-bold the candidate's number when a sent
+// phone screen is re-edited and re-sent. So keep inline bold when the stored
+// copy is otherwise plain text, and fall back to the full clean for the real
+// HTML bodies the saved templates produce.
+function seedStoredBody(body: string): string {
+  const withoutInlineBold = body.replace(/<\/?(?:b|strong)>/gi, "");
+  return looksLikeHtml(withoutInlineBold) ? htmlToReadableText(body) : body;
+}
 function defaultCandidateSubject(type: InterviewType): string {
   return `${formatType(type)} Interview - BreakPoint Talent`;
 }
@@ -3240,7 +3283,17 @@ function ScheduleInterviewScreen({
       ? existingInterview.attendees.map((a) => a.email).filter(Boolean).join(", ")
       : "",
   );
-  const [location, setLocation] = useState(existingInterview?.location ?? "");
+  // In-person street address ONLY. Seeded from the interview being edited when
+  // that interview is in-person, otherwise from the client's address on file —
+  // so switching Type to In-Person arrives pre-filled instead of blank. Stays
+  // blank when the client has no address. A phone screen's Interview.location
+  // holds the "who calls whom" line, not an address, so it must never seed
+  // this field.
+  const [location, setLocation] = useState(
+    (existingInterview?.type === "in_person" ? existingInterview.location?.trim() : "") ||
+      job.clientAddress ||
+      "",
+  );
   const [ccCsv, setCcCsv] = useState("");
   const [bccCsv, setBccCsv] = useState("");
   // Edit mode: ONE Save opens the three-way update-choice modal (Item #9).
@@ -3306,6 +3359,20 @@ function ScheduleInterviewScreen({
   ) || "the client team";
   const clientGreeting = buildSmartGreeting(interviewerList);
   const clientRecipientHint = formatRecipientHint(interviewerEmails, "Pick an interviewer above");
+  // Phone screens: the invite LOCATION is the call instruction, not an
+  // address. "" when the candidate has no phone on file, which leaves the
+  // invite's location blank the same way a missing address does.
+  const phoneScreenLocation = buildPhoneScreenLocation({
+    interviewerName,
+    clientName: job.clientName,
+    candidateFirstName: candidate.firstName,
+    candidatePhone: candidate.phone,
+  });
+  // The one value that goes to Google as event.location, per type. Video is
+  // untouched: it keeps the empty location it has always had (the Meet link
+  // is its own field).
+  const inviteLocation =
+    type === "in_person" ? location.trim() : type === "phone_screen" ? phoneScreenLocation : "";
 
   useEffect(() => {
     let cancelled = false;
@@ -3355,7 +3422,7 @@ function ScheduleInterviewScreen({
       durationMin,
       type,
       meetLink: null,
-      interviewLocation: type === "in_person" ? location : "",
+      interviewLocation: inviteLocation,
       jobTitle: job.jobTitle,
       jobLocation: job.jobLocation,
       jobDescription: job.jobDescription,
@@ -3383,7 +3450,7 @@ function ScheduleInterviewScreen({
     timeZone,
     durationMin,
     type,
-    location,
+    inviteLocation,
     interviewerName,
     interviewerEmail,
     clientGreeting,
@@ -3416,9 +3483,11 @@ function ScheduleInterviewScreen({
   const clientDefaultBody = useMemo(
     () =>
       existingInterview?.sentClientBody
-        ? htmlToReadableText(existingInterview.sentClientBody)
+        ? seedStoredBody(existingInterview.sentClientBody)
         : type === "in_person"
           ? defaultInPersonClientBody(interviewerLabel)
+        : type === "phone_screen"
+          ? defaultPhoneScreenClientBody()
         : schedTemplates.client?.body
           ? htmlToReadableText(schedTemplates.client.body)
           : defaultClientBody(type, location),
@@ -3436,9 +3505,11 @@ function ScheduleInterviewScreen({
   const candidateDefaultBody = useMemo(
     () =>
       existingInterview?.sentCandidateBody
-        ? htmlToReadableText(existingInterview.sentCandidateBody)
+        ? seedStoredBody(existingInterview.sentCandidateBody)
         : type === "in_person"
           ? defaultInPersonCandidateBody(interviewerLabel)
+        : type === "phone_screen"
+          ? defaultPhoneScreenCandidateBody(interviewerLabel)
         : schedTemplates.candidate?.body
           ? htmlToReadableText(schedTemplates.candidate.body)
           : defaultCandidateBody(type, location),
@@ -3487,7 +3558,10 @@ function ScheduleInterviewScreen({
           jobTitle: job.jobTitle,
           clientName: job.clientName,
           candidateName,
-          location: type === "in_person" ? location.trim() : undefined,
+          // In-person sends the street address; a phone screen sends the
+          // "Chris to call Kaan @ <number>" line. Video sends nothing, as before.
+          location: inviteLocation || undefined,
+          candidatePhone: type === "phone_screen" ? candidate.phone ?? undefined : undefined,
           timeZone,
           meetingType: clientWillSendInvite ? undefined : type === "video" ? meetingType : undefined,
         });
@@ -3622,8 +3696,10 @@ function ScheduleInterviewScreen({
         durationMin,
         type,
         timeZone,
-        // type drives the address: clears it when switching away from in-person.
-        location: type === "in_person" ? location.trim() : "",
+        // type drives the location: the street address for in-person, the call
+        // instruction for a phone screen, cleared for video.
+        location: inviteLocation,
+        candidatePhone: type === "phone_screen" ? candidate.phone ?? undefined : undefined,
         attendees,
         notifyMode,
         bcc: parseEmailCsv(bccCsv),
@@ -3803,6 +3879,25 @@ function ScheduleInterviewScreen({
                 onChange={setMeetingType}
                 teamsConnected={microsoftConnected}
               />
+            ) : type === "phone_screen" ? (
+              // Read-only: a phone screen's invite location is derived, not
+              // typed. Showing it here means the recruiter can see (and fix
+              // upstream) a missing number before the invite goes out.
+              <div className="rounded-lg border border-court-border/40 bg-court-surface-subtle/60 px-2.5 py-2 text-xs sm:px-3">
+                <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+                  Invite location
+                </span>
+                {phoneScreenLocation ? (
+                  <span className="mt-0.5 block text-court-fg">{phoneScreenLocation}</span>
+                ) : (
+                  <span className="mt-0.5 block text-court-fg-muted">
+                    No phone number on file for {candidate.firstName || "this candidate"}. Add one to
+                    the candidate profile and the invite will read &ldquo;
+                    {interviewerName.trim().split(/\s+/)[0] || "The client"} to call{" "}
+                    {candidate.firstName || "the candidate"} @ &hellip;&rdquo;.
+                  </span>
+                )}
+              </div>
             ) : null
           }
           interviewerSlot={

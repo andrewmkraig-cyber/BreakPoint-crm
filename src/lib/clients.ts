@@ -69,6 +69,20 @@ function compactLocation(raw: LocationJson): string {
   return [cityState, postalCode].filter(Boolean).join(" ");
 }
 
+// Full street address as it should read on a calendar invite:
+// "1200 Main St, Suite 400, Cleveland, OH 44113". Used to pre-fill the
+// in-person interview Address field from the client on file; returns "" when
+// the client has no street address, which leaves the field blank rather than
+// putting a city-only fragment in front of the candidate.
+export function formatClientStreetAddress(raw: unknown): string {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "";
+  const loc = raw as LocationJson;
+  const street1 = loc?.street_address_1?.trim() ?? "";
+  if (!street1) return "";
+  const street2 = loc?.street_address_2?.trim() ?? "";
+  return [street1, street2, compactLocation(loc)].filter(Boolean).join(", ");
+}
+
 // Delegates to the canonical implementation in @/lib/client-identity so
 // there is exactly one definition of the client URL segment.
 const slugFor = clientSlug;
