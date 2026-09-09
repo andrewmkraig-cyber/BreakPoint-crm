@@ -115,6 +115,10 @@ export type InvoiceDetailProps = {
   // unparseable entry still resolves the due date to this client's terms
   // rather than a generic 30 days. Null = client has none set.
   clientPaymentTermsDays: number | null;
+  // Every client in the org, for the blank New Invoice picker. Only passed by
+  // /invoices/new — a saved invoice's client is fixed, so the picker is not
+  // rendered there and this stays undefined.
+  clientOptions?: { id: string; name: string }[];
   accountExecName: string;
   baseSalary: number | null;
   feePercentage: number | null;
@@ -179,13 +183,16 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
   // of "who works at this client". Empty when the invoice has no client (a
   // blank New Invoice), which leaves both sections free-text as before.
   const [clientRoster, setClientRoster] = useState<Contact[]>([]);
+  // The client this invoice bills. Fixed for a saved row; picked by the
+  // recruiter on a blank New Invoice, where props.clientId is null and there
+  // was previously no way to attach one at all.
+  const [clientId, setClientId] = useState<string | null>(props.clientId);
   // The client's agreed payable window, so the editor can offer it instead of
   // whatever generic terms the row was created with.
   const [clientTermsDays, setClientTermsDays] = useState<number | null>(
     props.clientPaymentTermsDays,
   );
   useEffect(() => {
-    const clientId = props.clientId;
     if (!clientId) {
       setClientRoster([]);
       return;
@@ -211,7 +218,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
     return () => {
       cancelled = true;
     };
-  }, [props.clientId]);
+  }, [clientId]);
   // Recruiter selects how the client paid before flipping the invoice
   // to PAID. Null until picked; the Mark-as-paid button stays disabled
   // until it's set so we never write a PAID row without an attribution.
@@ -283,6 +290,36 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
       .finally(() => setAliasSaving(false));
   }
 
+  // Name shown in the header + the contact pickers. On a blank New Invoice
+  // that is whichever client the recruiter just picked.
+  const clientName =
+    props.clientOptions?.find((c) => c.id === clientId)?.name || props.clientName;
+
+  // Picking a client on a blank invoice pulls that client's agreed payable
+  // window straight into the terms + due date. Nothing to preserve here: a
+  // brand-new invoice has no recruiter-set terms yet, so this is a seed, not
+  // an overwrite (a saved draft gets the explicit "Use client terms" action
+  // under the field instead).
+  function pickClient(nextId: string) {
+    setClientId(nextId || null);
+    if (!nextId) return;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/clients/${encodeURIComponent(nextId)}/contacts`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const json = (await res.json()) as { paymentTermsDays?: number | null };
+        if (json.paymentTermsDays == null) return;
+        const nextTerms = paymentTermsLabel(json.paymentTermsDays);
+        setPaymentTerms(nextTerms);
+        applyTerms(startDate, nextTerms);
+      } catch {
+        // Terms stay at the current value; the recruiter can type them.
+      }
+    })();
+  }
+
   const isDraft = props.status === "DRAFT";
   // Unsaved "new invoice" mode — no row exists yet.
   const isNew = props.id === null;
@@ -307,7 +344,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
           billingContacts,
           hiringContacts,
           candidateId: props.candidateId,
-          clientId: props.clientId,
+          clientId,
           sendFromAlias: selectedFromAlias,
         });
         if (!result.ok) {
@@ -649,7 +686,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               {props.invoiceNumber}
             </p>
             <h1 className="mt-1 font-serif text-3xl font-bold tracking-tight text-court-fg">
-              {props.clientName || "—"}
+              {clientName || "—"}
             </h1>
             <p className="mt-1 text-sm text-court-fg-muted">
               {props.candidateName || "—"}
@@ -667,6 +704,26 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
         </header>
 
         <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2">
+          {props.clientOptions ? (
+            <Field label="Client">
+              <Select
+                disabled={!isDraft}
+                value={clientId ?? ""}
+                onChange={(e) => pickClient(e.target.value)}
+              >
+                <option value="">Select a client…</option>
+                {props.clientOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+              <span className="mt-1 block text-[11px] text-court-fg-muted">
+                Sets the payment terms from the client record and loads their
+                contacts into the sections below.
+              </span>
+            </Field>
+          ) : null}
           <Field label="Role title">
             <Input
               type="text"
@@ -722,7 +779,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
                 client record avoids. */}
             {isDraft && clientTermsDays != null && paymentTermsLabel(clientTermsDays) !== paymentTerms ? (
               <p className="mt-1 text-[11px] text-court-fg-muted">
-                {props.clientName || "This client"} is{" "}
+                {clientName || "This client"} is{" "}
                 {paymentTermsLabel(clientTermsDays)}.{" "}
                 <Button
                   type="button"
@@ -766,7 +823,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
           title="Billing contacts (To)"
           contacts={billingContacts}
           roster={clientRoster}
-          clientName={props.clientName}
+          clientName={clientName}
           disabled={!isDraft}
           onAdd={() => addContact(setBillingContacts)}
           onPick={(c) => addContactFromRoster(setBillingContacts, c)}
@@ -777,7 +834,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
           title="Hiring contacts (CC)"
           contacts={hiringContacts}
           roster={clientRoster}
-          clientName={props.clientName}
+          clientName={clientName}
           disabled={!isDraft}
           onAdd={() => addContact(setHiringContacts)}
           onPick={(c) => addContactFromRoster(setHiringContacts, c)}

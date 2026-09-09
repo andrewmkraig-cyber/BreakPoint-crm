@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -71,7 +71,6 @@ import {
   applyMergeFields as applyMergeFieldsClient,
   buildSmartGreeting,
   htmlToReadableText,
-  looksLikeHtml,
   MERGE_FIELDS,
   type MergeFieldValues,
 } from "@/lib/merge-fields";
@@ -95,6 +94,7 @@ import {
   formatInterviewDate,
   formatInterviewTime,
   formatInterviewWhen,
+  restampSentCopyDateTime,
 } from "@/lib/interview-format";
 import { StageBadge } from "@/components/stage-badge";
 import { formatPhoneForEmail, type PipelineBucket } from "@/lib/rf-payload-shapes";
@@ -3033,13 +3033,18 @@ function defaultInPersonClientBody(interviewerLabel: string): string {
 }
 // Phone screens have no address and no join link, so the body has to carry
 // the one logistic that matters: the client calls the candidate on the
-// candidate's own number. The number rides in as the [Candidate Phone] merge
-// token (so it re-resolves live in the editor) wrapped in <b> — Google
-// Calendar renders that bold in the invite the client receives.
+// candidate's own number, carried by the [Candidate Phone] merge token so it
+// re-resolves live in the editor.
+//
+// PLAIN TEXT ONLY. An earlier version wrapped the number in <b> for the
+// Google Calendar invite, but this string is what the recruiter reads and
+// edits in the composer textarea, and a raw tag in that box is worse than
+// an unbolded number. stripBodyHtml below enforces it for every generated
+// body, not just this one.
 function defaultPhoneScreenClientBody(): string {
   return (
     `[Greeting]\n\nConfirming the phone interview with [Candidate Full Name] for the [Job Title] role.\n\n` +
-    `Please call [Candidate Full Name] directly at <b>[Candidate Phone]</b> at the scheduled time.\n\n` +
+    `Please call [Candidate Full Name] directly at [Candidate Phone] at the scheduled time.\n\n` +
     `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]\n\n` +
     `Reply to this email if anything needs to change.`
   );
@@ -3054,14 +3059,16 @@ function defaultPhoneScreenCandidateBody(interviewerLabel: string): string {
     `Good luck!`
   );
 }
-// Seeds a party editor from a STORED sent body. htmlToReadableText strips
-// every tag, which would silently un-bold the candidate's number when a sent
-// phone screen is re-edited and re-sent. So keep inline bold when the stored
-// copy is otherwise plain text, and fall back to the full clean for the real
-// HTML bodies the saved templates produce.
-function seedStoredBody(body: string): string {
-  const withoutInlineBold = body.replace(/<\/?(?:b|strong)>/gi, "");
-  return looksLikeHtml(withoutInlineBold) ? htmlToReadableText(body) : body;
+// Every body that reaches the composer textarea goes through here. The editor
+// is a plain <textarea> and the string it holds becomes the Google Calendar
+// description verbatim, so a tag that survives to this point is rendered as
+// literal "<b>" text to whoever reads it. htmlToReadableText turns block tags
+// into newlines; the second pass removes anything inline it leaves behind
+// (<b>, <strong>, <span>, stray attributes) so nothing tag-shaped can reach
+// the box - including from a saved template stored as rich HTML.
+function stripBodyHtml(body: string): string {
+  if (!body) return "";
+  return htmlToReadableText(body).replace(/<\/?[a-z][^>]*>/gi, "");
 }
 function defaultCandidateSubject(type: InterviewType): string {
   return `${formatType(type)} Interview - BreakPoint Talent`;
@@ -3470,6 +3477,34 @@ function ScheduleInterviewScreen({
   // recipient actually saw), cleaned through htmlToReadableText. New mode seeds
   // from the saved scheduling template, except in-person interviews use the
   // address-forward body above.
+  // Edit mode seeds each editor from the STORED sent copy, which carries the
+  // date/time/duration as literal text (they were resolved at send time, so
+  // re-running the merge over it changes nothing). Without this, moving the
+  // interview to 15 minutes left the body still reading "Duration: 30 min"
+  // right up until save. Restamping against the interview's ORIGINAL values
+  // keeps an unedited body in step with the pickers; a body the recruiter has
+  // typed in is frozen by useInviteDraft and never touched.
+  const restampForEdit = useCallback(
+    (stored: string): string => {
+      if (!existingInterview) return stored;
+      const originalWhen = new Date(existingInterview.scheduledAt);
+      const nextWhen = scheduledAt
+        ? wallClockInZoneToUTC(scheduledAt, timeZone)
+        : originalWhen;
+      return (
+        restampSentCopyDateTime(
+          stored,
+          originalWhen,
+          nextWhen,
+          existingInterview.durationMin,
+          durationMin,
+          timeZone,
+        ) ?? stored
+      );
+    },
+    [existingInterview, scheduledAt, timeZone, durationMin],
+  );
+
   const clientDefaultSubject = useMemo(
     () =>
       existingInterview?.sentClientSubject
@@ -3482,15 +3517,15 @@ function ScheduleInterviewScreen({
   const clientDefaultBody = useMemo(
     () =>
       existingInterview?.sentClientBody
-        ? seedStoredBody(existingInterview.sentClientBody)
+        ? restampForEdit(stripBodyHtml(existingInterview.sentClientBody))
         : type === "in_person"
           ? defaultInPersonClientBody(interviewerLabel)
         : type === "phone_screen"
           ? defaultPhoneScreenClientBody()
         : schedTemplates.client?.body
-          ? htmlToReadableText(schedTemplates.client.body)
+          ? stripBodyHtml(schedTemplates.client.body)
           : defaultClientBody(type, location),
-    [existingInterview, schedTemplates, type, location, interviewerLabel],
+    [existingInterview, schedTemplates, type, location, interviewerLabel, restampForEdit],
   );
   const candidateDefaultSubject = useMemo(
     () =>
@@ -3504,15 +3539,15 @@ function ScheduleInterviewScreen({
   const candidateDefaultBody = useMemo(
     () =>
       existingInterview?.sentCandidateBody
-        ? seedStoredBody(existingInterview.sentCandidateBody)
+        ? restampForEdit(stripBodyHtml(existingInterview.sentCandidateBody))
         : type === "in_person"
           ? defaultInPersonCandidateBody(interviewerLabel)
         : type === "phone_screen"
           ? defaultPhoneScreenCandidateBody(interviewerLabel)
         : schedTemplates.candidate?.body
-          ? htmlToReadableText(schedTemplates.candidate.body)
+          ? stripBodyHtml(schedTemplates.candidate.body)
           : defaultCandidateBody(type, location),
-    [existingInterview, schedTemplates, type, location, interviewerLabel],
+    [existingInterview, schedTemplates, type, location, interviewerLabel, restampForEdit],
   );
 
   const clientDraft = useInviteDraft(clientDefaultSubject, clientDefaultBody, values);

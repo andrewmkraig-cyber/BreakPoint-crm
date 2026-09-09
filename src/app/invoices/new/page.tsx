@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getBillingSettings } from "@/lib/billing-settings";
 import { nextInvoiceNumber } from "@/lib/invoices";
+import { prisma } from "@/lib/prisma";
 
 import { InvoiceDetail } from "@/app/invoices/[id]/invoice-detail";
 
@@ -15,9 +16,17 @@ export const dynamic = "force-dynamic";
 // save-time via the same sequence, so opening + cancelling consumes nothing.
 export default async function NewInvoicePage() {
   const org = await getCurrentOrg();
-  const [previewNumber, billing] = await Promise.all([
+  // Client roster for the picker. A blank invoice previously had no way to
+  // attach a client, which is why it could never pull that client's payment
+  // terms or contacts. id + name only — the editor fetches the rest on pick.
+  const [previewNumber, billing, clientOptions] = await Promise.all([
     nextInvoiceNumber(org.id),
     getBillingSettings(),
+    prisma.client.findMany({
+      where: { organizationId: org.id },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   const today = new Date();
@@ -55,6 +64,7 @@ export default async function NewInvoicePage() {
         clientName=""
         clientId={null}
         clientPaymentTermsDays={null}
+        clientOptions={clientOptions}
         accountExecName=""
         baseSalary={null}
         feePercentage={null}

@@ -20,11 +20,7 @@ import {
   sendGmail,
   stripInlineFormattingTags,
 } from "@/lib/gmail";
-import {
-  formatInterviewDate,
-  formatInterviewTime,
-  formatInterviewWhen,
-} from "@/lib/interview-format";
+import { restampSentCopyDateTime } from "@/lib/interview-format";
 import { createTeamsMeeting, getMicrosoftToken, TEAMS_TOKEN_EXPIRED_MESSAGE } from "@/lib/microsoft-graph";
 import { prisma } from "@/lib/prisma";
 import {
@@ -830,40 +826,6 @@ export async function cancelInterview(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Cancel failed." };
   }
-}
-
-// D2: when an edit moves the interview time, the verbatim sent-copy stored
-// in D1 (sentCandidateBody/sentClientBody + subjects) still shows the OLD
-// date/time the recipient was originally emailed. The invite bodies bake the
-// date/time in as literal formatted strings (the `[Interview Date Time]` /
-// `[Interview Date]` / `[Interview Time]` / `[Interview Duration]` merge
-// fields are resolved at send time), so we restamp by string-replacing the
-// old formatted strings with the new ones using the SAME formatters that
-// produced them. Best-effort: if the formatted string isn't found (e.g. the
-// recruiter changed timezone too, or the body never referenced the time),
-// the replace is a safe no-op and the stored copy is left untouched.
-function restampSentCopyDateTime(
-  stored: string | null | undefined,
-  oldWhen: Date,
-  newWhen: Date,
-  oldDurationMin: number,
-  newDurationMin: number,
-  tz: string,
-): string | null {
-  if (!stored) return stored ?? null;
-  let out = stored;
-  // When (date + time, longest) first so its embedded time substring is
-  // swapped as a unit before the standalone time pass runs.
-  const pairs: Array<[string, string]> = [
-    [formatInterviewWhen(oldWhen, tz), formatInterviewWhen(newWhen, tz)],
-    [formatInterviewDate(oldWhen, tz), formatInterviewDate(newWhen, tz)],
-    [formatInterviewTime(oldWhen, tz), formatInterviewTime(newWhen, tz)],
-    [`${oldDurationMin} min`, `${newDurationMin} min`],
-  ];
-  for (const [from, to] of pairs) {
-    if (from && to && from !== to) out = out.split(from).join(to);
-  }
-  return out;
 }
 
 // ---- Update interview (full edit) ----

@@ -153,3 +153,39 @@ export function buildPhoneScreenLocation(input: {
 function firstWord(value?: string | null): string {
   return (value ?? "").trim().split(/\s+/)[0] ?? "";
 }
+
+// Restamps the literal date/time/duration strings baked into an already-sent
+// invite body. The invite bodies resolve [Interview Date Time] / [Interview
+// Date] / [Interview Time] / [Interview Duration] at SEND time, so a stored
+// sent-copy carries formatted strings, not tokens - re-running the merge over
+// it changes nothing. Swapping the old formatted strings for the new ones with
+// the SAME formatters that produced them is what keeps an unedited body in
+// step with a rescheduled or re-timed interview.
+//
+// Lives here (not in interview-actions) so the scheduler's editor can restamp
+// live as the recruiter changes Duration or the date, instead of the body
+// going stale until save. Best-effort: a string that isn't found is a safe
+// no-op and the copy is left alone.
+export function restampSentCopyDateTime(
+  stored: string | null | undefined,
+  oldWhen: Date,
+  newWhen: Date,
+  oldDurationMin: number,
+  newDurationMin: number,
+  tz: string,
+): string | null {
+  if (!stored) return stored ?? null;
+  let out = stored;
+  // When (date + time, longest) first so its embedded time substring is
+  // swapped as a unit before the standalone time pass runs.
+  const pairs: Array<[string, string]> = [
+    [formatInterviewWhen(oldWhen, tz), formatInterviewWhen(newWhen, tz)],
+    [formatInterviewDate(oldWhen, tz), formatInterviewDate(newWhen, tz)],
+    [formatInterviewTime(oldWhen, tz), formatInterviewTime(newWhen, tz)],
+    [`${oldDurationMin} min`, `${newDurationMin} min`],
+  ];
+  for (const [from, to] of pairs) {
+    if (from && to && from !== to) out = out.split(from).join(to);
+  }
+  return out;
+}
