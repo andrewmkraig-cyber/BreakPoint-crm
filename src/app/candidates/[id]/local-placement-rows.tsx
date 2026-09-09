@@ -3017,8 +3017,7 @@ function defaultClientBody(type: InterviewType, location: string): string {
   const addrLine = type === "in_person" && location ? `\n• Location: ${location}` : "";
   const meetLine = type === "video" ? `\n• Join on Google Meet: ${MEET_LINK_TOKEN}` : "";
   return (
-    `Hi [Client Contact First Name],\n\nConfirming the interview with [Candidate Full Name] for the [Job Title] role. ` +
-    `The calendar invite is on its way.\n\n` +
+    `Hi [Client Contact First Name],\n\nConfirming the interview with [Candidate Full Name] for the [Job Title] role.\n\n` +
     `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]${addrLine}${meetLine}\n\n` +
     `Reply to this email if anything needs to change.`
   );
@@ -3072,7 +3071,7 @@ function defaultCandidateBody(type: InterviewType, location: string): string {
   const meetLine = type === "video" ? `\n• Join on Google Meet: ${MEET_LINK_TOKEN}` : "";
   return (
     `Hi [Candidate First Name],\n\nYou are confirmed for your [Interview Type] interview with [Client Company Name] ` +
-    `for the [Job Title] role. The calendar invite is on its way.\n\n` +
+    `for the [Job Title] role.\n\n` +
     `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]${addrLine}${meetLine}\n\n` +
     `Good luck!`
   );

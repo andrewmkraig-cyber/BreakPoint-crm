@@ -422,8 +422,7 @@ const CANDIDATE_INTERVIEW_PREP_DEFAULT = {
   category: "interview",
   body:
     "Hi [Candidate First Name],\n\n" +
-    "You are confirmed for your [Interview Type] interview with [Client Company Name] for the [Job Title] role. " +
-    "The calendar invite is on its way.\n\n" +
+    "You are confirmed for your [Interview Type] interview with [Client Company Name] for the [Job Title] role.\n\n" +
     "Details:\n" +
     "• When: [Interview Date Time]\n" +
     "• Duration: [Interview Duration]\n" +
