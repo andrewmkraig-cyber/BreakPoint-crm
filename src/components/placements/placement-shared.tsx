@@ -505,7 +505,7 @@ export function DurationSelect({
       <Select
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        frameClassName="mt-1"
+        frameClassName={compact ? "mt-1 h-10 min-h-10 sm:h-[42px]" : "mt-1"}
       >
         {DURATION_OPTIONS.map((n) => (
           <option key={n} value={n}>

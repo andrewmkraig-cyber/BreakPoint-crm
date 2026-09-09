@@ -140,10 +140,14 @@ async function planPhase(
   console.log(`[${label}] ${movable.length} would upload, ${empty} would skip (empty buffer).`);
   if (movable.length > 0) {
     console.log(`[${label}] total to transfer: ${(total / 1024 / 1024).toFixed(1)} MB`);
-    for (const [i, r] of movable.entries()) {
+    // Indexed loop, not movable.entries(): tsconfig sets no `target`, so TS
+    // defaults to ES5 and rejects iterating an ArrayIterator (TS2802). scripts/
+    // is inside the tsconfig `include`, so this fails `next build`, not just
+    // a local tsc run.
+    movable.forEach((r, i) => {
       const mb = (r.bytes / 1024 / 1024).toFixed(2);
       console.log(`[${label}] ${i + 1}/${movable.length}: ${r.id}  ${mb} MB  ${r.filename}`);
-    }
+    });
   }
 }
 

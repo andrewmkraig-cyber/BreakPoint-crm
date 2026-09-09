@@ -107,7 +107,7 @@ export function DateTime15Picker({
   }
 
   const inputBase =
-    "rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20";
+    "h-10 min-h-10 rounded-lg border border-court-border bg-court-surface px-3 py-0 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 sm:h-[42px]";
 
   return (
     <div className={cn("flex flex-wrap items-stretch gap-2", className)}>
@@ -124,7 +124,7 @@ export function DateTime15Picker({
         options={timeOptions}
         onChange={setTime}
         disabled={disabled}
-        className="min-w-[7rem] flex-1"
+        className="min-w-[8rem] flex-1"
         inputClassName={inputBase}
       />
     </div>
@@ -199,7 +199,9 @@ function TimeSelect({
           "flex w-full items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60",
         )}
       >
-        <span className={cn(!selected && "text-court-fg-muted")}>{label}</span>
+        <span className={cn("min-w-0 truncate whitespace-nowrap", !selected && "text-court-fg-muted")}>
+          {label}
+        </span>
         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
       </button>
       {open && (

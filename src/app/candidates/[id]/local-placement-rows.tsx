@@ -2562,7 +2562,7 @@ function ScheduleFields(props: {
           <select
             value={props.timeZone}
             onChange={(e) => props.setTimeZone(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 sm:px-3 sm:py-2"
+            className="mt-1 h-10 min-h-10 w-full rounded-lg border border-court-border bg-court-surface px-2.5 py-0 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 sm:h-[42px] sm:px-3"
           >
             {INTERVIEW_TIMEZONES.map((z) => (
               <option key={z.iana} value={z.iana}>
@@ -2577,7 +2577,7 @@ function ScheduleFields(props: {
           <select
             value={props.type}
             onChange={(e) => props.setType(e.target.value as InterviewType)}
-            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 sm:px-3 sm:py-2"
+            className="mt-1 h-10 min-h-10 w-full rounded-lg border border-court-border bg-court-surface px-2.5 py-0 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 sm:h-[42px] sm:px-3"
           >
             <option value="phone_screen">Phone Screen</option>
             <option value="video">Video</option>

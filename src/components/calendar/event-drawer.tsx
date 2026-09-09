@@ -1747,14 +1747,21 @@ function InterviewDetailCard({
                 <span key={`${g}-${i}`}>
                   {i > 0 && ", "}
                   {candidateId && isCandidateGuest(g) ? (
-                    <button
-                      type="button"
-                      onClick={() => onOpenCandidate(candidateId)}
+                    // A real href (not a button) so the name is cmd-clickable
+                    // into a new tab; the click handler keeps the in-app
+                    // close-then-push navigation for a plain click.
+                    <a
+                      href={`/candidates/${candidateId}`}
+                      onClick={(e) => {
+                        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                        e.preventDefault();
+                        onOpenCandidate(candidateId);
+                      }}
                       className="font-medium text-court-brand-dark hover:underline"
                       title="Open candidate profile"
                     >
                       {g}
-                    </button>
+                    </a>
                   ) : (
                     g
                   )}
