@@ -140,10 +140,10 @@ async function planPhase(
   console.log(`[${label}] ${movable.length} would upload, ${empty} would skip (empty buffer).`);
   if (movable.length > 0) {
     console.log(`[${label}] total to transfer: ${(total / 1024 / 1024).toFixed(1)} MB`);
-    for (const [i, r] of movable.entries()) {
+    movable.forEach((r, i) => {
       const mb = (r.bytes / 1024 / 1024).toFixed(2);
       console.log(`[${label}] ${i + 1}/${movable.length}: ${r.id}  ${mb} MB  ${r.filename}`);
-    }
+    });
   }
 }
 
