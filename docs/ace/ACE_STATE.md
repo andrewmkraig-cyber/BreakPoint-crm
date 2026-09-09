@@ -1,8 +1,40 @@
 # ACE_STATE.md
-Last updated: 2026-09-09 · Ace 100.2
-Current Version: Ace 100.2
+Last updated: 2026-09-09 · Ace 100.3
+Current Version: Ace 100.3
 Last Shipped: 2026-09-09
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 100.3 - interview invites carry their logistics, and invoices read the client record (2026-09-09)
+
+Seven commits plus one data run. All of it is the Schedule Interview email path and the invoice editor. No schema change. Step 0 held at 3 / 10 / 85 on every prompt.
+
+**The candidate's name in the calendar drawer is a link (`e930707a`).** Clicking an interview block and then the name beside the guests icon opens that candidate's profile. `candidateId` was already on the event, but the guest list is Google's displayName-or-email strings, so nothing could say WHICH guest was the candidate: `candidateName` / `candidateEmail` now ride along from the Interview row and the match is on either. A single-guest candidate-party invite links by construction, so it still works when Google shows a name we do not hold. Both `/calendar` and the dashboard This Week widget build that payload, so both were enriched. Rendered as an `<a href>`, not a button, so the name is cmd-clickable into a new tab.
+
+**In-person invites pull the client's address (`97733385`, `1f5d6c10`).** The Address field seeds from `Client.location`. `formatClientStreetAddress` prefers the geocoder's full one-line address and collapses the comma in imported `"1740, Commerce Road"` values. Two downstream leaks were closed at the same time: `updateEventAsInvite` never set `location`, so a party invite reusing the schedule-time tracking event inherited whatever that event was created with, and `updateLocalCalendarEventDetails` never mirrored location into Neon, so Ace's own drawer read blank until the next Google sync.
+
+**Only 6 of 26 clients with a location JSON have a street address at all**, which is the real reason the field often opens blank. That is a data gap, not a code one - see ACE_ROADMAP item 19.
+
+**Phone screens now carry the call instruction (`97733385`, `1f5d6c10`, `43c7a20b`).** A phone screen has no address and no join link, so the calendar LOCATION was empty and the body said nothing useful. `buildPhoneScreenLocation` renders `"Chris to call Kaan @ 415-690-6399"` from the interviewer's first name, the candidate's first name and the candidate's phone, and it lands on `Interview.location` and on both parties' Google events. No phone on file returns "" rather than a dangling "@". The client body instructs them to call the candidate directly, the candidate body says who is calling and on what number, and both lines sit directly under the confirming sentence.
+
+**Phone numbers render dialable, not stored.** New `formatPhoneForEmail` gives `415-690-6399` rather than the E.164 `+14156906399` that `formatPhone` produces with its `+1` prefix. Applied to `[Candidate Phone]`, `[Recruiter Phone]` and the invite location.
+
+**"The calendar invite is on its way" is gone from every body (`43c7a20b`).** This email IS the invite. The phrase no longer exists anywhere in the codebase. Worth knowing: it changed nothing about what actually sends, because both saved interview templates are active and neither carried the line - the hardcoded bodies only apply when a template is missing or inactive.
+
+**The composer textarea is plain text, enforced (`28374c51`).** An earlier pass wrapped the phone number in `<b>` for Google Calendar and fixed the escaping only on the SENT side, so the recruiter still read literal `<b>` tags in the box. Every body reaching that textarea - hardcoded defaults, stored sent copies, and rich-HTML saved templates - now goes through `stripBodyHtml`. **Bold in the invite is gone, and that is the trade a plain textarea requires**: it cannot show bold and hide the tag at the same time.
+
+**An unedited body now tracks the pickers (`28374c51`).** Setting Duration to 15 left the body reading "Duration: 30 min". Edit mode seeds each editor from the stored sent copy, whose date, time and duration are literal text resolved at SEND time, so re-running the merge over it changes nothing. `restampSentCopyDateTime` moved out of `interview-actions.ts` into the client-safe `interview-format.ts` and now runs live in the editor against the interview's original values. A body the recruiter has typed in stays frozen.
+
+**The calendar block length was NOT broken.** Reported as "a 15 min interview creates a 30 minute block". Both paths compute end as start + `durationMin` (`createCalendarEvent`, `patchCalendarEventDetails`), and every interview row agrees: 30 -> 30 min block, 60 -> 60 min block, checked across six. What read as 30 minutes to a recipient was the stale "Duration: 30 min" line in the invite body, which is a symptom of the bug above. **Nothing was changed here and nothing needed to be.**
+
+**Invoices read the client's payment terms (`c63c41f7`, `28374c51`, plus a data run).** Reported as "new invoices default to Net 30 instead of the client's terms". The placement invoice path already read `Client.paymentTermsDays`; the column was simply empty on 24 of 27 clients. Mowat Mackie's signed agreement says "Net 10 calendar days" and the agreements tab shows it, but `summarizeAgreement` only auto-applies that value write-if-empty and only since that auto-apply shipped, so anything summarized earlier left the column null. Both halves fixed: the last two hardcoded `"Net 30"` fallbacks now resolve to the client's window, and `scripts/backfill-client-payment-terms.ts` filled the column from the terms line already stored in each agreement summary. **11 clients written, 14 of 27 now have terms.** Fee-split lines ("5 business days after receipt of client payment") are reported and skipped, not parsed - that is not a client payable window.
+
+**Billing and Hiring contacts are pickers (`c63c41f7`).** Both were blank text fields. Each now carries a native select of the existing contacts at that client, fed by the same `/api/clients/[id]/contacts` endpoint the composer typeahead uses, so there is one definition of who works there. Already-added people drop out of the list and a duplicate email cannot be added twice. Free-text rows and "+ Add" stay for someone new.
+
+**The blank New Invoice page can attach a client (`28374c51`).** It previously could not, at all - which is why neither fix above reached it. A Client select now seeds the payment terms and due date from the client record and loads their contacts into both pickers.
+
+**Two build breaks were found and fixed (`5486e6cf`).** `main` had been red since `1f9787ab`. The `--dry-run` preview iterated `movable.entries()`; tsconfig sets no `target`, so TS defaults to ES5 and rejects an ArrayIterator (TS2802), and `scripts/` sits inside the tsconfig `include`, so this failed the production build rather than only a local `tsc`. The second break was mine: the drawer's candidate link was a raw `<button>`, which put the file over its `check:ui` budget. **`tsc` and `next lint` both passed while `npm run build` failed** - see the new rule in ACE_RULES.md.
+
+**Not browser-verified.** Everything here was verified by rendering the bodies against real merge values, by probing live `Client.location` / `Interview` / `Invoice` rows, and by `npm run build` exiting 0. No invite was actually sent and no invoice was actually issued.
 
 ## What Shipped in Ace 100.2 - email entity escaping fixed at the root, and resumes finished moving to Blob (2026-09-09)
 
@@ -86,8 +118,10 @@ Also added an inline-image button to the composer toolbar. Pasting a screenshot 
 
 ## Next Task
 Andrew to verify in the browser, oldest first:
-1. **Send one real email from the composer** and confirm entities render as characters, not as literal `&nbsp;` / `&amp;` text. Type a trailing space after a comma and an ampersand in the body. This is the Ace 100.2 fix and it is the only one with a live symptom you have already seen.
-2. Carried from Ace 100.0: the announcement send from deals@ (confirm the From actually reads deals@ and not andrew@), the Deal Type control on both placement surfaces, and voice dictation on the installed iOS PWA. The iOS permission-prime path is the one piece that could not be checked from the terminal.
+1. **Schedule one phone screen and one in-person interview end to end.** Confirm: no `<b>` or any other tag in either composer box; the phone-screen invite location reads "Chris to call Kaan @ 415-690-6399"; the in-person Address pre-fills for a client that HAS a street address on file; changing Duration updates the "Duration: N min" line in the body; and the resulting Google block is the length you picked. This is Ace 100.3 and all of it has live symptoms you have already seen.
+2. **Open an invoice for Mowat Mackie** and confirm the terms read Net 10 rather than Net 30, and that the Billing / Hiring dropdowns list that client's real contacts.
+3. **Send one real email from the composer** and confirm entities render as characters, not as literal `&nbsp;` / `&amp;` text. Type a trailing space after a comma and an ampersand in the body. Carried from Ace 100.2, still unverified.
+4. Carried from Ace 100.0: the announcement send from deals@ (confirm the From actually reads deals@ and not andrew@), the Deal Type control on both placement surfaces, and voice dictation on the installed iOS PWA. The iOS permission-prime path is the one piece that could not be checked from the terminal.
 
 Then Prompt 10 below.
 

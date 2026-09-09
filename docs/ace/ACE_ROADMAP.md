@@ -1,7 +1,32 @@
 # Ace Roadmap
-Last updated: 2026-09-09 · Ace 100.2
+Last updated: 2026-09-09 · Ace 100.3
 
 ## Active Build Sequence
+
+### DONE this session (Ace 100.3 - interview invite logistics + invoices read the client record, 2026-09-09)
+Full detail in ACE_STATE.md ▸ Ace 100.3.
+- ~~**Candidate name in the calendar drawer links to the profile**~~ DONE (`e930707a`) - `candidateName` / `candidateEmail` carried on the event so the right guest row can be identified; rendered as an `<a href>` so it is cmd-clickable.
+- ~~**In-person invites pull the client's street address**~~ DONE (`97733385`, `1f5d6c10`) - prefers the geocoder's one-line address; closed two leaks where location never reached the party invite or the Neon mirror.
+- ~~**Phone screens carry the call instruction**~~ DONE (`97733385`, `1f5d6c10`, `43c7a20b`) - `buildPhoneScreenLocation` on the invite location plus the instruction in both bodies, directly under the confirming sentence.
+- ~~**Phone numbers render dialable**~~ DONE (`1f5d6c10`) - `formatPhoneForEmail` gives `415-690-6399`, not the stored `+14156906399`.
+- ~~**"The calendar invite is on its way" removed**~~ DONE (`43c7a20b`) - gone from the codebase. Changed nothing that actually sends: both saved templates are active and neither carried it.
+- ~~**Composer textarea is plain text, enforced**~~ DONE (`28374c51`) - `stripBodyHtml` on every body reaching the box. Bold in the invite is gone; that is the trade.
+- ~~**An unedited body tracks Duration / date / time / type / address**~~ DONE (`28374c51`) - `restampSentCopyDateTime` moved to the client-safe `interview-format.ts` and runs live in the editor.
+- ~~**Invoices read the client's payment terms**~~ DONE (`c63c41f7`, `28374c51`, plus a data run) - last two hardcoded `"Net 30"` fallbacks replaced, and `scripts/backfill-client-payment-terms.ts` filled the column from stored agreement summaries. 11 clients written; 14 of 27 now have terms.
+- ~~**Billing / Hiring contact pickers**~~ DONE (`c63c41f7`) - native select off `/api/clients/[id]/contacts`, free text still available.
+- ~~**Client picker on the blank New Invoice page**~~ DONE (`28374c51`) - it previously could not attach a client at all.
+- ~~**`main` build unbroken**~~ DONE (`5486e6cf`) - red since `1f9787ab`. ES5 iterator in `scripts/backfill-resume-blobs.ts` (TS2802) plus a raw `<button>` over the `check:ui` budget.
+- ~~**16. Em dashes committed in source comments**~~ DONE - `src/lib/email-html.ts` and `scripts/backfill-resume-blobs.ts` cleaned, along with the six comment lines this session added.
+
+### Open follow-ups from Ace 100.3
+
+**19. 21 of 27 clients have no street address on file.** Only 6 do, so the in-person Address field opens blank for most clients and there is nothing for the code to pull. One client (John W. Brooker & Co., CPAs) has no location at all, and Finsmart's record has a six-digit Indian PIN code filed under "New York, NY". Data entry, not code. The full list is in the session transcript; re-derivable with a `Client.location` probe.
+
+**20. The calendar block length was reported broken and is not.** `createCalendarEvent` and `patchCalendarEventDetails` both compute end as start + `durationMin`, confirmed against six live interview rows. Recorded so it is not re-investigated. If a genuinely wrong block appears after the Ace 100.3 deploy, it is a new bug and needs the specific interview id.
+
+**21. A duration or date change after a partial send is silently dropped.** If a send fails for one party and the recruiter changes Duration or the date before hitting Send again, `scheduledRef` short-circuits the reschedule and the change never reaches the calendar. Narrow (needs a partial failure first) and NOT fixed.
+
+**22. Client mutations are still UI-gated only.** Unchanged from earlier sessions, restated here because the invoice work touched the client read path: the ownership lock is not server-side enforced.
 
 ### DONE this session (Ace 100.2 - email entity escaping + resume Blob migration, 2026-09-09)
 Full detail in ACE_STATE.md ▸ Ace 100.2.
@@ -11,8 +36,6 @@ Full detail in ACE_STATE.md ▸ Ace 100.2.
 - ~~**`--dry-run` on the resume backfill**~~ DONE (`1f9787ab`) - lists every row that would move with sizes, writes nothing, reads sizes via `octet_length()` rather than pulling the bytes.
 
 ### Open follow-ups from Ace 100.2
-
-**16. Em dashes are committed in two source comments.** The Ace 100.2 code comment in `src/lib/email-html.ts` and the `--dry-run` header comment in `scripts/backfill-resume-blobs.ts` both contain em dashes, against the standing hyphens-only rule. Source comments are not rendered copy, so nothing user-facing is affected, but the rule does not carve them out. One cleanup pass whenever either file is next open.
 
 **17. One real send still needed to close the email fix.** Both Ace 100.2 changes are server-side and neither was browser-verified. The email path in particular has only been proven by unit test and by reproducing the old behaviour; it has not yet been proven by a delivered message. See Next Task in ACE_STATE.md.
 
