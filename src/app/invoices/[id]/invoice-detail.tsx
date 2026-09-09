@@ -116,7 +116,7 @@ export type InvoiceDetailProps = {
   // rather than a generic 30 days. Null = client has none set.
   clientPaymentTermsDays: number | null;
   // Every client in the org, for the blank New Invoice picker. Only passed by
-  // /invoices/new — a saved invoice's client is fixed, so the picker is not
+  // /invoices/new - a saved invoice's client is fixed, so the picker is not
   // rendered there and this stays undefined.
   clientOptions?: { id: string; name: string }[];
   accountExecName: string;

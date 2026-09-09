@@ -539,7 +539,7 @@ export function formatPhone(raw: string | null | undefined): string {
 }
 
 // Email-facing phone format: "415-690-6399". Same digit handling as
-// formatPhone, minus the "+1" prefix — invite copy should read as a number
+// formatPhone, minus the "+1" prefix - invite copy should read as a number
 // you would dial, not the E.164 value we store. Anything that isn't a
 // recognizable US 10/11-digit number falls back to formatPhone so an
 // international number is never mangled.

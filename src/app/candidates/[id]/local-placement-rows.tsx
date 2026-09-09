@@ -3290,7 +3290,7 @@ function ScheduleInterviewScreen({
       : "",
   );
   // In-person street address ONLY. Seeded from the interview being edited when
-  // that interview is in-person, otherwise from the client's address on file —
+  // that interview is in-person, otherwise from the client's address on file,
   // so switching Type to In-Person arrives pre-filled instead of blank. Stays
   // blank when the client has no address. A phone screen's Interview.location
   // holds the "who calls whom" line, not an address, so it must never seed

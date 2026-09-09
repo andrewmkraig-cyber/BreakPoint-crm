@@ -713,7 +713,7 @@ export function CalendarEventDrawer({
   }
 
   // Clicking the candidate's name in the guest row jumps straight to their
-  // profile (no interview deep-link — that's what Edit interview is for).
+  // profile (no interview deep-link - that's what Edit interview is for).
   function doOpenCandidate(candidateId: string) {
     onClose();
     router.push(`/candidates/${candidateId}`);

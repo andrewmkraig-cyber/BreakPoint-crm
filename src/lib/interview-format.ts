@@ -132,7 +132,7 @@ export function formatUpcomingInterviewWhen(d: Date, tz?: string): string {
 // line is where "who calls whom, at what number" belongs: the invite reads
 // "Chris to call Kaan @ (216) 555-0134" on both parties' events. Built from
 // the primary interviewer's first name, the candidate's first name and the
-// candidate's phone on file. Returns "" when there is no phone number — an
+// candidate's phone on file. Returns "" when there is no phone number - an
 // invite that says "call Kaan @" with nothing after it is worse than a blank
 // location, and blank is what the in-person path does with a missing address.
 export function buildPhoneScreenLocation(input: {

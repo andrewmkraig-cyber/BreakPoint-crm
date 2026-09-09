@@ -2,14 +2,14 @@
 // redactedData) to Vercel Blob, sets blobUrl/redactedBlobUrl, and
 // nulls the inline columns.
 //
-// Idempotent — only touches rows where the corresponding blobUrl is
+// Idempotent - only touches rows where the corresponding blobUrl is
 // still null. Safe to re-run after a partial failure.
 //
 // Run:     npx tsx scripts/backfill-resume-blobs.ts
 // Preview: npx tsx scripts/backfill-resume-blobs.ts --dry-run
 //
 // --dry-run lists every row that WOULD move, with its size, and
-// writes nothing — no Blob upload, no UPDATE. It reads sizes via
+// writes nothing - no Blob upload, no UPDATE. It reads sizes via
 // octet_length() rather than selecting the bytes, so previewing a
 // 50MB backlog costs one cheap aggregate instead of a full download.
 //
@@ -43,7 +43,7 @@ async function migrateData(): Promise<Counts> {
     const n = i + 1;
     if (!row.data || row.data.byteLength === 0) {
       counts.skipped += 1;
-      console.log(`[data] ${n}/${total}: ${row.id} — skipped (empty buffer)`);
+      console.log(`[data] ${n}/${total}: ${row.id} - skipped (empty buffer)`);
       continue;
     }
     try {
@@ -62,7 +62,7 @@ async function migrateData(): Promise<Counts> {
     } catch (e) {
       counts.errors += 1;
       const msg = e instanceof Error ? e.message : String(e);
-      console.error(`[data] ${n}/${total}: ${row.id} — ERROR ${msg}`);
+      console.error(`[data] ${n}/${total}: ${row.id} - ERROR ${msg}`);
     }
   }
   return counts;
@@ -87,7 +87,7 @@ async function migrateRedactedData(): Promise<Counts> {
     const n = i + 1;
     if (!row.redactedData || row.redactedData.byteLength === 0) {
       counts.skipped += 1;
-      console.log(`[redactedData] ${n}/${total}: ${row.id} — skipped (empty buffer)`);
+      console.log(`[redactedData] ${n}/${total}: ${row.id} - skipped (empty buffer)`);
       continue;
     }
     try {
@@ -110,7 +110,7 @@ async function migrateRedactedData(): Promise<Counts> {
     } catch (e) {
       counts.errors += 1;
       const msg = e instanceof Error ? e.message : String(e);
-      console.error(`[redactedData] ${n}/${total}: ${row.id} — ERROR ${msg}`);
+      console.error(`[redactedData] ${n}/${total}: ${row.id} - ERROR ${msg}`);
     }
   }
   return counts;
@@ -152,10 +152,10 @@ async function planPhase(
 }
 
 async function dryRun() {
-  console.log("DRY RUN — no blobs written, no rows updated.");
+  console.log("DRY RUN - no blobs written, no rows updated.");
   await planPhase("data", "blobUrl", "data");
   await planPhase("redactedData", "redactedBlobUrl", "redactedData");
-  console.log("\n=== DRY RUN COMPLETE — nothing was changed. ===");
+  console.log("\n=== DRY RUN COMPLETE - nothing was changed. ===");
   console.log("Re-run without --dry-run to perform the migration.");
   await prisma.$disconnect();
 }

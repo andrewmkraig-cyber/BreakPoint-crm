@@ -8,8 +8,8 @@ import { decodeCommonHtmlEntities } from "./ai-output-formatting";
 // container is what makes the SENT email render with consistent type and line
 // spacing in the recipient's inbox (Arial / 14px / line-height 1.55 / #111111).
 //
-// This used to exist as two byte-identical copies — htmlEmailWrap (merge-
-// fields.ts) and wrapEditorHtmlForGmail (submittal-format.ts) — while the
+// This used to exist as two byte-identical copies - htmlEmailWrap (merge-
+// fields.ts) and wrapEditorHtmlForGmail (submittal-format.ts) - while the
 // mail/reply send route wrapped nothing at all, so New Email and Reply
 // inherited the recipient client's default spacing and looked different from
 // the submittal. Consolidated here so the one container can never drift, and

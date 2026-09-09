@@ -18,7 +18,7 @@ export default async function NewInvoicePage() {
   const org = await getCurrentOrg();
   // Client roster for the picker. A blank invoice previously had no way to
   // attach a client, which is why it could never pull that client's payment
-  // terms or contacts. id + name only — the editor fetches the rest on pick.
+  // terms or contacts. id + name only - the editor fetches the rest on pick.
   const [previewNumber, billing, clientOptions] = await Promise.all([
     nextInvoiceNumber(org.id),
     getBillingSettings(),
