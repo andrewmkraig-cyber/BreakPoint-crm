@@ -499,7 +499,9 @@ export function FitnessPanel() {
   } | null>(null);
 
   const [activeTab, setActiveTab] = useState<MainTab>("record");
-  const [date, setDate] = useState(todayIsoEt());
+  const [date, setDate] = useState(
+    () => readStoredActiveSession()?.date ?? todayIsoEt(),
+  );
   const [snapshot, setSnapshot] = useState<FitnessSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -525,6 +527,7 @@ export function FitnessPanel() {
   const [viewportTick, setViewportTick] = useState(0);
   const activeSessionRef = useRef<ActiveWorkoutSession | null>(activeSession);
   const sessionDraftKeyRef = useRef("");
+  const hydratedDateRef = useRef<string | null>(null);
   const rest = useRestTimer();
   const activeSessionForDate =
     activeSession?.date === date ? activeSession : null;
@@ -540,14 +543,21 @@ export function FitnessPanel() {
     const nextDayType = storedSession
       ? (storedSession.dayType ?? "")
       : next.selectedDay?.dayType || next.dayTypes[0] || "Workout";
+    const nextDrafts = storedSession
+      ? storedSession.drafts
+      : buildDraftsForDay(next, nextDayType);
     setDayType(nextDayType);
-    setDrafts(
-      storedSession
-        ? storedSession.drafts
-        : buildDraftsForDay(next, nextDayType),
-    );
+    setDrafts(nextDrafts);
     setDirty(!!storedSession);
     setSnapshot(next);
+    // Seed the write-back key with what we just hydrated, then mark this date
+    // hydrated. Both matter: without them the sync effect below fires with the
+    // still-empty dayType/drafts and overwrites the restored session.
+    sessionDraftKeyRef.current = JSON.stringify({
+      dayType: nextDayType,
+      drafts: nextDrafts,
+    });
+    hydratedDateRef.current = next.date;
   }, []);
 
   useEffect(() => {
@@ -566,6 +576,10 @@ export function FitnessPanel() {
 
   useEffect(() => {
     if (!activeSessionForDate) return;
+    // The panel is mounted app-wide and its state starts empty, so this effect
+    // runs on every page load - long before the snapshot for this date arrives.
+    // Writing back then would clear the restored day and sets.
+    if (hydratedDateRef.current !== date) return;
     if (
       activeSessionForDate.dayType == null &&
       !dayType &&
