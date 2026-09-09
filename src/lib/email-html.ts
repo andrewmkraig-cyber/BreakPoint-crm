@@ -1,6 +1,7 @@
 import render from "dom-serializer";
 import { isTag, isText, type AnyNode, type ChildNode, type Element } from "domhandler";
 import { parseDocument } from "htmlparser2";
+import { decodeCommonHtmlEntities } from "./ai-output-formatting";
 
 // Single shared wrapper for outgoing email HTML bodies. Every Ace composer's
 // Tiptap editor emits the same paragraph HTML (<p>...</p> on Enter); this
@@ -55,7 +56,11 @@ export function normalizeEmailBodyHtml(html: string): string {
   const source = unwrapEmailHtml(html).trim();
   if (!source) return "";
 
-  const doc = parseDocument(source, { decodeEntities: false });
+  // Keep parser and serializer entity handling paired. Tiptap stores literal
+  // text symbols as HTML entities, like "&amp;" for "&"; if the parser keeps
+  // those entities encoded, render() escapes the leading ampersand again and
+  // Gmail receives "&amp;amp;".
+  const doc = parseDocument(source, { decodeEntities: true });
   doc.children = normalizeNodes(doc.children, []) as ChildNode[];
   return render(doc.children, { encodeEntities: "utf8" });
 }
@@ -90,6 +95,8 @@ function normalizeNodes(nodes: ChildNode[], ancestors: Element[]): ChildNode[] {
 
       applyAceSpacing(node, ancestors);
       node.children = normalizeNodes(node.children, [...ancestors, node]);
+    } else if (isText(node)) {
+      node.data = decodeCommonHtmlEntities(node.data);
     }
     normalized.push(node);
   }
@@ -128,7 +135,7 @@ function applyAceSpacing(el: Element, ancestors: Element[]): void {
 function unwrapEmailHtml(html: string): string {
   if (!isEmailHtmlWrapped(html)) return html;
 
-  const doc = parseDocument(html, { decodeEntities: false });
+  const doc = parseDocument(html, { decodeEntities: true });
   const meaningful = doc.children.filter((node) => {
     if (isText(node)) return node.data.trim().length > 0;
     return isTag(node);
