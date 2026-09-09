@@ -1,7 +1,22 @@
 # Ace Roadmap
-Last updated: 2026-09-05 · Ace 100.0
+Last updated: 2026-09-09 · Ace 100.2
 
 ## Active Build Sequence
+
+### DONE this session (Ace 100.2 - email entity escaping + resume Blob migration, 2026-09-09)
+Full detail in ACE_STATE.md ▸ Ace 100.2.
+- ~~**Every outgoing email double-escaped HTML entities**~~ DONE (`7f854b79`) - `src/lib/email-html.ts` parsed with `decodeEntities: false` and serialized with `encodeEntities: "utf8"`, so the bare `&` of every entity was escaped again. Fixed at BOTH parse sites. Third fix for this symptom and the first at the shared layer; the two earlier ones patched individual producers.
+- ~~**Entity regression tests wired into `check:ui`**~~ DONE (`7f854b79`) - `email-html-entities.test.ts` + `ai-output-formatting.test.ts`. The build now fails if either regresses.
+- ~~**Resumes finished moving to Vercel Blob**~~ DONE (`1f9787ab` plus a data run) - the remaining 112 rows / 50 MB moved, 0 errors. All 248 `CandidateResume` rows now carry `blobUrl`; the inline `data` column holds 0 bytes.
+- ~~**`--dry-run` on the resume backfill**~~ DONE (`1f9787ab`) - lists every row that would move with sizes, writes nothing, reads sizes via `octet_length()` rather than pulling the bytes.
+
+### Open follow-ups from Ace 100.2
+
+**16. Em dashes are committed in two source comments.** The Ace 100.2 code comment in `src/lib/email-html.ts` and the `--dry-run` header comment in `scripts/backfill-resume-blobs.ts` both contain em dashes, against the standing hyphens-only rule. Source comments are not rendered copy, so nothing user-facing is affected, but the rule does not carve them out. One cleanup pass whenever either file is next open.
+
+**17. One real send still needed to close the email fix.** Both Ace 100.2 changes are server-side and neither was browser-verified. The email path in particular has only been proven by unit test and by reproducing the old behaviour; it has not yet been proven by a delivered message. See Next Task in ACE_STATE.md.
+
+**18. `octet_length(data) > 0` is the only correct way to count a resume backlog.** `data IS NOT NULL` reports 207 rows where the real figure is 112, because the old clear-path wrote a zero-length buffer rather than null (95 rows) instead of nulling it (41 rows). Recorded so a future audit of this table does not restate the wrong number.
 
 ### DONE this session (Ace 100.0 - the deal lifecycle, and Wilson, 2026-09-05)
 Full detail in ACE_STATE.md ▸ Ace 100.0.
@@ -114,7 +129,7 @@ A code-level audit produced 15 findings. Two shipped above; Andrew explicitly sc
 
 **Foundation risk:**
 10. **23 of 24 test files never run.** `tests/unit` covers exactly the right logic (fee resolution, payment terms, geocoding, merge fields, the push contract) but only `candidates-topbar-actions.test.mjs` runs in `check:ui`; the other 23 are `.ts` and can only be run by hand via `npx tsx`, one at a time. There is also no CI at all (no `.github`), so the raw-button and RF-blob gates only ever run on Andrew's machine. A runner script wired into `check:ui` is roughly a two-hour job and directly protects the fee and invoice logic.
-11. **Two index gaps.** `CandidateResume` is indexed on `organizationId` only despite ~20 lookup sites by `candidateId` / `candidateRfId`. Separately, resume keyword search is a leading-wildcard `ILIKE` on `extractedText` (`api/candidates/search/route.ts:210`) which no btree can accelerate - fine today, steadily slower with every resume. Fix: index the two candidate columns now; enable `pg_trgm` and add a trigram index for the search, which makes the existing query fast without rewriting it. (This is the long-standing "Postgres search indexes" cleanup item, now with evidence.)
+11. **Two index gaps.** `CandidateResume` is indexed on `organizationId` only despite ~20 lookup sites by `candidateId` / `candidateRfId`. **Still open after Ace 100.2** - the Blob migration emptied the `data` column on all 248 rows, so the rows are far smaller and scans are cheaper, but no index was added and the lookup pattern is unchanged. Separately, resume keyword search is a leading-wildcard `ILIKE` on `extractedText` (`api/candidates/search/route.ts:210`) which no btree can accelerate - fine today, steadily slower with every resume. Fix: index the two candidate columns now; enable `pg_trgm` and add a trigram index for the search, which makes the existing query fast without rewriting it. (This is the long-standing "Postgres search indexes" cleanup item, now with evidence.)
 12. **Tenant scoping is sound but positional.** A scan found 65 queries against core tables with no organization filter in the query itself; roughly a dozen sampled were all safe, because the ids came out of an already-scoped query or the filter was built a few lines above. **Not a live problem and explicitly NOT a sweep** - the recommendation is a `check:ui`-style gate with the current 65 as an accepted baseline, exactly how the raw-button gate works, so new drift is caught and existing code is left alone.
 13. **Two audit trails, and oversized files.** `ActionLog` and `ActivityLog` record overlapping events and are frequently written from the same function; pick one as canonical for new event types and stop double-writing. Separately, seven files in the recruiting core are past 2,000 lines (`local-placement-rows.tsx` 3,777, `placement-actions.ts` 2,887) - the Step 0 grep rule works, but it is compensating for that rather than solving it. Opportunistic: pull one coherent piece out next time either file is open for a real feature.
 

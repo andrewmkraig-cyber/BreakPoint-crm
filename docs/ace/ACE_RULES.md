@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-09-05 · Ace 100.0
+Last updated: 2026-09-09 · Ace 100.2
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -217,6 +217,24 @@ Same lesson generalised: **an HTTP 200 is not proof a page works.** Anything tha
 PDF and other native-dependent libraries in SERVER code must be verified against Vercel's serverless bundle, NOT a local run. Local development has native binaries and library files (optional `.node` modules, worker files) that the Vercel lambda does NOT - Next's file tracing silently omits them. A fix that passes locally can do nothing in prod (this happened TWICE in one session with the same bug).
 - **Before declaring any PDF-path fix verified, simulate the serverless condition locally:** force the optional native dependency to fail to load, and/or make the worker/asset file unreachable, then reproduce the exact prod error and confirm the fix clears it.
 - **pdfjs-dist runs server-side WITHOUT a worker and WITHOUT `@napi-rs/canvas`.** We install a pure-JS `DOMMatrix` polyfill (`src/lib/pdf-node-globals.ts`, call `ensurePdfNodeGlobals()` first) and register the worker on the main thread (`await import("pdfjs-dist/legacy/build/pdf.worker.mjs")` so `globalThis.pdfjsWorker` is set and Next traces the file in). **Never reintroduce a dependence on `@napi-rs/canvas`** - its platform `.node` binary does not ship to the lambda. Full saga in ACE_STATE.md ▸ Ace 94.0.
+
+## Parser and serializer entity settings must be PAIRED (added 2026-09-09 · Ace 100.2 - PERMANENT)
+Any code that parses HTML and re-serializes it must use matching entity settings on both ends. `src/lib/email-html.ts` parsed with `decodeEntities: false` and serialized with `encodeEntities: "utf8"`: the parser left `&nbsp;` in the text node as the six literal characters `& n b s p ;`, and the serializer escaped that bare `&` into `&amp;`, so every recipient saw the literal text `&nbsp;` / `&lt;` / `&amp;` in delivered mail. Correct pairing is `decodeEntities: true` with `encodeEntities: "utf8"`.
+
+**The tell: tags render fine and only entities break.** Tags parse as elements and never pass through text escaping, so paragraphs, links, bold and inline images all look correct while the text is mangled. That asymmetry points at the serialize step, not at the composer or the editor.
+
+**Fix a recurring symptom at the shared layer, not at the newest producer.** This was the THIRD fix for the same visible bug. `afc5351f` decoded entities in AI-drafted email and earlier work did the same in the Claude panel and the compose route, each patching one producer while the shared wrapper downstream of all of them kept re-breaking anything typed by hand. When the same symptom returns through a different entry point, stop patching entry points and find the common path they share.
+
+## An irreversible production data migration gets a DRY RUN first (added 2026-09-09 · Ace 100.2 - PERMANENT)
+Any script that deletes or overwrites production data (not just adds to it) needs a `--dry-run` that lists exactly what it would touch and writes nothing, and that preview is what gets approved. The Ace 100.2 resume backfill uploads each row to Blob and then NULLS the inline column; recovery from a wrong target set is a Neon point-in-time restore.
+
+- **The preview must reuse the migration's own WHERE clause**, or it is describing a different set than the one that will run. Confirm the preview count matches the count you measured independently before running for real.
+- **A preview must not be expensive.** Read sizes with `octet_length()` rather than selecting the bytes, so previewing a 50 MB backlog costs one aggregate instead of a full download.
+- **Verify by reading the data back through the app's own accessor**, not by trusting the script's success log. The resume migration was confirmed by pulling bytes back through the same private-blob call `getResumeBytes` makes and checking them against the stored `size` column.
+- **Check the script name actually exists before running it.** The name given in the request (`scripts/migrate-resumes-to-blob.ts`) was not in the repo; the real one is `scripts/backfill-resume-blobs.ts`. Confirm which script is meant rather than substituting the nearest match silently.
+
+## Count a nullable-bytes backlog on octet_length, never on IS NOT NULL (added 2026-09-09 · Ace 100.2)
+A column that gets "cleared" may hold a zero-length buffer rather than null. On `CandidateResume`, 95 migrated rows had `data` cleared to an empty buffer and only 41 to null, so `data IS NOT NULL` reported 207 rows of backlog where the real figure was 112. Count on `octet_length(col) > 0`. The same trap applies to any Bytes column with more than one historical clear-path.
 
 ## Client descriptor in candidate-facing copy (added 2026-06-12 · Ace 94.0 - PERMANENT)
 The per-client **candidateBlurb** (an anonymized description like "a fast-growing fintech in Austin") is the ONLY client descriptor that may appear in candidate-facing templates. **Client NAMES never go to candidates.** `resolveClientBlurb` is the single resolution path for the `{{client_blurb}}` merge field across BOTH the bulk and trigger send paths - it generates a fallback blurb once when none is stored, and that one path is shared so the two never drift. Never inline a client name or hand-roll a second blurb resolver in a candidate-facing send.

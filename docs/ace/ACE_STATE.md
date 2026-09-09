@@ -1,8 +1,32 @@
 # ACE_STATE.md
-Last updated: 2026-09-06 · Ace 100.1
-Current Version: Ace 100.1
-Last Shipped: 2026-09-06
+Last updated: 2026-09-09 · Ace 100.2
+Current Version: Ace 100.2
+Last Shipped: 2026-09-09
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 100.2 - email entity escaping fixed at the root, and resumes finished moving to Blob (2026-09-09)
+
+Two commits. One bug fix at the shared layer, one data migration. No new feature, no schema change. Step 0 held at 3 / 10 / 85.
+
+**Every outgoing email was double-escaping HTML entities (`7f854b79`).** A reply sent from Ace reached the client reading `Good morning,&nbsp;` and `Founder &amp; Lead Recruiter` as literal text. The cause is in `src/lib/email-html.ts`, the single wrapper every composer body passes through: `normalizeEmailBodyHtml` parsed with `decodeEntities: false` and re-serialized with `encodeEntities: "utf8"`. The parser leaves `&nbsp;` in the text node as the six literal characters `& n b s p ;`, and the serializer then escapes that bare `&` into `&amp;`. Tags were untouched because they parse as elements, which is why paragraphs, links, bold and the signature logo all rendered correctly and only entities broke. That is what made it read like a composer bug rather than a send-path one.
+
+The fix pairs the two settings (`decodeEntities: true` at BOTH parse sites, including `unwrapEmailHtml`), plus a `decodeCommonHtmlEntities` pass over text nodes so a body arriving ALREADY double-escaped is repaired rather than merely not made worse.
+
+**This was the third fix for the same symptom and the first at the root.** `afc5351f` decoded entities in AI-drafted email; earlier work decoded them in the Claude panel and the compose route. Each patched one producer. The wrapper sits downstream of all of them, so anything a recruiter typed by hand still broke. A symptom that keeps returning through different entry points means the defect is below them.
+
+**Both entity tests now run in `check:ui`.** `tests/unit/email-html-entities.test.ts` covers all four observed symptoms plus raw typed `<` / `&`, href query strings, and wrap idempotence (drafts and scheduled sends re-enter the same path). `ai-output-formatting.test.ts` was wired in beside it. The build fails if either regresses. These are the second and third of the 24 test files to actually run - see audit item 10 in ACE_ROADMAP.md.
+
+**Resumes finished moving to Vercel Blob (`1f9787ab` plus a data run).** `CandidateResume` was split: 136 rows on Blob, 112 still holding bytes in Postgres behind the `blobUrl -> data` read fallback. `scripts/backfill-resume-blobs.ts` moved the remaining 112 (50 MB), 0 errors, 0 skipped. **All 248 rows now carry `blobUrl` and the inline `data` column holds 0 bytes.** Read-back verified through the same private-blob call `getResumeBytes` makes: byte counts matched the stored `size` column exactly and file signatures were intact.
+
+**`data IS NOT NULL` is the wrong way to count that backlog** and would have reported 207 rows rather than 112. Of the 136 already on Blob, 95 had `data` cleared to a ZERO-LENGTH BUFFER and only 41 to null, because the old clear-path wrote an empty buffer. Count resume backlogs on `octet_length(data) > 0`.
+
+**The script gained `--dry-run`.** It lists every row that would move with per-file sizes and a total, and writes nothing. It reads sizes via `octet_length()` instead of selecting the bytes, so previewing a 50 MB backlog costs one aggregate rather than a full download. The preview matched the real run exactly at 112, which is the point of it: the number that gets approved is the number that runs.
+
+The redacted phase (`redactedData` -> `redactedBlobUrl`) found 0 rows and was a no-op.
+
+**The `data` fallback in `src/lib/resume-bytes.ts` is now dead weight and stays.** Nothing reaches that branch any more. It costs nothing and is the only thing between a future un-migrated upload path and a broken resume.
+
+**Not browser-verified.** Both changes are server-side. The email fix needs one real send from the composer to confirm entities render correctly in a delivered message; the resume migration was verified by reading bytes back rather than by opening a resume in the UI.
 
 ## What Shipped in Ace 100.1 - headline meters follow the period selector (2026-09-06)
 
@@ -61,7 +85,11 @@ Also added an inline-image button to the composer toolbar. Pasting a screenshot 
 **Not browser-verified.** Every change passed `next build`, `tsc --noEmit`, `next lint` and `check:ui`, and the email bodies were test-rendered across full / sparse / vowel-title cases. Andrew verified cancel and reinstate live. The announcement send, the deal-type control and voice dictation on the iOS PWA are unverified in a real browser.
 
 ## Next Task
-Andrew to verify in the browser: the announcement send from deals@ (confirm the From actually reads deals@ and not andrew@), the Deal Type control on both placement surfaces, and voice dictation on the installed iOS PWA - the iOS permission-prime path is the one piece that could not be checked from the terminal. Then Prompt 10 below.
+Andrew to verify in the browser, oldest first:
+1. **Send one real email from the composer** and confirm entities render as characters, not as literal `&nbsp;` / `&amp;` text. Type a trailing space after a comma and an ampersand in the body. This is the Ace 100.2 fix and it is the only one with a live symptom you have already seen.
+2. Carried from Ace 100.0: the announcement send from deals@ (confirm the From actually reads deals@ and not andrew@), the Deal Type control on both placement surfaces, and voice dictation on the installed iOS PWA. The iOS permission-prime path is the one piece that could not be checked from the terminal.
+
+Then Prompt 10 below.
 
 Prompt 10: dollar labels on the revenue meter bar (current earned at the fill edge, expected-to-date at the pace marker, target at the track end, gap in the empty space) plus month markers at the one-third and two-thirds points of a quarter.
 
