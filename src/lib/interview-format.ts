@@ -7,6 +7,7 @@
 // formatter hardcoded ET, which silently truncated zone info from any
 // PT/CT/MT-scheduled interview's email body.
 
+import { formatPhoneForEmail } from "@/lib/rf-payload-shapes";
 import { abbrForTimeZone, DEFAULT_INTERVIEW_TIMEZONE } from "@/lib/timezones";
 
 // Pre-built ET formatters for the "we never asked the recruiter for a
@@ -140,7 +141,8 @@ export function buildPhoneScreenLocation(input: {
   candidateFirstName?: string | null;
   candidatePhone?: string | null;
 }): string {
-  const phone = (input.candidatePhone ?? "").trim();
+  // Dialable form, not the stored E.164: "415-690-6399", never "+14156906399".
+  const phone = formatPhoneForEmail(input.candidatePhone);
   if (!phone) return "";
   const caller =
     firstWord(input.interviewerName) || (input.clientName ?? "").trim() || "The client";

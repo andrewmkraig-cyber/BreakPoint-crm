@@ -538,6 +538,23 @@ export function formatPhone(raw: string | null | undefined): string {
   return raw;
 }
 
+// Email-facing phone format: "415-690-6399". Same digit handling as
+// formatPhone, minus the "+1" prefix — invite copy should read as a number
+// you would dial, not the E.164 value we store. Anything that isn't a
+// recognizable US 10/11-digit number falls back to formatPhone so an
+// international number is never mangled.
+export function formatPhoneForEmail(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const digits = String(raw).replace(/\D/g, "");
+  if (digits.length === 10) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `${digits.slice(1, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return formatPhone(raw);
+}
+
 // Normalizes a raw phone to storage form with country code. If a `+` prefix is
 // already present we trust it (won't double-add). 10-digit bare numbers are
 // treated as US and get `+1` prepended. 11-digit numbers starting with 1 are

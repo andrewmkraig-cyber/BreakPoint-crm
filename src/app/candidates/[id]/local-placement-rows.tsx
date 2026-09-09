@@ -97,7 +97,7 @@ import {
   formatInterviewWhen,
 } from "@/lib/interview-format";
 import { StageBadge } from "@/components/stage-badge";
-import type { PipelineBucket } from "@/lib/rf-payload-shapes";
+import { formatPhoneForEmail, type PipelineBucket } from "@/lib/rf-payload-shapes";
 import { cn } from "@/lib/utils";
 import {
   HOURS_PER_YEAR_FOR_HOURLY_PLACEMENT,
@@ -2958,7 +2958,8 @@ function buildValues(args: {
     candidateLastName: args.candidate.lastName,
     candidateFullName,
     candidateEmail: args.candidate.email ?? "",
-    candidatePhone: args.candidate.phone ?? "",
+    // Dialable form for invite copy: "415-690-6399", not the stored E.164.
+    candidatePhone: formatPhoneForEmail(args.candidate.phone),
     candidateLocation: args.candidate.location ?? "",
     candidateCurrentTitle: args.candidate.currentTitle ?? "",
     candidateCurrentEmployer: args.candidate.currentEmployer ?? "",
@@ -2990,7 +2991,7 @@ function buildValues(args: {
     recruiterFullName: args.recruiter.fullName,
     recruiterName: args.recruiter.fullName,
     recruiterEmail: args.recruiter.email,
-    recruiterPhone: args.recruiter.phone,
+    recruiterPhone: formatPhoneForEmail(args.recruiter.phone),
   };
 }
 
@@ -3038,20 +3039,19 @@ function defaultInPersonClientBody(interviewerLabel: string): string {
 // Calendar renders that bold in the invite the client receives.
 function defaultPhoneScreenClientBody(): string {
   return (
-    `[Greeting]\n\nConfirming the phone interview with [Candidate Full Name] for the [Job Title] role. ` +
-    `The calendar invite is on its way.\n\n` +
-    `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]\n\n` +
+    `[Greeting]\n\nConfirming the phone interview with [Candidate Full Name] for the [Job Title] role.\n\n` +
     `Please call [Candidate Full Name] directly at <b>[Candidate Phone]</b> at the scheduled time.\n\n` +
+    `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]\n\n` +
     `Reply to this email if anything needs to change.`
   );
 }
 function defaultPhoneScreenCandidateBody(interviewerLabel: string): string {
   return (
     `Hi [Candidate First Name],\n\nYou are confirmed for your phone interview with [Client Company Name] ` +
-    `for the [Job Title] role. The calendar invite is on its way.\n\n` +
-    `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]\n\n` +
+    `for the [Job Title] role.\n\n` +
     `${interviewerLabel} will call you at [Candidate Phone] at the scheduled time, so please have your ` +
     `phone with you and be somewhere quiet.\n\n` +
+    `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]\n\n` +
     `Good luck!`
   );
 }

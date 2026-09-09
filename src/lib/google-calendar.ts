@@ -433,6 +433,12 @@ export type UpdateEventAsInviteInput = {
   eventId: string;
   summary?: string;
   description?: string;
+  // Event location. Set it here so a party invite that REUSES the
+  // schedule-time tracking event still carries the address (in-person) or
+  // the call instruction (phone screen). Without this the patch inherits
+  // whatever the tracking event was created with, so a location added or
+  // changed after scheduling never reached the invite the guest received.
+  location?: string;
   newAttendees: { email: string; displayName?: string }[];
 };
 
@@ -465,11 +471,17 @@ export async function updateEventAsInvite(input: UpdateEventAsInviteInput): Prom
   const patchBody: Record<string, unknown> = { attendees: next };
   if (input.summary !== undefined) patchBody.summary = input.summary;
   if (input.description !== undefined) patchBody.description = input.description;
+  if (input.location !== undefined) patchBody.location = input.location;
 
   // Nothing to write — no new attendees AND no header changes. Avoid a
   // no-op PATCH that would still mail every existing attendee a
   // pointless "updated" notification.
-  if (added === 0 && input.summary === undefined && input.description === undefined) {
+  if (
+    added === 0 &&
+    input.summary === undefined &&
+    input.description === undefined &&
+    input.location === undefined
+  ) {
     return;
   }
 

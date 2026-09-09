@@ -54,6 +54,10 @@ export type ClientListRow = {
 type LocationJson = {
   street_address_1?: string | null;
   street_address_2?: string | null;
+  // Full one-line address as the geocoder returned it, e.g.
+  // "1740 Commerce Road, Springfield, OH, USA". Present on the rows that
+  // came in with a resolved place; the preferred source for invite copy.
+  location?: string | null;
   city?: string | null;
   state?: string | null;
   postal_code?: string | null;
@@ -77,7 +81,15 @@ function compactLocation(raw: LocationJson): string {
 export function formatClientStreetAddress(raw: unknown): string {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "";
   const loc = raw as LocationJson;
-  const street1 = loc?.street_address_1?.trim() ?? "";
+  // Prefer the geocoder's full one-line address. It is the cleanest form we
+  // hold ("1740 Commerce Road, Springfield, OH, USA") and it is populated on
+  // rows where the split street fields are not. Drop a trailing ", USA" so
+  // the invite reads like a domestic address.
+  const full = loc?.location?.trim() ?? "";
+  if (full) return full.replace(/,\s*(USA|United States)\s*$/i, "").trim();
+  // Split fields next. street_address_1 arrives comma-separated on imported
+  // rows ("1740, Commerce Road"); collapse that so the line reads normally.
+  const street1 = (loc?.street_address_1 ?? "").trim().replace(/,\s*/g, " ").trim();
   if (!street1) return "";
   const street2 = loc?.street_address_2?.trim() ?? "";
   return [street1, street2, compactLocation(loc)].filter(Boolean).join(", ");

@@ -269,6 +269,26 @@ export function plainToHtml(text: string): string {
   return `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.55; color: #111111; white-space: pre-wrap;">${esc}</div>`;
 }
 
+// Same as plainToHtml, but keeps the handful of INLINE formatting tags our
+// own generated copy emits (<b>/<strong>/<i>/<em>) instead of escaping them
+// into visible "<b>" text. Everything else is still escaped, so a stray
+// angle bracket in recruiter-typed copy can never inject markup. Used by the
+// interview-invite Bcc copy, whose body carries a bolded phone number.
+export function inlineFormattedTextToHtml(text: string): string {
+  const esc = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  const withInline = esc.replace(/&lt;(\/?)(b|strong|i|em)&gt;/gi, "<$1$2>");
+  return `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.55; color: #111111; white-space: pre-wrap;">${withInline}</div>`;
+}
+
+// Drops those same inline tags for the text/plain alternative, so a
+// plain-text reader sees "415-690-6399" rather than "<b>415-690-6399</b>".
+export function stripInlineFormattingTags(text: string): string {
+  return text.replace(/<\/?(?:b|strong|i|em)>/gi, "");
+}
+
 // Attach the user's stored signature to the body exactly once. If the body
 // already ends with that signature (or contains it anywhere), we don't add
 // another copy. Templates are expected to NOT bake in a signature so this

@@ -15,7 +15,11 @@ import {
   patchCalendarEventDetails,
   updateEventAsInvite,
 } from "@/lib/google-calendar";
-import { sendGmail } from "@/lib/gmail";
+import {
+  inlineFormattedTextToHtml,
+  sendGmail,
+  stripInlineFormattingTags,
+} from "@/lib/gmail";
 import {
   formatInterviewDate,
   formatInterviewTime,
@@ -302,6 +306,10 @@ async function updateLocalCalendarEventDetails(args: {
   googleEventId: string | null;
   title: string;
   description: string;
+  // Mirrored alongside the title/description so Ace's own event drawer shows
+  // the address (or the phone-screen call line) immediately, instead of
+  // blank until the next Google sync backfills it.
+  location?: string | null;
 }): Promise<void> {
   if (!args.googleEventId) return;
   try {
@@ -310,6 +318,7 @@ async function updateLocalCalendarEventDetails(args: {
       data: {
         title: args.title,
         description: args.description,
+        ...(args.location !== undefined ? { location: args.location } : {}),
         status: "CONFIRMED",
         syncedAt: new Date(),
       },
@@ -1383,6 +1392,7 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
         eventId: eventToPatch,
         summary: title,
         description,
+        location: calendarLocation ?? "",
         newAttendees,
       });
     } catch (e) {
@@ -1397,6 +1407,7 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
       googleEventId,
       title,
       description,
+      location: calendarLocation ?? null,
     });
   } else {
     const sourceEventId = otherPartyEventId ?? interview.googleEventIdMine;
@@ -1587,6 +1598,10 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
       // visible To; any others are Bcc'd so multiple private observers never
       // see one another.
       const [primaryBcc, ...otherBcc] = bccList;
+      // Send BOTH alternatives explicitly. Without an html part, withSignature
+      // falls back to plainToHtml, which escapes the <b> around the phone
+      // number so the recipient reads a literal "<b>415-690-6399</b>". The
+      // text/plain alternative drops the tags instead of escaping them.
       await sendGmail({
         userId: user.id,
         from: user.email,
@@ -1594,7 +1609,8 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
         to: [primaryBcc],
         bcc: otherBcc.length > 0 ? otherBcc : undefined,
         subject: resolvedSubject,
-        bodyText: copyBody,
+        bodyText: stripInlineFormattingTags(copyBody),
+        bodyHtml: inlineFormattedTextToHtml(copyBody),
       });
     } catch (e) {
       // eslint-disable-next-line no-console
