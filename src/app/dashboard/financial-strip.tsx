@@ -24,9 +24,18 @@ const BILLING_TOWER_OPTIONS = (
   { selection: { grain: "YEAR", offset: 0 }, label: "Annual / YTD" },
 ];
 
+// Popup heading per drillable number. Matches the tile labels exactly.
+const DRILLDOWN_TITLE = {
+  revenue: "Revenue Billed",
+  collected: "Cash Collected",
+  outstanding: "Outstanding",
+} as const;
+
 // Billing Tower summary strip. One big-panel card with a header row
-// ("Billing Tower" eyebrow + period selector) and a 3-column metrics
-// row underneath: Revenue / Outstanding / Goal Progress.
+// ("Billing Tower" eyebrow + period selector) and a metrics row
+// underneath: Revenue Billed / Cash Collected / Outstanding / Goal
+// Progress. Four across at xl; below that the three money figures share
+// a row and Goal Progress drops to its own full-width row.
 //
 // Period selector drives a server-action refetch — picking Next
 // Quarter pulls Q3's revenue + outstanding + goal progress through the
@@ -40,6 +49,8 @@ const BILLING_TOWER_OPTIONS = (
 //                 "Booked placement revenue" — paid + unpaid both
 //                 count. Q2 with a paid $7,500 + Ethan's unpaid
 //                 $3,750 inst1 reads $11,250.
+//   Collected   - the paid subset of Revenue, same window and same
+//                 bucketing. Revenue = Collected + Outstanding, always.
 //   Outstanding — the unpaid subset of Revenue. Period-bounded, so
 //                 selecting Next Quarter shows the next-quarter
 //                 outstanding only.
@@ -63,13 +74,17 @@ export function FinancialStrip({
   // pattern in clubhouse-kpi-grid.tsx — click the number, get the rows
   // behind it. Goal Progress is not drillable: it is a ratio of Revenue
   // against a fixed target, so its rows ARE the Revenue rows.
-  const [drilldown, setDrilldown] = useState<"revenue" | "outstanding" | null>(null);
+  const [drilldown, setDrilldown] = useState<keyof typeof DRILLDOWN_TITLE | null>(null);
 
   const clampedPct = Math.max(0, Math.min(100, data.goalPct));
   const revenueMeta =
     data.revenueCount > 0
       ? `${data.revenueCount} placement${data.revenueCount === 1 ? "" : "s"}`
       : "No placements yet";
+  const collectedMeta =
+    data.collectedCount > 0
+      ? `${data.collectedCount} paid invoice${data.collectedCount === 1 ? "" : "s"}`
+      : "Nothing collected yet";
   const outstandingMeta =
     data.outstandingCount > 0
       ? `${data.outstandingCount} open invoice${data.outstandingCount === 1 ? "" : "s"}`
@@ -104,15 +119,22 @@ export function FinancialStrip({
       </div>
       <div
         className={cn(
-          "mt-2.5 grid grid-cols-1 items-center gap-5 transition-opacity sm:grid-cols-[1fr_1fr_1.6fr] sm:gap-7",
+          "mt-2.5 grid grid-cols-1 items-center gap-5 transition-opacity sm:grid-cols-3 sm:gap-7 xl:grid-cols-[1fr_1fr_1fr_1.4fr]",
           pending && "opacity-60",
         )}
       >
         <Stat
-          label="Revenue"
+          label="Revenue Billed"
           value={formatUsdExact(data.revenueUsd)}
           meta={revenueMeta}
           onDrill={() => setDrilldown("revenue")}
+        />
+        <Stat
+          label="Cash Collected"
+          value={formatUsdExact(data.collectedUsd)}
+          meta={collectedMeta}
+          divider
+          onDrill={() => setDrilldown("collected")}
         />
         <Stat
           label="Outstanding"
@@ -133,7 +155,7 @@ export function FinancialStrip({
       {drilldown && (
         <BillingDetailDialog
           kind={drilldown}
-          title={drilldown === "revenue" ? "Revenue" : "Outstanding"}
+          title={DRILLDOWN_TITLE[drilldown]}
           // Opens on the window the tower is currently showing, so the
           // popup total reconciles to the number that was clicked.
           defaultSelection={selection}
@@ -184,7 +206,7 @@ function Stat({
         divider && "sm:border-l-2 sm:border-court-border-soft sm:pl-5",
         // Affordance is a color shift on the number, not a padded hover
         // block: the stats sit in a fixed grid with a left-edge divider on
-        // Outstanding, so any margin/padding change would slide that rule
+        // Collected and Outstanding, so any margin/padding change would slide that rule
         // and the number out of their designed positions.
         onDrill &&
           "group cursor-pointer rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40",
@@ -196,10 +218,11 @@ function Stat({
       <div
         className={cn(
           // Exact dollars are longer than the old compact form
-          // ($1,250,000 vs $1.25M), and the 3-up grid is at its tightest
-          // right at the sm breakpoint - the number steps down there so a
-          // seven-figure annual total can't run under the divider.
-          "mt-0.5 font-serif text-[32px] font-bold leading-none tracking-[-0.02em] tabular-nums transition-colors sm:text-[26px] md:text-[32px]",
+          // ($1,250,000 vs $1.25M). From sm to lg the three money figures
+          // share a row beside the sidebar at their tightest; the number
+          // steps down there so a seven-figure annual total can't run
+          // under the divider.
+          "mt-0.5 font-serif text-[32px] font-bold leading-none tracking-[-0.02em] tabular-nums transition-colors sm:text-[26px] lg:text-[32px]",
           dim ? "text-court-fg-dim" : "text-court-fg",
           onDrill && "group-hover:text-court-brand-dark",
         )}
@@ -230,7 +253,7 @@ function GoalStat({
   remainingUsd: number;
 }) {
   return (
-    <div className="flex min-w-0 flex-col sm:border-l-2 sm:border-court-border-soft sm:pl-6">
+    <div className="flex min-w-0 flex-col sm:col-span-3 sm:border-t-2 sm:border-court-border-soft sm:pt-4 xl:col-span-1 xl:border-l-2 xl:border-t-0 xl:pl-6 xl:pt-0">
       <div className="text-[10px] font-extrabold uppercase tracking-wide text-court-brand-dark">
         Goal Progress · {formatUsdExact(goalUsd)} {goalPeriodLabel}
       </div>

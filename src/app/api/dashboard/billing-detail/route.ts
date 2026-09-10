@@ -19,21 +19,22 @@ export const dynamic = "force-dynamic";
 // tiles above the tower.
 //
 // Given a kind + time range, returns the individual billing events that
-// roll up into the tower's Revenue and Outstanding numbers. Both kinds read
+// roll up into the tower's Revenue, Collected and Outstanding numbers. Both kinds read
 // getBillingEventsForRange, the SAME helper getBillingSummaryForRange totals,
 // so the row list always reconciles to the number that opened it:
 //
 //   revenue     — every event in the window (paid + unpaid)
+//   collected   - the status === "paid" subset of the same list
 //   outstanding — the status !== "paid" subset of the same list
 //
 // Query params:
-//   kind  = revenue | outstanding
+//   kind  = revenue | collected | outstanding
 //   range = encoded TimeRangeSelection, e.g. "quarter.0" / "year.0"
 //           (defaults to the current quarter, the tower's default window)
 //
 // Every read is org-scoped via getCurrentOrg() (Rule 8).
 
-const KINDS = ["revenue", "outstanding"] as const;
+const KINDS = ["revenue", "collected", "outstanding"] as const;
 type Kind = (typeof KINDS)[number];
 
 export type BillingDetailRow = {
@@ -112,10 +113,14 @@ export async function GET(req: NextRequest) {
   const { start, endExclusive, label } = timeRange(selection, now);
 
   const events = await getBillingEventsForRange(org.id, start, endExclusive, prisma);
-  // Outstanding is the unpaid subset of Revenue — the exact same split
-  // getBillingSummaryForRange applies when it totals the two tiles.
+  // Collected and Outstanding are the paid and unpaid subsets of Revenue -
+  // the exact same split getBillingSummaryForRange applies to the tiles.
   const scoped =
-    kind === "outstanding" ? events.filter((e) => e.status !== "paid") : events;
+    kind === "collected"
+      ? events.filter((e) => e.status === "paid")
+      : kind === "outstanding"
+        ? events.filter((e) => e.status !== "paid")
+        : events;
 
   // Soonest-first: the tower is a forward-looking billing view, so the
   // next dollar to land reads at the top.

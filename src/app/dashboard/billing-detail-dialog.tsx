@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { encodeTimeRange, type TimeRangeSelection } from "@/lib/time-range";
 import type { BillingDetailResponse } from "@/app/api/dashboard/billing-detail/route";
 
-// Billing Tower drill-down popup — the Revenue / Outstanding sibling of
+// Billing Tower drill-down popup - the Revenue / Collected / Outstanding sibling of
 // KpiDetailDialog. Same chrome (backdrop, panel, header, TabStrip rail,
 // scrolling row list) so clicking a tower number feels identical to
 // clicking a KPI tile above it.
@@ -53,7 +53,7 @@ export function BillingDetailDialog({
   defaultSelection,
   onClose,
 }: {
-  kind: "revenue" | "outstanding";
+  kind: "revenue" | "collected" | "outstanding";
   title: string;
   defaultSelection: TimeRangeSelection;
   onClose: () => void;
@@ -165,7 +165,9 @@ export function BillingDetailDialog({
             <div className="rounded-lg border border-dashed border-court-border bg-court-surface-subtle px-4 py-8 text-center text-sm text-court-fg-muted">
               {kind === "outstanding"
                 ? "Nothing outstanding in this period"
-                : "No billing lines in this period"}
+                : kind === "collected"
+                  ? "Nothing collected in this period"
+                  : "No billing lines in this period"}
             </div>
           )}
           {!loading && !error && data && data.rows.length > 0 && (

@@ -12,6 +12,9 @@ import { timeRange, type TimeRangeSelection } from "@/lib/time-range";
 export type BillingTowerData = {
   revenueUsd: number;
   revenueCount: number;
+  // Paid subset of revenue. revenue = collected + outstanding, to the cent.
+  collectedUsd: number;
+  collectedCount: number;
   outstandingUsd: number;
   outstandingCount: number;
   goalUsd: number;
@@ -34,7 +37,7 @@ function goalForSelection(sel: TimeRangeSelection): {
 }
 
 // Compute the full Billing Tower payload for a window — Revenue,
-// Outstanding, Goal Progress + label. Used both by the initial render
+// Collected, Outstanding, Goal Progress + label. Used both by the initial render
 // (my-dashboard.tsx passes the current-quarter payload down) and the
 // dropdown-driven refetch (financial-strip.tsx calls this server
 // action when the user picks a different window).
@@ -57,6 +60,8 @@ export async function getBillingTowerData(
   return {
     revenueUsd,
     revenueCount: summary.revenueCount,
+    collectedUsd: summary.collectedCents / 100,
+    collectedCount: summary.collectedCount,
     outstandingUsd: summary.outstandingCents / 100,
     outstandingCount: summary.outstandingCount,
     goalUsd,

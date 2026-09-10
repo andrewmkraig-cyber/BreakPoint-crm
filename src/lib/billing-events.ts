@@ -405,6 +405,10 @@ export function sumEventsCents(
 //                  not just what cash hit the bank. Q2 with a paid
 //                  $7,500 placement + Ethan's unpaid $3,750 inst1 reads
 //                  $11,250.
+// Collected      - paid events with scheduledAt in [start, end). The paid
+//                  half of Revenue, so Revenue = Collected + Outstanding to
+//                  the cent. Bucketed like Revenue (by scheduledAt, not
+//                  paidAt) precisely so the three tiles reconcile.
 // Outstanding    — unpaid events (sent/draft/future_draft/scheduled)
 //                  with scheduledAt in [start, end). Period-bounded so
 //                  selecting Next Quarter shows the unpaid portion of
@@ -421,6 +425,8 @@ type PrismaLike = typeof import("@/lib/prisma").prisma;
 export type BillingSummary = {
   revenueCents: number;
   revenueCount: number;
+  collectedCents: number;
+  collectedCount: number;
   outstandingCents: number;
   outstandingCount: number;
   bookedCents: number;
@@ -540,9 +546,10 @@ async function loadBillingEventsInWindow(
 }
 
 // Every billing event landing in [start, end), with its placement attached.
-// Backs the Billing Tower Revenue / Outstanding drill-downs: Revenue is
-// this whole list, Outstanding is the `status !== "paid"` subset — exactly
-// the split getBillingSummaryForRange totals below.
+// Backs the Billing Tower Revenue / Collected / Outstanding drill-downs:
+// Revenue is this whole list, Collected is the `status === "paid"` subset and
+// Outstanding is the `status !== "paid"` subset - exactly the split
+// getBillingSummaryForRange totals below.
 export async function getBillingEventsForRange(
   organizationId: string,
   start: Date,
@@ -568,6 +575,8 @@ export async function getBillingSummaryForRange(
 
   let revenueCents = 0;
   let revenueCount = 0;
+  let collectedCents = 0;
+  let collectedCount = 0;
   let outstandingCents = 0;
   let outstandingCount = 0;
 
@@ -576,8 +585,12 @@ export async function getBillingSummaryForRange(
     // event regardless of payment status.
     revenueCents += e.amountCents;
     revenueCount += 1;
-    // Outstanding — the unpaid subset of Revenue.
-    if (e.status !== "paid") {
+    // Collected and Outstanding partition Revenue: every event lands in
+    // exactly one of them, so the two always sum back to Revenue.
+    if (e.status === "paid") {
+      collectedCents += e.amountCents;
+      collectedCount += 1;
+    } else {
       outstandingCents += e.amountCents;
       outstandingCount += 1;
     }
@@ -586,6 +599,8 @@ export async function getBillingSummaryForRange(
   return {
     revenueCents,
     revenueCount,
+    collectedCents,
+    collectedCount,
     outstandingCents,
     outstandingCount,
     // bookedCents kept as an alias for revenueCents — older callers
