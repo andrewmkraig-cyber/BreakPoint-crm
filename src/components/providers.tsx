@@ -12,6 +12,7 @@ import { ToastStackControls } from "@/components/toast-stack-controls";
 import { MinimizedDraftsProvider } from "@/lib/minimized-drafts-context";
 import { ComposerManagerProvider } from "@/lib/composer-manager";
 import { FloatingThreadProvider } from "@/lib/floating-thread-context";
+import { FloatingResumeProvider } from "@/lib/floating-resume-context";
 import { PhonePanelsProvider } from "@/lib/phone-panels-context";
 import { FindMatchesProvider } from "@/lib/find-matches-context";
 import { ClaudePanelProvider } from "@/lib/claude-panel-context";
@@ -21,6 +22,7 @@ import { YouTubePanelProvider } from "@/components/youtube-panel/YouTubePanelPro
 import { SpotifyPanelProvider } from "@/components/spotify-panel/SpotifyPanelProvider";
 import { MinimizedTray } from "@/components/composer/minimized-tray";
 import { FloatingThreadWindow } from "@/components/mail/floating-thread-window";
+import { FloatingResumeWindow } from "@/components/resume/floating-resume-window";
 import { GlobalPhonePanels } from "@/components/phone/global-phone-panels";
 import { FindMatchesPanel } from "@/components/game-plan/find-matches-panel";
 import { ClaudePanel } from "@/components/claude-panel/ClaudePanel";
@@ -64,28 +66,31 @@ export function Providers({ children }: { children: ReactNode }) {
                     <CalendarDrawerProvider>
                       <YouTubePanelProvider>
                         <SpotifyPanelProvider>
-                          {children}
-                          <MinimizedTray />
-                          <FloatingThreadWindow />
-                          <GlobalPhonePanels />
-                          <FindMatchesPanel />
-                          <ClaudePanel />
-                          <FitnessPanel />
-                          <GlobalCalendarDrawer />
-                          <YouTubePanel />
-                          <SpotifyPanel />
-                          <Toaster
-                            position={toastPosition}
-                            richColors
-                            closeButton
-                            toastOptions={{
-                              style: {
-                                fontFamily:
-                                  "var(--font-inter), system-ui, sans-serif",
-                              },
-                            }}
-                          />
-                          <ToastStackControls stackDir={stackDir} />
+                          <FloatingResumeProvider>
+                            {children}
+                            <MinimizedTray />
+                            <FloatingThreadWindow />
+                            <FloatingResumeWindow />
+                            <GlobalPhonePanels />
+                            <FindMatchesPanel />
+                            <ClaudePanel />
+                            <FitnessPanel />
+                            <GlobalCalendarDrawer />
+                            <YouTubePanel />
+                            <SpotifyPanel />
+                            <Toaster
+                              position={toastPosition}
+                              richColors
+                              closeButton
+                              toastOptions={{
+                                style: {
+                                  fontFamily:
+                                    "var(--font-inter), system-ui, sans-serif",
+                                },
+                              }}
+                            />
+                            <ToastStackControls stackDir={stackDir} />
+                          </FloatingResumeProvider>
                         </SpotifyPanelProvider>
                       </YouTubePanelProvider>
                     </CalendarDrawerProvider>

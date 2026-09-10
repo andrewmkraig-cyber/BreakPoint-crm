@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { DocumentDropzone } from "@/components/document-dropzone";
 import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
+import { useFloatingResume } from "@/lib/floating-resume-context";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import {
   convertDocxResumeToPdf,
@@ -223,6 +224,7 @@ export function EditableResume({
   // mark map indexes off the same TOKEN_COLORS order so each token's chip
   // hue and in-doc highlight hue stay locked together.
   const tokenMarkMap = useMemo(() => buildTokenMarkBgMap(tokens), [tokens]);
+  const floatingResume = useFloatingResume();
 
   async function onFiles(files: File[]) {
     const file = files[0];
@@ -491,6 +493,23 @@ export function EditableResume({
   // be looking at a branded or redacted derivative and want to add more
   // marks on top. DOC/DOCX resumes can't be edited (pdf-lib only).
   const canEdit = !docx && selected.mimeType === "application/pdf";
+  // Pop-out opens the version being previewed, through the same URL the
+  // inline viewer renders, so the floating copy is always the same document.
+  const popOutSrc =
+    selected.mimeType === "application/pdf" || selected.kind === "redacted"
+      ? previewUrl
+      : docx
+        ? asPdfUrlFor(selected)
+        : null;
+  const onPopOut =
+    floatingResume && popOutSrc
+      ? (sourceWidth: number) =>
+          floatingResume.open({
+            src: popOutSrc,
+            title: dropdownLabelFor(selected),
+            sourceWidth,
+          })
+      : undefined;
 
   return (
     <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
@@ -672,6 +691,7 @@ export function EditableResume({
               className="min-h-[900px] w-full rounded-b-xl"
               highlightTokens={tokens}
               highlightClassMap={tokenMarkMap}
+              onPopOut={onPopOut}
             />
           ) : docx ? (
             <PdfCanvasViewer
@@ -680,6 +700,7 @@ export function EditableResume({
               className="min-h-[900px] w-full rounded-b-xl"
               highlightTokens={tokens}
               highlightClassMap={tokenMarkMap}
+              onPopOut={onPopOut}
             />
           ) : (
             <div className="flex h-64 flex-col items-center justify-center gap-2 border-t border-dashed border-court-border bg-court-surface-subtle/40 text-sm text-court-fg-muted">

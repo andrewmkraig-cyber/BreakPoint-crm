@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Minus, Plus, RotateCcw } from "lucide-react";
+import { Loader2, Minus, PictureInPicture2, Plus, RotateCcw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   loadPdfjs,
   type PdfJsDocument,
@@ -41,6 +42,10 @@ export type PdfCanvasViewerProps = {
   // Tailwind class string applied to the <mark>'s background. Falls back
   // to a neutral amber if a match's token isn't in the map.
   highlightClassMap?: Map<string, string>;
+  // When set, a pop-out button renders left of the zoom controls. Receives
+  // the viewer's rendered width so the floating copy can open at half of it
+  // (see src/lib/floating-resume-context.tsx).
+  onPopOut?: (sourceWidth: number) => void;
 };
 
 const MIN_SCALE = 0.5;
@@ -63,6 +68,7 @@ export function PdfCanvasViewer({
   initialScale = "fit",
   highlightTokens,
   highlightClassMap,
+  onPopOut,
 }: PdfCanvasViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
@@ -262,6 +268,19 @@ export function PdfCanvasViewer({
           {loading ? "Loading…" : err ? "Failed to load" : `${pct}%${usingFit ? " · fit to width" : ""}`}
         </div>
         <div className="flex items-center gap-1">
+          {onPopOut && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onPopOut(containerRef.current?.clientWidth ?? 0)}
+              className="h-6 w-6 rounded border border-court-border bg-court-surface p-0 text-court-fg-muted shadow-none hover:text-court-fg"
+              title="Pop out"
+              aria-label="Pop out resume"
+            >
+              <PictureInPicture2 className="h-3 w-3" />
+            </Button>
+          )}
           <button
             type="button"
             onClick={zoomOut}
