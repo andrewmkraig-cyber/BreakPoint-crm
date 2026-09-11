@@ -141,12 +141,18 @@ export function AppShell({
 
   // /candidates owns its own full-viewport split-view layout (filter
   // aside + iframe) and breaks out of main's px-3/px-8 padding with
-  // negative margins. The xl+ max-w-[1600px] + mx-auto cap below adds
-  // a centering margin on monitors wider than ~1900px that those
-  // negative margins can't escape, opening a gap to the left of the
-  // filter aside. Drop the cap for this route so the wrapper's
-  // existing -ml-[18px/22px/38px/54px] still lands flush with the
-  // sidebar edge.
+  // negative margins, so it keeps its own padding scale below.
+  //
+  // The xl+ `mx-auto max-w-[1600px]` cap that used to sit on the
+  // non-full-bleed branch is GONE (2026-09-11). TopBar renders outside
+  // <main> and always spans the full column, so on any display wider
+  // than ~1750px the cap centered the page body inside a full-width
+  // header — the breadcrumb sat hard against the sidebar while the
+  // content started ~300px to its right, with dead gutters on both
+  // sides. The body now tracks the same width as the topbar at every
+  // size. Tables (candidates / clients / jobs / pipeline) are `w-full`
+  // inside their containers so they follow the width; long-form text
+  // surfaces cap themselves (e.g. section-hero.tsx max-w-[820px]).
   // Ace 68.0 polish: left padding trimmed (pl-3 → pl-1; md:pl-4 → md:pl-2;
   // dedicated xl:pl-3 / 2xl:pl-4) so page content slides closer to the
   // sidebar. The resize handle (1.5px) plus the sidebar's own border-r
@@ -172,7 +178,7 @@ export function AppShell({
   const isFullBleed = pathname === "/candidates";
   const mainCls = isFullBleed
     ? "min-w-0 flex-1 p-6 pl-3 pt-4 md:p-8 md:pl-4 md:pt-4 xl:px-8 xl:pl-8 2xl:px-12 2xl:pl-12"
-    : "min-w-0 flex-1 p-6 pt-4 md:p-8 md:pl-2 md:pt-4 xl:mx-auto xl:w-full xl:max-w-[1600px] xl:px-8 xl:pl-3 2xl:px-12 2xl:pl-4";
+    : "min-w-0 flex-1 p-6 pt-4 md:p-8 md:pl-2 md:pt-4 xl:w-full xl:px-8 xl:pl-3 2xl:px-12 2xl:pl-4";
 
   // MailProvider polls /api/mail/unread every 30s; the SSR count seeds
   // its initial value so the badge has a number to show before the
@@ -244,20 +250,15 @@ export function AppShell({
                   16px below the topbar that Mail/Phone already used
                   via their custom -mt-2/-mt-4 pull-up. Right / bottom
                   keep their original p-6 / md:p-8 generosity.
-                  At xl+ the column caps at 1600px with mx-auto so wide
-                  monitors don't sprawl content edge-to-edge, and the
-                  horizontal padding bumps to px-8 / px-12 for added
-                  breathing room. md and below are intentionally
-                  untouched — every existing tablet / phone layout
-                  assumption holds. Tables (candidates / clients /
-                  jobs / pipeline) already use `w-full` inside their
-                  containers so they fill the 1600px cap rather than
-                  staying at intrinsic width.
-                  Full-bleed pages (/candidates split view) opt out of
-                  the xl+ max-w cap because the auto-margin from
-                  mx-auto on wide monitors opens a visible gap to the
-                  left of the filter aside that the page's own
-                  negative-margin scheme can't escape. */}
+                  At xl+ the horizontal padding bumps to px-8 / px-12
+                  for added breathing room, and the column runs the
+                  full width of the content area so it lines up with
+                  the full-width TopBar above it. md and below are
+                  intentionally untouched — every existing tablet /
+                  phone layout assumption holds. Tables (candidates /
+                  clients / jobs / pipeline) already use `w-full`
+                  inside their containers so they fill the column
+                  rather than staying at intrinsic width. */}
               <main className={mainCls}>{children}</main>
             </div>
           </div>

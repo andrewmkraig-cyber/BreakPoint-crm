@@ -193,10 +193,15 @@ export function NewsFeed() {
     });
   };
 
+  // h-full so the Briefing panel matches the height of the This Week widget
+  // beside it in the Clubhouse grid (both wrappers are already h-full under
+  // items-stretch). Without it this section sized to its own content and
+  // stopped short of its neighbour, leaving a ragged step between the two
+  // panels on a wide screen.
   return (
     <section
       id="todays-briefing"
-      className="flex scroll-mt-24 flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]"
+      className="flex h-full scroll-mt-24 flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]"
     >
       <div className="flex items-start justify-between gap-4">
         <div>
