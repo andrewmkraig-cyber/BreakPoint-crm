@@ -8,7 +8,12 @@ import { getRfClientsForOrg, getRfContactsForOrg, getRfJobsForOrg } from "@/lib/
 import { extractFeePctFromCustomFields, formatClientStreetAddress } from "@/lib/clients";
 import { formatDistanceSubLine } from "@/lib/distance";
 import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/local-candidate-actions";
-import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
+import {
+  LocalPlacementRows,
+  type LocalJobRow,
+  type LocalInterview,
+  type LocalRetainedSearch,
+} from "@/app/candidates/[id]/local-placement-rows";
 import { LocalEditableSkills } from "@/app/candidates/[id]/local-editable-skills";
 import { CandidateActivityCard } from "@/components/candidate-activity-card";
 import { CandidateProfileNav } from "@/components/candidate-profile-nav";
@@ -17,7 +22,7 @@ import { CandidateNotesPanel } from "@/components/notes/candidate-notes-panel";
 import { getNotesForEntity } from "@/lib/notes/queries";
 import { toExpectedSalary } from "@/components/candidate-overview-helpers";
 import { formatExpectedCompensation } from "@/lib/candidate-compensation";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { TextHighlighter } from "@/components/text-highlighter";
 import {
   parseHighlightTokens,
@@ -424,6 +429,72 @@ export async function LocalCandidateProfile({
     }
   }
 
+  // ---- Retained searches on this candidate's jobs ----
+  // A retained search is money billed against the JOB before any
+  // candidate exists. When one of these jobs finally produces an offer,
+  // the fee dialogs have to show what was already collected, otherwise
+  // the "Calculated fee" figure reads as the full amount still owed when
+  // some or all of it is already paid. Keyed by job cuid because a
+  // RetainedSearch is always sold against a cuid job.
+  const placementJobCuids = Array.from(
+    new Set(placements.map((p) => p.jobId).filter((id): id is string => Boolean(id))),
+  );
+  const retainedByJobCuid = new Map<string, LocalRetainedSearch>();
+  if (placementJobCuids.length > 0) {
+    const searches = await prisma.retainedSearch.findMany({
+      where: { organizationId: candidate.organizationId, jobId: { in: placementJobCuids } },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, jobId: true, totalAmount: true, status: true, placementId: true },
+    });
+    if (searches.length > 0) {
+      const invoices = await prisma.invoice.findMany({
+        where: {
+          organizationId: candidate.organizationId,
+          retainedSearchId: { in: searches.map((r) => r.id) },
+        },
+        orderBy: { createdAt: "asc" },
+        select: { invoiceNumber: true, status: true, feeAmount: true, paidAt: true, retainedSearchId: true },
+      });
+      for (const search of searches) {
+        const own = invoices.filter((inv) => inv.retainedSearchId === search.id);
+        const sumWhere = (status: "PAID" | "SENT") =>
+          own
+            .filter((inv) => inv.status === status)
+            .reduce((acc, inv) => acc + (inv.feeAmount != null ? Number(inv.feeAmount) : 0), 0);
+        // Prefer the paid invoice for the receipt line; fall back to the
+        // most recent non-void one so a sent-but-unpaid retainer still
+        // names the invoice the recruiter can go chase.
+        const paidInvoice = own.find((inv) => inv.status === "PAID");
+        const fallback = own.filter((inv) => inv.status !== "VOID").at(-1) ?? null;
+        const receiptSource = paidInvoice ?? fallback;
+        const receiptLabel = receiptSource
+          ? `${receiptSource.invoiceNumber} ${
+              receiptSource.status === "PAID"
+                ? `paid${
+                    receiptSource.paidAt
+                      ? ` ${formatDate(receiptSource.paidAt, { month: "short", day: "numeric" })}`
+                      : ""
+                  }`
+                : receiptSource.status.toLowerCase()
+            }`
+          : null;
+        // More than one retained search on a job is a data oddity, same as
+        // linkPlacementToRetainedSearch treats it. Oldest wins.
+        if (search.jobId && !retainedByJobCuid.has(search.jobId)) {
+          retainedByJobCuid.set(search.jobId, {
+            id: search.id,
+            totalAmount: search.totalAmount,
+            paidAmount: Math.round(sumWhere("PAID")),
+            sentAmount: Math.round(sumWhere("SENT")),
+            status: search.status as LocalRetainedSearch["status"],
+            receiptLabel,
+            linkedToThisPlacement: false,
+          });
+        }
+      }
+    }
+  }
+
   const openJobs: LocalOpenJob[] = allJobs
     // ACTIVE-status jobs only (item #12). isOpen=true covers BOTH "active"
     // AND "private" lifecycles, so the old `is_open !== false` filter let
@@ -708,6 +779,11 @@ export async function LocalCandidateProfile({
       clientFeePct: resolvedClientFeePct,
       clientAddress: resolvedClientAddress,
       clientContacts,
+      retainedSearch: (() => {
+        const found = p.jobId ? retainedByJobCuid.get(p.jobId) ?? null : null;
+        if (!found) return null;
+        return { ...found, linkedToThisPlacement: p.retainedSearchId === found.id };
+      })(),
       stage: p.stage,
       interviews: rowInterviews,
       placement: placementSnapshot,

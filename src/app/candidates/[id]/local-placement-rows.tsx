@@ -204,6 +204,28 @@ export type LocalPlacementSnapshot = {
   customGuaranteeDate?: string | null;
 };
 
+// The retained search sold against this job, when there is one. A
+// retainer is money already collected BEFORE any candidate existed, so
+// the fee dialogs have to show it or the calculated fee reads as money
+// still owed when some or all of it is already in the bank.
+export type LocalRetainedSearch = {
+  id: string;
+  // Whole US dollars, matching RetainedSearch.totalAmount.
+  totalAmount: number;
+  // Sum of PAID invoices on this search. Usually equals totalAmount for a
+  // one-shot retainer; lower when it bills in installments and only some
+  // have landed.
+  paidAmount: number;
+  // Billed but not yet paid (SENT invoices). Shown separately so "sent an
+  // invoice" is never mistaken for "collected the money".
+  sentAmount: number;
+  status: "OPEN" | "FILLED" | "CLOSED_UNFILLED";
+  // e.g. "INV-1060 paid Aug 25" — the single most useful receipt line.
+  receiptLabel: string | null;
+  // True once THIS placement is the one linked to the search.
+  linkedToThisPlacement: boolean;
+};
+
 export type LocalJobRow = {
   placementId: string;
   jobRfId: number;
@@ -230,6 +252,9 @@ export type LocalJobRow = {
   // the in-person Address field; "" when the client record has no address,
   // which leaves the field blank rather than guessing.
   clientAddress: string;
+  // Non-null when this job was sold as a retained search. Drives the
+  // retainer credit line in the Offer / Placement fee summaries.
+  retainedSearch?: LocalRetainedSearch | null;
   stage: string;
   interviews: LocalInterview[];
   // Populated once the placement has been through offer / placement
@@ -1305,6 +1330,14 @@ function OfferDialog({
             Enter compensation + fee % to calculate, or type a flat fee amount above.
           </div>
         )}
+        {job.retainedSearch && (
+          <RetainerFeeCredit
+            retained={job.retainedSearch}
+            feeTotal={feeTotal}
+            currency={currency}
+            onApplyRetainerFee={() => setFeeAmountOverride(String(job.retainedSearch!.totalAmount))}
+          />
+        )}
       </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
     </ModalShell>
@@ -1897,6 +1930,15 @@ function LocalPlacementDialog({
         </div>
       </div>
 
+      {job.retainedSearch && (
+        <RetainerFeeCredit
+          retained={job.retainedSearch}
+          feeTotal={feeTotal}
+          currency={currency}
+          onApplyRetainerFee={() => setFeeAmountOverride(String(job.retainedSearch!.totalAmount))}
+        />
+      )}
+
       {/* Billing + Hiring placed side-by-side (Ace 67.17) instead of
           stacked full-width. Was sm:col-span-2 on each card (~280px
           combined); now sm:grid-cols-2 (~140px). Falls back to single
@@ -2449,6 +2491,101 @@ function CompensationField({
           <option value="salary">Salary</option>
           <option value="hourly">Hourly</option>
         </select>
+      </div>
+    </div>
+  );
+}
+
+// Retainer credit panel for the Offer / Placement fee summaries.
+//
+// A retained search bills the client BEFORE any candidate exists, so by
+// the time an offer is on the table some or all of the fee can already be
+// in the bank. Without this the dialog shows the full calculated fee and
+// reads as money still owed. The panel states three things the recruiter
+// needs at that moment: what the retainer was, what has actually been
+// collected, and what is genuinely left to invoice.
+//
+// `onApplyRetainerFee` sets the flat-override box to the retainer amount,
+// for the common case where the retainer IS the whole agreed fee and the
+// percentage calc is simply the wrong number for this deal.
+function RetainerFeeCredit({
+  retained,
+  feeTotal,
+  currency,
+  onApplyRetainerFee,
+}: {
+  retained: LocalRetainedSearch;
+  feeTotal: number;
+  currency: string;
+  onApplyRetainerFee: () => void;
+}) {
+  const paid = retained.paidAmount;
+  const balance = Math.max(0, feeTotal - paid);
+  const coveredInFull = feeTotal > 0 && balance === 0;
+  const feeMatchesRetainer = feeTotal === retained.totalAmount;
+
+  return (
+    <div className="mt-2 rounded-lg border border-brand/30 bg-brand/5 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+            Retained search
+          </div>
+          <div className="mt-0.5 truncate text-sm font-medium text-court-fg">
+            {formatMoney(retained.totalAmount, currency)} retainer
+            {retained.receiptLabel ? (
+              <span className="ml-1.5 text-xs font-normal text-court-fg-muted">
+                · {retained.receiptLabel}
+              </span>
+            ) : null}
+          </div>
+        </div>
+        {!feeMatchesRetainer && (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onApplyRetainerFee}
+            className="h-7 shrink-0 px-2 py-1 text-[11px] font-medium text-brand-dark hover:border-brand/60"
+          >
+            Use {formatMoney(retained.totalAmount, currency)} as the fee
+          </Button>
+        )}
+      </div>
+
+      <div className="mt-2 space-y-1 border-t border-brand/20 pt-2 text-xs">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-court-fg-muted">Retainer already paid</span>
+          <span className="font-medium text-court-fg">
+            {paid > 0 ? `-${formatMoney(paid, currency)}` : formatMoney(0, currency)}
+          </span>
+        </div>
+        {retained.sentAmount > 0 && (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-court-fg-muted">Invoiced, not yet paid</span>
+            <span className="font-medium text-amber-700">
+              {formatMoney(retained.sentAmount, currency)}
+            </span>
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-3 border-t border-brand/20 pt-1">
+          <span className="font-medium text-court-fg">Balance due</span>
+          <span className="font-serif text-base font-semibold text-court-fg">
+            {formatMoney(balance, currency)}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-2 text-[11px] leading-snug text-court-fg-muted">
+        {coveredInFull ? (
+          <>This fee is already collected on the retainer. Confirm Start will not raise another invoice for it.</>
+        ) : (
+          <>
+            Confirm Start does not invoice a retained placement, so this{" "}
+            {formatMoney(balance, currency)} balance will need an invoice raised by hand on
+            /invoices.
+          </>
+        )}
       </div>
     </div>
   );
