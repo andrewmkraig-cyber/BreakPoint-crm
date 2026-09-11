@@ -147,8 +147,20 @@ const SUPPORTED_IMAGE_MIME = new Set<ImageAttachmentMediaType>([
 ]);
 const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+// The company / opportunity half of this used to produce a single generic
+// sentence. Two things fixed that: the candidate context now carries the
+// client's industry, size, overview and candidate-facing blurb (it used to
+// carry only the company NAME - see lib/ai-workspace-context.ts), and these
+// instructions now set a floor and name the failure mode, the same way the
+// interview-prep route's Company/Role rules do.
+const CANDIDATE_CALL_PREP_DEPTH =
+  "Start with a real Company section and a real Opportunity section, at least 3 bullets each. " +
+  "Company: what the business actually does day to day, who its customers are, its industry, size and what that size means to work at. " +
+  "Opportunity: how the role fits the team, the core responsibilities, the experience the job description leans on hardest, work setup, location and comp when known. " +
+  "Use the company overview, blurb and job description on file rather than generic filler. Never pad with lines like 'a great company with strong culture'. " +
+  "Then identify the most likely motivators or concerns for this candidate, and give me 2-3 questions to ask.";
 const CANDIDATE_CALL_PREP_PROMPT =
-  "Help me prep for a call with this candidate. Explain the company and opportunity simply, identify the most likely motivators or concerns, and give me 2-3 questions to ask.";
+  "Help me prep for a call with this candidate. " + CANDIDATE_CALL_PREP_DEPTH;
 const CANDIDATE_RANK_PROMPT =
   "Rank this candidate out of 10 for overall marketability for BreakPoint's searches. Keep it brief: give the score as X/10, a short explanation, the main strength, the main concern, and one next step to improve or validate the score.";
 
@@ -288,7 +300,7 @@ function candidateQuickActionPrompt(
 ): string {
   if (action === "call-prep") {
     if (!job) return CANDIDATE_CALL_PREP_PROMPT;
-    return `Help me prep for a call with this candidate specifically about ${candidateJobPhrase(job)}. Use that associated job from ACTIVE APPLICATIONS as the target role, not the candidate's other jobs. Explain the company and opportunity simply, identify the most likely motivators or concerns, and give me 2-3 questions to ask.`;
+    return `Help me prep for a call with this candidate specifically about ${candidateJobPhrase(job)}. Use that associated job from ACTIVE APPLICATIONS as the target role, not the candidate's other jobs. ${CANDIDATE_CALL_PREP_DEPTH}`;
   }
 
   if (!job) return CANDIDATE_RANK_PROMPT;

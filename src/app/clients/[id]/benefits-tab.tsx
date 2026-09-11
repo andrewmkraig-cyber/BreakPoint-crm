@@ -76,6 +76,14 @@ function BenefitsTabInner({
   // never auto-enter edit mode, even on an empty body — the editable
   // textarea would otherwise dangle with a save button that can't fire.
   const [editing, setEditing] = useState<boolean>(canMutate ? !initial.body : false);
+  // Review state for a freshly generated summary. Claude returns markdown
+  // (`- **Medical:** value`) because the saved view renders it through
+  // MarkdownProse. Generating used to drop straight into `editing`, which
+  // put that markdown in a raw textarea and showed a wall of asterisks -
+  // the summary only looked clean once it was saved. Preview renders the
+  // draft the way it will actually look, with Edit text still one click
+  // away for anyone who wants the source.
+  const [previewing, setPreviewing] = useState(false);
   const [draft, setDraft] = useState<string>(initial.body);
   const [saved, setSaved] = useState<BenefitsState>(initial);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -184,6 +192,7 @@ function BenefitsTabInner({
       }
       setSaved({ body: draft, updatedAt: result.value.updatedAt, updatedByName: saved.updatedByName });
       setEditing(false);
+      setPreviewing(false);
       router.refresh();
     });
   }
@@ -191,6 +200,7 @@ function BenefitsTabInner({
   function onCancel() {
     setDraft(saved.body);
     setEditing(false);
+    setPreviewing(false);
     setSaveError(null);
   }
 
@@ -216,7 +226,8 @@ function BenefitsTabInner({
         return;
       }
       setDraft(result.value.summary);
-      setEditing(true);
+      setPreviewing(true);
+      setEditing(false);
       toast.success("Benefits summarized", {
         id: toastId,
         description: "Review and click Save to persist.",
@@ -284,7 +295,7 @@ function BenefitsTabInner({
                 {isSummarizing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                 Generate Summary
               </button>
-              {!editing && (
+              {!editing && !previewing && (
                 <button
                   type="button"
                   onClick={() => setEditing(true)}
@@ -333,6 +344,47 @@ function BenefitsTabInner({
                     onClick={onSave}
                     disabled={isSaving}
                   >
+                    {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                    Save
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : previewing ? (
+            /* Freshly generated, not yet saved. Rendered exactly as the
+               saved view will render it, so what Andrew reviews is what
+               he gets. Nothing has been written to the DB at this point -
+               Cancel discards it. */
+            <div className="space-y-3">
+              <MarkdownProse content={draft} />
+              {saveError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{saveError}</div>
+              )}
+              <div className="flex items-center justify-between border-t border-court-border pt-3">
+                <div className="text-[11px] text-court-fg-muted">Generated draft, not saved yet</div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={onCancel}
+                    disabled={isSaving}
+                  >
+                    <X className="h-3 w-3" /> Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setPreviewing(false);
+                      setEditing(true);
+                    }}
+                    disabled={isSaving}
+                  >
+                    <Pencil className="h-3 w-3" /> Edit text
+                  </Button>
+                  <Button type="button" size="sm" onClick={onSave} disabled={isSaving}>
                     {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                     Save
                   </Button>

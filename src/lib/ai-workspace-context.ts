@@ -533,7 +533,22 @@ export async function buildCandidateContext(
               override: { select: { description: true } },
             },
           },
-          client: { select: { id: true, name: true } },
+          // Call Prep is asked to "explain the company and the opportunity",
+          // but this select used to be `{ id, name }` - the model knew the
+          // company's NAME and nothing else, so it could only ever write a
+          // generic paragraph. These are the same candidate-safe fields the
+          // interview-prep route reads.
+          client: {
+            select: {
+              id: true,
+              name: true,
+              industry: true,
+              companySize: true,
+              overview: true,
+              candidateBlurb: true,
+              domain: true,
+            },
+          },
         },
       }),
       prisma.interview.findMany({
@@ -705,6 +720,18 @@ export async function buildCandidateContext(
       const jobTitle = p.job?.title ?? "(unknown job)";
       const clientName = p.client?.name ?? "(unknown client)";
       lines.push(`  JOB: ${jobTitle} at ${clientName} - Stage: ${p.stage}`);
+      if (p.client) {
+        const facts = [
+          p.client.industry?.trim() ? `Industry: ${p.client.industry.trim()}` : null,
+          p.client.companySize?.trim() ? `Size: ${p.client.companySize.trim()}` : null,
+          p.client.domain?.trim() ? `Website: ${p.client.domain.trim()}` : null,
+        ].filter(Boolean);
+        if (facts.length > 0) lines.push(`  COMPANY: ${facts.join(" | ")}`);
+        const blurb = p.client.candidateBlurb?.trim();
+        if (blurb) lines.push(`  COMPANY BLURB (candidate-safe): ${truncate(blurb, 1200)}`);
+        const overview = p.client.overview?.trim();
+        if (overview) lines.push(`  COMPANY OVERVIEW: ${truncate(overview, 2000)}`);
+      }
       const description = p.job ? resolveJobDescription(p.job) : "";
       if (description) {
         lines.push(`  JOB DESCRIPTION:`);
