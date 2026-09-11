@@ -76,6 +76,17 @@ export type ScheduleInterviewInput = {
   placementId?: string | null;
   jobRfId: number;
   clientRfId: number;
+  // Canonical cuid FKs for the job + client. For Ace-native rows jobRfId /
+  // clientRfId are a synthetic djb2 negative (job) and 0 (client), which
+  // match nothing in the DB, so these are the ONLY way the interview can
+  // point back at its real Job / Client. Every downstream reader that
+  // needs the job description or the company profile (interview prep,
+  // the [Job Description] merge field, the clients-list "live interview"
+  // rollup, Ace context) resolves through them. Always forward them when
+  // the row has them; they are optional purely so RF-only callers still
+  // typecheck.
+  jobId?: string | null;
+  clientId?: string | null;
   scheduledAt: string; // ISO datetime
   durationMin: number;
   type: InterviewType;
@@ -553,6 +564,12 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
         candidateId: ref.candidateId,
         jobRfId: input.jobRfId,
         clientRfId: input.clientRfId,
+        // Stamp the cuid FKs alongside the legacy numeric ids. Additive on
+        // purpose: jobRfId stays exactly as the caller sent it (including
+        // the synthetic negative) so every existing join that keys on it
+        // keeps working, while jobId / clientId make the row resolvable.
+        jobId: input.jobId ?? null,
+        clientId: input.clientId ?? null,
         scheduledAt: when,
         durationMin: input.durationMin,
         type: input.type,
@@ -1248,16 +1265,19 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   let resolvedBodyText = input.bodyText;
   let resolvedSubject = input.subject;
   if (resolvedBodyText.includes("[Job Description]") || resolvedSubject.includes("[Job Description]")) {
-    // Ace-native interviews carry jobRfId=null and jobId=cuid; pull the
-    // description off Job.description in that case instead of the
-    // override layer (which only exists for RF-imported jobs).
-    const override = interview.jobRfId != null
+    // Ace-native interviews store a SYNTHETIC negative jobRfId (not null),
+    // so gating the Job lookup on `jobRfId == null` skipped it for every
+    // one of them and [Job Description] resolved to an empty string. Key
+    // the Job lookup on jobId alone: the override layer still wins where
+    // it exists (RF-imported jobs only), and the Ace-native row now
+    // actually resolves.
+    const override = interview.jobRfId != null && interview.jobRfId > 0
       ? await prisma.jobOverride.findUnique({
           where: { jobRfId: interview.jobRfId },
           select: { description: true },
         })
       : null;
-    const aceJob = interview.jobRfId == null && interview.jobId
+    const aceJob = interview.jobId
       ? await prisma.job.findUnique({
           where: { id: interview.jobId },
           select: { description: true },

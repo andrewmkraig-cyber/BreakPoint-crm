@@ -3583,6 +3583,12 @@ function ScheduleInterviewScreen({
           placementId: job.placementId,
           jobRfId: job.jobRfId,
           clientRfId: job.clientRfId,
+          // Ace-native rows carry a synthetic negative jobRfId and
+          // clientRfId 0; the cuids are the only real link back to the
+          // Job / Client, and interview prep reads the description and
+          // company profile through them.
+          jobId: job.jobCuid ?? null,
+          clientId: job.clientCuid ?? null,
           scheduledAt: snapped.toISOString(),
           durationMin,
           type,

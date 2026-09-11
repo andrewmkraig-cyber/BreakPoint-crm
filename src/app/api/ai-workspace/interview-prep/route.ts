@@ -11,9 +11,9 @@ import { prisma } from "@/lib/prisma";
 // Company Breakdown / Role Breakdown sections: it summarized the job
 // description back rather than explaining the business to someone who
 // has never heard of it. Sonnet 5 runs adaptive thinking by default
-// (the `thinking` param is deliberately omitted), which is also what
-// carries the 1-10 fit score below, so max_tokens has to cover the
-// reasoning as well as the email. Deliberately NOT CLAUDE_MODEL from
+// (the `thinking` param is deliberately omitted) and that reasoning is
+// billed against max_tokens, so the ceiling has to cover it as well as
+// the email. Deliberately NOT CLAUDE_MODEL from
 // lib/claude: that constant is the shared Sonnet 4.6 every other caller
 // uses, and moving it is a repo-wide change, not an interview-prep one.
 const INTERVIEW_PREP_MODEL = "claude-sonnet-5";
@@ -51,6 +51,7 @@ const CLIENT_SELECT = {
 const JOB_SELECT = {
   id: true,
   legacyRfId: true,
+  clientId: true,
   title: true,
   locations: true,
   employmentType: true,
@@ -193,18 +194,17 @@ export async function POST(req: NextRequest) {
     const response = await anthropic.messages.create({
       model: INTERVIEW_PREP_MODEL,
       // Was 2600, which capped the email before the deeper Company /
-      // Role sections could land. Sonnet 5 also runs adaptive thinking
-      // by default and that reasoning is billed against max_tokens, so
-      // the ceiling has to cover both. Still far below the streaming
-      // threshold, so the plain non-streaming call is fine.
+      // Role sections could land. Adaptive thinking is billed against
+      // max_tokens too, so the ceiling has to cover both. Still far
+      // below the streaming threshold, so the plain non-streaming call
+      // is fine.
       max_tokens: 8000,
       system: buildSystemPrompt(bundle.candidate.firstName),
       messages: [
         {
           role: "user",
           content:
-            "Create a send-ready interview prep email draft for the candidate, " +
-            "plus an internal 1-10 fit score for this candidate against this specific role. " +
+            "Create a send-ready interview prep email draft for the candidate. " +
             "The email must break down the company and the role in real depth, " +
             "name who they are interviewing with, and give practical tips.\n\n" +
             interview.promptContext +
@@ -227,86 +227,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // The 1-10 fit score is recruiter-only. It never rides along with the
-    // subject/body that open in the candidate composer; it is written into
-    // the candidate's Ace chat thread as an assistant message so it
-    // persists exactly like the Rank button's output, and returned so the
-    // panel can append it without a refetch.
-    const fitScore = clampFitScore(parsed.fitScore);
-    let scoreMessage: { id: string; role: "assistant"; content: string; createdAt: string } | null =
-      null;
-
-    if (fitScore != null) {
-      const content = formatFitScoreMessage({
-        score: fitScore,
-        rationale: typeof parsed.fitRationale === "string" ? parsed.fitRationale : "",
-        jobTitle: interview.jobTitle,
-        clientName: interview.clientName,
-      });
-      try {
-        // entityId is the RAW candidateId the panel sent, not the resolved
-        // cuid. AiWorkspace keys its thread on whatever id it was mounted
-        // with (an rfId for legacy rows), so resolving it here would file
-        // the message under a thread the panel never reads.
-        const row = await prisma.aiWorkspaceMessage.create({
-          data: { entityType: "candidate", entityId: candidateId, role: "assistant", content },
-        });
-        scoreMessage = {
-          id: row.id,
-          role: "assistant",
-          content: row.content,
-          createdAt: row.createdAt.toISOString(),
-        };
-      } catch {
-        // A failed chat write must never cost Andrew the email draft he
-        // actually asked for. The score still returns below and renders
-        // in the panel for this session; it just is not persisted.
-        scoreMessage = null;
-      }
-    }
-
     return NextResponse.json({
       subject: stripBannedDashes(parsed.subject.trim()),
       body: stripBannedDashes(stripSignature(parsed.body.trim())),
-      fitScore,
-      scoreMessage,
     });
   } catch (err) {
     return errorResponse(err);
   }
-}
-
-// Accepts whatever Claude put in `fitScore` and returns a whole number in
-// 1-10, or null if it is unusable. Strings are tolerated because the model
-// occasionally emits "8" or "8/10" despite the JSON shape asking for a
-// number; anything else collapses to null and the score is simply skipped
-// rather than rendering a "NaN/10" line in the chat.
-function clampFitScore(value: unknown): number | null {
-  let n: number | null = null;
-  if (typeof value === "number") n = value;
-  else if (typeof value === "string") {
-    const match = value.match(/-?\d+(\.\d+)?/);
-    if (match) n = Number(match[0]);
-  }
-  if (n == null || !Number.isFinite(n)) return null;
-  const rounded = Math.round(n);
-  if (rounded < 1) return 1;
-  if (rounded > 10) return 10;
-  return rounded;
-}
-
-function formatFitScoreMessage(input: {
-  score: number;
-  rationale: string;
-  jobTitle: string | null;
-  clientName: string | null;
-}): string {
-  const target = [input.jobTitle, input.clientName].filter(Boolean).join(" at ");
-  const heading = target
-    ? `**Interview prep fit: ${input.score}/10** for ${target}`
-    : `**Interview prep fit: ${input.score}/10**`;
-  const rationale = stripBannedDashes(input.rationale.trim());
-  return rationale ? `${heading}\n\n${rationale}` : heading;
 }
 
 async function buildInterviewPrepBundle(candidateRef: string): Promise<PrepBundle> {
@@ -351,17 +278,22 @@ async function buildInterviewPrepBundle(candidateRef: string): Promise<PrepBundl
     },
   });
 
+  // Only POSITIVE legacy ids are real RF keys. Ace-native rows were
+  // scheduled with a synthetic djb2 negative for the job and 0 for the
+  // client, which match no row; querying them is pure noise.
   const missingJobRfIds = Array.from(
     new Set(
       interviews
-        .filter((interview) => !interview.job && interview.jobRfId != null)
+        .filter((interview) => !interview.job && interview.jobRfId != null && interview.jobRfId > 0)
         .map((interview) => interview.jobRfId!),
     ),
   );
   const missingClientRfIds = Array.from(
     new Set(
       interviews
-        .filter((interview) => !interview.client && interview.clientRfId != null)
+        .filter(
+          (interview) => !interview.client && interview.clientRfId != null && interview.clientRfId > 0,
+        )
         .map((interview) => interview.clientRfId!),
     ),
   );
@@ -384,6 +316,39 @@ async function buildInterviewPrepBundle(candidateRef: string): Promise<PrepBundl
   const jobsByRf = new Map(legacyJobs.map((job) => [job.legacyRfId, job]));
   const clientsByRf = new Map(legacyClients.map((client) => [client.legacyRfId, client]));
 
+  const resolveJob = (interview: (typeof interviews)[number]): PrepJob | null =>
+    interview.job ??
+    (interview.jobRfId != null && interview.jobRfId > 0 ? jobsByRf.get(interview.jobRfId) ?? null : null);
+
+  // Last resort for the company: an interview can be linked to a Job
+  // without carrying its own clientId (older rows, or an RF job whose
+  // client never had a legacy id). The Job always knows its Client, so
+  // borrow it rather than writing "no company profile on file" at a
+  // candidate who is interviewing in five days.
+  const clientCuidsViaJob = Array.from(
+    new Set(
+      interviews
+        .map((interview) => {
+          const client =
+            interview.client ??
+            (interview.clientRfId != null && interview.clientRfId > 0
+              ? clientsByRf.get(interview.clientRfId) ?? null
+              : null);
+          if (client) return null;
+          return resolveJob(interview)?.clientId ?? null;
+        })
+        .filter((id): id is string => id != null),
+    ),
+  );
+  const clientsViaJob =
+    clientCuidsViaJob.length > 0
+      ? await prisma.client.findMany({
+          where: { organizationId: org.id, id: { in: clientCuidsViaJob } },
+          select: CLIENT_SELECT,
+        })
+      : [];
+  const clientsByCuid = new Map(clientsViaJob.map((client) => [client.id, client]));
+
   const candidateName = fullName(candidate.firstName, candidate.lastName);
   return {
     candidate: {
@@ -393,9 +358,13 @@ async function buildInterviewPrepBundle(candidateRef: string): Promise<PrepBundl
       email: candidate.email,
     },
     interviews: interviews.map((interview) => {
-      const job = interview.job ?? (interview.jobRfId != null ? jobsByRf.get(interview.jobRfId) ?? null : null);
+      const job = resolveJob(interview);
       const client =
-        interview.client ?? (interview.clientRfId != null ? clientsByRf.get(interview.clientRfId) ?? null : null);
+        interview.client ??
+        (interview.clientRfId != null && interview.clientRfId > 0
+          ? clientsByRf.get(interview.clientRfId) ?? null
+          : null) ??
+        (job?.clientId ? clientsByCuid.get(job.clientId) ?? null : null);
       const contactOptions = buildContactOptions(parseAttendees(interview.clientAttendees), client?.contacts ?? []);
       const defaultContactKeys = contactOptions
         .filter((contact) => contact.defaultSelected)
@@ -597,7 +566,7 @@ function buildSystemPrompt(firstName: string): string {
   return (
     "You write candidate-facing interview prep emails for BreakPoint Talent. " +
     "Output STRICT JSON only, with no markdown fences or extra prose. Shape: " +
-    `{ "subject": string, "body": string, "fitScore": number, "fitRationale": string }. ` +
+    `{ "subject": string, "body": string }. ` +
     "Rules:\n" +
     `- The body must start with "Hi ${firstName || "there"}," followed by a blank line.\n` +
     "- Use these candidate-facing sections in this order: Interview Details, Company Breakdown, Role Breakdown, Interviewing With, Prep Tips.\n" +
@@ -613,13 +582,12 @@ function buildSystemPrompt(firstName: string): string {
     "- Interviewing With must name each selected interviewer and include title, email, and LinkedIn when provided. If an interviewer has a LinkedIn URL, include it as a markdown link using that person's name, e.g. [Michael LinkedIn](https://...). If no LinkedIn is provided for someone, do not invent one and do not apologize.\n" +
     "- Prep Tips must include 3-5 practical, tailored bullets based on the company, role, interviewer titles, and candidate background.\n" +
     "- Keep it warm and sendable, but do not sacrifice the Company and Role breakdowns to keep it short. A prepared candidate is the goal, not a brief email.\n" +
-    // fitScore / fitRationale are INTERNAL. They are stripped out of the
-    // email and posted into Andrew's Ace chat thread instead, so the
-    // model must be told twice that the candidate never sees them -
-    // otherwise it helpfully works the score into the email body.
-    "- fitScore is an INTERNAL recruiter-only score from 1 to 10 (whole number) rating how strong this candidate is FOR THIS SPECIFIC ROLE at this specific company, judged on the job description against the candidate's background, skills, and location. 10 is an ideal match, 5 is a plausible stretch, 1 is a poor match. Be honest and use the full range. Do not inflate.\n" +
-    "- fitRationale is INTERNAL recruiter-only text, 3 short lines separated by newlines, in this order: 'Strength: ...', 'Concern: ...', 'Watch for: ...' where Watch for is the thing most likely to come up badly in this interview.\n" +
-    "- CRITICAL: fitScore and fitRationale are never shown to the candidate. The subject and body must contain no score, no rating, no numeric assessment of the candidate, and no reference to being evaluated or ranked.\n" +
+    // This route produces ONE thing: an email the recruiter sends to the
+    // candidate. It used to also return a 1-10 fit score for the
+    // recruiter, which is Call Prep's job, not this one. The rule below
+    // stays because the model will otherwise volunteer an assessment of
+    // the candidate inside an email addressed TO that candidate.
+    "- The output is a candidate-facing email and nothing else. It must contain no score, no rating, no numeric or qualitative assessment of the candidate, and no reference to the candidate being evaluated, ranked, or compared to anyone.\n" +
     "- Never mention internal recruiter notes as internal notes. Use only candidate-safe facts.\n" +
     "- Never invent facts, people, LinkedIn links, addresses, compensation, or meeting links.\n" +
     "- End with a short signoff line only, such as `Thanks,` or `Talk soon,`. Do not include Andrew's name, title, company, phone, or signature lines.\n" +
@@ -753,7 +721,7 @@ function stripSignature(body: string): string {
 
 function safeParseJson(
   value: string,
-): { subject?: unknown; body?: unknown; fitScore?: unknown; fitRationale?: unknown } | null {
+): { subject?: unknown; body?: unknown } | null {
   const parse = (text: string) => {
     try {
       return JSON.parse(text);
