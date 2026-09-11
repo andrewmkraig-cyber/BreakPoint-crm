@@ -714,7 +714,13 @@ export function AiWorkspace({
       ]);
       if (!initRes.ok) throw new Error(`compose-init failed (${initRes.status})`);
       const draftPayload = (await draftRes.json().catch(() => null)) as
-        | { subject?: string; body?: string; error?: string }
+        | {
+            subject?: string;
+            body?: string;
+            error?: string;
+            fitScore?: number | null;
+            scoreMessage?: Message | null;
+          }
         | null;
       if (!draftRes.ok) {
         throw new Error(draftPayload?.error ?? `interview-prep failed (${draftRes.status})`);
@@ -748,6 +754,19 @@ export function AiWorkspace({
         modalTitle: "Interview Prep",
         nonBlocking: true,
       });
+      // The 1-10 fit score for this specific role. The server already
+      // persisted it as an assistant row on this candidate's thread, so
+      // this is a local append to match, not a second write. Guarded
+      // against a duplicate id in case the thread was refetched in
+      // between. If the server could not persist it, scoreMessage is
+      // null and the composer still opened, which is the part Andrew
+      // actually asked for.
+      const scoreMessage = draftPayload.scoreMessage;
+      if (scoreMessage?.id && scoreMessage.content) {
+        setMessages((prev) =>
+          prev.some((m) => m.id === scoreMessage.id) ? prev : [...prev, scoreMessage],
+        );
+      }
       setInterviewPrepOpen(false);
     } catch (err) {
       toast.error("Couldn't prep interview email", {

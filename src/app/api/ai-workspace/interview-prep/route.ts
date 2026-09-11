@@ -7,7 +7,16 @@ import { getClaude } from "@/lib/claude";
 import { formatInterviewWhen } from "@/lib/interview-format";
 import { prisma } from "@/lib/prisma";
 
-const INTERVIEW_PREP_MODEL = "claude-haiku-4-5-20251001";
+// Sonnet 5. This route was on Haiku 4.5, which wrote correct but thin
+// Company Breakdown / Role Breakdown sections: it summarized the job
+// description back rather than explaining the business to someone who
+// has never heard of it. Sonnet 5 runs adaptive thinking by default
+// (the `thinking` param is deliberately omitted), which is also what
+// carries the 1-10 fit score below, so max_tokens has to cover the
+// reasoning as well as the email. Deliberately NOT CLAUDE_MODEL from
+// lib/claude: that constant is the shared Sonnet 4.6 every other caller
+// uses, and moving it is a repo-wide change, not an interview-prep one.
+const INTERVIEW_PREP_MODEL = "claude-sonnet-5";
 
 export const maxDuration = 120;
 
@@ -183,14 +192,21 @@ export async function POST(req: NextRequest) {
     const anthropic = getClaude();
     const response = await anthropic.messages.create({
       model: INTERVIEW_PREP_MODEL,
-      max_tokens: 2600,
+      // Was 2600, which capped the email before the deeper Company /
+      // Role sections could land. Sonnet 5 also runs adaptive thinking
+      // by default and that reasoning is billed against max_tokens, so
+      // the ceiling has to cover both. Still far below the streaming
+      // threshold, so the plain non-streaming call is fine.
+      max_tokens: 8000,
       system: buildSystemPrompt(bundle.candidate.firstName),
       messages: [
         {
           role: "user",
           content:
-            "Create a send-ready interview prep email draft for the candidate. " +
-            "It must break down the company, the role, who they are interviewing with, and practical tips.\n\n" +
+            "Create a send-ready interview prep email draft for the candidate, " +
+            "plus an internal 1-10 fit score for this candidate against this specific role. " +
+            "The email must break down the company and the role in real depth, " +
+            "name who they are interviewing with, and give practical tips.\n\n" +
             interview.promptContext +
             "\n\nSELECTED INTERVIEWING TEAM:\n" +
             formatContactContext(selectedContacts),
@@ -211,13 +227,86 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // The 1-10 fit score is recruiter-only. It never rides along with the
+    // subject/body that open in the candidate composer; it is written into
+    // the candidate's Ace chat thread as an assistant message so it
+    // persists exactly like the Rank button's output, and returned so the
+    // panel can append it without a refetch.
+    const fitScore = clampFitScore(parsed.fitScore);
+    let scoreMessage: { id: string; role: "assistant"; content: string; createdAt: string } | null =
+      null;
+
+    if (fitScore != null) {
+      const content = formatFitScoreMessage({
+        score: fitScore,
+        rationale: typeof parsed.fitRationale === "string" ? parsed.fitRationale : "",
+        jobTitle: interview.jobTitle,
+        clientName: interview.clientName,
+      });
+      try {
+        // entityId is the RAW candidateId the panel sent, not the resolved
+        // cuid. AiWorkspace keys its thread on whatever id it was mounted
+        // with (an rfId for legacy rows), so resolving it here would file
+        // the message under a thread the panel never reads.
+        const row = await prisma.aiWorkspaceMessage.create({
+          data: { entityType: "candidate", entityId: candidateId, role: "assistant", content },
+        });
+        scoreMessage = {
+          id: row.id,
+          role: "assistant",
+          content: row.content,
+          createdAt: row.createdAt.toISOString(),
+        };
+      } catch {
+        // A failed chat write must never cost Andrew the email draft he
+        // actually asked for. The score still returns below and renders
+        // in the panel for this session; it just is not persisted.
+        scoreMessage = null;
+      }
+    }
+
     return NextResponse.json({
       subject: stripBannedDashes(parsed.subject.trim()),
       body: stripBannedDashes(stripSignature(parsed.body.trim())),
+      fitScore,
+      scoreMessage,
     });
   } catch (err) {
     return errorResponse(err);
   }
+}
+
+// Accepts whatever Claude put in `fitScore` and returns a whole number in
+// 1-10, or null if it is unusable. Strings are tolerated because the model
+// occasionally emits "8" or "8/10" despite the JSON shape asking for a
+// number; anything else collapses to null and the score is simply skipped
+// rather than rendering a "NaN/10" line in the chat.
+function clampFitScore(value: unknown): number | null {
+  let n: number | null = null;
+  if (typeof value === "number") n = value;
+  else if (typeof value === "string") {
+    const match = value.match(/-?\d+(\.\d+)?/);
+    if (match) n = Number(match[0]);
+  }
+  if (n == null || !Number.isFinite(n)) return null;
+  const rounded = Math.round(n);
+  if (rounded < 1) return 1;
+  if (rounded > 10) return 10;
+  return rounded;
+}
+
+function formatFitScoreMessage(input: {
+  score: number;
+  rationale: string;
+  jobTitle: string | null;
+  clientName: string | null;
+}): string {
+  const target = [input.jobTitle, input.clientName].filter(Boolean).join(" at ");
+  const heading = target
+    ? `**Interview prep fit: ${input.score}/10** for ${target}`
+    : `**Interview prep fit: ${input.score}/10**`;
+  const rationale = stripBannedDashes(input.rationale.trim());
+  return rationale ? `${heading}\n\n${rationale}` : heading;
 }
 
 async function buildInterviewPrepBundle(candidateRef: string): Promise<PrepBundle> {
@@ -452,6 +541,15 @@ function buildPromptContext(input: {
   }
   if (candidate.location) lines.push(`Location: ${candidate.location}`);
   if (candidate.skills.length > 0) lines.push(`Known skills: ${candidate.skills.slice(0, 18).join(", ")}`);
+  // Recruiter notes were selected but never passed through. They are the
+  // best signal available for the 1-10 fit score, so they go in flagged as
+  // internal. The system prompt already forbids surfacing them (or the
+  // fact that notes exist) in the candidate-facing email.
+  if (candidate.notes?.trim()) {
+    lines.push(
+      `Internal recruiter notes, NEVER quote or reference these in the email, use for the fit score only: ${truncate(candidate.notes.trim(), 2000)}`,
+    );
+  }
   lines.push("");
 
   lines.push("INTERVIEW DETAILS:");
@@ -465,8 +563,8 @@ function buildPromptContext(input: {
   lines.push("COMPANY:");
   if (client) {
     lines.push(`Name: ${client.name}`);
-    if (client.candidateBlurb) lines.push(`Candidate-facing blurb: ${truncate(client.candidateBlurb, 900)}`);
-    if (client.overview) lines.push(`Overview: ${truncate(client.overview, 1200)}`);
+    if (client.candidateBlurb) lines.push(`Candidate-facing blurb: ${truncate(client.candidateBlurb, 2000)}`);
+    if (client.overview) lines.push(`Overview: ${truncate(client.overview, 3000)}`);
     if (client.domain) lines.push(`Website/domain: ${normalizeUrl(client.domain) ?? client.domain}`);
     if (client.linkedinPage) lines.push(`Company LinkedIn: ${normalizeUrl(client.linkedinPage) ?? client.linkedinPage}`);
     if (client.industry) lines.push(`Industry: ${client.industry}`);
@@ -487,7 +585,7 @@ function buildPromptContext(input: {
     if (job.applyLink) lines.push(`Role link: ${job.applyLink}`);
     if (job.sourceJobUrl) lines.push(`Source URL: ${job.sourceJobUrl}`);
     const description = job.description?.trim() || job.rawJobDescription?.trim() || "";
-    if (description) lines.push(`Description: ${truncate(description, 3500)}`);
+    if (description) lines.push(`Description: ${truncate(description, 9000)}`);
   } else {
     lines.push("(No linked job record found.)");
   }
@@ -499,16 +597,29 @@ function buildSystemPrompt(firstName: string): string {
   return (
     "You write candidate-facing interview prep emails for BreakPoint Talent. " +
     "Output STRICT JSON only, with no markdown fences or extra prose. Shape: " +
-    `{ "subject": string, "body": string }. ` +
+    `{ "subject": string, "body": string, "fitScore": number, "fitRationale": string }. ` +
     "Rules:\n" +
     `- The body must start with "Hi ${firstName || "there"}," followed by a blank line.\n` +
     "- Use these candidate-facing sections in this order: Interview Details, Company Breakdown, Role Breakdown, Interviewing With, Prep Tips.\n" +
     "- Interview Details must include date/time, duration, format, link/address when provided, and any location details.\n" +
-    "- Company Breakdown must explain what the company does, relevant industry/size/context, and one candidate-safe reason the opportunity could matter. Use only the facts provided.\n" +
-    "- Role Breakdown must summarize the title, setup, location, compensation when provided, and 2-4 responsibilities or fit signals from the job description.\n" +
+    // Company + Role are the two sections Andrew called out as too thin.
+    // The old instructions asked for one reason and 2-4 bullets, and the
+    // model obliged with a two-line paragraph. These set a floor on both
+    // length and substance, and name the specific failure (restating the
+    // job title, generic filler) so it is not just "write more".
+    "- Company Breakdown must be substantial: at least 4 sentences or 4 bullets. Explain what the company actually does day to day, who its customers or clients are, where it sits in its industry, and what its size and structure mean for someone working there. If an overview or candidate-facing blurb is provided, mine it for specifics rather than restating it. Never pad with generic praise like 'a great company with a strong culture'.\n" +
+    "- Role Breakdown must be substantial: at least 4 sentences or 4 bullets. Cover the title, how the role fits into the team or company, the core responsibilities pulled from the job description, the skills and experience the description emphasizes most, the work setup and location, and compensation when provided. Be concrete about what this specific person would be doing. Restating the job title in a longer sentence does not count as a breakdown.\n" +
+    "- Both breakdowns must be written for someone who has never heard of this company. Use only the facts provided, but use ALL of the relevant ones rather than the first two.\n" +
     "- Interviewing With must name each selected interviewer and include title, email, and LinkedIn when provided. If an interviewer has a LinkedIn URL, include it as a markdown link using that person's name, e.g. [Michael LinkedIn](https://...). If no LinkedIn is provided for someone, do not invent one and do not apologize.\n" +
     "- Prep Tips must include 3-5 practical, tailored bullets based on the company, role, interviewer titles, and candidate background.\n" +
-    "- Keep it warm, simple, and sendable. The candidate should feel prepared without reading a novel.\n" +
+    "- Keep it warm and sendable, but do not sacrifice the Company and Role breakdowns to keep it short. A prepared candidate is the goal, not a brief email.\n" +
+    // fitScore / fitRationale are INTERNAL. They are stripped out of the
+    // email and posted into Andrew's Ace chat thread instead, so the
+    // model must be told twice that the candidate never sees them -
+    // otherwise it helpfully works the score into the email body.
+    "- fitScore is an INTERNAL recruiter-only score from 1 to 10 (whole number) rating how strong this candidate is FOR THIS SPECIFIC ROLE at this specific company, judged on the job description against the candidate's background, skills, and location. 10 is an ideal match, 5 is a plausible stretch, 1 is a poor match. Be honest and use the full range. Do not inflate.\n" +
+    "- fitRationale is INTERNAL recruiter-only text, 3 short lines separated by newlines, in this order: 'Strength: ...', 'Concern: ...', 'Watch for: ...' where Watch for is the thing most likely to come up badly in this interview.\n" +
+    "- CRITICAL: fitScore and fitRationale are never shown to the candidate. The subject and body must contain no score, no rating, no numeric assessment of the candidate, and no reference to being evaluated or ranked.\n" +
     "- Never mention internal recruiter notes as internal notes. Use only candidate-safe facts.\n" +
     "- Never invent facts, people, LinkedIn links, addresses, compensation, or meeting links.\n" +
     "- End with a short signoff line only, such as `Thanks,` or `Talk soon,`. Do not include Andrew's name, title, company, phone, or signature lines.\n" +
@@ -640,7 +751,9 @@ function stripSignature(body: string): string {
   return lines.slice(0, end).join("\n").replace(/\s+$/g, "");
 }
 
-function safeParseJson(value: string): { subject?: unknown; body?: unknown } | null {
+function safeParseJson(
+  value: string,
+): { subject?: unknown; body?: unknown; fitScore?: unknown; fitRationale?: unknown } | null {
   const parse = (text: string) => {
     try {
       return JSON.parse(text);
