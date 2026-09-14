@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import {
   CalendarCheck,
   Check,
@@ -28,6 +28,11 @@ import { GAME_PLAN_USER_MESSAGE_MAX_CHARS } from "@/lib/game-plan-limits";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { useVoiceDictation } from "@/lib/use-voice-dictation";
 import { decodeCommonHtmlEntities } from "@/lib/ai-output-formatting";
+import { useFloatingResume } from "@/lib/floating-resume-context";
+import {
+  defaultResumePopOutTarget,
+  type ResumeVersion,
+} from "@/app/candidates/[id]/editable-resume";
 
 // Per-entity AI chat surface. Drops onto a client or candidate detail page
 // as a standalone card: loads its own history from /api/ai-workspace,
@@ -58,6 +63,12 @@ export type AiWorkspaceProps = {
   // Candidate quick actions use this to target one associated job.
   // Multiple jobs trigger a picker; one job is used automatically.
   candidateJobOptions?: CandidateGamePlanJobOption[];
+  // Candidate resume versions (same list the Profile tab's viewer
+  // gets). When at least one is viewable, the header shows a View
+  // Resume button that opens the floating resume window right here,
+  // so the recruiter can read the resume next to the Game Plan thread
+  // without switching to Profile first.
+  resumeVersions?: ResumeVersion[];
 };
 
 type Message = {
@@ -314,6 +325,7 @@ export function AiWorkspace({
   recipientEmail,
   bottomGapRem = 22,
   candidateJobOptions = [],
+  resumeVersions = [],
 }: AiWorkspaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -341,6 +353,20 @@ export function AiWorkspace({
   const composer = useComposerManager();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
+  const floatingResume = useFloatingResume();
+  const resumePopOut = useMemo(
+    () => (entityType === "candidate" ? defaultResumePopOutTarget(resumeVersions) : null),
+    [entityType, resumeVersions],
+  );
+  const onViewResume = useCallback(() => {
+    if (!floatingResume || !resumePopOut) return;
+    // The inline viewer passes its own rendered width; here the card is
+    // the closest stand-in, so the window opens at half the workspace.
+    const sourceWidth =
+      cardRef.current?.getBoundingClientRect().width ??
+      (typeof window !== "undefined" ? window.innerWidth * 0.6 : 0);
+    floatingResume.open({ ...resumePopOut, sourceWidth });
+  }, [floatingResume, resumePopOut]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Voice dictation. Each finalized phrase is appended to whatever is
@@ -923,6 +949,19 @@ export function AiWorkspace({
         <div className="flex flex-wrap items-center justify-end gap-2">
           {entityType === "candidate" && (
             <div className="relative flex flex-wrap items-center justify-end gap-2">
+              {floatingResume && resumePopOut && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={onViewResume}
+                  className="h-7 gap-1 px-2 py-1 text-[11px] font-medium text-court-fg-muted hover:border-brand/60"
+                  title={`Open ${resumePopOut.title} in a floating window`}
+                  aria-label="View resume"
+                >
+                  <FileText className="h-3 w-3" /> View Resume
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="secondary"

@@ -1028,6 +1028,7 @@ export async function LocalCandidateProfile({
                 recipientEmail={candidate.email ?? null}
                 bottomGapRem={26}
                 candidateJobOptions={gamePlanJobOptions}
+                resumeVersions={resumeVersions}
               />
             ) : tab === "notes" ? (
               <LocalNotesTab candidateId={candidate.id} />
@@ -1187,6 +1188,7 @@ export async function LocalCandidateProfile({
               recipientEmail={candidate.email ?? null}
               bottomGapRem={26}
               candidateJobOptions={gamePlanJobOptions}
+              resumeVersions={resumeVersions}
             />
           ) : tab === "notes" ? (
             <LocalNotesTab candidateId={candidate.id} />

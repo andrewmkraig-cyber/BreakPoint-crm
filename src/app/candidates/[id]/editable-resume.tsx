@@ -142,6 +142,28 @@ function pickDefault(versions: ResumeVersion[]): string | null {
   return (firstNonConverted ?? versions[0]).key;
 }
 
+// The document the Profile tab's pop-out button would open if the
+// recruiter had not changed the version dropdown: same default pick,
+// same URL rules. Lets other surfaces on the candidate page (the Game
+// Plan workspace header) open the floating resume without mounting the
+// inline viewer first.
+export function defaultResumePopOutTarget(
+  versions: ResumeVersion[],
+): { src: string; title: string } | null {
+  const key = pickDefault(versions);
+  const selected = key ? versions.find((v) => v.key === key) : undefined;
+  if (!selected) return null;
+  const docx = isDocxResume(selected);
+  const src =
+    selected.mimeType === "application/pdf" || selected.kind === "redacted"
+      ? previewUrlFor(selected)
+      : docx
+        ? asPdfUrlFor(selected)
+        : null;
+  if (!src) return null;
+  return { src, title: dropdownLabelFor(selected) };
+}
+
 export function EditableResume({
   candidateRfId,
   candidateId,
