@@ -1816,7 +1816,7 @@ function emailDomain(email: string): string | null {
   return domain || null;
 }
 
-async function listThreadIdsForGmailQuery(
+export async function listThreadIdsForGmailQuery(
   accessToken: string,
   q: string,
   maxResults: number,
@@ -1943,13 +1943,59 @@ export async function backfillClientGmailThreadTags({
 // /api/ai-workspace POST without a second token-refresh round trip.
 // Failures on any single thread are swallowed — partial context beats
 // crashing the whole Game Plan response.
+export type RecentTaggedEmailMessage = {
+  from: string;
+  dateIso: string | null;
+  snippet: string;
+};
+
+export type RecentTaggedEmail = {
+  threadId: string;
+  subject: string;
+  from: string;
+  to: string;
+  dateIso: string | null;
+  snippet: string;
+  // Up to two messages before the latest one, oldest first, each
+  // trimmed harder than the latest. The latest message on a live
+  // thread is often Andrew's own reply, and what he asks about is the
+  // contact's message underneath it.
+  earlier: RecentTaggedEmailMessage[];
+};
+
+const RECENT_TAGGED_EARLIER_MESSAGES = 2;
+
+function messageBodyText(message: GmailMessage, maxChars: number): string {
+  let snippet = "";
+  if (message.payload) {
+    const textPart = findPart(message.payload, "text/plain");
+    if (textPart?.body?.data) {
+      snippet = decodeB64Url(textPart.body.data);
+    } else {
+      const htmlPart = findPart(message.payload, "text/html");
+      if (htmlPart?.body?.data) {
+        snippet = decodeB64Url(htmlPart.body.data)
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+    }
+  }
+  if (!snippet) snippet = message.snippet ?? "";
+  // Drop quoted history so a reply's budget goes to the new text.
+  const quoteIdx = snippet.search(/\n\s*On .{0,120} wrote:|\n\s*-{3,}\s*Original Message|\n\s*From: .{0,200}\n\s*Sent: /);
+  if (quoteIdx > 40) snippet = snippet.slice(0, quoteIdx);
+  return snippet.length > maxChars ? snippet.slice(0, maxChars) : snippet;
+}
+
 export async function getRecentTaggedEmails(
   accessToken: string,
   threadIds: string[],
   maxCharsPerMessage: number = 400,
-): Promise<{ subject: string; from: string; snippet: string }[]> {
+  maxThreads: number = 5,
+): Promise<RecentTaggedEmail[]> {
   if (threadIds.length === 0) return [];
-  const limited = threadIds.slice(0, 5);
+  const limited = Array.from(new Set(threadIds)).slice(0, maxThreads);
   const results = await Promise.all(
     limited.map(async (threadId) => {
       try {
@@ -1968,35 +2014,30 @@ export async function getRecentTaggedEmails(
         const last = messages[messages.length - 1];
         const subject = headerValue(last.payload?.headers, "Subject") || "(no subject)";
         const from = headerValue(last.payload?.headers, "From") || "";
+        const to = headerValue(last.payload?.headers, "To") || "";
+        const dateIso = last.internalDate
+          ? new Date(Number(last.internalDate)).toISOString()
+          : null;
 
-        let snippet = "";
-        if (last.payload) {
-          const textPart = findPart(last.payload, "text/plain");
-          if (textPart?.body?.data) {
-            snippet = decodeB64Url(textPart.body.data);
-          } else {
-            const htmlPart = findPart(last.payload, "text/html");
-            if (htmlPart?.body?.data) {
-              snippet = decodeB64Url(htmlPart.body.data)
-                .replace(/<[^>]+>/g, " ")
-                .replace(/\s+/g, " ")
-                .trim();
-            }
-          }
-        }
-        if (!snippet) snippet = last.snippet ?? "";
-        if (snippet.length > maxCharsPerMessage) {
-          snippet = snippet.slice(0, maxCharsPerMessage);
-        }
-        return { subject, from, snippet };
+        const snippet = messageBodyText(last, maxCharsPerMessage);
+        const earlier = messages
+          .slice(Math.max(0, messages.length - 1 - RECENT_TAGGED_EARLIER_MESSAGES), messages.length - 1)
+          .map((m) => ({
+            from: headerValue(m.payload?.headers, "From") || "",
+            dateIso: m.internalDate ? new Date(Number(m.internalDate)).toISOString() : null,
+            snippet: messageBodyText(m, Math.floor(maxCharsPerMessage / 2)),
+          }));
+        return { threadId, subject, from, to, dateIso, snippet, earlier };
       } catch {
         return null;
       }
     }),
   );
-  return results.filter(
-    (r): r is { subject: string; from: string; snippet: string } => r !== null,
-  );
+  // Newest message first, regardless of which tag list the thread id
+  // arrived from, so the model reads "what just happened" at the top.
+  return results
+    .filter((r): r is RecentTaggedEmail => r !== null)
+    .sort((a, b) => (b.dateIso ?? "").localeCompare(a.dateIso ?? ""));
 }
 
 // Lighter-weight cousin of getRecentTaggedEmails — pulls just the

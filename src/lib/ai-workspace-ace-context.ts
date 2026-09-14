@@ -78,6 +78,11 @@ const STOP_WORDS = new Set([
 const ACE_TERMS =
   /\b(ace|crm|system|database|record|records|client|clients|company|companies|account|accounts|job|jobs|role|roles|opening|openings|req|reqs|candidate|candidates|pipeline|placement|placements|interview|interviews|contact|contacts|activity|notes?)\b/i;
 
+// A client's full roster is small (a dozen or two people) and every one
+// of them is a potential "who is X?" answer, so render generously.
+const ACE_WIDE_CONTACTS_PER_CLIENT_MAX = 30;
+const ACE_WIDE_RELEVANT_CONTACTS_MAX = 30;
+
 const FOLLOWUP_TERMS =
   /\b(my client|the client|this client|that client|the company|this company|that company|talking about|that role|this role|that job|this job|those jobs|those roles|that candidate|this candidate)\b/i;
 
@@ -229,7 +234,7 @@ export async function buildAceWideContextBlock(
     recentActivity,
   ] = await Promise.all([
     fetchJobsForClients(input.organizationId, Array.from(clientIds)),
-    fetchContacts(input.organizationId, tokens, Array.from(clientIds)),
+    fetchContacts(input.organizationId, Array.from(clientIds)),
     fetchPlacements(input.organizationId, {
       clientIds: Array.from(clientIds),
       jobIds: Array.from(jobIds),
@@ -255,7 +260,10 @@ export async function buildAceWideContextBlock(
       : Promise.resolve([]),
   ]);
 
-  const dedupedContacts = mergeContacts(contacts, contactMatches);
+  // Scored name/title matches first so a person Andrew named in the
+  // question always survives the render caps below; client rosters
+  // fill in behind them.
+  const dedupedContacts = mergeContacts(contactMatches, contacts);
   const dedupedJobs = mergeJobs(jobMatches, jobsForClients);
   for (const j of dedupedJobs) jobIds.add(j.id);
   for (const c of dedupedContacts) {
@@ -645,28 +653,25 @@ async function fetchJobsForClients(
   });
 }
 
+// Every contact at each matched client. Token matching deliberately
+// does NOT happen here: this query used to OR the client ids with a
+// `contains` on every query token, so two-letter tokens like "go" or
+// "any" matched hundreds of unrelated contacts org-wide, and the
+// recency-ordered take:60 pushed the matched client's own older
+// contacts (Cheyenne at Sheehan Brothers, updated months earlier)
+// clean off the list. Name/title/token relevance is
+// searchRelevantContacts' job; this one is purely "who works at the
+// clients we matched".
 async function fetchContacts(
   organizationId: string,
-  tokens: string[],
   clientIds: string[],
 ): Promise<ContactMatch[]> {
-  if (clientIds.length === 0 && tokens.length === 0) return [];
-  const or: Prisma.ContactWhereInput[] = [];
-  if (clientIds.length > 0) or.push({ clientId: { in: clientIds } });
-  for (const token of tokens) {
-    or.push(
-      { firstName: { contains: token, mode: "insensitive" } },
-      { lastName: { contains: token, mode: "insensitive" } },
-      { name: { contains: token, mode: "insensitive" } },
-      { currentDesignation: { contains: token, mode: "insensitive" } },
-      { client: { is: { name: { contains: token, mode: "insensitive" } } } },
-    );
-  }
+  if (clientIds.length === 0) return [];
   return prisma.contact.findMany({
-    where: { organizationId, OR: or },
+    where: { organizationId, clientId: { in: clientIds } },
     select: contactSelect,
-    orderBy: { updatedAt: "desc" },
-    take: 60,
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { name: "asc" }],
+    take: 120,
   });
 }
 
@@ -849,8 +854,11 @@ function renderClients(
       for (const job of clientJobs) lines.push(`    ${renderJobOneLine(job)}`);
     }
 
-    const clientContacts = contacts.filter((contact) => contact.clientId === client.id).slice(0, 6);
-    lines.push("  Contacts:");
+    const allClientContacts = contacts.filter((contact) => contact.clientId === client.id);
+    const clientContacts = allClientContacts.slice(0, ACE_WIDE_CONTACTS_PER_CLIENT_MAX);
+    lines.push(
+      `  Contacts (${allClientContacts.length} on file${allClientContacts.length > clientContacts.length ? `, ${clientContacts.length} shown` : ""}):`,
+    );
     if (clientContacts.length === 0) {
       lines.push("    (none on file)");
     } else {
@@ -959,7 +967,7 @@ function renderCandidates(
 
 function renderContacts(contacts: ContactMatch[]): string {
   const lines = ["RELEVANT CONTACTS:"];
-  for (const contact of contacts.slice(0, 14)) {
+  for (const contact of contacts.slice(0, ACE_WIDE_RELEVANT_CONTACTS_MAX)) {
     lines.push(`- ${renderContactOneLine(contact)}`);
     if (contact.notes?.trim()) lines.push(`  Notes: ${truncateText(contact.notes, 350)}`);
   }

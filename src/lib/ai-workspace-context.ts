@@ -494,6 +494,74 @@ export async function buildClientContext(clientId: string): Promise<string> {
   return lines.join("\n");
 }
 
+// Hiring-side people at a client, rendered one per line. Shared by the
+// candidate and job builders so every Game Plan surface that touches a
+// client can answer "who is <name> at <client>?" from the base context
+// instead of hoping the query-aware Ace-wide lookup happens to rank
+// that person in its recency-ordered slice. (It once listed 5 of 12
+// Sheehan Brothers contacts and asked Andrew who Cheyenne was.)
+const CLIENT_CONTACTS_PER_CLIENT_MAX = 40;
+
+type ClientContactRow = {
+  clientId: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  name: string | null;
+  emails: string[];
+  phoneNumbers: Prisma.JsonValue | null;
+  currentDesignation: string | null;
+};
+
+async function fetchClientContacts(
+  organizationId: string,
+  clientIds: string[],
+): Promise<ClientContactRow[]> {
+  const ids = Array.from(new Set(clientIds.filter(Boolean)));
+  if (ids.length === 0) return [];
+  return prisma.contact.findMany({
+    where: { organizationId, clientId: { in: ids } },
+    select: {
+      clientId: true,
+      firstName: true,
+      lastName: true,
+      name: true,
+      emails: true,
+      phoneNumbers: true,
+      currentDesignation: true,
+    },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { name: "asc" }],
+  });
+}
+
+function renderClientContactLine(ct: ClientContactRow): string {
+  const displayName =
+    [ct.firstName, ct.lastName].filter(Boolean).join(" ") ||
+    ct.name ||
+    "(unnamed)";
+  const email = ct.emails[0] ?? "";
+  const phoneRaw = extractFirstPhone(ct.phoneNumbers);
+  return `${displayName}, ${ct.currentDesignation || "(no title)"} - ${email || "(no email)"} | ${phoneRaw || "(no phone)"}`;
+}
+
+function renderClientContactsBlock(
+  clients: Array<{ id: string; name: string | null }>,
+  contacts: ClientContactRow[],
+): string[] {
+  const lines: string[] = [];
+  for (const client of clients) {
+    const rows = contacts
+      .filter((c) => c.clientId === client.id)
+      .slice(0, CLIENT_CONTACTS_PER_CLIENT_MAX);
+    lines.push(`  ${client.name || "(unknown client)"} (${rows.length} contact${rows.length === 1 ? "" : "s"} on file):`);
+    if (rows.length === 0) {
+      lines.push("    (none on file)");
+      continue;
+    }
+    for (const ct of rows) lines.push(`    ${renderClientContactLine(ct)}`);
+  }
+  return lines;
+}
+
 export async function buildCandidateContext(
   candidateId: string,
 ): Promise<string> {
@@ -575,6 +643,19 @@ export async function buildCandidateContext(
       // /notes page.
       getNotesForEntity("candidate", candidate.id),
     ]);
+  // Every client this candidate has an application with, deduped, so
+  // the hiring contacts (HR, hiring managers, the person emailing
+  // Andrew about the role) ride along with the application itself.
+  const applicationClients: Array<{ id: string; name: string | null }> = [];
+  for (const p of placements) {
+    if (!p.client || applicationClients.some((c) => c.id === p.client!.id)) continue;
+    applicationClients.push({ id: p.client.id, name: p.client.name });
+  }
+  const applicationClientContacts = await fetchClientContacts(
+    org.id,
+    applicationClients.map((c) => c.id),
+  );
+
   const candidateCallContextBlock = await buildRecentCallContextBlock({
     organizationId: org.id,
     lineDigits,
@@ -741,6 +822,14 @@ export async function buildCandidateContext(
       }
       lines.push("");
     }
+  }
+
+  if (applicationClients.length > 0) {
+    lines.push(
+      "CLIENT CONTACTS (hiring-side people at the companies above, from Ace; use these names, titles, and emails when Andrew mentions someone at one of these clients):",
+    );
+    lines.push(...renderClientContactsBlock(applicationClients, applicationClientContacts));
+    lines.push("");
   }
 
   lines.push("INTERVIEWS (times shown in Eastern Time / ET; do not convert them):");
@@ -1363,6 +1452,10 @@ export async function buildJobContext(jobId: string): Promise<string> {
         })
       : "";
 
+  const jobClientContacts = job.clientId
+    ? await fetchClientContacts(org.id, [job.clientId])
+    : [];
+
   const lines: string[] = [];
   lines.push(
     `You are an AI recruiting assistant for BreakPoint Talent. Andrew Kraig is the recruiter; he uses you for sourcing strategy, interview prep, comp benchmarking, and outreach drafting on this specific job.`,
@@ -1391,6 +1484,11 @@ export async function buildJobContext(jobId: string): Promise<string> {
   if (internalNotes) {
     lines.push("=== INTERNAL RECRUITER NOTES ===");
     lines.push(internalNotes);
+    lines.push("");
+  }
+  if (job.client) {
+    lines.push("=== CLIENT CONTACTS (hiring-side people at this client, from Ace) ===");
+    lines.push(...renderClientContactsBlock([job.client], jobClientContacts));
     lines.push("");
   }
   lines.push("=== PIPELINE SNAPSHOT ===");

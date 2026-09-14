@@ -11,7 +11,12 @@ import { CLAUDE_MODEL } from '@/lib/claude'
 import { extractUrls, verifyUrls } from '@/lib/url-verifier'
 import { authOptions } from '@/lib/auth'
 import { getCurrentOrg } from '@/lib/auth/getCurrentOrg'
-import { getFreshAccessToken, getRecentTaggedEmails } from '@/lib/gmail'
+import {
+  getFreshAccessToken,
+  getRecentTaggedEmails,
+  listThreadIdsForGmailQuery,
+  tagThreadByAddresses,
+} from '@/lib/gmail'
 import { buildPersonalTrainerBlock } from '@/lib/personal-trainer'
 import { MARKDOWN_OUTPUT_FORMAT_RULES } from '@/lib/ai-output-formatting'
 import { getCurrentUserId } from '@/lib/auth/getCurrentUserId'
@@ -22,6 +27,49 @@ import {
 } from '@/lib/game-plan-limits'
 
 const anthropic = new Anthropic()
+
+// Email-context sizing. Own + client tag lists are pulled separately so a
+// chatty client (invoices, AP threads) cannot crowd out the candidate's
+// own threads; the merged list is then capped at EMAIL_CONTEXT_MAX_THREADS
+// and sorted newest first inside getRecentTaggedEmails.
+const EMAIL_CONTEXT_OWN_THREADS = 6
+const EMAIL_CONTEXT_CLIENT_THREADS = 8
+const EMAIL_CONTEXT_MAX_THREADS = 10
+const EMAIL_CONTEXT_SNIPPET_CHARS = 700
+const EMAIL_CONTEXT_NAMED_CONTACT_THREADS = 3
+const EMAIL_CONTEXT_NAMED_CONTACT_WINDOW = '180d'
+const EMAIL_CONTEXT_NAMED_CONTACTS_MAX = 3
+
+type NamedContactRow = {
+  firstName: string | null
+  lastName: string | null
+  name: string | null
+  emails: string[]
+}
+
+// Contacts whose first or last name appears as a whole word in Andrew's
+// message. Names under three characters are ignored so initials and
+// two-letter names cannot match ordinary words. Bounded to a few people
+// because each one costs a Gmail search round trip.
+function findContactsNamedInMessage(message: string, contacts: NamedContactRow[]): NamedContactRow[] {
+  const text = message.toLowerCase()
+  if (!text.trim()) return []
+  const hits: NamedContactRow[] = []
+  for (const c of contacts) {
+    if (hits.length >= EMAIL_CONTEXT_NAMED_CONTACTS_MAX) break
+    if (c.emails.length === 0) continue
+    const parts = [c.firstName, c.lastName]
+    if (!c.firstName && !c.lastName && c.name) parts.push(...c.name.split(/\s+/))
+    const matched = parts.some((raw) => {
+      const part = (raw ?? '').trim().toLowerCase()
+      if (part.length < 3) return false
+      const escaped = part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(text)
+    })
+    if (matched) hits.push(c)
+  }
+  return hits
+}
 
 type ImageAttachmentMediaType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
 type WorkspaceAttachmentKind = 'image' | 'pdf' | 'docx'
@@ -305,54 +353,143 @@ export async function POST(req: NextRequest) {
     recentMessages: recentMessagesForAceContext.reverse(),
   })
 
-  // Phase 3: pull the last 5 tagged Gmail threads for this entity and
-  // surface their last-message subject/from/snippet to Claude. Wrapped
-  // in a try/catch — any failure (no session, no Gmail scope, no tagged
-  // threads, Gmail 5xx) silently degrades to no email context rather
-  // than blocking the Game Plan response.
+  // Email context: the last message of every recent Gmail thread tagged
+  // to this record, surfaced to Claude as subject/from/date/snippet.
+  //
+  // Scope is the record PLUS the clients it is linked to. A candidate
+  // workspace used to read only candidate-tagged threads, so when an
+  // HR contact emailed Andrew about the role the candidate was applied
+  // to, that thread (tagged to the CLIENT, since the candidate was not
+  // a participant) was invisible and Claude asked "who is Cheyenne?".
+  // Now: candidate -> its own threads + every client on its
+  // applications; job -> the job's client; client -> itself.
+  //
+  // Tag lookups key on the resolved cuid, never the raw entityId: the
+  // client page still posts String(legacyRfId) for RF-imported clients,
+  // and GmailThreadTag.clientId is a cuid, so the old raw compare never
+  // matched a single thread for those clients.
+  //
+  // If Andrew names a contact in his message ("Cheyenne emailed me..."),
+  // Gmail is also searched directly for that person's address so the
+  // thread is found even when the push webhook missed it, and the
+  // thread is tagged on the way through so it is linked next time.
+  //
+  // Wrapped in a try/catch: any failure (no session, no Gmail scope,
+  // Gmail 5xx) silently degrades to no email context rather than
+  // blocking the Game Plan response.
   let emailContextBlock = ''
   try {
-    if (entityType === 'candidate' || entityType === 'client') {
-      const tags = await prisma.gmailThreadTag.findMany({
-        where: {
-          organizationId: org.id,
-          ...(entityType === 'candidate'
-            ? { candidateId: entityId }
-            : { clientId: entityId }),
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 5,
-        select: { threadId: true },
-      })
-      const threadIds = tags.map((t) => t.threadId)
-      if (threadIds.length > 0) {
-        const session = await getServerSession(authOptions)
-        const userEmail = session?.user?.email
-        if (userEmail) {
-          const user = await prisma.user.findUnique({
-            where: { email: userEmail },
-            select: { id: true },
-          })
-          if (user) {
-            const accessToken = await getFreshAccessToken(user.id)
-            const emails = await getRecentTaggedEmails(accessToken, threadIds)
-            if (emails.length > 0) {
-              emailContextBlock =
-                `--- Recent Email Context (last ${emails.length} emails) ---\n` +
-                emails
-                  .map(
-                    (e, i) =>
-                      `[${i + 1}] From: ${e.from}\nSubject: ${e.subject}\n${e.snippet}`,
-                  )
-                  .join('\n\n') +
-                `\n--- End Email Context ---\n\n`
-            }
+    if (resolvedCuid) {
+      const linkedClientIds = new Set<string>()
+      if (entityType === 'client') {
+        linkedClientIds.add(resolvedCuid)
+      } else if (entityType === 'job') {
+        const job = await prisma.job.findFirst({
+          where: { id: resolvedCuid, organizationId: org.id },
+          select: { clientId: true },
+        })
+        if (job?.clientId) linkedClientIds.add(job.clientId)
+      } else {
+        const rows = await prisma.placement.findMany({
+          where: { candidateId: resolvedCuid, organizationId: org.id },
+          select: { clientId: true },
+        })
+        for (const r of rows) if (r.clientId) linkedClientIds.add(r.clientId)
+      }
+
+      const [ownTags, clientTags, linkedContacts] = await Promise.all([
+        entityType === 'candidate'
+          ? prisma.gmailThreadTag.findMany({
+              where: { organizationId: org.id, candidateId: resolvedCuid },
+              orderBy: { createdAt: 'desc' },
+              take: EMAIL_CONTEXT_OWN_THREADS,
+              select: { threadId: true },
+            })
+          : Promise.resolve([] as { threadId: string }[]),
+        linkedClientIds.size > 0
+          ? prisma.gmailThreadTag.findMany({
+              where: { organizationId: org.id, clientId: { in: Array.from(linkedClientIds) } },
+              orderBy: { createdAt: 'desc' },
+              take: EMAIL_CONTEXT_CLIENT_THREADS,
+              select: { threadId: true },
+            })
+          : Promise.resolve([] as { threadId: string }[]),
+        linkedClientIds.size > 0
+          ? prisma.contact.findMany({
+              where: { organizationId: org.id, clientId: { in: Array.from(linkedClientIds) } },
+              select: { firstName: true, lastName: true, name: true, emails: true },
+            })
+          : Promise.resolve([] as { firstName: string | null; lastName: string | null; name: string | null; emails: string[] }[]),
+      ])
+
+      const session = await getServerSession(authOptions)
+      const userEmail = session?.user?.email
+      const user = userEmail
+        ? await prisma.user.findUnique({ where: { email: userEmail }, select: { id: true } })
+        : null
+      const namedContacts = findContactsNamedInMessage(userMessage, linkedContacts)
+      const threadIds: string[] = []
+      if (user && (ownTags.length > 0 || clientTags.length > 0 || namedContacts.length > 0)) {
+        const accessToken = await getFreshAccessToken(user.id)
+
+        // Named-contact search runs first so those threads lead the list.
+        for (const contact of namedContacts) {
+          const addressTerms = contact.emails
+            .map((e) => e.trim().toLowerCase())
+            .filter(Boolean)
+            .flatMap((e) => [`from:${e}`, `to:${e}`])
+          if (addressTerms.length === 0) continue
+          const q = `{${addressTerms.join(' ')}} newer_than:${EMAIL_CONTEXT_NAMED_CONTACT_WINDOW}`
+          // messages.list returns one row per MESSAGE, so a busy thread
+          // repeats its id; over-fetch and keep the first N distinct threads.
+          const found = Array.from(
+            new Set(await listThreadIdsForGmailQuery(accessToken, q, EMAIL_CONTEXT_NAMED_CONTACT_THREADS * 5)),
+          ).slice(0, EMAIL_CONTEXT_NAMED_CONTACT_THREADS)
+          for (const id of found) {
+            threadIds.push(id)
+            tagThreadByAddresses({
+              threadId: id,
+              addresses: contact.emails,
+              organizationId: org.id,
+            }).catch(() => {})
           }
+        }
+        for (const t of ownTags) threadIds.push(t.threadId)
+        for (const t of clientTags) threadIds.push(t.threadId)
+
+        const emails = await getRecentTaggedEmails(
+          accessToken,
+          threadIds,
+          EMAIL_CONTEXT_SNIPPET_CHARS,
+          EMAIL_CONTEXT_MAX_THREADS,
+        )
+        if (emails.length > 0) {
+          const scopeNote =
+            entityType === 'candidate'
+              ? 'threads tagged to this candidate or to the clients they are applied with'
+              : entityType === 'job'
+                ? "threads tagged to this job's client"
+                : 'threads tagged to this client'
+          emailContextBlock =
+            `RECENT EMAIL CONTEXT (${emails.length} real emails from Andrew's Gmail, newest first; ${scopeNote}. Each entry is the latest message on its thread. When Andrew refers to an email someone sent him, find it here before saying you cannot see it.):\n` +
+            emails
+              .map(
+                (e, i) =>
+                  `[${i + 1}] ${e.dateIso ? e.dateIso.slice(0, 10) : 'unknown date'}\nFrom: ${e.from}\nTo: ${e.to || '(unknown)'}\nSubject: ${e.subject}\n${e.snippet}` +
+                  (e.earlier.length > 0
+                    ? `\nEarlier on this thread:\n` +
+                      e.earlier
+                        .map((m) => `  ${m.dateIso ? m.dateIso.slice(0, 10) : 'unknown date'} ${m.from}: ${m.snippet}`)
+                        .join('\n')
+                    : ''),
+              )
+              .join('\n\n') +
+            `\n(end of email context)`
         }
       }
     }
   } catch {
-    // Silent — Game Plan must still work without Gmail context.
+    // Silent: Game Plan must still work without Gmail context.
   }
 
   // Formatting rules appended after the entity context so they apply
@@ -371,7 +508,7 @@ export async function POST(req: NextRequest) {
   // forbid the hedge phrasing.
   const today = new Date().toISOString().slice(0, 10);
   const systemPrompt =
-    [baseSystemPrompt, aceWideContextBlock].filter(Boolean).join("\n\n") +
+    [baseSystemPrompt, aceWideContextBlock, emailContextBlock].filter(Boolean).join("\n\n") +
     "\n\n" +
     `TODAY: ${today}.\n\n` +
     "FRESHNESS RULES (mandatory):\n" +
@@ -387,7 +524,6 @@ export async function POST(req: NextRequest) {
     "**Broader job-board searches to watch:** bulleted (hyphens, NOT numbered). Frame the section header explicitly as \"pages to browse, these are search results, not pre-vetted roles.\" Each bullet: site name + the specific filter/keyword/location the candidate should browse, with a `[Browse on <Site>](url)` link. LinkedIn / Indeed / ZipRecruiter / Glassdoor / Wellfound / Built In keyword-search pages live HERE, never in Section 1.\n\n" +
     "Section headers (the bolded `**Open Roles:**` / `**Broader job-board searches to watch:**` lines) MUST end with a trailing colon. Always. The colon is a hard rule, every future header for these sections lands with one.\n\n" +
     "If a Section-1 posting closes, drop it. Never demote it into Section 2. Section 2 is for aggregator pages, not stale specific roles.\n\n" +
-    emailContextBlock +
     MARKDOWN_OUTPUT_FORMAT_RULES +
     "\nKeep responses scannable and well-organized. Use descriptive link text instead of full URLs." +
     (workspaceAttachments.length > 0
