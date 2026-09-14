@@ -50,6 +50,8 @@ export type FireTriggerInput = {
   // skip fireTriggerAndLog (the rare direct fireTriggerForPlacement
   // path) can still honor a saved rule.
   templateOverrideId?: string | null;
+  // Recruiter-edited subject/body from a preview; sent verbatim.
+  contentOverride?: { subject: string; body: string } | null;
 };
 
 export type FireTriggerOutcome = {
@@ -102,6 +104,7 @@ export async function fireTriggerForPlacement(
     values,
     mode: input.mode ?? "send",
     templateOverrideId: input.templateOverrideId ?? null,
+    contentOverride: input.contentOverride ?? null,
   });
 
   return { fire, candidateEmail };
@@ -126,6 +129,15 @@ export async function fireTriggerAndLog(args: {
   // Org id is required for ActivityLog. Caller should pass
   // (await getCurrentOrg()).id from inside its action.
   organizationId: string;
+  // Recruiter-edited subject/body from a preview; sent verbatim.
+  contentOverride?: { subject: string; body: string } | null;
+  // The TriggerRule "enabled" switch governs AUTOMATIC fires. When the
+  // recruiter explicitly asked for this email (ticked "Send rejection
+  // email" in the dialog), pass true so a disabled rule does not
+  // silently swallow the send. The rule's pinned templateId is still
+  // honored. Before this flag, the reject dialog reported "Email sent"
+  // while fireTriggerAndLog had skipped on trigger_disabled.
+  explicitSend?: boolean;
 }): Promise<FireTriggerOutcome> {
   // Per-org TriggerRule override lookup. Absent row → default
   // behavior. enabled=false → short-circuit skip and log. templateId
@@ -142,7 +154,7 @@ export async function fireTriggerAndLog(args: {
     select: { enabled: true, templateId: true },
   });
 
-  if (rule && rule.enabled === false) {
+  if (rule && rule.enabled === false && !args.explicitSend) {
     const sessionForUser = await getServerSession(authOptions);
     const emailForUser = sessionForUser?.user?.email ?? "";
     const userRow = emailForUser
@@ -184,6 +196,7 @@ export async function fireTriggerAndLog(args: {
     overrides: args.overrides,
     mode: args.mode,
     templateOverrideId: rule?.templateId ?? null,
+    contentOverride: args.contentOverride ?? null,
   });
 
   // Targeted ActivityLog write so the candidate / placement timeline

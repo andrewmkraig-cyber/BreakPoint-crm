@@ -94,6 +94,11 @@ export type FireTemplatedEmailInput = {
   // "approve before sending" / sendAsDraft draft-diversion was removed
   // Ace 70.0 — triggered templates always honor the caller's mode.)
   templateOverrideId?: string | null;
+  // Recruiter-edited subject/body (merge fields already resolved, as
+  // shown in a preview). When set, these are sent verbatim in place of
+  // the template's rendered text. The template is still looked up so
+  // missing/inactive gating and the audit templateName stay the same.
+  contentOverride?: { subject: string; body: string } | null;
 };
 
 export type FireResult =
@@ -127,8 +132,16 @@ export async function fireTemplatedEmail(input: FireTemplatedEmailInput): Promis
   // they read as AI-generated. Strip them from the resolved subject
   // and body after merge fields apply (a merge value itself could
   // carry one in from a free-form notes field).
-  const subject = applyMergeFields(look.template.subject, input.values).replace(/—/g, "-");
-  const body = applyMergeFields(look.template.body, input.values).replace(/—/g, "-");
+  const subject = (
+    input.contentOverride
+      ? input.contentOverride.subject
+      : applyMergeFields(look.template.subject, input.values)
+  ).replace(/—/g, "-");
+  const body = (
+    input.contentOverride
+      ? input.contentOverride.body
+      : applyMergeFields(look.template.body, input.values)
+  ).replace(/—/g, "-");
   // A rich (HTML) template body keeps its <strong>/<u> markup; a plain
   // body gets the usual plain-text-to-HTML conversion.
   const html = looksLikeHtml(body) ? wrapEmailHtml(body) : plainToHtml(body);

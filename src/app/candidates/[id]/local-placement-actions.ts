@@ -41,6 +41,9 @@ import {
 } from "@/lib/submittal-format";
 import { wrapEmailHtml } from "@/lib/email-html";
 import { fireTriggerAndLog } from "@/lib/trigger-fire";
+import { buildPlacementMergeValues } from "@/lib/merge-context";
+import { loadTemplateById, loadTriggeredTemplate } from "@/lib/templated-email";
+import { applyMergeFields, htmlToReadableText } from "@/lib/merge-fields";
 import { formatDate } from "@/lib/utils";
 import { linkPlacementToRetainedSearch } from "@/lib/retained-search-link";
 import {
@@ -1281,6 +1284,86 @@ export async function sendLocalReferenceRequest(
 // dont have, so this thin helper writes the same stage move +
 // ActionLog entry, keyed off the Placement.id cuid that LocalJobRow
 // already carries. Mirrors the RF version's revalidate paths.
+// What the reject dialog shows in its "Edit email" panel: the active
+// Candidate Rejected template rendered for this placement, merge
+// fields resolved, HTML flattened to editable text. The recruiter can
+// change it and the edited copy is sent verbatim via rejectLocalPlacement.
+export type RejectionEmailPreview = {
+  to: string;
+  subject: string;
+  body: string;
+  templateName: string;
+};
+
+export async function previewRejectionEmail(input: {
+  placementId: string;
+}): Promise<Result<RejectionEmailPreview>> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
+  const placement = await prisma.placement.findFirst({
+    where: { id: input.placementId, organizationId: org.id },
+    select: {
+      candidateId: true,
+      candidateRfId: true,
+      jobId: true,
+      jobRfId: true,
+      clientId: true,
+      clientRfId: true,
+    },
+  });
+  if (!placement) return { ok: false, error: "Placement not found." };
+
+  const rule = await prisma.triggerRule.findUnique({
+    where: {
+      organizationId_triggerKey: {
+        organizationId: org.id,
+        triggerKey: CANDIDATE_REJECTION_TRIGGER,
+      },
+    },
+    select: { templateId: true },
+  });
+  const look = rule?.templateId
+    ? await loadTemplateById(rule.templateId)
+    : await loadTriggeredTemplate(CANDIDATE_REJECTION_TRIGGER);
+  if (look.kind === "missing") {
+    return { ok: false, error: "No Candidate Rejected template exists. Create one in Settings > Templates." };
+  }
+  if (look.kind === "inactive") {
+    return { ok: false, error: `The "${look.name}" template is inactive. Turn it on in Settings > Templates.` };
+  }
+
+  const values = await buildPlacementMergeValues({
+    candidateRfId: placement.candidateRfId,
+    candidateId: placement.candidateId,
+    jobRfId: placement.jobRfId,
+    jobId: placement.jobId,
+    clientRfId: placement.clientRfId,
+    clientId: placement.clientId,
+  });
+  const subject = applyMergeFields(look.template.subject, values).replace(/—/g, "-");
+  const body = htmlToReadableText(
+    applyMergeFields(look.template.body, values).replace(/—/g, "-"),
+  );
+  return {
+    ok: true,
+    value: {
+      to: values.candidateEmail ?? "",
+      subject,
+      body,
+      templateName: look.template.name,
+    },
+  };
+}
+
+// Outcome of the optional rejection email so the UI can toast the
+// truth ("Email sent" vs "Email skipped: no address") instead of
+// assuming the fire landed.
+export type RejectionEmailOutcome =
+  | { status: "sent" | "drafted" }
+  | { status: "skipped"; reason: string }
+  | { status: "error"; error: string };
+
 export async function rejectLocalPlacement(input: {
   placementId: string;
   // Recruiter-driven choice in the reject dialog. The trigger is no
@@ -1288,7 +1371,10 @@ export async function rejectLocalPlacement(input: {
   // this flag through. Default false so any caller that hasn't been
   // updated to surface the prompt still rejects silently.
   sendRejectionEmail?: boolean;
-}): Promise<Result> {
+  // Recruiter-edited subject/body from the dialog's preview panel.
+  // Sent verbatim (merge fields were resolved in the preview).
+  rejectionEmail?: { subject: string; body: string } | null;
+}): Promise<Result<{ email: RejectionEmailOutcome | null }>> {
   const user = await requireUser();
   if (!user) return { ok: false, error: "Not signed in." };
   const org = await getCurrentOrg();
@@ -1334,8 +1420,17 @@ export async function rejectLocalPlacement(input: {
     // rejection email" checkbox; only fire when they ticked it. Stage
     // flip is already committed, so a fire failure can't corrupt
     // pipeline state — best-effort.
+    let email: RejectionEmailOutcome | null = null;
     if (input.sendRejectionEmail && placement.candidateId) {
-      await fireTriggerAndLog({
+      const edited =
+        input.rejectionEmail &&
+        (input.rejectionEmail.subject.trim() || input.rejectionEmail.body.trim())
+          ? {
+              subject: input.rejectionEmail.subject.trim(),
+              body: input.rejectionEmail.body,
+            }
+          : null;
+      const outcome = await fireTriggerAndLog({
         trigger: CANDIDATE_REJECTION_TRIGGER,
         ref: {
           candidateId: placement.candidateId,
@@ -1347,15 +1442,25 @@ export async function rejectLocalPlacement(input: {
         },
         actionType: "candidate_rejection_email",
         organizationId: org.id,
+        explicitSend: true,
+        contentOverride: edited,
         metadata: {
           placementId: input.placementId,
           previousStage,
           local: true,
+          edited: Boolean(edited),
         },
       });
+      const fire = outcome.fire;
+      email =
+        fire.status === "sent" || fire.status === "drafted"
+          ? { status: fire.status }
+          : fire.status === "skipped"
+            ? { status: "skipped", reason: fire.reason }
+            : { status: "error", error: fire.error };
     }
 
-    return { ok: true };
+    return { ok: true, value: { email } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to reject candidate." };
   }

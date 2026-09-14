@@ -25,6 +25,7 @@ import {
   reapplyLocalPlacement,
   recordLocalOffer,
   recordLocalPlacement,
+  previewRejectionEmail,
   rejectLocalPlacement,
 } from "@/app/candidates/[id]/local-placement-actions";
 // cancelPlacement still lives on the legacy placement-actions module (it
@@ -43,7 +44,11 @@ import {
 } from "@/lib/placement-cancellation";
 import { DismissPlacementButton } from "@/app/candidates/[id]/dismiss-placement-button";
 import { toast } from "sonner";
-import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
+import {
+  RejectCandidateDialog,
+  describeRejectionOutcome,
+  type RejectConfirmOptions,
+} from "@/components/reject-candidate-dialog";
 import { Button } from "@/components/ui/button";
 import { useComposerManager } from "@/lib/composer-manager";
 import {
@@ -854,23 +859,23 @@ function LocalJobActionRow({
 
   async function handleRejectConfirm({
     sendRejectionEmail,
-  }: {
-    sendRejectionEmail: boolean;
-  }) {
+    rejectionEmail,
+  }: RejectConfirmOptions) {
     await new Promise<void>((resolve) => {
       startRejecting(async () => {
         const res = await rejectLocalPlacement({
           placementId: job.placementId,
           sendRejectionEmail,
+          rejectionEmail: rejectionEmail ?? null,
         });
         if (!res.ok) {
           toast.error("Couldn't reject", { description: res.error });
           resolve();
           return;
         }
-        toast.success(
-          sendRejectionEmail ? "Rejected. Email sent" : "Rejected",
-        );
+        const outcome = describeRejectionOutcome(res.value.email);
+        if (outcome.ok) toast.success(outcome.title, { description: outcome.description });
+        else toast.warning(outcome.title, { description: outcome.description });
         setRejectOpen(false);
         onStageChange(job.jobRfId, "rejected");
         resolve();
@@ -1111,6 +1116,7 @@ function LocalJobActionRow({
           jobTitle={job.jobTitle}
           onClose={() => setRejectOpen(false)}
           onConfirm={handleRejectConfirm}
+          loadRejectionEmail={() => previewRejectionEmail({ placementId: job.placementId })}
         />
       )}
     </div>

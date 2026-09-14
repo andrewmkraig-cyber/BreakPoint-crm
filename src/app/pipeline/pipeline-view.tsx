@@ -19,6 +19,7 @@ import {
 import { TabStrip } from "@/components/ui/tab-strip";
 import {
   getSubmittalFollowup,
+  previewRejectionEmail,
   rejectLocalPlacement,
   sendSubmittalFollowup,
   type SubmittalFollowupDraft,
@@ -33,7 +34,11 @@ import {
   removeLocalKeptCandidate,
 } from "@/app/pipeline/applicants-actions";
 import { setCandidateNavList } from "@/lib/candidate-nav";
-import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
+import {
+  RejectCandidateDialog,
+  describeRejectionOutcome,
+  type RejectConfirmOptions,
+} from "@/components/reject-candidate-dialog";
 import { BulkSubmitDialog } from "@/app/candidates/bulk-dialogs";
 import {
   PlacementEditDrawer,
@@ -735,14 +740,18 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
     setBulkBusy(true);
     let ok = 0;
     let fail = 0;
+    let emailsSent = 0;
     // Sequential with a small gap — Gmail rate-limits when the
     // rejection-email checkbox fires for every row, and Neon's pool
     // is friendlier under serial writes than a thundering herd.
     for (const id of ids) {
       try {
         const res = await rejectLocalPlacement({ placementId: id, sendRejectionEmail });
-        if (res.ok) ok += 1;
-        else fail += 1;
+        if (res.ok) {
+          ok += 1;
+          const st = res.value.email?.status;
+          if (st === "sent" || st === "drafted") emailsSent += 1;
+        } else fail += 1;
       } catch {
         fail += 1;
       }
@@ -751,11 +760,12 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
     setBulkRejectOpen(false);
     setSelectedPlacementIds(new Set());
     if (fail === 0) {
-      toast.success(
-        sendRejectionEmail
-          ? `Rejected ${ok}. Emails sent`
-          : `Rejected ${ok}`,
-      );
+      if (!sendRejectionEmail) toast.success(`Rejected ${ok}`);
+      else if (emailsSent === ok) toast.success(`Rejected ${ok}. Emails sent`);
+      else
+        toast.warning(`Rejected ${ok}. ${emailsSent} of ${ok} emails sent`, {
+          description: "Check each candidate's activity feed for why the rest were skipped.",
+        });
     } else if (ok === 0) {
       toast.error(`Couldn't reject (${fail} failed)`);
     } else {
@@ -1487,16 +1497,22 @@ function RejectButton({ placementId, candidateName }: { placementId: string; can
     setOpen(true);
   }
 
-  async function onConfirm({ sendRejectionEmail }: { sendRejectionEmail: boolean }) {
+  async function onConfirm({ sendRejectionEmail, rejectionEmail }: RejectConfirmOptions) {
     await new Promise<void>((resolve) => {
       startTransition(async () => {
-        const res = await rejectLocalPlacement({ placementId, sendRejectionEmail });
+        const res = await rejectLocalPlacement({
+          placementId,
+          sendRejectionEmail,
+          rejectionEmail: rejectionEmail ?? null,
+        });
         if (!res.ok) {
           toast.error("Couldn't reject", { description: res.error });
           resolve();
           return;
         }
-        toast.success(sendRejectionEmail ? "Rejected. Email sent" : "Rejected");
+        const outcome = describeRejectionOutcome(res.value.email);
+        if (outcome.ok) toast.success(outcome.title, { description: outcome.description });
+        else toast.warning(outcome.title, { description: outcome.description });
         setOpen(false);
         router.refresh();
         resolve();
@@ -1526,6 +1542,7 @@ function RejectButton({ placementId, candidateName }: { placementId: string; can
             if (!isPending) setOpen(false);
           }}
           onConfirm={onConfirm}
+          loadRejectionEmail={() => previewRejectionEmail({ placementId })}
         />
       )}
     </>
