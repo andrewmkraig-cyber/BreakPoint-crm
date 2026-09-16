@@ -854,6 +854,17 @@ export function MailComposer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedJobId, editor]);
 
+  // Reads a picked / dropped picture as the data: URL the editor's Image
+  // node stores. Send-time converts it into an inline MIME part.
+  function fileToDataUrl(file: File): Promise<string | null> {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+  }
+
   async function addFiles(files: FileList | File[]) {
     const arr = Array.from(files);
     for (const f of arr) {
@@ -1739,7 +1750,24 @@ export function MailComposer({
           onDrop={async (e) => {
             e.preventDefault();
             setDragOver(false);
-            if (e.dataTransfer.files.length > 0) await addFiles(e.dataTransfer.files);
+            if (e.dataTransfer.files.length === 0) return;
+            // Pictures dropped on the body go INTO the body, under the
+            // text, the same way the toolbar's Insert image button and a
+            // pasted screenshot do. Only non-image files become paperclip
+            // attachments. A deal announcement photo dragged in from the
+            // desktop used to land as an attachment everyone had to open.
+            const dropped = Array.from(e.dataTransfer.files);
+            const pictures = dropped.filter((f) => f.type.startsWith("image/"));
+            const others = dropped.filter((f) => !f.type.startsWith("image/"));
+            if (editor) {
+              for (const picture of pictures) {
+                const src = await fileToDataUrl(picture);
+                if (src) editor.chain().focus("end").setImage({ src }).run();
+              }
+            } else if (pictures.length > 0) {
+              await addFiles(pictures);
+            }
+            if (others.length > 0) await addFiles(others);
           }}
           onFocusCapture={() => (lastFocused.current = "body")}
           className={cn(
@@ -1928,7 +1956,7 @@ export function MailComposer({
           {/* Drag-to-attach hint is desktop-only — you can't drag files
               onto the body on touch, and it's the widest element crowding
               the footer on phones. */}
-          <span className="hidden text-[11px] text-court-fg-muted sm:inline">or drag files onto the body.</span>
+          <span className="hidden text-[11px] text-court-fg-muted sm:inline">or drag files onto the body (pictures go in the body).</span>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {/* Save Draft + Delete render in BOTH inline and modal modes

@@ -136,7 +136,7 @@ export function dealAnnouncementBodyHtml(facts: DealAnnouncementFacts): string {
   // blank so it is obvious the draft is unfinished, and phrased so that
   // deleting the line is the natural first keystroke.
   parts.push(
-    "<p><em>How the deal went down: replace this line with the story, and paste or insert the photo below it.</em></p>",
+    "<p><em>How the deal went down: replace this line with the story, then paste, drag in, or insert the photo below it. It shows in the email body, not as an attachment.</em></p>",
   );
 
   return parts.join("");

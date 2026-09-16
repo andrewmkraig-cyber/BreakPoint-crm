@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { expandGmailThreadSearchQueries } from "@/lib/gmail-search-query";
+import { extractInlineBodyImages } from "@/lib/inline-body-images";
 import { getEmailSignature } from "@/lib/preferences";
 import {
   ACE_SIGNATURE_MARKER,
@@ -390,7 +391,22 @@ function stripExistingTextSignature(body: string): string {
 export async function sendGmail(input: SendEmailInput): Promise<SendEmailResult> {
   const accessToken = await getFreshAccessToken(input.userId);
   const signed = await withSignature(input);
-  const raw = base64UrlEncode(buildRfc2822(signed));
+  // Body pictures (pasted, inserted or dropped into the composer) arrive as
+  // base64 data: URIs. Convert them into our own inline cid: parts here, at
+  // true send time, so Apple Mail / iOS Mail / Outlook render them in the
+  // body instead of as a bottom attachment. Drafts are left as composed so
+  // the composer can reopen them with the pictures still visible.
+  const bodyImages = signed.bodyHtml
+    ? extractInlineBodyImages(signed.bodyHtml, `bptimg-${Math.random().toString(36).slice(2)}`)
+    : null;
+  const outbound: SendEmailInput = bodyImages
+    ? {
+        ...signed,
+        bodyHtml: bodyImages.html,
+        inlineImages: [...(signed.inlineImages ?? []), ...bodyImages.images],
+      }
+    : signed;
+  const raw = base64UrlEncode(buildRfc2822(outbound));
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
     headers: {
