@@ -1,6 +1,7 @@
 import type React from "react";
 import { BreakdownViewSwitch } from "@/components/charts/breakdown-view-switch";
 import { SharePie, type PieSlice } from "@/components/charts/share-pie";
+import { RevenuePaceChart } from "@/components/charts/revenue-pace-chart";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
@@ -340,6 +341,32 @@ export async function RevenueCards({
 
   const quarterLabel = `Q${currentQuarterIndex + 1} ${year}`;
 
+  // Cumulative revenue by day of the quarter, for the pace chart. Same
+  // events as the monthly bars, bucketed by day instead of month.
+  const dailyUsd = new Array<number>(daysInQuarter).fill(0);
+  const dayOf = (d: Date) => Math.floor((d.getTime() - qStart.getTime()) / dayMs);
+  for (const inv of revenueInvoices) {
+    const refDate = inv.paidAt ?? inv.sentAt;
+    if (!refDate) continue;
+    const i = dayOf(refDate);
+    if (i >= 0 && i < daysInQuarter) dailyUsd[i] += decimalToNumber(inv.feeAmount);
+  }
+  for (const p of uninvoicedPlacementsPeriod) {
+    if (!p.placedAt) continue;
+    const i = dayOf(p.placedAt);
+    if (i >= 0 && i < daysInQuarter) dailyUsd[i] += p.feeTotal ?? 0;
+  }
+  const cumulative: number[] = [];
+  let running = 0;
+  for (let i = 0; i < Math.min(daysElapsedInQuarter, daysInQuarter); i++) {
+    running += dailyUsd[i];
+    cumulative.push(running);
+  }
+  const monthTicks = quarterMonths.map((m) => ({
+    day: dayOf(new Date(year, m, 1)),
+    label: MONTH_FULL[m].slice(0, 3),
+  }));
+
   return (
     <section className="flex flex-col gap-4">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
@@ -372,6 +399,10 @@ export async function RevenueCards({
           maxMonthUsd={maxMonthUsd}
           quarterRevenueUsd={quarterRevenueUsd}
           forecastQuarterUsd={forecastQuarterUsd}
+          daysInQuarter={daysInQuarter}
+          daysElapsedInQuarter={daysElapsedInQuarter}
+          cumulative={cumulative}
+          monthTicks={monthTicks}
         />
       </div>
     </section>
@@ -673,6 +704,10 @@ function TrendCard({
   maxMonthUsd,
   quarterRevenueUsd,
   forecastQuarterUsd,
+  daysInQuarter,
+  daysElapsedInQuarter,
+  cumulative,
+  monthTicks,
 }: {
   quarterLabel: string;
   quarterMonths: number[];
@@ -681,6 +716,10 @@ function TrendCard({
   maxMonthUsd: number;
   quarterRevenueUsd: number;
   forecastQuarterUsd: number;
+  daysInQuarter: number;
+  daysElapsedInQuarter: number;
+  cumulative: number[];
+  monthTicks: Array<{ day: number; label: string }>;
 }) {
   const progressLabel = `${formatUsd(quarterRevenueUsd)} / ${formatUsd(
     QUARTERLY_REVENUE_GOAL_USD,
@@ -752,6 +791,10 @@ function TrendCard({
                         className="absolute inset-x-0 bottom-0 bg-court-brand-tint"
                         style={{ height: `${heightPct}%`, minHeight: 3 }}
                       />
+                      {/* This month's share of the quarterly goal. */}
+                      <div className="absolute inset-0 flex items-center justify-center text-[11px] font-bold tabular-nums text-court-fg">
+                        {Math.round((usd / QUARTERLY_REVENUE_GOAL_USD) * 100)}%
+                      </div>
                     </div>
                   )}
                 </div>
@@ -768,6 +811,16 @@ function TrendCard({
       )}
 
       <p className="mt-3 text-xs text-court-fg-muted">{forecastLabel}</p>
+
+      <RevenuePaceChart
+        quarterLabel={quarterLabel}
+        daysInQuarter={daysInQuarter}
+        daysElapsed={daysElapsedInQuarter}
+        cumulative={cumulative.length > 0 ? cumulative : [0]}
+        goalUsd={QUARTERLY_REVENUE_GOAL_USD}
+        forecastUsd={forecastQuarterUsd}
+        monthTicks={monthTicks}
+      />
     </div>
   );
 }
