@@ -457,7 +457,11 @@ function AverageDealSizeCard({
       {rows.length === 0 ? (
         <EmptyBlock>No deal revenue logged this period yet.</EmptyBlock>
       ) : (
-        <ul className="mt-3 space-y-1">
+        <>
+          <p className="mt-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
+            Largest deals
+          </p>
+          <ul className="mt-1.5 space-y-1">
           {rows.map((r) => (
             <DealSizeRowItem
               key={r.id}
@@ -468,6 +472,7 @@ function AverageDealSizeCard({
             />
           ))}
         </ul>
+        </>
       )}
     </div>
   );
