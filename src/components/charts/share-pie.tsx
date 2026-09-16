@@ -137,8 +137,12 @@ export function SharePie({
   const single = geo.length === 1;
 
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-      <div className="relative mx-auto h-[140px] w-[140px] shrink-0 sm:mx-0">
+    // Stacked: the donut takes the top of the card at a readable size and
+    // the legend runs full width beneath it, so a client name like "Mowat
+    // Mackie & Anderson LLP" reads in full instead of truncating beside a
+    // small ring.
+    <div className="flex flex-col gap-4">
+      <div className="relative mx-auto h-[200px] w-[200px] shrink-0">
         <svg
           viewBox={`0 0 ${SIZE} ${SIZE}`}
           className="h-full w-full"
@@ -189,10 +193,10 @@ export function SharePie({
         </svg>
         {/* Hero number in the hole. */}
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-          <span className="font-sans text-base font-extrabold leading-none tracking-tight tabular-nums text-court-fg">
+          <span className="font-sans text-2xl font-extrabold leading-none tracking-tight tabular-nums text-court-fg">
             {formatValue(valueKind, total)}
           </span>
-          <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-court-fg-muted">
+          <span className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-court-fg-muted">
             {centerLabel}
           </span>
         </div>
@@ -218,22 +222,22 @@ export function SharePie({
       </div>
 
       {/* Legend: every slice, every value, no hover required. */}
-      <ul className="min-w-0 flex-1 flex flex-col gap-1">
+      <ul className="flex w-full flex-col gap-1.5">
         {geo.map((g) => (
           <li
             key={g.slice.key}
-            className="flex items-baseline justify-between gap-2 rounded px-1 text-[12px] transition-opacity"
+            className="flex items-baseline justify-between gap-3 rounded px-1 text-[13px] transition-opacity"
             style={{ opacity: active && active !== g.slice.key ? 0.55 : 1 }}
             onMouseEnter={() => setActive(g.slice.key)}
             onMouseLeave={() => setActive(null)}
           >
-            <span className="flex min-w-0 items-center gap-1.5">
+            <span className="flex min-w-0 flex-1 items-start gap-2">
               <span
                 aria-hidden="true"
-                className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
+                className="inline-block h-3 w-3 shrink-0 rounded-sm"
                 style={{ backgroundColor: g.fill }}
               />
-              <span className="truncate font-medium text-court-fg" title={g.slice.label}>
+              <span className="min-w-0 font-medium leading-snug text-court-fg" title={g.slice.label}>
                 {g.slice.label}
               </span>
             </span>
