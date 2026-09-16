@@ -21,6 +21,10 @@ import type { SignatureInlineImage } from "@/lib/signature";
 const DATA_IMAGE_SRC_RE =
   /(<img\b[^>]*?\bsrc\s*=\s*)(["'])data:(image\/[a-z0-9.+-]+);base64,([a-z0-9+/=\s]+)\2/gi;
 
+// Display width applied when the <img> carries none. Matches the
+// composer's INLINE_IMAGE_WIDTH.
+const INLINE_BODY_IMAGE_WIDTH = 360;
+
 const MIME_EXTENSION: Record<string, string> = {
   "image/png": "png",
   "image/jpeg": "jpg",
@@ -60,5 +64,16 @@ export function extractInlineBodyImages(
       return `${prefix}${quote}cid:${cid}${quote}`;
     },
   );
-  return { html: out, images };
+  // Any converted picture that still lacks a display width (an older
+  // draft, a body built outside the composer) gets the standard one, so a
+  // phone photo never renders at its native 3000px in the reading pane.
+  const sized = out.replace(/<img\b[^>]*>/gi, (tag) => {
+    if (!/\bsrc\s*=\s*["']cid:/i.test(tag) || !tag.includes(`cid:${cidPrefix}-`)) return tag;
+    if (/\bwidth\s*=/i.test(tag)) return tag;
+    return tag.replace(
+      /<img\b/i,
+      `<img width="${INLINE_BODY_IMAGE_WIDTH}" style="width:${INLINE_BODY_IMAGE_WIDTH}px;max-width:100%;height:auto"`,
+    );
+  });
+  return { html: sized, images };
 }

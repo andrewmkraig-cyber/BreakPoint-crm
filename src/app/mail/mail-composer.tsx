@@ -8,6 +8,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
+import { INLINE_IMAGE_WIDTH, prepareInlineImage } from "@/lib/inline-image-prep";
 
 // Tab key indents inside lists, otherwise inserts a tab character so
 // hitting Tab in an email body actually indents the line instead of
@@ -71,6 +72,31 @@ import {
 } from "@/lib/mail-merge-fields";
 import { useMinimizedDrafts } from "@/lib/minimized-drafts-context";
 import { useFloatingZ } from "@/lib/floating-z";
+
+// Image node with a display width. Pictures land in the body at
+// INLINE_IMAGE_WIDTH (a thumbnail-ish column, not the full reading pane)
+// and carry the same size into the sent HTML via width + inline style,
+// which is what Gmail, Apple Mail and Outlook all honor.
+const InlineImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: INLINE_IMAGE_WIDTH,
+        parseHTML: (element) => {
+          const raw = element.getAttribute("width");
+          const n = raw ? parseInt(raw, 10) : NaN;
+          return Number.isFinite(n) && n > 0 ? n : INLINE_IMAGE_WIDTH;
+        },
+        renderHTML: (attributes) => {
+          const w = attributes.width as number | null;
+          if (!w) return {};
+          return { width: w, style: `width:${w}px;max-width:100%;height:auto` };
+        },
+      },
+    };
+  },
+});
 
 // Inline reply composer for the Mail Tab. Hangs off a thread, sends
 // through /api/mail/threads/[id]/reply, then lets the parent refresh
@@ -716,7 +742,7 @@ export function MailComposer({
       // `inline: true` + `allowBase64: true` lets pasted-image blobs be
       // spliced inline as data: URLs, which is what makes "paste a
       // screenshot in the composer" actually land in the sent email.
-      Image.configure({ inline: true, allowBase64: true }),
+      InlineImage.configure({ inline: true, allowBase64: true }),
       TabIndent,
     ],
     content: defaultBody ?? "",
@@ -752,17 +778,14 @@ export function MailComposer({
             if (item.kind === "file" && item.type.startsWith("image/")) {
               const file = item.getAsFile();
               if (!file) continue;
-              const reader = new FileReader();
-              reader.onload = () => {
-                const result = reader.result;
-                if (typeof result !== "string") return;
+              void prepareInlineImage(file).then((src) => {
+                if (!src) return;
                 view.dispatch(
                   view.state.tr.replaceSelectionWith(
-                    view.state.schema.nodes.image.create({ src: result }),
+                    view.state.schema.nodes.image.create({ src, width: INLINE_IMAGE_WIDTH }),
                   ),
                 );
-              };
-              reader.readAsDataURL(file);
+              });
               event.preventDefault();
               return true;
             }
@@ -853,17 +876,6 @@ export function MailComposer({
     editor.commands.setContent(output, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedJobId, editor]);
-
-  // Reads a picked / dropped picture as the data: URL the editor's Image
-  // node stores. Send-time converts it into an inline MIME part.
-  function fileToDataUrl(file: File): Promise<string | null> {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(file);
-    });
-  }
 
   async function addFiles(files: FileList | File[]) {
     const arr = Array.from(files);
@@ -1761,7 +1773,7 @@ export function MailComposer({
             const others = dropped.filter((f) => !f.type.startsWith("image/"));
             if (editor) {
               for (const picture of pictures) {
-                const src = await fileToDataUrl(picture);
+                const src = await prepareInlineImage(picture);
                 if (src) editor.chain().focus("end").setImage({ src }).run();
               }
             } else if (pictures.length > 0) {
@@ -2522,9 +2534,9 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
           below, which adds a downloadable attachment. Pasting a screenshot
           already did this (see handlePaste); this is the same path for a
           photo that lives in a file rather than the clipboard, which is the
-          usual case for a deal announcement picture off a phone. Encoded as
-          a data: URL because that is what makes the image survive into the
-          sent message body. */}
+          usual case for a deal announcement picture off a phone. Downscaled
+          and encoded as a data: URL (prepareInlineImage) because that is
+          what makes the image survive into the sent message body. */}
       {btn(
         false,
         () => {
@@ -2534,12 +2546,9 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
           picker.onchange = () => {
             const file = picker.files?.[0];
             if (!file) return;
-            const reader = new FileReader();
-            reader.onload = () => {
-              if (typeof reader.result !== "string") return;
-              editor.chain().focus().setImage({ src: reader.result }).run();
-            };
-            reader.readAsDataURL(file);
+            void prepareInlineImage(file).then((src) => {
+              if (src) editor.chain().focus().setImage({ src }).run();
+            });
           };
           picker.click();
         },

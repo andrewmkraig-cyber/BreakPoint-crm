@@ -50,6 +50,11 @@ assert(html.includes(`<img alt="team" src='cid:bptimg-test-2' width="300">`), "o
 assert(html.includes('<img src="https://example.com/logo.png">'), "https images are untouched");
 assert(html.includes('<img src="cid:bptsig-x-logo">'), "existing cid refs are untouched");
 
+assert(/<img width="360" style="width:360px;max-width:100%;height:auto" src="cid:bptimg-test-1">/.test(html),
+  "a converted picture without a width gets the standard display width");
+const sizedIn = extractInlineBodyImages(`<img width="200" src="data:image/png;base64,${png}">`, "bptimg-w");
+assert(sizedIn.html === '<img width="200" src="cid:bptimg-w-1">', "an explicit width is left alone");
+
 const none = extractInlineBodyImages("<p>plain</p>", "bptimg-test");
 assert(none.html === "<p>plain</p>" && none.images.length === 0, "bodies without pictures pass through unchanged");
 
