@@ -51,6 +51,10 @@ export type PdfCanvasViewerProps = {
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 3.0;
 
+function clampScale(s: number): number {
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
+}
+
 // iOS Safari silently paints a BLANK (white) canvas — no error thrown —
 // once a canvas's pixel area crosses an internal ceiling (~16.7M px on
 // most devices), and the iPhone's devicePixelRatio of 3 triples the
@@ -72,12 +76,21 @@ export function PdfCanvasViewer({
 }: PdfCanvasViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const docRef = useRef<PdfJsDocument | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [scale, setScale] = useState<number>(typeof initialScale === "number" ? initialScale : 1.0);
+  // Zoom is RELATIVE to fit-to-width: 1 = the page fills the container,
+  // 1.5 = half again bigger. Storing the multiplier (not an absolute
+  // scale) is what makes the page track the box: resize the floating
+  // window or the pane and the page rescales proportionally at whatever
+  // zoom you had, instead of staying frozen at an old pixel size.
+  const [zoomFactor, setZoomFactor] = useState<number>(1);
   const [fitScale, setFitScale] = useState<number | null>(null);
-  const [usingFit, setUsingFit] = useState<boolean>(initialScale === "fit");
+  // A numeric initialScale is honored once fit is known, as a multiplier.
+  const pendingInitialScale = useRef<number | null>(
+    typeof initialScale === "number" ? initialScale : null,
+  );
 
   // Load the PDF once per src.
   useEffect(() => {
@@ -127,6 +140,10 @@ export function PdfCanvasViewer({
     // what tips iOS into blanking them. Ignore deltas under ~1% so a
     // genuine width change still re-fits but noise doesn't.
     setFitScale((prev) => (prev != null && Math.abs(prev - fit) < 0.01 ? prev : fit));
+    if (pendingInitialScale.current != null && fit > 0) {
+      setZoomFactor(pendingInitialScale.current / fit);
+      pendingInitialScale.current = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -144,9 +161,9 @@ export function PdfCanvasViewer({
     const doc = docRef.current;
     const host = canvasHostRef.current;
     if (!doc || !host || loading) return;
-    const effective = usingFit && fitScale ? fitScale : scale;
-    // Guard: don't render if fit hasn't been measured yet and we're using fit.
-    if (usingFit && !fitScale) return;
+    // Guard: nothing to size against until the container has been measured.
+    if (!fitScale) return;
+    const effective = clampScale(fitScale * zoomFactor);
     const tokens = highlightTokens ?? [];
     const classMap = highlightClassMap ?? new Map<string, string>();
     let cancelled = false;
@@ -234,29 +251,49 @@ export function PdfCanvasViewer({
     return () => {
       cancelled = true;
     };
-  }, [loading, scale, fitScale, usingFit, highlightTokens, highlightClassMap]);
+  }, [loading, zoomFactor, fitScale, highlightTokens, highlightClassMap]);
 
+  // Steps are 25 points of absolute scale, expressed back as a multiplier
+  // of the current fit so they survive a later resize.
+  const stepZoom = useCallback(
+    (deltaScale: number) => {
+      setZoomFactor((f) => {
+        const fit = fitScale ?? 1;
+        const next = clampScale(Math.round((fit * f + deltaScale) * 100) / 100);
+        return next / fit;
+      });
+    },
+    [fitScale],
+  );
   function zoomIn() {
-    setUsingFit(false);
-    setScale((s) => {
-      const base = usingFit && fitScale ? fitScale : s;
-      return Math.min(MAX_SCALE, Math.round((base + 0.25) * 100) / 100);
-    });
+    stepZoom(0.25);
   }
   function zoomOut() {
-    setUsingFit(false);
-    setScale((s) => {
-      const base = usingFit && fitScale ? fitScale : s;
-      return Math.max(MIN_SCALE, Math.round((base - 0.25) * 100) / 100);
-    });
+    stepZoom(-0.25);
   }
   function resetFit() {
-    setUsingFit(true);
+    setZoomFactor(1);
     void recomputeFit();
   }
 
-  const displayedScale = usingFit && fitScale ? fitScale : scale;
+  // Ctrl / Cmd + scroll wheel (and trackpad pinch, which browsers report
+  // as a ctrl+wheel) zooms in place. Registered by hand because React's
+  // onWheel is passive and cannot preventDefault the page zoom.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      stepZoom(e.deltaY < 0 ? 0.1 : -0.1);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [stepZoom]);
+
+  const displayedScale = fitScale ? clampScale(fitScale * zoomFactor) : 1;
   const pct = Math.round(displayedScale * 100);
+  const atFit = Math.abs(zoomFactor - 1) < 0.005;
 
   return (
     <div
@@ -265,7 +302,7 @@ export function PdfCanvasViewer({
     >
       <div className="flex items-center justify-between border-b border-court-border bg-court-surface px-3 py-1.5">
         <div className="text-[11px] text-court-fg-muted">
-          {loading ? "Loading…" : err ? "Failed to load" : `${pct}%${usingFit ? " · fit to width" : ""}`}
+          {loading ? "Loading…" : err ? "Failed to load" : `${pct}%${atFit ? " · fit to width" : ""}`}
         </div>
         <div className="flex items-center gap-1">
           {onPopOut && (
@@ -310,7 +347,7 @@ export function PdfCanvasViewer({
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-auto p-4">
+      <div ref={scrollRef} className="flex-1 overflow-auto p-4">
         {loading && (
           <div className="flex h-full min-h-[400px] items-center justify-center gap-2 text-sm text-court-fg-muted">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading PDF…
@@ -325,7 +362,10 @@ export function PdfCanvasViewer({
             </div>
           </div>
         )}
-        <div ref={canvasHostRef} className="flex flex-col items-center gap-3" />
+        {/* w-fit + min-w-full: pages center when narrower than the box and
+            anchor LEFT when wider, so a zoomed page scrolls horizontally
+            instead of clipping its left edge behind the window. */}
+        <div ref={canvasHostRef} className="flex w-fit min-w-full flex-col items-center gap-3" />
       </div>
     </div>
   );
