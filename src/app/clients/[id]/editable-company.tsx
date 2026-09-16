@@ -24,18 +24,10 @@ import { INPUT_FRAME_RECT_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/inp
 import { cn } from "@/lib/utils";
 import { paymentTermsLabel } from "@/lib/payment-terms";
 import { Button } from "@/components/ui/button";
+import { INDUSTRY_OPTIONS, canonicalIndustry } from "@/lib/industries";
 
-export const INDUSTRY_OPTIONS = [
-  "Accounting",
-  "Manufacturing",
-  "Food/Beverage",
-  "Technology",
-  "Legal",
-  "Engineering",
-  "Healthcare",
-  "Financial Services",
-  "Other",
-] as const;
+// Industry choices live in @/lib/industries so this form and the New
+// Client form can never drift apart again.
 
 export type CompanyState = {
   name: string;
@@ -214,11 +206,19 @@ export function EditableCompany({
                 Industry
               </span>
               <select
-                value={draft.industry}
+                value={canonicalIndustry(draft.industry)}
                 onChange={(e) => setDraft({ ...draft, industry: e.target.value })}
                 className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
               >
                 <option value="">—</option>
+                {/* A stored value outside the list (imported data) stays
+                    selectable so opening the editor never blanks it. */}
+                {canonicalIndustry(draft.industry) &&
+                  !(INDUSTRY_OPTIONS as readonly string[]).includes(canonicalIndustry(draft.industry)) && (
+                    <option value={canonicalIndustry(draft.industry)}>
+                      {canonicalIndustry(draft.industry)}
+                    </option>
+                  )}
                 {INDUSTRY_OPTIONS.map((opt) => (
                   <option key={opt} value={opt}>
                     {opt}
@@ -441,7 +441,7 @@ export function EditableCompany({
               )}
             </Detail>
             <Detail label="Industry">
-              <span>{draft.industry || "—"}</span>
+              <span>{canonicalIndustry(draft.industry) || "—"}</span>
             </Detail>
             <Detail label="Address">
               {addressLines.length ? (

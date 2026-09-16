@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { placementTotalDollars } from "@/lib/billing-events";
+import { canonicalIndustry } from "@/lib/industries";
 
 // Data layer for the placements dashboard. Pulls every Placement in the
 // pending_start / hired stages within the requested period, joined with
@@ -443,7 +444,9 @@ export async function getPlacementsDashboardData(
       invoiceId: invoice?.id ?? null,
       clientId: p.clientId ?? null,
       clientName: p.client?.name ?? "",
-      clientIndustry: p.client?.industry ?? null,
+      // Folded through the shared industry map so "Accounting" and
+      // "Financial Services" count as one row in By Industry.
+      clientIndustry: canonicalIndustry(p.client?.industry) || null,
       roleTitle: p.offerTitle ?? p.job?.title ?? null,
       startDate: p.expectedStartDate,
       city: cityOverride ? cityOverride : fallbackCity,

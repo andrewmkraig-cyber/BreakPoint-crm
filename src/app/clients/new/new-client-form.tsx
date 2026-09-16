@@ -13,25 +13,9 @@ import {
   parseClientWebsite,
   type CreateClientPayload,
 } from "@/app/clients/new/actions";
+import { INDUSTRY_OPTIONS, matchIndustry } from "@/lib/industries";
 
-const INDUSTRIES = [
-  "Software / Technology",
-  "Financial Services",
-  "Healthcare",
-  "Manufacturing",
-  "Professional Services",
-  "Retail / E-commerce",
-  "Real Estate",
-  "Energy",
-  "Legal",
-  "Media / Marketing",
-  "Non-profit",
-  "Education",
-  "Telecommunications",
-  "Transportation / Logistics",
-  "Hospitality",
-  "Other",
-] as const;
+const INDUSTRIES = INDUSTRY_OPTIONS;
 
 const US_STATES = [
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
@@ -492,27 +476,6 @@ function Field({
 
 // Map Claude's free-text industry into one of our dropdown options. Accepts
 // loose matches like "SaaS" → "Software / Technology".
-function matchIndustry(raw: string): string | null {
-  const lower = raw.toLowerCase();
-  for (const opt of INDUSTRIES) {
-    if (opt.toLowerCase().includes(lower) || lower.includes(opt.toLowerCase())) return opt;
-  }
-  if (/\b(software|saas|tech|ai|platform)\b/.test(lower)) return "Software / Technology";
-  if (/\b(bank|finance|fintech|capital|invest|accounting)\b/.test(lower)) return "Financial Services";
-  if (/\b(health|medic|pharma|biotech|hospital)\b/.test(lower)) return "Healthcare";
-  if (/\b(manufactur|industrial|factory)\b/.test(lower)) return "Manufacturing";
-  if (/\b(consult|professional service|legal|law|accounting)\b/.test(lower)) return "Professional Services";
-  if (/\b(retail|e-?commerce|shop)\b/.test(lower)) return "Retail / E-commerce";
-  if (/\b(real estate|property|realty)\b/.test(lower)) return "Real Estate";
-  if (/\b(energy|oil|gas|utility|solar)\b/.test(lower)) return "Energy";
-  if (/\b(media|market|advertis|agency|pr)\b/.test(lower)) return "Media / Marketing";
-  if (/\b(educat|school|university)\b/.test(lower)) return "Education";
-  if (/\b(telecom|wireless|isp)\b/.test(lower)) return "Telecommunications";
-  if (/\b(transport|logistic|freight|shipping)\b/.test(lower)) return "Transportation / Logistics";
-  if (/\b(hotel|hospitality|restaur)\b/.test(lower)) return "Hospitality";
-  return null;
-}
-
 function matchState(raw: string): string | null {
   const u = raw.trim().toUpperCase();
   if ((US_STATES as readonly string[]).includes(u)) return u;
