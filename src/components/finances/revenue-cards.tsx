@@ -58,31 +58,16 @@ type DealSizeRow = {
   revenueUsd: number;
 };
 
-export async function RevenueCards({
-  selection = DEFAULT_TIME_RANGE,
-}: {
-  selection?: TimeRangeSelection;
-} = {}) {
-  const org = await getCurrentOrg();
-  const now = new Date();
-  const year = now.getFullYear();
-  const range = timeRange(selection, now);
-  const revStart = range.start;
-  const revEnd = range.endExclusive;
-
-  // Current calendar quarter bounds — for the Trend card. Months are
-  // 0-indexed (April = 3, June = 5), so qStartMonth jumps in steps of 3.
-  const currentMonth = now.getMonth();
-  const currentQuarterIndex = Math.floor(currentMonth / 3);
-  const qStartMonth = currentQuarterIndex * 3;
-  const qStart = new Date(year, qStartMonth, 1);
-  const qEnd = new Date(year, qStartMonth + 3, 1);
-
+// The three sources every Revenue card draws from: invoices sent or paid
+// in the window, placements booked in it (for per-client counts), and
+// booked-but-uninvoiced placements whose fee counts as revenue already.
+// Shared with AverageDealSizePanel on the Metrics tab so both tabs agree.
+async function loadRevenueSources(orgId: string, revStart: Date, revEnd: Date) {
   const [revenueInvoices, placementsYtd, uninvoicedPlacementsPeriod] =
     await Promise.all([
       prisma.invoice.findMany({
         where: {
-          organizationId: org.id,
+          organizationId: orgId,
           status: { in: ["SENT", "PAID"] },
           OR: [
             { sentAt: { gte: revStart, lt: revEnd } },
@@ -111,7 +96,7 @@ export async function RevenueCards({
       }),
       prisma.placement.findMany({
         where: {
-          organizationId: org.id,
+          organizationId: orgId,
           placedAt: { gte: revStart, lt: revEnd },
         },
         select: { clientId: true },
@@ -121,7 +106,7 @@ export async function RevenueCards({
       // Clubhouse Billing Tower's "earned this period" semantic.
       prisma.placement.findMany({
         where: {
-          organizationId: org.id,
+          organizationId: orgId,
           stage: { in: ["pending_start", "hired"] },
           feeTotal: { gt: 0 },
           invoices: { none: {} },
@@ -146,6 +131,118 @@ export async function RevenueCards({
         },
       }),
     ]);
+  return { revenueInvoices, placementsYtd, uninvoicedPlacementsPeriod };
+}
+
+type RevenueSources = Awaited<ReturnType<typeof loadRevenueSources>>;
+
+// One row per deal (placement, or a stray invoice without one), largest
+// first, with the period average across every deal, not just the top six.
+function buildDealSize(
+  revenueInvoices: RevenueSources["revenueInvoices"],
+  uninvoicedPlacementsPeriod: RevenueSources["uninvoicedPlacementsPeriod"],
+) {
+  const dealSizeMap = new Map<string, DealSizeRow>();
+  function addDealSizeRow(row: DealSizeRow) {
+    const existing = dealSizeMap.get(row.id);
+    if (existing) {
+      existing.revenueUsd += row.revenueUsd;
+      return;
+    }
+    dealSizeMap.set(row.id, row);
+  }
+  for (const inv of revenueInvoices) {
+    const candidateName = joinName(
+      inv.candidate?.firstName ?? inv.placement?.candidate?.firstName,
+      inv.candidate?.lastName ?? inv.placement?.candidate?.lastName,
+    );
+    const clientName = inv.client?.name ?? "Unattached";
+    const roleTitle =
+      inv.roleTitle?.trim() ||
+      inv.placement?.offerTitle?.trim() ||
+      inv.placement?.job?.title?.trim() ||
+      "";
+    addDealSizeRow({
+      id: inv.placementId ? `placement:${inv.placementId}` : `invoice:${inv.id}`,
+      name: candidateName || clientName || inv.invoiceNumber,
+      detail: [clientName, roleTitle].filter(Boolean).join(" · "),
+      revenueUsd: decimalToNumber(inv.feeAmount),
+    });
+  }
+  for (const p of uninvoicedPlacementsPeriod) {
+    const candidateName = joinName(p.candidate?.firstName, p.candidate?.lastName);
+    const clientName = p.client?.name ?? "Unattached";
+    const roleTitle = p.offerTitle?.trim() || p.job?.title?.trim() || "";
+    addDealSizeRow({
+      id: `placement:${p.id}`,
+      name: candidateName || clientName,
+      detail: [clientName, roleTitle].filter(Boolean).join(" · "),
+      revenueUsd: p.feeTotal ?? 0,
+    });
+  }
+  const dealSizeRows = Array.from(dealSizeMap.values())
+    .filter((r) => r.revenueUsd > 0)
+    .sort((a, b) => b.revenueUsd - a.revenueUsd);
+  const dealSizeTotalUsd = dealSizeRows.reduce((s, r) => s + r.revenueUsd, 0);
+  const averageDealUsd =
+    dealSizeRows.length > 0 ? dealSizeTotalUsd / dealSizeRows.length : 0;
+  const dealSizeTop = dealSizeRows.slice(0, 6);
+  const dealSizeMaxUsd = dealSizeTop[0]?.revenueUsd ?? 0;
+  return {
+    top: dealSizeTop,
+    averageDealUsd,
+    totalDeals: dealSizeRows.length,
+    maxUsd: dealSizeMaxUsd,
+  };
+}
+
+// Average deal size on its own, for the Metrics tab. Same window, same
+// sources and same math as the card inside RevenueCards on Placements.
+export async function AverageDealSizePanel({
+  selection = DEFAULT_TIME_RANGE,
+}: {
+  selection?: TimeRangeSelection;
+} = {}) {
+  const org = await getCurrentOrg();
+  const range = timeRange(selection, new Date());
+  const { revenueInvoices, uninvoicedPlacementsPeriod } = await loadRevenueSources(
+    org.id,
+    range.start,
+    range.endExclusive,
+  );
+  const deal = buildDealSize(revenueInvoices, uninvoicedPlacementsPeriod);
+  return (
+    <AverageDealSizeCard
+      rows={deal.top}
+      averageDealUsd={deal.averageDealUsd}
+      totalDeals={deal.totalDeals}
+      maxUsd={deal.maxUsd}
+    />
+  );
+}
+
+export async function RevenueCards({
+  selection = DEFAULT_TIME_RANGE,
+}: {
+  selection?: TimeRangeSelection;
+} = {}) {
+  const org = await getCurrentOrg();
+  const now = new Date();
+  const year = now.getFullYear();
+  const range = timeRange(selection, now);
+  const revStart = range.start;
+  const revEnd = range.endExclusive;
+
+  // Current calendar quarter bounds — for the Trend card. Months are
+  // 0-indexed (April = 3, June = 5), so qStartMonth jumps in steps of 3.
+  const currentMonth = now.getMonth();
+  const currentQuarterIndex = Math.floor(currentMonth / 3);
+  const qStartMonth = currentQuarterIndex * 3;
+  const qStart = new Date(year, qStartMonth, 1);
+  const qEnd = new Date(year, qStartMonth + 3, 1);
+
+  const { revenueInvoices, placementsYtd, uninvoicedPlacementsPeriod } =
+    await loadRevenueSources(org.id, revStart, revEnd);
 
   const periodLabel = range.label;
 
@@ -197,52 +294,7 @@ export async function RevenueCards({
   const byClientMaxUsd = byClientTop[0]?.revenueUsd ?? 0;
 
   // Average deal size: one row per placement/deal, sorted largest to smallest.
-  const dealSizeMap = new Map<string, DealSizeRow>();
-  function addDealSizeRow(row: DealSizeRow) {
-    const existing = dealSizeMap.get(row.id);
-    if (existing) {
-      existing.revenueUsd += row.revenueUsd;
-      return;
-    }
-    dealSizeMap.set(row.id, row);
-  }
-  for (const inv of revenueInvoices) {
-    const candidateName = joinName(
-      inv.candidate?.firstName ?? inv.placement?.candidate?.firstName,
-      inv.candidate?.lastName ?? inv.placement?.candidate?.lastName,
-    );
-    const clientName = inv.client?.name ?? "Unattached";
-    const roleTitle =
-      inv.roleTitle?.trim() ||
-      inv.placement?.offerTitle?.trim() ||
-      inv.placement?.job?.title?.trim() ||
-      "";
-    addDealSizeRow({
-      id: inv.placementId ? `placement:${inv.placementId}` : `invoice:${inv.id}`,
-      name: candidateName || clientName || inv.invoiceNumber,
-      detail: [clientName, roleTitle].filter(Boolean).join(" · "),
-      revenueUsd: decimalToNumber(inv.feeAmount),
-    });
-  }
-  for (const p of uninvoicedPlacementsPeriod) {
-    const candidateName = joinName(p.candidate?.firstName, p.candidate?.lastName);
-    const clientName = p.client?.name ?? "Unattached";
-    const roleTitle = p.offerTitle?.trim() || p.job?.title?.trim() || "";
-    addDealSizeRow({
-      id: `placement:${p.id}`,
-      name: candidateName || clientName,
-      detail: [clientName, roleTitle].filter(Boolean).join(" · "),
-      revenueUsd: p.feeTotal ?? 0,
-    });
-  }
-  const dealSizeRows = Array.from(dealSizeMap.values())
-    .filter((r) => r.revenueUsd > 0)
-    .sort((a, b) => b.revenueUsd - a.revenueUsd);
-  const dealSizeTotalUsd = dealSizeRows.reduce((s, r) => s + r.revenueUsd, 0);
-  const averageDealUsd =
-    dealSizeRows.length > 0 ? dealSizeTotalUsd / dealSizeRows.length : 0;
-  const dealSizeTop = dealSizeRows.slice(0, 6);
-  const dealSizeMaxUsd = dealSizeTop[0]?.revenueUsd ?? 0;
+  const dealSize = buildDealSize(revenueInvoices, uninvoicedPlacementsPeriod);
 
   // Trend card: revenue per month inside the current calendar quarter.
   const quarterMonths = [qStartMonth, qStartMonth + 1, qStartMonth + 2];
@@ -307,10 +359,10 @@ export async function RevenueCards({
           totalPlacementsYtd={totalPlacementsYtd}
         />
         <AverageDealSizeCard
-          rows={dealSizeTop}
-          averageDealUsd={averageDealUsd}
-          totalDeals={dealSizeRows.length}
-          maxUsd={dealSizeMaxUsd}
+          rows={dealSize.top}
+          averageDealUsd={dealSize.averageDealUsd}
+          totalDeals={dealSize.totalDeals}
+          maxUsd={dealSize.maxUsd}
         />
         <TrendCard
           quarterLabel={quarterLabel}

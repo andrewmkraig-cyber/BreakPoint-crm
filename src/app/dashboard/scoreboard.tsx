@@ -27,6 +27,7 @@ import {
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getPeriodJumpOptions } from "@/lib/billing-period-options";
 import { GoalPacingCard, getGoalPacingData } from "@/app/dashboard/goal-pacing";
+import { AverageDealSizePanel } from "@/components/finances/revenue-cards";
 
 // Top-level Scoreboard server component. Real Neon data only; sections
 // that need data we don't yet track (sparklines, win-rate trend,
@@ -65,6 +66,7 @@ export async function Scoreboard({
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <FunnelCard funnel={data.funnel} />
         <CashForecastCard cash={data.cashForecast} />
+        <AverageDealSizePanel selection={selection} />
       </div>
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
         <TopClientsCard rows={data.topClients} />
