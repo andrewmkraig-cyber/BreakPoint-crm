@@ -20,7 +20,15 @@
 
 import { getEasternWeekBounds, formatEasternWeekRange } from "@/lib/week";
 
-export type TimeGrain = "WEEK" | "MONTH" | "QUARTER" | "YEAR";
+// ALL is the lifetime window: every billing event on the books, past and
+// scheduled. It has no offset (paging is disabled) and no goal.
+export type TimeGrain = "WEEK" | "MONTH" | "QUARTER" | "YEAR" | "ALL";
+
+// Lifetime bounds. Wide enough to hold every placement Ace will ever see;
+// every downstream query is a half-open gte/lt on these, so they cost
+// nothing extra.
+export const LIFETIME_START = new Date(2000, 0, 1);
+export const LIFETIME_END = new Date(2100, 0, 1);
 // Legacy 3-value period, retained only so old bookmarked URLs
 // (?period=week-last, ?cbperiod=this) still parse. The live model is an
 // integer offset: 0 = current period of the grain, -1 = previous,
@@ -52,6 +60,7 @@ export const TIME_GRAIN_ITEMS: ReadonlyArray<{ id: TimeGrain; label: string }> =
   { id: "MONTH", label: "Month" },
   { id: "QUARTER", label: "Quarter" },
   { id: "YEAR", label: "Year" },
+  { id: "ALL", label: "Lifetime" },
 ];
 
 const MONTH_FULL = [
@@ -69,6 +78,15 @@ export function timeRange(
   now: Date = new Date(),
 ): TimeRangeResult {
   const { grain, offset } = sel;
+
+  if (grain === "ALL") {
+    return {
+      start: LIFETIME_START,
+      endExclusive: LIFETIME_END,
+      label: "Lifetime",
+      eyebrow: "ACTIVITY FOR ALL TIME",
+    };
+  }
 
   if (grain === "WEEK") {
     // Shift the current ET week by whole 7-day steps. offset 0 = this
@@ -128,6 +146,7 @@ export function timeRangeChrome(
   now: Date = new Date(),
 ): { eyebrow: string; rangeLabel: string } {
   const { grain, offset } = sel;
+  if (grain === "ALL") return { eyebrow: "ALL TIME", rangeLabel: "Lifetime" };
   const r = timeRange(sel, now);
   const rangeLabel =
     grain === "WEEK" ? formatWeekShort(r.start, r.endExclusive) : r.label;
@@ -170,7 +189,7 @@ export function sameSelection(a: TimeRangeSelection, b: TimeRangeSelection): boo
   return a.grain === b.grain && a.offset === b.offset;
 }
 
-const GRAIN_SET = new Set<string>(["WEEK", "MONTH", "QUARTER", "YEAR"]);
+const GRAIN_SET = new Set<string>(["WEEK", "MONTH", "QUARTER", "YEAR", "ALL"]);
 const PERIOD_SET = new Set<string>(["LAST", "THIS", "NEXT"]);
 
 // Legacy URL tokens from the enums this model replaces. Keeps bookmarked /
@@ -188,7 +207,71 @@ const LEGACY: Record<string, TimeRangeSelection> = {
   next: { grain: "QUARTER", offset: 1 },
   previous: { grain: "QUARTER", offset: -1 },
   ytd: { grain: "YEAR", offset: 0 },
+  lifetime: { grain: "ALL", offset: 0 },
+  all: { grain: "ALL", offset: 0 },
 };
+
+// ---------------------------------------------------------------------------
+// Jump-to-period options. Every quarter and year between the earliest and
+// latest billing event (plus the current period, always), and Lifetime.
+// Built server-side from getBillingPeriodBounds and handed to the selectors
+// so a recruiter can land on "Q1 2027" the moment revenue is booked there
+// instead of paging the arrows one quarter at a time.
+
+export type PeriodJumpGroup = "quarter" | "year" | "all";
+export type PeriodJumpOption = {
+  selection: TimeRangeSelection;
+  label: string;
+  group: PeriodJumpGroup;
+};
+
+export function quarterOffsetFor(now: Date, year: number, quarterIndex: number): number {
+  const nowIndex = now.getFullYear() * 4 + Math.floor(now.getMonth() / 3);
+  return year * 4 + quarterIndex - nowIndex;
+}
+
+export function buildPeriodJumpOptions(
+  bounds: { earliest: Date; latest: Date } | null,
+  now: Date = new Date(),
+): PeriodJumpOption[] {
+  const nowYear = now.getFullYear();
+  const nowQ = Math.floor(now.getMonth() / 3);
+  const firstYear = bounds ? Math.min(bounds.earliest.getFullYear(), nowYear) : nowYear;
+  const lastYear = bounds ? Math.max(bounds.latest.getFullYear(), nowYear) : nowYear;
+  const firstQ = bounds
+    ? Math.min(
+        bounds.earliest.getFullYear() * 4 + Math.floor(bounds.earliest.getMonth() / 3),
+        nowYear * 4 + nowQ,
+      )
+    : nowYear * 4 + nowQ;
+  const lastQ = bounds
+    ? Math.max(
+        bounds.latest.getFullYear() * 4 + Math.floor(bounds.latest.getMonth() / 3),
+        nowYear * 4 + nowQ,
+      )
+    : nowYear * 4 + nowQ;
+
+  const out: PeriodJumpOption[] = [];
+  for (let q = firstQ; q <= lastQ; q++) {
+    const year = Math.floor(q / 4);
+    const quarterIndex = q - year * 4;
+    out.push({
+      selection: { grain: "QUARTER", offset: quarterOffsetFor(now, year, quarterIndex) },
+      label: `Q${quarterIndex + 1} ${year}`,
+      group: "quarter",
+    });
+  }
+  for (let y = firstYear; y <= lastYear; y++) {
+    const offset = y - nowYear;
+    out.push({
+      selection: { grain: "YEAR", offset },
+      label: offset === 0 ? `YTD ${y}` : String(y),
+      group: "year",
+    });
+  }
+  out.push({ selection: { grain: "ALL", offset: 0 }, label: "Lifetime", group: "all" });
+  return out;
+}
 
 export function parseTimeRange(
   raw: string | null | undefined,

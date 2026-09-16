@@ -8,6 +8,7 @@ import { NewsFeed } from "@/components/news-feed";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getBillingTowerData } from "@/app/dashboard/billing-tower-actions";
+import { getPeriodJumpOptions } from "@/lib/billing-period-options";
 import { TimeRangeTabs } from "@/components/ui/time-range-selector";
 import {
   timeRange,
@@ -92,6 +93,9 @@ export async function MyDashboard({
   ]);
 
   const currentQuarterLabel = `Q${Math.floor(now.getMonth() / 3) + 1} ${now.getFullYear()}`;
+  // Every quarter / year with billing, for the activity pager and the
+  // Billing Tower dropdown.
+  const jumpOptions = await getPeriodJumpOptions(org.id, now);
 
   return (
     <div className="flex w-full flex-col gap-6">
@@ -104,6 +108,7 @@ export async function MyDashboard({
           eyebrow={periodEyebrow}
           rangeLabel={periodLabel}
           maxOffset={0}
+          jumpOptions={jumpOptions}
           ariaLabel="Activity period"
         />
       </div>
@@ -123,6 +128,7 @@ export async function MyDashboard({
       <FinancialStrip
         initial={billingTowerInitial}
         currentQuarterLabel={currentQuarterLabel}
+        periodOptions={jumpOptions}
       />
 
       <div className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-5">

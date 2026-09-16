@@ -30,6 +30,10 @@ function goalForSelection(sel: TimeRangeSelection): {
   usd: number;
   periodLabel: string;
 } {
+  if (sel.grain === "ALL") {
+    // Lifetime has no target; the strip renders a "no goal" cell.
+    return { usd: 0, periodLabel: "Lifetime" };
+  }
   if (sel.grain === "YEAR") {
     return { usd: ANNUAL_REVENUE_GOAL_USD, periodLabel: "Annual Goal" };
   }

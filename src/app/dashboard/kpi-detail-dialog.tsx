@@ -30,6 +30,7 @@ const GRAIN_WORD: Record<TimeGrain, string> = {
   MONTH: "month",
   QUARTER: "quarter",
   YEAR: "year",
+  ALL: "lifetime",
 };
 
 export function KpiDetailDialog({
@@ -144,7 +145,7 @@ export function KpiDetailDialog({
           )}
           {!loading && !error && data && data.rows.length === 0 && (
             <div className="rounded-lg border border-dashed border-court-border bg-court-surface-subtle px-4 py-8 text-center text-sm text-court-fg-muted">
-              Nothing yet this {GRAIN_WORD[selection.grain]}
+              {selection.grain === "ALL" ? "Nothing yet" : `Nothing yet this ${GRAIN_WORD[selection.grain]}`}
             </div>
           )}
           {!loading && !error && data && data.rows.length > 0 && (

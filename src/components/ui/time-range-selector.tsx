@@ -8,6 +8,7 @@ import {
   encodeTimeRange,
   parseTimeRange,
   sameSelection,
+  type PeriodJumpOption,
   type TimeGrain,
   type TimeRangeSelection,
 } from "@/lib/time-range";
@@ -28,6 +29,7 @@ export function TimeRangeSelector({
   grains,
   minOffset,
   maxOffset,
+  jumpOptions,
   ariaLabel = "Time range",
   className,
 }: {
@@ -38,12 +40,27 @@ export function TimeRangeSelector({
   grains?: ReadonlyArray<TimeGrain>;
   minOffset?: number;
   maxOffset?: number;
+  // Concrete periods to jump straight to (every quarter / year with
+  // billing, plus Lifetime). Built server-side by getPeriodJumpOptions.
+  jumpOptions?: ReadonlyArray<PeriodJumpOption>;
   ariaLabel?: string;
   className?: string;
 }) {
   const grainItems = TIME_GRAIN_ITEMS.filter((i) => !grains || grains.includes(i.id));
-  const canPrev = minOffset == null || value.offset - 1 >= minOffset;
-  const canNext = maxOffset == null || value.offset + 1 <= maxOffset;
+  // Lifetime has no neighbors to page to.
+  const isAll = value.grain === "ALL";
+  const canPrev = !isAll && (minOffset == null || value.offset - 1 >= minOffset);
+  const canNext = !isAll && (maxOffset == null || value.offset + 1 <= maxOffset);
+  // Respect the surface's paging clamp (Clubhouse can't look ahead) in the
+  // jump list too; Lifetime is always allowed.
+  const jumpItems = (jumpOptions ?? []).filter(
+    (o) =>
+      o.selection.grain === "ALL" ||
+      ((minOffset == null || o.selection.offset >= minOffset) &&
+        (maxOffset == null || o.selection.offset <= maxOffset)),
+  );
+  const currentKey = encodeTimeRange(value);
+  const currentInJump = jumpItems.some((o) => encodeTimeRange(o.selection) === currentKey);
 
   const arrowClass =
     "inline-flex h-8 w-8 items-center justify-center rounded-full border border-court-border text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg focus:outline-none focus:ring-1 focus:ring-court-brand/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
@@ -116,6 +133,49 @@ export function TimeRangeSelector({
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
+
+      {/* Jump list: any quarter or year that has billing on it, plus
+          Lifetime. Lands on the period directly instead of paging. */}
+      {jumpItems.length > 0 && (
+        <select
+          aria-label={`${ariaLabel} jump to period`}
+          value={currentInJump ? currentKey : ""}
+          onChange={(e) => {
+            const sel = parseTimeRange(e.target.value);
+            if (sel) onChange(sel);
+          }}
+          className="rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[12px] text-court-fg-muted transition hover:text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/40"
+        >
+          {!currentInJump && <option value="">Jump to…</option>}
+          <optgroup label="Quarters">
+            {jumpItems
+              .filter((o) => o.group === "quarter")
+              .map((o) => (
+                <option key={encodeTimeRange(o.selection)} value={encodeTimeRange(o.selection)}>
+                  {o.label}
+                </option>
+              ))}
+          </optgroup>
+          <optgroup label="Years">
+            {jumpItems
+              .filter((o) => o.group === "year")
+              .map((o) => (
+                <option key={encodeTimeRange(o.selection)} value={encodeTimeRange(o.selection)}>
+                  {o.label}
+                </option>
+              ))}
+          </optgroup>
+          <optgroup label="All time">
+            {jumpItems
+              .filter((o) => o.group === "all")
+              .map((o) => (
+                <option key={encodeTimeRange(o.selection)} value={encodeTimeRange(o.selection)}>
+                  {o.label}
+                </option>
+              ))}
+          </optgroup>
+        </select>
+      )}
     </div>
   );
 }
@@ -170,6 +230,7 @@ export function TimeRangeTabs({
   grains,
   minOffset,
   maxOffset,
+  jumpOptions,
   ariaLabel,
   className,
 }: {
@@ -181,6 +242,7 @@ export function TimeRangeTabs({
   grains?: ReadonlyArray<TimeGrain>;
   minOffset?: number;
   maxOffset?: number;
+  jumpOptions?: ReadonlyArray<PeriodJumpOption>;
   ariaLabel?: string;
   className?: string;
 }) {
@@ -195,6 +257,7 @@ export function TimeRangeTabs({
       grains={grains}
       minOffset={minOffset}
       maxOffset={maxOffset}
+      jumpOptions={jumpOptions}
       ariaLabel={ariaLabel}
       className={className}
       onChange={(sel) => {

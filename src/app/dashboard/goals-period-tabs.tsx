@@ -3,6 +3,7 @@
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
 import { TabStrip } from "@/components/ui/tab-strip";
+import { encodeTimeRange, parseTimeRange, type PeriodJumpOption } from "@/lib/time-range";
 import {
   DEFAULT_GOALS_PERIOD,
   GOALS_GRAIN_ITEMS,
@@ -25,13 +26,30 @@ import {
 export function GoalsPeriodTabs({
   value,
   rangeLabel,
+  jumpOptions = [],
 }: {
   value: GoalsPeriodSelection;
   rangeLabel: string;
+  // Every quarter / year with billing plus Lifetime, so goals can be
+  // reviewed for any period, not only the current one.
+  jumpOptions?: ReadonlyArray<PeriodJumpOption>;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  function pushSelection(sel: GoalsPeriodSelection) {
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    if (sel.grain === DEFAULT_GOALS_PERIOD.grain && sel.offset === DEFAULT_GOALS_PERIOD.offset) {
+      next.delete(GOALS_PERIOD_PARAM);
+    } else {
+      next.set(GOALS_PERIOD_PARAM, encodeGoalsPeriod(sel));
+    }
+    const qs = next.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
+  const currentKey = value.grain === "DAY" ? "" : encodeTimeRange({ grain: value.grain, offset: value.offset });
+  const currentInJump = jumpOptions.some((o) => encodeTimeRange(o.selection) === currentKey);
 
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -39,18 +57,36 @@ export function GoalsPeriodTabs({
         items={GOALS_GRAIN_ITEMS}
         activeId={value.grain}
         ariaLabel="Goals period"
-        onChange={(grain) => {
-          const next = new URLSearchParams(searchParams?.toString() ?? "");
-          const sel: GoalsPeriodSelection = { grain, offset: 0 };
-          if (sel.grain === DEFAULT_GOALS_PERIOD.grain && sel.offset === DEFAULT_GOALS_PERIOD.offset) {
-            next.delete(GOALS_PERIOD_PARAM);
-          } else {
-            next.set(GOALS_PERIOD_PARAM, encodeGoalsPeriod(sel));
-          }
-          const qs = next.toString();
-          router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-        }}
+        onChange={(grain) => pushSelection({ grain, offset: 0 })}
       />
+      {jumpOptions.length > 0 && (
+        <select
+          aria-label="Goals jump to period"
+          value={currentInJump ? currentKey : ""}
+          onChange={(e) => {
+            const sel = parseTimeRange(e.target.value);
+            if (sel) pushSelection({ grain: sel.grain, offset: sel.offset });
+          }}
+          className="rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[12px] text-court-fg-muted transition hover:text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/40"
+        >
+          {!currentInJump && <option value="">Jump to…</option>}
+          <optgroup label="Quarters">
+            {jumpOptions.filter((o) => o.group === "quarter").map((o) => (
+              <option key={encodeTimeRange(o.selection)} value={encodeTimeRange(o.selection)}>{o.label}</option>
+            ))}
+          </optgroup>
+          <optgroup label="Years">
+            {jumpOptions.filter((o) => o.group === "year").map((o) => (
+              <option key={encodeTimeRange(o.selection)} value={encodeTimeRange(o.selection)}>{o.label}</option>
+            ))}
+          </optgroup>
+          <optgroup label="All time">
+            {jumpOptions.filter((o) => o.group === "all").map((o) => (
+              <option key={encodeTimeRange(o.selection)} value={encodeTimeRange(o.selection)}>{o.label}</option>
+            ))}
+          </optgroup>
+        </select>
+      )}
       {/* A read-only window label, not a tab. The "Showing:" prefix and the
           extra left margin keep it from reading as a sixth option next to the
           active grain pill. */}

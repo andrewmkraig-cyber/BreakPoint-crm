@@ -20,6 +20,7 @@ import {
   type TimeRangeSelection,
 } from "@/lib/time-range";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { getPeriodJumpOptions } from "@/lib/billing-period-options";
 import {
   getPlacementsDashboardData,
   type PlacementsDashboardRow,
@@ -49,9 +50,10 @@ export async function PlacementsTab({
   // an OPEN search has no placement to be found by, and is period-agnostic
   // (the engagement is live until it fills or closes, not until a quarter
   // ends), so it deliberately ignores `range`.
-  const [rows, retainedSearches] = await Promise.all([
+  const [rows, retainedSearches, jumpOptions] = await Promise.all([
     getPlacementsDashboardData(org.id, range),
     getRetainedSearchesForOrg(org.id),
+    getPeriodJumpOptions(org.id),
   ]);
   const cities = await aggregateByCity(rows);
   const totalFee = cities.reduce((s, c) => s + c.totalFee, 0);
@@ -71,6 +73,7 @@ export async function PlacementsTab({
           value={selection}
           eyebrow={periodEyebrow}
           rangeLabel={periodLabel}
+          jumpOptions={jumpOptions}
           ariaLabel="Placements period"
         />
       </div>

@@ -9,6 +9,7 @@ import { GoalsLeaderboardPanel } from "@/app/dashboard/goals-leaderboard-panel";
 import type { ClientLeaderboardRowView } from "@/app/dashboard/goals-client-leaderboard";
 import { getClientLeaderboard } from "@/lib/goals/client-leaderboard";
 import { GoalsPeriodTabs } from "@/app/dashboard/goals-period-tabs";
+import { getPeriodJumpOptions } from "@/lib/billing-period-options";
 import { GoalsRevenueMeter } from "@/app/dashboard/goals-revenue-meter";
 import { GoalMeter, shouldSegment } from "@/app/dashboard/goal-meter";
 import {
@@ -66,6 +67,7 @@ const GRAIN_PERIOD_WORD: Record<GoalsGrain, string> = {
   MONTH: "Monthly",
   QUARTER: "Quarterly",
   YEAR: "Yearly",
+  ALL: "Lifetime",
 };
 
 // ET-day length of a [start, end] window of UTC calendar-date markers,
@@ -94,6 +96,7 @@ export async function GoalsTab({
   const org = await getCurrentOrg();
   const period = goalsPeriod(selection);
   const { rangeStart, rangeEnd } = period;
+  const jumpOptions = await getPeriodJumpOptions(org.id);
 
   // At Month and above, all three headline cards resolve over the SAME
   // selected window (revenue follows the selector, the count meters follow
@@ -538,17 +541,20 @@ export async function GoalsTab({
       // can draw them (9/quarter -> 3 at Month).
       const isRevenue = g.metric === "REVENUE";
       const isDayOrWeek = selection.grain === "DAY" || selection.grain === "WEEK";
+      // Lifetime has no target either: a goal prorated across every year on
+      // the books means nothing, so it reports actuals only like Day/Week.
+      const isLifetime = selection.grain === "ALL";
       const grainAtOrAboveMonth =
         selection.grain === "MONTH" ||
         selection.grain === "QUARTER" ||
         selection.grain === "YEAR";
-      const actualsOnly = isDayOrWeek;
+      const actualsOnly = isDayOrWeek || isLifetime;
       // Every headline meter resolves over the SELECTED window now, at every
       // grain - the old count floor to the quarter at Day/Week is gone, so a
       // count is the count for the selected window. followsSelector is
       // therefore always true and drives the grain-word + selected-window
       // labels in the render below.
-      const followsSelector = isDayOrWeek || isRevenue || grainAtOrAboveMonth;
+      const followsSelector = isDayOrWeek || isLifetime || isRevenue || grainAtOrAboveMonth;
 
       const rangeStart = period.rangeStart;
       const rangeEnd = period.rangeEnd;
@@ -603,7 +609,7 @@ export async function GoalsTab({
         {addGoalButton}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <GoalsPeriodTabs value={selection} rangeLabel={period.label} />
+        <GoalsPeriodTabs value={selection} rangeLabel={period.label} jumpOptions={jumpOptions} />
         {/* Days remaining is shown once here when the headline cards share
             one window (Month and above), instead of repeating identically on
             all three. At Day/Week it stays per-card. */}

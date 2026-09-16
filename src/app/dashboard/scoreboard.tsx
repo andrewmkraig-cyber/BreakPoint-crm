@@ -25,6 +25,7 @@ import {
   type TimeRangeSelection,
 } from "@/lib/time-range";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { getPeriodJumpOptions } from "@/lib/billing-period-options";
 import { GoalPacingCard, getGoalPacingData } from "@/app/dashboard/goal-pacing";
 
 // Top-level Scoreboard server component. Real Neon data only; sections
@@ -40,6 +41,7 @@ export async function Scoreboard({
   const range = timeRange(selection);
   const { eyebrow: periodEyebrow, rangeLabel: periodLabel } =
     timeRangeChrome(selection);
+  const jumpOptions = await getPeriodJumpOptions(org.id);
   const [data, goalPacing] = await Promise.all([
     getScoreboardData(range),
     getGoalPacingData(org.id),
@@ -55,6 +57,7 @@ export async function Scoreboard({
           value={selection}
           eyebrow={periodEyebrow}
           rangeLabel={periodLabel}
+          jumpOptions={jumpOptions}
           ariaLabel="Scoreboard period"
         />
       </div>

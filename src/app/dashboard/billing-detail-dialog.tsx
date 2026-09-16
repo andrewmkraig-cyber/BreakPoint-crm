@@ -7,7 +7,7 @@ import { Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TabStrip, type TabStripItem } from "@/components/ui/tab-strip";
 import { cn } from "@/lib/utils";
-import { encodeTimeRange, type TimeRangeSelection } from "@/lib/time-range";
+import { encodeTimeRange, timeRangeChrome, type TimeRangeSelection } from "@/lib/time-range";
 import type { BillingDetailResponse } from "@/app/api/dashboard/billing-detail/route";
 
 // Billing Tower drill-down popup - the Revenue / Collected / Outstanding sibling of
@@ -21,9 +21,11 @@ import type { BillingDetailResponse } from "@/app/api/dashboard/billing-detail/r
 // carries those four and nothing else. It opens on whichever window the
 // tower is showing, so the popup total always matches the number clicked.
 
-type BillingWindowId = "current" | "next" | "previous" | "annual";
+// "custom" carries whatever window the tower is on when it is not one of
+// the four quick picks (Q1 2027, 2025, Lifetime…), labeled by its range.
+type BillingWindowId = "current" | "next" | "previous" | "annual" | "custom";
 
-const WINDOW_SELECTION: Record<BillingWindowId, TimeRangeSelection> = {
+const WINDOW_SELECTION: Record<Exclude<BillingWindowId, "custom">, TimeRangeSelection> = {
   current: { grain: "QUARTER", offset: 0 },
   next: { grain: "QUARTER", offset: 1 },
   previous: { grain: "QUARTER", offset: -1 },
@@ -41,10 +43,11 @@ const WINDOW_ITEMS: ReadonlyArray<TabStripItem<BillingWindowId>> = [
 // popup opens with the right pill lit. Anything unrecognized falls back to
 // the current quarter, matching the tower's own default.
 function windowIdFor(sel: TimeRangeSelection): BillingWindowId {
-  if (sel.grain === "YEAR") return "annual";
+  if (sel.grain === "YEAR" && sel.offset === 0) return "annual";
   if (sel.grain === "QUARTER" && sel.offset === 1) return "next";
   if (sel.grain === "QUARTER" && sel.offset === -1) return "previous";
-  return "current";
+  if (sel.grain === "QUARTER" && sel.offset === 0) return "current";
+  return "custom";
 }
 
 export function BillingDetailDialog({
@@ -61,6 +64,13 @@ export function BillingDetailDialog({
   const [windowId, setWindowId] = useState<BillingWindowId>(() =>
     windowIdFor(defaultSelection),
   );
+  const windowItems: ReadonlyArray<TabStripItem<BillingWindowId>> =
+    windowIdFor(defaultSelection) === "custom"
+      ? [
+          { id: "custom", label: timeRangeChrome(defaultSelection).rangeLabel },
+          ...WINDOW_ITEMS,
+        ]
+      : WINDOW_ITEMS;
   const [data, setData] = useState<BillingDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +81,7 @@ export function BillingDetailDialog({
     setError(null);
     const params = new URLSearchParams({
       kind,
-      range: encodeTimeRange(WINDOW_SELECTION[windowId]),
+      range: encodeTimeRange(windowId === "custom" ? defaultSelection : WINDOW_SELECTION[windowId]),
     });
     fetch(`/api/dashboard/billing-detail?${params.toString()}`, { cache: "no-store" })
       .then(async (res) => {
@@ -94,7 +104,7 @@ export function BillingDetailDialog({
     return () => {
       cancelled = true;
     };
-  }, [kind, windowId]);
+  }, [kind, windowId, defaultSelection]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -143,7 +153,7 @@ export function BillingDetailDialog({
 
         <div className="border-b border-court-border-soft px-5 py-2.5">
           <TabStrip<BillingWindowId>
-            items={WINDOW_ITEMS}
+            items={windowItems}
             activeId={windowId}
             ariaLabel="Billing period"
             onChange={setWindowId}

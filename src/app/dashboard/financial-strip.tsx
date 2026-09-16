@@ -8,21 +8,30 @@ import {
 } from "@/app/dashboard/billing-tower-actions";
 import { BillingDetailDialog } from "@/app/dashboard/billing-detail-dialog";
 import { TimeRangeDropdown } from "@/components/ui/time-range-selector";
+import { encodeTimeRange, type PeriodJumpOption } from "@/lib/time-range";
 import type { TimeRangeSelection } from "@/lib/time-range";
 import { formatUsdExact } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
-// Billing Tower window options — the only four the tower ever surfaces, in
-// the original order. Quarter + YTD only, so the Goal math stays quarter-
-// anchored. Routed through the shared two-tier model via TimeRangeDropdown.
+// Billing Tower window options: the four quick picks first, then every
+// quarter and year that carries billing (past or scheduled), then
+// Lifetime. Quarters and years keep their goal math; Lifetime has no goal.
 const BILLING_TOWER_OPTIONS = (
   currentQuarterLabel: string,
-): ReadonlyArray<{ selection: TimeRangeSelection; label: string }> => [
-  { selection: { grain: "QUARTER", offset: 0 }, label: `Current Quarter (${currentQuarterLabel})` },
-  { selection: { grain: "QUARTER", offset: 1 }, label: "Next Quarter" },
-  { selection: { grain: "QUARTER", offset: -1 }, label: "Previous Quarter" },
-  { selection: { grain: "YEAR", offset: 0 }, label: "Annual / YTD" },
-];
+  periodOptions: ReadonlyArray<PeriodJumpOption>,
+): ReadonlyArray<{ selection: TimeRangeSelection; label: string }> => {
+  const quick: Array<{ selection: TimeRangeSelection; label: string }> = [
+    { selection: { grain: "QUARTER", offset: 0 }, label: `Current Quarter (${currentQuarterLabel})` },
+    { selection: { grain: "QUARTER", offset: 1 }, label: "Next Quarter" },
+    { selection: { grain: "QUARTER", offset: -1 }, label: "Previous Quarter" },
+    { selection: { grain: "YEAR", offset: 0 }, label: "Annual / YTD" },
+  ];
+  const seen = new Set(quick.map((o) => encodeTimeRange(o.selection)));
+  const rest = periodOptions
+    .filter((o) => !seen.has(encodeTimeRange(o.selection)))
+    .map((o) => ({ selection: o.selection, label: o.label }));
+  return [...quick, ...rest];
+};
 
 // Popup heading per drillable number. Matches the tile labels exactly.
 const DRILLDOWN_TITLE = {
@@ -60,9 +69,11 @@ const DRILLDOWN_TITLE = {
 export function FinancialStrip({
   initial,
   currentQuarterLabel,
+  periodOptions = [],
 }: {
   initial: BillingTowerData;
   currentQuarterLabel: string;
+  periodOptions?: ReadonlyArray<PeriodJumpOption>;
 }) {
   const [selection, setSelection] = useState<TimeRangeSelection>({
     grain: "QUARTER",
@@ -112,7 +123,7 @@ export function FinancialStrip({
         <TimeRangeDropdown
           ariaLabel="Billing Tower period"
           value={selection}
-          options={BILLING_TOWER_OPTIONS(currentQuarterLabel)}
+          options={BILLING_TOWER_OPTIONS(currentQuarterLabel, periodOptions)}
           onChange={onPeriodChange}
           disabled={pending}
         />
@@ -252,6 +263,23 @@ function GoalStat({
   pct: number;
   remainingUsd: number;
 }) {
+  if (goalUsd <= 0) {
+    // Lifetime (or any window without a dollar target): there is nothing
+    // to pace against, so say so instead of showing 0% of $0.
+    return (
+      <div className="flex min-w-0 flex-col sm:col-span-3 sm:border-t-2 sm:border-court-border-soft sm:pt-4 xl:col-span-1 xl:border-l-2 xl:border-t-0 xl:pl-6 xl:pt-0">
+        <div className="text-[10px] font-extrabold uppercase tracking-wide text-court-brand-dark">
+          Goal Progress · {goalPeriodLabel}
+        </div>
+        <div className="mt-0.5 font-serif text-[20px] font-bold leading-tight tracking-[-0.01em] text-court-fg-dim">
+          No goal for this window
+        </div>
+        <div className="mt-1 text-[11.5px] text-court-fg-muted">
+          Pick a quarter or year to see pace to goal.
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="flex min-w-0 flex-col sm:col-span-3 sm:border-t-2 sm:border-court-border-soft sm:pt-4 xl:col-span-1 xl:border-l-2 xl:border-t-0 xl:pl-6 xl:pt-0">
       <div className="text-[10px] font-extrabold uppercase tracking-wide text-court-brand-dark">

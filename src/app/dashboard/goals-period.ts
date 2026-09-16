@@ -40,6 +40,7 @@ export const GOALS_GRAIN_ITEMS: ReadonlyArray<{ id: GoalsGrain; label: string }>
   { id: "MONTH", label: "Month" },
   { id: "QUARTER", label: "Quarter" },
   { id: "YEAR", label: "Year" },
+  { id: "ALL", label: "Lifetime" },
 ];
 
 const GRAIN_IDS = new Set<string>(GOALS_GRAIN_ITEMS.map((g) => g.id));
