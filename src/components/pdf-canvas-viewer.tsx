@@ -291,6 +291,58 @@ export function PdfCanvasViewer({
     return () => el.removeEventListener("wheel", onWheel);
   }, [stepZoom]);
 
+  // Click-and-drag panning. Whenever the page is larger than the box
+  // (zoomed past fit, or a tall page in a short window) the scroll area
+  // grabs: drag moves the view, like holding a sheet of paper. Pointer
+  // capture keeps the pan alive past the box edge; a few pixels of dead
+  // zone keep a plain click from being read as a drag.
+  const [panning, setPanning] = useState(false);
+  const onPanPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    if ((e.target as HTMLElement).closest("button, a")) return;
+    const canPan = el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1;
+    if (!canPan) return;
+    const pointerId = e.pointerId;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startLeft = el.scrollLeft;
+    const startTop = el.scrollTop;
+    let moved = false;
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
+      if (!moved) {
+        moved = true;
+        setPanning(true);
+        try {
+          el.setPointerCapture(pointerId);
+        } catch {
+          /* detached node - window listeners still end the gesture */
+        }
+      }
+      el.scrollLeft = startLeft - dx;
+      el.scrollTop = startTop - dy;
+      ev.preventDefault();
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      try {
+        el.releasePointerCapture(pointerId);
+      } catch {
+        /* already released */
+      }
+      setPanning(false);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  };
+
   const displayedScale = fitScale ? clampScale(fitScale * zoomFactor) : 1;
   const pct = Math.round(displayedScale * 100);
   const atFit = Math.abs(zoomFactor - 1) < 0.005;
@@ -347,7 +399,14 @@ export function PdfCanvasViewer({
           </button>
         </div>
       </div>
-      <div ref={scrollRef} className="flex-1 overflow-auto p-4">
+      <div
+        ref={scrollRef}
+        onPointerDown={onPanPointerDown}
+        className={
+          "flex-1 overflow-auto p-4 " +
+          (panning ? "cursor-grabbing select-none" : atFit ? "" : "cursor-grab")
+        }
+      >
         {loading && (
           <div className="flex h-full min-h-[400px] items-center justify-center gap-2 text-sm text-court-fg-muted">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading PDF…
