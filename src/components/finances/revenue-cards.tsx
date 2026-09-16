@@ -1,4 +1,6 @@
 import type React from "react";
+import { BreakdownViewSwitch } from "@/components/charts/breakdown-view-switch";
+import { SharePie, type PieSlice } from "@/components/charts/share-pie";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
@@ -339,33 +341,78 @@ function ByClientCard({
   maxUsd: number;
   totalPlacementsYtd: number;
 }) {
-  return (
-    <Panel
-      title="By client"
-      subline={`Top earners · ${totalPlacementsYtd} placement${
-        totalPlacementsYtd === 1 ? "" : "s"
-      } YTD`}
-    >
-      {rows.length === 0 ? (
+  const subline = `Top earners · ${totalPlacementsYtd} placement${
+    totalPlacementsYtd === 1 ? "" : "s"
+  } YTD`;
+  if (rows.length === 0) {
+    return (
+      <Panel title="By client" subline={subline}>
         <EmptyBlock>No billed revenue logged this year yet.</EmptyBlock>
-      ) : (
-        <ul className="mt-3 space-y-1">
-          {rows.map((r) => (
-            <BarRow
-              key={r.id}
-              name={r.name}
-              count={r.placements}
-              revenueUsd={r.revenueUsd}
-              pctOfTotal={totalUsd > 0 ? (r.revenueUsd / totalUsd) * 100 : 0}
-              pctOfMax={maxUsd > 0 ? (r.revenueUsd / maxUsd) * 100 : 0}
-            />
-          ))}
-          {othersCount > 0 && (
-            <OthersRow count={othersCount} revenueUsd={othersUsd} totalUsd={totalUsd} />
-          )}
-        </ul>
-      )}
-    </Panel>
+      </Panel>
+    );
+  }
+  // Pie: five named clients plus one "All others" slice that absorbs the
+  // sixth-and-beyond, so the chart never needs a seventh hue and its
+  // "others" figure matches the list's when the list has six or fewer.
+  const PIE_NAMED = 5;
+  const named = rows.slice(0, PIE_NAMED);
+  const folded = rows.slice(PIE_NAMED);
+  const foldedUsd = folded.reduce((s, r) => s + r.revenueUsd, 0);
+  const foldedCount = folded.length + othersCount;
+  const slices: PieSlice[] = named.map((r) => ({
+    key: r.id,
+    label: r.name,
+    value: r.revenueUsd,
+    count: r.placements,
+  }));
+  if (foldedCount > 0) {
+    slices.push({
+      key: "__others",
+      label: `All others (${foldedCount})`,
+      value: foldedUsd + othersUsd,
+    });
+  }
+  return (
+    <div className={PANEL_CLASS}>
+      <BreakdownViewSwitch
+        storageKey="placements.by-client"
+        ariaLabel="By client"
+        bodyClassName="mt-3"
+        title={
+          <>
+            <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
+              By client
+            </p>
+            <p className="mt-0.5 text-xs text-court-fg-muted">{subline}</p>
+          </>
+        }
+        list={
+          <ul className="space-y-1">
+            {rows.map((r) => (
+              <BarRow
+                key={r.id}
+                name={r.name}
+                count={r.placements}
+                revenueUsd={r.revenueUsd}
+                pctOfTotal={totalUsd > 0 ? (r.revenueUsd / totalUsd) * 100 : 0}
+                pctOfMax={maxUsd > 0 ? (r.revenueUsd / maxUsd) * 100 : 0}
+              />
+            ))}
+            {othersCount > 0 && (
+              <OthersRow count={othersCount} revenueUsd={othersUsd} totalUsd={totalUsd} />
+            )}
+          </ul>
+        }
+        pie={
+          <SharePie
+            slices={slices}
+            valueKind="money"
+            ariaLabel="Revenue share by client"
+            centerLabel="Revenue"
+          />
+        }
+      />
+    </div>
   );
 }
 
@@ -406,6 +453,9 @@ function AverageDealSizeCard({
   );
 }
 
+const PANEL_CLASS =
+  "rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]";
+
 function Panel({
   title,
   subline,
@@ -416,7 +466,7 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
+    <div className={PANEL_CLASS}>
       <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
         {title}
       </p>

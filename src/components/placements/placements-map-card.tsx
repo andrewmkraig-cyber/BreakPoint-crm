@@ -1,6 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { BreakdownViewSwitch } from "@/components/charts/breakdown-view-switch";
+import { SharePie, type PieSlice } from "@/components/charts/share-pie";
 
 import {
   STATUS_COLORS,
@@ -92,12 +94,32 @@ function RevenueByCity({
 }) {
   if (cities.length === 0) return null;
   const maxFee = cities.reduce((m, c) => Math.max(m, c.totalFee), 0);
+  const slices: PieSlice[] = cities.map((c) => ({
+    key: c.key,
+    label: c.city,
+    value: c.totalFee,
+  }));
   return (
     <div className="mt-3 border-b border-court-border-soft pb-3">
-      <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted">
-        Revenue by City
-      </p>
-      <ul className="mt-2 flex flex-col gap-1.5">
+      <BreakdownViewSwitch
+        storageKey="placements.revenue-by-city"
+        ariaLabel="Revenue by City"
+        bodyClassName="mt-2"
+        title={
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted">
+            Revenue by City
+          </p>
+        }
+        pie={
+          <SharePie
+            slices={slices}
+            valueKind="money"
+            ariaLabel="Revenue share by city"
+            centerLabel="Revenue"
+          />
+        }
+        list={
+      <ul className="flex flex-col gap-1.5">
         {cities.map((city) => {
           const pct =
             totalFee > 0 ? Math.round((city.totalFee / totalFee) * 100) : 0;
@@ -130,6 +152,8 @@ function RevenueByCity({
           );
         })}
       </ul>
+        }
+      />
     </div>
   );
 }

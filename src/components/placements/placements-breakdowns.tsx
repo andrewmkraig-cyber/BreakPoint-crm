@@ -3,13 +3,16 @@ import type {
   PlacementsDashboardSourceChannel,
 } from "@/lib/placements-dashboard";
 import { formatMoneyShort } from "@/lib/placements-map-geo";
+import { BreakdownViewSwitch } from "@/components/charts/breakdown-view-switch";
+import { SharePie, type PieSlice } from "@/components/charts/share-pie";
 
 // Placements analytics row beneath the ledger: three equal cards —
 // "By Industry", "By Source", "Offer to Start". The Revenue by City
 // list lives inside the Placement Map card (placements-map-card.tsx).
 // The card chrome (rounded-3xl bg-court-surface p-5 shadow) matches the
-// rest of the Clubhouse / Placements surfaces. Pure functional view —
-// no client state, no network.
+// rest of the Clubhouse / Placements surfaces. Each ranking panel can flip
+// between its list and a SharePie donut (BreakdownViewSwitch remembers the
+// choice per panel); the aggregation itself stays server-side and pure.
 
 const PANEL_CLASS =
   "rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]";
@@ -116,10 +119,45 @@ function ByIndustryCard({ rows }: { rows: PlacementsDashboardRow[] }) {
   });
   const grandTotalFee = bars.reduce((s, b) => s + b.total, 0);
   const grandTotalCount = bars.reduce((s, b) => s + b.count, 0);
+  if (bars.length === 0) return <EmptyPanel title="By Industry" />;
   return (
-    <BreakdownCard title="By Industry" empty={bars.length === 0}>
-      <BarList bars={bars} grandTotalFee={grandTotalFee} grandTotalCount={grandTotalCount} />
-    </BreakdownCard>
+    <div className={PANEL_CLASS}>
+      <BreakdownViewSwitch
+        storageKey="placements.by-industry"
+        ariaLabel="By Industry"
+        title={<p className={EYEBROW_CLASS}>By Industry</p>}
+        list={<BarList bars={bars} grandTotalFee={grandTotalFee} grandTotalCount={grandTotalCount} />}
+        pie={<BarPie bars={bars} grandTotalFee={grandTotalFee} ariaLabel="Placement share by industry" />}
+      />
+    </div>
+  );
+}
+
+// Pie twin of BarList: shares fees when any fee is on file, otherwise
+// shares placement counts, matching the % column in the list.
+function BarPie({
+  bars,
+  grandTotalFee,
+  ariaLabel,
+}: {
+  bars: BarRow[];
+  grandTotalFee: number;
+  ariaLabel: string;
+}) {
+  const byFee = grandTotalFee > 0;
+  const slices: PieSlice[] = bars.map((b) => ({
+    key: b.key,
+    label: b.label,
+    value: byFee ? b.total : b.count,
+    count: b.count,
+  }));
+  return (
+    <SharePie
+      slices={slices}
+      valueKind={byFee ? "money" : "count"}
+      ariaLabel={ariaLabel}
+      centerLabel={byFee ? "Fees" : "Placements"}
+    />
   );
 }
 
@@ -127,6 +165,7 @@ function BySourceCard({ rows }: { rows: PlacementsDashboardRow[] }) {
   // Force every known channel to render even when empty so the user
   // sees the full set of sourcing buckets at a glance — a missing
   // channel reads as "no placements from there yet," which is signal.
+  // (The pie drops the zero channels; a 0% slice has no area.)
   const buckets = new Map<string, BarRow>();
   for (const ch of SOURCE_ORDER) {
     buckets.set(ch, { key: ch, label: SOURCE_LABEL[ch], count: 0, total: 0 });
@@ -140,34 +179,25 @@ function BySourceCard({ rows }: { rows: PlacementsDashboardRow[] }) {
   const bars: BarRow[] = SOURCE_ORDER.map((ch) => buckets.get(ch)!);
   const grandTotalFee = bars.reduce((s, b) => s + b.total, 0);
   const grandTotalCount = bars.reduce((s, b) => s + b.count, 0);
+  if (grandTotalCount === 0) return <EmptyPanel title="By Source" />;
   return (
-    <BreakdownCard title="By Source" empty={grandTotalCount === 0}>
-      <BarList bars={bars} grandTotalFee={grandTotalFee} grandTotalCount={grandTotalCount} />
-    </BreakdownCard>
+    <div className={PANEL_CLASS}>
+      <BreakdownViewSwitch
+        storageKey="placements.by-source"
+        ariaLabel="By Source"
+        title={<p className={EYEBROW_CLASS}>By Source</p>}
+        list={<BarList bars={bars} grandTotalFee={grandTotalFee} grandTotalCount={grandTotalCount} />}
+        pie={<BarPie bars={bars} grandTotalFee={grandTotalFee} ariaLabel="Placement share by source" />}
+      />
+    </div>
   );
 }
 
-function BreakdownCard({
-  title,
-  children,
-  empty,
-}: {
-  title: string;
-  children: React.ReactNode;
-  empty?: boolean;
-}) {
+function EmptyPanel({ title }: { title: string }) {
   return (
     <div className={PANEL_CLASS}>
       <p className={EYEBROW_CLASS}>{title}</p>
-      <div className="mt-2.5">
-        {empty ? (
-          <p className="text-sm text-court-fg-muted">
-            No placements in this window.
-          </p>
-        ) : (
-          children
-        )}
-      </div>
+      <p className="mt-2.5 text-sm text-court-fg-muted">No placements in this window.</p>
     </div>
   );
 }
@@ -248,11 +278,27 @@ function OfferToStartCard({ rows }: { rows: PlacementsDashboardRow[] }) {
   }
   const binMax = bins.reduce((m, b) => Math.max(m, b.count), 0);
 
+  // Ordered buckets, so the pie uses the one-hue ordinal ramp: the
+  // shortest gap is the lightest step and 30+ days the darkest.
+  const binSlices: PieSlice[] = bins.map((b) => ({ key: b.id, label: b.label, value: b.count }));
+
   return (
     <div className={PANEL_CLASS}>
-      <p className={EYEBROW_CLASS}>Offer to Start</p>
-
-      <div className="mt-2.5 space-y-2">
+      <BreakdownViewSwitch
+        storageKey="placements.offer-to-start"
+        ariaLabel="Offer to Start"
+        title={<p className={EYEBROW_CLASS}>Offer to Start</p>}
+        pie={
+          <SharePie
+            slices={binSlices}
+            valueKind="count"
+            colorMode="ordinal"
+            ariaLabel="Share of placements by offer-to-start gap"
+            centerLabel="Placements"
+          />
+        }
+        list={
+      <div className="space-y-2">
         {bins.map((b) => {
           const widthPct = binMax > 0 ? (b.count / binMax) * 100 : 0;
           const rowClass =
@@ -274,6 +320,8 @@ function OfferToStartCard({ rows }: { rows: PlacementsDashboardRow[] }) {
           );
         })}
       </div>
+        }
+      />
 
       <div className="mt-4">
         <MiniCard

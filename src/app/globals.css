@@ -49,6 +49,22 @@
 html[data-surface='hard'][data-theme='light'] {
   --court-bg:                       255 255 255; /* #FFFFFF */
   --court-surface:                  255 255 255; /* #FFFFFF */
+  /* Chart series (categorical, fixed order, validated for CVD + contrast on
+     this surface via the dataviz palette validator). Consumed by the
+     Placements pie charts as rgb(var(--court-series-N)). Never cycle past 6:
+     extra slices fold into "Other". */
+  --court-series-1:                  42 120 214; /* #2A78D6 blue */
+  --court-series-2:                 235 104  52; /* #EB6834 orange */
+  --court-series-3:                  27 175 122; /* #1BAF7A aqua */
+  --court-series-4:                 237 161   0; /* #EDA100 yellow */
+  --court-series-5:                 232 123 164; /* #E87BA4 magenta */
+  --court-series-6:                   0 131   0; /* #008300 green */
+  /* Ordinal ramp (one hue, nearest-surface step first). Offer-to-Start
+     buckets: shorter gap = lighter step. */
+  --court-ordinal-1:                134 182 239; /* #86B6EF */
+  --court-ordinal-2:                 85 152 231; /* #5598E7 */
+  --court-ordinal-3:                 42 120 214; /* #2A78D6 */
+  --court-ordinal-4:                 28  92 171; /* #1C5CAB */
   --court-surface-subtle:           250 250 251; /* #FAFAFB */
   --court-border:                   229 231 235; /* #E5E7EB */
   --court-border-soft:              243 244 246; /* #F3F4F6 — derived lighter */
@@ -86,6 +102,19 @@ html[data-surface='hard'][data-theme='light'] {
 html[data-surface='hard'][data-theme='dark'] {
   --court-bg:                        14  22  32; /* #0E1620 */
   --court-surface:                   22  32  46; /* #16202E */
+  /* Chart series: same six hues re-stepped for the dark surface (validated,
+     not an automatic flip). See the light block for the rules. */
+  --court-series-1:                  57 135 229; /* #3987E5 blue */
+  --court-series-2:                 217  89  38; /* #D95926 orange */
+  --court-series-3:                  25 158 112; /* #199E70 aqua */
+  --court-series-4:                 201 133   0; /* #C98500 yellow */
+  --court-series-5:                 213  81 129; /* #D55181 magenta */
+  --court-series-6:                   0 131   0; /* #008300 green */
+  /* Ordinal ramp for dark: nearest-surface (darkest) step first. */
+  --court-ordinal-1:                 28  92 171; /* #1C5CAB */
+  --court-ordinal-2:                 57 135 229; /* #3987E5 */
+  --court-ordinal-3:                109 167 236; /* #6DA7EC */
+  --court-ordinal-4:                158 197 244; /* #9EC5F4 */
   --court-surface-subtle:            18  27  39; /* #121B27 */
   --court-border:                    31  45  64; /* #1F2D40 */
   --court-border-soft:               27  38  56; /* #1B2638 */
@@ -129,6 +158,22 @@ html[data-surface='hard'][data-theme='dark'] {
 html[data-surface='clay'][data-theme='light'] {
   --court-bg:                       251 243 236; /* #FBF3EC */
   --court-surface:                  255 250 243; /* #FFFAF3 */
+  /* Chart series (categorical, fixed order, validated for CVD + contrast on
+     this surface via the dataviz palette validator). Consumed by the
+     Placements pie charts as rgb(var(--court-series-N)). Never cycle past 6:
+     extra slices fold into "Other". */
+  --court-series-1:                  42 120 214; /* #2A78D6 blue */
+  --court-series-2:                 235 104  52; /* #EB6834 orange */
+  --court-series-3:                  27 175 122; /* #1BAF7A aqua */
+  --court-series-4:                 237 161   0; /* #EDA100 yellow */
+  --court-series-5:                 232 123 164; /* #E87BA4 magenta */
+  --court-series-6:                   0 131   0; /* #008300 green */
+  /* Ordinal ramp (one hue, nearest-surface step first). Offer-to-Start
+     buckets: shorter gap = lighter step. */
+  --court-ordinal-1:                134 182 239; /* #86B6EF */
+  --court-ordinal-2:                 85 152 231; /* #5598E7 */
+  --court-ordinal-3:                 42 120 214; /* #2A78D6 */
+  --court-ordinal-4:                 28  92 171; /* #1C5CAB */
   --court-surface-subtle:           244 229 213; /* #F4E5D5 — softer than F5DCC4 */
   --court-border:                   214 188 163; /* #D6BCA3 — desaturated terracotta */
   --court-border-soft:              240 223 204; /* #F0DFCC — softer divider */
@@ -169,6 +214,19 @@ html[data-surface='clay'][data-theme='light'] {
 html[data-surface='clay'][data-theme='dark'] {
   --court-bg:                        28  25  23; /* #1C1917 — warm charcoal */
   --court-surface:                   39  36  29; /* #27241D */
+  /* Chart series: same six hues re-stepped for the dark surface (validated,
+     not an automatic flip). See the light block for the rules. */
+  --court-series-1:                  57 135 229; /* #3987E5 blue */
+  --court-series-2:                 217  89  38; /* #D95926 orange */
+  --court-series-3:                  25 158 112; /* #199E70 aqua */
+  --court-series-4:                 201 133   0; /* #C98500 yellow */
+  --court-series-5:                 213  81 129; /* #D55181 magenta */
+  --court-series-6:                   0 131   0; /* #008300 green */
+  /* Ordinal ramp for dark: nearest-surface (darkest) step first. */
+  --court-ordinal-1:                 28  92 171; /* #1C5CAB */
+  --court-ordinal-2:                 57 135 229; /* #3987E5 */
+  --court-ordinal-3:                109 167 236; /* #6DA7EC */
+  --court-ordinal-4:                158 197 244; /* #9EC5F4 */
   --court-surface-subtle:            49  46  37; /* #312E25 */
   --court-border:                    68  64  60; /* #44403C */
   --court-border-soft:               41  37  36; /* #292524 — stone-800 softer than border */
@@ -210,6 +268,22 @@ html[data-surface='clay'][data-theme='dark'] {
 html[data-surface='grass'][data-theme='light'] {
   --court-bg:                       244 248 241; /* #F4F8F1 */
   --court-surface:                  255 255 255; /* #FFFFFF */
+  /* Chart series (categorical, fixed order, validated for CVD + contrast on
+     this surface via the dataviz palette validator). Consumed by the
+     Placements pie charts as rgb(var(--court-series-N)). Never cycle past 6:
+     extra slices fold into "Other". */
+  --court-series-1:                  42 120 214; /* #2A78D6 blue */
+  --court-series-2:                 235 104  52; /* #EB6834 orange */
+  --court-series-3:                  27 175 122; /* #1BAF7A aqua */
+  --court-series-4:                 237 161   0; /* #EDA100 yellow */
+  --court-series-5:                 232 123 164; /* #E87BA4 magenta */
+  --court-series-6:                   0 131   0; /* #008300 green */
+  /* Ordinal ramp (one hue, nearest-surface step first). Offer-to-Start
+     buckets: shorter gap = lighter step. */
+  --court-ordinal-1:                134 182 239; /* #86B6EF */
+  --court-ordinal-2:                 85 152 231; /* #5598E7 */
+  --court-ordinal-3:                 42 120 214; /* #2A78D6 */
+  --court-ordinal-4:                 28  92 171; /* #1C5CAB */
   --court-surface-subtle:           234 241 228; /* #EAF1E4 */
   --court-border:                   208 220 200; /* #D0DCC8 */
   --court-border-soft:              225 235 217; /* #E1EBD9 */
@@ -251,6 +325,19 @@ html[data-surface='grass'][data-theme='light'] {
 html[data-surface='grass'][data-theme='dark'] {
   --court-bg:                        24  24  27; /* #18181B — neutral dark */
   --court-surface:                   31  31  35; /* #1F1F23 */
+  /* Chart series: same six hues re-stepped for the dark surface (validated,
+     not an automatic flip). See the light block for the rules. */
+  --court-series-1:                  57 135 229; /* #3987E5 blue */
+  --court-series-2:                 217  89  38; /* #D95926 orange */
+  --court-series-3:                  25 158 112; /* #199E70 aqua */
+  --court-series-4:                 201 133   0; /* #C98500 yellow */
+  --court-series-5:                 213  81 129; /* #D55181 magenta */
+  --court-series-6:                   0 131   0; /* #008300 green */
+  /* Ordinal ramp for dark: nearest-surface (darkest) step first. */
+  --court-ordinal-1:                 28  92 171; /* #1C5CAB */
+  --court-ordinal-2:                 57 135 229; /* #3987E5 */
+  --court-ordinal-3:                109 167 236; /* #6DA7EC */
+  --court-ordinal-4:                158 197 244; /* #9EC5F4 */
   --court-surface-subtle:            39  39  42; /* #27272A */
   --court-border:                    63  63  70; /* #3F3F46 */
   --court-border-soft:               49  49  55; /* derived softer */
@@ -296,6 +383,22 @@ html[data-surface='grass'][data-theme='dark'] {
 html[data-surface='night'][data-theme='light'] {
   --court-bg:                       246 250 244; /* #F6FAF4 — white w/ green tint */
   --court-surface:                  255 255 255; /* #FFFFFF */
+  /* Chart series (categorical, fixed order, validated for CVD + contrast on
+     this surface via the dataviz palette validator). Consumed by the
+     Placements pie charts as rgb(var(--court-series-N)). Never cycle past 6:
+     extra slices fold into "Other". */
+  --court-series-1:                  42 120 214; /* #2A78D6 blue */
+  --court-series-2:                 235 104  52; /* #EB6834 orange */
+  --court-series-3:                  27 175 122; /* #1BAF7A aqua */
+  --court-series-4:                 237 161   0; /* #EDA100 yellow */
+  --court-series-5:                 232 123 164; /* #E87BA4 magenta */
+  --court-series-6:                   0 131   0; /* #008300 green */
+  /* Ordinal ramp (one hue, nearest-surface step first). Offer-to-Start
+     buckets: shorter gap = lighter step. */
+  --court-ordinal-1:                134 182 239; /* #86B6EF */
+  --court-ordinal-2:                 85 152 231; /* #5598E7 */
+  --court-ordinal-3:                 42 120 214; /* #2A78D6 */
+  --court-ordinal-4:                 28  92 171; /* #1C5CAB */
   --court-surface-subtle:           243 248 239; /* #F3F8EF */
   --court-border:                   229 232 237; /* #E5E8ED */
   --court-border-soft:              238 241 245; /* #EEF1F5 */
@@ -355,6 +458,19 @@ html[data-surface='night'][data-theme='dark'],
 .signin-night {
   --court-bg:                        15  16  18; /* #0F1012 */
   --court-surface:                   24  25  28; /* #18191C */
+  /* Chart series: same six hues re-stepped for the dark surface (validated,
+     not an automatic flip). See the light block for the rules. */
+  --court-series-1:                  57 135 229; /* #3987E5 blue */
+  --court-series-2:                 217  89  38; /* #D95926 orange */
+  --court-series-3:                  25 158 112; /* #199E70 aqua */
+  --court-series-4:                 201 133   0; /* #C98500 yellow */
+  --court-series-5:                 213  81 129; /* #D55181 magenta */
+  --court-series-6:                   0 131   0; /* #008300 green */
+  /* Ordinal ramp for dark: nearest-surface (darkest) step first. */
+  --court-ordinal-1:                 28  92 171; /* #1C5CAB */
+  --court-ordinal-2:                 57 135 229; /* #3987E5 */
+  --court-ordinal-3:                109 167 236; /* #6DA7EC */
+  --court-ordinal-4:                158 197 244; /* #9EC5F4 */
   --court-surface-subtle:            20  21  24; /* #141518 */
   --court-border:                    35  37  42; /* #23252A */
   --court-border-soft:               31  33  37; /* #1F2125 */
