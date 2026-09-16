@@ -140,13 +140,21 @@ export function PlacementDrilldownDialog({ title, eyebrow, query, onClose }: Pro
               {loading
                 ? "Loading…"
                 : data
-                  ? `${data.count} placement${data.count === 1 ? "" : "s"} · ${
-                      data.totalFee > 0 ? formatMoneyShort(data.totalFee) : "—"
-                    }`
+                  ? `${data.count} placement${data.count === 1 ? "" : "s"}`
                   : ""}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {!loading && data && (
+              <div className="rounded-xl bg-court-brand-tint/50 px-3.5 py-1.5 text-right">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-brand-dark">
+                  {period === "quarter" ? "This quarter" : "Annual"}
+                </p>
+                <p className="mt-0.5 font-serif text-2xl font-extrabold leading-none tracking-tight tabular-nums text-court-fg">
+                  {data.totalFee > 0 ? formatMoneyShort(data.totalFee) : "—"}
+                </p>
+              </div>
+            )}
             <div
               role="tablist"
               aria-label="Period"

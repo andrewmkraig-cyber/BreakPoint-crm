@@ -12,6 +12,7 @@ import {
   type TimeGrain,
   type TimeRangeSelection,
 } from "@/lib/time-range";
+import { timeRangeChrome } from "@/lib/time-range";
 import type {
   KpiDetailResponse,
   KpiDetailRow,
@@ -112,15 +113,27 @@ export function KpiDetailDialog({
                   : ""}
             </p>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            aria-label="Close"
-            className="shrink-0 px-1.5"
-          >
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex shrink-0 items-start gap-3">
+            {!loading && data && (
+              <div className="rounded-xl bg-court-brand-tint/50 px-3.5 py-1.5 text-right">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-brand-dark">
+                  {timeRangeChrome(selection).rangeLabel}
+                </p>
+                <p className="mt-0.5 font-serif text-2xl font-extrabold leading-none tracking-tight tabular-nums text-court-fg">
+                  {data.count}
+                </p>
+              </div>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              aria-label="Close"
+              className="shrink-0 px-1.5"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <div className="border-b border-court-border-soft px-5 py-2.5">
