@@ -41,13 +41,28 @@ export type DealAnnouncementResult =
   | { ok: true; draft: DealAnnouncementDraft }
   | { ok: false; error: string };
 
+// Two kinds of Date live on a placement. placedAt is a real instant (the
+// click on Record Placement), so it reads in Eastern time. expectedStartDate
+// is a calendar day stored as midnight UTC ("2026-10-05" -> 05T00:00Z);
+// rendering that in Eastern time slides it to 8pm the night before, which
+// is how an October 5 start was announced as October 4. Date-only values
+// are formatted in UTC so they keep their own calendar day.
+function isUtcMidnight(d: Date): boolean {
+  return (
+    d.getUTCHours() === 0 &&
+    d.getUTCMinutes() === 0 &&
+    d.getUTCSeconds() === 0 &&
+    d.getUTCMilliseconds() === 0
+  );
+}
+
 function formatDate(value: Date | null): string | null {
   if (!value) return null;
   return value.toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
     year: "numeric",
-    timeZone: "America/New_York",
+    timeZone: isUtcMidnight(value) ? "UTC" : "America/New_York",
   });
 }
 
@@ -75,7 +90,6 @@ export async function buildDealAnnouncement(
       minFee: true,
       placedAt: true,
       createdAt: true,
-      startConfirmedAt: true,
       expectedStartDate: true,
       candidateSource: true,
       dealType: true,
@@ -153,9 +167,10 @@ export async function buildDealAnnouncement(
     // created so an older placement that predates the column still reads
     // sensibly instead of showing TBD.
     placementDate: formatDate(placement.placedAt ?? placement.createdAt),
-    startDate: formatDate(
-      placement.startConfirmedAt ?? placement.expectedStartDate,
-    ),
+    // The start date is the agreed calendar day. startConfirmedAt is the
+    // moment Confirm Start was clicked, not when the candidate starts, so
+    // it is never the right thing to print here.
+    startDate: formatDate(placement.expectedStartDate),
     // Lead source is per-placement (how the candidate reached this job) and
     // falls back to the client's own acquisition channel.
     industry: placement.client?.industry ?? null,

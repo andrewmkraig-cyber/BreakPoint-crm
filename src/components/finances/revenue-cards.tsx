@@ -427,13 +427,33 @@ function AverageDealSizeCard({
   totalDeals: number;
   maxUsd: number;
 }) {
+  const dealsLabel = `${totalDeals} deal${totalDeals === 1 ? "" : "s"} this period`;
   return (
-    <Panel
-      title="Average deal size"
-      subline={`${formatUsd(averageDealUsd)} average · ${totalDeals} deal${
-        totalDeals === 1 ? "" : "s"
-      }`}
-    >
+    <div className={PANEL_CLASS}>
+      {/* Header: title + deal count on the left, the average itself as the
+          hero figure on the right so it reads first, the way the Trend
+          card's quarter progress does. */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
+            Average deal size
+          </p>
+          <p className="mt-0.5 text-xs text-court-fg-muted">{dealsLabel}</p>
+        </div>
+        <div className="shrink-0 rounded-2xl bg-court-brand-tint/50 px-4 py-2 text-right">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-brand-dark">
+            Average
+          </p>
+          <p
+            className={
+              "mt-0.5 font-sans text-3xl font-extrabold leading-none tracking-tight tabular-nums " +
+              (averageDealUsd > 0 ? "text-court-fg" : "text-court-fg-dim")
+            }
+          >
+            {averageDealUsd > 0 ? formatUsd(averageDealUsd) : "—"}
+          </p>
+        </div>
+      </div>
       {rows.length === 0 ? (
         <EmptyBlock>No deal revenue logged this period yet.</EmptyBlock>
       ) : (
@@ -449,7 +469,7 @@ function AverageDealSizeCard({
           ))}
         </ul>
       )}
-    </Panel>
+    </div>
   );
 }
 
