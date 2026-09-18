@@ -1,7 +1,22 @@
 # Ace Roadmap
-Last updated: 2026-09-09 · Ace 100.3
+Last updated: 2026-09-18 · Ace 101.0
 
 ## Active Build Sequence
+
+### DONE this session (Ace 101.0 - consulting invoices, 2026-09-18)
+Full detail in ACE_STATE.md ▸ Ace 101.0.
+- ~~**Consulting Invoices section on /invoices**~~ DONE (`5dfa5eec`) - Generate Consulting Invoice modal (company, amount, invoice date, due date, Branzino service period), per-company auto-numbering (Arfie next #9, Branzino next 0002), two PDF templates matching the real Arfie and Branzino invoices, email to both owners with the company owner's personal address on Cc from Andrew's Gmail, owner tally tiles, and a company-filterable history table.
+- ~~**`consulting_invoices` table**~~ DONE - migration `20260918140606_add_consulting_invoices`, applied to prod. Unique on (org, company, number). Kept off every revenue figure.
+- ~~**Historical seed**~~ DONE - `scripts/seed-consulting-invoices.ts` (dry-run default). Arfie #3-#8 and Branzino #0001 written; totals read back as $19,750.00 / $500.00.
+
+### Open follow-ups from Ace 101.0
+
+**23. One real consulting invoice send is needed to prove the path.** No email was sent this session and Google-only auth blocked a browser pass. Generate one per company and confirm delivery, the PDF attachment, the Cc, and that the From reads andrew@ rather than a silent Gmail rewrite. See Next Task in ACE_STATE.md.
+
+**24. Consulting invoice amounts are whole dollars only.** The shared `MaskedCurrencyInput` is digits-only. Every invoice on record is whole dollars, so nothing is lost today; the column and the action already accept cents, so only the shared input would need extending.
+
+**25. Arfie #1 and #2 are missing from the history.** No amounts on record, so they were not seeded and the Arfie total starts at #3. Add them to `scripts/seed-consulting-invoices.ts` and re-run (idempotent) if they turn up.
+
 
 ### DONE this session (Ace 100.3 - interview invite logistics + invoices read the client record, 2026-09-09)
 Full detail in ACE_STATE.md ▸ Ace 100.3.

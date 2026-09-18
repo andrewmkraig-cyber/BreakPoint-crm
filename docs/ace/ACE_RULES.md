@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-09-09 · Ace 100.3
+Last updated: 2026-09-18 · Ace 101.0
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -272,6 +272,14 @@ Renamed in Ace 100.0 (`17692c53`). **Never sweep the string "Ace".** It names tw
 When renaming anything user-facing, **the system prompt counts as a user-facing string.** `src/app/api/claude-panel/chat/route.ts` carries `"You are Wilson, ..."`. Changing the buttons without it leaves the UI saying one name while the bot introduces itself as another.
 
 Historical entries in ACE_STATE.md and ACE_ROADMAP.md keep the old name - they record what shipped when. Live rules in this file take the current name.
+
+## Consulting invoices are money OUT, never revenue (added 2026-09-18 · Ace 101.0 - PERMANENT)
+`consulting_invoices` (model `ConsultingInvoice`) records what BreakPoint pays its owners' LLCs - Arfie Management LLC (Andrew) and Branzino Holdings LLC (Austin) - for their own time. It is a separate table from `Invoice` on purpose and must never be read by the goals engine, the /invoices summary tiles, the Revenue cards, Money In, the Cash Forecast, or any other figure that describes money coming IN. The only surfaces that read it are the Consulting Invoices section on /invoices and its own tally tiles.
+
+- **Company constants live in ONE place:** `src/lib/consulting-invoices-shared.ts` (names, addresses, EINs, bill-to lines, terms, number format, Cc address). That module is client-safe and must never import prisma; server reads are in `src/lib/consulting-invoices.ts`.
+- **Numbers are per company, max + 1**, enforced by the (org, company, number) unique key. Never renumber or reuse.
+- **The email sender is Andrew's Gmail** (`CONSULTING_INVOICE_SENDER_EMAIL`), resolved by email, whoever clicks. A fallback to the signed-in user's own account is allowed only when it is reported in the toast - the Gmail-rewrite rule above applies.
+- **The row commits before the email is attempted** (the Ace 100.0 notification rule). A send failure returns "saved, but the email did not send" and leaves the issued number in place.
 
 ## deals@ is backend-only (added 2026-09-05 · Ace 100.0 - PERMANENT)
 `deals@breakpointtalent.com` sends deal email and nothing else. It is filtered out of `/api/mail/send-as-aliases` so it never reaches the composer's From dropdown, and the announcement flow selects it by passing `lockedSendAsEmail`, which pins the sender and renders From read-only. **Never add it to the alias list to make a one-off send easier.** Constants live in `src/lib/deal-announcement.ts`.

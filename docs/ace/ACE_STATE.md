@@ -1,8 +1,34 @@
 # ACE_STATE.md
-Last updated: 2026-09-09 · Ace 100.3
-Current Version: Ace 100.3
-Last Shipped: 2026-09-09
+Last updated: 2026-09-18 · Ace 101.0
+Current Version: Ace 101.0
+Last Shipped: 2026-09-18
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 101.0 - consulting invoices for the owners' LLCs (2026-09-18)
+
+One code commit (`5dfa5eec`), one additive migration applied to prod, one seed run. Step 0 held at 3 / 10 / 85 before writing code and again before the commit.
+
+**A Consulting Invoices section at the bottom of /invoices.** Andrew bills BreakPoint through Arfie Management LLC and Austin through Branzino Holdings LLC. The section is two tally tiles (Andrew / Arfie Management, Austin / Branzino Holdings, each the sum of that company's invoices), a Generate Consulting Invoice button, and a history table (invoice number, company, amount, invoice date, due date) most recent first with an All / Arfie / Branzino `TabStrip` filter. Built on the existing chrome: `KpiTile`, the Clubhouse big-panel card, the shared `Button` / `Input` / `Select` / `MaskedCurrencyInput`, the retained-search modal pattern. No new styles.
+
+**This is money OUT, and it never reaches a revenue figure.** `Invoice` is what the desk bills a client and feeds billed / collected. `consulting_invoices` is what BreakPoint pays its owners. The new table is not read by the goals engine, the invoice summary tiles, the Revenue cards, Money In or the Cash Forecast, and must stay that way - see the new rule in ACE_RULES.md.
+
+**The table.** `ConsultingInvoice` model, `@@map("consulting_invoices")` because the spec named the table that way while every other Ace table is PascalCase. Columns: company (`"arfie"` | `"branzino"`), invoiceNumber (Int, a per-company sequence), amount Decimal(10,2), invoiceDate / dueDate (UTC midnight, like `Invoice.startDate`), servicePeriodStart / End (Branzino only), emailedAt / emailedFrom, createdByUserId. Unique on (organizationId, company, invoiceNumber), so a double click cannot issue the same number twice; the action re-reads the max and retries once on P2002. Migration `20260918140606_add_consulting_invoices`, generated with `npm run db:migrate` and applied with `npm run db:deploy`. The Vercel build does NOT run migrations, which is why it was applied from here before the push.
+
+**Numbering.** `nextConsultingInvoiceNumber` is max + 1 per company. Arfie is at #8 so the next is #9; Branzino is at #0001 so the next is #0002. The company constants carry a first-number fallback (9 / 2) that is only reached if the table is empty. Arfie prints `#9`, Branzino prints zero-padded `0002`, both from `formatConsultingInvoiceNumber` in `src/lib/consulting-invoices-shared.ts`.
+
+**Two PDF templates, one per company (`src/lib/consulting-invoice-pdf.tsx`).** Separate documents on purpose: the source invoices are laid out differently and the point is to match each one, not to share chrome. Arfie: black header bar with the company / address / EIN on the left and INVOICE, `Invoice #: 9`, `Date:`, `Terms: Due Upon Receipt` on the right; BILL TO BreakPoint Talent at the Solon address; a Description / Amount table with one Consulting Fee line; Total Due; "Payment due upon receipt. Thank you." No bank details. Branzino: light gray header bar with BRANZINO HOLDINGS LLC in caps; BILL TO Kraig Talent LLC d/b/a BreakPoint Talent, Attn: Andrew Kraig, Founder beside an INVOICE NO. / INVOICE DATE / TERMS Due on Receipt / DUE DATE block; a Description / Service Period / Amount table; Subtotal, Payments/Credits $0.00, TOTAL DUE; a REMIT TO panel with the JPMorgan Chase account, wire and ACH routing; "Please reference Invoice No. 0002 on all remittances." Both rendered locally and read as PDFs before shipping. Same `@react-pdf/renderer` path the placement invoice already uses in prod, so no new serverless exposure.
+
+**The service period is an addition the spec did not name.** Branzino's template prints `[date] - [date]` on the line item and nothing in the form supplied those dates. The modal shows two date fields only when Branzino is selected, defaulting to the two weeks ending on the invoice date and editable. Arfie rows and seeded history leave the columns null.
+
+**Amounts are whole dollars.** The modal uses the shared `MaskedCurrencyInput`, which is digits-only by design (ACE_DESIGN.md ▸ Ace 79.0). Every historical consulting invoice is a whole-dollar amount, so this fits today; a fee with cents cannot be entered. The column is Decimal(10,2) and the action accepts cents, so extending the shared input is the only change needed if that ever matters.
+
+**The email (`src/app/invoices/consulting-invoice-actions.ts`).** To andrew@breakpointtalent.com and austin@breakpointtalent.com every time, whichever company; Cc andrewmkraig@gmail.com for Arfie or austinbarnard@gmail.com for Branzino. Subject `Arfie Management LLC Invoice #9` / `Branzino Holdings LLC Invoice No. 0002`, a three-line plain body, the PDF attached. It goes through the existing `sendGmail` with attachments, so the sender's stored signature is appended by `withSignature` as on every other send - the body carries no sign-off. **The sender is Andrew's Gmail** (`CONSULTING_INVOICE_SENDER_EMAIL`), resolved by email to his user row, whoever clicks. If that account cannot send and the signed-in user is someone else, their own account is tried next; the toast names the address that actually sent, per the Gmail-rewrite rule. Never a silent fallback.
+
+**The row commits before the send, and the send cannot roll it back.** Save first, then render + email inside their own try/catch; the result carries `emailed` / `sentFrom` / `emailError`, and on success `emailedAt` / `emailedFrom` are stamped. A Gmail failure returns "saved, but the email did not send" with the reason, and the number stays issued so a retry does not create a duplicate. This is the Ace 100.0 notification rule applied again.
+
+**Seeded history (`scripts/seed-consulting-invoices.ts`, dry-run default, `--apply`, idempotent on the unique key).** Arfie #3 $3,500.00 (Jul 15), #4 $3,500.00 (Jul 31), #5 $3,750.00 (Aug 13), #6 $3,750.00 (Aug 27), #7 $3,750.00 (Sep 10), #8 $1,500.00 (Sep 18); Branzino #0001 $500.00 (Sep 18). Due dates equal invoice dates, emailedAt null. The dry run listed 7 rows and the apply wrote 7; read back through `listConsultingInvoices` the totals are **Arfie $19,750.00 and Branzino $500.00** and the next numbers resolve to 9 and 2. **Arfie #1 and #2 are not on record and were not seeded** - add them to the script and re-run if the amounts turn up.
+
+**Not browser-verified.** Ace signs in with Google only, so no Playwright pass was possible from the terminal; the section was verified by `npm run build` exiting 0 (which includes the raw-button and client/prisma gates) and by rendering both PDFs. **No real email was sent.** The send path is the same `sendGmail` + attachments the submittal flow uses, but this feature has not yet been proven by a delivered message.
 
 ## What Shipped in Ace 100.3 - interview invites carry their logistics, and invoices read the client record (2026-09-09)
 
@@ -117,11 +143,12 @@ Also added an inline-image button to the composer toolbar. Pasting a screenshot 
 **Not browser-verified.** Every change passed `next build`, `tsc --noEmit`, `next lint` and `check:ui`, and the email bodies were test-rendered across full / sparse / vowel-title cases. Andrew verified cancel and reinstate live. The announcement send, the deal-type control and voice dictation on the iOS PWA are unverified in a real browser.
 
 ## Next Task
-Andrew to verify in the browser, oldest first:
-1. **Schedule one phone screen and one in-person interview end to end.** Confirm: no `<b>` or any other tag in either composer box; the phone-screen invite location reads "Chris to call Kaan @ 415-690-6399"; the in-person Address pre-fills for a client that HAS a street address on file; changing Duration updates the "Duration: N min" line in the body; and the resulting Google block is the length you picked. This is Ace 100.3 and all of it has live symptoms you have already seen.
-2. **Open an invoice for Mowat Mackie** and confirm the terms read Net 10 rather than Net 30, and that the Billing / Hiring dropdowns list that client's real contacts.
-3. **Send one real email from the composer** and confirm entities render as characters, not as literal `&nbsp;` / `&amp;` text. Type a trailing space after a comma and an ampersand in the body. Carried from Ace 100.2, still unverified.
-4. Carried from Ace 100.0: the announcement send from deals@ (confirm the From actually reads deals@ and not andrew@), the Deal Type control on both placement surfaces, and voice dictation on the installed iOS PWA. The iOS permission-prime path is the one piece that could not be checked from the terminal.
+Andrew to verify in the browser, newest first for the consulting invoices, then oldest first:
+1. **Generate one consulting invoice for each company** from the bottom of /invoices. Confirm: the tiles read $19,750.00 (Arfie) and $500.00 (Branzino) before you start; Arfie issues #9 and Branzino issues 0002; both owners receive the email with the PDF attached and the right personal address on Cc; the From reads andrew@breakpointtalent.com (the toast names the sending address); the PDF matches the company's real invoice; the new row lands at the top of the table and the tile moves. If a real invoice is not wanted yet, this can wait, but the send path is unproven until one goes out.
+2. **Schedule one phone screen and one in-person interview end to end.** Confirm: no `<b>` or any other tag in either composer box; the phone-screen invite location reads "Chris to call Kaan @ 415-690-6399"; the in-person Address pre-fills for a client that HAS a street address on file; changing Duration updates the "Duration: N min" line in the body; and the resulting Google block is the length you picked. This is Ace 100.3 and all of it has live symptoms you have already seen.
+3. **Open an invoice for Mowat Mackie** and confirm the terms read Net 10 rather than Net 30, and that the Billing / Hiring dropdowns list that client's real contacts.
+4. **Send one real email from the composer** and confirm entities render as characters, not as literal `&nbsp;` / `&amp;` text. Type a trailing space after a comma and an ampersand in the body. Carried from Ace 100.2, still unverified.
+5. Carried from Ace 100.0: the announcement send from deals@ (confirm the From actually reads deals@ and not andrew@), the Deal Type control on both placement surfaces, and voice dictation on the installed iOS PWA. The iOS permission-prime path is the one piece that could not be checked from the terminal.
 
 Then Prompt 10 below.
 
