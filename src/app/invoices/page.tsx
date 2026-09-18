@@ -4,6 +4,7 @@ import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { InvoiceRow } from "@/app/invoices/invoice-row";
 import { SendTestInvoiceButton } from "@/app/invoices/send-test-invoice-button";
 import { FutureInvoicesSection } from "@/app/invoices/future-invoices-section";
+import { ConsultingInvoicesSection } from "@/app/invoices/consulting-invoices-section";
 import { RetainedSearchModal } from "@/app/invoices/retained-search-modal";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
@@ -13,6 +14,10 @@ import {
   listInvoices,
   type InvoiceListFilter,
 } from "@/lib/invoices";
+import {
+  consultingTotalsCents,
+  listConsultingInvoices,
+} from "@/lib/consulting-invoices";
 import { formatDate as formatDateLabel } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -80,11 +85,12 @@ export default async function InvoicesPage({
     (f) => f.value === params.filter,
   )?.value ?? "all") as InvoiceListFilter;
   const org = await getCurrentOrg();
-  const [invoices, summary, futureInvoices, retainedClients, retainedJobs] =
+  const [invoices, summary, futureInvoices, consultingInvoices, retainedClients, retainedJobs] =
     await Promise.all([
       listInvoices(org.id, filter),
       getInvoiceSummary(org.id),
       listFutureInvoices(org.id),
+      listConsultingInvoices(org.id),
       // Client + job options for the Send Retained Invoice modal. ALL
       // clients in the tenant, active and inactive alike — a retainer is
       // often what reactivates a dormant client, so filtering by activity
@@ -316,6 +322,13 @@ export default async function InvoicesPage({
           </table>
         </div>
       </FutureInvoicesSection>
+
+      {/* Money BreakPoint pays OUT to the owners' LLCs. Kept off every
+          revenue figure above; see the ConsultingInvoice model comment. */}
+      <ConsultingInvoicesSection
+        invoices={consultingInvoices}
+        totalsCents={consultingTotalsCents(consultingInvoices)}
+      />
     </div>
   );
 }

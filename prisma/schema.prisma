@@ -1269,6 +1269,7 @@ model Organization {
   notes                    Note[]
   scheduledEmails          ScheduledEmail[]
   invoiceEmailDrafts       InvoiceEmailDraft[]
+  consultingInvoices       ConsultingInvoice[]
   fitnessExercises         Exercise[]
   workoutDays              WorkoutDay[]
   workouts                 Workout[]
@@ -1440,6 +1441,49 @@ model InvoiceEmailDraft {
   @@index([organizationId])
   @@index([userId])
   @@index([gmailDraftId])
+}
+
+// Consulting invoices the two owners bill BreakPoint for their own time,
+// from their personal LLCs: Arfie Management LLC (Andrew) and Branzino
+// Holdings LLC (Austin). Separate from Invoice on purpose - Invoice is
+// money the desk bills a CLIENT for a placement and feeds billed /
+// collected revenue; these are money BreakPoint pays OUT and must never
+// reach a revenue figure.
+//
+// invoiceNumber is a per-company sequence (Arfie is at #8, Branzino at
+// #0001 as of 2026-09-18), so the unique key is (org, company, number).
+// Company constants, recipients and number formatting live in
+// src/lib/consulting-invoices-shared.ts.
+//
+// Amount is Decimal(10, 2) like Invoice.feeAmount. invoiceDate / dueDate
+// are date-only values stored at UTC midnight, matching Invoice.startDate.
+//
+// emailedAt / emailedFrom record what actually went out: the PDF email is
+// sent AFTER the row commits, in its own try/catch, so a Gmail failure can
+// never roll back the invoice it describes.
+model ConsultingInvoice {
+  id                 String       @id @default(cuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id])
+  // "arfie" | "branzino" - see CONSULTING_COMPANIES.
+  company            String
+  invoiceNumber      Int
+  amount             Decimal      @db.Decimal(10, 2)
+  invoiceDate        DateTime
+  dueDate            DateTime
+  // Branzino's template prints a service period on the line item. Null on
+  // Arfie rows and on seeded history.
+  servicePeriodStart DateTime?
+  servicePeriodEnd   DateTime?
+  emailedAt          DateTime?
+  emailedFrom        String?
+  createdByUserId    String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@unique([organizationId, company, invoiceNumber])
+  @@index([organizationId, invoiceDate])
+  @@map("consulting_invoices")
 }
 
 enum InvoiceStatus {
