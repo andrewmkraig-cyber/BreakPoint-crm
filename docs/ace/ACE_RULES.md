@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-09-22 · Ace 102.0
+Last updated: 2026-09-22 · Ace 102.1
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -187,6 +187,27 @@ Two exceptions, both deliberate:
 **One definition per surface.** The Goal Pacing card used to compute a third figure from billing events (`expandPlacementBillingEvents` by `scheduledAt`) and disagreed with the Goals tab by $25,750 while claiming to describe the same thing. Any new revenue surface reads the goals engine; do not add a fourth definition. `expandPlacementBillingEvents` remains correct for the Cash Forecast, which is a genuinely different question (when will money arrive).
 
 **Retained engagements count in `earned`** (added Ace 99.2), keyed by `RetainedSearch.createdAt` - there is no `signedAt`, and createdAt is written when the recruiter records a committed engagement, making it the analogue of `placedAt`. The FULL `totalAmount` lands at once even when the retainer bills in installments, because installments are a billing schedule and a contingent placement with custom terms already earns its whole fee on placedAt. `earnedPlacementWhere` still excludes every placement carrying a `retainedSearchId`, so the two sides total each retainer exactly once. CLOSED_UNFILLED counts - the client paid to run the search.
+
+## An earlier ACTUAL start pulls the whole deal back (added 2026-09-22 · Ace 102.1 - PERMANENT, Andrew's decision)
+**A placement is dated by when the candidate ACTUALLY STARTS whenever that is EARLIER than the date the app would otherwise use.** David was booked for an October 5 start and walked in on September 21; moving the start date on the placement had to move his billing, his goals, his metrics and his placement count out of Q4 and into Q3, and it did not.
+
+This NARROWS nothing in the Revenue definition above. `earned` still keys on `Placement.placedAt` and a deal still counts when it CLOSES. The rule only ever pulls a deal EARLIER - a start date moved OUT never lets a booked deal escape its quarter.
+
+`src/lib/placement-dates.ts` is the one definition, pure (no prisma import) so client components can read it:
+- `placementActualStart` - the EARLIER of `expectedStartDate` and `startConfirmedAt`.
+- `placementBillingAnchor` - that, falling back to `placedAt`.
+- `placedAtCorrection` - the `placedAt` write when a start lands before it; null otherwise.
+
+**`startConfirmedAt` is a BOOKKEEPING TIMESTAMP, not the day work began.** It is stamped `new Date()` when the recruiter uploads the start screenshot. The old billing anchor `startConfirmedAt ?? expectedStartDate ?? placedAt` preferred it outright, so confirming a September 21 start on October 10 dated every installment to Q4. Earliest-wins is the only rule that handles both that case and a candidate who genuinely comes in early and is confirmed on the real day.
+
+**Three surfaces had to change, because each kept the old date alive its own way:**
+1. `expandPlacementBillingEvents` - both fallback branches now use `placementBillingAnchor`, as do the Confirm Start installment base and `createInvoiceForPlacement`'s issue date.
+2. `placedAt` - pulled back on all three write paths (`placement-update-action.ts`, `local-placement-actions.ts`, `placement-actions.ts`), because goals / placement count / `earned` all query that column.
+3. DRAFT invoices - `realignPlacementInvoiceDates` in `src/lib/invoices.ts` re-dates `startDate` + `dueDate` on every DRAFT row when a placement is saved. Invoice events bucket by `dueDate`, so an invoice raised against the old start kept billing into the old quarter whatever the placement said.
+
+**SENT and PAID invoices are NEVER re-dated.** The client already holds that PDF with that due date on it; rewriting it would make the books disagree with what was actually billed. A wrong quarter on an already-sent invoice is a credit-and-reissue, not a silent edit.
+
+**A stale row is repaired by re-saving the placement, not by a script.** The re-date and the `placedAt` pull-back both fire on save, so opening Edit placement and pressing Save once brings an existing row onto the new rule.
 
 ## Thresholds in a visual spec get MEASURED (added 2026-09-02 · Ace 99.3)
 When a prompt proposes a number that governs how something looks - "segments up to 25 units", a breakpoint, a minimum width - measure it in the browser at the real rendered size before accepting it. The Ace 99.3 segment limit came in at 25 and shipped at 20, because the real headline-row track is 302px on a 390px phone and 25 segments leave 8.2px each, below the ~10px where a division still reads as a division rather than texture. The prompt invited the check ("report the threshold you settle on if 25 is wrong"); the answer only exists once something is rendered.

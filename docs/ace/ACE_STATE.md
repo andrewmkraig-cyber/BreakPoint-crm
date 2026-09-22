@@ -1,8 +1,27 @@
 # ACE_STATE.md
-Last updated: 2026-09-22 · Ace 102.0
-Current Version: Ace 102.0
+Last updated: 2026-09-22 · Ace 102.1
+Current Version: Ace 102.1
 Last Shipped: 2026-09-22
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 102.1 - an earlier actual start pulls the whole deal back into its real quarter (2026-09-22)
+
+One code commit, no schema change. Step 0 measured 3 / 13 / 100 before writing code and 3 / 13 / 100 again before committing - unchanged by this work. NOTE: those working-tree counts sit above the documented baselines of 3 / 10 / 85; the drift is already present at HEAD and predates this session. Nothing here added an RF read.
+
+**The report.** Andrew moved the David placement from an October 5 start to September 21, because David actually started September 21. Billing and metrics stayed in Q4. His standing instruction: it goes by when they actually start, whenever that is sooner, always - billing, goals, metrics, placements, everything.
+
+**Root cause was three separate places keeping the old date alive.**
+1. The billing anchor was `startConfirmedAt ?? expectedStartDate ?? placedAt`. `startConfirmedAt` is stamped when the recruiter uploads the start screenshot, so confirming a September start in October dated the whole installment schedule to Q4.
+2. `placedAt` was never corrected. Goals, placement count and `earned` all query that column, so a candidate who starts before the deal was stamped placed keeps scoring in the later quarter.
+3. A DRAFT invoice raised against the old start kept its old `dueDate`, and invoice billing events bucket by `dueDate`. Editing the placement's start date did not touch the invoice at all.
+
+**The fix.** `src/lib/placement-dates.ts` is the one definition of when a deal happened - a pure module (no prisma import, per the Ace 99.0 rule) exporting `placementActualStart` (the EARLIER of `expectedStartDate` and `startConfirmedAt`), `placementBillingAnchor` (that, falling back to `placedAt`) and `placedAtCorrection`. Wired into `expandPlacementBillingEvents` (both fallback branches), the Confirm Start installment base, `createInvoiceForPlacement`'s issue date, and the `placedAt` pull-back on all three placement write paths. `realignPlacementInvoiceDates` in `src/lib/invoices.ts` re-dates DRAFT invoices on save, handling the custom-installment shape (anchor + `instNDaysAfterStart`, matched on the note prefix) and the standard shape (anchor + the invoice's own payment terms).
+
+**The rule only ever pulls a deal EARLIER.** A start date moved OUT does not let a booked deal escape its quarter, so the Ace 99.1 revenue definition is intact. SENT and PAID invoices are never re-dated - the client holds that PDF, and a wrong quarter there is a credit-and-reissue, not a silent edit.
+
+**Repairing an existing row: re-save the placement.** Both corrections fire on save, so opening Edit placement and pressing Save once brings a stale row onto the new rule. David needs that one save.
+
+Unit test `tests/unit/placement-start-quarter.test.ts` covers the David case, the late-confirmation case, the started-early case, the normal placed-before-start case (no correction) and idempotency. Added to the `check:ui` build gate. Build exits 0.
 
 ## What Shipped in Ace 102.0 - a flat fee override survives reopen, and consulting invoices can be edited and deleted (2026-09-22)
 
