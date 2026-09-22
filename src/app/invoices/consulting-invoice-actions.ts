@@ -11,6 +11,7 @@ import {
   CONSULTING_COMPANIES,
   CONSULTING_INVOICE_SENDER_EMAIL,
   CONSULTING_INVOICE_TO,
+  type ConsultingCompanyKey,
   formatConsultingDateLong,
   formatConsultingInvoiceNumber,
   formatConsultingUsd,
@@ -20,22 +21,24 @@ import {
   utcMidnightToIso,
 } from "@/lib/consulting-invoices";
 import {
+  type ConsultingInvoicePdfInput,
   consultingInvoicePdfFilename,
   renderConsultingInvoicePdfBuffer,
 } from "@/lib/consulting-invoice-pdf";
 import { plainToHtml, sendGmail } from "@/lib/gmail";
 import { prisma } from "@/lib/prisma";
 
-// Server action behind the Generate Consulting Invoice modal on /invoices.
+// Server actions behind the Consulting Invoices section on /invoices:
+// create (Generate Consulting Invoice), update (Edit) and delete.
 //
-// Order of operations, and why:
-//   1. validate + issue the next number for the company
+// Order of operations on create and on an edit that re-sends, and why:
+//   1. validate
 //   2. write the consulting_invoices row (the only thing that must succeed)
 //   3. render the PDF and email it, in its own try/catch
 //
 // The email is a NOTIFICATION about a row that already exists. A Gmail
-// failure returns emailed:false with the reason and leaves the invoice in
-// the table, so the recruiter can see the number was issued rather than
+// failure returns emailed:false with the reason and leaves the row in the
+// table, so the recruiter can see the number was issued rather than
 // reading "failed" and clicking again into a duplicate.
 //
 // The sender is Andrew's Gmail (CONSULTING_INVOICE_SENDER_EMAIL), the
@@ -44,7 +47,9 @@ import { prisma } from "@/lib/prisma";
 // else, their own account is tried next and the result says which address
 // actually sent - never a silent fallback.
 
-async function requireUser(): Promise<{ id: string; email: string; name: string | null } | null> {
+type SessionUser = { id: string; email: string; name: string | null };
+
+async function requireUser(): Promise<SessionUser | null> {
   const s = await getServerSession(authOptions);
   const email = s?.user?.email;
   if (!email) return null;
@@ -56,8 +61,10 @@ async function requireUser(): Promise<{ id: string; email: string; name: string 
   return { id: user.id, email: user.email, name: user.name };
 }
 
-export type CreateConsultingInvoiceInput = {
-  company: string;
+// The editable fields, shared by create and update. Company and number are
+// fixed once issued: the number is a per-company sequence, so moving a row
+// between companies would leave a hole in one and a clash in the other.
+export type ConsultingInvoiceFieldsInput = {
   // Whole US dollars from the masked currency input.
   amount: number;
   // YYYY-MM-DD
@@ -68,61 +75,65 @@ export type CreateConsultingInvoiceInput = {
   servicePeriodEnd?: string | null;
 };
 
-export type CreateConsultingInvoiceResult =
+export type CreateConsultingInvoiceInput = ConsultingInvoiceFieldsInput & {
+  company: string;
+};
+
+export type UpdateConsultingInvoiceInput = ConsultingInvoiceFieldsInput & {
+  id: string;
+  // Re-render the PDF from the saved fields and email it again.
+  resend: boolean;
+};
+
+export type ConsultingInvoiceSaveResult =
   | {
       ok: true;
       id: string;
       invoiceNumberLabel: string;
       companyName: string;
+      // False when no email was attempted (an edit without resend).
+      emailAttempted: boolean;
       emailed: boolean;
       sentFrom: string | null;
       emailError: string | null;
     }
   | { ok: false; error: string };
 
-function fail(error: string): CreateConsultingInvoiceResult {
+// Kept as an alias so the existing modal import keeps compiling.
+export type CreateConsultingInvoiceResult = ConsultingInvoiceSaveResult;
+
+function fail(error: string): ConsultingInvoiceSaveResult {
   return { ok: false, error };
 }
 
-type SenderCandidate = { id: string; email: string; name: string | null };
+type ParsedFields = {
+  amount: number;
+  amountDecimal: Prisma.Decimal;
+  invoiceDate: Date;
+  dueDate: Date;
+  servicePeriodStart: Date | null;
+  servicePeriodEnd: Date | null;
+};
 
-async function resolveSenders(current: SenderCandidate): Promise<SenderCandidate[]> {
-  const andrew = await prisma.user.findFirst({
-    where: { email: CONSULTING_INVOICE_SENDER_EMAIL },
-    select: { id: true, email: true, name: true },
-  });
-  const list: SenderCandidate[] = [];
-  if (andrew?.email) list.push({ id: andrew.id, email: andrew.email, name: andrew.name });
-  if (!list.some((s) => s.id === current.id)) list.push(current);
-  return list;
-}
-
-export async function createConsultingInvoice(
-  input: CreateConsultingInvoiceInput,
-): Promise<CreateConsultingInvoiceResult> {
-  const user = await requireUser();
-  if (!user) return fail("Not signed in");
-
-  // Tenant comes from the session, never from the caller. Rule 8.
-  const org = await getCurrentOrg();
-
-  if (!isConsultingCompanyKey(input.company)) return fail("Pick a company.");
-  const company = input.company;
-  const co = CONSULTING_COMPANIES[company];
-
+function parseFields(
+  company: ConsultingCompanyKey,
+  input: ConsultingInvoiceFieldsInput,
+): { ok: true; fields: ParsedFields } | { ok: false; error: string } {
   const amount = input.amount;
   if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
-    return fail("Enter an amount greater than zero.");
+    return { ok: false, error: "Enter an amount greater than zero." };
   }
   if (!Number.isInteger(Math.round(amount * 100))) {
-    return fail("Enter an amount in dollars and cents.");
+    return { ok: false, error: "Enter an amount in dollars and cents." };
   }
 
   const invoiceDate = isoDateToUtcMidnight((input.invoiceDate ?? "").trim());
-  if (!invoiceDate) return fail("Pick an invoice date.");
+  if (!invoiceDate) return { ok: false, error: "Pick an invoice date." };
   const dueDate = isoDateToUtcMidnight((input.dueDate ?? "").trim());
-  if (!dueDate) return fail("Pick a due date.");
-  if (dueDate < invoiceDate) return fail("The due date cannot be before the invoice date.");
+  if (!dueDate) return { ok: false, error: "Pick a due date." };
+  if (dueDate < invoiceDate) {
+    return { ok: false, error: "The due date cannot be before the invoice date." };
+  }
 
   let servicePeriodStart: Date | null = null;
   let servicePeriodEnd: Date | null = null;
@@ -133,73 +144,76 @@ export async function createConsultingInvoice(
       servicePeriodStart = isoDateToUtcMidnight(startIso);
       servicePeriodEnd = isoDateToUtcMidnight(endIso);
       if (!servicePeriodStart || !servicePeriodEnd) {
-        return fail("Enter both service period dates, or leave both blank.");
+        return { ok: false, error: "Enter both service period dates, or leave both blank." };
       }
       if (servicePeriodEnd < servicePeriodStart) {
-        return fail("The service period cannot end before it starts.");
+        return { ok: false, error: "The service period cannot end before it starts." };
       }
     }
   }
 
-  const amountDecimal = new Prisma.Decimal(amount.toFixed(2));
+  return {
+    ok: true,
+    fields: {
+      amount,
+      amountDecimal: new Prisma.Decimal(amount.toFixed(2)),
+      invoiceDate,
+      dueDate,
+      servicePeriodStart,
+      servicePeriodEnd,
+    },
+  };
+}
 
-  // Issue the number and write the row. A concurrent click for the same
-  // company lands on the unique key; re-read the max once and try again.
-  let created: { id: string; invoiceNumber: number } | null = null;
-  for (let attempt = 0; attempt < 2 && !created; attempt += 1) {
-    const invoiceNumber = await nextConsultingInvoiceNumber(org.id, company);
-    try {
-      created = await prisma.consultingInvoice.create({
-        data: {
-          organizationId: org.id,
-          company,
-          invoiceNumber,
-          amount: amountDecimal,
-          invoiceDate,
-          dueDate,
-          servicePeriodStart,
-          servicePeriodEnd,
-          createdByUserId: user.id,
-        },
-        select: { id: true, invoiceNumber: true },
-      });
-    } catch (e) {
-      const isUniqueClash =
-        e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
-      if (!isUniqueClash || attempt === 1) {
-        return fail(e instanceof Error ? e.message : "Failed to save the invoice");
-      }
-    }
-  }
-  if (!created) return fail("Failed to save the invoice");
+async function resolveSenders(current: SessionUser): Promise<SessionUser[]> {
+  const andrew = await prisma.user.findFirst({
+    where: { email: CONSULTING_INVOICE_SENDER_EMAIL },
+    select: { id: true, email: true, name: true },
+  });
+  const list: SessionUser[] = [];
+  if (andrew?.email) list.push({ id: andrew.id, email: andrew.email, name: andrew.name });
+  if (!list.some((s) => s.id === current.id)) list.push(current);
+  return list;
+}
 
-  revalidatePath("/invoices");
+type EmailOutcome = { emailed: boolean; sentFrom: string | null; emailError: string | null };
 
-  const invoiceNumberLabel = formatConsultingInvoiceNumber(company, created.invoiceNumber);
-
-  // From here on the row exists. Nothing below may throw out of the action.
-  let emailed = false;
-  let sentFrom: string | null = null;
-  let emailError: string | null = null;
+// Render + send. Never throws: every failure lands in emailError. The row
+// this describes already exists, so nothing here may roll it back.
+async function emailConsultingInvoice(args: {
+  company: ConsultingCompanyKey;
+  invoiceNumber: number;
+  fields: ParsedFields;
+  user: SessionUser;
+  // "Attached is ..." on a fresh issue, "Attached is the updated ..." on a
+  // re-send so the recipients know this replaces an earlier PDF.
+  updated: boolean;
+}): Promise<EmailOutcome> {
+  const { company, invoiceNumber, fields, user, updated } = args;
+  const co = CONSULTING_COMPANIES[company];
+  const invoiceNumberLabel = formatConsultingInvoiceNumber(company, invoiceNumber);
   try {
-    const pdfInput = {
+    const pdfInput: ConsultingInvoicePdfInput = {
       company,
-      invoiceNumber: created.invoiceNumber,
-      amountUsd: amount,
-      invoiceDate: utcMidnightToIso(invoiceDate),
-      dueDate: utcMidnightToIso(dueDate),
-      servicePeriodStart: servicePeriodStart ? utcMidnightToIso(servicePeriodStart) : null,
-      servicePeriodEnd: servicePeriodEnd ? utcMidnightToIso(servicePeriodEnd) : null,
+      invoiceNumber,
+      amountUsd: fields.amount,
+      invoiceDate: utcMidnightToIso(fields.invoiceDate),
+      dueDate: utcMidnightToIso(fields.dueDate),
+      servicePeriodStart: fields.servicePeriodStart
+        ? utcMidnightToIso(fields.servicePeriodStart)
+        : null,
+      servicePeriodEnd: fields.servicePeriodEnd ? utcMidnightToIso(fields.servicePeriodEnd) : null,
     };
     const pdf = await renderConsultingInvoicePdfBuffer(pdfInput);
     const filename = consultingInvoicePdfFilename(pdfInput);
 
-    const numberWord = company === "arfie" ? `Invoice ${invoiceNumberLabel}` : `Invoice No. ${invoiceNumberLabel}`;
-    const subject = `${co.name} ${numberWord}`;
+    const numberWord =
+      company === "arfie" ? `Invoice ${invoiceNumberLabel}` : `Invoice No. ${invoiceNumberLabel}`;
+    const subject = `${co.name} ${numberWord}${updated ? " (updated)" : ""}`;
     const bodyText = [
       "Hi Andrew and Austin,",
       "",
-      `Attached is ${co.name} ${numberWord} for ${formatConsultingUsd(amount)}, dated ${formatConsultingDateLong(pdfInput.invoiceDate)}. Payment is due upon receipt.`,
+      `Attached is ${updated ? "the updated " : ""}${co.name} ${numberWord} for ${formatConsultingUsd(fields.amount)}, dated ${formatConsultingDateLong(pdfInput.invoiceDate)}. Payment is due upon receipt.${updated ? " This replaces the earlier copy." : ""}`,
       "",
       "Generated from Ace.",
     ].join("\n");
@@ -219,38 +233,228 @@ export async function createConsultingInvoice(
           bodyHtml: plainToHtml(bodyText),
           attachments: [{ filename, mimeType: "application/pdf", data: pdf }],
         });
-        emailed = true;
-        sentFrom = sender.email;
-        break;
+        return { emailed: true, sentFrom: sender.email, emailError: null };
       } catch (e) {
         errors.push(`${sender.email}: ${e instanceof Error ? e.message : "send failed"}`);
       }
     }
-    if (!emailed) emailError = errors.join(" / ") || "No sender account available";
+    return {
+      emailed: false,
+      sentFrom: null,
+      emailError: errors.join(" / ") || "No sender account available",
+    };
   } catch (e) {
-    emailError = e instanceof Error ? e.message : "Could not build the PDF";
+    return {
+      emailed: false,
+      sentFrom: null,
+      emailError: e instanceof Error ? e.message : "Could not build the PDF",
+    };
   }
+}
 
-  if (emailed) {
+// The email went out; a failed stamp is not worth reporting as a failure.
+// The row still shows in the table without the sent mark.
+async function stampEmailed(id: string, sentFrom: string | null): Promise<void> {
+  try {
+    await prisma.consultingInvoice.update({
+      where: { id },
+      data: { emailedAt: new Date(), emailedFrom: sentFrom },
+    });
+    revalidatePath("/invoices");
+  } catch {
+    // see above
+  }
+}
+
+export async function createConsultingInvoice(
+  input: CreateConsultingInvoiceInput,
+): Promise<ConsultingInvoiceSaveResult> {
+  const user = await requireUser();
+  if (!user) return fail("Not signed in");
+
+  // Tenant comes from the session, never from the caller. Rule 8.
+  const org = await getCurrentOrg();
+
+  if (!isConsultingCompanyKey(input.company)) return fail("Pick a company.");
+  const company = input.company;
+  const co = CONSULTING_COMPANIES[company];
+
+  const parsed = parseFields(company, input);
+  if (!parsed.ok) return fail(parsed.error);
+  const { fields } = parsed;
+
+  // Issue the number and write the row. A concurrent click for the same
+  // company lands on the unique key; re-read the max once and try again.
+  let created: { id: string; invoiceNumber: number } | null = null;
+  for (let attempt = 0; attempt < 2 && !created; attempt += 1) {
+    const invoiceNumber = await nextConsultingInvoiceNumber(org.id, company);
     try {
-      await prisma.consultingInvoice.update({
-        where: { id: created.id },
-        data: { emailedAt: new Date(), emailedFrom: sentFrom },
+      created = await prisma.consultingInvoice.create({
+        data: {
+          organizationId: org.id,
+          company,
+          invoiceNumber,
+          amount: fields.amountDecimal,
+          invoiceDate: fields.invoiceDate,
+          dueDate: fields.dueDate,
+          servicePeriodStart: fields.servicePeriodStart,
+          servicePeriodEnd: fields.servicePeriodEnd,
+          createdByUserId: user.id,
+        },
+        select: { id: true, invoiceNumber: true },
       });
-      revalidatePath("/invoices");
-    } catch {
-      // The email went out; a failed stamp is not worth reporting as a
-      // failure. The row still shows in the table without the sent mark.
+    } catch (e) {
+      const isUniqueClash =
+        e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
+      if (!isUniqueClash || attempt === 1) {
+        return fail(e instanceof Error ? e.message : "Failed to save the invoice");
+      }
     }
   }
+  if (!created) return fail("Failed to save the invoice");
+
+  revalidatePath("/invoices");
+
+  // From here on the row exists. Nothing below may throw out of the action.
+  const outcome = await emailConsultingInvoice({
+    company,
+    invoiceNumber: created.invoiceNumber,
+    fields,
+    user,
+    updated: false,
+  });
+  if (outcome.emailed) await stampEmailed(created.id, outcome.sentFrom);
 
   return {
     ok: true,
     id: created.id,
+    invoiceNumberLabel: formatConsultingInvoiceNumber(company, created.invoiceNumber),
+    companyName: co.name,
+    emailAttempted: true,
+    ...outcome,
+  };
+}
+
+// Edit an issued invoice's amount, dates and (Branzino) service period.
+// Company and number never change. With resend the corrected PDF goes out
+// to the same recipients, after the row is saved, under the same
+// row-first / notification-second rule as create.
+export async function updateConsultingInvoice(
+  input: UpdateConsultingInvoiceInput,
+): Promise<ConsultingInvoiceSaveResult> {
+  const user = await requireUser();
+  if (!user) return fail("Not signed in");
+  const org = await getCurrentOrg();
+
+  const id = (input.id ?? "").trim();
+  if (!id) return fail("Missing invoice.");
+
+  // Scoped by organizationId (Rule 8) so an id from another tenant is
+  // simply not found.
+  const existing = await prisma.consultingInvoice.findFirst({
+    where: { id, organizationId: org.id },
+    select: { id: true, company: true, invoiceNumber: true },
+  });
+  if (!existing || !isConsultingCompanyKey(existing.company)) {
+    return fail("That invoice no longer exists.");
+  }
+  const company = existing.company;
+  const co = CONSULTING_COMPANIES[company];
+
+  const parsed = parseFields(company, input);
+  if (!parsed.ok) return fail(parsed.error);
+  const { fields } = parsed;
+
+  try {
+    await prisma.consultingInvoice.update({
+      where: { id: existing.id },
+      data: {
+        amount: fields.amountDecimal,
+        invoiceDate: fields.invoiceDate,
+        dueDate: fields.dueDate,
+        servicePeriodStart: fields.servicePeriodStart,
+        servicePeriodEnd: fields.servicePeriodEnd,
+      },
+      select: { id: true },
+    });
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Failed to save the invoice");
+  }
+  revalidatePath("/invoices");
+
+  const invoiceNumberLabel = formatConsultingInvoiceNumber(company, existing.invoiceNumber);
+  if (!input.resend) {
+    return {
+      ok: true,
+      id: existing.id,
+      invoiceNumberLabel,
+      companyName: co.name,
+      emailAttempted: false,
+      emailed: false,
+      sentFrom: null,
+      emailError: null,
+    };
+  }
+
+  const outcome = await emailConsultingInvoice({
+    company,
+    invoiceNumber: existing.invoiceNumber,
+    fields,
+    user,
+    updated: true,
+  });
+  if (outcome.emailed) await stampEmailed(existing.id, outcome.sentFrom);
+
+  return {
+    ok: true,
+    id: existing.id,
     invoiceNumberLabel,
     companyName: co.name,
-    emailed,
-    sentFrom,
-    emailError,
+    emailAttempted: true,
+    ...outcome,
+  };
+}
+
+export type DeleteConsultingInvoiceResult =
+  | { ok: true; invoiceNumberLabel: string; companyName: string }
+  | { ok: false; error: string };
+
+// Removes the row. No email goes out: the PDF already sent cannot be
+// recalled, and the recruiter says so themselves if it matters. Deleting
+// the latest number frees it, so the next Generate reissues it; deleting
+// an older one leaves a gap on purpose (the number was used).
+export async function deleteConsultingInvoice(
+  idInput: string,
+): Promise<DeleteConsultingInvoiceResult> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+  const org = await getCurrentOrg();
+
+  const id = (idInput ?? "").trim();
+  if (!id) return { ok: false, error: "Missing invoice." };
+
+  const existing = await prisma.consultingInvoice.findFirst({
+    where: { id, organizationId: org.id },
+    select: { id: true, company: true, invoiceNumber: true },
+  });
+  if (!existing || !isConsultingCompanyKey(existing.company)) {
+    return { ok: false, error: "That invoice no longer exists." };
+  }
+
+  try {
+    // deleteMany with the org in the where so the tenant scope is on the
+    // write itself, not only on the read above.
+    await prisma.consultingInvoice.deleteMany({
+      where: { id: existing.id, organizationId: org.id },
+    });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to delete the invoice" };
+  }
+  revalidatePath("/invoices");
+
+  return {
+    ok: true,
+    invoiceNumberLabel: formatConsultingInvoiceNumber(existing.company, existing.invoiceNumber),
+    companyName: CONSULTING_COMPANIES[existing.company].name,
   };
 }

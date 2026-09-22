@@ -89,6 +89,10 @@ export type ConsultingInvoiceRow = {
   amount: number;
   invoiceDate: string;
   dueDate: string;
+  // Branzino only; null on Arfie rows and seeded history. Carried so the
+  // Edit modal can pre-fill the period the PDF printed.
+  servicePeriodStart: string | null;
+  servicePeriodEnd: string | null;
   emailedAt: string | null;
 };
 

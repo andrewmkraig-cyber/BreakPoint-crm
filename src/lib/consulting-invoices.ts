@@ -29,6 +29,8 @@ export async function listConsultingInvoices(
       amount: true,
       invoiceDate: true,
       dueDate: true,
+      servicePeriodStart: true,
+      servicePeriodEnd: true,
       emailedAt: true,
     },
   });
@@ -41,6 +43,8 @@ export async function listConsultingInvoices(
       amount: Number(r.amount.toString()),
       invoiceDate: utcMidnightToIso(r.invoiceDate),
       dueDate: utcMidnightToIso(r.dueDate),
+      servicePeriodStart: r.servicePeriodStart ? utcMidnightToIso(r.servicePeriodStart) : null,
+      servicePeriodEnd: r.servicePeriodEnd ? utcMidnightToIso(r.servicePeriodEnd) : null,
       emailedAt: r.emailedAt ? r.emailedAt.toISOString() : null,
     }));
 }
