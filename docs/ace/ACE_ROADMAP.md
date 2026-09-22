@@ -5,7 +5,7 @@ Last updated: 2026-09-22 · Ace 102.2
 
 ### DONE this session (Ace 102.2 - Billing Tower books by placement start, 2026-09-22)
 Full detail in ACE_STATE.md ▸ Ace 102.2.
-- ~~**David in Q4 on the Billing Tower**~~ DONE (`09e8479e`) - every billing event carries `bookedAt` (placement start); the tower, its drill-downs and the jump-to list window on it. Cash Forecast keeps due date.
+- ~~**David in Q4 on the Billing Tower**~~ DONE (`09e8479e`, corrected in `9dac3b32`) - every billing event carries `bookedAt`: a standard invoice on the placement start, an installment on its own day of the schedule; the tower, its drill-downs and the jump-to list window on it. Cash Forecast keeps due date.
 
 ### Open follow-ups from Ace 102.2
 
