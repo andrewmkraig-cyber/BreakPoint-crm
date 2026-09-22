@@ -86,9 +86,20 @@ function candLabel(
 }
 
 // "Aug 12, 2026" — anchored to Eastern so a UTC server doesn't shift the day.
+// bookedAt is a date-only value (a start date or an installment day, stored
+// at midnight UTC), so it reads in UTC. Formatting it in Eastern, as this did
+// before, shifted midnight UTC back to the previous evening and printed the
+// day before the start date (David's September 21 read "Sep 20"). A value
+// carrying a time of day is a real instant and still reads in Eastern. Same
+// rule as formatDate in lib/utils and the KPI drill-down's shortDate.
 function shortDate(d: Date): string {
+  const dateOnly =
+    d.getUTCHours() === 0 &&
+    d.getUTCMinutes() === 0 &&
+    d.getUTCSeconds() === 0 &&
+    d.getUTCMilliseconds() === 0;
   return new Intl.DateTimeFormat("en-US", {
-    timeZone: ET,
+    timeZone: dateOnly ? "UTC" : ET,
     month: "short",
     day: "numeric",
     year: "numeric",
