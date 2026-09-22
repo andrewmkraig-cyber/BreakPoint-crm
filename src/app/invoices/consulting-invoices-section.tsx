@@ -394,7 +394,9 @@ function ConsultingInvoiceModal({
         toast.success(`${label} saved`);
       } else if (res.emailed) {
         toast.success(`${label} saved and emailed`, {
-          description: `Sent from ${res.sentFrom} to Andrew and Austin.`,
+          description: res.sentFromNote
+            ? `Sent to Andrew and Austin. ${res.sentFromNote}`
+            : `Sent from ${res.sentFrom} to Andrew and Austin.`,
         });
       } else {
         toast.error(`${label} saved, but the email did not send`, {

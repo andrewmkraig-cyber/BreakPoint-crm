@@ -7,6 +7,7 @@ import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { getBillingSettings } from "@/lib/billing-settings";
 import {
   CONSULTING_COMPANIES,
   CONSULTING_INVOICE_SENDER_EMAIL,
@@ -25,6 +26,7 @@ import {
   consultingInvoicePdfFilename,
   renderConsultingInvoicePdfBuffer,
 } from "@/lib/consulting-invoice-pdf";
+import { findVerifiedSendAs } from "@/lib/deals-alias";
 import { plainToHtml, sendGmail } from "@/lib/gmail";
 import { prisma } from "@/lib/prisma";
 
@@ -41,13 +43,20 @@ import { prisma } from "@/lib/prisma";
 // table, so the recruiter can see the number was issued rather than
 // reading "failed" and clicking again into a duplicate.
 //
-// The sender is Andrew's Gmail (CONSULTING_INVOICE_SENDER_EMAIL), the
-// account Ace already sends from, whoever clicked the button. If that
+// The From is the Accounts Receivable address from Billing settings
+// (ar@breakpointtalent.com), the same default the placement invoice page
+// picks, sent as a verified "Send mail as" alias through Andrew's Gmail
+// (CONSULTING_INVOICE_SENDER_EMAIL), whoever clicked the button. If that
 // account cannot send (no token on file) and the signed-in user is someone
-// else, their own account is tried next and the result says which address
-// actually sent - never a silent fallback.
+// else, their own account is tried next. If the account that sends does
+// NOT have AR verified as an alias, the mail goes out from the account's
+// own address and the result says so - never a silent fallback, because
+// Gmail would otherwise rewrite the From without an error.
 
 type SessionUser = { id: string; email: string; name: string | null };
+
+// From label when the AR alias carries no display name of its own.
+const CONSULTING_INVOICE_FROM_NAME = "BreakPoint Talent";
 
 async function requireUser(): Promise<SessionUser | null> {
   const s = await getServerSession(authOptions);
@@ -95,6 +104,7 @@ export type ConsultingInvoiceSaveResult =
       emailAttempted: boolean;
       emailed: boolean;
       sentFrom: string | null;
+      sentFromNote: string | null;
       emailError: string | null;
     }
   | { ok: false; error: string };
@@ -176,7 +186,16 @@ async function resolveSenders(current: SessionUser): Promise<SessionUser[]> {
   return list;
 }
 
-type EmailOutcome = { emailed: boolean; sentFrom: string | null; emailError: string | null };
+type EmailOutcome = {
+  emailed: boolean;
+  // The From header actually used (AR on the happy path).
+  sentFrom: string | null;
+  // Set when the sending account had no verified AR alias, so the mail
+  // went out from that account's own address instead. Surfaced in the
+  // toast so nobody assumes it read as AR.
+  sentFromNote: string | null;
+  emailError: string | null;
+};
 
 // Render + send. Never throws: every failure lands in emailError. The row
 // this describes already exists, so nothing here may roll it back.
@@ -218,14 +237,26 @@ async function emailConsultingInvoice(args: {
       "Generated from Ace.",
     ].join("\n");
 
+    const arEmail = (await getBillingSettings()).arEmail.trim();
     const senders = await resolveSenders(user);
     const errors: string[] = [];
     for (const sender of senders) {
+      // Verified alias on THIS account, or the account's own address with
+      // a note. Checked per account because each Gmail keeps its own list.
+      const alias = arEmail ? await findVerifiedSendAs(sender.id, arEmail) : null;
+      const from = alias?.sendAsEmail ?? sender.email;
+      const fromName = alias
+        ? alias.displayName || CONSULTING_INVOICE_FROM_NAME
+        : (sender.name ?? undefined);
+      const sentFromNote =
+        alias || !arEmail
+          ? null
+          : `${arEmail} is not a verified "Send mail as" on ${sender.email}'s Gmail, so it went out from ${sender.email}.`;
       try {
         await sendGmail({
           userId: sender.id,
-          from: sender.email,
-          fromName: sender.name ?? undefined,
+          from,
+          fromName,
           to: [...CONSULTING_INVOICE_TO],
           cc: [co.ccEmail],
           subject,
@@ -233,7 +264,7 @@ async function emailConsultingInvoice(args: {
           bodyHtml: plainToHtml(bodyText),
           attachments: [{ filename, mimeType: "application/pdf", data: pdf }],
         });
-        return { emailed: true, sentFrom: sender.email, emailError: null };
+        return { emailed: true, sentFrom: from, sentFromNote, emailError: null };
       } catch (e) {
         errors.push(`${sender.email}: ${e instanceof Error ? e.message : "send failed"}`);
       }
@@ -241,12 +272,14 @@ async function emailConsultingInvoice(args: {
     return {
       emailed: false,
       sentFrom: null,
+      sentFromNote: null,
       emailError: errors.join(" / ") || "No sender account available",
     };
   } catch (e) {
     return {
       emailed: false,
       sentFrom: null,
+      sentFromNote: null,
       emailError: e instanceof Error ? e.message : "Could not build the PDF",
     };
   }
@@ -392,6 +425,7 @@ export async function updateConsultingInvoice(
       emailAttempted: false,
       emailed: false,
       sentFrom: null,
+      sentFromNote: null,
       emailError: null,
     };
   }

@@ -35,6 +35,9 @@ export const CONSULTING_INVOICE_TO = [
   "austin@breakpointtalent.com",
 ] as const;
 
+// The Gmail ACCOUNT the invoice is sent through. The From header is the
+// Accounts Receivable address from Billing settings, sent as a verified
+// alias on this account; see consulting-invoice-actions.ts.
 export const CONSULTING_INVOICE_SENDER_EMAIL = "andrew@breakpointtalent.com";
 
 export const CONSULTING_COMPANIES: Record<ConsultingCompanyKey, ConsultingCompany> = {
