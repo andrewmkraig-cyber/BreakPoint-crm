@@ -139,10 +139,11 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
     setStartDate(isoToDateInput(context.expectedStartDate));
     setSalary(context.acceptedSalary != null ? String(context.acceptedSalary) : "");
     setSalaryType(normalizePlacementCompensationType(context.acceptedCompensationType));
-    // The fee box is a flat OVERRIDE, so it seeds empty whenever the fee can
-    // be calculated from compensation + fee % — pre-filling it from the saved
-    // feeTotal silently froze the fee, and a later comp change wouldn't move
-    // it. seedFlatFeeOverride only pre-fills when nothing is computable.
+    // The fee box is a flat OVERRIDE. It seeds empty when the saved fee is
+    // exactly what compensation + fee % (floored at the min fee) produce, so
+    // a later comp change moves the fee; it pre-fills when nothing is
+    // computable OR when the saved fee differs from the calc, which is the
+    // recruiter's typed override and must survive a reopen + Save.
     setFeeTotal(
       seedFlatFeeOverride({
         amount: context.acceptedSalary,
@@ -150,6 +151,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
           context.acceptedCompensationType,
         ),
         feePercentage: context.feePercentage,
+        minFee: context.minFee,
         feeTotal: context.feeTotal,
       }),
     );

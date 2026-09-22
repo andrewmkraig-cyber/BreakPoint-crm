@@ -60,16 +60,55 @@ assert.equal(
   0,
 );
 
-// Seeding the override box: blank whenever the fee is computable, so opening
-// an editor can't freeze the fee.
+// Seeding the override box: blank when the saved fee is exactly what the
+// numbers produce, so opening an editor keeps recalculating live.
 assert.equal(
   seedFlatFeeOverride({
     amount: 23,
     compensationType: "hourly",
     feePercentage: 15,
+    minFee: null,
+    feeTotal: 7176,
+  }),
+  "",
+);
+// A saved fee that equals the min-fee floor is a calculated fee, not an
+// override, so it stays blank too.
+assert.equal(
+  seedFlatFeeOverride({
+    amount: 40000,
+    compensationType: "salary",
+    feePercentage: 15,
+    minFee: 7000,
     feeTotal: 7000,
   }),
   "",
+);
+// The Solutionwhere case (Ace 102.0): $70,000 × 10% = $7,000 but the
+// recruiter typed a $5,000 flat override. The saved fee disagrees with the
+// calc, so the box pre-fills and a reopen + Save keeps $5,000 instead of
+// silently reverting to $7,000.
+assert.equal(
+  seedFlatFeeOverride({
+    amount: 70000,
+    compensationType: "salary",
+    feePercentage: 10,
+    minFee: 5000,
+    feeTotal: 5000,
+  }),
+  "5000",
+);
+// Rowland: the stale $7,000 is now shown in the box with the override tag
+// (visible and clearable) rather than dropped.
+assert.equal(
+  seedFlatFeeOverride({
+    amount: 23,
+    compensationType: "hourly",
+    feePercentage: 15,
+    minFee: 7000,
+    feeTotal: 7000,
+  }),
+  "7000",
 );
 // No fee % → feeTotal genuinely is a flat fee, so it pre-fills.
 assert.equal(
@@ -77,6 +116,7 @@ assert.equal(
     amount: 23,
     compensationType: "hourly",
     feePercentage: null,
+    minFee: null,
     feeTotal: 7000,
   }),
   "7000",
@@ -87,6 +127,7 @@ assert.equal(
     amount: null,
     compensationType: "salary",
     feePercentage: 20,
+    minFee: null,
     feeTotal: 7000,
   }),
   "7000",
@@ -96,6 +137,7 @@ assert.equal(
     amount: null,
     compensationType: "salary",
     feePercentage: null,
+    minFee: null,
     feeTotal: null,
   }),
   "",

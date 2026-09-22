@@ -54,22 +54,38 @@ export function resolvePlacementFee(args: {
 }
 
 // Whether an editor should pre-fill its flat-override box from the saved
-// feeTotal. feeTotal is the stored fee for dashboards and invoices — NOT
-// evidence that the recruiter typed a flat override. When the row carries a
-// usable salary basis and a fee %, we leave the box empty so the editor
-// recalculates from the current numbers; we only pre-fill when there's no way
-// to compute one, where feeTotal genuinely is a flat fee.
+// feeTotal. feeTotal is the stored fee for dashboards and invoices, so it is
+// only evidence of a typed override when it DISAGREES with what the row's
+// own numbers produce. Three cases:
+//   - nothing computable (no basis or no fee %): feeTotal genuinely is a
+//     flat fee, pre-fill it
+//   - computable and equal to the stored fee: leave blank so the editor
+//     recalculates live and a later comp change moves the fee
+//   - computable but different from the stored fee: the recruiter typed a
+//     flat override, pre-fill it. Leaving this blank silently reverted the
+//     override to the calculated fee on the next Save (Ace 102.0 fix). The
+//     box shows the value with the "(flat override)" tag, so a stale fee is
+//     visible and clearable rather than invisibly frozen.
+// The min fee is part of the calc, so a fee that equals the floor is
+// recognised as calculated, not as an override.
 export function seedFlatFeeOverride(args: {
   amount: number | null;
   compensationType: PlacementCompensationType;
   feePercentage: number | null;
+  minFee: number | null;
   feeTotal: number | null;
 }): string {
-  const { amount, compensationType, feePercentage, feeTotal } = args;
+  const { amount, compensationType, feePercentage, minFee, feeTotal } = args;
   if (feeTotal == null || feeTotal <= 0) return "";
-  const basisAmount = placementFeeBasisAmount(amount, compensationType);
-  if (basisAmount != null && feePercentage != null && feePercentage > 0) return "";
-  return String(feeTotal);
+  const calc = resolvePlacementFee({
+    amount,
+    compensationType,
+    feePercentage,
+    minFee,
+    overrideAmount: null,
+  });
+  if (calc.feeTotal <= 0) return String(feeTotal);
+  return calc.feeTotal === feeTotal ? "" : String(feeTotal);
 }
 
 export function formatPlacementCompensation(

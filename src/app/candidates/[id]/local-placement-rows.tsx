@@ -1197,6 +1197,7 @@ function OfferDialog({
       amount: snap?.offerSalary ?? null,
       compensationType,
       feePercentage: seedFeePct,
+      minFee: snap?.minFee ?? null,
       feeTotal: snap?.feeTotal ?? null,
     }),
   );
@@ -1418,6 +1419,7 @@ function LocalPlacementDialog({
             : null,
       compensationType: acceptedCompensationType,
       feePercentage: seedFeePct,
+      minFee: snap?.minFee ?? null,
       feeTotal: snap?.feeTotal ?? null,
     }),
   );
