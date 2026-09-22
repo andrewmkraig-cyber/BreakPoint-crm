@@ -92,7 +92,7 @@ const davidBase: PlacementForBilling = {
   assert.equal(day(events[0].paidAt as Date), "2026-10-06");
 }
 
-// --- Branch 2: installments spread the CASH but book together at start ---
+// --- Branch 2: each installment books on ITS day of the schedule -----------
 {
   const events = expandPlacementBillingEvents({
     ...davidBase,
@@ -113,9 +113,71 @@ const davidBase: PlacementForBilling = {
   );
   assert.deepEqual(
     events.map((e) => day(e.bookedAt)),
-    ["2026-09-21", "2026-09-21", "2026-09-21"],
-    "every installment books in the start quarter",
+    ["2026-09-21", "2026-10-21", "2026-11-20"],
+    "and books on the same days, not all at the start",
   );
+}
+
+// --- Branch 1 with installment INVOICES: Ethan Larocca, started June 1 on a
+//     10 / 90 day schedule. Installment 2 is due August 30 and books there
+//     (Q3), while a standard invoice on the same placement would book on the
+//     June 1 start. Latisha Ryder's 180-day second installment likewise
+//     books in Q2 of the following year, not in her start quarter. ----------
+{
+  const ethan: PlacementForBilling = {
+    ...davidBase,
+    id: "ethan",
+    feeTotal: 7500,
+    expectedStartDate: d("2026-06-01T00:00:00Z"),
+    placedAt: d("2026-05-15T19:45:22Z"),
+    startConfirmedAt: d("2026-06-01T15:09:09Z"),
+    useCustomTerms: true,
+    inst1Amount: 3750,
+    inst1DaysAfterStart: 10,
+    inst2Amount: 3750,
+    inst2DaysAfterStart: 90,
+    invoices: [
+      {
+        id: "INV-1054",
+        status: "PAID",
+        feeAmount: new Prisma.Decimal("3750"),
+        dueDate: d("2026-06-11T00:00:00Z"),
+        sentAt: d("2026-06-01T16:00:00Z"),
+        paidAt: d("2026-06-20T00:00:00Z"),
+        isFuture: false,
+        createdAt: d("2026-06-01T15:09:09Z"),
+        notes: "Installment 1 of 2 - custom payment agreement",
+      },
+      {
+        id: "INV-1055",
+        status: "PAID",
+        feeAmount: new Prisma.Decimal("3750"),
+        dueDate: d("2026-08-30T00:00:00Z"),
+        sentAt: d("2026-08-30T16:00:00Z"),
+        paidAt: d("2026-09-10T00:00:00Z"),
+        isFuture: false,
+        createdAt: d("2026-06-01T15:09:09Z"),
+        notes: "Future - Installment 2 of 2 - do not send until Aug 30, 2026 - custom payment agreement",
+      },
+    ],
+  };
+  const events = expandPlacementBillingEvents(ethan);
+  assert.deepEqual(events.map((e) => day(e.bookedAt)), ["2026-06-11", "2026-08-30"]);
+
+  const latisha = expandPlacementBillingEvents({
+    ...davidBase,
+    id: "latisha",
+    feeTotal: 10000,
+    expectedStartDate: d("2026-10-05T00:00:00Z"),
+    placedAt: d("2026-09-16T17:46:18Z"),
+    startConfirmedAt: null,
+    useCustomTerms: true,
+    inst1Amount: 6000,
+    inst1DaysAfterStart: 10,
+    inst2Amount: 4000,
+    inst2DaysAfterStart: 180,
+  });
+  assert.deepEqual(latisha.map((e) => day(e.bookedAt)), ["2026-10-15", "2027-04-03"]);
 }
 
 // --- Branch 3: flat fee, no invoice yet, books and lands on the start ---

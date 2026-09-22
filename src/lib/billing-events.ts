@@ -2,7 +2,7 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 
-import { placementBillingAnchor } from "@/lib/placement-dates";
+import { installmentNumberFromNote, placementBillingAnchor } from "@/lib/placement-dates";
 
 // Single source of truth for "how much will this placement bill, when?"
 //
@@ -66,14 +66,15 @@ export type BillingEvent = {
   // fallback, placementBillingAnchor. The Cash Forecast and Pipeline Value
   // read this: they answer "when will the money land".
   scheduledAt: Date;
-  // The quarter this dollar BELONGS to: the placement's start date
-  // (placementBillingAnchor), the same day for every event the placement
-  // carries, installments included. Andrew's rule (2026-09-22): billing
-  // goes by the placement's start date, not the invoice's due date. Net-10
-  // terms on a September 21 start put the due date on October 1 and the
-  // whole fee in Q4; the deal happened in Q3. The Billing Tower, its
-  // drill-downs and the jump-to-period list bucket by this. Retained
-  // engagements have no start, so their events book on scheduledAt.
+  // The quarter this dollar BELONGS to. Andrew's rule (2026-09-22): billing
+  // goes by the placement's start date, not the invoice's due date. A
+  // standard invoice books on the start date itself, so a client's Net-10
+  // / Net-30 terms can never push a September deal into Q4. An installment
+  // books on ITS day of the schedule (start + instNDaysAfterStart), so a
+  // second installment 180 days out books two quarters later, where the
+  // recruiter expects to see it. The Billing Tower, its drill-downs and
+  // the jump-to-period list bucket by this. Retained engagements have no
+  // start, so their events book on scheduledAt.
   bookedAt: Date;
   // Realized payment timestamp when status === "paid"; null otherwise.
   // Used by Revenue / Collected tiles that bucket by collection date,
@@ -116,6 +117,10 @@ export type PlacementForBilling = {
     paidAt: Date | null;
     isFuture: boolean;
     createdAt: Date;
+    // "Installment N of M ..." on custom-terms rows; tells bookedAt which
+    // day of the schedule this invoice is. Optional so older callers that
+    // build the shape by hand keep compiling; they book on the start date.
+    notes?: string | null;
   }>;
 };
 
@@ -146,6 +151,7 @@ export const BILLING_EVENT_PLACEMENT_SELECT = {
       paidAt: true,
       isFuture: true,
       createdAt: true,
+      notes: true,
     },
   },
 } as const;
@@ -299,18 +305,26 @@ export function expandPlacementBillingEvents(
   // is enough to take this branch — the recruiter has begun creating
   // invoice rows, so the installment fallback is no longer the source
   // of truth.
-  // Every event a placement carries books on the same day, its start date
-  // (placementBillingAnchor), whichever branch produces it. Computed once
-  // here so the three branches cannot drift.
+  // Every event a placement carries books off its start date
+  // (placementBillingAnchor): a standard invoice on the start day itself,
+  // an installment on its day of the schedule. Computed once here so the
+  // three branches cannot drift.
   const anchor = placementBillingAnchor(p);
+  const installmentDays: Record<number, number | null> = {
+    1: p.inst1DaysAfterStart,
+    2: p.inst2DaysAfterStart,
+    3: p.inst3DaysAfterStart,
+  };
   const liveInvoices = p.invoices.filter((inv) => inv.status !== "VOID");
   if (liveInvoices.length > 0) {
     const events: BillingEvent[] = [];
     for (const inv of liveInvoices) {
+      const installmentNo = installmentNumberFromNote(inv.notes);
+      const days = installmentNo != null ? installmentDays[installmentNo] : null;
       const event = invoiceToEvent(inv, {
         placementId: p.id,
         retainedSearchId: null,
-        bookedAt: anchor,
+        bookedAt: anchor && days != null ? addDays(anchor, days) : anchor,
       });
       if (event) events.push(event);
     }
@@ -339,7 +353,8 @@ export function expandPlacementBillingEvents(
         retainedSearchId: null,
         amountCents: dollarsToCents(inst.amount),
         scheduledAt: addDays(anchor, days),
-        bookedAt: anchor,
+        // An installment books on its own day of the schedule.
+        bookedAt: addDays(anchor, days),
         paidAt: null,
         status: "scheduled",
         source: "installment",
@@ -425,12 +440,12 @@ export function sumEventsCents(
 // terms placements without Invoice rows yet (Ethan) contribute the
 // right amount to Revenue / Outstanding / Goal Progress.
 //
-// Revenue        - every event (paid + unpaid) bucketed by bookedAt (the
-//                  placement's START date) in [start, end). "Booked
-//                  placement revenue for this period" - what the recruiter
-//                  earned in the window, not just what cash hit the bank.
-//                  A placement's whole fee, installments included, lands
-//                  in the quarter it started (Andrew, 2026-09-22).
+// Revenue        - every event (paid + unpaid) bucketed by bookedAt in
+//                  [start, end): a standard invoice on the placement's
+//                  START date, an installment on its day of the schedule
+//                  (Andrew, 2026-09-22). "Booked placement revenue for
+//                  this period" - what the recruiter earned in the window,
+//                  not just what cash hit the bank.
 // Collected      - paid events with bookedAt in [start, end). The paid
 //                  half of Revenue, so Revenue = Collected + Outstanding to
 //                  the cent. Bucketed like Revenue (by bookedAt, not
@@ -563,9 +578,9 @@ async function loadBillingEventsInWindow(
       client: p.client,
       job: p.job,
     };
-    // Windowed on bookedAt, the placement's start date, so the tower and
-    // its drill-downs put a deal in the quarter it started regardless of
-    // the invoice's due date.
+    // Windowed on bookedAt (start date, or the installment's day), so the
+    // tower and its drill-downs put a deal in the quarter it started
+    // regardless of the client's payment terms.
     for (const e of expandPlacementBillingEvents(p as PlacementForBilling)) {
       if (e.bookedAt < start || e.bookedAt >= endExclusive) continue;
       events.push({ ...e, placement: ref });

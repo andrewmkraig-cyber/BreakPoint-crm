@@ -12,6 +12,7 @@ import {
   termsToDays,
 } from "@/lib/payment-terms";
 import {
+  installmentNumberFromNote,
   placementBillingAnchor,
   sameInstant,
 } from "@/lib/placement-dates";
@@ -708,7 +709,8 @@ export async function getInvoiceSummary(organizationId: string): Promise<Invoice
 //
 // Returns how many rows actually moved so callers can log it. Never throws
 // on a missing placement — a caller mid-save should not blow up here.
-const INSTALLMENT_NOTE_RE = /Installment\s+(\d+)\s+of\s/i;
+// INSTALLMENT_NOTE_RE moved to placement-dates.ts (installmentNumberFromNote)
+// so the billing event expander reads the same pattern.
 
 export async function realignPlacementInvoiceDates(
   placementId: string,
@@ -754,8 +756,7 @@ export async function realignPlacementInvoiceDates(
 
   let moved = 0;
   for (const inv of drafts) {
-    const match = INSTALLMENT_NOTE_RE.exec(inv.notes ?? "");
-    const installmentNo = match ? Number(match[1]) : null;
+    const installmentNo = installmentNumberFromNote(inv.notes);
     const days =
       installmentNo != null && installmentDays[installmentNo] != null
         ? (installmentDays[installmentNo] as number)

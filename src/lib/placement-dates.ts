@@ -83,6 +83,20 @@ export function placedAtCorrection(p: PlacementStartFields): Date | null {
   return earnedAt.getTime() < p.placedAt.getTime() ? earnedAt : null;
 }
 
+// Which installment an invoice row is, read off the note the Confirm Start
+// flow writes ("Installment 2 of 2 - custom payment agreement", or with a
+// "Future - " prefix). Null for a standard single invoice. Lives here, in
+// the pure module, because both the invoice re-dater and the billing
+// event expander need the same answer.
+const INSTALLMENT_NOTE_RE = /Installment\s+(\d+)\s+of\s/i;
+
+export function installmentNumberFromNote(notes: string | null | undefined): number | null {
+  const match = INSTALLMENT_NOTE_RE.exec(notes ?? "");
+  if (!match) return null;
+  const n = Number(match[1]);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 // Same calendar instant? Used to skip no-op invoice writes.
 export function sameInstant(a: Date | null, b: Date | null): boolean {
   if (a === null || b === null) return a === b;
