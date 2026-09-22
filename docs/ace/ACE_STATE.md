@@ -1,8 +1,20 @@
 # ACE_STATE.md
-Last updated: 2026-09-18 · Ace 101.0
-Current Version: Ace 101.0
-Last Shipped: 2026-09-18
+Last updated: 2026-09-22 · Ace 102.0
+Current Version: Ace 102.0
+Last Shipped: 2026-09-22
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 102.0 - a flat fee override survives reopen, and consulting invoices can be edited and deleted (2026-09-22)
+
+Two code commits, no schema change. Step 0 held at 3 / 10 / 85 before writing code and again before each commit.
+
+**A typed flat fee override no longer reverts to the calculated fee (`582865ba`).** Andrew saved the Solutionwhere placement with a $5,000 fee on a $70,000 x 10% deal, reopened Edit placement, and it read $7,000 again; the next Save wrote $7,000. Root cause was `seedFlatFeeOverride` in `src/lib/placement-compensation.ts`: it blanked the "Fee amount (flat, overrides calc)" box whenever the fee was computable from comp + fee %, on the theory that a stored feeTotal is not evidence of a typed override. That was right for a fee that MATCHES the calc and wrong for one that does not. The box now pre-fills when the saved feeTotal differs from what the row's own numbers produce (min fee floor included in that calc), stays blank when they agree so a comp change still moves the fee, and still pre-fills when nothing is computable. Both candidate-profile dialogs in `local-placement-rows.tsx` and the pipeline `placement-edit-drawer.tsx` pass `minFee` through. A stale stored fee (the old Rowland case) is now shown in the box with the "(flat override)" tag rather than silently dropped, which is the trade: visible and clearable beats invisible. Unit test `tests/unit/placement-fee-resolution.test.ts` covers the Solutionwhere case and the min-fee-floor-is-not-an-override case.
+
+**Min fee is a floor, not an override.** The screenshot that opened this session had $5,000 in Min fee, which cannot lower a $7,000 calculated fee. The field that sets the fee to $5,000 is "Fee amount (flat, overrides calc)". Nothing changed on the min-fee field itself.
+
+**Consulting invoices: Edit and Delete on every history row (`0c737225`).** Two quiet icon actions (muted pencil, trash that goes red-600 on hover) on the right of each row of the Consulting Invoices table. Edit reopens the Generate modal in edit mode: company and number are locked (the number is a per-company sequence), amount / invoice date / due date / Branzino service period pre-fill, and a "Resend" toggle, on by default, emails the corrected PDF after the row saves with the subject marked "(updated)" and a body line saying it replaces the earlier copy. Off, the button reads "Save" and no email goes out. Delete keeps a confirm as a red banner row directly under the invoice (the client-delete pattern); no email is sent on delete and the banner says the PDF already emailed is not recalled. Deleting the latest number frees it for the next Generate; deleting an older one leaves a gap on purpose. Both actions read AND write with organizationId in the where. `createConsultingInvoice`'s validation and email path were pulled into `parseFields` and `emailConsultingInvoice` and shared with `updateConsultingInvoice`; `ConsultingInvoiceRow` now carries `servicePeriodStart` / `servicePeriodEnd` so Edit can pre-fill them.
+
+**Not browser-verified.** Same Google-only sign-in as Ace 101.0. Verified by `npm run build` exiting 0 (raw-button, client/prisma and unit gates included) and the fee unit test. The Resend email path is the same `emailConsultingInvoice` that create uses, still unproven by a delivered message.
 
 ## What Shipped in Ace 101.0 - consulting invoices for the owners' LLCs (2026-09-18)
 
@@ -143,7 +155,8 @@ Also added an inline-image button to the composer toolbar. Pasting a screenshot 
 **Not browser-verified.** Every change passed `next build`, `tsc --noEmit`, `next lint` and `check:ui`, and the email bodies were test-rendered across full / sparse / vowel-title cases. Andrew verified cancel and reinstate live. The announcement send, the deal-type control and voice dictation on the iOS PWA are unverified in a real browser.
 
 ## Next Task
-Andrew to verify in the browser, newest first for the consulting invoices, then oldest first:
+Andrew to verify in the browser, newest first:
+0. **Ace 102.0:** open Edit placement on the Solutionwhere / David Foreman placement, clear Min fee, type 5000 in "Fee amount (flat, overrides calc)", confirm the Calculated Fee box reads $5,000 with "(flat override)", Save, reopen, and confirm the box still reads $5,000. Then on /invoices edit one consulting invoice (change the amount, leave Resend on) and confirm the updated PDF arrives; delete a test row and confirm the tile moves.
 1. **Generate one consulting invoice for each company** from the bottom of /invoices. Confirm: the tiles read $19,750.00 (Arfie) and $500.00 (Branzino) before you start; Arfie issues #9 and Branzino issues 0002; both owners receive the email with the PDF attached and the right personal address on Cc; the From reads andrew@breakpointtalent.com (the toast names the sending address); the PDF matches the company's real invoice; the new row lands at the top of the table and the tile moves. If a real invoice is not wanted yet, this can wait, but the send path is unproven until one goes out.
 2. **Schedule one phone screen and one in-person interview end to end.** Confirm: no `<b>` or any other tag in either composer box; the phone-screen invite location reads "Chris to call Kaan @ 415-690-6399"; the in-person Address pre-fills for a client that HAS a street address on file; changing Duration updates the "Duration: N min" line in the body; and the resulting Google block is the length you picked. This is Ace 100.3 and all of it has live symptoms you have already seen.
 3. **Open an invoice for Mowat Mackie** and confirm the terms read Net 10 rather than Net 30, and that the Billing / Hiring dropdowns list that client's real contacts.

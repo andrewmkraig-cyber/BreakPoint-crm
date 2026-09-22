@@ -1,7 +1,13 @@
 # Ace Roadmap
-Last updated: 2026-09-18 · Ace 101.0
+Last updated: 2026-09-22 · Ace 102.0
 
 ## Active Build Sequence
+
+### DONE this session (Ace 102.0 - fee override round-trip + consulting invoice edit/delete, 2026-09-22)
+Full detail in ACE_STATE.md ▸ Ace 102.0.
+- ~~**Flat fee override reverted to the calc on reopen + Save**~~ DONE (`582865ba`) - `seedFlatFeeOverride` pre-fills whenever the saved fee differs from the min-fee-aware calc; all three placement editors pass `minFee`.
+- ~~**Edit and Delete on consulting invoice rows**~~ DONE (`0c737225`) - edit mode of the Generate modal with a Resend toggle; delete behind a red confirm banner; org-scoped reads and writes.
+
 
 ### DONE this session (Ace 101.0 - consulting invoices, 2026-09-18)
 Full detail in ACE_STATE.md ▸ Ace 101.0.
