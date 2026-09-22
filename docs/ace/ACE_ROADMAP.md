@@ -1,7 +1,16 @@
 # Ace Roadmap
-Last updated: 2026-09-22 · Ace 102.0
+Last updated: 2026-09-22 · Ace 102.2
 
 ## Active Build Sequence
+
+### DONE this session (Ace 102.2 - Billing Tower books by placement start, 2026-09-22)
+Full detail in ACE_STATE.md ▸ Ace 102.2.
+- ~~**David in Q4 on the Billing Tower**~~ DONE (`09e8479e`) - every billing event carries `bookedAt` (placement start); the tower, its drill-downs and the jump-to list window on it. Cash Forecast keeps due date.
+
+### Open follow-ups from Ace 102.2
+
+**26. The Billing Tower's quarter boundary is server-local time.** `getCurrentQuarterBillingSummary` and the drill-down route build the window with `new Date(year, month, 1)`, which is UTC on Vercel and Eastern locally. Placements no longer care (they book on a date-only start), but a retained invoice due exactly on a quarter's first day at UTC midnight sits on the wrong side of the line in prod. Route the tower's window through the Eastern-time `etWindow` the goals engine uses.
+
 
 ### DONE this session (Ace 102.0 - fee override round-trip + consulting invoice edit/delete, 2026-09-22)
 Full detail in ACE_STATE.md ▸ Ace 102.0.

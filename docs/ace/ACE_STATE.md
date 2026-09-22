@@ -1,8 +1,24 @@
 # ACE_STATE.md
-Last updated: 2026-09-22 · Ace 102.1
-Current Version: Ace 102.1
+Last updated: 2026-09-22 · Ace 102.2
+Current Version: Ace 102.2
 Last Shipped: 2026-09-22
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 102.2 - the Billing Tower books a deal in the quarter it started (2026-09-22)
+
+One code commit (`09e8479e`), no schema change. Step 0 held at 3 / 10 / 85 (measured on `src/` against HEAD) before writing code and again before committing. The phone session's 102.1 entry below reports 3 / 13 / 100; that was a working-tree count with a wider scope, not a drift - the same three greps on `src/` at HEAD give 3 / 10 / 85 today.
+
+**The report.** With 102.1 merged, David Foreman's Solutionwhere placement still read in Q4 on the Clubhouse Billing Tower and its Revenue Billed drill-down. The row was right (hired, $5,000 fee, invoice INV-1068 sent September 22) but the tower dates every invoice by its DUE date, and Solutionwhere is Net 10: September 21 start plus 10 days is October 1. Andrew's rule: billing goes by the placement's start date, not the due date.
+
+**bookedAt on every billing event (`src/lib/billing-events.ts`).** A second date beside `scheduledAt`. `bookedAt` is the placement's start date (`placementBillingAnchor`), the same day for every event the placement produces, installments included, so a three-installment deal books its whole fee in the quarter it started. `scheduledAt` keeps its due-date meaning ("when will the money land") for the Cash Forecast and Pipeline Value on the Scoreboard, which were deliberately left alone. Retained invoices have no start, so they book on their due date as before. The Billing Tower totals (`getBillingSummaryForRange`), both drill-downs (`/api/dashboard/billing-detail`, sorted and dated by `bookedAt`) and the jump-to-period bounds (`billing-period-options.ts`) all window on `bookedAt`.
+
+**Read back against prod data.** Q3 moves from $123,125 to $124,375: David comes in at $5,000, and Ethan Larocca's second $3,750 installment goes back to Q2 with his June 1 start. Latisha Ryder's $4,000 second installment, due April 2027, now books in Q4 2026 with her October 5 start. The Goal Progress bar follows the same figure.
+
+**Why the live site and a local run disagreed by one line.** The tower's quarter boundary is built from `new Date(year, month, 1)` in server-local time. Vercel runs on UTC, so an invoice due October 1 at UTC midnight fell just outside Q3 there; on an Eastern-time machine the same boundary is 4 a.m. UTC and the invoice fell inside. Bucketing by start date makes the question moot for placements, but the boundary is still server-local; noted as a follow-up in ACE_ROADMAP.md.
+
+**Test.** `tests/unit/billing-tower-start-date.test.ts` covers the David case, a paid invoice, an installment schedule, a late confirmation and a retained invoice, and runs inside the `check:ui` build gate. It stubs the `server-only` import the module opens with.
+
+**Not browser-verified.** Verified by `npm run build` exiting 0 and by the prod read-back above.
 
 ## What Shipped in Ace 102.1 - an earlier actual start pulls the whole deal back into its real quarter (2026-09-22)
 

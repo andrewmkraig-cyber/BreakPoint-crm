@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-09-22 · Ace 102.1
+Last updated: 2026-09-22 · Ace 102.2
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -293,6 +293,9 @@ Renamed in Ace 100.0 (`17692c53`). **Never sweep the string "Ace".** It names tw
 When renaming anything user-facing, **the system prompt counts as a user-facing string.** `src/app/api/claude-panel/chat/route.ts` carries `"You are Wilson, ..."`. Changing the buttons without it leaves the UI saying one name while the bot introduces itself as another.
 
 Historical entries in ACE_STATE.md and ACE_ROADMAP.md keep the old name - they record what shipped when. Live rules in this file take the current name.
+
+## The Billing Tower books a deal in the quarter it STARTED (added 2026-09-22 · Ace 102.2 - PERMANENT, Andrew's decision)
+Billing goes by the placement's start date, not the invoice's due date. Every billing event from `expandPlacementBillingEvents` carries two dates: `bookedAt`, the placement's start (`placementBillingAnchor`), identical for every event the placement produces, installments included; and `scheduledAt`, when the money is expected to arrive (invoice due date, installment day). The Clubhouse Billing Tower, its Revenue / Collected / Outstanding drill-downs and the jump-to-period bounds window on `bookedAt`. The Scoreboard's Cash Forecast and Pipeline Value keep reading `scheduledAt` because they answer a different question (when will cash land) - do not "make them consistent". Retained invoices have no start and book on `scheduledAt`. This is the Billing Tower's rule only; `earned` on the Goals engine is still `placedAt` (with the 102.1 earlier-start correction), and `billed` there is still `sentAt`.
 
 ## Consulting invoices are money OUT, never revenue (added 2026-09-18 · Ace 101.0 - PERMANENT)
 `consulting_invoices` (model `ConsultingInvoice`) records what BreakPoint pays its owners' LLCs - Arfie Management LLC (Andrew) and Branzino Holdings LLC (Austin) - for their own time. It is a separate table from `Invoice` on purpose and must never be read by the goals engine, the /invoices summary tiles, the Revenue cards, Money In, the Cash Forecast, or any other figure that describes money coming IN. The only surfaces that read it are the Consulting Invoices section on /invoices and its own tally tiles.
