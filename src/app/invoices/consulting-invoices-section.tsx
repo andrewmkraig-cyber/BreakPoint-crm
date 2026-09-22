@@ -13,12 +13,14 @@ import { TabStrip } from "@/components/ui/tab-strip";
 import {
   CONSULTING_COMPANIES,
   CONSULTING_COMPANY_KEYS,
+  DEFAULT_CONSULTING_SPLIT_ARFIE_PCT,
   type ConsultingCompanyKey,
   type ConsultingInvoiceRow,
   formatConsultingDateShort,
   formatConsultingInvoiceNumber,
   formatConsultingUsd,
   shiftIsoDate,
+  splitConsultingCents,
 } from "@/lib/consulting-invoices-shared";
 import {
   createConsultingInvoice,
@@ -299,6 +301,12 @@ function ConsultingInvoiceTableRow({
 }
 
 // Generate (no `existing`) and Edit (`existing` set) share this modal.
+//
+// Generate also has a SPLIT mode: one fee shared between both companies
+// (75 / 25 by default) from one screen. It issues two invoices, two
+// numbers, two PDFs and two emails, one per company, by calling the same
+// create action twice in turn. Each row commits and emails on its own, so
+// a failure on the second leaves the first issued and the toast says so.
 function ConsultingInvoiceModal({
   existing,
   onClose,
@@ -311,6 +319,10 @@ function ConsultingInvoiceModal({
   const isEdit = existing != null;
 
   const [company, setCompany] = useState<"" | ConsultingCompanyKey>(existing?.company ?? "");
+  // Create only. When on, the Company select gives way to a share
+  // percentage and the amount is the TOTAL fee being split.
+  const [split, setSplit] = useState(false);
+  const [arfiePctText, setArfiePctText] = useState(String(DEFAULT_CONSULTING_SPLIT_ARFIE_PCT));
   // MaskedCurrencyInput is digits-only, so a seeded amount is rounded to
   // whole dollars; every consulting invoice to date is whole dollars.
   const [amountDigits, setAmountDigits] = useState(
@@ -358,11 +370,15 @@ function ConsultingInvoiceModal({
   }
 
   const amountDollars = digitsToDollars(amountDigits);
-  const isBranzino = company === "branzino";
+  const isBranzino = split || company === "branzino";
+  const arfiePct = Number(arfiePctText);
+  const arfiePctValid = Number.isFinite(arfiePct) && arfiePct > 0 && arfiePct < 100;
+  const shares = splitConsultingCents(Math.round(amountDollars * 100), arfiePctValid ? arfiePct : 0);
 
   async function onSubmit() {
     if (saving) return;
     setError(null);
+    if (split) return onSubmitSplit();
     if (!company) return setError("Pick a company.");
     if (amountDollars <= 0) return setError("Enter an amount greater than zero.");
     if (!invoiceDate) return setError("Pick an invoice date.");
@@ -415,6 +431,71 @@ function ConsultingInvoiceModal({
     }
   }
 
+  // Two invoices from one screen. Arfie first, then Branzino, each through
+  // the same action the single path uses, so numbering, the AR sender and
+  // the row-before-email rule all hold. Sequential on purpose: the two
+  // companies never contend for a number, and the toasts arrive in order.
+  async function onSubmitSplit() {
+    if (amountDollars <= 0) return setError("Enter the total fee being split.");
+    if (!arfiePctValid) return setError("The Arfie share must be between 1 and 99 percent.");
+    if (!invoiceDate) return setError("Pick an invoice date.");
+    if (!dueDate) return setError("Pick a due date.");
+    if (dueDate < invoiceDate) return setError("The due date cannot be before the invoice date.");
+    if (periodEnd < periodStart) return setError("The service period cannot end before it starts.");
+
+    setSaving(true);
+    const plan: Array<{ company: ConsultingCompanyKey; amount: number }> = [
+      { company: "arfie", amount: shares.arfieCents / 100 },
+      { company: "branzino", amount: shares.branzinoCents / 100 },
+    ];
+    const issued: string[] = [];
+    try {
+      for (const item of plan) {
+        const res = await createConsultingInvoice({
+          company: item.company,
+          amount: item.amount,
+          invoiceDate,
+          dueDate,
+          servicePeriodStart: item.company === "branzino" ? periodStart : null,
+          servicePeriodEnd: item.company === "branzino" ? periodEnd : null,
+        });
+        if (!res.ok) {
+          setError(
+            issued.length > 0
+              ? `${issued.join(", ")} was issued, but the ${CONSULTING_COMPANIES[item.company].name} invoice failed: ${res.error}`
+              : res.error,
+          );
+          setSaving(false);
+          if (issued.length > 0) router.refresh();
+          return;
+        }
+        const label = `${res.companyName} invoice ${res.invoiceNumberLabel}`;
+        issued.push(label);
+        if (res.emailed) {
+          toast.success(`${label} saved and emailed`, {
+            description: res.sentFromNote
+              ? `${formatConsultingUsd(item.amount)} to Andrew and Austin. ${res.sentFromNote}`
+              : `${formatConsultingUsd(item.amount)} from ${res.sentFrom} to Andrew and Austin.`,
+          });
+        } else {
+          toast.error(`${label} saved, but the email did not send`, {
+            description: res.emailError ?? "Unknown email error",
+          });
+        }
+      }
+      onClose();
+      router.refresh();
+    } catch {
+      setError(
+        issued.length > 0
+          ? `${issued.join(", ")} was issued, but the second invoice did not go through.`
+          : "Something went wrong generating the invoices.",
+      );
+      setSaving(false);
+      if (issued.length > 0) router.refresh();
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 p-4"
@@ -457,6 +538,23 @@ function ConsultingInvoiceModal({
           {/* Company and number are fixed once issued: the number is a
               per-company sequence. */}
           {isEdit ? null : (
+            <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-court-border px-3 py-2">
+              <span className="text-[12px] text-court-fg">
+                Split one fee between both companies
+                <span className="block text-[11px] text-court-fg-muted">
+                  Two invoices, two PDFs, two emails from one screen.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={split}
+                onChange={(e) => setSplit(e.target.checked)}
+                aria-label="Split one fee between both companies"
+                className="h-4 w-4 accent-court-brand"
+              />
+            </label>
+          )}
+          {isEdit || split ? null : (
             <Select
               label="Company"
               value={company}
@@ -472,7 +570,7 @@ function ConsultingInvoiceModal({
           )}
 
           <div>
-            <span className={SECTION_LABEL_CLASS}>Amount</span>
+            <span className={SECTION_LABEL_CLASS}>{split ? "Total fee" : "Amount"}</span>
             <div className="court-input-frame court-input-rect w-full">
               <MaskedCurrencyInput
                 value={amountDigits}
@@ -483,6 +581,45 @@ function ConsultingInvoiceModal({
               />
             </div>
           </div>
+
+          {split ? (
+            <div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Input
+                  label="Arfie Management share (%)"
+                  type="number"
+                  min={1}
+                  max={99}
+                  step={1}
+                  value={arfiePctText}
+                  onChange={(e) => setArfiePctText(e.target.value)}
+                />
+                <div>
+                  <span className={SECTION_LABEL_CLASS}>Branzino Holdings share (%)</span>
+                  <div className="court-input-frame court-input-rect w-full">
+                    <span className="court-input-control block text-sm tabular-nums text-court-fg-muted">
+                      {arfiePctValid ? 100 - arfiePct : "-"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-col gap-1 rounded-lg bg-court-surface-subtle/50 px-3 py-2 text-[12px]">
+                {(
+                  [
+                    ["arfie", shares.arfieCents],
+                    ["branzino", shares.branzinoCents],
+                  ] as Array<[ConsultingCompanyKey, number]>
+                ).map(([key, cents]) => (
+                  <div key={key} className="flex items-center justify-between gap-3">
+                    <span className="text-court-fg">{CONSULTING_COMPANIES[key].name}</span>
+                    <span className="font-semibold tabular-nums text-court-fg">
+                      {amountDollars > 0 && arfiePctValid ? formatConsultingUsd(cents / 100) : "-"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input
@@ -502,9 +639,11 @@ function ConsultingInvoiceModal({
                 }}
               />
               <p className={HINT_CLASS}>
-                {company
-                  ? `Prints as "${CONSULTING_COMPANIES[company].terms}".`
-                  : "Defaults to the invoice date. Prints as due upon receipt."}
+                {split
+                  ? "Same dates on both invoices. Each prints its own terms line."
+                  : company
+                    ? `Prints as "${CONSULTING_COMPANIES[company].terms}".`
+                    : "Defaults to the invoice date. Prints as due upon receipt."}
               </p>
             </div>
           </div>
@@ -553,8 +692,9 @@ function ConsultingInvoiceModal({
             </label>
           ) : (
             <p className="text-[11px] text-court-fg-muted">
-              The PDF is emailed to andrew@breakpointtalent.com and austin@breakpointtalent.com
-              {company ? `, with ${CONSULTING_COMPANIES[company].ccEmail} on copy.` : "."}
+              {split
+                ? `Two emails go to andrew@breakpointtalent.com and austin@breakpointtalent.com, the Arfie one with ${CONSULTING_COMPANIES.arfie.ccEmail} on copy and the Branzino one with ${CONSULTING_COMPANIES.branzino.ccEmail} on copy.`
+                : `The PDF is emailed to andrew@breakpointtalent.com and austin@breakpointtalent.com${company ? `, with ${CONSULTING_COMPANIES[company].ccEmail} on copy.` : "."}`}
             </p>
           )}
 
@@ -583,7 +723,9 @@ function ConsultingInvoiceModal({
                     : "Save"
                 : saving
                   ? "Generating..."
-                  : "Generate and email"}
+                  : split
+                    ? "Generate both and email"
+                    : "Generate and email"}
             </Button>
           </div>
         </div>

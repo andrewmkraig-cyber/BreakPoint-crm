@@ -71,6 +71,21 @@ export const CONSULTING_COMPANIES: Record<ConsultingCompanyKey, ConsultingCompan
 
 export const CONSULTING_COMPANY_KEYS: ConsultingCompanyKey[] = ["arfie", "branzino"];
 
+// The usual way one fee is shared between the two companies: Arfie 75,
+// Branzino 25 (Andrew, 2026-09-22; every pair sent so far was this split).
+// The modal seeds its split from this and the recruiter can change it.
+export const DEFAULT_CONSULTING_SPLIT_ARFIE_PCT = 75;
+
+// Split a whole-cent total so the two shares always add back to it exactly:
+// Arfie gets the rounded share, Branzino gets the remainder.
+export function splitConsultingCents(
+  totalCents: number,
+  arfiePct: number,
+): { arfieCents: number; branzinoCents: number } {
+  const arfieCents = Math.round((totalCents * arfiePct) / 100);
+  return { arfieCents, branzinoCents: totalCents - arfieCents };
+}
+
 export function isConsultingCompanyKey(v: unknown): v is ConsultingCompanyKey {
   return v === "arfie" || v === "branzino";
 }
