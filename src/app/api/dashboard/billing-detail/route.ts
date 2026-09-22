@@ -122,10 +122,9 @@ export async function GET(req: NextRequest) {
         ? events.filter((e) => e.status !== "paid")
         : events;
 
-  // Soonest-first: the tower is a forward-looking billing view, so the
-  // next dollar to land reads at the top.
+  // Earliest start first, the order the deals happened in the period.
   const sorted = [...scoped].sort(
-    (a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime(),
+    (a, b) => a.bookedAt.getTime() - b.bookedAt.getTime(),
   );
 
   const totalCents = sorted.reduce((s, e) => s + e.amountCents, 0);
@@ -151,10 +150,11 @@ function toRow(e: BillingEventWithPlacement, i: number): BillingDetailRow {
     title: candLabel(p.candidate, p.candidateRfId),
     subtitle,
     amountLabel: formatUsdExactFromCents(e.amountCents),
-    // Always scheduledAt — that is the field the tower windows on, so this
-    // is the date that actually put the row in the period being viewed.
-    // Payment state is carried separately by statusLabel.
-    dateLabel: shortDate(e.scheduledAt),
+    // Always bookedAt (the placement's start date) - that is the field the
+    // tower windows on, so this is the date that actually put the row in
+    // the period being viewed. Payment state is carried separately by
+    // statusLabel.
+    dateLabel: shortDate(e.bookedAt),
     statusLabel: STATUS_LABEL[e.status],
     paid: e.status === "paid",
     href: p.candidate ? `/candidates/${p.candidate.id}` : null,

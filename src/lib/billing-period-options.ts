@@ -10,7 +10,8 @@ import {
 } from "@/lib/time-range";
 
 // The span of dates that carry billing for an org: the earliest and latest
-// scheduled billing event (invoice, installment or fee total). Drives the
+// BOOKED billing event (by placement start date, the same field the
+// Billing Tower windows on). Drives the
 // jump-to-period lists on Clubhouse, Metrics, Placements and Goals so any
 // quarter or year with revenue on it is one pick away, future ones
 // included.
@@ -24,11 +25,11 @@ export async function getBillingPeriodBounds(
     prisma,
   );
   if (events.length === 0) return null;
-  let earliest = events[0].scheduledAt;
-  let latest = events[0].scheduledAt;
+  let earliest = events[0].bookedAt;
+  let latest = events[0].bookedAt;
   for (const e of events) {
-    if (e.scheduledAt < earliest) earliest = e.scheduledAt;
-    if (e.scheduledAt > latest) latest = e.scheduledAt;
+    if (e.bookedAt < earliest) earliest = e.bookedAt;
+    if (e.bookedAt > latest) latest = e.bookedAt;
   }
   return { earliest, latest };
 }

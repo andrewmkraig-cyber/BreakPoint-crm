@@ -60,11 +60,21 @@ export type BillingEvent = {
   // Always whole cents so this composes with invoices.ts which works in
   // cents throughout. Dollar callers can divide by 100 at the edge.
   amountCents: number;
-  // When this dollar lands on the books. For invoice events, prefers
-  // dueDate so Q-bucketing matches how recruiters think about billing.
-  // For installment fallback, computed from placementBillingAnchor plus
-  // instNDaysAfterStart. For feeTotal fallback, placementBillingAnchor.
+  // When this dollar is expected to ARRIVE. For invoice events, dueDate
+  // (falling back through sentAt to createdAt). For installment fallback,
+  // placementBillingAnchor plus instNDaysAfterStart. For feeTotal
+  // fallback, placementBillingAnchor. The Cash Forecast and Pipeline Value
+  // read this: they answer "when will the money land".
   scheduledAt: Date;
+  // The quarter this dollar BELONGS to: the placement's start date
+  // (placementBillingAnchor), the same day for every event the placement
+  // carries, installments included. Andrew's rule (2026-09-22): billing
+  // goes by the placement's start date, not the invoice's due date. Net-10
+  // terms on a September 21 start put the due date on October 1 and the
+  // whole fee in Q4; the deal happened in Q3. The Billing Tower, its
+  // drill-downs and the jump-to-period list bucket by this. Retained
+  // engagements have no start, so their events book on scheduledAt.
+  bookedAt: Date;
   // Realized payment timestamp when status === "paid"; null otherwise.
   // Used by Revenue / Collected tiles that bucket by collection date,
   // not by the original schedule.
@@ -187,21 +197,27 @@ export type InvoiceForBilling = {
 // retained path alike. Returns null for VOID invoices and zero amounts.
 function invoiceToEvent(
   inv: InvoiceForBilling,
-  owner: { placementId: string | null; retainedSearchId: string | null },
+  owner: {
+    placementId: string | null;
+    retainedSearchId: string | null;
+    // The placement's start date; null for retained invoices, which then
+    // book on their own scheduledAt.
+    bookedAt: Date | null;
+  },
 ): BillingEvent | null {
   const status = invoiceStatusToEventStatus(inv.status, inv.isFuture);
   if (!status) return null;
   const amountCents = decimalToCents(inv.feeAmount);
   if (amountCents === 0) return null;
-  // dueDate is preferred for quarter bucketing — that's the date the
-  // recruiter thinks of as "when this is on the books for Q-whatever".
-  // Falls back through sentAt → createdAt so we always have *something*.
+  // dueDate is when the money is expected to arrive. Falls back through
+  // sentAt to createdAt so we always have *something*.
   const scheduledAt = inv.dueDate ?? inv.sentAt ?? inv.createdAt;
   return {
     placementId: owner.placementId,
     retainedSearchId: owner.retainedSearchId,
     amountCents,
     scheduledAt,
+    bookedAt: owner.bookedAt ?? scheduledAt,
     paidAt: inv.paidAt,
     status,
     source: "invoice",
@@ -222,6 +238,7 @@ export function expandRetainedInvoiceEvents(
     const event = invoiceToEvent(inv, {
       placementId: null,
       retainedSearchId: inv.retainedSearchId,
+      bookedAt: null,
     });
     if (event) events.push(event);
   }
@@ -282,6 +299,10 @@ export function expandPlacementBillingEvents(
   // is enough to take this branch — the recruiter has begun creating
   // invoice rows, so the installment fallback is no longer the source
   // of truth.
+  // Every event a placement carries books on the same day, its start date
+  // (placementBillingAnchor), whichever branch produces it. Computed once
+  // here so the three branches cannot drift.
+  const anchor = placementBillingAnchor(p);
   const liveInvoices = p.invoices.filter((inv) => inv.status !== "VOID");
   if (liveInvoices.length > 0) {
     const events: BillingEvent[] = [];
@@ -289,6 +310,7 @@ export function expandPlacementBillingEvents(
       const event = invoiceToEvent(inv, {
         placementId: p.id,
         retainedSearchId: null,
+        bookedAt: anchor,
       });
       if (event) events.push(event);
     }
@@ -302,7 +324,6 @@ export function expandPlacementBillingEvents(
   // schedule to whenever the recruiter uploaded the start screenshot: a
   // September 21 start confirmed on October 10 put every installment in
   // Q4. See src/lib/placement-dates.ts for why earliest-wins.
-  const anchor = placementBillingAnchor(p);
   if (p.useCustomTerms && anchor) {
     const events: BillingEvent[] = [];
     const installments: Array<{ amount: number | null; days: number | null }> = [
@@ -318,6 +339,7 @@ export function expandPlacementBillingEvents(
         retainedSearchId: null,
         amountCents: dollarsToCents(inst.amount),
         scheduledAt: addDays(anchor, days),
+        bookedAt: anchor,
         paidAt: null,
         status: "scheduled",
         source: "installment",
@@ -334,14 +356,14 @@ export function expandPlacementBillingEvents(
   const flat = p.feeTotal;
   // Same anchor as Branch 2 so a placement cannot bill in one quarter on
   // flat terms and a different one on installments.
-  const flatAnchor = placementBillingAnchor(p);
-  if (flat != null && flat > 0 && flatAnchor) {
+  if (flat != null && flat > 0 && anchor) {
     return [
       {
         placementId: p.id,
         retainedSearchId: null,
         amountCents: flat * 100,
-        scheduledAt: flatAnchor,
+        scheduledAt: anchor,
+        bookedAt: anchor,
         paidAt: null,
         status: "scheduled",
         source: "fee_total",
@@ -403,18 +425,18 @@ export function sumEventsCents(
 // terms placements without Invoice rows yet (Ethan) contribute the
 // right amount to Revenue / Outstanding / Goal Progress.
 //
-// Revenue        — every event (paid + unpaid) bucketed by scheduledAt
-//                  in [start, end). "Booked placement revenue for this
-//                  period" — what the recruiter earned in the window,
-//                  not just what cash hit the bank. Q2 with a paid
-//                  $7,500 placement + Ethan's unpaid $3,750 inst1 reads
-//                  $11,250.
-// Collected      - paid events with scheduledAt in [start, end). The paid
+// Revenue        - every event (paid + unpaid) bucketed by bookedAt (the
+//                  placement's START date) in [start, end). "Booked
+//                  placement revenue for this period" - what the recruiter
+//                  earned in the window, not just what cash hit the bank.
+//                  A placement's whole fee, installments included, lands
+//                  in the quarter it started (Andrew, 2026-09-22).
+// Collected      - paid events with bookedAt in [start, end). The paid
 //                  half of Revenue, so Revenue = Collected + Outstanding to
-//                  the cent. Bucketed like Revenue (by scheduledAt, not
+//                  the cent. Bucketed like Revenue (by bookedAt, not
 //                  paidAt) precisely so the three tiles reconcile.
 // Outstanding    — unpaid events (sent/draft/future_draft/scheduled)
-//                  with scheduledAt in [start, end). Period-bounded so
+//                  with bookedAt in [start, end). Period-bounded so
 //                  selecting Next Quarter shows the unpaid portion of
 //                  next-quarter revenue, not the all-time backlog.
 // bookedCents    — alias for revenueCents kept on the return shape so
@@ -528,7 +550,7 @@ async function loadBillingEventsInWindow(
       job: inv.roleTitle ? { title: inv.roleTitle } : null,
     };
     for (const e of expandRetainedInvoiceEvents([inv])) {
-      if (e.scheduledAt < start || e.scheduledAt >= endExclusive) continue;
+      if (e.bookedAt < start || e.bookedAt >= endExclusive) continue;
       events.push({ ...e, placement: ref });
     }
   }
@@ -541,8 +563,11 @@ async function loadBillingEventsInWindow(
       client: p.client,
       job: p.job,
     };
+    // Windowed on bookedAt, the placement's start date, so the tower and
+    // its drill-downs put a deal in the quarter it started regardless of
+    // the invoice's due date.
     for (const e of expandPlacementBillingEvents(p as PlacementForBilling)) {
-      if (e.scheduledAt < start || e.scheduledAt >= endExclusive) continue;
+      if (e.bookedAt < start || e.bookedAt >= endExclusive) continue;
       events.push({ ...e, placement: ref });
     }
   }
@@ -585,8 +610,8 @@ export async function getBillingSummaryForRange(
   let outstandingCount = 0;
 
   for (const e of events) {
-    // Revenue — booked, period-bucketed by scheduledAt. Counts every
-    // event regardless of payment status.
+    // Revenue - booked, period-bucketed by bookedAt (placement start).
+    // Counts every event regardless of payment status.
     revenueCents += e.amountCents;
     revenueCount += 1;
     // Collected and Outstanding partition Revenue: every event lands in

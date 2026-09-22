@@ -54,10 +54,10 @@ const DRILLDOWN_TITLE = {
 // the dropdown changes trigger an action.
 //
 // Semantics (matching getBillingTowerData / getBillingSummaryForRange):
-//   Revenue     — every event scheduledAt in the selected period.
+//   Revenue     - every event whose placement STARTED in the selected
+//                 period (bookedAt), whatever the invoice due date.
 //                 "Booked placement revenue" — paid + unpaid both
-//                 count. Q2 with a paid $7,500 + Ethan's unpaid
-//                 $3,750 inst1 reads $11,250.
+//                 count, installments included.
 //   Collected   - the paid subset of Revenue, same window and same
 //                 bucketing. Revenue = Collected + Outstanding, always.
 //   Outstanding — the unpaid subset of Revenue. Period-bounded, so
