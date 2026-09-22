@@ -6,7 +6,7 @@ Live at: ace.breakpointtalent.com
 
 ## What Shipped in Ace 102.2 - the Billing Tower books a deal in the quarter it started (2026-09-22)
 
-Two code commits (`09e8479e`, then `9dac3b32` after Andrew's read of the first), no schema change. Step 0 held at 3 / 10 / 85 (measured on `src/` against HEAD) before writing code and again before committing. The phone session's 102.1 entry below reports 3 / 13 / 100; that was a working-tree count with a wider scope, not a drift - the same three greps on `src/` at HEAD give 3 / 10 / 85 today.
+Three code commits (`09e8479e`, `9dac3b32` after Andrew's read of the first, and the date-label fix), no schema change. Step 0 held at 3 / 10 / 85 (measured on `src/` against HEAD) before writing code and again before committing. The phone session's 102.1 entry below reports 3 / 13 / 100; that was a working-tree count with a wider scope, not a drift - the same three greps on `src/` at HEAD give 3 / 10 / 85 today.
 
 **The report.** With 102.1 merged, David Foreman's Solutionwhere placement still read in Q4 on the Clubhouse Billing Tower and its Revenue Billed drill-down. The row was right (hired, $5,000 fee, invoice INV-1068 sent September 22) but the tower dates every invoice by its DUE date, and Solutionwhere is Net 10: September 21 start plus 10 days is October 1. Andrew's rule: billing goes by the placement's start date, not the due date.
 
@@ -19,6 +19,8 @@ Two code commits (`09e8479e`, then `9dac3b32` after Andrew's read of the first),
 **Why the live site and a local run disagreed by one line.** The tower's quarter boundary is built from `new Date(year, month, 1)` in server-local time. Vercel runs on UTC, so an invoice due October 1 at UTC midnight fell just outside Q3 there; on an Eastern-time machine the same boundary is 4 a.m. UTC and the invoice fell inside. Bucketing by start date makes the question moot for placements, but the boundary is still server-local; noted as a follow-up in ACE_ROADMAP.md.
 
 **Test.** `tests/unit/billing-tower-start-date.test.ts` covers the David case, a paid invoice, an installment schedule with and without invoice rows (Ethan's and Latisha's real schedules), a late confirmation and a retained invoice, and runs inside the `check:ui` build gate. It stubs the `server-only` import the module opens with.
+
+**The drill-down printed every date a day early.** Andrew's screenshot showed David's September 21 as "Sep 20" and Louise Tao's September 14 as "Sep 13". `shortDate` in `/api/dashboard/billing-detail` formatted in Eastern, and `bookedAt` is a date-only value stored at midnight UTC, so it rolled back to the previous evening. Now a UTC-midnight value reads in UTC and a real instant still reads in Eastern, the same rule `formatDate` in `lib/utils` and the KPI drill-down already follow (`5cfb5aff`).
 
 **Not browser-verified.** Verified by `npm run build` exiting 0 and by the prod read-back above.
 
