@@ -9,7 +9,12 @@ import {
   DEFAULT_PAYMENT_TERMS_DAYS,
   addDaysUtc,
   paymentTermsLabel,
+  termsToDays,
 } from "@/lib/payment-terms";
+import {
+  placementBillingAnchor,
+  sameInstant,
+} from "@/lib/placement-dates";
 
 // Server-side invoice library — single source of truth for invoice
 // lifecycle transitions and the merge data the PDF + email need.
@@ -262,6 +267,10 @@ export async function createInvoiceForPlacement(
       clientId: true,
       offerTitle: true,
       expectedStartDate: true,
+      // placedAt + startConfirmedAt complete the billing-anchor inputs so
+      // the issue date is the day the candidate actually started.
+      placedAt: true,
+      startConfirmedAt: true,
       feeTotal: true,
       acceptedSalary: true,
       feePercentage: true,
@@ -296,7 +305,10 @@ export async function createInvoiceForPlacement(
   if (existing) return { id: existing.id, created: false };
 
   const invoiceNumber = await nextInvoiceNumber(input.organizationId);
-  const issueDate = placement.expectedStartDate ?? new Date();
+  // Issue the invoice on the placement's real start day, not on whatever
+  // day Confirm Start happened to be clicked. Falls back to today only
+  // when the placement carries no dates at all.
+  const issueDate = placementBillingAnchor(placement) ?? new Date();
   const termsDays = placement.client?.paymentTermsDays ?? DEFAULT_PAYMENT_TERMS_DAYS;
   const termsString = paymentTermsLabel(termsDays);
   const dueDate = addDaysUtc(issueDate, termsDays);
@@ -328,7 +340,7 @@ export async function createInvoiceForPlacement(
       candidateId: placement.candidateId ?? null,
       clientId: placement.clientId ?? null,
       roleTitle: placement.offerTitle ?? null,
-      startDate: placement.expectedStartDate ?? null,
+      startDate: issueDate,
       feeAmount,
       baseSalary,
       feePercentage,
@@ -673,4 +685,90 @@ export async function getInvoiceSummary(organizationId: string): Promise<Invoice
     currentQuarterOutstandingCount: currentQuarterOutstanding.length,
     draftCount,
   };
+}
+
+// ---------------------------------------------------------------------
+// Keep DRAFT invoices pinned to the placement's real start date
+// ---------------------------------------------------------------------
+// A placement's start date can move after its invoices exist — a candidate
+// who was booked for October 5 and actually walked in on September 21.
+// Before this, editing the start date left the invoice dated to the old
+// day, so the fee kept bucketing into the OLD quarter (invoice events are
+// bucketed by dueDate) no matter what the placement said.
+//
+// Only DRAFT invoices are re-dated. A SENT or PAID invoice is history: the
+// client has the PDF with that due date on it, and rewriting it would make
+// the books disagree with what was actually billed. VOID is ignored.
+//
+// Two invoice shapes, both re-dated off the same anchor:
+//   - custom-terms installments, which carry an "Installment N of " /
+//     "Future - Installment N of " note prefix and are due `anchor +
+//     instNDaysAfterStart`;
+//   - everything else, due `anchor + the invoice's own payment terms`.
+//
+// Returns how many rows actually moved so callers can log it. Never throws
+// on a missing placement — a caller mid-save should not blow up here.
+const INSTALLMENT_NOTE_RE = /Installment\s+(\d+)\s+of\s/i;
+
+export async function realignPlacementInvoiceDates(
+  placementId: string,
+  organizationId: string,
+): Promise<number> {
+  const placement = await prisma.placement.findFirst({
+    where: { id: placementId, organizationId },
+    select: {
+      placedAt: true,
+      expectedStartDate: true,
+      startConfirmedAt: true,
+      installmentCount: true,
+      inst1DaysAfterStart: true,
+      inst2DaysAfterStart: true,
+      inst3DaysAfterStart: true,
+      client: { select: { paymentTermsDays: true } },
+    },
+  });
+  if (!placement) return 0;
+
+  const anchor = placementBillingAnchor(placement);
+  if (!anchor) return 0;
+
+  const drafts = await prisma.invoice.findMany({
+    where: { placementId, organizationId, status: "DRAFT" },
+    select: {
+      id: true,
+      notes: true,
+      paymentTerms: true,
+      startDate: true,
+      dueDate: true,
+    },
+  });
+  if (drafts.length === 0) return 0;
+
+  const installmentDays: Record<number, number | null> = {
+    1: placement.inst1DaysAfterStart,
+    2: placement.inst2DaysAfterStart,
+    3: placement.inst3DaysAfterStart,
+  };
+  const fallbackTermsDays =
+    placement.client?.paymentTermsDays ?? DEFAULT_PAYMENT_TERMS_DAYS;
+
+  let moved = 0;
+  for (const inv of drafts) {
+    const match = INSTALLMENT_NOTE_RE.exec(inv.notes ?? "");
+    const installmentNo = match ? Number(match[1]) : null;
+    const days =
+      installmentNo != null && installmentDays[installmentNo] != null
+        ? (installmentDays[installmentNo] as number)
+        : termsToDays(inv.paymentTerms, fallbackTermsDays);
+    const nextDue = addDaysUtc(anchor, days);
+    if (sameInstant(inv.startDate, anchor) && sameInstant(inv.dueDate, nextDue)) {
+      continue;
+    }
+    await prisma.invoice.update({
+      where: { id: inv.id },
+      data: { startDate: anchor, dueDate: nextDue },
+    });
+    moved += 1;
+  }
+  return moved;
 }

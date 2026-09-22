@@ -2,6 +2,8 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 
+import { placementBillingAnchor } from "@/lib/placement-dates";
+
 // Single source of truth for "how much will this placement bill, when?"
 //
 // Background — every dashboard finance tile used to query Invoice rows
@@ -17,11 +19,10 @@ import { Prisma } from "@prisma/client";
 //                                     recruiter flow once Confirm Start
 //                                     has fired)
 //   2. else if useCustomTerms       → expand inst1/inst2/inst3 as
-//                                     "scheduled" events keyed off
-//                                     startConfirmedAt ?? expectedStartDate
-//                                     ?? placedAt
+//                                     "scheduled" events keyed off the
+//                                     placement's billing anchor
 //   3. else                         → single "scheduled" event at feeTotal
-//                                     on expectedStartDate ?? placedAt
+//                                     on the placement's billing anchor
 //
 // The three branches are mutually exclusive PER PLACEMENT (we either
 // have invoices or we don't), so consumers never see the same dollars
@@ -61,8 +62,8 @@ export type BillingEvent = {
   amountCents: number;
   // When this dollar lands on the books. For invoice events, prefers
   // dueDate so Q-bucketing matches how recruiters think about billing.
-  // For installment fallback, computed from startConfirmedAt ?? expectedStartDate ?? placedAt
-  // plus instNDaysAfterStart. For feeTotal fallback, expectedStartDate ?? placedAt.
+  // For installment fallback, computed from placementBillingAnchor plus
+  // instNDaysAfterStart. For feeTotal fallback, placementBillingAnchor.
   scheduledAt: Date;
   // Realized payment timestamp when status === "paid"; null otherwise.
   // Used by Revenue / Collected tiles that bucket by collection date,
@@ -295,12 +296,13 @@ export function expandPlacementBillingEvents(
   }
 
   // Branch 2: custom terms set, no invoices yet → expand installments.
-  // Date anchor: startConfirmedAt is the most authoritative ("we know
-  // they started on this day"), expectedStartDate is the recruiter's
-  // commit, placedAt is the offer-accept date. We accept any of them
-  // so a pending_start placement (no startConfirmedAt yet) still casts
-  // its installments into the right quarter.
-  const anchor = p.startConfirmedAt ?? p.expectedStartDate ?? p.placedAt;
+  // Date anchor: placementBillingAnchor — the EARLIER of the agreed start
+  // and the confirmation stamp, falling back to placedAt. It used to be
+  // `startConfirmedAt ?? expectedStartDate ?? placedAt`, which dated the
+  // schedule to whenever the recruiter uploaded the start screenshot: a
+  // September 21 start confirmed on October 10 put every installment in
+  // Q4. See src/lib/placement-dates.ts for why earliest-wins.
+  const anchor = placementBillingAnchor(p);
   if (p.useCustomTerms && anchor) {
     const events: BillingEvent[] = [];
     const installments: Array<{ amount: number | null; days: number | null }> = [
@@ -330,7 +332,9 @@ export function expandPlacementBillingEvents(
   // null or zero (the recruiter genuinely hasn't logged a fee yet —
   // this IS the "fee unset" state, and surfaces will render "—").
   const flat = p.feeTotal;
-  const flatAnchor = p.expectedStartDate ?? p.placedAt;
+  // Same anchor as Branch 2 so a placement cannot bill in one quarter on
+  // flat terms and a different one on installments.
+  const flatAnchor = placementBillingAnchor(p);
   if (flat != null && flat > 0 && flatAnchor) {
     return [
       {

@@ -30,6 +30,8 @@ import { formatExpectedCompensation } from "@/lib/candidate-compensation";
 import { fanOutPlacementNote } from "@/lib/notes/placement-fanout";
 import { prisma } from "@/lib/prisma";
 import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
+import { placedAtCorrection } from "@/lib/placement-dates";
+import { realignPlacementInvoiceDates } from "@/lib/invoices";
 import {
   normalizePlacementCompensationType,
   type PlacementCompensationType,
@@ -1821,6 +1823,8 @@ export async function recordLocalPlacement(
         id: true,
         stage: true,
         placedAt: true,
+        // Feeds the placedAt pull-back below alongside the new start date.
+        startConfirmedAt: true,
         candidateId: true,
         candidateRfId: true,
         jobId: true,
@@ -1882,14 +1886,26 @@ export async function recordLocalPlacement(
                 : null,
           };
 
+    const nextStartDate = new Date(input.expectedStartDate);
+    // A start date earlier than placedAt pulls placedAt back to the start
+    // day, so goals / placement count / `earned` all land in the quarter
+    // the candidate actually started. Never moves placedAt forward.
+    // See src/lib/placement-dates.ts.
+    const correctedPlacedAt = placedAtCorrection({
+      placedAt: placement.placedAt,
+      expectedStartDate: nextStartDate,
+      startConfirmedAt: placement.startConfirmedAt,
+    });
+
     const row = await prisma.placement.update({
       where: { id: input.placementId },
       data: {
         stage: "pending_start",
         // Stamp placedAt only on first transition into pending_start so
         // re-edits don't keep bumping the timestamp forward. Same rule
-        // the RF recordPlacement uses.
-        placedAt: placement.placedAt ?? new Date(),
+        // the RF recordPlacement uses. An existing placedAt that sits
+        // AFTER the start date is corrected back to the start date.
+        placedAt: correctedPlacedAt ?? placement.placedAt ?? new Date(),
         acceptedSalary: input.acceptedSalary,
         acceptedCompensationType,
         acceptedCurrency: input.acceptedCurrency || "USD",
@@ -1903,7 +1919,7 @@ export async function recordLocalPlacement(
         hiringManagerName: hiringName,
         hiringManagerEmail: hiringEmail,
         hiringContacts: cleanedHiring.length > 0 ? cleanedHiring : Prisma.JsonNull,
-        expectedStartDate: new Date(input.expectedStartDate),
+        expectedStartDate: nextStartDate,
         placementNotes: input.notes.trim() || null,
         candidateSource: trimmedSource || null,
         dealType: input.dealType,
@@ -1915,6 +1931,19 @@ export async function recordLocalPlacement(
       },
       select: { id: true },
     });
+
+    // DRAFT invoices on this placement follow the saved start date, so a
+    // fee does not keep billing into the quarter the OLD start sat in.
+    // SENT / PAID invoices are history and are left alone. Non-fatal.
+    try {
+      await realignPlacementInvoiceDates(row.id, org.id);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[recordLocalPlacement] invoice re-date failed", {
+        placementId: row.id,
+        error: err,
+      });
+    }
 
     // Fill moment: offer accepted and fee locked. If this job carries an
     // OPEN retained search, this placement is what filled it. Never throws.

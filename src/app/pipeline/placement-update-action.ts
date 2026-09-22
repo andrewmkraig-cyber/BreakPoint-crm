@@ -6,6 +6,8 @@ import {
   type PlacementCompensationType,
 } from "@/lib/placement-compensation";
 import { revalidatePlacementSurfaces } from "@/lib/placement-surfaces";
+import { placedAtCorrection } from "@/lib/placement-dates";
+import { realignPlacementInvoiceDates } from "@/lib/invoices";
 import { prisma } from "@/lib/prisma";
 import { type DealType } from "@/lib/deal-type";
 
@@ -62,7 +64,13 @@ export async function updatePlacement(
     const org = await getCurrentOrg();
     const existing = await prisma.placement.findFirst({
       where: { id: input.placementId, organizationId: org.id },
-      select: { id: true, candidateId: true },
+      // placedAt + startConfirmedAt feed the placedAt pull-back below.
+      select: {
+        id: true,
+        candidateId: true,
+        placedAt: true,
+        startConfirmedAt: true,
+      },
     });
     if (!existing) {
       return { ok: false, error: "Placement not found in this organization" };
@@ -89,10 +97,22 @@ export async function updatePlacement(
       }
     }
 
+    // A start date moved EARLIER than placedAt drags placedAt back with
+    // it, because goals, placement count and every `earned` figure query
+    // Placement.placedAt. Without this a candidate who starts in Q3 on a
+    // deal stamped placed in Q4 keeps scoring in Q4. Never pushes placedAt
+    // forward — see src/lib/placement-dates.ts.
+    const correctedPlacedAt = placedAtCorrection({
+      placedAt: existing.placedAt,
+      expectedStartDate: parsedDate,
+      startConfirmedAt: existing.startConfirmedAt,
+    });
+
     await prisma.placement.update({
       where: { id: existing.id },
       data: {
         expectedStartDate: parsedDate,
+        ...(correctedPlacedAt ? { placedAt: correctedPlacedAt } : {}),
         acceptedSalary: input.acceptedSalary,
         acceptedCompensationType:
           input.acceptedCompensationType == null
@@ -116,6 +136,20 @@ export async function updatePlacement(
         customGuaranteeDate: parsedGuaranteeDate,
       },
     });
+
+    // Any DRAFT invoice on this placement follows the new start date, so
+    // a fee does not keep billing into the quarter the OLD start sat in.
+    // SENT and PAID invoices are left alone (already billed = history).
+    // Non-fatal: a hiccup here must not lose the recruiter's edit.
+    try {
+      await realignPlacementInvoiceDates(existing.id, org.id);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[updatePlacement] invoice re-date failed", {
+        placementId: existing.id,
+        error: err,
+      });
+    }
 
     // Fan out to every surface this edit can move — dashboard
     // (Placements tab + map + Momentum + Offer-to-Start), Placements

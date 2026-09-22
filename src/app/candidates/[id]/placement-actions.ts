@@ -11,6 +11,7 @@ import { buildCandidateCallContextBlock } from "@/lib/ai-workspace-context";
 import { generateSubmittalWriteup, type SubmittalInput } from "@/lib/claude";
 import { createGmailDraft, plainToHtml, sendGmail, type GmailAttachment } from "@/lib/gmail";
 import { prisma } from "@/lib/prisma";
+import { placedAtCorrection, placementBillingAnchor } from "@/lib/placement-dates";
 import { getResumeBytes } from "@/lib/resume-bytes";
 import { getRfCandidatesForOrg, getRfCandidateByRfId } from "@/lib/candidates";
 import {
@@ -691,6 +692,11 @@ export async function confirmStart(
         acceptedCompensationType: true,
         feePercentage: true,
         expectedStartDate: true,
+        // placedAt completes the inputs for the placedAt pull-back below:
+        // a candidate who started before the deal was stamped placed moves
+        // the deal back to the start date for goals + metrics.
+        placedAt: true,
+        startConfirmedAt: true,
         // Needed before the full-fee auto-draft below so we can suppress it
         // when this placement carries custom installment terms (the custom
         // path creates an installment-1 draft instead).
@@ -710,11 +716,26 @@ export async function confirmStart(
         })
       : { synced: false, reason: null };
 
+    // startConfirmedAt stays the CONFIRMATION timestamp (when the
+    // screenshot was uploaded), which is what the audit trail needs. It is
+    // no longer the billing anchor on its own — billing takes the earlier
+    // of it and expectedStartDate, so confirming a September start in
+    // October can't drag the money into Q4.
+    const confirmedAt = new Date();
+    // Pull placedAt back if the candidate started before the deal was
+    // stamped placed, so goals / placement count / `earned` follow.
+    const correctedPlacedAt = placedAtCorrection({
+      placedAt: existing.placedAt,
+      expectedStartDate: existing.expectedStartDate,
+      startConfirmedAt: confirmedAt,
+    });
+
     await prisma.placement.update({
       where: { id: input.placementId },
       data: {
         stage: "hired",
-        startConfirmedAt: new Date(),
+        startConfirmedAt: confirmedAt,
+        ...(correctedPlacedAt ? { placedAt: correctedPlacedAt } : {}),
         startConfirmationFile: new Uint8Array(buffer),
         startConfirmationMime: input.mimeType || "image/png",
         invoicingFlagged: true,
@@ -814,6 +835,9 @@ export async function confirmStart(
         // trigger below. Selected here so non-custom placements don't pay
         // for a second round trip.
         startConfirmedAt: true,
+        // Completes the placementBillingAnchor inputs for the installment
+        // base date below.
+        placedAt: true,
         offerTitle: true,
         useCustomTerms: true,
         installmentCount: true,
@@ -880,10 +904,7 @@ export async function confirmStart(
       // Start date is stored as midnight UTC of the chosen day; read it in
       // UTC so "+ N days" lands on the intended calendar date regardless of
       // server timezone. Fall back to the just-stamped confirmation time.
-      const base =
-        placementForFire.expectedStartDate ??
-        placementForFire.startConfirmedAt ??
-        new Date();
+      const base = placementBillingAnchor(placementForFire) ?? new Date();
       const baseY = base.getUTCFullYear();
       const baseM = base.getUTCMonth();
       const baseD = base.getUTCDate();
