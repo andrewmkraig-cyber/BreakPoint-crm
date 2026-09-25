@@ -88,7 +88,9 @@ export function FinancialStrip({
   // against a fixed target, so its rows ARE the Revenue rows.
   const [drilldown, setDrilldown] = useState<keyof typeof DRILLDOWN_TITLE | null>(null);
 
-  const clampedPct = Math.max(0, Math.min(100, data.goalPct));
+  // The number reads the REAL percentage (114% when the quarter beats its
+  // goal, Andrew 2026-09-25); only the bar's fill is capped at full.
+  const goalPct = Math.max(0, data.goalPct);
   const revenueMeta =
     data.revenueCount > 0
       ? `${data.revenueCount} placement${data.revenueCount === 1 ? "" : "s"}`
@@ -101,7 +103,8 @@ export function FinancialStrip({
     data.outstandingCount > 0
       ? `${data.outstandingCount} open invoice${data.outstandingCount === 1 ? "" : "s"}`
       : "No open invoices";
-  const remainingUsd = Math.max(0, data.goalUsd - data.revenueUsd);
+  // Positive = still to go, negative = over the goal. GoalStat words it.
+  const remainingUsd = data.goalUsd - data.revenueUsd;
 
   function onPeriodChange(next: TimeRangeSelection) {
     setSelection(next);
@@ -159,7 +162,7 @@ export function FinancialStrip({
         <GoalStat
           goalUsd={data.goalUsd}
           goalPeriodLabel={data.goalPeriodLabel}
-          pct={clampedPct}
+          pct={goalPct}
           remainingUsd={remainingUsd}
         />
       </div>
@@ -289,14 +292,18 @@ function GoalStat({
       <div className="mt-0.5 flex items-baseline gap-2.5 font-serif text-[32px] font-bold leading-none tracking-[-0.02em] tabular-nums text-court-fg">
         {Math.round(pct)}%
         <span className="text-[11.5px] font-semibold tracking-normal text-court-fg-muted">
-          · {formatUsdExact(remainingUsd)} to go
+          {remainingUsd > 0
+            ? `· ${formatUsdExact(remainingUsd)} to go`
+            : remainingUsd < 0
+              ? `· ${formatUsdExact(-remainingUsd)} over`
+              : "· goal met"}
         </span>
       </div>
       <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-court-surface-subtle">
         <div
           className="h-full rounded-full transition-[width]"
           style={{
-            width: `${pct}%`,
+            width: `${Math.min(100, pct)}%`,
             background:
               "linear-gradient(90deg, rgb(var(--court-brand) / 0.85), rgb(var(--court-brand)))",
             boxShadow: "0 0 8px rgb(var(--court-brand) / 0.4)",
