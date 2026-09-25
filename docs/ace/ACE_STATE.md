@@ -1,5 +1,5 @@
 # ACE_STATE.md
-Last updated: 2026-09-22 · Ace 102.2
+Last updated: 2026-09-25 · Ace 102.2
 Current Version: Ace 102.2
 Last Shipped: 2026-09-22
 Live at: ace.breakpointtalent.com
@@ -19,6 +19,8 @@ Three code commits (`09e8479e`, `9dac3b32` after Andrew's read of the first, and
 **Why the live site and a local run disagreed by one line.** The tower's quarter boundary is built from `new Date(year, month, 1)` in server-local time. Vercel runs on UTC, so an invoice due October 1 at UTC midnight fell just outside Q3 there; on an Eastern-time machine the same boundary is 4 a.m. UTC and the invoice fell inside. Bucketing by start date makes the question moot for placements, but the boundary is still server-local; noted as a follow-up in ACE_ROADMAP.md.
 
 **Test.** `tests/unit/billing-tower-start-date.test.ts` covers the David case, a paid invoice, an installment schedule with and without invoice rows (Ethan's and Latisha's real schedules), a late confirmation and a retained invoice, and runs inside the `check:ui` build gate. It stubs the `server-only` import the module opens with.
+
+**Goal Progress reads the real percentage (`5ea199b5`, 2026-09-25).** The tower's number was clamped at 100%, so a quarter that beat its goal read "100% · $0 to go". Andrew: "goal should display actual %. so like 114%". The number is now the true ratio and only the bar's fill is capped; past the goal the sub-line reads "$X over", exactly at it "goal met". The Goal Pacing card already worked this way.
 
 **The drill-down printed every date a day early.** Andrew's screenshot showed David's September 21 as "Sep 20" and Louise Tao's September 14 as "Sep 13". `shortDate` in `/api/dashboard/billing-detail` formatted in Eastern, and `bookedAt` is a date-only value stored at midnight UTC, so it rolled back to the previous evening. Now a UTC-midnight value reads in UTC and a real instant still reads in Eastern, the same rule `formatDate` in `lib/utils` and the KPI drill-down already follow (`5cfb5aff`).
 
