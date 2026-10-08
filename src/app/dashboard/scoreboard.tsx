@@ -243,7 +243,11 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
                   className="relative overflow-hidden rounded-lg bg-court-surface-subtle"
                 >
                   <div
-                    className="absolute inset-y-0 left-0 bg-court-brand-tint"
+                    // Light palettes: brand-tint is near-identical to
+                    // surface-subtle, so the fill reads as a brand wash with
+                    // a crisp leading edge. Dark palettes keep the tint, which
+                    // already separates cleanly there.
+                    className="absolute inset-y-0 left-0 border-r-2 border-court-brand/60 bg-court-brand/30 dark:border-transparent dark:bg-court-brand-tint"
                     style={{ width: `${widthPct}%` }}
                   />
                   <div className="relative flex items-center justify-between px-3 py-2">

@@ -60,6 +60,11 @@ export type BillingDetailResponse = {
   // Sum of the returned rows, formatted. Lets the popup header prove it
   // reconciles to the tower tile without the client re-adding cents.
   totalLabel: string;
+  // Distinct placements behind the rows. A split-fee or installment deal
+  // contributes several lines, so this is the deal count, not the line count.
+  dealCount: number;
+  // Total divided by dealCount, formatted. Null when there are no rows.
+  averageDealLabel: string | null;
   // "Q3 2026" / "YTD 2026"
   periodLabel: string;
 };
@@ -139,11 +144,17 @@ export async function GET(req: NextRequest) {
   );
 
   const totalCents = sorted.reduce((s, e) => s + e.amountCents, 0);
+  // Average per deal, not per line: installments and split fees would
+  // otherwise drag the average down below what a placement actually bills.
+  const dealCount = new Set(sorted.map((e) => e.placement.id)).size;
 
   const body: BillingDetailResponse = {
     rows: sorted.map(toRow),
     count: sorted.length,
     totalLabel: formatUsdExactFromCents(totalCents),
+    dealCount,
+    averageDealLabel:
+      dealCount > 0 ? formatUsdExactFromCents(Math.round(totalCents / dealCount)) : null,
     periodLabel: label,
   };
   return NextResponse.json(body);

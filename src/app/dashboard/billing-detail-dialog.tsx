@@ -134,7 +134,15 @@ export function BillingDetailDialog({
               {loading
                 ? "Loading…"
                 : data
-                  ? `${data.count} ${data.count === 1 ? "line" : "lines"}`
+                  ? [
+                      `${data.count} ${data.count === 1 ? "line" : "lines"}`,
+                      data.dealCount !== data.count
+                        ? `${data.dealCount} ${data.dealCount === 1 ? "deal" : "deals"}`
+                        : null,
+                      data.averageDealLabel ? `Avg deal ${data.averageDealLabel}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
                   : ""}
             </p>
           </div>
