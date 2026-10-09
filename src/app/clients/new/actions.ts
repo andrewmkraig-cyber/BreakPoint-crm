@@ -278,6 +278,7 @@ async function extractFieldsFromHomepage(url: string, pageText: string): Promise
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 800,
+    thinking: { type: "between_tools" },
     tools: [
       {
         type: "web_search_20250305",

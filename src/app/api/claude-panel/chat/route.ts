@@ -264,7 +264,12 @@ const DATA_TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ["title", "reminderAtIso"],
+      additionalProperties: false,
     },
+    // strict: the phantom-claim recovery below can no longer FORCE this
+    // tool (Sonnet 5.5 rejects tool_choice type "tool"), so strict mode
+    // is what keeps the recovered call's input schema-valid.
+    strict: true,
   },
   // create_contact — a DIRECT-execute action tool (NOT in
   // ACTION_TOOL_NAMES), same reversible-create carve-out as create_reminder:
@@ -3140,16 +3145,19 @@ export async function POST(req: NextRequest) {
           conversation.push({ role: "user", content: results });
         }
 
-        // Phantom-claim recovery. The model (claude-sonnet-4-6) sometimes
-        // TYPES a "saved that reminder" success line WITHOUT calling
-        // create_reminder, so the streamed text is a false confirmation
-        // (the recruiter can't tell it from the real receipt) and nothing
-        // saves. Rather than just warn, we RECOVER: re-run the turn ONCE
-        // with tool_choice forced to create_reminder so the model actually
-        // emits the call, then execute it and send the real receipt. The
+        // Phantom-claim recovery. The model sometimes TYPES a "saved that
+        // reminder" success line WITHOUT calling create_reminder, so the
+        // streamed text is a false confirmation (the recruiter can't tell
+        // it from the real receipt) and nothing saves. Rather than just
+        // warn, we RECOVER: re-run the turn ONCE with an explicit "call
+        // create_reminder now" instruction so the model actually emits
+        // the call, then execute it and send the real receipt. Sonnet 5.5
+        // rejects forced tool_choice ({type:"tool"} / {type:"any"}) with a
+        // 400, so this retry uses tool_choice auto + the instruction, and
+        // the tool is declared strict so the input stays schema-valid. The
         // claim itself is proof the model understood this as a reminder
-        // request, so forcing the tool is safe. Only the honest failure
-        // receipt is shown if the forced retry ALSO produces nothing.
+        // request. Only the honest failure receipt is shown if the retry
+        // ALSO produces nothing.
         if (!reminderHandledThisRequest && claimsReminderSaved(assistantText)) {
           log("create_reminder_phantom_claim", { textLen: assistantText.length }, 0);
           let recovered = 0;
@@ -3159,8 +3167,13 @@ export async function POST(req: NextRequest) {
               model: CLAUDE_MODEL,
               max_tokens: 1024,
               tools,
-              tool_choice: { type: "tool", name: "create_reminder" },
-              system: fullSystemPrompt,
+              tool_choice: { type: "auto" },
+              system:
+                fullSystemPrompt +
+                "\n\n# RETRY INSTRUCTION\n" +
+                "Your previous reply to this request claimed a reminder was saved, but create_reminder was never called, so nothing was saved. " +
+                "Call the create_reminder tool NOW, once per reminder in the request, with the exact title and reminderAtIso each needs. " +
+                "Emit ONLY tool calls in this turn - no prose, no confirmation sentence.",
               messages: conversation,
             });
             const forcedUses = forced.content.filter(

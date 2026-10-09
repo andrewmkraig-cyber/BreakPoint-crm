@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import Anthropic from '@anthropic-ai/sdk'
+import { CLAUDE_MODEL } from '@/lib/claude'
 import { getCurrentOrg } from '@/lib/auth/getCurrentOrg'
 import { authOptions } from '@/lib/auth'
 import { callLineWhere, getQuoLineDigitsForUserEmail } from '@/lib/quo-line-owner'
@@ -34,8 +35,9 @@ export async function POST(req: NextRequest) {
     trainerBlock
 
   const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: CLAUDE_MODEL,
     max_tokens: 500,
+    thinking: { type: 'between_tools' },
     tools: [
       {
         type: "web_search_20250305",

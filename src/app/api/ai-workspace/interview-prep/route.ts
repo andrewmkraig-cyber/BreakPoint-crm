@@ -3,20 +3,20 @@ import { Prisma } from "@prisma/client";
 
 import { MARKDOWN_OUTPUT_FORMAT_RULES } from "@/lib/ai-output-formatting";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
-import { getClaude } from "@/lib/claude";
+import { CLAUDE_MODEL, getClaude } from "@/lib/claude";
 import { formatInterviewWhen } from "@/lib/interview-format";
 import { prisma } from "@/lib/prisma";
 
-// Sonnet 5. This route was on Haiku 4.5, which wrote correct but thin
-// Company Breakdown / Role Breakdown sections: it summarized the job
-// description back rather than explaining the business to someone who
-// has never heard of it. Sonnet 5 runs adaptive thinking by default
-// (the `thinking` param is deliberately omitted) and that reasoning is
-// billed against max_tokens, so the ceiling has to cover it as well as
-// the email. Deliberately NOT CLAUDE_MODEL from
-// lib/claude: that constant is the shared Sonnet 4.6 every other caller
-// uses, and moving it is a repo-wide change, not an interview-prep one.
-const INTERVIEW_PREP_MODEL = "claude-sonnet-5";
+// Shared Sonnet (5.5 via CLAUDE_MODEL). This route was on Haiku 4.5,
+// which wrote correct but thin Company Breakdown / Role Breakdown
+// sections: it summarized the job description back rather than
+// explaining the business to someone who has never heard of it. It then
+// pinned Sonnet 5 while the shared constant was still Sonnet 4.6; now
+// that the shared constant is 5.5 it follows CLAUDE_MODEL. Adaptive
+// thinking runs by default (the `thinking` param is deliberately
+// omitted) and that reasoning is billed against max_tokens, so the
+// ceiling has to cover it as well as the email.
+const INTERVIEW_PREP_MODEL = CLAUDE_MODEL;
 
 export const maxDuration = 120;
 

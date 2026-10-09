@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { CLAUDE_MODEL } from "@/lib/claude";
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth";
@@ -178,8 +179,9 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse>>
 
   try {
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
+      model: CLAUDE_MODEL,
       max_tokens: 600,
+      thinking: { type: "between_tools" },
       system,
       messages: [{ role: "user", content: facts }],
     });

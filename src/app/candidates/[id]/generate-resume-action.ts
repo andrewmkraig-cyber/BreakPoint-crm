@@ -42,7 +42,7 @@ type ResumeForEdit = {
 // Used by the empty-state "Generate Resume" button on the candidate
 // profile when no resume is on file. Pulls the candidate's name, title,
 // employer history, education, skills, comp, and recruiter notes; asks
-// Claude (CLAUDE_MODEL = claude-sonnet-4-6) to write a clean plain-text
+// Claude (CLAUDE_MODEL = claude-sonnet-5-5) to write a clean plain-text
 // resume; renders the response as PDF via pdf-lib using the same
 // Helvetica + word-wrap + page-break loop convertDocxResumeToPdf uses;
 // then writes the bytes to a new CandidateResume row keyed on

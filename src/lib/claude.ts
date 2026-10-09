@@ -24,12 +24,17 @@ export { DOCX_UNPARSEABLE_PREFIX, extractDocxText } from "@/lib/resume-text";
 // working unchanged.
 export const stripMarkdownToPlain = stripMarkdownToPlainImpl;
 
-// Sonnet 4.6 — single shared model across every Claude caller in Ace
+// Sonnet 5.5 — single shared model across every Claude caller in Ace
 // (lib/claude generators, /api/mail/ai-compose, /api/email/edit-with-
 // claude, /api/calls/summary, /api/ai-workspace, clients/new actions).
-// Sampling params (temperature/top_p/top_k) and budget_tokens are
-// removed on 4.x — do not re-add them.
-export const CLAUDE_MODEL = "claude-sonnet-4-6";
+// Request-shape rules on this model (all 400 if violated):
+//   - no temperature/top_p/top_k, no budget_tokens, no assistant prefill
+//   - no forced tool_choice ({type:"tool"|"any"}) — use auto + strict
+//   - thinking runs by default when omitted; the only "off" setting is
+//     thinking: {type:"between_tools"} ({type:"disabled"} is rejected)
+// max_tokens covers thinking + answer, so small-budget calls that want
+// a plain answer set between_tools explicitly.
+export const CLAUDE_MODEL = "claude-sonnet-5-5";
 
 let cached: Anthropic | null = null;
 
@@ -788,6 +793,7 @@ export async function extractJobFieldsFromGeneratedJd(markdown: string): Promise
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 400,
+    thinking: { type: "between_tools" },
     system:
       "You extract structured fields from a job description for a recruiting CRM. " +
       "Return STRICT JSON only - no prose, no markdown fences. Never invent values.",
@@ -1243,6 +1249,7 @@ export async function generatePublicAccountingSubmittalBullets(
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 700,
+    thinking: { type: "between_tools" },
     system:
       "You write concise client-facing recruiting bullet points for public accounting submittals. " +
       "Be specific, factual, and commercially useful. Never fabricate missing facts. Never use em dashes.",
@@ -1468,6 +1475,7 @@ export async function generateClientBlurb(input: ClientBlurbInput): Promise<stri
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 100,
+    thinking: { type: "between_tools" },
     system,
     messages: [
       {

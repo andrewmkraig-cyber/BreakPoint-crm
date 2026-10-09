@@ -120,6 +120,7 @@ export async function GET() {
     const response = await anthropic.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 400,
+      thinking: { type: "between_tools" },
       system,
       messages: [{ role: "user", content: userMessage }],
     });
