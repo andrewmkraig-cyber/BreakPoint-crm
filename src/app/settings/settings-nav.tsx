@@ -21,6 +21,7 @@ export const SETTINGS_CATEGORIES = [
   { slug: "appearance",        label: "Appearance" },
   { slug: "notifications",     label: "Notifications" },
   { slug: "connectors",        label: "Connectors" },
+  { slug: "api-access",        label: "API Access" },
   { slug: "bd",                label: "BD Engine" },
   { slug: "bulk-email",        label: "Bulk Email Pacing" },
   { slug: "templates",         label: "Templates + Triggers" },

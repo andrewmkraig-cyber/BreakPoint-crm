@@ -1238,6 +1238,7 @@ model Organization {
   candidateMatches         CandidateMatch[]
   personalTrainerRules     PersonalTrainerRule[]
   claudePanelMessages      ClaudePanelMessage[]
+  apiKeys                  ApiKey[]
   instantlyReplies         InstantlyReply[]
   jobBoardStatuses         JobBoardStatus[]
   wordsOfDay               WordOfDay[]
@@ -2931,4 +2932,34 @@ model GoalActualEntry {
   @@index([goalId])
   @@index([goalId, entryDate])
   @@index([organizationId, entryDate])
+}
+
+// API Access keys (Settings > API Access). Lets an outside agent (Grok,
+// another Claude, a script) call the Assistant's read tools and the two
+// reversible create tools through /api/mcp and /api/v1/tools. The raw key
+// is shown once at creation and never stored; only its SHA-256 hash is
+// kept, so a database read cannot recover a usable key. userId is the
+// recruiter who minted it: every write the key performs is attributed to
+// them exactly as if they had asked the Assistant in the panel.
+model ApiKey {
+  id             String    @id @default(cuid())
+  organizationId String
+  userId         String
+  name           String
+  // First characters of the raw key (e.g. "ace_a1b2c3d4") so the list
+  // can identify a key without revealing it.
+  prefix         String
+  keyHash        String    @unique
+  // Subset of ["read", "write"]. read = search/pipeline/revenue tools;
+  // write = create_reminder + create_contact. Confirm-gated action tools
+  // (stage moves, deletes, bulk ops) are never reachable through a key.
+  scopes         String[]  @default(["read"])
+  lastUsedAt     DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@map("api_keys")
 }
