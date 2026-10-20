@@ -117,6 +117,8 @@ function toGuaranteeRows(rows: LedgerRow[]): GuaranteePeriodRow[] {
     // A candidate who already left has no guarantee left to count down.
     // The fall-off lives on the Replacements Owed card instead.
     if (r.fellOffAt) continue;
+    // A replacement deal has no guarantee of its own.
+    if (r.dealType === "replacement") continue;
     const guaranteeEndIso = resolveGuaranteeEnd({
       startDateIso: r.expectedStartDateIso,
       guaranteePeriodDays: r.guaranteePeriodDays,

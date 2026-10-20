@@ -296,4 +296,27 @@ assert.equal(
   assert.equal(none.some((e) => e.source === "refund"), false);
 }
 
+// --- summarizeBillingEvents: a refund moves dollars, never counts ---
+{
+  const { summarizeBillingEvents } = billing;
+  const base = {
+    placementId: "x",
+    retainedSearchId: null,
+    scheduledAt: d("2026-10-10T00:00:00Z"),
+    bookedAt: d("2026-10-10T00:00:00Z"),
+    invoiceId: null,
+  };
+  const summary = summarizeBillingEvents([
+    { ...base, amountCents: 600000, paidAt: d("2026-10-15T00:00:00Z"), status: "paid", source: "invoice" },
+    { ...base, amountCents: 1425000, paidAt: null, status: "scheduled", source: "fee_total" },
+    { ...base, amountCents: -500000, paidAt: d("2026-10-10T00:00:00Z"), status: "paid", source: "refund" },
+  ]);
+  assert.equal(summary.revenueCents, 1525000);
+  assert.equal(summary.revenueCount, 2);
+  assert.equal(summary.collectedCents, 100000);
+  assert.equal(summary.collectedCount, 1);
+  assert.equal(summary.outstandingCents, 1425000);
+  assert.equal(summary.outstandingCount, 1);
+}
+
 console.log("billing-tower-start-date: all assertions passed");

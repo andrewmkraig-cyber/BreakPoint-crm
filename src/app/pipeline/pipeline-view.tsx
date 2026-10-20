@@ -851,6 +851,7 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
       if (!p.expectedStartDate) continue;
       // Already left: nothing to count down. See Replacements Owed.
       if (p.fellOffAt) continue;
+      if (p.dealType === "replacement") continue;
       const guaranteeEndIso = resolveGuaranteeEnd({
         startDateIso: p.expectedStartDate,
         guaranteePeriodDays: p.guaranteePeriodDays,

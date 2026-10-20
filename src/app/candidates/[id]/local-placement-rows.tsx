@@ -1908,7 +1908,14 @@ function LocalPlacementDialog({
           </span>
           <select
             value={dealType}
-            onChange={(e) => setDealType(e.target.value as DealType)}
+            onChange={(e) => {
+              const next = e.target.value as DealType;
+              setDealType(next);
+              // A replacement uses up the original fill's one guarantee
+              // and carries none of its own. The save path enforces this
+              // too; zeroing the box here keeps the form honest.
+              if (next === "replacement") setGuaranteeDays("0");
+            }}
             className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           >
             {DEAL_TYPES.map((opt) => (
@@ -1917,6 +1924,11 @@ function LocalPlacementDialog({
               </option>
             ))}
           </select>
+          {dealType === "replacement" && (
+            <span className="mt-1 block text-[11px] text-amber-700 dark:text-amber-300">
+              Replacements carry no guarantee. The guarantee period saves as 0.
+            </span>
+          )}
         </label>
       </div>
 

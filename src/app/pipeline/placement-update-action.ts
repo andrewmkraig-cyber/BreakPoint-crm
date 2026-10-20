@@ -124,6 +124,13 @@ export async function updatePlacement(
         placementNotes: trimmedNotes ? trimmedNotes : null,
         candidateSource: trimmedSource ? trimmedSource : null,
         dealType: input.dealType,
+        // Every fill carries ONE replacement guarantee. A replacement is
+        // that guarantee being used, so it carries none of its own
+        // (Andrew, 2026-10-20). Zero is the "no guarantee" signal the
+        // guarantee math already understands.
+        ...(input.dealType === "replacement"
+          ? { guaranteePeriodDays: 0, customGuaranteeDate: null }
+          : {}),
         cityOverride: trimmedCity ? trimmedCity : null,
         useCustomTerms: input.useCustomTerms,
         installmentCount: input.installmentCount,
@@ -133,7 +140,9 @@ export async function updatePlacement(
         inst2DaysAfterStart: input.inst2DaysAfterStart,
         inst3Amount: input.inst3Amount,
         inst3DaysAfterStart: input.inst3DaysAfterStart,
-        customGuaranteeDate: parsedGuaranteeDate,
+        ...(input.dealType === "replacement"
+          ? {}
+          : { customGuaranteeDate: parsedGuaranteeDate }),
       },
     });
 

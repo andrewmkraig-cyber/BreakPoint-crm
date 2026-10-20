@@ -541,6 +541,12 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
                 </option>
               ))}
             </Select>
+            {dealType === "replacement" && (
+              <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+                Replacements carry no guarantee. Saving sets the guarantee period to 0
+                and clears any custom guarantee date.
+              </div>
+            )}
           </div>
 
           <div>

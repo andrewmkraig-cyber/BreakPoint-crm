@@ -1912,7 +1912,10 @@ export async function recordLocalPlacement(
         feePercentage: input.feePercentage,
         feeTotal: input.feeTotal,
         minFee: input.minFee,
-        guaranteePeriodDays: input.guaranteePeriodDays,
+        // A replacement deal carries no guarantee of its own: the one
+        // replacement guarantee on the original fill is what it is using.
+        guaranteePeriodDays:
+          input.dealType === "replacement" ? 0 : input.guaranteePeriodDays,
         billingContactName: billingName,
         billingContactEmail: billingEmail,
         billingContacts: cleanedBilling.length > 0 ? cleanedBilling : Prisma.JsonNull,
@@ -1924,6 +1927,7 @@ export async function recordLocalPlacement(
         candidateSource: trimmedSource || null,
         dealType: input.dealType,
         ...termsPayload,
+        ...(input.dealType === "replacement" ? { customGuaranteeDate: null } : {}),
         // Ace-native placements never round-trip to RF; keep the flag
         // pinned to false so the pill's source-of-truth indicator is
         // accurate (no false "synced" banner).

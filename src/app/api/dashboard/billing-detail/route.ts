@@ -146,7 +146,11 @@ export async function GET(req: NextRequest) {
   const totalCents = sorted.reduce((s, e) => s + e.amountCents, 0);
   // Average per deal, not per line: installments and split fees would
   // otherwise drag the average down below what a placement actually bills.
-  const dealCount = new Set(sorted.map((e) => e.placement.id)).size;
+  // A refund line is not a deal either: it lowers the total (so the
+  // average reads net) but never adds to the count.
+  const dealCount = new Set(
+    sorted.filter((e) => e.source !== "refund").map((e) => e.placement.id),
+  ).size;
 
   const body: BillingDetailResponse = {
     rows: sorted.map(toRow),

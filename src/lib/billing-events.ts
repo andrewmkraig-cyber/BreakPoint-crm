@@ -661,7 +661,13 @@ export async function getBillingSummaryForRange(
     endExclusive,
     prisma,
   );
+  return summarizeBillingEvents(events);
+}
 
+// Pure fold over a window's events into the Billing Tower's three tiles.
+// Exported so the refund rule (dollars yes, counts no) is unit-testable
+// without a database.
+export function summarizeBillingEvents(events: BillingEvent[]): BillingSummary {
   let revenueCents = 0;
   let revenueCount = 0;
   let collectedCents = 0;
@@ -670,15 +676,19 @@ export async function getBillingSummaryForRange(
   let outstandingCount = 0;
 
   for (const e of events) {
+    // A refund is money leaving, not a deal: it moves the dollar totals
+    // and never the counts, so the tower cannot read "3 placements" for
+    // two deals and a refund (Andrew, 2026-10-20).
+    const isRefund = e.source === "refund";
     // Revenue - booked, period-bucketed by bookedAt (placement start).
     // Counts every event regardless of payment status.
     revenueCents += e.amountCents;
-    revenueCount += 1;
+    if (!isRefund) revenueCount += 1;
     // Collected and Outstanding partition Revenue: every event lands in
     // exactly one of them, so the two always sum back to Revenue.
     if (e.status === "paid") {
       collectedCents += e.amountCents;
-      collectedCount += 1;
+      if (!isRefund) collectedCount += 1;
     } else {
       outstandingCents += e.amountCents;
       outstandingCount += 1;
