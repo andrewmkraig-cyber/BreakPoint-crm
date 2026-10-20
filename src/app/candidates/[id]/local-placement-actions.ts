@@ -1900,7 +1900,12 @@ export async function recordLocalPlacement(
     const row = await prisma.placement.update({
       where: { id: input.placementId },
       data: {
-        stage: "pending_start",
+        // Booking a deal moves the row to pending_start. Editing a deal
+        // that has already started must NOT knock it back: on 2026-10-20
+        // four hired placements dropped into Pending Start because Save
+        // was pressed on the Edit Placement dialog after marking them
+        // fell off. A hired row stays hired.
+        stage: placement.stage === "hired" ? "hired" : "pending_start",
         // Stamp placedAt only on first transition into pending_start so
         // re-edits don't keep bumping the timestamp forward. Same rule
         // the RF recordPlacement uses. An existing placedAt that sits

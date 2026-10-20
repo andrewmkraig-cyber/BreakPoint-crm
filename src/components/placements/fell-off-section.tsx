@@ -4,7 +4,7 @@
 // (the candidate-profile Edit Placement dialog and the /pipeline drawer).
 //
 // Two states:
-//   - Standing: an amber "Mark fell off" button. Clicking it expands an
+//   - Standing: an amber "Fall Off" button. Clicking it expands an
 //     inline form: date left, reason, what happened, "we owe a
 //     replacement", refund amount + date. Save calls markPlacementFellOff.
 //   - Fallen off: a status card ("Fell off Oct 3, 2026 · Laid off", chips
@@ -71,7 +71,7 @@ export function FellOffSection({
   const router = useRouter();
   // What this section last saved. The dialogs hand in the row snapshot they
   // opened with and do not re-read it until they are reopened, so without
-  // this the block would still say "Mark fell off" right after a save.
+  // this the block would still say "Fall Off" right after a save.
   // Cleared whenever the parent's snapshot actually changes.
   const [local, setLocal] = useState<FellOffSnapshot | null>(null);
   const propKey = [
@@ -134,7 +134,7 @@ export function FellOffSection({
       });
       if (!res.ok) {
         setErr(res.error);
-        toast.error("Couldn't mark fell off", { description: res.error });
+        toast.error("Couldn't save the fall off", { description: res.error });
         return;
       }
       const bits = fellOffChips({ replacementOwed, refundAmount: refundNum });
@@ -147,7 +147,7 @@ export function FellOffSection({
         refundedAt:
           refundNum && refundNum > 0 ? `${refundDate || date}T00:00:00.000Z` : null,
       });
-      toast.success("Placement marked fell off", {
+      toast.success("Placement fell off", {
         description: bits.length
           ? bits.join(" · ")
           : "The deal stays on the books. No replacement owed, no refund.",
@@ -217,9 +217,16 @@ export function FellOffSection({
             <Button type="button" variant="secondary" size="sm" onClick={openForm} disabled={pending || disabled}>
               Edit
             </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={undo} disabled={pending || disabled}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={undo}
+              disabled={pending || disabled}
+              title="Clear the fall off. The placement reads as standing again."
+            >
               {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-              Undo fell off
+              Undo
             </Button>
           </div>
         </div>
@@ -227,7 +234,7 @@ export function FellOffSection({
         <>
           <Button type="button" variant="apply" size="sm" onClick={openForm} disabled={pending || disabled}>
             <UserMinus className="h-3 w-3" />
-            Mark fell off
+            Fall Off
           </Button>
           <p className="mt-1 text-[11px] text-court-fg-muted">
             The candidate started and then left. The deal stays on the books and the
@@ -239,7 +246,7 @@ export function FellOffSection({
         <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-3 dark:border-amber-900 dark:bg-amber-950/20">
           <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-court-fg">
             <UserMinus className="h-3.5 w-3.5 text-amber-600" />
-            {fellOff ? "Edit fall-off" : "Mark this placement fell off"}
+            {fellOff ? "Edit fall off" : "Fall off"}
           </div>
           <div className="grid grid-cols-1 gap-x-3 gap-y-3 sm:grid-cols-2">
             <Input
@@ -324,7 +331,7 @@ export function FellOffSection({
           <div className="mt-3 flex items-center gap-2">
             <Button type="button" variant="apply" size="sm" onClick={save} disabled={pending || disabled || refundTooBig || !date}>
               {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserMinus className="h-3 w-3" />}
-              {fellOff ? "Save changes" : "Mark fell off"}
+              {fellOff ? "Save changes" : "Fall Off"}
             </Button>
             <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(false)} disabled={pending}>
               Never mind

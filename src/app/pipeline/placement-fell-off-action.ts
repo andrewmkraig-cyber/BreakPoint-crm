@@ -61,10 +61,10 @@ export async function markPlacementFellOff(input: MarkFellOffInput): Promise<Res
       select: { id: true, stage: true, feeTotal: true, candidateId: true },
     });
     if (!existing) return { ok: false, error: "Placement not found in this organization." };
-    if (existing.stage !== "hired" && existing.stage !== "pending_start") {
+    if (existing.stage !== "hired") {
       return {
         ok: false,
-        error: "Only a placed candidate can fall off. Use Cancel for a deal that never happened.",
+        error: "Only a candidate who has started can fall off. Use Cancel for a deal that never happened.",
       };
     }
 

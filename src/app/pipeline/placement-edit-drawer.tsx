@@ -681,7 +681,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
             ) : null}
           </div>
 
-          {context && context.fellOff !== undefined && (context.stage === "hired" || context.stage === "pending_start") ? (
+          {context && context.fellOff !== undefined && context.stage === "hired" ? (
             <FellOffSection
               placementId={context.placementId}
               feeTotal={fee.feeTotal > 0 ? fee.feeTotal : null}

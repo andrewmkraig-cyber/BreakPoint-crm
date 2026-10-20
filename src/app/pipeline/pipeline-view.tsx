@@ -655,7 +655,15 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
   // shallow copy via the shared comparators; no-distance rows fall to the
   // bottom in both directions.
   const sortedRows = useMemo(() => {
-    if (!mainSortKey) return rows;
+    // Fell-off placements stay on the Hired tab (the deal happened and was
+    // paid) but sink below the live ones, greyed, the way cancelled rows
+    // sit at the bottom. Stable partition so the chosen sort still applies
+    // within each group.
+    const sinkFellOff = (list: PipelineRow[]) =>
+      stage === "hired"
+        ? [...list.filter((r) => !r.placement?.fellOffAt), ...list.filter((r) => r.placement?.fellOffAt)]
+        : list;
+    if (!mainSortKey) return sinkFellOff(rows);
     const mul = mainSortDir === "asc" ? 1 : -1;
     const out = [...rows];
     out.sort((a, b) => {
@@ -669,8 +677,8 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
       const tb = b.lastActionAt ? new Date(b.lastActionAt).getTime() : 0;
       return (ta - tb) * mul;
     });
-    return out;
-  }, [rows, mainSortKey, mainSortDir]);
+    return sinkFellOff(out);
+  }, [rows, mainSortKey, mainSortDir, stage]);
 
   // Bulk selection — rejectable rows only. Stores Placement.id so the
   // bulk handler can call rejectLocalPlacement directly without
@@ -1071,7 +1079,7 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
                   {sortedRows.map((r) => (
                     <DataTableRow
                       key={`${r.candidateId}-${r.jobId}`}
-                      className="cursor-pointer"
+                      className={r.placement?.fellOffAt ? "cursor-pointer opacity-60" : "cursor-pointer"}
                       onClick={() => {
                         // Hired-stage rows open the inline edit drawer; every
                         // other stage keeps the existing candidate-profile

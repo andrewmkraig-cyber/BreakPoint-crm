@@ -2098,8 +2098,9 @@ function LocalPlacementDialog({
       {/* Fell off: the candidate started and then left. Sits above Cancel
           because it is the common case for a placed row and is NOT
           destructive: the deal stays on the books. Only offered once the
-          row is a real placement (pending_start / hired). */}
-      {canCancel && (dialogStage === "hired" || dialogStage === "pending_start") && (
+          candidate has actually started (hired): a Pending Start candidate
+          who backs out never started, and that is Cancel. */}
+      {canCancel && dialogStage === "hired" && (
         <FellOffSection
           className="mt-4"
           placementId={job.placementId}
@@ -2136,7 +2137,7 @@ function LocalPlacementDialog({
             Cancel
           </button>
           <p className="mt-1 text-[11px] text-court-fg-muted">
-            For a deal that never happened. Hides this row from dashboards, the placement map, the guarantee period table, and the client hired count. If the candidate started and then left, use Mark fell off instead.
+            For a deal that never happened. Hides this row from dashboards, the placement map, the guarantee period table, and the client hired count. If the candidate started and then left, use Fall Off instead.
           </p>
         </div>
       )}
