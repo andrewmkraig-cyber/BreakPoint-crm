@@ -3,8 +3,10 @@ Last updated: 2026-10-20 · Ace 103.0
 
 ## Active Build Sequence
 
-### NEXT: Replacement picker (Part 2 of Ace 103.0)
-When Deal Type = Replacement, a follow-up popup asks which candidate this person is replacing: the client's fell-off placements first, then its other hires, with a name search. Writes `Placement.replacesPlacementId` (column exists, nothing writes it yet). Flips the Replacements Owed row to Booked, adds "Replacing: <name>" to the announcement email and the ledger. A $0-fee replacement must save cleanly.
+### NEXT: Andrew books the first replacement (Katana Myers) and reads back the Replacements Owed card, Pending Start, and the Hired tab. See Next Task in ACE_STATE.md. Then the open follow-ups below.
+
+### DONE this session (Ace 103.0, fourth commit - replacement picker, 2026-10-20)
+- ~~**Replacement picker**~~ DONE - Replacing block + popup in both editors, saves `replacesPlacementId`, $0 fee by default, "Replacing: <name>" on the announcement. The ledger does not yet show "Replacement for <name>" (follow-up 30).
 
 ### DONE this session (Ace 103.0 - a placement can fall off without being cancelled, 2026-10-20)
 Full detail in ACE_STATE.md ▸ Ace 103.0.
@@ -21,7 +23,9 @@ Full detail in ACE_STATE.md ▸ Ace 103.0.
 - ~~**28. The Billing Tower's "N placements" sub-label counted a refund as a line**~~ DONE (second commit this session) - counts skip refund events; unit-tested.
 - ~~**Replacement deals carry no guarantee**~~ DONE (same commit) - forced to 0 on save in both editors, skipped by the guarantee tables.
 
-**29. `replacesPlacementId` is written by nothing yet.** The Replacements Owed card can only show "Owed" until the picker ships.
+- ~~**29. `replacesPlacementId` is written by nothing yet**~~ DONE (fourth commit) - both save paths write it.
+
+**30. The placements ledger and the Hired pill do not name the replacement link.** The ledger could read "Replacement for <name>" and the fell-off pill could read "Fell off · replaced" once a replacement is booked. The Replacements Owed card already shows it; cosmetic.
 
 ### DONE this session (Ace 102.2 - Billing Tower books by placement start, 2026-09-22)
 Full detail in ACE_STATE.md ▸ Ace 102.2.
