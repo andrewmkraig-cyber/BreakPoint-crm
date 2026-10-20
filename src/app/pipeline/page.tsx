@@ -1225,6 +1225,7 @@ function toPlacementDetails(
     replacementOwed: p.replacementOwed ?? false,
     refundAmount: p.refundAmount ?? null,
     refundedAt: p.refundedAt?.toISOString() ?? null,
+    replacesPlacementId: p.replacesPlacementId ?? null,
   };
 }
 

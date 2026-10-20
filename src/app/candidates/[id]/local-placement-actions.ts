@@ -1784,6 +1784,9 @@ export type RecordLocalPlacementInput = {
   // did not stick. Optional so callers that do not render the control leave
   // the column untouched (Prisma treats undefined as "leave unchanged").
   dealType?: DealType;
+  // The placement this deal replaces. Only meaningful with dealType
+  // "replacement"; undefined leaves the column untouched, null clears it.
+  replacesPlacementId?: string | null;
   // Custom Payment Agreement. Optional and only written when present
   // (the dialog passes them whenever its Custom Payment Agreement section
   // has been touched). When useCustomTerms is false the installment +
@@ -1809,7 +1812,13 @@ export async function recordLocalPlacement(
   if (!input.expectedStartDate) {
     return { ok: false, error: "Expected start date is required." };
   }
-  if (input.feeTotal == null || input.feeTotal <= 0) {
+  // A replacement deal may carry a $0 fee: it is the original fill's
+  // guarantee being honored. Every other deal needs a real fee.
+  if (
+    input.feeTotal == null ||
+    input.feeTotal < 0 ||
+    (input.feeTotal === 0 && input.dealType !== "replacement")
+  ) {
     return { ok: false, error: "Fee amount is required at this stage." };
   }
   const org = await getCurrentOrg();
@@ -1897,9 +1906,30 @@ export async function recordLocalPlacement(
       startConfirmedAt: placement.startConfirmedAt,
     });
 
+    // A replacement must point at a real hired placement in this org and
+    // never at itself. Checked before the write so a bad id cannot land.
+    let replacesPlacementId: string | null | undefined = undefined;
+    if (input.replacesPlacementId !== undefined) {
+      replacesPlacementId =
+        input.dealType === "replacement" ? input.replacesPlacementId : null;
+      if (replacesPlacementId) {
+        if (replacesPlacementId === input.placementId) {
+          return { ok: false, error: "A placement cannot replace itself." };
+        }
+        const original = await prisma.placement.findFirst({
+          where: { id: replacesPlacementId, organizationId: org.id, stage: "hired" },
+          select: { id: true },
+        });
+        if (!original) {
+          return { ok: false, error: "The placement being replaced was not found." };
+        }
+      }
+    }
+
     const row = await prisma.placement.update({
       where: { id: input.placementId },
       data: {
+        replacesPlacementId,
         // Booking a deal moves the row to pending_start. Editing a deal
         // that has already started must NOT knock it back: on 2026-10-20
         // four hired placements dropped into Pending Start because Save

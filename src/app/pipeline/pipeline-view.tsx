@@ -159,6 +159,7 @@ export type PlacementDetails = {
   replacementOwed: boolean;
   refundAmount: number | null;
   refundedAt: string | null;
+  replacesPlacementId: string | null;
 };
 
 export type NextInterview = {
@@ -726,6 +727,7 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
       inst3Amount: row.placement.inst3Amount,
       inst3DaysAfterStart: row.placement.inst3DaysAfterStart,
       customGuaranteeDate: row.placement.customGuaranteeDate,
+      replacesPlacementId: row.placement.replacesPlacementId,
       fellOff: {
         fellOffAt: row.placement.fellOffAt,
         fellOffReason: row.placement.fellOffReason,

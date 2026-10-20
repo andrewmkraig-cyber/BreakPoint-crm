@@ -93,6 +93,7 @@ export async function buildDealAnnouncement(
       expectedStartDate: true,
       candidateSource: true,
       dealType: true,
+      replacesPlacementId: true,
       createdBy: { select: { name: true, email: true } },
       candidate: { select: { firstName: true, lastName: true } },
       client: { select: { name: true, industry: true, leadSource: true } },
@@ -100,6 +101,18 @@ export async function buildDealAnnouncement(
     },
   });
   if (!placement) return { ok: false, error: "Placement not found." };
+
+  // "Replacing: <name>" on a replacement deal. Scalar reference, so one
+  // extra read; null when the deal is new or the pick was never made.
+  let replacingName: string | null = null;
+  if (placement.replacesPlacementId) {
+    const original = await prisma.placement.findFirst({
+      where: { id: placement.replacesPlacementId, organizationId: org.id },
+      select: { candidate: { select: { firstName: true, lastName: true } } },
+    });
+    const c = original?.candidate;
+    if (c) replacingName = c.lastName?.trim() ? `${c.firstName} ${c.lastName.trim()}` : c.firstName;
+  }
 
   if (!(await canSendAsDeals(sender.id))) {
     return {
@@ -176,6 +189,7 @@ export async function buildDealAnnouncement(
     industry: placement.client?.industry ?? null,
     leadSource: placement.candidateSource ?? placement.client?.leadSource ?? null,
     dealTypeLabel: DEAL_TYPE_LABEL[normalizeDealType(placement.dealType)],
+    replacingName,
   };
 
   return {

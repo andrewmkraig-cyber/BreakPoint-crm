@@ -739,6 +739,7 @@ export async function LocalCandidateProfile({
       replacementOwed: p.replacementOwed ?? false,
       refundAmount: p.refundAmount ?? null,
       refundedAt: p.refundedAt?.toISOString() ?? null,
+      replacesPlacementId: p.replacesPlacementId ?? null,
       // Custom Payment Agreement — threaded so the candidate-profile Edit
       // Placement dialog renders the same full field set as the /pipeline
       // drawer (getPlacementsForOrg selects all scalar columns, so these

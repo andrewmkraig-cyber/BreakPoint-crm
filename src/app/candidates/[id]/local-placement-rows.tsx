@@ -88,6 +88,7 @@ import {
 import { LEAD_SOURCES } from "@/lib/lead-sources";
 import { DEAL_TYPES, DEAL_TYPE_LABEL, normalizeDealType, type DealType } from "@/lib/deal-type";
 import { FellOffSection } from "@/components/placements/fell-off-section";
+import { ReplacementPicker } from "@/components/placements/replacement-picker";
 import {
   INTERVIEW_TIMEZONES,
   DEFAULT_INTERVIEW_TIMEZONE,
@@ -216,6 +217,8 @@ export type LocalPlacementSnapshot = {
   replacementOwed?: boolean;
   refundAmount?: number | null;
   refundedAt?: string | null;
+  // The earlier placement this deal replaces (dealType "replacement").
+  replacesPlacementId?: string | null;
 };
 
 // The retained search sold against this job, when there is one. A
@@ -1472,6 +1475,11 @@ function LocalPlacementDialog({
   const [dealType, setDealType] = useState<DealType>(
     normalizeDealType(snap?.dealType),
   );
+  // Who a replacement deal is replacing. Only saved when dealType is
+  // "replacement"; a "new" deal always saves null.
+  const [replacesPlacementId, setReplacesPlacementId] = useState<string | null>(
+    snap?.replacesPlacementId ?? null,
+  );
   // Custom Payment Agreement — full parity with the /pipeline Hired drawer
   // (Ace fix 2026-06-01). Seeded from the placement snapshot so re-opening
   // Edit Placement shows the saved installment schedule + custom guarantee
@@ -1552,7 +1560,8 @@ function LocalPlacementDialog({
     if (!startDate) {
       return setErr("Expected start date is required.");
     }
-    if (feeTotal <= 0) {
+    // A replacement may be free ($0). Every other deal needs a fee.
+    if (feeTotal < 0 || (feeTotal === 0 && dealType !== "replacement")) {
       return setErr("Fee amount is required — enter compensation + fee %, or a flat fee.");
     }
     // Lead Source required (Ace 67.17) so the Financial Performance
@@ -1595,6 +1604,7 @@ function LocalPlacementDialog({
         notes,
         candidateSource: source.trim() || null,
         dealType,
+        replacesPlacementId: dealType === "replacement" ? replacesPlacementId : null,
         // Custom Payment Agreement. Always sent (useCustomTerms defined) so
         // the section round-trips; the action gates inst2/3 on the count and
         // clears every term column when the toggle is off. Days map to Int
@@ -1914,7 +1924,12 @@ function LocalPlacementDialog({
               // A replacement uses up the original fill's one guarantee
               // and carries none of its own. The save path enforces this
               // too; zeroing the box here keeps the form honest.
-              if (next === "replacement") setGuaranteeDays("0");
+              if (next === "replacement") {
+                setGuaranteeDays("0");
+                // A replacement is the original fill's guarantee being
+                // honored, so it is free unless the recruiter types a fee.
+                setFeeAmountOverride("0");
+              }
             }}
             className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           >
@@ -1932,6 +1947,16 @@ function LocalPlacementDialog({
         </label>
       </div>
 
+      {dealType === "replacement" && (
+        <ReplacementPicker
+          className="mt-2"
+          placementId={job.placementId.startsWith("local-applied-") ? null : job.placementId}
+          value={replacesPlacementId}
+          onChange={(next) => setReplacesPlacementId(next?.placementId ?? null)}
+          disabled={isPending}
+        />
+      )}
+
       {/* Fee summary card hoisted ABOVE billing/hiring (Ace 67.17) so the
           fee total is visible on first open without scrolling. Single
           horizontal row: label + breakdown left, big total right. */}
@@ -1941,7 +1966,9 @@ function LocalPlacementDialog({
             {usedOverride ? "Fee (flat override)" : "Calculated fee"}
           </div>
           <div className="truncate text-[11px] text-court-fg-muted">
-            {usedOverride
+            {dealType === "replacement" && feeTotal === 0
+              ? "Free replacement under the original guarantee. Type a fee above if the client is paying."
+              : usedOverride
               ? "Flat-fee amount; compensation × fee % ignored."
               : salaryNum && feeBasisAmount && pctNum
                 ? `${formatFeeBasisForDialog(salaryNum, acceptedCompensationType, currency)} × ${pctNum}% = ${formatMoney(rawFee, currency)}`

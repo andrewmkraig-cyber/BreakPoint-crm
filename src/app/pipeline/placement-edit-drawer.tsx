@@ -16,6 +16,7 @@ import { useComposerManager } from "@/lib/composer-manager";
 import { LEAD_SOURCES } from "@/lib/lead-sources";
 import { DEAL_TYPES, DEAL_TYPE_LABEL, normalizeDealType, type DealType } from "@/lib/deal-type";
 import { FellOffSection } from "@/components/placements/fell-off-section";
+import { ReplacementPicker } from "@/components/placements/replacement-picker";
 import { type FellOffSnapshot } from "@/lib/placement-fell-off";
 import {
   formatPlacementCompensation,
@@ -67,6 +68,9 @@ export type PlacementDrawerContext = {
   // Fall-off state. Optional: consumers that do not thread it get no
   // Fell off block, never a wrong one.
   fellOff?: FellOffSnapshot | null;
+  // The placement this deal replaces (dealType "replacement"). Optional:
+  // absent means the consumer does not thread it and Save leaves it alone.
+  replacesPlacementId?: string | null;
 };
 
 // Lead source options — canonical list shared with the candidate-
@@ -121,6 +125,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
   const [notes, setNotes] = useState("");
   const [source, setSource] = useState("");
   const [dealType, setDealType] = useState<DealType>("new");
+  const [replacesPlacementId, setReplacesPlacementId] = useState<string | null>(null);
   const [city, setCity] = useState("");
 
   // Custom Payment Agreement section. Collapsed by default; the fields
@@ -165,6 +170,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
     setNotes(context.placementNotes ?? "");
     setSource(context.candidateSource ?? "");
     setDealType(normalizeDealType(context.dealType));
+    setReplacesPlacementId(context.replacesPlacementId ?? null);
     setCity(context.cityOverride ?? "");
 
     setUseCustomTerms(context.useCustomTerms ?? false);
@@ -296,6 +302,9 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
         placementNotes: notes,
         candidateSource: source.trim() ? source.trim() : null,
         dealType,
+        ...(context.replacesPlacementId !== undefined
+          ? { replacesPlacementId: dealType === "replacement" ? replacesPlacementId : null }
+          : {}),
         cityOverride: city.trim() ? city.trim() : null,
         ...termsPayload,
       });
@@ -548,6 +557,15 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
               </div>
             )}
           </div>
+
+          {dealType === "replacement" && context ? (
+            <ReplacementPicker
+              placementId={context.placementId}
+              value={replacesPlacementId}
+              onChange={(next) => setReplacesPlacementId(next?.placementId ?? null)}
+              disabled={pending}
+            />
+          ) : null}
 
           <div>
             <FieldLabel>Notes</FieldLabel>

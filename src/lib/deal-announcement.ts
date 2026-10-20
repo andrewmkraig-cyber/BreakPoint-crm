@@ -60,6 +60,8 @@ export type DealAnnouncementFacts = {
   // "New placement" or "Replacement". Always set: Placement.dealType
   // carries a default, and normalizeDealType resolves anything older.
   dealTypeLabel: string;
+  // Name of the candidate this deal replaces. Null on a new placement.
+  replacingName: string | null;
 };
 
 function money(amount: number): string {
@@ -119,6 +121,7 @@ export function dealAnnouncementBodyHtml(facts: DealAnnouncementFacts): string {
 
   const rows: Array<[string, string | null]> = [
     ["Deal type", facts.dealTypeLabel],
+    ...(facts.replacingName ? ([["Replacing", facts.replacingName]] as Array<[string, string | null]>) : []),
     ["Placement date", facts.placementDate],
     ["Start date", facts.startDate],
     ["Industry", facts.industry],

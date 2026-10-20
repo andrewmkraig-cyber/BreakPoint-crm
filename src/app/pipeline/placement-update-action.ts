@@ -33,6 +33,8 @@ export type UpdatePlacementInput = {
   // "new" | "replacement". Optional so a caller that doesn't render the
   // control leaves the column untouched.
   dealType?: DealType;
+  // The placement this deal replaces. undefined = leave alone, null = clear.
+  replacesPlacementId?: string | null;
   // Free-form per-placement city override. Null clears the override
   // so the dashboard falls back to client.location.city.
   cityOverride: string | null;
@@ -86,6 +88,24 @@ export async function updatePlacement(
     const trimmedSource = input.candidateSource?.trim() ?? "";
     const trimmedCity = input.cityOverride?.trim() ?? "";
 
+    let replacesPlacementId: string | null | undefined = undefined;
+    if (input.replacesPlacementId !== undefined) {
+      replacesPlacementId =
+        input.dealType === "replacement" ? input.replacesPlacementId : null;
+      if (replacesPlacementId) {
+        if (replacesPlacementId === existing.id) {
+          return { ok: false, error: "A placement cannot replace itself." };
+        }
+        const original = await prisma.placement.findFirst({
+          where: { id: replacesPlacementId, organizationId: org.id, stage: "hired" },
+          select: { id: true },
+        });
+        if (!original) {
+          return { ok: false, error: "The placement being replaced was not found." };
+        }
+      }
+    }
+
     // undefined => key absent => leave the column unchanged. A provided
     // null or empty string clears it; a valid date string sets it.
     let parsedGuaranteeDate: Date | null | undefined = undefined;
@@ -124,6 +144,7 @@ export async function updatePlacement(
         placementNotes: trimmedNotes ? trimmedNotes : null,
         candidateSource: trimmedSource ? trimmedSource : null,
         dealType: input.dealType,
+        replacesPlacementId,
         // Every fill carries ONE replacement guarantee. A replacement is
         // that guarantee being used, so it carries none of its own
         // (Andrew, 2026-10-20). Zero is the "no guarantee" signal the
