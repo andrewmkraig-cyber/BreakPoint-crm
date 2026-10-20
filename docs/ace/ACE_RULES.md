@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-09-22 · Ace 102.2
+Last updated: 2026-10-20 · Ace 103.0
 
 ## Ace Fix Protocol (added 2026-05-23 · Ace 66.0 - standing convention, READ FIRST)
 When a chat begins with "this is an Ace fix" (or similar wording), Claude must read all four canonical docs - ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, and ACE_DESIGN.md - in full BEFORE making any code or doc changes. The fix must follow the current rules, design system, and shipped state recorded in those docs. No edits until all four have been read.
@@ -334,6 +334,21 @@ Read any row the notification quotes BEFORE the mutation, not after.
 - **TabStrip is the single source of truth.** All tab strips and filter pill groups across the app route through `src/components/ui/tab-strip.tsx`. No one-off pill groups anywhere — if a new surface needs filter pills or a tabbed selector, use TabStrip (link mode for navigation, controlled mode for in-page state).
 - **Clubhouse is the card-sizing reference.** Every dashboard / list-page card matches the Clubhouse tab's two-tier pattern: small KpiTile chrome (`rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px..0_8px_20px..]`, 10px extrabold label, 26px serif value) for inline KPI rows; big-panel chrome (`rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px..0_12px_32px..]`) for everything else. No bordered `shadow-sm` panels on dashboard / placements / invoices surfaces.
 - **No em dashes (—) in user-facing copy.** Hyphens (-) only. The em-dash placeholder for null values inside table cells stays (it's a typographic empty-state cue, not copy). This rule extends the Communication Rules ban into all rendered product copy — headers, subtitles, hints, tooltips, toasts, empty-state strings.
+
+## Fell off is not Cancel (added 2026-10-20 · Ace 103.0 - PERMANENT)
+Two different things happen to a placed candidate and they must never share a button.
+- **Cancel** = the deal never happened. Stage flips to `cancelled`, the row is hidden from dashboards, the map, the guarantee table and the client hired count. Use it when the candidate never started or the deal collapsed before billing.
+- **Fell off** = the candidate started and then left (laid off, resigned, let go). Stage stays `hired`. The deal stays on every dashboard because the client was billed and usually paid. What changes is the follow-up, recorded on the row: `replacementOwed` and an optional `refundAmount` / `refundedAt`.
+- **A refund is a negative billing event, never an edit to the invoice.** The invoice is history. `refundEvent` in `src/lib/billing-events.ts` books the refund as its own "paid" negative line on the refund date, so every revenue figure reads net and a closed quarter keeps its number. Do not zero a fee, void a paid invoice, or cancel a placement to express a refund.
+- **A free replacement is a "replacement" deal with a $0 fee** that points at the original through `Placement.replacesPlacementId`. It is never a second fee on the books.
+
+## Headless browser verification (added 2026-10-20 · Ace 103.0)
+Google-only sign-in used to block the real-browser pass. It does not have to. To drive the app in a real browser from the terminal:
+1. Start the dev server on a spare port (`npx next dev -p 3005`).
+2. In a throwaway Playwright script, `encode({ token: { sub, id, email, name, role: "ADMIN" }, secret: process.env.NEXTAUTH_SECRET })` from `next-auth/jwt` for the signed-in user, and set it as the `next-auth.session-token` cookie on `localhost`. Run with `node --env-file=.env.local` from inside the repo so `@prisma/client` and the secret resolve.
+3. Launch `chromium.launch({ channel: "chrome" })` (the installed Google Chrome). Playwright's own headless shell crashes on the candidate page's PDF viewer; Chrome does not.
+4. Screenshot every surface the change touches, in both modes where a button is involved, and read the screenshots before committing. Keep the script out of the repo (it carries no secret, but it is not product code); delete it before `git add`.
+Form fields built on the shared `<Input label>` are not `<label for>` pairs, so `getByLabel` does not find them. Scope to the form's container and select by input type instead.
 
 ## Visual Work Rules (added 2026-05-17 · Ace 53.0)
 - **Read actual file contents before writing any prompt.** The Ace 53 redesign attempt failed because prompts were written against assumed file shapes; the real files diverged and changes drifted. Every visual-pass prompt must start by reading the target file in full so the diff lands on the actual code, not the imagined code.

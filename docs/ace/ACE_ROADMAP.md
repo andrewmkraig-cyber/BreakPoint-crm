@@ -1,7 +1,25 @@
 # Ace Roadmap
-Last updated: 2026-09-22 · Ace 102.2
+Last updated: 2026-10-20 · Ace 103.0
 
 ## Active Build Sequence
+
+### NEXT: Replacement picker (Part 2 of Ace 103.0)
+When Deal Type = Replacement, a follow-up popup asks which candidate this person is replacing: the client's fell-off placements first, then its other hires, with a name search. Writes `Placement.replacesPlacementId` (column exists, nothing writes it yet). Flips the Replacements Owed row to Booked, adds "Replacing: <name>" to the announcement email and the ledger. A $0-fee replacement must save cleanly.
+
+### DONE this session (Ace 103.0 - a placement can fall off without being cancelled, 2026-10-20)
+Full detail in ACE_STATE.md ▸ Ace 103.0.
+- ~~**Mark a placement fell off, distinct from Cancel**~~ DONE (`469f9801`) - six new Placement columns, migration applied; inline "Mark fell off" block above Cancel in both placement editors with date, reason, notes, replacement owed, refund amount + date; status card with Edit and Undo.
+- ~~**A refund comes off revenue**~~ DONE (`469f9801`) - one negative "paid" billing event on the refund date; Revenue, Collected, the ledger fee and the drill-down read net. Unit-tested.
+- ~~**Surfaces**~~ DONE (`469f9801`) - amber "Fell off · owed" pill on Hired and the ledger; fell-off rows leave the guarantee countdown; Replacements Owed card on the placements tab.
+- ~~**Real-browser verification despite Google-only sign-in**~~ DONE - forged NextAuth JWT + Playwright in the installed Chrome. See ACE_RULES.md "Headless browser verification".
+
+### Open follow-ups from Ace 103.0
+
+**27. Tyler Engstrom is not yet marked.** Date he left and refund date were not given. Andrew enters it from the dialog (Next Task in ACE_STATE.md).
+
+**28. The Billing Tower's "N placements" sub-label counts a refund as a line.** With one refund in Q4 2026 the tower reads "3 placements" for two deals and a refund. Cosmetic; the drill-down labels the refund line correctly.
+
+**29. `replacesPlacementId` is written by nothing yet.** The Replacements Owed card can only show "Owed" until the picker ships.
 
 ### DONE this session (Ace 102.2 - Billing Tower books by placement start, 2026-09-22)
 Full detail in ACE_STATE.md ▸ Ace 102.2.
