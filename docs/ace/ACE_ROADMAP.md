@@ -15,7 +15,8 @@ Full detail in ACE_STATE.md ▸ Ace 103.0.
 
 ### Open follow-ups from Ace 103.0
 
-**27. Tyler Engstrom is not yet marked.** Date he left and refund date were not given. Andrew enters it from the dialog (Next Task in ACE_STATE.md).
+- ~~**27. Tyler Engstrom is not yet marked**~~ DONE by Andrew (resigned 9/29, $5,000 refunded 9/29, replacement owed), plus David Foreman, William Abston, Isaac LyBurtus.
+- ~~**Edit Placement Save demoted hired rows to Pending Start**~~ DONE (third commit) - pre-existing; hired stays hired. The four rows were restored by script.
 
 - ~~**28. The Billing Tower's "N placements" sub-label counted a refund as a line**~~ DONE (second commit this session) - counts skip refund events; unit-tested.
 - ~~**Replacement deals carry no guarantee**~~ DONE (same commit) - forced to 0 on save in both editors, skipped by the guarantee tables.

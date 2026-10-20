@@ -342,6 +342,8 @@ Two different things happen to a placed candidate and they must never share a bu
 - **A refund is a negative billing event, never an edit to the invoice.** The invoice is history. `refundEvent` in `src/lib/billing-events.ts` books the refund as its own "paid" negative line on the refund date, so every revenue figure reads net and a closed quarter keeps its number. Do not zero a fee, void a paid invoice, or cancel a placement to express a refund.
 - **A free replacement is a "replacement" deal with a $0 fee** that points at the original through `Placement.replacesPlacementId`. It is never a second fee on the books.
 - **Every fill carries exactly one replacement guarantee, and a replacement carries none** (Andrew, 2026-10-20). Both save paths force `guaranteePeriodDays = 0` and clear `customGuaranteeDate` when `dealType` is `replacement`; the guarantee tables skip replacement rows. Never add a guarantee to a replacement deal.
+- **Editing a deal never moves it backwards.** `recordLocalPlacement` books a deal into `pending_start`; a row that is already `hired` stays `hired` on re-save. Four hired placements were knocked back on 2026-10-20 by this. Any new save path on Placement must preserve a later stage.
+- **Fall Off is offered only on `hired` rows**, and fell-off rows stay on the Hired tab, greyed, below the live ones. The replacement candidate is the one who goes through Pending Start.
 - **A refund moves dollars, never counts.** `summarizeBillingEvents` and the drill-down's deal count skip `source === "refund"`. The tower must never read "3 placements" for two deals and a refund.
 
 ## Headless browser verification (added 2026-10-20 · Ace 103.0)
