@@ -15,6 +15,8 @@ import { buildDealAnnouncement } from "@/app/pipeline/deal-announcement-action";
 import { useComposerManager } from "@/lib/composer-manager";
 import { LEAD_SOURCES } from "@/lib/lead-sources";
 import { DEAL_TYPES, DEAL_TYPE_LABEL, normalizeDealType, type DealType } from "@/lib/deal-type";
+import { FellOffSection } from "@/components/placements/fell-off-section";
+import { type FellOffSnapshot } from "@/lib/placement-fell-off";
 import {
   formatPlacementCompensation,
   normalizePlacementCompensationType,
@@ -62,6 +64,9 @@ export type PlacementDrawerContext = {
   inst3Amount?: number | null;
   inst3DaysAfterStart?: number | null;
   customGuaranteeDate?: string | null;
+  // Fall-off state. Optional: consumers that do not thread it get no
+  // Fell off block, never a wrong one.
+  fellOff?: FellOffSnapshot | null;
 };
 
 // Lead source options — canonical list shared with the candidate-
@@ -669,6 +674,16 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
               </div>
             ) : null}
           </div>
+
+          {context && context.fellOff !== undefined && (context.stage === "hired" || context.stage === "pending_start") ? (
+            <FellOffSection
+              placementId={context.placementId}
+              feeTotal={fee.feeTotal > 0 ? fee.feeTotal : null}
+              snapshot={context.fellOff}
+              disabled={pending}
+              onSaved={onClose}
+            />
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2.5 border-t border-court-border bg-court-surface-subtle px-6 py-4">

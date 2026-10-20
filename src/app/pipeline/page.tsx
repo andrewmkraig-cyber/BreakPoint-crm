@@ -1219,6 +1219,12 @@ function toPlacementDetails(
     inst3DaysAfterStart: p.inst3DaysAfterStart ?? null,
     customGuaranteeDate: p.customGuaranteeDate?.toISOString() ?? null,
     guaranteePeriodDays: p.guaranteePeriodDays ?? null,
+    fellOffAt: p.fellOffAt?.toISOString() ?? null,
+    fellOffReason: p.fellOffReason ?? null,
+    fellOffNotes: p.fellOffNotes ?? null,
+    replacementOwed: p.replacementOwed ?? false,
+    refundAmount: p.refundAmount ?? null,
+    refundedAt: p.refundedAt?.toISOString() ?? null,
   };
 }
 

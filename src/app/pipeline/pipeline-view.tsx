@@ -3,11 +3,16 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
-import { Bookmark, CalendarClock, CheckCircle2, ChevronDown, ChevronUp, DollarSign, Edit3, Handshake, Loader2, Paperclip, Search, Send, UserX, X } from "lucide-react";
+import { Bookmark, CalendarClock, CheckCircle2, ChevronDown, ChevronUp, DollarSign, Edit3, Handshake, Loader2, Paperclip, Search, Send, UserX, X, UserMinus } from "lucide-react";
 import { INPUT_FRAME_CLASS, INPUT_CONTROL_CLASS } from "@/components/ui/input";
 import { toast } from "sonner";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
 import { StageAgePill } from "@/components/ui/stage-age-pill";
+import {
+  FELL_OFF_REASON_LABEL,
+  fellOffChips,
+  normalizeFellOffReason,
+} from "@/lib/placement-fell-off";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -147,6 +152,13 @@ export type PlacementDetails = {
   // Period" countdown card below the hired table (resolved against
   // customGuaranteeDate when both are present).
   guaranteePeriodDays: number | null;
+  // Fall-off state (src/lib/placement-fell-off.ts). ISO strings.
+  fellOffAt: string | null;
+  fellOffReason: string | null;
+  fellOffNotes: string | null;
+  replacementOwed: boolean;
+  refundAmount: number | null;
+  refundedAt: string | null;
 };
 
 export type NextInterview = {
@@ -332,6 +344,14 @@ type UniformLeftRowShape = {
   clientName: string;
   clientIsVerified: boolean;
   isKept?: boolean;
+  // Optional: only the placement-stage tables pass a placement, and only
+  // those can show the "Fell off" pill beside the name.
+  placement?: {
+    fellOffAt: string | null;
+    fellOffReason: string | null;
+    replacementOwed: boolean;
+    refundAmount: number | null;
+  } | null;
   // Optional Location-cell sub-line ("(N miles)"). Set on main-pipeline
   // rows by pipeline/page.tsx; intake (AppliedRow/KeptRow) rows leave it
   // undefined so the cell renders only "City, ST" on those tabs. Always
@@ -465,6 +485,20 @@ function UniformLeftRowCells({
               </span>
             )}
           </Link>
+          {row.placement?.fellOffAt && (
+            <div className="mt-1">
+              <span
+                className="inline-flex items-center gap-0.5 whitespace-nowrap rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+                title={[
+                  `Fell off ${formatDate(row.placement.fellOffAt)}`,
+                  FELL_OFF_REASON_LABEL[normalizeFellOffReason(row.placement.fellOffReason)],
+                  ...fellOffChips(row.placement),
+                ].join(" · ")}
+              >
+                <UserMinus className="h-2.5 w-2.5" /> Fell off{row.placement.replacementOwed ? " · owed" : ""}
+              </span>
+            </div>
+          )}
         </div>
       </td>
 
@@ -684,6 +718,14 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
       inst3Amount: row.placement.inst3Amount,
       inst3DaysAfterStart: row.placement.inst3DaysAfterStart,
       customGuaranteeDate: row.placement.customGuaranteeDate,
+      fellOff: {
+        fellOffAt: row.placement.fellOffAt,
+        fellOffReason: row.placement.fellOffReason,
+        fellOffNotes: row.placement.fellOffNotes,
+        replacementOwed: row.placement.replacementOwed,
+        refundAmount: row.placement.refundAmount,
+        refundedAt: row.placement.refundedAt,
+      },
     });
     setDrawerOpen(true);
   }
@@ -807,6 +849,8 @@ export function PipelineView({ rows, appliedRows, keptRows, cancelledRows, stage
       if (!p) continue;
       if (p.invoiceStatus !== "SENT" && p.invoiceStatus !== "PAID") continue;
       if (!p.expectedStartDate) continue;
+      // Already left: nothing to count down. See Replacements Owed.
+      if (p.fellOffAt) continue;
       const guaranteeEndIso = resolveGuaranteeEnd({
         startDateIso: p.expectedStartDate,
         guaranteePeriodDays: p.guaranteePeriodDays,

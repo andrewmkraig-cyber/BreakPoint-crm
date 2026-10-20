@@ -237,4 +237,63 @@ assert.equal(
   0,
 );
 
+// --- A fall-off refund is one negative "paid" event on the refund date ---
+// Tyler Engstrom: $10,000 paid September 15 for an August 12 start, then
+// $5,000 sent back after he was laid off. The invoice stays as sent; the
+// refund is its own line, so the sum reads $5,000 net and the refund books
+// in the quarter the cash actually left, not the deal's start quarter.
+{
+  const events = expandPlacementBillingEvents({
+    ...davidBase,
+    id: "tyler",
+    feeTotal: 10000,
+    expectedStartDate: d("2026-08-12T00:00:00Z"),
+    placedAt: d("2026-08-04T15:37:20Z"),
+    startConfirmedAt: null,
+    fellOffAt: d("2026-10-01T00:00:00Z"),
+    refundAmount: 5000,
+    refundedAt: d("2026-10-10T00:00:00Z"),
+    invoices: [
+      {
+        id: "INV-1061",
+        status: "PAID",
+        feeAmount: new Prisma.Decimal("10000"),
+        dueDate: d("2026-09-11T00:00:00Z"),
+        sentAt: d("2026-08-12T14:00:00Z"),
+        paidAt: d("2026-09-15T14:13:23Z"),
+        isFuture: false,
+        createdAt: d("2026-08-12T13:59:00Z"),
+      },
+    ],
+  });
+  assert.equal(events.length, 2);
+  const refund = events.find((e) => e.source === "refund");
+  assert.ok(refund, "refund event present");
+  assert.equal(refund.amountCents, -500000);
+  assert.equal(refund.status, "paid");
+  assert.equal(day(refund.bookedAt), "2026-10-10");
+  assert.equal(day(refund.paidAt!), "2026-10-10");
+  assert.equal(day(events[0].bookedAt), "2026-08-12");
+  assert.equal(events.reduce((s, e) => s + e.amountCents, 0), 500000);
+}
+
+// --- No refund date falls back to the fall-off date; no amount means no event ---
+{
+  const withFallback = expandPlacementBillingEvents({
+    ...davidBase,
+    fellOffAt: d("2026-10-03T00:00:00Z"),
+    refundAmount: 1000,
+    refundedAt: null,
+  });
+  const refund = withFallback.find((e) => e.source === "refund");
+  assert.ok(refund);
+  assert.equal(day(refund.bookedAt), "2026-10-03");
+  const none = expandPlacementBillingEvents({
+    ...davidBase,
+    fellOffAt: d("2026-10-03T00:00:00Z"),
+    refundAmount: null,
+  });
+  assert.equal(none.some((e) => e.source === "refund"), false);
+}
+
 console.log("billing-tower-start-date: all assertions passed");

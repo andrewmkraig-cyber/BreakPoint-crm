@@ -464,6 +464,28 @@ model Placement {
   // to the UI and the announcement email for no real-world case.
   dealType String? @default("new") // "new" | "replacement"
 
+  // Fell off: the candidate started and then left (laid off, resigned,
+  // let go). This is NOT a cancel. A cancelled deal never happened and is
+  // hidden everywhere; a fell-off deal happened, was billed and usually
+  // paid, and stays on the books. What changes is the follow-up: the
+  // client may be owed a free replacement, and part of the fee may have
+  // been refunded. Null fellOffAt means the placement is still standing.
+  fellOffAt       DateTime?
+  fellOffReason   String? // "laid_off" | "resigned" | "terminated" | "other"
+  fellOffNotes    String?   @db.Text
+  // True when the client paid and Ace owes them a replacement candidate.
+  replacementOwed Boolean   @default(false)
+  // Whole dollars sent back to the client after the fall-off, if any. A
+  // refund books as a NEGATIVE billing event on refundedAt so the Billing
+  // Tower and the placements ledger read the net figure.
+  refundAmount    Int?
+  refundedAt      DateTime?
+
+  // Set on a "replacement" deal: the earlier placement this candidate is
+  // replacing. Scalar reference, no Prisma relation, so the self-join stays
+  // out of every include. Null on every "new" deal.
+  replacesPlacementId String?
+
   // Set when this placement is the fill for a retained engagement. Null
   // for every contingent placement (the overwhelming majority). Scalar
   // FK, no Prisma relation — see the RetainedSearch model comment.
@@ -505,6 +527,7 @@ model Placement {
   @@index([candidateId, stage])
   @@index([organizationId])
   @@index([retainedSearchId])
+  @@index([replacesPlacementId])
 }
 
 // Ace-native candidate record. Created by /candidates/new — no RF

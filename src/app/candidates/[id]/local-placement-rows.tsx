@@ -87,6 +87,7 @@ import {
 // flow); this file is the modal the recruiter actually uses.
 import { LEAD_SOURCES } from "@/lib/lead-sources";
 import { DEAL_TYPES, DEAL_TYPE_LABEL, normalizeDealType, type DealType } from "@/lib/deal-type";
+import { FellOffSection } from "@/components/placements/fell-off-section";
 import {
   INTERVIEW_TIMEZONES,
   DEFAULT_INTERVIEW_TIMEZONE,
@@ -207,6 +208,14 @@ export type LocalPlacementSnapshot = {
   inst3Amount?: number | null;
   inst3DaysAfterStart?: number | null;
   customGuaranteeDate?: string | null;
+  // Fall-off state (src/lib/placement-fell-off.ts). ISO strings. Absent on
+  // callers that predate the columns; the dialog treats that as standing.
+  fellOffAt?: string | null;
+  fellOffReason?: string | null;
+  fellOffNotes?: string | null;
+  replacementOwed?: boolean;
+  refundAmount?: number | null;
+  refundedAt?: string | null;
 };
 
 // The retained search sold against this job, when there is one. A
@@ -1628,6 +1637,8 @@ function LocalPlacementDialog({
   // mirrors the same guard the DismissPlacementButton uses elsewhere in
   // this file (~line 885).
   const canCancel = editing && !job.placementId.startsWith("local-applied-");
+  // Stage of the row this dialog opened on; gates the Fell off block.
+  const dialogStage = (job.stage ?? "").trim().toLowerCase();
   // The placement this dialog would announce. Normally the row it opened
   // on; right after a fresh booking it is the cuid recordLocalPlacement
   // just returned (job.placementId is still the pre-save value, and on a
@@ -2072,6 +2083,26 @@ function LocalPlacementDialog({
           </p>
         </div>
       )}
+      {/* Fell off: the candidate started and then left. Sits above Cancel
+          because it is the common case for a placed row and is NOT
+          destructive: the deal stays on the books. Only offered once the
+          row is a real placement (pending_start / hired). */}
+      {canCancel && (dialogStage === "hired" || dialogStage === "pending_start") && (
+        <FellOffSection
+          className="mt-4"
+          placementId={job.placementId}
+          feeTotal={feeTotal > 0 ? feeTotal : null}
+          snapshot={{
+            fellOffAt: snap?.fellOffAt ?? null,
+            fellOffReason: snap?.fellOffReason ?? null,
+            fellOffNotes: snap?.fellOffNotes ?? null,
+            replacementOwed: snap?.replacementOwed ?? false,
+            refundAmount: snap?.refundAmount ?? null,
+            refundedAt: snap?.refundedAt ?? null,
+          }}
+          disabled={isPending || cancelPending}
+        />
+      )}
       {/* Cancel Placement — destructive action sits at the bottom of the
           body so the Footer's primary Save action stays unambiguous.
           Visible only after the placement row exists (canCancel). Red
@@ -2093,7 +2124,7 @@ function LocalPlacementDialog({
             Cancel
           </button>
           <p className="mt-1 text-[11px] text-court-fg-muted">
-            Hides this row from dashboards, the placement map, the guarantee period table, and the client hired count. Reversible only by toggling Show Cancelled on /pipeline.
+            For a deal that never happened. Hides this row from dashboards, the placement map, the guarantee period table, and the client hired count. If the candidate started and then left, use Mark fell off instead.
           </p>
         </div>
       )}

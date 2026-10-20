@@ -48,7 +48,9 @@ export type BillingEventStatus =
   | "future_draft"
   | "scheduled";
 
-export type BillingEventSource = "invoice" | "installment" | "fee_total";
+// "refund" is money sent BACK to the client after a placement fell off.
+// Its amountCents is negative so every sum that includes it reads the net.
+export type BillingEventSource = "invoice" | "installment" | "fee_total" | "refund";
 
 export type BillingEvent = {
   // Null for retained-search events: a retained engagement is billed
@@ -108,6 +110,11 @@ export type PlacementForBilling = {
   inst2DaysAfterStart: number | null;
   inst3Amount: number | null;
   inst3DaysAfterStart: number | null;
+  // Fall-off refund. Optional so hand-built shapes (tests, older callers)
+  // keep compiling; absent means no refund. See src/lib/placement-fell-off.ts.
+  refundAmount?: number | null;
+  refundedAt?: Date | null;
+  fellOffAt?: Date | null;
   invoices: Array<{
     id: string;
     status: "DRAFT" | "SENT" | "PAID" | "VOID";
@@ -141,6 +148,9 @@ export const BILLING_EVENT_PLACEMENT_SELECT = {
   inst2DaysAfterStart: true,
   inst3Amount: true,
   inst3DaysAfterStart: true,
+  refundAmount: true,
+  refundedAt: true,
+  fellOffAt: true,
   invoices: {
     select: {
       id: true,
@@ -292,6 +302,38 @@ export function retainedInvoiceWindowWhere(
 export function expandPlacementBillingEvents(
   p: PlacementForBilling,
 ): BillingEvent[] {
+  const events = expandPlacementFeeEvents(p);
+  const refund = refundEvent(p);
+  return refund ? [...events, refund] : events;
+}
+
+// A fall-off refund is one NEGATIVE event, booked and "paid" on the day the
+// money went back (refundedAt, falling back to the fall-off date). It sits
+// beside the fee events rather than editing them: the original invoice is
+// history and stays as it was sent, so Revenue, Collected and the ledger
+// all read fee minus refund, and the drill-down shows the refund as its
+// own line. Booking on the refund date, not the deal's start date, is
+// deliberate: a quarter that was already closed keeps its number and the
+// refund lands in the quarter the cash actually left.
+function refundEvent(p: PlacementForBilling): BillingEvent | null {
+  const amount = p.refundAmount;
+  if (amount == null || !(amount > 0)) return null;
+  const at = p.refundedAt ?? p.fellOffAt ?? null;
+  if (!at) return null;
+  return {
+    placementId: p.id,
+    retainedSearchId: null,
+    amountCents: -dollarsToCents(amount),
+    scheduledAt: at,
+    bookedAt: at,
+    paidAt: at,
+    status: "paid",
+    source: "refund",
+    invoiceId: null,
+  };
+}
+
+function expandPlacementFeeEvents(p: PlacementForBilling): BillingEvent[] {
   // Branch 0: a placement that filled a retained search contributes NOTHING.
   // The engagement was invoiced against the retained search before this
   // candidate existed, and those invoices are counted directly (see
@@ -524,6 +566,9 @@ async function loadBillingEventsInWindow(
         { expectedStartDate: { gte: aYearBeforeStart, lt: endExclusive } },
         { placedAt: { gte: aYearBeforeStart, lt: endExclusive } },
         { startConfirmedAt: { gte: aYearBeforeStart, lt: endExclusive } },
+        // A refund can land long after the start; make sure the row is
+        // loaded so its negative event can fall inside this window.
+        { refundedAt: { gte: aYearBeforeStart, lt: endExclusive } },
       ],
     },
     select: BILLING_PLACEMENT_SELECT,

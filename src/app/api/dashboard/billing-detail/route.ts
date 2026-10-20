@@ -162,6 +162,7 @@ export async function GET(req: NextRequest) {
 
 function toRow(e: BillingEventWithPlacement, i: number): BillingDetailRow {
   const p = e.placement;
+  const refund = e.source === "refund";
   const subtitle = [p.client?.name?.trim(), p.job?.title?.trim()]
     .filter((s): s is string => Boolean(s))
     .join(" - ");
@@ -169,7 +170,11 @@ function toRow(e: BillingEventWithPlacement, i: number): BillingDetailRow {
     // A placement can contribute several events (installments), so the
     // placement id alone is not unique — pair it with the index.
     key: `${p.id}:${e.invoiceId ?? e.source}:${i}`,
-    title: candLabel(p.candidate, p.candidateRfId),
+    // A fall-off refund is a negative line. Name it so the list reads
+    // "Refund · Tyler Engstrom  -$5,000" instead of a bare negative number.
+    title: refund
+      ? `Refund · ${candLabel(p.candidate, p.candidateRfId)}`
+      : candLabel(p.candidate, p.candidateRfId),
     subtitle,
     amountLabel: formatUsdExactFromCents(e.amountCents),
     // Always bookedAt (the placement's start date) - that is the field the
@@ -177,7 +182,7 @@ function toRow(e: BillingEventWithPlacement, i: number): BillingDetailRow {
     // the period being viewed. Payment state is carried separately by
     // statusLabel.
     dateLabel: shortDate(e.bookedAt),
-    statusLabel: STATUS_LABEL[e.status],
+    statusLabel: refund ? "Refunded" : STATUS_LABEL[e.status],
     paid: e.status === "paid",
     href: p.candidate ? `/candidates/${p.candidate.id}` : null,
   };

@@ -136,6 +136,13 @@ export type PlacementsDashboardRow = {
   // set (which overrides the days math). Surfaced for the live
   // "days remaining" countdown on the placements + pipeline hired tabs.
   guaranteePeriodDays: number | null;
+  // Fall-off state (src/lib/placement-fell-off.ts). Raw Dates here;
+  // serialized to ISO at the client boundary (toLedgerRows).
+  fellOffAt: Date | null;
+  fellOffReason: string | null;
+  replacementOwed: boolean;
+  refundAmount: number | null;
+  refundedAt: Date | null;
 };
 
 type ClientLocationJson = {
@@ -343,6 +350,12 @@ export async function getPlacementsDashboardData(
         inst3DaysAfterStart: true,
         customGuaranteeDate: true,
         guaranteePeriodDays: true,
+        fellOffAt: true,
+        fellOffReason: true,
+        fellOffNotes: true,
+        replacementOwed: true,
+        refundAmount: true,
+        refundedAt: true,
         // startConfirmedAt is the most authoritative date anchor for
         // custom-terms installment expansion (Branch 2 in billing-events).
         // We already select it indirectly through the placement model
@@ -489,6 +502,11 @@ export async function getPlacementsDashboardData(
       inst3DaysAfterStart: p.inst3DaysAfterStart ?? null,
       customGuaranteeDate: p.customGuaranteeDate ?? null,
       guaranteePeriodDays: p.guaranteePeriodDays ?? null,
+      fellOffAt: p.fellOffAt ?? null,
+      fellOffReason: p.fellOffReason ?? null,
+      replacementOwed: p.replacementOwed ?? false,
+      refundAmount: p.refundAmount ?? null,
+      refundedAt: p.refundedAt ?? null,
     };
   });
 }

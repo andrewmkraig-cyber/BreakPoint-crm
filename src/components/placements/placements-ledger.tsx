@@ -5,6 +5,11 @@ import { useMemo, useState } from "react";
 import type { PlacementsDashboardBillingStatus } from "@/lib/placements-dashboard";
 import { formatMoneyShort } from "@/lib/placements-map-geo";
 import { formatDate } from "@/lib/utils";
+import {
+  FELL_OFF_REASON_LABEL,
+  fellOffChips,
+  normalizeFellOffReason,
+} from "@/lib/placement-fell-off";
 import type { PlacementCompensationType } from "@/lib/placement-compensation";
 import {
   PlacementEditDrawer,
@@ -42,6 +47,13 @@ export type LedgerRow = {
   acceptedCompensationType: PlacementCompensationType | null;
   candidateSource: string | null;
   dealType: string | null;
+  // Fall-off state. ISO strings. The name cell shows an amber "Fell off"
+  // pill when fellOffAt is set; the fee column already reads net of any
+  // refund because placementTotalDollars includes the refund event.
+  fellOffAt: string | null;
+  fellOffReason: string | null;
+  replacementOwed: boolean;
+  refundAmount: number | null;
   billingStatus: PlacementsDashboardBillingStatus;
   leadSource: string | null;
   // Custom payment agreement fields, threaded through to seed the edit
@@ -310,7 +322,21 @@ function LedgerTableRow({
       className="cursor-pointer border-b border-court-border-soft transition last:border-b-0 hover:bg-court-surface-subtle/60 focus:bg-court-surface-subtle/60 focus:outline-none"
     >
       <td className="py-1.5 pr-3 align-middle font-medium text-court-fg">
-        {candidateLabel}
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          {candidateLabel}
+          {row.fellOffAt ? (
+            <span
+              className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+              title={[
+                `Fell off ${formatDate(row.fellOffAt)}`,
+                FELL_OFF_REASON_LABEL[normalizeFellOffReason(row.fellOffReason)],
+                ...fellOffChips(row),
+              ].join(" · ")}
+            >
+              Fell off{row.replacementOwed ? " · owed" : ""}
+            </span>
+          ) : null}
+        </span>
       </td>
       <td className="px-3 py-1.5 align-middle text-court-fg">{row.roleTitle ?? "—"}</td>
       <td className="px-3 py-1.5 align-middle">

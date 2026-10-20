@@ -10,6 +10,8 @@ import {
 } from "@/components/placements/placements-ledger";
 import { PlacementsMapCard } from "@/components/placements/placements-map-card";
 import { RetainedSearchesCard } from "@/components/placements/retained-searches-card";
+import { ReplacementsOwedCard } from "@/components/placements/replacements-owed-card";
+import { getReplacementsOwed } from "@/lib/replacements-owed";
 import { RevenueCards } from "@/components/finances/revenue-cards";
 import { getRetainedSearchesForOrg } from "@/lib/retained-searches";
 import { TimeRangeTabs } from "@/components/ui/time-range-selector";
@@ -50,10 +52,11 @@ export async function PlacementsTab({
   // an OPEN search has no placement to be found by, and is period-agnostic
   // (the engagement is live until it fills or closes, not until a quarter
   // ends), so it deliberately ignores `range`.
-  const [rows, retainedSearches, jumpOptions] = await Promise.all([
+  const [rows, retainedSearches, jumpOptions, replacementsOwed] = await Promise.all([
     getPlacementsDashboardData(org.id, range),
     getRetainedSearchesForOrg(org.id),
     getPeriodJumpOptions(org.id),
+    getReplacementsOwed(org.id),
   ]);
   const cities = await aggregateByCity(rows);
   const totalFee = cities.reduce((s, c) => s + c.totalFee, 0);
@@ -78,6 +81,7 @@ export async function PlacementsTab({
         />
       </div>
       <RetainedSearchesCard rows={retainedSearches} />
+      <ReplacementsOwedCard rows={replacementsOwed} />
       <PlacementsLedger
         rows={ledgerRows}
         title={ledgerTitleFor(selection, range.label)}
@@ -110,6 +114,9 @@ function toGuaranteeRows(rows: LedgerRow[]): GuaranteePeriodRow[] {
       continue;
     }
     if (!r.expectedStartDateIso) continue;
+    // A candidate who already left has no guarantee left to count down.
+    // The fall-off lives on the Replacements Owed card instead.
+    if (r.fellOffAt) continue;
     const guaranteeEndIso = resolveGuaranteeEnd({
       startDateIso: r.expectedStartDateIso,
       guaranteePeriodDays: r.guaranteePeriodDays,
@@ -155,6 +162,10 @@ function toLedgerRows(rows: PlacementsDashboardRow[]): LedgerRow[] {
     acceptedCompensationType: r.acceptedCompensationType,
     candidateSource: r.leadSource ?? null,
     dealType: r.dealType ?? null,
+    fellOffAt: r.fellOffAt ? r.fellOffAt.toISOString() : null,
+    fellOffReason: r.fellOffReason,
+    replacementOwed: r.replacementOwed,
+    refundAmount: r.refundAmount,
     billingStatus: r.billingStatus,
     leadSource: r.leadSource ?? null,
     useCustomTerms: r.useCustomTerms,
