@@ -341,6 +341,8 @@ Two different things happen to a placed candidate and they must never share a bu
 - **Fell off** = the candidate started and then left (laid off, resigned, let go). Stage stays `hired`. The deal stays on every dashboard because the client was billed and usually paid. What changes is the follow-up, recorded on the row: `replacementOwed` and an optional `refundAmount` / `refundedAt`.
 - **A refund is a negative billing event, never an edit to the invoice.** The invoice is history. `refundEvent` in `src/lib/billing-events.ts` books the refund as its own "paid" negative line on the refund date, so every revenue figure reads net and a closed quarter keeps its number. Do not zero a fee, void a paid invoice, or cancel a placement to express a refund.
 - **A free replacement is a "replacement" deal with a $0 fee** that points at the original through `Placement.replacesPlacementId`. It is never a second fee on the books.
+- **Every fill carries exactly one replacement guarantee, and a replacement carries none** (Andrew, 2026-10-20). Both save paths force `guaranteePeriodDays = 0` and clear `customGuaranteeDate` when `dealType` is `replacement`; the guarantee tables skip replacement rows. Never add a guarantee to a replacement deal.
+- **A refund moves dollars, never counts.** `summarizeBillingEvents` and the drill-down's deal count skip `source === "refund"`. The tower must never read "3 placements" for two deals and a refund.
 
 ## Headless browser verification (added 2026-10-20 · Ace 103.0)
 Google-only sign-in used to block the real-browser pass. It does not have to. To drive the app in a real browser from the terminal:

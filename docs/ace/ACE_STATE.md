@@ -20,6 +20,8 @@ One code commit (`469f9801`), one schema migration (`20261020180623_add_placemen
 
 **Browser-verified, headlessly.** Google-only sign-in had blocked real-browser passes (ACE_ROADMAP item 23). This session got past it: a Playwright script encodes a NextAuth JWT for Andrew with `NEXTAUTH_SECRET`, sets it as the `next-auth.session-token` cookie, and drives the local dev server in the installed Google Chrome (`channel: "chrome"`; Playwright's own headless shell crashed on the candidate page's PDF viewer). Walked: Mark fell off on Tyler Engstrom with the $5,000 refund, the status card, the pipeline pill, the Replacements Owed card, the Billing Tower drill-down, then Undo. Tyler's row was left clean. Technique recorded in ACE_RULES.md.
 
+**Follow-up commit, same day.** Andrew: "a refund shouldn't act as a line for placements". The tower's counts and the drill-down's deal count now skip refund events (`summarizeBillingEvents`, unit-tested). And: "each position I fill has a one-time replacement guarantee, so when I do a replacement they have no guarantee." Both save paths force the guarantee to 0 on a replacement deal, both editors zero the box and say why, and replacement rows never enter the guarantee tables.
+
 **Not done: Tyler's real entry and the replacement picker.** Tyler Engstrom (Ross Talent Group, "Scotty Splits", $10,000 paid on INV-1061) is still unmarked because the date he left and the refund date were not given. Part 2 of the ask, "when I do the replacement there should be another pop up asking which candidate this person is replacing", is the next build.
 
 ## What Shipped in Ace 102.2 - the Billing Tower books a deal in the quarter it started (2026-09-22)

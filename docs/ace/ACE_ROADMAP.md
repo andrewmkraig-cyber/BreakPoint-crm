@@ -17,7 +17,8 @@ Full detail in ACE_STATE.md ▸ Ace 103.0.
 
 **27. Tyler Engstrom is not yet marked.** Date he left and refund date were not given. Andrew enters it from the dialog (Next Task in ACE_STATE.md).
 
-**28. The Billing Tower's "N placements" sub-label counts a refund as a line.** With one refund in Q4 2026 the tower reads "3 placements" for two deals and a refund. Cosmetic; the drill-down labels the refund line correctly.
+- ~~**28. The Billing Tower's "N placements" sub-label counted a refund as a line**~~ DONE (second commit this session) - counts skip refund events; unit-tested.
+- ~~**Replacement deals carry no guarantee**~~ DONE (same commit) - forced to 0 on save in both editors, skipped by the guarantee tables.
 
 **29. `replacesPlacementId` is written by nothing yet.** The Replacements Owed card can only show "Owed" until the picker ships.
 
