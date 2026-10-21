@@ -220,6 +220,9 @@ export async function parseCandidateFields(params: {
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 4000,
+    // Structured extraction wants the whole budget for the JSON answer, not
+    // for thinking (same gap as the submittal writeup, fixed 2026-10-21).
+    thinking: { type: "between_tools" },
     system:
       "You extract candidate fields from resumes and profiles for a recruiting CRM. " +
       "You return strict JSON matching the schema the user provides. You never fabricate fields. " +
@@ -1322,7 +1325,13 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
 
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 1400,
+    // Sonnet 5.5 thinks by default and bills the thinking against
+    // max_tokens. This call was missed in the 5.5 move, so the model spent
+    // the 1400-token budget thinking and the email came back cut off at
+    // "**What She Brings:" (Nicole Zhang, 2026-10-21). Thinking off, and
+    // headroom for a long writeup.
+    max_tokens: 2500,
+    thinking: { type: "between_tools" },
     system:
       "You write candidate submittal emails for BreakPoint Talent recruiters. " +
       "The output goes straight into the recruiter's submittal email body, they do not reformat it. " +
@@ -1396,6 +1405,13 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
     .trim();
 
   if (!text) throw new Error("Claude returned no submittal writeup. Try again.");
+  // Never hand back half an email. A truncated reply used to land in the
+  // composer as-is, with an unclosed "**" header and the sections missing.
+  if (response.stop_reason === "max_tokens") {
+    throw new Error(
+      "Claude ran out of room before finishing the submittal. Try again; if it repeats, shorten the guidance.",
+    );
+  }
   // Preserve `**…**` / `__…__` markers — they're load-bearing for the HTML
   // conversion on send. stripMarkdownToPlain would flatten them. Strip any
   // stray closing sign-off so the recruiter's real signature isn't doubled
