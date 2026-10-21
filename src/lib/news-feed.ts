@@ -10,6 +10,7 @@
 // the day. The refresh button (DELETE /api/news-feed/cache) wipes
 // today's rows so the next read regenerates fresh headlines.
 import Anthropic from "@anthropic-ai/sdk";
+import { joinClaudeText } from "@/lib/claude-text";
 import { CLAUDE_MODEL } from "@/lib/claude";
 
 // UI display order: Recruiting → AI & Tech → Public Accounting. Cron
@@ -286,10 +287,7 @@ export async function generateHeadlinesForTab(
   // The JSON we want lives in the trailing text block; the preface is
   // usually "Let me search for...". Concatenate every text block so the
   // parser sees the full final answer plus any preamble.
-  const fullText = response.content
-    .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n\n");
+  const fullText = joinClaudeText(response.content);
 
   // Log the complete raw response BEFORE any parsing. This is the only
   // way to debug "headlines were empty" from Vercel logs alone — the

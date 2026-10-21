@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { joinClaudeText } from "@/lib/claude-text";
 import Anthropic from "@anthropic-ai/sdk";
 import { CLAUDE_MODEL } from "@/lib/claude";
 import { getServerSession } from "next-auth";
@@ -129,14 +130,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse>>
     // would mis-classify the tool-use block as "no content" and
     // 502 even though Claude wrote a perfectly good revision two
     // slots later. Mirror of the fix in /api/mail/ai-compose.
-    const raw = response.content
-      .filter(
-        (b): b is Extract<(typeof response.content)[number], { type: "text" }> =>
-          b.type === "text",
-      )
-      .map((b) => b.text)
-      .join("\n\n")
-      .trim();
+    const raw = joinClaudeText(response.content);
     if (!raw) {
       console.error("[edit-with-claude] no text content from Claude", {
         stop_reason: response.stop_reason,

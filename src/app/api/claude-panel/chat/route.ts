@@ -314,6 +314,7 @@ export async function POST(req: NextRequest) {
       // applies between a round-1 preface ("Looking that up...") and
       // the round-2 cited answer, not just within a single response.
       let textBlockSeen = false;
+      let blockGap = false;
       const conversation: Anthropic.MessageParam[] = [...cleaned];
 
       // Phantom-claim guard state. assistantText accumulates every streamed
@@ -349,10 +350,17 @@ export async function POST(req: NextRequest) {
               event.type === "content_block_start" &&
               event.content_block.type === "text"
             ) {
-              if (textBlockSeen) {
+              // Text blocks split around citations continue the same
+              // sentence; only a tool block in between means a new
+              // paragraph. See src/lib/claude-text.ts for the same rule.
+              if (textBlockSeen && blockGap && !assistantText.endsWith("\n")) {
                 send({ t: "delta", text: "\n\n" });
+                assistantText += "\n\n";
               }
               textBlockSeen = true;
+              blockGap = false;
+            } else if (event.type === "content_block_start") {
+              blockGap = true;
             } else if (
               event.type === "content_block_delta" &&
               event.delta.type === "text_delta"

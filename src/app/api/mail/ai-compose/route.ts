@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { joinClaudeText } from "@/lib/claude-text";
 import Anthropic from "@anthropic-ai/sdk";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -192,14 +193,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<AiComposeResp
     // "no content" and 502'd, even though Claude wrote a perfectly
     // good draft sitting two slots later. Joining with blank lines
     // collapses cleanly when there's only one text block.
-    const raw = response.content
-      .filter(
-        (b): b is Extract<(typeof response.content)[number], { type: "text" }> =>
-          b.type === "text",
-      )
-      .map((b) => b.text)
-      .join("\n\n")
-      .trim();
+    const raw = joinClaudeText(response.content);
     if (!raw) {
       // Log the shape so Vercel surfaces what we actually got —
       // helpful when Claude stops on tool_use loop / refusal / max

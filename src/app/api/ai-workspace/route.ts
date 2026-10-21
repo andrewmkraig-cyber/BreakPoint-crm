@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { joinClaudeText } from '@/lib/claude-text'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import Anthropic from '@anthropic-ai/sdk'
@@ -666,10 +667,7 @@ export async function POST(req: NextRequest) {
     // and stopped — the cited final answer was discarded. Walk the
     // content array, keep every text block, join with a blank line so
     // the preface and final answer read as one message.
-    assistantContent = response.content
-      .filter((b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text')
-      .map((b) => b.text)
-      .join('\n\n')
+    assistantContent = joinClaudeText(response.content)
     if (!assistantContent) {
       ok = false
       errorMessage = 'Claude returned no text content'
