@@ -25,6 +25,8 @@ Full detail in ACE_STATE.md ▸ Ace 103.0.
 
 - ~~**29. `replacesPlacementId` is written by nothing yet**~~ DONE (fourth commit) - both save paths write it.
 
+**31. Other Claude calls still run Sonnet 5.5 thinking inside small budgets.** The submittal writeup and resume extraction were fixed on 2026-10-21 (thinking off, stop_reason guard). Still unguarded, so a long answer can come back cut off: `jobs/parse-url` (2000), `ai-workspace/format-email` (2000), `generate-resume-action` (2048 / 4096), `claude-panel/chat` (4096 / 1024), `ai-workspace` (4096), `news-feed` (2000). Add `thinking: { type: "between_tools" }` where the call wants a plain answer, or raise the ceiling, and check `stop_reason === "max_tokens"` before using the text.
+
 **30. The placements ledger and the Hired pill do not name the replacement link.** The ledger could read "Replacement for <name>" and the fell-off pill could read "Fell off · replaced" once a replacement is booked. The Replacements Owed card already shows it; cosmetic.
 
 ### DONE this session (Ace 102.2 - Billing Tower books by placement start, 2026-09-22)

@@ -346,6 +346,9 @@ Two different things happen to a placed candidate and they must never share a bu
 - **Fall Off is offered only on `hired` rows**, and fell-off rows stay on the Hired tab, greyed, below the live ones. The replacement candidate is the one who goes through Pending Start.
 - **A refund moves dollars, never counts.** `summarizeBillingEvents` and the drill-down's deal count skip `source === "refund"`. The tower must never read "3 placements" for two deals and a refund.
 
+## Every Claude call sets its thinking mode (added 2026-10-21 · PERMANENT)
+Sonnet 5.5 thinks by default and bills the thinking against `max_tokens`. A call that wants a plain answer inside a small budget MUST set `thinking: { type: "between_tools" }`, or the budget goes to thinking and the answer comes back cut off. The submittal writeup shipped that way for twelve days after the 5.5 move. Every call also checks `response.stop_reason === "max_tokens"` and throws rather than using a truncated reply. ACE_ROADMAP item 31 lists the calls still to fix.
+
 ## Headless browser verification (added 2026-10-20 · Ace 103.0)
 Google-only sign-in used to block the real-browser pass. It does not have to. To drive the app in a real browser from the terminal:
 1. Start the dev server on a spare port (`npx next dev -p 3005`).
