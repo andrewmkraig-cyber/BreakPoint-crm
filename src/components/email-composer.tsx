@@ -1401,7 +1401,16 @@ function ContactComboMulti({
   const selected = new Set(parseCsv(value));
   const pinnedList = pinned ?? [];
   const pinnedEmails = new Set(pinnedList.map((p) => p.email.toLowerCase()));
-  const rest = options.filter((o) => !pinnedEmails.has(o.email.toLowerCase()));
+  // Alphabetical by display name so a long client contact list can be
+  // scanned (Andrew, 2026-10-21). Pinned entries keep their own order
+  // above the list; only the pick-list below them is sorted.
+  const rest = options
+    .filter((o) => !pinnedEmails.has(o.email.toLowerCase()))
+    .sort((a, b) =>
+      (a.name.trim() || a.email).localeCompare(b.name.trim() || b.email, undefined, {
+        sensitivity: "base",
+      }),
+    );
 
   // Ref holds the authoritative chip string in sync with mutations.
   // Rapid-fire clicks on dropdown options hit React's batching: two
