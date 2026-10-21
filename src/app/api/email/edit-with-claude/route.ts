@@ -112,7 +112,8 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse>>
   try {
     const response = await anthropic.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 2048,
+      max_tokens: 4096,
+      thinking: { type: "between_tools" },
       tools: [
         {
           type: "web_search_20250305",
@@ -149,6 +150,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse>>
             : "Claude returned no revised body.";
       return NextResponse.json(
         { error: `${hint} Try again or pick a different edit type.` },
+        { status: 502 },
+      );
+    }
+    if (response.stop_reason === "max_tokens") {
+      return NextResponse.json(
+        { error: "Claude ran out of room before finishing the revision. Try again." },
         { status: 502 },
       );
     }

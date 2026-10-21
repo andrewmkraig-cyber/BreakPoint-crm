@@ -329,7 +329,8 @@ export async function POST(req: NextRequest) {
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
           const claudeStream = anthropic.messages.stream({
             model: CLAUDE_MODEL,
-            max_tokens: 4096,
+            max_tokens: 8192,
+            thinking: { type: "between_tools" },
             // Server-side web_search returns a multi-block sequence
             // (text preface, server_tool_use, web_search_tool_result,
             // text answer). Streaming naturally emits text_deltas for
@@ -362,6 +363,10 @@ export async function POST(req: NextRequest) {
           }
 
           const finalMsg = await claudeStream.finalMessage();
+          if (finalMsg.stop_reason === "max_tokens") {
+            // Say so in the stream rather than ending on a half sentence.
+            send({ t: "delta", text: "\n\n(Claude ran out of room here. Ask it to continue.)" });
+          }
 
           // Server tools (web_search) finish in-stream and stop_reason
           // settles to "end_turn" — only client tool calls leave us
@@ -610,7 +615,8 @@ export async function POST(req: NextRequest) {
           try {
             const forced = await anthropic.messages.create({
               model: CLAUDE_MODEL,
-              max_tokens: 1024,
+              max_tokens: 2048,
+              thinking: { type: "between_tools" },
               tools,
               tool_choice: { type: "auto" },
               system:

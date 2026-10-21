@@ -239,7 +239,8 @@ export async function generateHeadlinesForTab(
     response = await Promise.race([
       anthropic.messages.create({
         model: CLAUDE_MODEL,
-        max_tokens: 2000,
+        max_tokens: 4000,
+        thinking: { type: "between_tools" },
         tools: [
           {
             type: "web_search_20250305",
@@ -304,6 +305,10 @@ export async function generateHeadlinesForTab(
 
   if (!fullText) {
     console.error(`[news-feed:${tab}] no text blocks in response`);
+    return null;
+  }
+  if (response.stop_reason === "max_tokens") {
+    console.error(`[news-feed:${tab}] response cut off at max_tokens; not using it`);
     return null;
   }
   const parsed = parseHeadlines(fullText, tab);

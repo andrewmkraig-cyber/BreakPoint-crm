@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 
   const message = await anthropic.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 500,
+    max_tokens: 1500,
     thinking: { type: 'between_tools' },
     tools: [
       {

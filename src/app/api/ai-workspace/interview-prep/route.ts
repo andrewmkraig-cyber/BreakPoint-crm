@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 
 import { MARKDOWN_OUTPUT_FORMAT_RULES } from "@/lib/ai-output-formatting";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
-import { CLAUDE_MODEL, getClaude } from "@/lib/claude";
+import { CLAUDE_MODEL, getClaude, assertClaudeFinished } from "@/lib/claude";
 import { formatInterviewWhen } from "@/lib/interview-format";
 import { prisma } from "@/lib/prisma";
 
@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
       // max_tokens too, so the ceiling has to cover both. Still far
       // below the streaming threshold, so the plain non-streaming call
       // is fine.
-      max_tokens: 8000,
+      max_tokens: 12000,
       system: buildSystemPrompt(bundle.candidate.firstName),
       messages: [
         {
@@ -213,6 +213,7 @@ export async function POST(req: NextRequest) {
         },
       ],
     });
+    assertClaudeFinished(response, "the interview prep");
 
     const raw = response.content
       .filter((block): block is Extract<typeof block, { type: "text" }> => block.type === "text")

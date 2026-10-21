@@ -7,7 +7,7 @@ import { buildAceWideContextBlock } from '@/lib/ai-workspace-ace-context'
 import { getClientByIdentifier } from '@/lib/clients'
 import { getCandidateByIdentifier } from '@/lib/candidates'
 import { getJobByIdentifier } from '@/lib/jobs'
-import { CLAUDE_MODEL } from '@/lib/claude'
+import { CLAUDE_MODEL, assertClaudeFinished } from '@/lib/claude'
 import { extractUrls, verifyUrls } from '@/lib/url-verifier'
 import { authOptions } from '@/lib/auth'
 import { getCurrentOrg } from '@/lib/auth/getCurrentOrg'
@@ -647,7 +647,8 @@ export async function POST(req: NextRequest) {
       // client auto-fill — already reads from this constant. Swap
       // models in one place, not seven.
       model: CLAUDE_MODEL,
-      max_tokens: 4096,
+      max_tokens: 8192,
+      thinking: { type: "between_tools" },
       tools: [
         {
           type: "web_search_20250305",
@@ -657,6 +658,7 @@ export async function POST(req: NextRequest) {
       system: fullSystemPrompt,
       messages,
     })
+    assertClaudeFinished(response, "the workspace reply")
     // Server-side web_search returns a multi-block response:
     //   [ text(preface), server_tool_use, web_search_tool_result, text(answer) ]
     // The earlier single-block grab (response.content[0]) only kept the

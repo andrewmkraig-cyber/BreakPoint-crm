@@ -2,7 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { CLAUDE_MODEL, getClaude } from "@/lib/claude";
+import { CLAUDE_MODEL, getClaude, assertClaudeFinished } from "@/lib/claude";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 
@@ -320,7 +320,8 @@ async function extractJobFields(pageText: string): Promise<{ extracted: string; 
   const anthropic = getClaude();
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 2000,
+    max_tokens: 4000,
+    thinking: { type: "between_tools" },
     system:
       "You extract structured job fields from raw job-board HTML for a recruiting CRM. " +
       "Return STRICT JSON only. No prose, no markdown fences. Never invent fields; if missing, return null or [].",
@@ -361,6 +362,7 @@ async function extractJobFields(pageText: string): Promise<{ extracted: string; 
       },
     ],
   });
+  assertClaudeFinished(response, "the job fields");
 
   const raw = response.content
     .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")

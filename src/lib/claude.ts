@@ -36,6 +36,23 @@ export const stripMarkdownToPlain = stripMarkdownToPlainImpl;
 // a plain answer set between_tools explicitly.
 export const CLAUDE_MODEL = "claude-sonnet-5-5";
 
+// Every non-streaming caller runs its response through this before using
+// the text. A reply that stopped on max_tokens is half an answer: an
+// unclosed header, a JSON object with no closing brace, a submittal with
+// its sections missing. It must never reach the user as if it were whole
+// (Nicole Zhang's submittal, 2026-10-21). Throw, so the surface shows an
+// error and the recruiter retries, instead of pasting a fragment.
+export function assertClaudeFinished(
+  response: { stop_reason: string | null },
+  what: string,
+): void {
+  if (response.stop_reason === "max_tokens") {
+    throw new Error(
+      `Claude ran out of room before finishing ${what}. Try again; if it repeats, shorten the input.`,
+    );
+  }
+}
+
 let cached: Anthropic | null = null;
 
 export function getClaude(): Anthropic {
@@ -229,6 +246,7 @@ export async function parseCandidateFields(params: {
       "If a source is empty or unreadable, return the schema with all fields set to null (and skills: []).",
     messages: [{ role: "user", content }],
   });
+  assertClaudeFinished(response, "the resume extraction");
 
   const text = response.content
     .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
@@ -514,7 +532,9 @@ export async function summarizeAgreementTerms(params: {
 
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 1200,
+    // Adaptive thinking is billed against max_tokens; the ceiling covers
+    // thinking plus the full bullet list plus the JSON tail.
+    max_tokens: 4000,
     thinking: { type: "adaptive" },
     output_config: { effort: "medium" },
     system:
@@ -569,6 +589,7 @@ export async function summarizeAgreementTerms(params: {
     .trim();
 
   if (!text) throw new Error("Claude returned no summary. Try again or check the PDF is readable.");
+  assertClaudeFinished(response, "the agreement summary");
 
   // Split the human-facing markdown summary from the JSON tail. Everything
   // BEFORE the marker is the summary the user sees - byte-for-byte the same
@@ -724,12 +745,15 @@ export async function generateJobDescription(params: {
   async function runOnce(messages: Anthropic.Messages.MessageParam[]): Promise<string> {
     const response = await anthropic.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 4000,
+      // Thinking is billed against this; a full five-section JD plus
+      // reasoning needs the headroom.
+      max_tokens: 8000,
       thinking: { type: "adaptive" },
       output_config: { effort: "medium" },
       system,
       messages,
     });
+    assertClaudeFinished(response, "the job description");
     const raw = response.content
       .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
       .map((b) => b.text)
@@ -819,6 +843,7 @@ export async function extractJobFieldsFromGeneratedJd(markdown: string): Promise
       },
     ],
   });
+  assertClaudeFinished(response, "the job fields");
 
   const raw = response.content
     .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
@@ -1251,13 +1276,14 @@ export async function generatePublicAccountingSubmittalBullets(
 
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 700,
+    max_tokens: 1500,
     thinking: { type: "between_tools" },
     system:
       "You write concise client-facing recruiting bullet points for public accounting submittals. " +
       "Be specific, factual, and commercially useful. Never fabricate missing facts. Never use em dashes.",
     messages: [{ role: "user", content }],
   });
+  assertClaudeFinished(response, "the submittal bullets");
 
   const text = response.content
     .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
@@ -1407,11 +1433,7 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
   if (!text) throw new Error("Claude returned no submittal writeup. Try again.");
   // Never hand back half an email. A truncated reply used to land in the
   // composer as-is, with an unclosed "**" header and the sections missing.
-  if (response.stop_reason === "max_tokens") {
-    throw new Error(
-      "Claude ran out of room before finishing the submittal. Try again; if it repeats, shorten the guidance.",
-    );
-  }
+  assertClaudeFinished(response, "the submittal");
   // Preserve `**…**` / `__…__` markers — they're load-bearing for the HTML
   // conversion on send. stripMarkdownToPlain would flatten them. Strip any
   // stray closing sign-off so the recruiter's real signature isn't doubled
@@ -1511,6 +1533,7 @@ export async function generateClientBlurb(input: ClientBlurbInput): Promise<stri
       },
     ],
   });
+  assertClaudeFinished(response, "the client blurb");
 
   const text = response.content
     .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
@@ -1601,7 +1624,7 @@ export async function summarizeBenefits(params: {
 
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 1200,
+    max_tokens: 4000,
     thinking: { type: "adaptive" },
     output_config: { effort: "low" },
     system:
@@ -1617,6 +1640,7 @@ export async function summarizeBenefits(params: {
     .trim();
 
   if (!text) throw new Error("Claude returned no summary text. Try again or adjust the inputs.");
+  assertClaudeFinished(response, "the benefits summary");
   // Keep the markdown bullets intact (MarkdownProse renders `- **Label:** value`
   // as a clean bold-labeled bullet list); only strip the banned em/en dashes.
   // stripMarkdownToPlain here was the regression that flattened the bullets.

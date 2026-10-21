@@ -277,7 +277,7 @@ async function extractFieldsFromHomepage(url: string, pageText: string): Promise
   const trainerBlock = await buildPersonalTrainerBlock(org.id);
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 800,
+    max_tokens: 2500,
     thinking: { type: "between_tools" },
     tools: [
       {

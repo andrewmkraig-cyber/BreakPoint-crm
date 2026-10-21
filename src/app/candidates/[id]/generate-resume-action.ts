@@ -8,7 +8,7 @@ import { put } from "@vercel/blob";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import { CLAUDE_MODEL, extractDocxText } from "@/lib/claude";
+import { CLAUDE_MODEL, extractDocxText, assertClaudeFinished } from "@/lib/claude";
 import { buildPersonalTrainerBlock } from "@/lib/personal-trainer";
 import { getResumeBytes } from "@/lib/resume-bytes";
 import type {
@@ -162,10 +162,12 @@ export async function generateAiResume(input: {
 
     const response = await anthropic.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 2048,
+      max_tokens: 6000,
+      thinking: { type: "between_tools" },
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
     });
+    assertClaudeFinished(response, "the generated resume");
 
     // No tools: array — resume formatting doesn't need web search and
     // we don't want the model to invent facts via a stray search.
@@ -567,10 +569,12 @@ async function editGeneratedResumeDataWithClaude(params: {
 
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 4096,
+    max_tokens: 8192,
+    thinking: { type: "between_tools" },
     system: systemPrompt,
     messages: [{ role: "user", content: userMessage }],
   });
+  assertClaudeFinished(response, "the revised resume");
 
   const rawText = response.content
     .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")
@@ -731,10 +735,12 @@ export async function editResumeWithClaude(
 
     const response = await anthropic.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 8192,
+      max_tokens: 12000,
+      thinking: { type: "between_tools" },
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
     });
+    assertClaudeFinished(response, "the edited resume");
 
     const rawText = response.content
       .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getClaude } from "@/lib/claude";
+import { getClaude, assertClaudeFinished } from "@/lib/claude";
 import { MARKDOWN_OUTPUT_FORMAT_RULES } from "@/lib/ai-output-formatting";
 
 // Haiku 4.5 instead of the project-wide Sonnet model. Format-email is a
@@ -88,10 +88,12 @@ export async function POST(req: NextRequest) {
   try {
     const response = await anthropic.messages.create({
       model: FORMAT_EMAIL_MODEL,
-      max_tokens: 2000,
+      max_tokens: 4000,
+      thinking: { type: "between_tools" },
       system,
       messages: [{ role: "user", content: userPrompt }],
     });
+    assertClaudeFinished(response, "the formatted email");
     raw = response.content
       .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")
       .map((b) => b.text)

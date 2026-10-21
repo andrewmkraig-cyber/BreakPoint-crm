@@ -174,7 +174,8 @@ export async function POST(req: NextRequest): Promise<NextResponse<AiComposeResp
       // Subject + a multi-section body can run long; 1024 truncated some
       // generations mid-JSON, which broke parsing and dropped the subject
       // line. 2048 leaves room for the full {subject, bodyHtml} object.
-      max_tokens: 2048,
+      max_tokens: 4096,
+      thinking: { type: "between_tools" },
       tools: [
         {
           type: "web_search_20250305",
@@ -215,6 +216,13 @@ export async function POST(req: NextRequest): Promise<NextResponse<AiComposeResp
             : "Claude returned no draft body.";
       return NextResponse.json(
         { error: `${hint} Try rephrasing your prompt.` },
+        { status: 502 },
+      );
+    }
+    if (response.stop_reason === "max_tokens") {
+      // Text came back but was cut off. Never hand over half a draft.
+      return NextResponse.json(
+        { error: "Claude ran out of room before finishing the draft. Try again or ask for a shorter email." },
         { status: 502 },
       );
     }

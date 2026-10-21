@@ -180,7 +180,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse>>
   try {
     const response = await anthropic.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 600,
+      max_tokens: 1500,
       thinking: { type: "between_tools" },
       system,
       messages: [{ role: "user", content: facts }],
