@@ -714,6 +714,23 @@ export async function GET(req: Request) {
       });
     }
 
+    // A placed candidate is off the market. Anyone with a live placement
+    // (pending_start or hired, and not fallen off) is hidden from every
+    // search surface so a teammate cannot submit someone who already
+    // started for another client (Andrew, 2026-10-26: "I wouldn't want
+    // Austin to submit Louise"). A fall-off puts the candidate back on the
+    // market, so fellOffAt null is part of the test. Pass includePlaced=1
+    // to see them anyway.
+    if (url.searchParams.get("includePlaced") !== "1") {
+      andClauses.push({
+        NOT: {
+          placements: {
+            some: { stage: { in: ["pending_start", "hired"] }, fellOffAt: null },
+          },
+        },
+      });
+    }
+
     if (andClauses.length > 0) where.AND = andClauses;
 
     const select = {
