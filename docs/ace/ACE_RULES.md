@@ -335,6 +335,9 @@ Read any row the notification quotes BEFORE the mutation, not after.
 - **Clubhouse is the card-sizing reference.** Every dashboard / list-page card matches the Clubhouse tab's two-tier pattern: small KpiTile chrome (`rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px..0_8px_20px..]`, 10px extrabold label, 26px serif value) for inline KPI rows; big-panel chrome (`rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px..0_12px_32px..]`) for everything else. No bordered `shadow-sm` panels on dashboard / placements / invoices surfaces.
 - **No em dashes (—) in user-facing copy.** Hyphens (-) only. The em-dash placeholder for null values inside table cells stays (it's a typographic empty-state cue, not copy). This rule extends the Communication Rules ban into all rendered product copy — headers, subtitles, hints, tooltips, toasts, empty-state strings.
 
+## Placed candidates are off the market (added 2026-10-26 · PERMANENT)
+`/api/candidates/search` excludes anyone with a live placement: stage `pending_start` or `hired` with `fellOffAt` null. That endpoint feeds the candidates list, the job Matches tab and the main search, so no surface can offer a placed candidate for submittal (Andrew: "I wouldn't want Austin to submit Louise"). A fall-off puts the candidate back on the market. `includePlaced=1` is the only way to see them in search; the pipeline Hired tab and direct links still reach them.
+
 ## Fell off is not Cancel (added 2026-10-20 · Ace 103.0 - PERMANENT)
 Two different things happen to a placed candidate and they must never share a button.
 - **Cancel** = the deal never happened. Stage flips to `cancelled`, the row is hidden from dashboards, the map, the guarantee table and the client hired count. Use it when the candidate never started or the deal collapsed before billing.
