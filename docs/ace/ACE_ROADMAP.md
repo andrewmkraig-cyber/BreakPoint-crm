@@ -3,7 +3,10 @@ Last updated: 2026-10-20 · Ace 103.0
 
 ## Active Build Sequence
 
-### NEXT: Andrew books the first replacement (Katana Myers) and reads back the Replacements Owed card, Pending Start, and the Hired tab. See Next Task in ACE_STATE.md. Then the open follow-ups below.
+### NEXT: ZoomInfo Part 2, once Test connection reads Connected
+Wire `searchZoomInfoContacts` into the BD contact-list flow beside Apollo (pick the provider per run, or ZoomInfo as fallback when Apollo returns no emails), and `enrichZoomInfoCompany` into new-client creation. Blocked on Andrew's ZoomInfo API credentials and confirmation that the plan includes API access.
+
+### Previously next: Andrew books the first replacement (Katana Myers) and reads back the Replacements Owed card, Pending Start, and the Hired tab. See Next Task in ACE_STATE.md. Then the open follow-ups below.
 
 ### DONE this session (Ace 103.0, fourth commit - replacement picker, 2026-10-20)
 - ~~**Replacement picker**~~ DONE - Replacing block + popup in both editors, saves `replacesPlacementId`, $0 fee by default, "Replacing: <name>" on the announcement. The ledger does not yet show "Replacement for <name>" (follow-up 30).
