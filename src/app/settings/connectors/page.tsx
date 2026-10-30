@@ -30,7 +30,7 @@ export default async function ConnectorsSettingsPage() {
   ]);
   const orgRow = await prisma.organization.findUnique({
     where: { id: org.id },
-    select: { mercuryApiKey: true, zoomInfoUsername: true },
+    select: { mercuryApiKey: true, zoomInfoUsername: true, zoomInfoClientId: true },
   });
   const mercuryMasked = orgRow?.mercuryApiKey
     ? maskMercuryKey(orgRow.mercuryApiKey)
@@ -53,7 +53,10 @@ export default async function ConnectorsSettingsPage() {
         <MercuryConnectorCard maskedKey={mercuryMasked} />
       </div>
       <div className="mt-2">
-        <ZoomInfoConnectorCard username={orgRow?.zoomInfoUsername ?? null} />
+        <ZoomInfoConnectorCard
+          username={orgRow?.zoomInfoUsername ?? null}
+          authMode={orgRow?.zoomInfoClientId ? "pki" : orgRow?.zoomInfoUsername ? "password" : null}
+        />
       </div>
     </CollapsibleSection>
   );

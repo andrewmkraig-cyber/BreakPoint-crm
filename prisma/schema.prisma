@@ -1240,6 +1240,11 @@ model Organization {
   // Stored per org like mercuryApiKey. Null = not connected.
   zoomInfoUsername String?
   zoomInfoPassword String?
+  // PKI alternative: a Custom App's client ID + private key (PEM). Ace
+  // signs a short-lived JWT with the key and trades it for the API JWT.
+  // When clientId + privateKey are set they win over the password.
+  zoomInfoClientId   String?
+  zoomInfoPrivateKey String? @db.Text
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

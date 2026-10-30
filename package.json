@@ -45,6 +45,7 @@
     "docx": "^9.6.1",
     "domhandler": "^5.0.3",
     "htmlparser2": "^10.1.0",
+    "jose": "^4.15.9",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.8.0",
     "mammoth": "^1.12.0",

@@ -1,14 +1,22 @@
 import "server-only";
 
+import { SignJWT, importPKCS8 } from "jose";
+
 import { prisma } from "@/lib/prisma";
 
 // ZoomInfo API client. Credentials live on the Organization (Settings >
 // Connectors > ZoomInfo), the same way the Mercury key does, so Andrew
 // can connect from the app without a redeploy.
 //
-// Auth: POST /authenticate with the API username + password returns a
-// JWT good for one hour. Cached in memory per org and refreshed five
-// minutes early. Every other call sends it as a Bearer token.
+// Auth, two ways, both ending in a one-hour API JWT that is cached in
+// memory per org and refreshed five minutes early:
+//   - password: POST /authenticate with { username, password }.
+//   - PKI (a Custom App in the ZoomInfo Admin Portal): sign a five-minute
+//     RS256 JWT with the app's private key (aud "enterprise_api", iss
+//     "api-client@zoominfo.com", the admin's username and the client id)
+//     and POST /authenticate with it as the Bearer token. No seat needed.
+// When both are stored, PKI wins. Every other call sends the API JWT as a
+// Bearer token.
 //
 // Only the reads Ace needs are wrapped here. Nothing in this module
 // writes to ZoomInfo.
@@ -16,7 +24,11 @@ import { prisma } from "@/lib/prisma";
 const BASE = "https://api.zoominfo.com";
 const TOKEN_TTL_MS = 55 * 60 * 1000;
 
-type Creds = { username: string; password: string };
+type Creds =
+  | { kind: "password"; username: string; password: string }
+  | { kind: "pki"; username: string; clientId: string; privateKey: string };
+
+export type ZoomInfoAuthMode = Creds["kind"];
 
 export type ZoomInfoFailure =
   | { ok: false; reason: "not_connected" }
@@ -27,10 +39,52 @@ export type ZoomInfoFailure =
 async function loadCreds(orgId: string): Promise<Creds | null> {
   const row = await prisma.organization.findUnique({
     where: { id: orgId },
-    select: { zoomInfoUsername: true, zoomInfoPassword: true },
+    select: {
+      zoomInfoUsername: true,
+      zoomInfoPassword: true,
+      zoomInfoClientId: true,
+      zoomInfoPrivateKey: true,
+    },
   });
-  if (!row?.zoomInfoUsername || !row.zoomInfoPassword) return null;
-  return { username: row.zoomInfoUsername, password: row.zoomInfoPassword };
+  if (!row?.zoomInfoUsername) return null;
+  if (row.zoomInfoClientId && row.zoomInfoPrivateKey) {
+    return {
+      kind: "pki",
+      username: row.zoomInfoUsername,
+      clientId: row.zoomInfoClientId,
+      privateKey: row.zoomInfoPrivateKey,
+    };
+  }
+  if (row.zoomInfoPassword) {
+    return { kind: "password", username: row.zoomInfoUsername, password: row.zoomInfoPassword };
+  }
+  return null;
+}
+
+// Normalize a pasted PEM: Windows line endings, surrounding quotes, and
+// the "\n" literal that a one-line paste from a JSON file carries.
+export function normalizePem(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^"|"$/g, "")
+    .replace(/\\n/g, "\n")
+    .replace(/\r\n/g, "\n")
+    .trim();
+}
+
+async function signPkiAssertion(creds: Extract<Creds, { kind: "pki" }>): Promise<string> {
+  const key = await importPKCS8(normalizePem(creds.privateKey), "RS256");
+  const now = Math.floor(Date.now() / 1000);
+  return new SignJWT({
+    aud: "enterprise_api",
+    iss: "api-client@zoominfo.com",
+    username: creds.username,
+    client_id: creds.clientId,
+  })
+    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
+    .setIssuedAt(now)
+    .setExpirationTime(now + 5 * 60)
+    .sign(key);
 }
 
 export async function isZoomInfoConfigured(orgId: string): Promise<boolean> {
@@ -64,12 +118,35 @@ export async function getZoomInfoToken(orgId: string): Promise<TokenResult> {
 
   let res: Response;
   try {
-    res = await fetch(`${BASE}/authenticate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(creds),
-      cache: "no-store",
-    });
+    if (creds.kind === "pki") {
+      let assertion: string;
+      try {
+        assertion = await signPkiAssertion(creds);
+      } catch (e) {
+        return {
+          ok: false,
+          reason: "invalid_credentials",
+          message: `The private key could not be read: ${e instanceof Error ? e.message : "bad PEM"}. Paste the whole key file, including the BEGIN and END lines.`,
+        };
+      }
+      res = await fetch(`${BASE}/authenticate`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${assertion}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({}),
+        cache: "no-store",
+      });
+    } else {
+      res = await fetch(`${BASE}/authenticate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ username: creds.username, password: creds.password }),
+        cache: "no-store",
+      });
+    }
   } catch (e) {
     return { ok: false, reason: "unreachable", message: e instanceof Error ? e.message : "fetch failed" };
   }
@@ -128,7 +205,7 @@ export type ZoomInfoUsage = {
 };
 
 export type ZoomInfoProbe =
-  | { ok: true; username: string; usageSummary: string | null }
+  | { ok: true; username: string; mode: ZoomInfoAuthMode; usageSummary: string | null }
   | ZoomInfoFailure;
 
 export async function probeZoomInfo(orgId: string): Promise<ZoomInfoProbe> {
@@ -152,7 +229,7 @@ export async function probeZoomInfo(orgId: string): Promise<ZoomInfoProbe> {
       })
       .join(" · ");
   }
-  return { ok: true, username: creds.username, usageSummary };
+  return { ok: true, username: creds.username, mode: creds.kind, usageSummary };
 }
 
 // ---- Contact search (BD lists) ----
@@ -298,7 +375,7 @@ export function describeZoomInfoFailure(f: ZoomInfoFailure): { message: string; 
     case "not_connected":
       return { message: "ZoomInfo is not connected.", hint: "Add the API username and password under Settings > Connectors." };
     case "invalid_credentials":
-      return { message: `ZoomInfo rejected the credentials: ${f.message}`, hint: "Check the API username and password in the ZoomInfo admin portal, and that the API add-on is active on the account." };
+      return { message: `ZoomInfo rejected the credentials: ${f.message}`, hint: "Check the credentials in the ZoomInfo Admin Portal (Custom Apps for a client ID + private key, or the API user's password), and that API access is active on the account." };
     case "unreachable":
       return { message: `Could not reach ZoomInfo: ${f.message}`, hint: "Try again in a moment." };
     case "upstream":

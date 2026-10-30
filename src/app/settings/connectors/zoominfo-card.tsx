@@ -1,37 +1,69 @@
 "use client";
 
-// ZoomInfo connector card. Mirrors the Mercury card: credentials are
-// saved in-app on the Organization, no redeploy. Adds a Test connection
-// button that authenticates against ZoomInfo and reports credits left.
+// ZoomInfo connector card. Credentials are saved in-app on the
+// Organization, no redeploy. Two ways in, picked with a TabStrip:
+//   - Custom App (recommended): client ID + private key from the ZoomInfo
+//     Admin Portal, plus the admin's login email. No extra seat.
+//   - API user: a username + password for a user with API access.
+// Test connection authenticates against ZoomInfo and reports credits.
 
 import { useState, useTransition } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { disconnectZoomInfo, saveZoomInfoCredentials } from "./zoominfo-actions";
+import { Input, Textarea } from "@/components/ui/input";
+import { TabStrip } from "@/components/ui/tab-strip";
+import {
+  disconnectZoomInfo,
+  saveZoomInfoCredentials,
+  saveZoomInfoPki,
+} from "./zoominfo-actions";
 
 type TestState = { state: "connected" | "degraded" | "disconnected"; detail: string } | null;
+type Mode = "pki" | "password";
 
-export function ZoomInfoConnectorCard({ username }: { username: string | null }) {
+export function ZoomInfoConnectorCard({
+  username,
+  authMode,
+}: {
+  username: string | null;
+  authMode: Mode | null;
+}) {
   const isConnected = username != null;
+  const [mode, setMode] = useState<Mode>("pki");
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [privateKey, setPrivateKey] = useState("");
   const [pending, startTransition] = useTransition();
   const [testing, setTesting] = useState(false);
   const [test, setTest] = useState<TestState>(null);
 
+  const canSave =
+    user.trim().length > 0 &&
+    (mode === "pki" ? clientId.trim().length > 0 && privateKey.trim().length > 0 : pass.length > 0);
+
   function onSave() {
-    if (!user.trim() || !pass) {
-      toast.error("Enter the ZoomInfo API username and password first.");
+    if (!canSave) {
+      toast.error(
+        mode === "pki"
+          ? "Enter your login email, the client ID, and the private key first."
+          : "Enter the API username and password first.",
+      );
       return;
     }
     startTransition(async () => {
       try {
-        await saveZoomInfoCredentials({ username: user, password: pass });
+        if (mode === "pki") {
+          await saveZoomInfoPki({ username: user, clientId, privateKey });
+        } else {
+          await saveZoomInfoCredentials({ username: user, password: pass });
+        }
         setUser("");
         setPass("");
+        setClientId("");
+        setPrivateKey("");
         toast.success("ZoomInfo credentials saved.", { description: "Click Test connection to confirm." });
       } catch (e) {
         toast.error("Couldn't save ZoomInfo credentials", {
@@ -113,36 +145,75 @@ export function ZoomInfoConnectorCard({ username }: { username: string | null })
               <>
                 <span className="font-mono">{username}</span>
                 {" · "}
-                {test?.detail ?? "Contact search and company enrichment for BD. Click Test connection to confirm."}
+                {authMode === "pki" ? "Custom App (client ID + private key)" : "API user (password)"}
+                {" · "}
+                {test?.detail ?? "Click Test connection to confirm."}
               </>
             ) : (
-              "Contact search and company enrichment for BD. Needs an API user from the ZoomInfo admin portal."
+              "Contact search and company enrichment for BD. Connect with a Custom App from the ZoomInfo Admin Portal (no extra seat), or an API user's password."
             )}
           </div>
           {!isConnected ? (
-            <div className="mt-2 flex flex-wrap items-end gap-2">
-              <div className="w-56">
-                <Input
-                  label="API username"
-                  value={user}
-                  onChange={(e) => setUser(e.target.value)}
-                  placeholder="api-user@breakpointtalent.com"
-                  disabled={pending}
-                  autoComplete="off"
-                />
+            <div className="mt-3 space-y-3">
+              <TabStrip
+                ariaLabel="ZoomInfo sign-in method"
+                items={[
+                  { id: "pki", label: "Custom App (recommended)" },
+                  { id: "password", label: "API user password" },
+                ]}
+                activeId={mode}
+                onChange={(id) => setMode(id as Mode)}
+              />
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="w-64">
+                  <Input
+                    label={mode === "pki" ? "Your ZoomInfo login email" : "API username"}
+                    value={user}
+                    onChange={(e) => setUser(e.target.value)}
+                    placeholder="andrew@breakpointtalent.com"
+                    disabled={pending}
+                    autoComplete="off"
+                  />
+                </div>
+                {mode === "pki" ? (
+                  <div className="w-64">
+                    <Input
+                      label="Client ID"
+                      value={clientId}
+                      onChange={(e) => setClientId(e.target.value)}
+                      placeholder="From Admin Portal > Custom Apps"
+                      disabled={pending}
+                      autoComplete="off"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-56">
+                    <Input
+                      label="API password"
+                      type="password"
+                      value={pass}
+                      onChange={(e) => setPass(e.target.value)}
+                      placeholder="••••••••"
+                      disabled={pending}
+                      autoComplete="new-password"
+                    />
+                  </div>
+                )}
               </div>
-              <div className="w-56">
-                <Input
-                  label="API password"
-                  type="password"
-                  value={pass}
-                  onChange={(e) => setPass(e.target.value)}
-                  placeholder="••••••••"
-                  disabled={pending}
-                  autoComplete="new-password"
-                />
-              </div>
-              <Button type="button" variant="primary" size="sm" onClick={onSave} disabled={pending || !user.trim() || !pass}>
+              {mode === "pki" ? (
+                <div className="max-w-2xl">
+                  <Textarea
+                    label="Private key (paste the whole .pem file)"
+                    rows={4}
+                    value={privateKey}
+                    onChange={(e) => setPrivateKey(e.target.value)}
+                    placeholder={"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"}
+                    disabled={pending}
+                    className="font-mono text-[11px]"
+                  />
+                </div>
+              ) : null}
+              <Button type="button" variant="primary" size="sm" onClick={onSave} disabled={pending || !canSave}>
                 {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                 Save
               </Button>
@@ -164,7 +235,7 @@ export function ZoomInfoConnectorCard({ username }: { username: string | null })
         </div>
       </div>
       <div className="mt-1.5 text-[11px] italic text-court-fg-muted">
-        Read-only. Ace only searches and enriches; it never writes to ZoomInfo. The password is stored on the organization record like the Mercury key.
+        Read-only. Ace only searches and enriches; it never writes to ZoomInfo. Credentials are stored on the organization record like the Mercury key.
       </div>
     </div>
   );
