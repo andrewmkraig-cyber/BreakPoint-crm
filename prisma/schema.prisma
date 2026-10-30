@@ -1234,6 +1234,12 @@ model Organization {
   plan          String   @default("personal")
   ownerId       String
   mercuryApiKey String?
+  // ZoomInfo API credentials (Settings > Connectors). ZoomInfo issues a
+  // one-hour JWT from an API username + password created in the ZoomInfo
+  // admin portal; Ace re-authenticates as needed (src/lib/zoominfo.ts).
+  // Stored per org like mercuryApiKey. Null = not connected.
+  zoomInfoUsername String?
+  zoomInfoPassword String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

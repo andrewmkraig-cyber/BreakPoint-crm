@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { ConnectorsView } from "@/app/settings/connectors-view";
 import { MercuryConnectorCard } from "@/app/settings/connectors/mercury-card";
+import { ZoomInfoConnectorCard } from "@/app/settings/connectors/zoominfo-card";
 import { CollapsibleSection } from "@/components/settings/collapsible-section";
 import { getAllConnectorStatuses } from "@/lib/connectors";
 import { getInstantlyPrefs } from "@/lib/instantly/prefs";
@@ -29,7 +30,7 @@ export default async function ConnectorsSettingsPage() {
   ]);
   const orgRow = await prisma.organization.findUnique({
     where: { id: org.id },
-    select: { mercuryApiKey: true },
+    select: { mercuryApiKey: true, zoomInfoUsername: true },
   });
   const mercuryMasked = orgRow?.mercuryApiKey
     ? maskMercuryKey(orgRow.mercuryApiKey)
@@ -39,7 +40,7 @@ export default async function ConnectorsSettingsPage() {
     <CollapsibleSection
       id="connectors"
       title="Connectors"
-      description="Live health of Gmail, Claude, Quo, Instantly, and Mercury."
+      description="Live health of Gmail, Claude, Quo, Instantly, Mercury, and ZoomInfo."
     >
       <ConnectorsView
         gmail={connectors.gmail}
@@ -50,6 +51,9 @@ export default async function ConnectorsSettingsPage() {
       />
       <div className="mt-2">
         <MercuryConnectorCard maskedKey={mercuryMasked} />
+      </div>
+      <div className="mt-2">
+        <ZoomInfoConnectorCard username={orgRow?.zoomInfoUsername ?? null} />
       </div>
     </CollapsibleSection>
   );
