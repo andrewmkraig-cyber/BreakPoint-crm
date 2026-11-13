@@ -12,7 +12,7 @@
     "test:smoke": "node tests/unit/candidates-topbar-actions.test.mjs",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate && node scripts/sync-pdfjs.mjs",
     "db:migrate": "node scripts/new-migration.mjs",
     "db:deploy": "node scripts/prisma-with-env.mjs migrate deploy",
     "db:status": "node scripts/prisma-with-env.mjs migrate status",

@@ -114,6 +114,8 @@ export function PdfCanvasViewer({
         setLoading(false);
       } catch (e) {
         if (cancelled) return;
+        // Keep the stack in the console: the red box only shows the message.
+        console.error("[pdf-viewer] load failed", e);
         setErr(e instanceof Error ? e.message : "PDF load failed");
         setLoading(false);
       }
@@ -245,6 +247,7 @@ export function PdfCanvasViewer({
         // white canvas (the mobile bug). Surface it so the error UI +
         // Download fallback show instead.
         if (cancelled) return;
+        console.error("[pdf-viewer] render failed", e);
         setErr(e instanceof Error ? e.message : "PDF render failed");
       }
     })();

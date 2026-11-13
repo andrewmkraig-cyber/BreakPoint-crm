@@ -104,27 +104,23 @@ function installMapGetOrInsertPolyfill(): void {
   });
 }
 
+// The library is served from /public/pdfjs next to its worker. Both are
+// copied from node_modules by scripts/sync-pdfjs.mjs on postinstall, so
+// they are always the same pdfjs-dist version. It is loaded with a native
+// dynamic import that webpack is told to leave alone: bundling pdf.mjs
+// through Next's webpack began failing at module setup with
+// "Object.defineProperty called on non-object" for both the modern and
+// the legacy build, in dev and in prod (2026-11-13). The legacy build is
+// used because it is babel-transpiled and core-js-polyfilled for iOS
+// Safari, where the modern build crashed before.
+const PDFJS_LIB_URL = "/pdfjs/pdf.min.mjs";
+
 async function importAndConfigure(): Promise<PdfJsLib> {
   installMapGetOrInsertPolyfill();
-  // pdfjs-dist 5.6 targets very recent browsers and calls ES2024/2025
-  // APIs natively (Map.prototype.getOrInsertComputed, Iterator helpers,
-  // ...) that iOS Safari hasn't shipped — the modern build crashed there
-  // with "getOrInsertComputed is not a function", then "undefined is not
-  // a function" once that was patched. The legacy build is babel-
-  // transpiled + core-js-polyfilled for exactly these older browsers, so
-  // use it in production (where real phones live). In dev we keep the
-  // modern build: smaller, the dev browser is current, and the legacy
-  // build's core-js DOM feature-detect can throw under Next HMR
-  // re-evaluation (the original reason this app moved off legacy).
-  const lib = (
-    process.env.NODE_ENV === "production"
-      ? await import("pdfjs-dist/legacy/build/pdf.mjs")
-      : await import("pdfjs-dist/build/pdf.mjs")
-  ) as unknown as PdfJsLib;
-  // Self-hosted worker is the LEGACY worker — it bundles the same
-  // polyfills (safe in worker scope, which has no DOM) and is the same
-  // 5.6.205 version as either lib build, so the worker version check
-  // passes in both dev and prod. CSP script-src covers 'self'.
+  const lib = (await import(/* webpackIgnore: true */ PDFJS_LIB_URL)) as unknown as PdfJsLib;
+  if (!lib || typeof lib.getDocument !== "function") {
+    throw new Error("pdf.js did not load from /pdfjs/pdf.min.mjs.");
+  }
   lib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
   return lib;
 }
