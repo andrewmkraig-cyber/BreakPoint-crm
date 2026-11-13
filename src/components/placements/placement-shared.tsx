@@ -117,9 +117,25 @@ export function ConfirmStartDialog({
       return;
     }
     startSave(async () => {
-      const buffer = await file.arrayBuffer();
-      const base64 = arrayBufferToBase64(buffer);
-      const result = await confirmStart({ placementId, screenshotBase64: base64, mimeType: file.type || "image/png" });
+      // Shrink before sending. A full-size Mac screenshot can be several
+      // MB, base64 adds a third, and Vercel refuses request bodies over
+      // 4.5MB: the action never ran, nothing was thrown to the UI, and
+      // the dialog sat on Pending Start (Katana Myers, 2026-11-13). A
+      // 1800px JPEG is still a readable proof and well under the line.
+      const prepared = await shrinkScreenshot(file);
+      let result: Awaited<ReturnType<typeof confirmStart>>;
+      try {
+        result = await confirmStart({
+          placementId,
+          screenshotBase64: prepared.base64,
+          mimeType: prepared.mimeType,
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setErr(`The confirm did not reach the server: ${msg}. Try again; if it repeats, use a smaller screenshot.`);
+        toast.error("Couldn't confirm start", { description: msg });
+        return;
+      }
       if (!result.ok) {
         setErr(result.error);
         toast.error("Couldn't confirm start", { description: result.error });
@@ -470,6 +486,41 @@ export function ModalFooter({
       </Button>
     </div>
   );
+}
+
+// Downscale a screenshot to at most 1800px on its long edge and re-encode
+// as JPEG. Falls back to the original bytes if the browser cannot decode
+// it (odd formats) so the upload still goes through.
+const SCREENSHOT_MAX_EDGE = 1800;
+const SCREENSHOT_JPEG_QUALITY = 0.85;
+const SCREENSHOT_SMALL_ENOUGH = 900 * 1024;
+
+async function shrinkScreenshot(file: File): Promise<{ base64: string; mimeType: string }> {
+  const original = async () => ({
+    base64: arrayBufferToBase64(await file.arrayBuffer()),
+    mimeType: file.type || "image/png",
+  });
+  if (file.size <= SCREENSHOT_SMALL_ENOUGH) return original();
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, SCREENSHOT_MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return original();
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", SCREENSHOT_JPEG_QUALITY),
+    );
+    if (!blob || blob.size >= file.size) return original();
+    return { base64: arrayBufferToBase64(await blob.arrayBuffer()), mimeType: "image/jpeg" };
+  } catch {
+    return original();
+  }
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
