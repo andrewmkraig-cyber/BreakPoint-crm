@@ -112,23 +112,21 @@ export function ConfirmStartDialog({
 
   async function onSave() {
     setErr(null);
-    if (!file) {
-      setErr("Upload a screenshot confirming the start.");
-      return;
-    }
     startSave(async () => {
       // Shrink before sending. A full-size Mac screenshot can be several
       // MB, base64 adds a third, and Vercel refuses request bodies over
       // 4.5MB: the action never ran, nothing was thrown to the UI, and
       // the dialog sat on Pending Start (Katana Myers, 2026-11-13). A
       // 1800px JPEG is still a readable proof and well under the line.
-      const prepared = await shrinkScreenshot(file);
+      // The screenshot is optional (2026-11-13): the recruiter's word is
+      // enough to seal the start; a proof image is attached when there is one.
+      const prepared = file ? await shrinkScreenshot(file) : null;
       let result: Awaited<ReturnType<typeof confirmStart>>;
       try {
         result = await confirmStart({
           placementId,
-          screenshotBase64: prepared.base64,
-          mimeType: prepared.mimeType,
+          screenshotBase64: prepared?.base64 ?? null,
+          mimeType: prepared?.mimeType ?? null,
         });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -177,8 +175,8 @@ export function ConfirmStartDialog({
   return (
     <Modal title="Confirm start" subtitle={jobTitle} onClose={onClose}>
       <p className="text-sm text-court-fg-muted">
-        Upload a screenshot of the start confirmation (email, portal, HR tool). This seals the placement and flags it
-        for invoicing.
+        Confirming seals the placement and flags it for invoicing. Attach a screenshot of the start confirmation
+        (email, portal, HR tool) if you have one. Optional.
       </p>
       <div
         role="button"
@@ -201,7 +199,7 @@ export function ConfirmStartDialog({
       >
         <UploadCloud className="h-5 w-5 text-court-fg-muted" />
         <div className="text-sm font-semibold text-court-fg">
-          {file ? file.name : dragActive ? "Drop screenshot here" : "Click or drag a screenshot here"}
+          {file ? file.name : dragActive ? "Drop screenshot here" : "Click or drag a screenshot here (optional)"}
         </div>
         <div className="text-xs text-court-fg-muted">PNG / JPG up to 4MB</div>
         <input

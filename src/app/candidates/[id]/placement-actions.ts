@@ -627,8 +627,10 @@ const MAX_SCREENSHOT_BYTES = 4 * 1024 * 1024; // 4MB — fits under Vercel Hobby
 
 export type ConfirmStartInput = {
   placementId: string;
-  screenshotBase64: string; // data:mime;base64,xxx OR just base64
-  mimeType: string;
+  // Optional since 2026-11-13: a start can be confirmed on the
+  // recruiter's word. When present: data:mime;base64,xxx OR just base64.
+  screenshotBase64?: string | null;
+  mimeType?: string | null;
 };
 
 // Surfaced to the Confirm Start UI so it can tailor the success toast.
@@ -656,19 +658,20 @@ export async function confirmStart(
   if (!userId) return { ok: false, error: "Not signed in." };
   const org = await getCurrentOrg();
 
-  const rawBase64 = input.screenshotBase64.includes(",")
-    ? input.screenshotBase64.split(",")[1]
-    : input.screenshotBase64;
-
-  let buffer: Buffer;
-  try {
-    buffer = Buffer.from(rawBase64, "base64");
-  } catch {
-    return { ok: false, error: "Couldn't decode screenshot." };
-  }
-  if (buffer.byteLength === 0) return { ok: false, error: "Screenshot is empty." };
-  if (buffer.byteLength > MAX_SCREENSHOT_BYTES) {
-    return { ok: false, error: `Screenshot too large (max ${MAX_SCREENSHOT_BYTES / (1024 * 1024)}MB).` };
+  let buffer: Buffer | null = null;
+  if (input.screenshotBase64 && input.screenshotBase64.trim()) {
+    const rawBase64 = input.screenshotBase64.includes(",")
+      ? input.screenshotBase64.split(",")[1]
+      : input.screenshotBase64;
+    try {
+      buffer = Buffer.from(rawBase64, "base64");
+    } catch {
+      return { ok: false, error: "Couldn't decode screenshot." };
+    }
+    if (buffer.byteLength === 0) return { ok: false, error: "Screenshot is empty." };
+    if (buffer.byteLength > MAX_SCREENSHOT_BYTES) {
+      return { ok: false, error: `Screenshot too large (max ${MAX_SCREENSHOT_BYTES / (1024 * 1024)}MB).` };
+    }
   }
 
   try {
@@ -751,8 +754,12 @@ export async function confirmStart(
         stage: "hired",
         startConfirmedAt: confirmedAt,
         ...(correctedPlacedAt ? { placedAt: correctedPlacedAt } : {}),
-        startConfirmationFile: new Uint8Array(buffer),
-        startConfirmationMime: input.mimeType || "image/png",
+        ...(buffer
+          ? {
+              startConfirmationFile: new Uint8Array(buffer),
+              startConfirmationMime: input.mimeType || "image/png",
+            }
+          : {}),
         invoicingFlagged: true,
         syncedToRf: sync.synced,
       },
