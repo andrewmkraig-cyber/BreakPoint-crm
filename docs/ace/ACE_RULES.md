@@ -354,6 +354,9 @@ Two different things happen to a placed candidate and they must never share a bu
 ## Every Claude call sets its thinking mode (added 2026-10-21 · PERMANENT)
 Sonnet 5.5 thinks by default and bills the thinking against `max_tokens`. A call that wants a plain answer MUST set `thinking: { type: "between_tools" }`, or the budget goes to thinking and the answer comes back cut off. The submittal writeup shipped that way for twelve days after the 5.5 move. Every non-streaming call runs its response through `assertClaudeFinished(response, "the <thing>")` from `src/lib/claude.ts` before using the text; it throws on `max_tokens` so the surface shows an error instead of a fragment. Streaming calls check `finalMessage().stop_reason` and say so in the stream. A new Claude call without both of these is a bug. Budgets: nothing below 1500; generators 4000 and up; anything that reasons (adaptive thinking) 4000 and up with the ceiling covering the thinking.
 
+## pdf.js in the browser is never bundled (added 2026-11-13 · PERMANENT)
+The resume viewer loads `/pdfjs/pdf.min.mjs` and `/pdfjs/pdf.worker.min.mjs` natively; `scripts/sync-pdfjs.mjs` copies both from `node_modules/pdfjs-dist/legacy/build` on postinstall. Never `import("pdfjs-dist/...")` from client code: webpack's module setup for that file threw "Object.defineProperty called on non-object" on every profile for weeks. After bumping pdfjs-dist, run `npm install` (or the script) and commit the two files plus `public/pdfjs/VERSION`.
+
 ## Headless browser verification (added 2026-10-20 · Ace 103.0)
 Google-only sign-in used to block the real-browser pass. It does not have to. To drive the app in a real browser from the terminal:
 1. Start the dev server on a spare port (`npx next dev -p 3005`).
