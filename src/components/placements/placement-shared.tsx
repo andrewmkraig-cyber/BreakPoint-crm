@@ -125,7 +125,11 @@ export function ConfirmStartDialog({
         toast.error("Couldn't confirm start", { description: result.error });
         return;
       }
-      if (result.value?.customTermsFired) {
+      if (result.value?.freeReplacement) {
+        toast.success("Start confirmed. Candidate moved to Hired", {
+          description: "Free replacement: no invoice drafted, nothing added to revenue.",
+        });
+      } else if (result.value?.customTermsFired) {
         toast.success("Start confirmed - invoice draft created for installment 1", {
           description:
             result.value.remindersSet > 0

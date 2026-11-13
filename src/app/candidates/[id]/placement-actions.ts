@@ -644,6 +644,9 @@ export type ConfirmStartResult = {
   customTermsFired: boolean;
   remindersSet: number;
   invoiceId: string | null;
+  // True when the deal was a $0 replacement: no invoice was drafted and
+  // the dialog should say so instead of opening the composer.
+  freeReplacement: boolean;
 };
 
 export async function confirmStart(
@@ -688,6 +691,7 @@ export async function confirmStart(
         jobId: true,
         candidateRfId: true,
         feeTotal: true,
+        dealType: true,
         acceptedSalary: true,
         acceptedCompensationType: true,
         feePercentage: true,
@@ -705,7 +709,18 @@ export async function confirmStart(
         retainedSearchId: true,
       },
     });
-    if (!existing || existing.feeTotal == null || existing.feeTotal <= 0) {
+    // A replacement deal may be free: the client already paid on the
+    // original fill, and this start is that guarantee being honored. A
+    // $0 fee is allowed only there; every other deal still needs a fee
+    // before it can start (Katana Myers replacing Isaac LyBurtus,
+    // 2026-11-13).
+    const freeReplacement =
+      !!existing && existing.dealType === "replacement" && (existing.feeTotal ?? 0) <= 0;
+    if (
+      !existing ||
+      existing.feeTotal == null ||
+      (existing.feeTotal <= 0 && !freeReplacement)
+    ) {
       return { ok: false, error: "Fee amount is required at this stage." };
     }
     const sync = existing && existing.candidateRfId != null && existing.jobRfId != null
@@ -800,7 +815,9 @@ export async function confirmStart(
     // This guard covers the standard full-fee draft; the custom-terms
     // installment block below carries the same condition.
     let invoiceId: string | null = null;
-    if (!existing.useCustomTerms && !retainedSearchId) {
+    // A free replacement raises no invoice: there is nothing to bill and
+    // nothing to put on the books. Revenue stays exactly as it was.
+    if (!existing.useCustomTerms && !retainedSearchId && !freeReplacement) {
       try {
         const created = await createInvoiceForPlacement({
           placementId: input.placementId,
@@ -1082,7 +1099,7 @@ export async function confirmStart(
       }
     }
 
-    return { ok: true, value: { customTermsFired, remindersSet, invoiceId } };
+    return { ok: true, value: { customTermsFired, remindersSet, invoiceId, freeReplacement } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to confirm start." };
   }
