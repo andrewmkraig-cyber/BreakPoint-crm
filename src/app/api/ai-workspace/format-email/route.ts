@@ -89,7 +89,9 @@ export async function POST(req: NextRequest) {
     const response = await anthropic.messages.create({
       model: FORMAT_EMAIL_MODEL,
       max_tokens: 4000,
-      thinking: { type: "between_tools" },
+      // No thinking option here: Haiku 4.5 does not think by default and
+      // rejects thinking.type "between_tools" with a 400 ("Email this" on
+      // the Game Plan, 2026-11-16). The max_tokens guard below still holds.
       system,
       messages: [{ role: "user", content: userPrompt }],
     });
