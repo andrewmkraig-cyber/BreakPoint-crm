@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { isFirmOwner } from "@/lib/firm-owner";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ShieldCheck, Briefcase, Eye, Plus } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
@@ -269,13 +270,17 @@ export default async function ClientDetailPage({
       ? prisma.user.findUnique({ where: { id: client.ownerId }, select: { name: true } })
       : Promise.resolve(null),
   ]);
+  const firmOwner = await isFirmOwner(currentUserId);
 
-  // Per-user ownership gate (Step 3). Only the owner can write; an
-  // unclaimed client (ownerId null) is read-only until claimed. Everyone
-  // in the org can still read every client.
+  // Per-user ownership gate (Step 3). The client's owner can write; an
+  // unclaimed client (ownerId null) is read-only until claimed; everyone
+  // in the org can read every client. The FIRM owner (Organization.ownerId,
+  // Andrew) has full access to every client regardless of who owns it
+  // (2026-11-24: "every client in Ace I should be able to have full
+  // access to"). Ownership still shows, so it is clear whose client it is.
   const isOwner = client.ownerId != null && client.ownerId === currentUserId;
   const isUnowned = client.ownerId == null;
-  const canWrite = isOwner;
+  const canWrite = isOwner || firmOwner;
   const ownerFirstName = ownerUser?.name?.trim().split(/\s+/)[0] ?? null;
 
   // Last-activity readout for the view-only banner. Only queried for the
@@ -546,7 +551,9 @@ export default async function ClientDetailPage({
         <div className="rounded-md bg-court-surface-subtle px-3 py-1.5 text-xs text-court-fg-muted">
           <div className="flex items-center gap-1.5">
             <Eye className="h-3 w-3" />
-            Owned by {ownerFirstName ?? "another user"} - view only.
+            {firmOwner
+              ? `Owned by ${ownerFirstName ?? "another user"}. You have full access as the firm owner.`
+              : `Owned by ${ownerFirstName ?? "another user"} - view only.`}
           </div>
           <div className="mt-0.5 pl-[1.125rem] text-[11px] text-court-fg-muted/80">
             {lastActivityLine}

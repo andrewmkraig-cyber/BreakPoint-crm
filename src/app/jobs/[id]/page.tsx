@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { isFirmOwner } from "@/lib/firm-owner";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import {
@@ -425,13 +426,14 @@ export default async function JobDetailPage({
     locationState: jobRow.locationState,
   });
   const isRemoteJob = overviewFields.workplaceType === "Remote";
+  const firmOwner = await isFirmOwner(currentUserId);
   const websiteRequirements = [
     {
       label: "Active in My Jobs",
       met:
         lifecycle === "active" &&
         jobRow.isOpen &&
-        Boolean(currentUserId && clientRow?.ownerId === currentUserId),
+        Boolean(currentUserId && (clientRow?.ownerId === currentUserId || firmOwner)),
       detail: "The role must be Active and belong to your My Jobs list.",
     },
     {

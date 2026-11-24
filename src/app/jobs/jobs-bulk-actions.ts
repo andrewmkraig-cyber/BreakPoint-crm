@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { isFirmOwner } from "@/lib/firm-owner";
 
 import { logActivity } from "@/lib/activity";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
@@ -53,6 +54,7 @@ export async function runJobsBulkAction(args: {
       return { ok: false, error: "One or more selected jobs are no longer available." };
     }
 
+    const firmOwner = await isFirmOwner(userId);
     if (args.action === "publish") {
       for (const job of jobs) {
         const raw = job.raw && typeof job.raw === "object"
@@ -64,7 +66,7 @@ export async function runJobsBulkAction(args: {
           readString(raw.description);
         const isRemote = job.workplaceType === "Remote";
         const missing = [
-          job.client?.ownerId !== userId ? "My Jobs ownership" : null,
+          job.client?.ownerId !== userId && !firmOwner ? "My Jobs ownership" : null,
           job.lifecycle !== "active" || !job.isOpen ? "Active status" : null,
           !description ? "job description" : null,
           !isRemote && (!job.locationCity || !job.locationState) ? "city and state" : null,
@@ -171,7 +173,7 @@ export async function setJobWebsitePriority(args: {
     });
     if (!job) return { ok: false, error: "Job not found." };
     const ownerId = job.client?.ownerId;
-    if (!ownerId || ownerId !== userId) {
+    if ((!ownerId || ownerId !== userId) && !(await isFirmOwner(userId))) {
       return { ok: false, error: "Only jobs in My Jobs can be reordered." };
     }
     if (job.lifecycle !== "active" || !job.isOpen) {

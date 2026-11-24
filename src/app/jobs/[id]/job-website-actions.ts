@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { isFirmOwner } from "@/lib/firm-owner";
 
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getCurrentUserId } from "@/lib/auth/getCurrentUserId";
@@ -53,7 +54,7 @@ export async function setJobWebsitePublished(args: {
         readString(job.description) ??
         readString(raw.description);
 
-      if (job.client?.ownerId !== userId) {
+      if (job.client?.ownerId !== userId && !(await isFirmOwner(userId))) {
         return { ok: false, error: "Only jobs in My Jobs can be published." };
       }
       if (job.lifecycle !== "active" || !job.isOpen) {
