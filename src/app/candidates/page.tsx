@@ -115,7 +115,9 @@ type Row = {
   resumeSnippet: string | null;
 };
 
-type SortColumn = "lastApply" | "lastAction";
+// "distance" is only offered when a location filter has produced miles
+// on the rows; its natural first click is closest-first (ascending).
+type SortColumn = "lastApply" | "lastAction" | "distance";
 type SortDirection = "asc" | "desc";
 type SortState = { column: SortColumn; direction: SortDirection } | null;
 
@@ -1208,9 +1210,21 @@ export default function CandidatesPage() {
   // a timestamp sink to the bottom so they don't reorder unexpectedly.
   const sortedRows = useMemo(() => {
     if (!sort) return rows;
+    const dir = sort.direction === "asc" ? 1 : -1;
+    if (sort.column === "distance") {
+      // Rows without a computed distance (no geocode) always sink to the
+      // bottom, whichever direction is active.
+      const withD = rows.map((row) => ({ row, d: row.distanceMi }));
+      withD.sort((a, b) => {
+        if (a.d === b.d) return 0;
+        if (a.d == null) return 1;
+        if (b.d == null) return -1;
+        return (a.d - b.d) * dir;
+      });
+      return withD.map((x) => x.row);
+    }
     const key: "lastApplyAt" | "lastActionAt" =
       sort.column === "lastApply" ? "lastApplyAt" : "lastActionAt";
-    const dir = sort.direction === "asc" ? 1 : -1;
     const withKey: Array<{ row: Row; t: string | null }> = rows.map((r) => ({
       row: r,
       t: r[key] ?? null,
@@ -1223,6 +1237,14 @@ export default function CandidatesPage() {
     });
     return withKey.map((x) => x.row);
   }, [rows, sort]);
+  const hasDistances = useMemo(() => rows.some((r) => r.distanceMi != null), [rows]);
+  const sortLabel = !sort
+    ? "Recent activity"
+    : sort.column === "distance"
+      ? sort.direction === "asc" ? "Distance (closest first)" : "Distance (farthest first)"
+      : sort.column === "lastApply"
+        ? sort.direction === "desc" ? "Last apply (newest first)" : "Last apply (oldest first)"
+        : sort.direction === "desc" ? "Last action (newest first)" : "Last action (oldest first)";
 
   function openCandidate(id: string) {
     if (shouldUseDirectCandidateProfileNavigation()) {
@@ -1239,10 +1261,12 @@ export default function CandidatesPage() {
 
   function toggleSort(column: SortColumn) {
     setSort((prev) => {
-      if (!prev || prev.column !== column) {
-        return { column, direction: "desc" };
-      }
-      if (prev.direction === "desc") return { column, direction: "asc" };
+      // Dates: newest first, then oldest. Distance: closest first, then
+      // farthest. Third click clears back to the API order.
+      const first: SortDirection = column === "distance" ? "asc" : "desc";
+      const second: SortDirection = first === "asc" ? "desc" : "asc";
+      if (!prev || prev.column !== column) return { column, direction: first };
+      if (prev.direction === first) return { column, direction: second };
       return null;
     });
   }
@@ -1867,7 +1891,7 @@ export default function CandidatesPage() {
                     ? "No filters applied yet"
                     : (total ?? 0) === 0
                       ? "candidates match"
-                      : `candidate${total === 1 ? "" : "s"} match · sorted by Recent activity`}
+                      : `candidate${total === 1 ? "" : "s"} match · sorted by ${sortLabel}`}
                 </span>
               </div>
             </div>
@@ -2125,7 +2149,16 @@ export default function CandidatesPage() {
                     <SortHeader label="Candidate" />
                     <SortHeader label="Current Title" />
                     <SortHeader label="Employer" />
-                    <SortHeader label="Location" />
+                    {hasDistances ? (
+                      <SortableHeader
+                        label="Location"
+                        column="distance"
+                        sort={sort}
+                        onToggle={toggleSort}
+                      />
+                    ) : (
+                      <SortHeader label="Location" />
+                    )}
                     <SortHeader label="Salary" align="right" />
                     <SortableHeader
                       label="Last Apply"
